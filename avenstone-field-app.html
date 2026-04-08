@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0A1F44" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Avenstone" />
+  <title>Avenstone Field Estimator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{background:#0A1F44;font-family:'Barlow',sans-serif;overscroll-behavior:none}
+    #root{height:100dvh;display:flex;flex-direction:column}
+    select option{background:#161b22;color:#e6edf3}
+    ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0d1117}::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect}=React;
+const CFG={
+  co:{name:"Avenstone Group LLC",phone:"(913) 272-5346",email:"kalin@avenstonekc.com",website:"avenstonekc.com",license:"Missouri Licensed General Contractor",area:"Kansas City Metro"},
+  b:{navy:"#0A1F44",gold:"#C9A84C",dark:"#0d1117",surface:"#161b22",border:"#21262d",muted:"#8b949e"},
+  webhookUrl:"https://hook.us1.make.com/YOUR_WEBHOOK_URL_HERE",
+  submitMode:"clipboard",
+  styleGuide:{tone:"Professional, confident, direct. Not salesy. Reads like an experienced KC contractor.",warranty:"Avenstone Group LLC warrants all workmanship for 1 year from substantial completion.",paymentPrelisting:"No money down. Full payment collected at closing.",paymentStandard:"50% at execution, 40% at rough-in, 10% at final walkthrough.",paymentInsurance:"ACV at execution. RCV released upon completion and COC."},
+  claudeInstructions:["Generate a professional bid/proposal for Avenstone Group LLC.","Read the full JSON before writing anything.","Match tone and format to bid_type: pre-listing=ROI framing+closing payment, insurance=Xactimate+IICRC if flagged, water mitigation=IICRC S500/S520, rehab/flip=ARV+investor ROI.","Every document: branded header, scope by trade, line item pricing table, labor breakdown, timeline, payment terms, 1-year warranty, signature block.","Pricing table: Description|Qty|Unit|Unit Cost|Total. Section subtotals. Grand total. Contingency if selected.","Tone: professional, confident, direct. No filler. No passive voice.","Output clean markdown. ## for headers. Tables for pricing. Ready to paste into Word.","Bid number: AV-[YEAR]-[sequence]. Never mention Claude or AI."]
+};
+const N=CFG.b.navy,G=CFG.b.gold,D=CFG.b.dark,S=CFG.b.surface,BR=CFG.b.border;
+
+const INTAKE=[
+  {id:"basics",label:"Project Basics",icon:"📋",questions:[
+    {id:"address",label:"Property address",type:"text",placeholder:"1206 W Lucy Webb Rd, Raymore MO 64083",why:"Permit research, jurisdiction",critical:true},
+    {id:"scope_type",label:"Scope type",type:"select",options:["Full gut (down to studs)","Partial gut (select systems)","Cosmetic only","Fire/water damage restore"],why:"Determines demo + rough-in quantities",critical:true},
+    {id:"project_type",label:"Project type",type:"select",options:["Flip for resale","Long-term rental","Pre-listing (seller-funded)","Primary residence"],why:"Calibrates spec level",critical:true},
+    {id:"arv",label:"Target ARV",type:"text",placeholder:"$350,000",why:"Material grade decisions"},
+    {id:"year_built",label:"Year built",type:"text",placeholder:"e.g. 1987",why:"Pre-2000 = hazmat test required"},
+    {id:"total_sqft",label:"Total sqft",type:"text",placeholder:"e.g. 1879",why:"Base for all quantity calcs",critical:true},
+    {id:"living_sqft",label:"Living area sqft",type:"text",placeholder:"e.g. 1744",why:"Flooring, paint, drywall quantities"},
+    {id:"floors",label:"Above-grade floors",type:"select",options:["1","2","3","Split level"],why:"Framing, HVAC zoning"},
+  ]},
+  {id:"foundation",label:"Foundation & Structure",icon:"🏗️",questions:[
+    {id:"foundation_type",label:"Foundation type",type:"select",options:["Slab on grade","Full basement — finished","Full basement — unfinished","Crawlspace","Walkout basement","Partial basement + crawl"],why:"CRITICAL — drives plumbing, insulation, vapor barrier",critical:true},
+    {id:"basement_sqft",label:"Basement sqft (if applicable)",type:"text",placeholder:"e.g. 800 sqft or N/A",why:"Adds to quantities if in scope"},
+    {id:"basement_scope",label:"Basement in scope?",type:"select",options:["N/A","Yes — full finish","Yes — partial","No — excluded","Rough-in only"],why:"Adds or subtracts zone from quantities"},
+    {id:"ceiling_height",label:"Standard ceiling height",type:"select",options:["8 ft","9 ft","10 ft","Mixed"],why:"Drywall, paint, wall framing"},
+    {id:"vaulted",label:"Vaulted ceilings — which rooms?",type:"multicheck",options:["None","Living Room","Dining Room","Master Bedroom","Kitchen","Other"],why:"Framing, insulation method changes"},
+    {id:"tray_ceilings",label:"Tray ceilings — which rooms?",type:"multicheck",options:["None","Living Room","Dining Room","Master Bedroom","Bedroom 2","Other"],why:"Extra framing, crown molding, accent paint"},
+    {id:"load_bearing",label:"Load-bearing walls being moved?",type:"select",options:["No","Yes — engineer consulted","Yes — engineer needed","Unknown"],why:"Engineer + LVL beam required"},
+  ]},
+  {id:"rooms",label:"Rooms & Baths",icon:"🏠",questions:[
+    {id:"room_list",label:"Room list with sqft (label floor plan first)",type:"textarea",placeholder:"Living Room: 298 sqft\nDining Room: 162 sqft\nKitchen: 222 sqft\nMaster Bedroom: 181 sqft\nBedroom 2: 133 sqft\nBedroom 3: 127 sqft\nHallway: 111 sqft\nLaundry: 59 sqft\nBath 1 (master): 56 sqft\nBath 2: 52 sqft\nBath 3: 27 sqft\nGarage: 378 sqft",why:"Combined with floor plan = precise quantities",critical:true},
+    {id:"bedroom_count",label:"Bedroom count",type:"select",options:["1","2","3","4","5","6+"],why:"Egress windows, AFCI, smoke detectors, fans",critical:true},
+    {id:"full_bath_count",label:"Full bath count",type:"select",options:["1","2","3","4","5+"],why:"Fixture, tile, plumbing per bath",critical:true},
+    {id:"half_bath_count",label:"Half bath count",type:"select",options:["0","1","2","3+"],why:"Reduced plumbing — no shower tile"},
+    {id:"bath_details",label:"Describe EACH full bath specifically",type:"textarea",placeholder:"Bath 1 (master, 56 sqft): walk-in shower, no tub, double vanity, tile floor\nBath 2 (hall, 52 sqft): tub/shower combo, single vanity, tile floor\nBath 3 (27 sqft): shower only, single vanity, tile floor",why:"Drives shower doors, tub, vanity, tile, RedGard per bath",critical:true},
+    {id:"garage_type",label:"Garage type",type:"select",options:["Attached — 1 car","Attached — 2 car","Attached — 3 car","Detached — 1 car","Detached — 2 car","No garage"],why:"Attached = 5/8\" Type-X fire-rated drywall required"},
+    {id:"laundry_location",label:"Laundry location",type:"select",options:["Inside main living area","Garage","Basement","Closet (stackable)","None"],why:"Plumbing rough-in path, dryer vent routing"},
+  ]},
+  {id:"flooring",label:"Flooring",icon:"🔲",questions:[
+    {id:"lvp_rooms",label:"LVP rooms",type:"multicheck",options:["Living Room","Dining Room","Kitchen","Master Bedroom","Bedroom 2","Bedroom 3","Hallway","Laundry","Basement","All non-tile areas"],why:"LVP sqft calculation",critical:true},
+    {id:"lvp_spec",label:"LVP spec level",type:"select",options:["Budget ($1.50–$2.50/sqft)","Mid ($2.50–$4.00/sqft)","Premium ($4.00+/sqft)"],why:"Unit cost selection"},
+    {id:"tile_rooms",label:"Tile rooms",type:"multicheck",options:["Bath 1","Bath 2","Bath 3","Kitchen","Laundry","Entry/Foyer","None"],why:"Tile sqft, thinset, grout, backer board",critical:true},
+    {id:"tile_spec",label:"Tile spec level",type:"select",options:["Builder ($1.50–$2.50/sqft)","Mid ($2.50–$5.00/sqft)","High-end ($5.00+/sqft)"],why:"Unit cost selection"},
+    {id:"subfloor_condition",label:"Subfloor condition",type:"select",options:["Good","Needs spot patching","Significant damage","Unknown","Full replacement needed"],why:"Leveling compound, OSB replacement"},
+  ]},
+  {id:"exterior",label:"Exterior & Roof",icon:"🏚️",questions:[
+    {id:"roof_scope",label:"Roof scope",type:"select",options:["Full replacement","Partial","Inspect only","Already done"],why:"Shingle count, underlayment, OSB deck",critical:true},
+    {id:"roof_layers",label:"Existing shingle layers",type:"select",options:["1 layer","2 layers","Unknown","Already torn off"],why:"2 layers = extra tear-off cost"},
+    {id:"siding_scope",label:"Siding scope",type:"select",options:["Full replacement","Partial repair","Touch-up only","None"],why:"Siding sqft, housewrap"},
+    {id:"siding_type",label:"Siding material",type:"select",options:["Vinyl","Hardie board","Hardie shake","LP SmartSide","No change"],why:"Unit cost and install method"},
+    {id:"windows_scope",label:"Windows scope",type:"select",options:["Full replacement","Partial","No change","Unknown"],why:"Window count, egress confirmation"},
+    {id:"window_count",label:"Approx window count",type:"text",placeholder:"e.g. 12",why:"Window units, flashing, casing"},
+    {id:"ext_doors",label:"Exterior doors — count and new or reuse",type:"text",placeholder:"Front: new, Rear: new, Garage man door: new = 3 total",why:"Prehung units, deadbolts"},
+  ]},
+  {id:"mep",label:"Mechanical / Electrical / Plumbing",icon:"⚡",questions:[
+    {id:"electrical_scope",label:"Electrical scope",type:"select",options:["Full rewire","Partial","No change","Unknown"],why:"Romex footage, breaker count",critical:true},
+    {id:"panel_upgrade",label:"Panel upgrade",type:"select",options:["No","Yes — 200A","Yes — same size","Unknown"],why:"Panel unit + permit"},
+    {id:"plumbing_scope",label:"Plumbing scope",type:"select",options:["Full PEX repipe","Partial","No change","Unknown"],why:"PEX footage, fittings, manifold",critical:true},
+    {id:"water_heater",label:"Water heater",type:"select",options:["Yes — electric tank","Yes — gas tank","Yes — tankless gas","Yes — tankless electric","No change"],why:"Unit selection, fuel, venting"},
+    {id:"hvac_scope",label:"HVAC scope",type:"select",options:["Full replacement","Air handler only","Condenser only","Furnace only","No change"],why:"System size, fuel, duct scope",critical:true},
+    {id:"hvac_fuel",label:"Heating fuel",type:"select",options:["Natural gas","Propane","Electric heat pump","Oil","Unknown"],why:"Furnace selection, gas line scope"},
+  ]},
+  {id:"finishes",label:"Finishes & Fixtures",icon:"✨",questions:[
+    {id:"trim_profile",label:"Trim profile",type:"select",options:["Basic colonial 2.5\"","Craftsman flat 3.5\"","Craftsman flat 4\"","Custom"],why:"Baseboard + casing SKU and LF"},
+    {id:"hardware_finish",label:"Hardware finish (must match throughout)",type:"select",options:["Satin nickel","Matte black","Oil-rubbed bronze","Polished chrome","Brushed gold"],why:"Every knob, hinge, pull, fixture"},
+    {id:"lighting_spec",label:"Lighting spec",type:"select",options:["Builder grade","Mid-range","High-end"],why:"Fixture unit cost"},
+    {id:"ceiling_fans",label:"Ceiling fans — which rooms",type:"multicheck",options:["Living Room","Master Bedroom","Bedroom 2","Bedroom 3","Dining Room","All Bedrooms"],why:"Fan count, fan-rated box, circuit"},
+    {id:"exhaust_fans",label:"Exhaust fans — which rooms",type:"multicheck",options:["All bathrooms","Bath 1","Bath 2","Bath 3","Laundry","Kitchen range hood"],why:"CFM spec, duct path, code req"},
+    {id:"cabinets_scope",label:"Cabinets in scope",type:"select",options:["No — excluded","Yes — stock","Yes — semi-custom","Yes — custom"],why:"If yes triggers separate cabinet sheet"},
+    {id:"countertops",label:"Countertop material",type:"select",options:["Not in scope","Laminate","Granite","Quartz","Butcher block"],why:"Unit cost per sqft"},
+  ]},
+  {id:"flags",label:"Scope Flags",icon:"🚩",questions:[
+    {id:"known_damage",label:"Known damage beyond visible scope",type:"textarea",placeholder:"e.g. Water damage in master closet, rot at rear base plate, mold in bath ceiling",why:"Flags additional demo, framing, remediation"},
+    {id:"exclusions",label:"Explicitly excluded from this estimate",type:"textarea",placeholder:"e.g. Cabinets excluded, HVAC by sub, no landscaping",why:"Exclusions section — protects Avenstone"},
+    {id:"existing_complete",label:"Anything already completed or in progress",type:"textarea",placeholder:"e.g. Demo started, mold crew handling bath, new roof already installed",why:"Prevents double-counting"},
+    {id:"permit_status",label:"Permit status",type:"select",options:["Not pulled","Applied — pending","Active permit","Violations — must resolve","Unknown"],why:"Affects scheduling and ordering"},
+    {id:"notes",label:"Anything else I should know",type:"textarea",placeholder:"Open field — anything that affects quantities or scope",why:"Catch-all"},
+  ]},
+];
+
+const BID=[
+  {id:"project",label:"Project Info",icon:"📍",questions:[
+    {id:"bid_type",label:"Bid type",type:"select",options:["Pre-listing renovation","Insurance claim / restoration","Water mitigation / drying","Full gut rehab / flip","General contracting"],why:"Document tone, payment terms, format",critical:true},
+    {id:"property_address",label:"Property address",type:"text",placeholder:"1206 W Lucy Webb Rd, Raymore MO 64083",why:"Document header",critical:true},
+    {id:"client_name",label:"Client name",type:"text",placeholder:"John & Jane Smith",why:"Header and signature block",critical:true},
+    {id:"client_type",label:"Client type",type:"select",options:["Homeowner / seller","Real estate agent (on behalf of seller)","Insurance adjuster","Property investor / flipper","Property manager"],why:"Adjusts document tone",critical:true},
+    {id:"agent_name",label:"Agent name + brokerage (if applicable)",type:"text",placeholder:"Sarah Jones — Keller Williams KC North, or N/A",why:"CC on document"},
+    {id:"bid_date",label:"Bid date",type:"text",placeholder:"April 6, 2026",why:"Document header",critical:true},
+    {id:"bid_sequence",label:"Bid sequence number",type:"text",placeholder:"e.g. 047 -> AV-2026-047",why:"Tracking and reference"},
+    {id:"project_description",label:"Project description",type:"textarea",placeholder:"Fire-damaged single family home, complete gut rehab. 1878 sqft, 3 bed / 3 bath, 1-story. Raymore MO.",why:"Opening paragraph of scope section",critical:true},
+  ]},
+  {id:"scope",label:"Scope of Work",icon:"🔨",questions:[
+    {id:"trades_in_scope",label:"Trades in scope",type:"multicheck",options:["Demo / Haul-off","Framing","Insulation","Drywall","Paint","Flooring — LVP","Flooring — Tile","Trim / Millwork","Doors & Hardware","Windows","Electrical","Plumbing","HVAC","Bathroom Fixtures","Kitchen","Roofing","Siding / Exterior","Garage","Water Mitigation","Mold Remediation","Concrete / Flatwork"],why:"Generates scope sections only for selected trades",critical:true},
+    {id:"scope_notes",label:"Scope notes — specifics per trade",type:"textarea",placeholder:"Electrical: full rewire, 200A panel\nPlumbing: full PEX repipe, 3 bath rough-in\nRoofing: full tear-off, OSB deck replacement\nDemo: fire damage full gut, 3 dumpsters",why:"Per-trade specifics drive accurate line items",critical:true},
+    {id:"exclusions",label:"Explicitly excluded",type:"textarea",placeholder:"Cabinets excluded\nHVAC by sub\nNo landscaping",why:"Exclusions section protects Avenstone"},
+    {id:"allowances",label:"Owner-selected allowances",type:"textarea",placeholder:"Tile: $3.50/sqft allowance\nLight fixtures: $1,200 allowance\nor N/A",why:"Placeholder line items in pricing table"},
+  ]},
+  {id:"pricing",label:"Pricing",icon:"💰",questions:[
+    {id:"pricing_method",label:"Pricing method",type:"select",options:["Full line item breakdown","Trade subtotals only","Lump sum per trade","Xactimate / insurance format","T&M (time and material)"],why:"Table format and detail level",critical:true},
+    {id:"line_items",label:"Line items by trade",type:"textarea",placeholder:"DEMO\n- Dumpster x3 @ $450 = $1,350\n- Hazmat test = $350\n\nELECTRICAL\n- Full rewire lump sum = $8,500\n- Panel upgrade 200A = $1,800\n\nPLUMBING\n- Full PEX repipe = $6,200",why:"Paste your numbers — I format into a clean pricing table",critical:true},
+    {id:"total_materials",label:"Total materials (if known)",type:"text",placeholder:"$62,400 or leave blank",why:"Cost summary section"},
+    {id:"total_labor",label:"Total labor (if known)",type:"text",placeholder:"$48,000 or leave blank",why:"Cost summary section"},
+    {id:"contingency",label:"Contingency",type:"select",options:["None","5%","10%","15%","Custom — specify in notes"],why:"Line item above grand total"},
+    {id:"tax",label:"Sales tax on materials",type:"select",options:["No","Yes — 9.1% KC metro","Yes — custom rate"],why:"Missouri materials tax"},
+    {id:"arv",label:"ARV / value add (flip or pre-listing)",type:"text",placeholder:"ARV: $350,000 / Value add: $80,000 or N/A",why:"ROI framing in investor and pre-listing docs"},
+  ]},
+  {id:"timeline",label:"Timeline",icon:"📅",questions:[
+    {id:"start_date",label:"Estimated start date",type:"text",placeholder:"May 1, 2026 or Upon permit approval",why:"Timeline section header",critical:true},
+    {id:"duration",label:"Project duration",type:"text",placeholder:"10-12 weeks",why:"Timeline section",critical:true},
+    {id:"phases",label:"Phases / milestones",type:"textarea",placeholder:"Week 1-2: Demo + hazmat\nWeek 2-4: Framing, rough MEP\nWeek 4-5: Insulation, drywall\nWeek 5-7: Finish drywall, flooring\nWeek 7-9: Trim, doors, paint\nWeek 9-11: Fixtures, final MEP\nWeek 11-12: Punch list, inspection",why:"Timeline table in document"},
+    {id:"permit_notes",label:"Permit notes",type:"text",placeholder:"City of Raymore — approx 2 week turnaround",why:"Timeline dependency for client"},
+  ]},
+  {id:"insurance",label:"Insurance / Claim",icon:"📋",questions:[
+    {id:"insurance_applicable",label:"Insurance claim?",type:"select",options:["No","Yes — homeowner claim","Yes — supplementing existing estimate"],why:"Triggers insurance language and Xactimate format",critical:true},
+    {id:"insurance_company",label:"Insurance company",type:"text",placeholder:"State Farm, Farmers, USAA, or N/A",why:"Document header reference"},
+    {id:"claim_number",label:"Claim number",type:"text",placeholder:"12-34567-89 or N/A",why:"Reference for adjuster"},
+    {id:"adjuster_name",label:"Adjuster name",type:"text",placeholder:"Mike Johnson or N/A",why:"CC on document"},
+    {id:"existing_estimate",label:"Existing estimate (if supplementing)",type:"text",placeholder:"Existing: $38,400 supplementing to $67,200 or N/A",why:"Supplement delta language"},
+    {id:"acv_rcv",label:"Policy type",type:"select",options:["N/A","RCV (replacement cost value)","ACV (actual cash value)","Unknown"],why:"Payment schedule language"},
+    {id:"iicrc",label:"Reference IICRC standards?",type:"select",options:["No","Yes — water mitigation (S500)","Yes — mold remediation (S520)"],why:"Adds IICRC refs for adjuster credibility"},
+  ]},
+  {id:"conditions",label:"Site Conditions",icon:"📸",questions:[
+    {id:"photos_taken",label:"Site photos taken?",type:"select",options:["Yes — will be attached","Yes — available on request","No — not yet","N/A"],why:"Photo documentation section"},
+    {id:"condition_notes",label:"Damage / condition notes from walkthrough",type:"textarea",placeholder:"- Fire damage concentrated on east wall and roof line\n- Master bath floor joists compromised\n- Rear base plate rotted — full replacement\n- Garage drywall non-compliant fire rating\n- Elevated moisture in laundry area",why:"Existing Conditions section — protects Avenstone",critical:true},
+    {id:"lien_waiver",label:"Include lien waiver language?",type:"select",options:["Yes — conditional","Yes — unconditional upon final payment","No"],why:"Missouri lien waiver clause"},
+  ]},
+  {id:"terms",label:"Terms & Delivery",icon:"✍️",questions:[
+    {id:"payment_terms",label:"Payment terms",type:"select",options:["Pre-listing — collected at closing","Standard — 50% / 40% / 10%","Insurance — ACV now, RCV at completion","Custom — specify below","T&M — weekly invoicing"],why:"Payment schedule section",critical:true},
+    {id:"custom_payment",label:"Custom payment terms (if applicable)",type:"textarea",placeholder:"$10,000 at execution, balance net-30 upon completion or N/A",why:"Overrides standard if custom selected"},
+    {id:"warranty_additions",label:"Warranty additions beyond standard 1-year",type:"textarea",placeholder:"30-year manufacturer roof warranty passed through to client or N/A",why:"Added to warranty section"},
+    {id:"bid_expiry",label:"Bid expiration",type:"select",options:["30 days","15 days","60 days","No expiration"],why:"Protects against material price changes"},
+    {id:"special_terms",label:"Special terms or conditions",type:"textarea",placeholder:"Owner responsible for securing property. Avenstone not responsible for pre-existing conditions beyond noted scope.",why:"Terms section protects Avenstone"},
+    {id:"output_format",label:"Output format",type:"select",options:["Markdown (paste into Word)","Full Word .docx","Plain text"],why:"How you want the finished document",critical:true},
+    {id:"rep_notes",label:"Rep notes — anything job-specific",type:"textarea",placeholder:"Client is price-sensitive. Agent is referral partner. etc.",why:"Last chance to flag anything before generation"},
+  ]},
+];
+
+const IRULES=[
+  {check:a=>!a.address,msg:"Property address required",sec:"Project Basics",sev:"critical"},
+  {check:a=>!a.scope_type,msg:"Scope type required",sec:"Project Basics",sev:"critical"},
+  {check:a=>!a.total_sqft,msg:"Total sqft required",sec:"Project Basics",sev:"critical"},
+  {check:a=>!a.foundation_type,msg:"Foundation type required — critical for plumbing and insulation scope",sec:"Foundation and Structure",sev:"critical"},
+  {check:a=>!a.room_list,msg:"Room list missing — quantities will be imprecise",sec:"Rooms and Baths",sev:"critical"},
+  {check:a=>!a.bedroom_count,msg:"Bedroom count required",sec:"Rooms and Baths",sev:"critical"},
+  {check:a=>!a.bath_details,msg:"Bath details missing — describe each bath specifically",sec:"Rooms and Baths",sev:"critical"},
+  {check:a=>!a.lvp_rooms||!a.lvp_rooms.length,msg:"LVP rooms not selected",sec:"Flooring",sev:"critical"},
+  {check:a=>!a.tile_rooms||!a.tile_rooms.length,msg:"Tile rooms not selected",sec:"Flooring",sev:"critical"},
+  {check:a=>!a.roof_scope,msg:"Roof scope not answered",sec:"Exterior and Roof",sev:"warning"},
+  {check:a=>!a.electrical_scope,msg:"Electrical scope not answered",sec:"MEP",sev:"warning"},
+  {check:a=>!a.plumbing_scope,msg:"Plumbing scope not answered",sec:"MEP",sev:"warning"},
+];
+const BRULES=[
+  {check:a=>!a.bid_type,msg:"Bid type required",sec:"Project Info",sev:"critical"},
+  {check:a=>!a.property_address,msg:"Property address required",sec:"Project Info",sev:"critical"},
+  {check:a=>!a.client_name,msg:"Client name required",sec:"Project Info",sev:"critical"},
+  {check:a=>!a.bid_date,msg:"Bid date required",sec:"Project Info",sev:"critical"},
+  {check:a=>!a.project_description,msg:"Project description required",sec:"Project Info",sev:"critical"},
+  {check:a=>!a.trades_in_scope||!a.trades_in_scope.length,msg:"Select at least one trade",sec:"Scope of Work",sev:"critical"},
+  {check:a=>!a.line_items,msg:"No line items — pricing table will be blank",sec:"Pricing",sev:"critical"},
+  {check:a=>!a.pricing_method,msg:"Pricing method not selected",sec:"Pricing",sev:"critical"},
+  {check:a=>!a.start_date,msg:"Start date missing",sec:"Timeline",sev:"warning"},
+  {check:a=>!a.duration,msg:"Duration missing",sec:"Timeline",sev:"warning"},
+  {check:a=>a.insurance_applicable&&a.insurance_applicable!=="No"&&!a.claim_number,msg:"Insurance selected — claim number missing",sec:"Insurance",sev:"warning"},
+  {check:a=>a.bid_type==="Pre-listing renovation"&&!a.arv,msg:"Pre-listing — ARV missing",sec:"Pricing",sev:"warning"},
+  {check:a=>!a.condition_notes,msg:"No site condition notes",sec:"Site Conditions",sev:"warning"},
+  {check:a=>!a.payment_terms,msg:"Payment terms not selected",sec:"Terms and Delivery",sev:"critical"},
+];
+
+function Field({q,value,onChange}){
+  const base={width:"100%",background:"#0d1117",border:`1px solid ${value?G+"44":BR}`,color:"#e6edf3",padding:"10px 14px",fontFamily:"'Barlow',sans-serif",fontSize:15,outline:"none",boxSizing:"border-box",borderRadius:2};
+  return(
+    <div style={{marginBottom:22}}>
+      <label style={{fontSize:13,color:"#e6edf3",fontWeight:600,display:"block",marginBottom:4,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:0.5,textTransform:"uppercase"}}>
+        {q.critical&&<span style={{color:"#ef4444",marginRight:5}}>*</span>}{q.label}
+      </label>
+      {q.why&&<div style={{fontSize:11,color:G,marginBottom:7,fontStyle:"italic",opacity:0.9}}>⚡ {q.why}</div>}
+      {q.type==="text"&&<input value={value||""} onChange={e=>onChange(e.target.value)} placeholder={q.placeholder} style={base}/>}
+      {q.type==="select"&&<select value={value||""} onChange={e=>onChange(e.target.value)} style={{...base,color:value?"#e6edf3":"#6e7681"}}><option value="">— Select —</option>{q.options.map(o=><option key={o} value={o}>{o}</option>)}</select>}
+      {q.type==="textarea"&&<textarea value={value||""} onChange={e=>onChange(e.target.value)} placeholder={q.placeholder} rows={5} style={{...base,resize:"vertical",lineHeight:1.7}}/>}
+      {q.type==="multicheck"&&<div style={{display:"flex",flexWrap:"wrap",gap:7}}>{q.options.map(opt=>{const on=Array.isArray(value)&&value.includes(opt);return<button key={opt} onClick={()=>{const c=Array.isArray(value)?value:[];onChange(on?c.filter(x=>x!==opt):[...c,opt]);}} style={{background:on?G:"transparent",border:`1px solid ${on?G:BR}`,color:on?N:"#8b949e",padding:"7px 13px",fontFamily:"'Barlow',sans-serif",fontSize:13,cursor:"pointer",fontWeight:on?700:400,borderRadius:2,transition:"all 0.15s"}}>{on?"✓ ":""}{opt}</button>;})}</div>}
+    </div>
+  );
+}
+
+function ValModal({violations,onClose,onAnyway}){
+  const cr=violations.filter(v=>v.sev==="critical"),wa=violations.filter(v=>v.sev==="warning"),ok=cr.length===0;
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000000dd",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:S,border:"1px solid #30363d",width:"100%",maxWidth:460,maxHeight:"82vh",overflowY:"auto",borderRadius:4}}>
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #30363d",background:N,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:9,color:G,letterSpacing:3,fontFamily:"'Barlow Condensed',sans-serif"}}>PRE-SUBMIT CHECK</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#fff",fontFamily:"'Barlow Condensed',sans-serif"}}>REVIEW BEFORE SUBMITTING</div>
+          </div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:"#8b949e",fontSize:22,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{padding:"18px 20px"}}>
+          {cr.length>0&&<div style={{marginBottom:18}}><div style={{fontSize:10,color:"#ef4444",letterSpacing:2,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif"}}>⛔ REQUIRED — FIX BEFORE SUBMITTING</div>{cr.map((v,i)=><div key={i} style={{background:"#1c0a0a",border:"1px solid #ef444433",padding:"10px 14px",marginBottom:6,borderRadius:2}}><div style={{fontSize:13,color:"#fca5a5",fontWeight:600}}>{v.msg}</div><div style={{fontSize:11,color:"#6e7681",marginTop:2}}>{v.sec}</div></div>)}</div>}
+          {wa.length>0&&<div style={{marginBottom:18}}><div style={{fontSize:10,color:"#f59e0b",letterSpacing:2,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif"}}>⚠️ WARNINGS — MAY BE INCOMPLETE</div>{wa.map((v,i)=><div key={i} style={{background:"#1a1200",border:"1px solid #f59e0b33",padding:"10px 14px",marginBottom:6,borderRadius:2}}><div style={{fontSize:13,color:"#fcd34d",fontWeight:600}}>{v.msg}</div><div style={{fontSize:11,color:"#6e7681",marginTop:2}}>{v.sec}</div></div>)}</div>}
+          {ok&&wa.length===0&&<div style={{background:"#0a1f0a",border:"1px solid #22c55e44",padding:14,marginBottom:18,borderRadius:2,fontSize:14,color:"#86efac",fontWeight:600}}>✓ All checks passed. Ready to submit.</div>}
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <button onClick={onClose} style={{background:"transparent",border:"1px solid #30363d",color:"#8b949e",padding:"10px 20px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,cursor:"pointer",borderRadius:2,letterSpacing:1}}>GO BACK</button>
+            {(ok||wa.length>0)&&<button onClick={onAnyway} style={{background:ok?G:"#374151",border:`1px solid ${ok?G:"#f59e0b"}`,color:ok?N:"#f59e0b",padding:"10px 20px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",borderRadius:2,letterSpacing:1}}>{ok?"SUBMIT NOW":"SUBMIT ANYWAY"}</button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FormScreen({title,sections,rules,formType,onBack}){
+  const[answers,setAnswers]=useState({});
+  const[active,setActive]=useState(0);
+  const[showVal,setShowVal]=useState(false);
+  const[state,setState]=useState("idle");
+  const set=(id,val)=>setAnswers(p=>({...p,[id]:val}));
+  const totalA=sections.reduce((a,s)=>a+s.questions.filter(q=>answers[q.id]&&answers[q.id]!=="").length,0);
+  const totalQ=sections.reduce((a,s)=>a+s.questions.length,0);
+  const pct=Math.round((totalA/totalQ)*100);
+  const violations=rules.filter(r=>r.check(answers));
+  const crits=violations.filter(v=>v.sev==="critical");
+  const ready=crits.length===0;
+  const buildPayload=()=>({_meta:{form_type:formType,exported:new Date().toISOString(),style_guide:CFG.styleGuide,instructions_for_claude:CFG.claudeInstructions},answers:Object.fromEntries(sections.map(s=>[s.id,{_label:s.label,responses:Object.fromEntries(s.questions.map(q=>[q.id,{question:q.label,answer:answers[q.id]||null}]))}]))});
+  const doSubmit=async()=>{
+    const json=JSON.stringify(buildPayload(),null,2);
+    setShowVal(false);setState("submitting");
+    try{
+      if(CFG.submitMode==="clipboard"||CFG.submitMode==="both")await navigator.clipboard.writeText(json);
+      if((CFG.submitMode==="webhook"||CFG.submitMode==="both")&&CFG.webhookUrl&&!CFG.webhookUrl.includes("YOUR_WEBHOOK"))await fetch(CFG.webhookUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:json});
+      setState("success");
+    }catch(e){setState("error");setTimeout(()=>setState("idle"),3000);}
+  };
+  const handleSubmit=()=>{if(!ready){setShowVal(true);return;}doSubmit();};
+  const sec=sections[active];
+  if(state==="success")return(
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:D,padding:32,textAlign:"center"}}>
+      <div style={{fontSize:56,marginBottom:16}}>✅</div>
+      <div style={{fontSize:32,fontWeight:800,color:"#22c55e",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:1,marginBottom:10}}>SUBMITTED</div>
+      <div style={{fontSize:14,color:"#8b949e",maxWidth:320,lineHeight:1.8,marginBottom:24}}>
+        {CFG.submitMode==="clipboard"||CFG.submitMode==="both"?"JSON copied to clipboard. Paste into a .txt file, save as .json, then upload to Claude with your floor plan.":"Sent to Make.com. Bid document will be generated shortly."}
+      </div>
+      <button onClick={onBack} style={{background:G,border:"none",color:N,padding:"12px 28px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:1,borderRadius:2}}>← DASHBOARD</button>
+    </div>
+  );
+  return(
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{background:N,borderBottom:`2px solid ${G}`,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+        <button onClick={onBack} style={{background:"transparent",border:"none",color:"#8b949e",fontSize:22,cursor:"pointer",padding:"0 4px"}}>←</button>
+        <div style={{flex:1}}>
+          <div style={{fontSize:9,color:G,letterSpacing:3,fontFamily:"'Barlow Condensed',sans-serif"}}>{title.toUpperCase()}</div>
+          <div style={{fontSize:11,color:"#8b949e",marginTop:1}}>{answers.address||answers.property_address||""}</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {crits.length>0&&<div onClick={()=>setShowVal(true)} style={{background:"#ef444422",border:"1px solid #ef4444",color:"#ef4444",fontSize:10,padding:"3px 9px",cursor:"pointer",borderRadius:2,fontFamily:"'Barlow Condensed',sans-serif"}}>⛔ {crits.length}</div>}
+          <div style={{textAlign:"right"}}><div style={{fontSize:9,color:"#8b949e",letterSpacing:2,fontFamily:"'Barlow Condensed',sans-serif"}}>DONE</div><div style={{fontSize:18,fontWeight:800,color:ready?"#22c55e":G,lineHeight:1,fontFamily:"'Barlow Condensed',sans-serif"}}>{pct}%</div></div>
+          <button onClick={handleSubmit} style={{background:ready?G:"#374151",border:`2px solid ${ready?G:"#ef4444"}`,color:ready?N:"#ef4444",padding:"8px 14px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:12,fontWeight:800,cursor:"pointer",letterSpacing:1,borderRadius:2,whiteSpace:"nowrap"}}>
+            {state==="submitting"?"...":ready?"⬇ SUBMIT":"⛔ FIX"}
+          </button>
+        </div>
+      </div>
+      <div style={{height:3,background:"#21262d",flexShrink:0}}><div style={{height:3,background:ready?"#22c55e":G,width:`${pct}%`,transition:"width 0.4s"}}/></div>
+      <div style={{display:"flex",overflowX:"auto",background:S,borderBottom:`1px solid ${BR}`,flexShrink:0}}>
+        {sections.map((s,i)=>{
+          const isA=active===i,hasCrit=rules.some(r=>r.sev==="critical"&&r.check(answers)&&r.sec===s.label);
+          return<button key={s.id} onClick={()=>setActive(i)} style={{background:isA?"#0d1117":"transparent",border:"none",borderBottom:`2px solid ${isA?G:"transparent"}`,padding:"10px 14px",cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",fontSize:11,color:isA?G:"#6e7681",letterSpacing:1,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,textTransform:"uppercase"}}>
+            <span>{s.icon}</span><span>{s.label}</span>{hasCrit&&<span style={{color:"#ef4444"}}>⛔</span>}
+          </button>;
+        })}
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"20px 16px",background:D}}>
+        <div style={{fontSize:20,fontWeight:800,color:"#e6edf3",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:0.5,marginBottom:18,paddingBottom:14,borderBottom:`1px solid ${BR}`}}>{sec.icon} {sec.label.toUpperCase()}</div>
+        {sec.questions.map(q=><Field key={q.id} q={q} value={answers[q.id]} onChange={v=>set(q.id,v)}/>)}
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:20,paddingTop:16,borderTop:`1px solid ${BR}`}}>
+          <button onClick={()=>setActive(Math.max(0,active-1))} disabled={active===0} style={{background:"transparent",border:`1px solid ${active===0?"#21262d":BR}`,color:active===0?"#30363d":"#8b949e",padding:"10px 22px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,cursor:active===0?"default":"pointer",letterSpacing:1,borderRadius:2}}>← BACK</button>
+          {active<sections.length-1
+            ?<button onClick={()=>setActive(active+1)} style={{background:G,border:"none",color:N,padding:"10px 26px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:1,borderRadius:2}}>NEXT →</button>
+            :<button onClick={handleSubmit} style={{background:ready?G:"#374151",border:`2px solid ${ready?G:"#ef4444"}`,color:ready?N:"#ef4444",padding:"10px 26px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:1,borderRadius:2}}>{ready?"⬇ SUBMIT":"⛔ FIX FIRST"}</button>
+          }
+        </div>
+      </div>
+      {showVal&&<ValModal violations={violations} onClose={()=>setShowVal(false)} onAnyway={doSubmit}/>}
+    </div>
+  );
+}
+
+function TakeoffScreen({onBack}){
+  return(
+    <div style={{flex:1,overflowY:"auto",background:D}}>
+      <div style={{background:N,borderBottom:`2px solid ${G}`,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+        <button onClick={onBack} style={{background:"transparent",border:"none",color:"#8b949e",fontSize:22,cursor:"pointer"}}>←</button>
+        <div style={{fontSize:16,fontWeight:800,color:"#fff",fontFamily:"'Barlow Condensed',sans-serif"}}>MATERIAL TAKEOFF</div>
+      </div>
+      <div style={{padding:"20px 16px"}}>
+        <div style={{background:S,border:`1px solid ${BR}`,borderLeft:`4px solid ${G}`,padding:"18px",borderRadius:2,marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:G,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:1,marginBottom:12}}>HOW TO GENERATE A MATERIAL LIST</div>
+          {[["1","Complete Project Intake → Submit",G],["2","Scan floor plan with LiDAR — label all rooms first","#3b82f6"],["3","Open claude.ai in a new chat","#22c55e"],["4","Upload the intake .json + floor plan PDF","#a855f7"],["5","Claude reads both files and generates the full material list","#f59e0b"]].map(([n,t,c])=>(
+            <div key={n} style={{display:"flex",gap:12,marginBottom:12,alignItems:"flex-start"}}>
+              <div style={{background:c,color:N,width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif"}}>{n}</div>
+              <div style={{fontSize:13,color:"#c9d1d9",lineHeight:1.6}}>{t}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{background:S,border:`1px solid ${BR}`,padding:"16px 18px",borderRadius:2}}>
+          <div style={{fontSize:10,color:"#8b949e",letterSpacing:2,fontFamily:"'Barlow Condensed',sans-serif",marginBottom:10}}>PRO TIPS</div>
+          {["📐 Label every room on your floor plan before scanning — room name + sqft","🏗️ Foundation type is critical — slab vs basement vs crawlspace changes everything","🚿 Describe each bath specifically — walk-in vs tub, double vs single vanity","🔌 Note completed or excluded work so it does not get double-counted"].map((t,i)=>(
+            <div key={i} style={{fontSize:13,color:"#8b949e",marginBottom:10,lineHeight:1.6}}>{t}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({onNavigate}){
+  const today=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+  const Action=({icon,title,sub,page,accent})=>(
+    <button onClick={()=>onNavigate(page)} style={{background:S,border:`1px solid ${BR}`,borderLeft:`4px solid ${accent}`,padding:"16px 18px",cursor:"pointer",textAlign:"left",width:"100%",fontFamily:"'Barlow',sans-serif",borderRadius:2,display:"flex",alignItems:"center",gap:14}}
+      onMouseEnter={e=>e.currentTarget.style.background="#1c2433"} onMouseLeave={e=>e.currentTarget.style.background=S}>
+      <span style={{fontSize:26,flexShrink:0}}>{icon}</span>
+      <div style={{flex:1}}><div style={{fontSize:15,fontWeight:700,color:"#e6edf3",fontFamily:"'Barlow Condensed',sans-serif",textTransform:"uppercase",letterSpacing:0.5}}>{title}</div><div style={{fontSize:12,color:"#8b949e",marginTop:2}}>{sub}</div></div>
+      <div style={{color:accent,fontSize:18}}>→</div>
+    </button>
+  );
+  return(
+    <div style={{flex:1,overflowY:"auto",background:D}}>
+      <div style={{background:`linear-gradient(135deg, ${N} 0%, #0f2d5e 60%, #1a3a6b 100%)`,padding:"28px 20px 24px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",inset:0,opacity:0.04,backgroundImage:`linear-gradient(${G} 1px, transparent 1px), linear-gradient(90deg, ${G} 1px, transparent 1px)`,backgroundSize:"32px 32px"}}/>
+        <div style={{position:"relative"}}>
+          <div style={{fontSize:10,color:G,letterSpacing:3,fontFamily:"'Barlow Condensed',sans-serif",marginBottom:4}}>{today.toUpperCase()}</div>
+          <div style={{fontSize:30,fontWeight:900,color:"#fff",fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,letterSpacing:1}}>FIELD ESTIMATOR</div>
+          <div style={{fontSize:13,color:"#94a3b8",marginTop:6}}>{CFG.co.area} · {CFG.co.license}</div>
+        </div>
+      </div>
+      <div style={{padding:"18px 16px"}}>
+        <div style={{fontSize:10,color:"#8b949e",letterSpacing:3,marginBottom:10,fontFamily:"'Barlow Condensed',sans-serif"}}>QUICK START</div>
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:24}}>
+          <Action icon="📋" title="New Project Intake" sub="Capture property details, scope, and conditions" page="intake" accent={G}/>
+          <Action icon="💼" title="New Bid / Proposal" sub="Build a bid document — all job types" page="bid" accent="#3b82f6"/>
+          <Action icon="📦" title="Material Takeoff" sub="How to generate a material list from intake + floor plan" page="takeoff" accent="#22c55e"/>
+        </div>
+        <div style={{fontSize:10,color:"#8b949e",letterSpacing:3,marginBottom:10,fontFamily:"'Barlow Condensed',sans-serif"}}>THE WORKFLOW</div>
+        <div style={{background:S,border:`1px solid ${BR}`,padding:"16px 18px",borderRadius:2,marginBottom:20}}>
+          {[["1","Fill out Project Intake on site",G],["2","Fill out Bid form with your numbers","#3b82f6"],["3","Submit — JSON fires to Make.com","#22c55e"],["4","Bid document generated and delivered to GHL","#a855f7"]].map(([n,t,c])=>(
+            <div key={n} style={{display:"flex",gap:12,marginBottom:10,alignItems:"flex-start"}}>
+              <div style={{background:c,color:N,width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif"}}>{n}</div>
+              <div style={{fontSize:13,color:"#c9d1d9",lineHeight:1.5}}>{t}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{paddingTop:14,borderTop:`1px solid ${BR}`,textAlign:"center"}}>
+          <div style={{fontSize:10,color:"#484f58",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:1}}>{CFG.co.name.toUpperCase()}</div>
+          <div style={{fontSize:10,color:"#30363d",marginTop:3}}>{CFG.co.phone} · {CFG.co.website}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const[page,setPage]=useState("dashboard");
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100dvh",maxWidth:500,margin:"0 auto",background:D,overflow:"hidden",fontFamily:"'Barlow',sans-serif"}}>
+      <div style={{background:`linear-gradient(135deg, ${N} 0%, #0f2d5e 100%)`,borderBottom:`3px solid ${G}`,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,flexShrink:0,paddingTop:"max(10px, env(safe-area-inset-top))"}}>
+        <div style={{background:G,color:N,fontWeight:900,fontSize:14,padding:"4px 10px",letterSpacing:3,fontFamily:"'Barlow Condensed',sans-serif"}}>AV</div>
+        <div>
+          <div style={{fontSize:8,color:G,letterSpacing:4,fontFamily:"'Barlow Condensed',sans-serif"}}>{CFG.co.name.toUpperCase()}</div>
+          <div style={{fontSize:12,fontWeight:700,color:"#fff",letterSpacing:1,fontFamily:"'Barlow Condensed',sans-serif"}}>FIELD ESTIMATOR</div>
+        </div>
+      </div>
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        {page==="dashboard"&&<Dashboard onNavigate={setPage}/>}
+        {page==="intake"&&<FormScreen title="Project Intake" sections={INTAKE} rules={IRULES} formType="intake" onBack={()=>setPage("dashboard")}/>}
+        {page==="bid"&&<FormScreen title="Bid and Proposal" sections={BID} rules={BRULES} formType="bid" onBack={()=>setPage("dashboard")}/>}
+        {page==="takeoff"&&<TakeoffScreen onBack={()=>setPage("dashboard")}/>}
+      </div>
+      {page==="dashboard"&&(
+        <div style={{background:S,borderTop:`1px solid ${BR}`,display:"flex",flexShrink:0,paddingBottom:"env(safe-area-inset-bottom)"}}>
+          {[{id:"dashboard",icon:"🏠",label:"Home"},{id:"intake",icon:"📋",label:"Intake"},{id:"bid",icon:"💼",label:"Bid"},{id:"takeoff",icon:"📦",label:"Takeoff"}].map(tab=>(
+            <button key={tab.id} onClick={()=>setPage(tab.id)} style={{flex:1,background:"transparent",border:"none",padding:"11px 0",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,borderTop:`2px solid ${page===tab.id?G:"transparent"}`}}>
+              <span style={{fontSize:19}}>{tab.icon}</span>
+              <span style={{fontSize:9,color:page===tab.id?G:"#6e7681",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:1,textTransform:"uppercase"}}>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
