@@ -30,8 +30,7 @@ window.AV_LOGO = "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BS
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const _SB = supabase.createClient("https://cbfftukmhqvvjlrlnltk.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ");
-window.SB = _SB;
+window.SB = supabase.createClient("https://cbfftukmhqvvjlrlnltk.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ");
 </script>
 <script type="text/babel">
 const{useState,useRef}=React;
@@ -39,7 +38,7 @@ const L=window.AV_LOGO;
 const CFG={
   co:{name:"Avenstone Group LLC",phone:"(913) 272-5346",email:"kalin@avenstonekc.com",website:"avenstonekc.com",area:"Kansas City Metro"},
   b:{navy:"#0A1F44",gold:"#C9A84C",dark:"#0d1117",surf:"#161b22",bdr:"#21262d"},
-  webhook:"https://hook.us1.make.com/YOUR_WEBHOOK_HERE",supabaseUrl:"https://cbfftukmhqvvjlrlnltk.supabase.co",supabaseKey:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ",
+  webhook:"https://hook.us1.make.com/YOUR_WEBHOOK_HERE",
   mode:"clipboard"
 };
 const{navy:NV,gold:GD,dark:DK,surf:SF,bdr:BD}=CFG.b;
@@ -59,26 +58,38 @@ const STATS=[
 ];
 const sc=(id)=>STATS.find(s=>s.id===id)?.c||"#6b7280";
 const sl=(id)=>STATS.find(s=>s.id===id)?.lb||id;
-// Supabase helpers
 const saveJ=(j)=>{try{localStorage.setItem("av_j",JSON.stringify(j));}catch(e){}};
 const loadJ=()=>{try{const d=localStorage.getItem("av_j");return d?JSON.parse(d):[]}catch(e){return[]}};
+
+// ── SUPABASE HELPERS ──────────────────────────────────────────────────────────
 const sbSaveJob=async(job)=>{
   try{
-    const{error}=await window.SB.from("jobs").upsert({
-      id:job.id,address:job.address,status:job.status,scope:job.scope||"",
-      sqft:job.sqft||"",notes:job.notes||"",created_at:job.created,
-      intake_answers:job.ans||{}
+    await window.SB.from("jobs").upsert({
+      id:job.id,address:job.address,status:job.status,
+      scope:job.scope||"",sqft:job.sqft||"",notes:job.notes||"",
+      created_at:job.created,intake_answers:job.ans||{}
     });
-    if(error)console.error("SB save error:",error);
-  }catch(e){console.error("SB error:",e);}
+  }catch(e){console.error("sbSaveJob:",e);}
 };
+
 const sbLoadJobs=async()=>{
   try{
     const{data,error}=await window.SB.from("jobs").select("*").order("created_at",{ascending:false});
     if(error||!data)return null;
-    return data.map(j=>({id:j.id,address:j.address,status:j.status,scope:j.scope||"",sqft:j.sqft||"",notes:j.notes||"",created:j.created_at,photos:[],ans:j.intake_answers||{}}));
-  }catch(e){return null;}
+    // Load photos for each job
+    const jobsWithPhotos=await Promise.all(data.map(async j=>{
+      const{data:photos}=await window.SB.from("photos").select("*").eq("job_id",j.id).order("created_at",{ascending:true});
+      return{
+        id:j.id,address:j.address,status:j.status,scope:j.scope||"",
+        sqft:j.sqft||"",notes:j.notes||"",created:j.created_at,
+        photos:(photos||[]).map(p=>({id:p.id,type:p.type,url:p.url,name:p.name,created:p.created_at})),
+        ans:j.intake_answers||{}
+      };
+    }));
+    return jobsWithPhotos;
+  }catch(e){console.error("sbLoadJobs:",e);return null;}
 };
+
 const sbUpdateJob=async(id,changes)=>{
   try{
     const patch={};
@@ -86,10 +97,35 @@ const sbUpdateJob=async(id,changes)=>{
     if(changes.notes!==undefined)patch.notes=changes.notes;
     if(changes.scope!==undefined)patch.scope=changes.scope;
     if(Object.keys(patch).length)await window.SB.from("jobs").update(patch).eq("id",id);
-  }catch(e){console.error("SB update error:",e);}
+  }catch(e){console.error("sbUpdateJob:",e);}
 };
+
 const sbDeleteJob=async(id)=>{
-  try{await window.SB.from("jobs").delete().eq("id",id);}catch(e){}
+  try{
+    // Delete photos from storage first
+    const{data:photos}=await window.SB.from("photos").select("url").eq("job_id",id);
+    if(photos&&photos.length){
+      const paths=photos.map(p=>p.url.split("/job-photos/")[1]).filter(Boolean);
+      if(paths.length)await window.SB.storage.from("job-photos").remove(paths);
+    }
+    await window.SB.from("photos").delete().eq("job_id",id);
+    await window.SB.from("jobs").delete().eq("id",id);
+  }catch(e){console.error("sbDeleteJob:",e);}
+};
+
+// Upload a single file to Supabase Storage — returns photo object or null
+const sbUploadPhoto=async(jobId,file)=>{
+  try{
+    const ext=file.name.split(".").pop()||"jpg";
+    const path=`${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const{error:upErr}=await window.SB.storage.from("job-photos").upload(path,file,{contentType:file.type,upsert:false});
+    if(upErr){console.error("upload error:",upErr);return null;}
+    const{data:urlData}=window.SB.storage.from("job-photos").getPublicUrl(path);
+    const url=urlData.publicUrl;
+    const photoRow={id:Date.now().toString()+Math.random(),job_id:jobId,type:file.type.startsWith("video")?"video":"photo",url,name:file.name};
+    await window.SB.from("photos").insert(photoRow);
+    return{id:photoRow.id,type:photoRow.type,url,name:file.name,created:new Date().toISOString()};
+  }catch(e){console.error("sbUploadPhoto:",e);return null;}
 };
 
 const IQ=[
@@ -275,10 +311,10 @@ function FormScr({title,secs,rules,ftype,onBack,onSave}){
 }
 
 function Jobs({jobs,setJobs,onBack}){
-  const{useEffect}=React;
+  const{useEffect,useState:useStateJ}=React;
   useEffect(()=>{
     sbLoadJobs().then(data=>{
-      if(data&&data.length>0){setJobs(data);saveJ(data);}
+      if(data&&data.length>=0){setJobs(data);saveJ(data);}
     });
   },[]);
   const[sel,setSel]=useState(null);
@@ -324,8 +360,35 @@ function JDet({job,upd,del,back}){
   const[esSt,setEsSt]=useState(false);
   const pr=useRef();const vr=useRef();
   const save=()=>upd({notes});
-  const onFile=(e)=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=(ev)=>{const it={id:Date.now()+Math.random(),type:f.type.startsWith("video")?"video":"photo",data:ev.target.result,name:f.name,created:new Date().toISOString()};upd({photos:[...(job.photos||[]),it]});};r.readAsDataURL(f);});};
-  const delP=(id)=>upd({photos:(job.photos||[]).filter(p=>p.id!==id)});
+  const[uploading,setUploading]=useState(false);
+  const[uploadPct,setUploadPct]=useState(0);
+  const onFile=async(e)=>{
+    const files=Array.from(e.target.files);
+    if(!files.length)return;
+    setUploading(true);setUploadPct(0);
+    const results=[];
+    for(let i=0;i<files.length;i++){
+      const photo=await sbUploadPhoto(job.id,files[i]);
+      if(photo)results.push(photo);
+      setUploadPct(Math.round(((i+1)/files.length)*100));
+    }
+    if(results.length){
+      const updated=[...(job.photos||[]),...results];
+      upd({photos:updated});
+    }
+    setUploading(false);setUploadPct(0);
+  };
+  const delP=async(id)=>{
+    const photo=(job.photos||[]).find(p=>p.id===id);
+    if(photo&&photo.url){
+      try{
+        const path=photo.url.split("/job-photos/")[1];
+        if(path)await window.SB.storage.from("job-photos").remove([path]);
+        await window.SB.from("photos").delete().eq("id",id);
+      }catch(e){console.error("delP:",e);}
+    }
+    upd({photos:(job.photos||[]).filter(p=>p.id!==id)});
+  };
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       <div style={{background:NV,borderBottom:`2px solid ${GD}`,padding:"12px 16px",flexShrink:0}}>
@@ -359,11 +422,12 @@ function JDet({job,upd,del,back}){
               <button onClick={()=>vr.current.click()} style={{background:"transparent",border:`1px solid ${GD}`,color:GD,padding:"6px 12px",fontFamily:"'Barlow Condensed',sans-serif",fontSize:11,cursor:"pointer",borderRadius:2}}>🎥 VIDEO</button>
             </div>
           </div>
-          {!(job.photos||[]).length&&<div style={{fontSize:13,color:"#484f58",textAlign:"center",padding:"20px 0"}}>No photos yet. Tap PHOTO or VIDEO to add.</div>}
+          {uploading&&<div style={{background:"#0d1117",border:"1px solid #C9A84C44",padding:"12px 16px",marginBottom:12,borderRadius:2,display:"flex",alignItems:"center",gap:12}}><div style={{flex:1,background:"#21262d",height:6,borderRadius:3}}><div style={{background:"#C9A84C",height:6,borderRadius:3,width:`${uploadPct}%`,transition:"width 0.3s"}}/></div><div style={{fontSize:11,color:"#C9A84C",fontFamily:"'Barlow Condensed',sans-serif",whiteSpace:"nowrap"}}>UPLOADING {uploadPct}%</div></div>}
+      {!uploading&&!(job.photos||[]).length&&<div style={{fontSize:13,color:"#484f58",textAlign:"center",padding:"20px 0"}}>No photos yet. Tap PHOTO or VIDEO to add.</div>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
             {(job.photos||[]).map(p=>(
               <div key={p.id} style={{position:"relative",paddingBottom:"100%",background:"#0d1117",borderRadius:2,overflow:"hidden",border:`1px solid ${BD}`}}>
-                {p.type==="video"?<video src={p.data} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} controls/>:<img src={p.data} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>}
+                {p.type==="video"?<video src={p.url||p.data} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} controls/>:<img src={p.url||p.data} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>}
                 <button onClick={()=>delP(p.id)} style={{position:"absolute",top:4,right:4,background:"#ef444499",border:"none",color:"#fff",width:22,height:22,borderRadius:"50%",cursor:"pointer",fontSize:12}}>✕</button>
               </div>
             ))}
