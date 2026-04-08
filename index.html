@@ -1083,7 +1083,7 @@ function App(){
   ];
 
   return(
-    <div className="app">
+    <><div className="app">
       <div className="sidebar">
         <div className="sb-logo"><img src={L} alt="Avenstone"/></div>
         <nav className="sb-nav">
@@ -1153,7 +1153,7 @@ function App(){
         </div>
       </div>
     </div>
-    {showNotif&&<NotifPanel notifs={notifs} onClose={()=>setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif}/>}
+    {showNotif&&<NotifPanel notifs={notifs} onClose={()=>setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif}/>}</>
   );
 }
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
