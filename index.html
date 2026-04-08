@@ -151,6 +151,12 @@ select option{background:#fff;color:#0A1F44}
 .cc:last-child{border-right:none}
 .cc-l{font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1.5px;font-weight:600;margin-bottom:3px}
 .cc-v{font-family:'DM Serif Display',serif;font-size:16px}
+/* DOCUMENTS */
+.doc-item{background:#fff;border:1px solid #E8E4DC;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.doc-type{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:3px 7px;flex-shrink:0}
+.doc-name{font-size:13px;font-weight:600;color:#0A1F44;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-meta{font-size:11px;color:#9CA3AF;margin-top:2px}
+.doc-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
 /* AUTH */
 .auth-wrap{min-height:100dvh;background:#0A1F44;display:flex;align-items:center;justify-content:center;padding:24px}
 .auth-card{background:#fff;border-top:4px solid #C9A84C;width:100%;max-width:420px;padding:40px}
@@ -211,6 +217,9 @@ const Ic={
   bell:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
   cal:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
   sched:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="14" strokeWidth="2"/><line x1="12" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="8" y2="18" strokeWidth="2"/><line x1="12" y1="18" x2="16" y2="18"/></svg>,
+  folder:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>,
+  dl:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+  eye:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
 };
 
 // ── PHASE SCHEDULE HELPERS ────────────────────────────────────────────────────
@@ -232,6 +241,48 @@ const sbLoadPhases=async jid=>{
 const sbSavePhase=async ph=>{
   const{data,error}=await window.SB.from("job_phases").upsert(ph).select().single();
   return error?null:data;
+};
+
+// ── DOCUMENT HELPERS ──────────────────────────────────────────────────────────
+const DOC_TYPES=["plan","permit","contract","spec","inspection","other"];
+const docTypeColor=t=>({plan:"#3B82F6",permit:"#f59e0b",contract:"#22c55e",spec:"#8b5cf6",inspection:"#ef4444",other:"#9CA3AF"}[t]||"#9CA3AF");
+
+const sbLoadDocs=async jid=>{
+  const{data}=await window.SB.from("job_documents").select("*").eq("job_id",jid).order("created_at",{ascending:false});
+  return data||[];
+};
+
+const sbUploadDoc=async(jid,file,fileType)=>{
+  try{
+    const ext=file.name.split(".").pop()||"bin";
+    const path=`${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const{error:ue}=await window.SB.storage.from("job-documents").upload(path,file,{contentType:file.type,upsert:false});
+    if(ue){
+      // Bucket may not exist yet — surface error clearly
+      console.error("Doc upload error:",ue);
+      return{error:ue.message||"Upload failed"};
+    }
+    const{data:ud}=window.SB.storage.from("job-documents").getPublicUrl(path);
+    // Auto-increment version if a doc with same name exists
+    const{data:existing}=await window.SB.from("job_documents").select("version").eq("job_id",jid).eq("name",file.name).order("version",{ascending:false}).limit(1);
+    const version=(existing&&existing.length?existing[0].version:0)+1;
+    const row={job_id:jid,tenant_id:window.AV_TENANT,name:file.name,file_url:ud.publicUrl,file_type:fileType||"other",version,client_visible:false};
+    const{data:inserted,error:ie}=await window.SB.from("job_documents").insert(row).select().single();
+    if(ie)return{error:ie.message||"Save failed"};
+    return{doc:inserted};
+  }catch(e){return{error:e.message||"Unknown error"};}
+};
+
+const sbDelDoc=async doc=>{
+  try{
+    const path=doc.file_url?.split("/job-documents/")[1];
+    if(path)await window.SB.storage.from("job-documents").remove([path]);
+    await window.SB.from("job_documents").delete().eq("id",doc.id);
+  }catch(e){console.error(e);}
+};
+
+const sbToggleDocVisible=async(id,val)=>{
+  await window.SB.from("job_documents").update({client_visible:val}).eq("id",id);
 };
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -424,6 +475,48 @@ function JobDet({job,upd,del,back}){
   const apCO=async id=>{await sbUpdCO(id,{status:"approved",approved_at:new Date().toISOString()});const u=(job.change_orders||[]).map(c=>c.id===id?{...c,status:"approved"}:c);const nct=u.filter(c=>c.status==="approved").reduce((a,c)=>a+Number(c.amount||0),0);upd({change_orders:u,co_total:nct});};
   const rjCO=async id=>{await sbUpdCO(id,{status:"rejected"});upd({change_orders:(job.change_orders||[]).map(c=>c.id===id?{...c,status:"rejected"}:c)});};
 
+  // ── DOCUMENTS STATE ─────────────────────────────────────────────────────────
+  const[docs,setDocs]=useState([]);
+  const[docsLoaded,setDocsLoaded]=useState(false);
+  const[docUpl,setDocUpl]=useState(false);
+  const[docUplPct,setDocUplPct]=useState(0);
+  const[docType,setDocType]=useState("other");
+  const[docErr,setDocErr]=useState("");
+  const docRef=useRef();
+
+  useEffect(()=>{
+    if(tab!=="docs"||docsLoaded)return;
+    sbLoadDocs(job.id).then(d=>{setDocs(d);setDocsLoaded(true);});
+  },[tab,docsLoaded]);
+
+  const onDocFile=async e=>{
+    const file=e.target.files[0];
+    if(!file)return;
+    setDocUpl(true);setDocErr("");setDocUplPct(0);
+    // Simulate progress for UX (actual upload is one shot)
+    const tick=setInterval(()=>setDocUplPct(p=>Math.min(p+15,85)),200);
+    const{doc,error}=await sbUploadDoc(job.id,file,docType);
+    clearInterval(tick);setDocUplPct(100);
+    if(error){setDocErr(error);setDocUpl(false);setDocUplPct(0);return;}
+    setDocs(p=>[doc,...p]);
+    setDocUpl(false);setDocUplPct(0);
+    // Reset file input so same file can be re-uploaded
+    docRef.current.value="";
+  };
+
+  const delDoc=async doc=>{
+    if(!window.confirm(`Delete "${doc.name}"?`))return;
+    await sbDelDoc(doc);
+    setDocs(p=>p.filter(d=>d.id!==doc.id));
+  };
+
+  const toggleDocVisible=async doc=>{
+    const val=!doc.client_visible;
+    await sbToggleDocVisible(doc.id,val);
+    setDocs(p=>p.map(d=>d.id===doc.id?{...d,client_visible:val}:d));
+  };
+  // ───────────────────────────────────────────────────────────────────────────
+
   // ── SCHEDULE STATE ──────────────────────────────────────────────────────────
   const[phases,setPhases]=useState([]);
   const[phasesLoaded,setPhasesLoaded]=useState(false);
@@ -456,7 +549,7 @@ function JobDet({job,upd,del,back}){
   },[tab,phasesLoaded]);
   // ───────────────────────────────────────────────────────────────────────────
 
-  const TABS=[{id:"info",lb:"Info",ic:"info"},{id:"sched",lb:"Schedule",ic:"sched"},{id:"notes",lb:"Notes",ic:"note"},{id:"photos",lb:"Photos",ic:"cam"},{id:"co",lb:"Change Orders",ic:"warn"}];
+  const TABS=[{id:"info",lb:"Info",ic:"info"},{id:"sched",lb:"Schedule",ic:"sched"},{id:"notes",lb:"Notes",ic:"note"},{id:"photos",lb:"Photos",ic:"cam"},{id:"docs",lb:"Documents",ic:"folder"},{id:"co",lb:"Change Orders",ic:"warn"}];
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#F7F5F0"}}>
       <div style={{background:"#0A1F44",padding:"16px 20px",flexShrink:0}}>
@@ -569,6 +662,56 @@ function JobDet({job,upd,del,back}){
           {upl&&<div className="upbar"><div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Uploading to cloud</span><span style={{fontSize:11,color:"#C9A84C",fontWeight:700}}>{uplPct}%</span></div><div className="uptr"><div className="upfl" style={{width:`${uplPct}%`}}/></div></div>}
           {!(job.photos||[]).length&&!upl&&<div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Tap Add Photos to get started</div></div>}
           <div className="pgrid">{(job.photos||[]).map(p=><div key={p.id} className="pcell"><div style={{position:"absolute",inset:0}}>{p.type==="video"?<video src={p.url||p.data} controls style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<img src={p.url||p.data} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}</div><button className="pdel" onClick={()=>delP(p.id)}>✕</button></div>)}</div>
+        </div>}
+        {tab==="docs"&&<div>
+          {/* Upload row */}
+          <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginBottom:16}}>
+            <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap"}}>
+              <div className="fg" style={{flex:1,minWidth:140,marginBottom:0}}>
+                <label className="flbl">File Type</label>
+                <select className="finp" value={docType} onChange={e=>setDocType(e.target.value)} style={{appearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32}}>
+                  {DOC_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                </select>
+              </div>
+              <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.dwg,.csv" onChange={onDocFile} style={{display:"none"}}/>
+              <button className="btn btn-navy" style={{padding:"10px 20px",display:"flex",alignItems:"center",gap:8,flexShrink:0}} onClick={()=>docRef.current.click()} disabled={docUpl}>
+                <span style={{width:14,height:14}}>{Ic.plus}</span>{docUpl?"Uploading...":"Upload Document"}
+              </button>
+            </div>
+            {docUpl&&<div className="upbar" style={{marginTop:10,marginBottom:0}}><div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Uploading</span><span style={{fontSize:11,color:"#C9A84C",fontWeight:700}}>{docUplPct}%</span></div><div className="uptr"><div className="upfl" style={{width:`${docUplPct}%`}}/></div></div>}
+            {docErr&&<div style={{marginTop:8,background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"8px 12px",fontSize:12}}>{docErr}</div>}
+          </div>
+
+          {/* Document list */}
+          {!docsLoaded&&<div style={{textAlign:"center",padding:32,color:"#9CA3AF",fontSize:13}}>Loading documents...</div>}
+          {docsLoaded&&!docs.length&&<div className="empty">{Ic.folder}<div className="empty-t">No documents yet</div><div>Upload plans, permits, contracts, and specs</div></div>}
+          {docsLoaded&&docs.map(d=>(
+            <div key={d.id} className="doc-item">
+              <span className="doc-type" style={{background:docTypeColor(d.file_type)+"18",color:docTypeColor(d.file_type)}}>{d.file_type}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div className="doc-name">{d.name}</div>
+                <div className="doc-meta">
+                  {d.version>1&&<span style={{marginRight:8,color:"#C9A84C",fontWeight:600}}>v{d.version}</span>}
+                  {fD(d.created_at)}
+                  {d.client_visible&&<span style={{marginLeft:8,color:"#22c55e",fontWeight:600}}>· Client visible</span>}
+                </div>
+              </div>
+              <div className="doc-actions">
+                {/* Toggle client visibility */}
+                <button title={d.client_visible?"Hide from client":"Show to client"} onClick={()=>toggleDocVisible(d)} style={{background:d.client_visible?"rgba(34,197,94,0.1)":"transparent",border:`1px solid ${d.client_visible?"#22c55e":"#E8E4DC"}`,color:d.client_visible?"#22c55e":"#9CA3AF",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.15s"}}>
+                  <span style={{width:14,height:14,display:"flex"}}>{Ic.eye}</span>
+                </button>
+                {/* Download / open */}
+                <a href={d.file_url} target="_blank" rel="noreferrer" title="Download" style={{background:"transparent",border:"1px solid #E8E4DC",color:"#0A1F44",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",textDecoration:"none",flexShrink:0}}>
+                  <span style={{width:14,height:14,display:"flex"}}>{Ic.dl}</span>
+                </a>
+                {/* Delete */}
+                <button title="Delete" onClick={()=>delDoc(d)} style={{background:"transparent",border:"1px solid rgba(239,68,68,0.2)",color:"#ef4444",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+                  <span style={{width:13,height:13,display:"flex"}}>{Ic.trash}</span>
+                </button>
+              </div>
+            </div>
+          ))}
         </div>}
         {tab==="co"&&<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
