@@ -180,13 +180,13 @@ const ll=(k,d)=>{try{const x=localStorage.getItem(k);return x?JSON.parse(x):d;}c
 const isMob=()=>window.innerWidth<768;
 
 // SUPABASE
-const sbSave=async j=>{try{await window.SB.from("jobs").upsert({id:j.id,address:j.address,status:j.status,scope:j.scope||"",sqft:j.sqft||"",created_at:j.created,intake_answers:j.ans||{},client_name:j.client_name||"",client_phone:j.client_phone||"",client_email:j.client_email||"",assigned_rep:j.assigned_rep||"",assigned_subs:j.assigned_subs||"",contract_value:Number(j.contract_value||0),co_total:Number(j.co_total||0),target_completion:j.target_completion||""});}catch(e){console.error(e);}};
+const sbSave=async j=>{try{await window.SB.from("jobs").upsert({id:j.id,tenant_id:window.AV_TENANT,address:j.address,status:j.status,scope:j.scope||"",sqft:j.sqft||"",created_at:j.created,intake_answers:j.ans||{},client_name:j.client_name||"",client_phone:j.client_phone||"",client_email:j.client_email||"",assigned_rep:j.assigned_rep||"",assigned_subs:j.assigned_subs||"",contract_value:Number(j.contract_value||0),co_total:Number(j.co_total||0),target_completion:j.target_completion||""});}catch(e){console.error(e);}};
 const sbLoad=async()=>{try{const{data,error}=await window.SB.from("jobs").select("*").order("created_at",{ascending:false});if(error||!data)return null;return await Promise.all(data.map(async j=>{const[{data:ph},{data:nt},{data:co}]=await Promise.all([window.SB.from("photos").select("*").eq("job_id",j.id).order("created_at",{ascending:true}),window.SB.from("job_notes").select("*").eq("job_id",j.id).order("created_at",{ascending:false}),window.SB.from("change_orders").select("*").eq("job_id",j.id).order("created_at",{ascending:false})]);return{id:j.id,address:j.address,status:j.status,scope:j.scope||"",sqft:j.sqft||"",created:j.created_at,ans:j.intake_answers||{},client_name:j.client_name||"",client_phone:j.client_phone||"",client_email:j.client_email||"",assigned_rep:j.assigned_rep||"",assigned_subs:j.assigned_subs||"",contract_value:Number(j.contract_value||0),co_total:Number(j.co_total||0),target_completion:j.target_completion||"",photos:(ph||[]).map(p=>({id:p.id,type:p.type,url:p.url,name:p.name})),activity:nt||[],change_orders:co||[]};}));}catch(e){console.error(e);return null;}};
 const sbUpd=async(id,ch)=>{try{const ok=["status","scope","sqft","client_name","client_phone","client_email","assigned_rep","assigned_subs","contract_value","co_total","target_completion"];const p={};ok.forEach(k=>{if(ch[k]!==undefined)p[k]=ch[k];});if(Object.keys(p).length)await window.SB.from("jobs").update(p).eq("id",id);}catch(e){}};
 const sbDel=async id=>{try{const{data:ph}=await window.SB.from("photos").select("url").eq("job_id",id);if(ph?.length){const paths=ph.map(p=>p.url?.split("/job-photos/")[1]).filter(Boolean);if(paths.length)await window.SB.storage.from("job-photos").remove(paths);}await Promise.all([window.SB.from("photos").delete().eq("job_id",id),window.SB.from("job_notes").delete().eq("job_id",id),window.SB.from("change_orders").delete().eq("job_id",id),window.SB.from("jobs").delete().eq("id",id)]);}catch(e){}};
-const sbNote=async(jid,content,author)=>{try{const{data,error}=await window.SB.from("job_notes").insert({job_id:jid,content,author,created_at:new Date().toISOString()}).select().single();return error?null:data;}catch(e){return null;}};
-const sbPhoto=async(jid,file)=>{try{const ext=file.name.split(".").pop()||"jpg";const path=`${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;const{error:ue}=await window.SB.storage.from("job-photos").upload(path,file,{contentType:file.type,upsert:false});if(ue){console.error(ue);return null;}const{data:ud}=window.SB.storage.from("job-photos").getPublicUrl(path);const url=ud.publicUrl;const row={id:Date.now().toString()+Math.random(),job_id:jid,type:file.type.startsWith("video")?"video":"photo",url,name:file.name};await window.SB.from("photos").insert(row);return{id:row.id,type:row.type,url,name:file.name};}catch(e){console.error(e);return null;}};
-const sbCO=async co=>{try{const{data,error}=await window.SB.from("change_orders").insert(co).select().single();return error?null:data;}catch(e){return null;}};
+const sbNote=async(jid,content,author)=>{try{const{data,error}=await window.SB.from("job_notes").insert({job_id:jid,tenant_id:window.AV_TENANT,content,author,created_at:new Date().toISOString()}).select().single();return error?null:data;}catch(e){return null;}};
+const sbPhoto=async(jid,file)=>{try{const ext=file.name.split(".").pop()||"jpg";const path=`${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;const{error:ue}=await window.SB.storage.from("job-photos").upload(path,file,{contentType:file.type,upsert:false});if(ue){console.error(ue);return null;}const{data:ud}=window.SB.storage.from("job-photos").getPublicUrl(path);const url=ud.publicUrl;const row={id:Date.now().toString()+Math.random(),job_id:jid,tenant_id:window.AV_TENANT,type:file.type.startsWith("video")?"video":"photo",url,name:file.name};await window.SB.from("photos").insert(row);return{id:row.id,type:row.type,url,name:file.name};}catch(e){console.error(e);return null;}};
+const sbCO=async co=>{try{const{data,error}=await window.SB.from("change_orders").insert({...co,tenant_id:window.AV_TENANT}).select().single();return error?null:data;}catch(e){return null;}};
 const sbUpdCO=async(id,ch)=>{try{await window.SB.from("change_orders").update(ch).eq("id",id);}catch(e){}};
 
 // ICONS
@@ -677,6 +677,11 @@ function App(){
   const loadProfile=async uid=>{
     const{data}=await window.SB.from("profiles").select("*").eq("id",uid).single();
     setProfile(data);
+    // Make tenant_id globally available for all write operations
+    window.AV_TENANT=data?.tenant_id;
+    // Clear any localStorage cache from a previous user's session
+    ls("av_j",[]);
+    setJobs([]);
     setAuthLoading(false);
   };
 
