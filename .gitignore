@@ -1,0 +1,7 @@
+# Dependencies / build artifacts
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Supabase local dev (migrations dir is a duplicate — migration_001.sql at root is canonical)
+supabase/
