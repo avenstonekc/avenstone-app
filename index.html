@@ -284,6 +284,32 @@ const sbDelDoc=async doc=>{
 const sbToggleDocVisible=async(id,val)=>{
   await window.SB.from("job_documents").update({client_visible:val}).eq("id",id);
 };
+
+// ── NOTIFICATION HELPERS ──────────────────────────────────────────────────────
+const sbLoadNotifs=async()=>{
+  const{data}=await window.SB.from("notifications").select("*").order("created_at",{ascending:false}).limit(30);
+  return data||[];
+};
+const sbMarkNotifsRead=async ids=>{
+  if(!ids.length)return;
+  await window.SB.from("notifications").update({read:true}).in("id",ids);
+};
+// Fetch all owner/PM/rep profile IDs for the current tenant to fan out a notification
+const getTenantStaffIds=async()=>{
+  const{data}=await window.SB.from("profiles").select("id").eq("tenant_id",window.AV_TENANT).in("role",["owner","project_manager","sales_rep"]);
+  return(data||[]).map(p=>p.id);
+};
+// Write one notification row per staff member, excluding the person who triggered it
+const sbNotify=async(type,title,body,jobId,excludeId)=>{
+  try{
+    const ids=await getTenantStaffIds();
+    const targets=ids.filter(id=>id!==excludeId);
+    if(!targets.length)return;
+    await window.SB.from("notifications").insert(
+      targets.map(uid=>({tenant_id:window.AV_TENANT,user_id:uid,job_id:jobId,type,title,body,read:false,email_sent:false,sms_sent:false}))
+    );
+  }catch(e){console.error("sbNotify error:",e);}
+};
 // ─────────────────────────────────────────────────────────────────────────────
 
 const IQ=[
@@ -468,12 +494,12 @@ function JobDet({job,upd,del,back}){
   const cv=Number(job.contract_value||0);
   const rev=cv+coT;
   const saveInf=()=>{upd({...inf});setEditInf(false);};
-  const addNote=async()=>{if(!nt.trim())return;setSaving(true);const s=await sbNote(job.id,nt.trim(),na);if(s){upd({activity:[s,...(job.activity||[])]});setNt("");}setSaving(false);};
+  const addNote=async()=>{if(!nt.trim())return;setSaving(true);const s=await sbNote(job.id,nt.trim(),na);if(s){upd({activity:[s,...(job.activity||[])]});sbNotify("note_posted",`Note on ${job.address}`,nt.trim().slice(0,120),job.id,window.AV_USER_ID);setNt("");}setSaving(false);};
   const onFile=async e=>{const files=Array.from(e.target.files);if(!files.length)return;setUpl(true);setUplPct(0);const res=[];for(let i=0;i<files.length;i++){const p=await sbPhoto(job.id,files[i]);if(p)res.push(p);setUplPct(Math.round(((i+1)/files.length)*100));}if(res.length)upd({photos:[...(job.photos||[]),...res]});setUpl(false);setUplPct(0);};
   const delP=async id=>{const p=(job.photos||[]).find(x=>x.id===id);if(p?.url){try{const path=p.url.split("/job-photos/")[1];if(path)await window.SB.storage.from("job-photos").remove([path]);await window.SB.from("photos").delete().eq("id",id);}catch(e){}}upd({photos:(job.photos||[]).filter(x=>x.id!==id)});};
-  const addCO=async()=>{if(!cod.trim()||!coa)return;setSavCO(true);const num=`CO-${String((job.change_orders||[]).length+1).padStart(3,"0")}`;const co={id:Date.now().toString(),job_id:job.id,co_number:num,description:cod.trim(),reason:cor.trim(),amount:Number(coa),status:"pending",created_at:new Date().toISOString()};const s=await sbCO(co);if(s){upd({change_orders:[s,...(job.change_orders||[])]});setCod("");setCor("");setCoa("");setShowCO(false);}setSavCO(false);};
-  const apCO=async id=>{await sbUpdCO(id,{status:"approved",approved_at:new Date().toISOString()});const u=(job.change_orders||[]).map(c=>c.id===id?{...c,status:"approved"}:c);const nct=u.filter(c=>c.status==="approved").reduce((a,c)=>a+Number(c.amount||0),0);upd({change_orders:u,co_total:nct});};
-  const rjCO=async id=>{await sbUpdCO(id,{status:"rejected"});upd({change_orders:(job.change_orders||[]).map(c=>c.id===id?{...c,status:"rejected"}:c)});};
+  const addCO=async()=>{if(!cod.trim()||!coa)return;setSavCO(true);const num=`CO-${String((job.change_orders||[]).length+1).padStart(3,"0")}`;const co={id:Date.now().toString(),job_id:job.id,co_number:num,description:cod.trim(),reason:cor.trim(),amount:Number(coa),status:"pending",created_at:new Date().toISOString()};const s=await sbCO(co);if(s){upd({change_orders:[s,...(job.change_orders||[])]});sbNotify("co_submitted",`New CO on ${job.address}`,`${num}: ${cod.trim()} — ${f$(Number(coa))}`,job.id,window.AV_USER_ID);setCod("");setCor("");setCoa("");setShowCO(false);}setSavCO(false);};
+  const apCO=async id=>{await sbUpdCO(id,{status:"approved",approved_at:new Date().toISOString()});const u=(job.change_orders||[]).map(c=>c.id===id?{...c,status:"approved"}:c);const nct=u.filter(c=>c.status==="approved").reduce((a,c)=>a+Number(c.amount||0),0);upd({change_orders:u,co_total:nct});const co=(job.change_orders||[]).find(c=>c.id===id);if(co)sbNotify("co_approved",`CO approved on ${job.address}`,`${co.co_number} (${f$(co.amount)}) has been approved`,job.id,window.AV_USER_ID);};
+  const rjCO=async id=>{await sbUpdCO(id,{status:"rejected"});upd({change_orders:(job.change_orders||[]).map(c=>c.id===id?{...c,status:"rejected"}:c)});const co=(job.change_orders||[]).find(c=>c.id===id);if(co)sbNotify("co_rejected",`CO rejected on ${job.address}`,`${co.co_number} has been rejected`,job.id,window.AV_USER_ID);};
 
   // ── DOCUMENTS STATE ─────────────────────────────────────────────────────────
   const[docs,setDocs]=useState([]);
@@ -634,6 +660,9 @@ function JobDet({job,upd,del,back}){
                         const updated={...ph,...ed};
                         const saved=await sbSavePhase(updated);
                         setPhases(p=>p.map(x=>x.id===ph.id?(saved||updated):x));
+                        if(ed.status==="complete"&&ph.status!=="complete"){
+                          sbNotify("phase_complete",`Phase complete: ${ph.phase_name}`,`${ph.phase_name} marked complete on ${job.address}`,job.id,window.AV_USER_ID);
+                        }
                         setPhaseEdit(null);
                       }}>Save Phase</button>
                     </div>
@@ -741,13 +770,17 @@ function JobDet({job,upd,del,back}){
   );
 }
 
-function JobsScr({jobs,setJobs,onBack}){
+function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId}){
   const[sel,setSel]=useState(null);
   const[showNew,setShowNew]=useState(false);
   const[newA,setNewA]=useState("");
   const[fil,setFil]=useState("all");
   const[loading,setLoading]=useState(false);
   useEffect(()=>{setLoading(true);sbLoad().then(d=>{if(d){setJobs(d);ls("av_j",d);}setLoading(false);});},[]);
+  // Auto-select a job when navigating here from a notification click
+  useEffect(()=>{
+    if(pendingJobId&&!loading){setSel(pendingJobId);clearPendingJobId();}
+  },[pendingJobId,loading]);
   const upd=(id,ch)=>{const u=jobs.map(j=>j.id===id?{...j,...ch}:j);setJobs(u);ls("av_j",u);sbUpd(id,ch);};
   const add=()=>{if(!newA.trim())return;const j={id:Date.now().toString(),address:newA.trim(),status:"lead",created:new Date().toISOString(),scope:"",sqft:"",photos:[],activity:[],change_orders:[],client_name:"",client_phone:"",client_email:"",assigned_rep:"",assigned_subs:"",contract_value:0,co_total:0,target_completion:""};const u=[j,...jobs];setJobs(u);ls("av_j",u);sbSave(j);setNewA("");setShowNew(false);setSel(j.id);};
   const del=id=>{if(!window.confirm("Delete this job?"))return;const u=jobs.filter(j=>j.id!==id);setJobs(u);ls("av_j",u);sbDel(id);setSel(null);};
@@ -798,6 +831,44 @@ function TkOf({onBack}){
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotifPanel({notifs,onClose,onMarkAllRead,onClickNotif}){
+  const unread=notifs.filter(n=>!n.read).length;
+  const typeIcon={note_posted:"note",phase_complete:"check",co_submitted:"warn",co_approved:"check",co_rejected:"warn",message:"note",assigned_to_job:"home",phase_overdue:"warn",document_uploaded:"folder",daily_log_submitted:"clip"};
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:2000,display:"flex",justifyContent:"flex-end"}}>
+      {/* Backdrop */}
+      <div style={{position:"absolute",inset:0,background:"rgba(10,31,68,0.45)"}} onClick={onClose}/>
+      {/* Panel */}
+      <div style={{position:"relative",width:"100%",maxWidth:400,background:"#fff",display:"flex",flexDirection:"column",height:"100%",boxShadow:"-8px 0 32px rgba(10,31,68,0.2)"}}>
+        <div style={{padding:"20px 20px 16px",borderBottom:"1px solid #E8E4DC",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:18,color:"#0A1F44",flex:1}}>Notifications</div>
+          {unread>0&&<button className="btn btn-ghost" style={{fontSize:11,padding:"5px 12px"}} onClick={onMarkAllRead}>Mark all read</button>}
+          {unread>0&&<span style={{background:"#C9A84C",color:"#0A1F44",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10}}>{unread}</span>}
+          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",padding:4,display:"flex",alignItems:"center",width:28,height:28}}>
+            <span style={{width:18,height:18,display:"flex"}}>{Ic.back}</span>
+          </button>
+        </div>
+        <div style={{flex:1,overflowY:"auto"}}>
+          {!notifs.length&&<div className="empty" style={{paddingTop:60}}>{Ic.bell}<div className="empty-t">All clear</div><div>No notifications yet</div></div>}
+          {notifs.map(n=>(
+            <div key={n.id} onClick={()=>onClickNotif(n)} style={{padding:"14px 20px",borderBottom:"1px solid #F3F0E8",cursor:"pointer",background:n.read?"#fff":"rgba(201,168,76,0.04)",display:"flex",gap:12,alignItems:"flex-start"}} onMouseEnter={e=>e.currentTarget.style.background="#F7F5F0"} onMouseLeave={e=>e.currentTarget.style.background=n.read?"#fff":"rgba(201,168,76,0.04)"}>
+              <div style={{width:32,height:32,background:n.read?"#F7F5F0":"rgba(201,168,76,0.12)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:n.read?"#9CA3AF":"#C9A84C"}}>
+                <span style={{width:14,height:14,display:"flex"}}>{Ic[typeIcon[n.type]]||Ic.bell}</span>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:n.read?400:600,color:"#0A1F44",marginBottom:2,lineHeight:1.4}}>{n.title}</div>
+                {n.body&&<div style={{fontSize:12,color:"#6B7280",lineHeight:1.5,marginBottom:4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{n.body}</div>}
+                <div style={{fontSize:11,color:"#9CA3AF"}}>{fDT(n.created_at)}</div>
+              </div>
+              {!n.read&&<div style={{width:7,height:7,borderRadius:"50%",background:"#C9A84C",flexShrink:0,marginTop:5}}/>}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -919,6 +990,9 @@ function App(){
   const[authLoading,setAuthLoading]=useState(true);
   const[pg,setPg]=useState("dashboard");
   const[jobs,setJobs]=useState(()=>ll("av_j",[]));
+  const[notifs,setNotifs]=useState([]);
+  const[showNotif,setShowNotif]=useState(false);
+  const[pendingJobId,setPendingJobId]=useState(null);
 
   useEffect(()=>{
     // Check for an existing session on first load
@@ -939,14 +1013,39 @@ function App(){
   const loadProfile=async uid=>{
     const{data}=await window.SB.from("profiles").select("*").eq("id",uid).single();
     setProfile(data);
-    // Make tenant_id globally available for all write operations
+    // Make tenant + user ID globally available for write and notification operations
     window.AV_TENANT=data?.tenant_id;
+    window.AV_USER_ID=uid;
+    sbLoadNotifs().then(d=>setNotifs(d));
     setAuthLoading(false);
   };
 
   useEffect(()=>{window.AV_JOBS=jobs;},[jobs]);
   const saveJob=j=>{const u=[j,...jobs];setJobs(u);ls("av_j",u);sbSave(j);};
-  const signOut=async()=>{await window.SB.auth.signOut();ls("av_j",[]);setJobs([]);};
+  const signOut=async()=>{await window.SB.auth.signOut();ls("av_j",[]);setJobs([]);setNotifs([]);};
+
+  // Real-time: push new notifications into state as they arrive
+  useEffect(()=>{
+    if(!profile?.id)return;
+    const ch=window.SB.channel("notif-"+profile.id)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`user_id=eq.${profile.id}`},
+        payload=>setNotifs(p=>[payload.new,...p]))
+      .subscribe();
+    return()=>window.SB.removeChannel(ch);
+  },[profile?.id]);
+
+  const unreadCount=notifs.filter(n=>!n.read).length;
+  const markAllNotifsRead=async()=>{
+    const ids=notifs.filter(n=>!n.read).map(n=>n.id);
+    if(!ids.length)return;
+    await sbMarkNotifsRead(ids);
+    setNotifs(p=>p.map(n=>({...n,read:true})));
+  };
+  const onClickNotif=async n=>{
+    if(!n.read){await sbMarkNotifsRead([n.id]);setNotifs(p=>p.map(x=>x.id===n.id?{...x,read:true}:x));}
+    if(n.job_id){setPendingJobId(n.job_id);setPg("jobs");}
+    setShowNotif(false);
+  };
 
   // Auth loading — full-screen spinner on navy background
   if(authLoading)return(
@@ -1015,17 +1114,27 @@ function App(){
         <div className="mob-hdr">
           <img src={L} alt="Avenstone" style={{width:44,height:44,objectFit:"contain"}}/>
           <div style={{flex:1}}><div style={{fontSize:8,color:"#C9A84C",letterSpacing:4,textTransform:"uppercase"}}>Avenstone Group</div><div style={{fontSize:13,fontWeight:600,color:"#fff",letterSpacing:0.5}}>Field Estimator</div></div>
+          <button onClick={()=>setShowNotif(true)} style={{position:"relative",background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.6)",padding:4,display:"flex",alignItems:"center"}}>
+            <span style={{width:20,height:20,display:"flex"}}>{Ic.bell}</span>
+            {unreadCount>0&&<span style={{position:"absolute",top:0,right:0,background:"#C9A84C",color:"#0A1F44",width:16,height:16,borderRadius:"50%",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>{unreadCount>9?"9+":unreadCount}</span>}
+          </button>
           <button onClick={signOut} title="Sign out" style={{background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.4)",padding:4,display:"flex",alignItems:"center"}}>
             <span style={{width:18,height:18,display:"flex"}}>{Ic.logout}</span>
           </button>
         </div>
         <div className="top-bar">
           <div style={{fontSize:13,color:"#9CA3AF"}}><strong style={{color:"#0A1F44"}}>{NAV.find(n=>n.id===pg)?.lb||"Dashboard"}</strong>&nbsp;·&nbsp;{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
-          {isOwnerOrRep&&<div style={{display:"flex",gap:10}}><button className="btn btn-ghost" onClick={()=>setPg("intake")}>New Intake</button><button className="btn btn-navy" onClick={()=>setPg("jobs")}>+ New Project</button></div>}
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            {isOwnerOrRep&&<><button className="btn btn-ghost" onClick={()=>setPg("intake")}>New Intake</button><button className="btn btn-navy" onClick={()=>setPg("jobs")}>+ New Project</button></>}
+            <button onClick={()=>setShowNotif(true)} title="Notifications" style={{position:"relative",background:"transparent",border:"1px solid #E8E4DC",color:"#6B7280",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#C9A84C"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E8E4DC"}>
+              <span style={{width:16,height:16,display:"flex"}}>{Ic.bell}</span>
+              {unreadCount>0&&<span style={{position:"absolute",top:-6,right:-6,background:"#C9A84C",color:"#0A1F44",width:18,height:18,borderRadius:"50%",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>{unreadCount>9?"9+":unreadCount}</span>}
+            </button>
+          </div>
         </div>
         <div className="pg-wrap">
           {pg==="dashboard"&&<Dash nav={setPg} jobs={jobs} profile={profile}/>}
-          {pg==="jobs"&&<JobsScr jobs={jobs} setJobs={setJobs} onBack={()=>setPg("dashboard")}/>}
+          {pg==="jobs"&&<JobsScr jobs={jobs} setJobs={setJobs} onBack={()=>setPg("dashboard")} pendingJobId={pendingJobId} clearPendingJobId={()=>setPendingJobId(null)}/>}
           {pg==="intake"&&isOwnerOrRep&&<FormScr title="Project Intake" secs={IQ} rules={IR} ftype="intake" onBack={()=>setPg("dashboard")} onSave={saveJob}/>}
           {pg==="bid"&&isOwnerOrRep&&<FormScr title="Bid and Proposal" secs={BQ} rules={BR} ftype="bid" onBack={()=>setPg("dashboard")}/>}
           {pg==="takeoff"&&isStaff&&<TkOf onBack={()=>setPg("dashboard")}/>}
@@ -1044,6 +1153,7 @@ function App(){
         </div>
       </div>
     </div>
+    {showNotif&&<NotifPanel notifs={notifs} onClose={()=>setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif}/>}
   );
 }
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
