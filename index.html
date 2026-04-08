@@ -432,23 +432,26 @@ function JobDet({job,upd,del,back}){
 
   // Load phases (and seed defaults) the first time the schedule tab is opened
   useEffect(()=>{
-    if(tab!=="schedule"||phasesLoaded)return;
+    if(tab!=="sched"||phasesLoaded)return;
     (async()=>{
-      let data=await sbLoadPhases(job.id);
-      if(!data.length){
-        // First time: insert the 10 default phases for this job
-        const defaults=DEFAULT_PHASES.map((name,i)=>({
-          tenant_id:window.AV_TENANT,
-          job_id:job.id,
-          phase_name:name,
-          phase_order:i+1,
-          status:"not_started"
-        }));
-        await window.SB.from("job_phases").insert(defaults);
-        data=await sbLoadPhases(job.id); // re-fetch to get Supabase-generated UUIDs
-      }
-      setPhases(data);
-      setPhasesLoaded(true);
+      try{
+        let data=await sbLoadPhases(job.id);
+        if(!data.length){
+          // First time: insert the 10 default phases for this job
+          const defaults=DEFAULT_PHASES.map((name,i)=>({
+            tenant_id:window.AV_TENANT,
+            job_id:job.id,
+            phase_name:name,
+            phase_order:i+1,
+            status:"not_started"
+          }));
+          const{error}=await window.SB.from("job_phases").insert(defaults);
+          if(error)console.error("Phase insert error:",error);
+          data=await sbLoadPhases(job.id); // re-fetch to get Supabase-generated UUIDs
+        }
+        setPhases(data);
+      }catch(e){console.error("Schedule load error:",e);}
+      finally{setPhasesLoaded(true);}
     })();
   },[tab,phasesLoaded]);
   // ───────────────────────────────────────────────────────────────────────────
@@ -795,9 +798,6 @@ function App(){
     setProfile(data);
     // Make tenant_id globally available for all write operations
     window.AV_TENANT=data?.tenant_id;
-    // Clear any localStorage cache from a previous user's session
-    ls("av_j",[]);
-    setJobs([]);
     setAuthLoading(false);
   };
 
