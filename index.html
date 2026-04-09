@@ -1710,6 +1710,126 @@ function LoginScr(){
   );
 }
 
+function Reports({jobs}){
+  const active=jobs.filter(j=>!["complete","on_hold"].includes(j.status));
+  const complete=jobs.filter(j=>j.status==="complete");
+  const leads=jobs.filter(j=>j.status==="lead");
+  const bids=jobs.filter(j=>j.status==="bid_sent");
+  const signed=jobs.filter(j=>j.status==="signed");
+  const inProgress=jobs.filter(j=>["demo","framing","rough_mep","drywall","finish","punch"].includes(j.status));
+
+  const totalContract=jobs.reduce((a,j)=>a+Number(j.contract_value||0),0);
+  const totalCOs=jobs.reduce((a,j)=>a+Number(j.co_total||0),0);
+  const totalRevenue=totalContract+totalCOs;
+  const completedRevenue=complete.reduce((a,j)=>a+Number(j.contract_value||0)+Number(j.co_total||0),0);
+  const pipelineValue=bids.reduce((a,j)=>a+Number(j.contract_value||0),0);
+  const activeValue=inProgress.reduce((a,j)=>a+Number(j.contract_value||0),0);
+
+  // Jobs by rep
+  const byRep={};
+  jobs.forEach(j=>{const r=j.assigned_rep||"Unassigned";if(!byRep[r])byRep[r]={total:0,active:0,complete:0,value:0};byRep[r].total++;if(!["complete","on_hold"].includes(j.status))byRep[r].active++;if(j.status==="complete")byRep[r].complete++;byRep[r].value+=Number(j.contract_value||0);});
+  const repRows=Object.entries(byRep).sort((a,b)=>b[1].value-a[1].value);
+
+  // Jobs by status
+  const statusBreakdown=STATS.map(s=>({...s,count:jobs.filter(j=>j.status===s.id).length,value:jobs.filter(j=>j.status===s.id).reduce((a,j)=>a+Number(j.contract_value||0),0)})).filter(s=>s.count>0);
+
+  // Monthly revenue (last 6 months based on created date)
+  const now=new Date();
+  const months=Array.from({length:6},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);return{label:d.toLocaleDateString("en-US",{month:"short",year:"2-digit"}),year:d.getFullYear(),month:d.getMonth()};});
+  const monthlyData=months.map(m=>({...m,value:jobs.filter(j=>{const d=new Date(j.created);return d.getFullYear()===m.year&&d.getMonth()===m.month;}).reduce((a,j)=>a+Number(j.contract_value||0),0)}));
+  const maxMonthly=Math.max(...monthlyData.map(m=>m.value),1);
+
+  const Stat=({label,value,sub,color})=>(
+    <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:"18px 20px"}}>
+      <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{label}</div>
+      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:24,color:color||"#0A1F44",marginBottom:sub?4:0}}>{value}</div>
+      {sub&&<div style={{fontSize:12,color:"#9CA3AF"}}>{sub}</div>}
+    </div>
+  );
+
+  return(
+    <div style={{padding:20,maxWidth:900}}>
+      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44",marginBottom:20}}>Reporting</div>
+
+      {/* Top stats */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
+        <Stat label="Total Revenue" value={f$(totalRevenue)} sub={totalCOs>0?`incl. ${f$(totalCOs)} in COs`:null} color="#0A1F44"/>
+        <Stat label="Completed" value={f$(completedRevenue)} sub={`${complete.length} jobs`} color="#22c55e"/>
+        <Stat label="Active Work" value={f$(activeValue)} sub={`${inProgress.length} jobs in progress`} color="#f59e0b"/>
+        <Stat label="Pipeline" value={f$(pipelineValue)} sub={`${bids.length} bids out`} color="#6366f1"/>
+        <Stat label="Total Jobs" value={jobs.length} sub={`${leads.length} leads · ${signed.length} signed`}/>
+        <Stat label="Avg Job Value" value={jobs.length?f$(Math.round(totalContract/jobs.length)):f$(0)} sub="contract value"/>
+      </div>
+
+      {/* Monthly bar chart */}
+      <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20,marginBottom:20}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:16}}>Jobs Started — Last 6 Months</div>
+        <div style={{display:"flex",alignItems:"flex-end",gap:8,height:120}}>
+          {monthlyData.map(m=>(
+            <div key={m.label} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+              <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600}}>{m.value>0?f$(m.value):""}</div>
+              <div style={{width:"100%",background:m.value>0?"#0A1F44":"#F7F5F0",borderRadius:"3px 3px 0 0",height:`${Math.max((m.value/maxMonthly)*90,m.value>0?6:0)}px`,minHeight:m.value>0?6:0,transition:"height 0.3s"}}/>
+              <div style={{fontSize:10,color:"#9CA3AF"}}>{m.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+        {/* Status breakdown */}
+        <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>By Status</div>
+          {statusBreakdown.map(s=>(
+            <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:s.c,flexShrink:0}}/>
+              <div style={{flex:1,fontSize:13,color:"#374151"}}>{s.lb}</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#0A1F44",minWidth:20,textAlign:"right"}}>{s.count}</div>
+              {s.value>0&&<div style={{fontSize:11,color:"#9CA3AF",minWidth:70,textAlign:"right"}}>{f$(s.value)}</div>}
+            </div>
+          ))}
+          {!statusBreakdown.length&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No jobs yet</div>}
+        </div>
+
+        {/* By rep */}
+        <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>By Rep</div>
+          {repRows.map(([rep,d])=>(
+            <div key={rep} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{rep}</div>
+                <div style={{fontSize:12,color:"#9CA3AF"}}>{d.total} jobs · {f$(d.value)}</div>
+              </div>
+              <div style={{display:"flex",gap:4,fontSize:11,color:"#9CA3AF"}}>
+                <span style={{color:"#6366f1"}}>{d.active} active</span>
+                <span>·</span>
+                <span style={{color:"#22c55e"}}>{d.complete} complete</span>
+              </div>
+            </div>
+          ))}
+          {!repRows.length&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No data yet</div>}
+        </div>
+      </div>
+
+      {/* Recent completions */}
+      {complete.length>0&&<div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Completed Jobs</div>
+        {complete.slice(0,10).map(j=>(
+          <div key={j.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:"1px solid #F3F0E8"}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{j.address}</div>
+              {j.client_name&&<div style={{fontSize:11,color:"#9CA3AF"}}>{j.client_name}</div>}
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#22c55e"}}>{f$(Number(j.contract_value||0)+Number(j.co_total||0))}</div>
+              {j.assigned_rep&&<div style={{fontSize:11,color:"#9CA3AF"}}>{j.assigned_rep}</div>}
+            </div>
+          </div>
+        ))}
+      </div>}
+    </div>
+  );
+}
+
 function Dash({nav,jobs,profile}){
   const hr=new Date().getHours();
   const greet=hr<12?"morning":hr<17?"afternoon":"evening";
@@ -1850,7 +1970,7 @@ function App(){
       {id:"bid",lb:"Bids",ic:"doc",sec:"Field",badge:jobs.filter(j=>j.status==="bid_sent").length},
     ]:[]),
     ...(isStaff?[{id:"takeoff",lb:"Materials",ic:"box",sec:"Field"}]:[]),
-    ...(isOwnerOrRep?[{id:"pipeline",lb:"Pipeline",ic:"grid",sec:"Sales"}]:[]),
+    ...(isOwnerOrRep?[{id:"pipeline",lb:"Pipeline",ic:"grid",sec:"Sales"},{id:"reports",lb:"Reports",ic:"box",sec:"Sales"}]:[]),
     ...(isStaff?[{id:"subs",lb:"Subs",ic:"home",sec:"People"}]:[]),
     ...(["owner"].includes(profile?.role)?[{id:"team",lb:"Team",ic:"home",sec:"People"}]:[]),
   ];
@@ -1913,6 +2033,7 @@ function App(){
           {pg==="takeoff"&&isStaff&&<TkOf onBack={()=>setPg("dashboard")}/>}
           {pg==="subs"&&isStaff&&<SubDir/>}
           {pg==="team"&&profile?.role==="owner"&&<UserMgmt/>}
+          {pg==="reports"&&isOwnerOrRep&&<Reports jobs={jobs}/>}
           {pg==="pipeline"&&isOwnerOrRep&&<div style={{padding:"16px 20px"}}>
             <div style={{marginBottom:16}}><div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44"}}>Lead Pipeline</div><div style={{fontSize:13,color:"#9CA3AF",marginTop:2}}>Drag jobs between columns to update status</div></div>
             <Pipeline jobs={jobs} onStatusChange={(jid,status)=>{const u=jobs.map(j=>j.id===jid?{...j,status}:j);setJobs(u);ls("av_j",u);sbUpd(jid,{status});}} onOpenJob={j=>{setPg("jobs");setPendingJobId(j.id);}}/>
