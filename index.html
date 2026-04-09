@@ -2171,6 +2171,54 @@ const NOTIF_EVENTS=[
   {key:"daily_log_submitted",lb:"Daily log submitted"},
 ];
 
+function PushEnableButton({profile}){
+  const[status,setStatus]=useState(()=>{
+    if(!("Notification" in window))return "unsupported";
+    return Notification.permission; // "default" | "granted" | "denied"
+  });
+  const[loading,setLoading]=useState(false);
+
+  const enable=async()=>{
+    setLoading(true);
+    try{
+      const perm=await Notification.requestPermission();
+      setStatus(perm);
+      if(perm==="granted"){
+        const reg=await navigator.serviceWorker.register("/sw.js");
+        await navigator.serviceWorker.ready;
+        const VAPID_PUBLIC="BOwPGVdaON00Aqor0hyG7HLR6nx9VX3YA1FhlrwahMiBnBhAqTk_zPUu6BfuQ0F0aRh70r7ru0uxrDR4Is5DVXI";
+        const b64ToUint8=s=>{s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";return Uint8Array.from(atob(s),c=>c.charCodeAt(0));};
+        let sub=await reg.pushManager.getSubscription();
+        if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToUint8(VAPID_PUBLIC)});
+        const{endpoint,keys}=sub.toJSON();
+        await window.SB.from("push_subscriptions").upsert({user_id:profile.id,endpoint,p256dh:keys.p256dh,auth:keys.auth},{onConflict:"user_id,endpoint"});
+      }
+    }catch(e){console.warn("push enable error",e);}
+    setLoading(false);
+  };
+
+  if(status==="unsupported")return null;
+
+  if(status==="granted")return(
+    <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:4,padding:"10px 14px",display:"flex",alignItems:"center",gap:8,fontSize:13}}>
+      <span style={{color:"#16a34a",fontSize:16}}>✓</span>
+      <span style={{color:"#16a34a",fontWeight:600}}>Push notifications enabled on this device</span>
+    </div>
+  );
+
+  if(status==="denied")return(
+    <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:4,padding:"10px 14px",fontSize:12,color:"#DC2626"}}>
+      Notifications blocked. Go to your browser/phone Settings → Notifications → find this site and allow it.
+    </div>
+  );
+
+  return(
+    <button className="btn btn-outline" style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8}} onClick={enable} disabled={loading}>
+      <span style={{fontSize:16}}>🔔</span>{loading?"Enabling...":"Enable Push Notifications on This Device"}
+    </button>
+  );
+}
+
 function SettingsModal({profile,setProfile,onClose}){
   const[form,setForm]=useState({full_name:profile?.full_name||"",phone:profile?.phone||""});
   const[prefs,setPrefs]=useState(()=>profile?.notification_prefs||{});
@@ -2217,7 +2265,8 @@ function SettingsModal({profile,setProfile,onClose}){
           <div style={{fontSize:12,color:"#6B7280"}}>Email: <strong style={{color:"#0A1F44"}}>{profile?.email}</strong></div>
           <div style={{fontSize:12,color:"#9CA3AF",marginTop:4}}>Role: <strong style={{color:"#0A1F44"}}>{profile?.role}</strong></div>
         </div>
-        <button className="btn btn-navy" style={{width:"100%"}} onClick={saveProfile} disabled={saving}>{saving?"Saving...":(saved?"Saved!":"Save Changes")}</button>
+        <button className="btn btn-navy" style={{width:"100%",marginBottom:10}} onClick={saveProfile} disabled={saving}>{saving?"Saving...":(saved?"Saved!":"Save Changes")}</button>
+        <PushEnableButton profile={profile}/>
       </>}
       {tab==="notifs"&&<>
         <div style={{fontSize:11,color:"#9CA3AF",marginBottom:12,lineHeight:1.6}}>Choose which events trigger email and SMS notifications. SMS requires a phone number and SMS alerts enabled.</div>
