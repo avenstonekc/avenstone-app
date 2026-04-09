@@ -3286,7 +3286,7 @@ function Reports({jobs,profile}){
   const byRep={};
   jobs.forEach(j=>{
     const r=j.assigned_rep||"Unassigned";
-    if(!byRep[r])byRep[r]={name:r,total:0,active:0,complete:0,value:0,collected:0,commission_pct:0};
+    if(!byRep[r])byRep[r]={name:r,total:0,active:0,complete:0,value:0,collected:0,commission_pct:0,commission_dollar:0};
     byRep[r].total++;
     if(!["complete","on_hold"].includes(j.status))byRep[r].active++;
     if(j.status==="complete")byRep[r].complete++;
@@ -3295,7 +3295,7 @@ function Reports({jobs,profile}){
   // Apply commission rates from profiles
   repProfiles.forEach(p=>{
     const key=p.full_name||p.email||"";
-    if(byRep[key])byRep[key].commission_pct=Number(p.commission_pct||0);
+    if(byRep[key]){byRep[key].commission_pct=Number(p.commission_pct||0);byRep[key].commission_dollar=Number(p.commission_dollar||0);}
   });
   payments.forEach(p=>{
     const j=jobs.find(jj=>jj.id===p.job_id);
@@ -3427,12 +3427,14 @@ function Reports({jobs,profile}){
           <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Commission Rates — set per rep in Team settings</div>
           {repRows.map(([rep,d])=>{
             const commPct=d.commission_pct||0;
-            const earned=d.collected*(commPct/100);
-            const pending=(d.value-d.collected)*(commPct/100);
+            const commDollar=d.commission_dollar||0;
+            const earned=commDollar>0?(d.complete*commDollar):(d.collected*(commPct/100));
+            const pending=commDollar>0?(d.active*commDollar):((d.value-d.collected)*(commPct/100));
+            const rateLabel=commDollar>0?`${f$(commDollar)}/job flat`:commPct>0?`${commPct}% of collected`:"No rate set";
             return(
               <div key={rep} style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,paddingBottom:12,borderBottom:"1px solid #F3F0E8"}}>
-                <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{rep}</div><div style={{fontSize:11,color:"#9CA3AF"}}>{commPct}% commission</div></div>
-                <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#22c55e"}}>{f$(earned)} earned</div><div style={{fontSize:11,color:"#f59e0b"}}>{f$(pending)} pending</div></div>
+                <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{rep}</div><div style={{fontSize:11,color:"#9CA3AF"}}>{rateLabel}</div></div>
+                <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#22c55e"}}>{f$(earned)} earned</div><div style={{fontSize:11,color:"#f59e0b"}}>{f$(Math.max(pending,0))} pending</div></div>
               </div>
             );
           })}
