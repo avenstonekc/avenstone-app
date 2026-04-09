@@ -4,6 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <meta name="theme-color" content="#0A1F44"/>
+<link rel="manifest" href="/manifest.json"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -2607,12 +2608,46 @@ function App(){
   const loadProfile=async uid=>{
     const{data}=await window.SB.from("profiles").select("*").eq("id",uid).single();
     setProfile(data);
-    // Make tenant + user ID globally available for write and notification operations
     window.AV_TENANT=data?.tenant_id;
     window.AV_USER_ID=uid;
     sbLoadNotifs().then(d=>setNotifs(d));
     setAuthLoading(false);
+    // Register service worker + request push permission
+    registerPush(uid);
   };
+
+  const registerPush=async uid=>{
+    if(!("serviceWorker" in navigator)||!("PushManager" in window))return;
+    try{
+      const reg=await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+      // Ask permission
+      const perm=await Notification.requestPermission();
+      if(perm!=="granted")return;
+      const VAPID_PUBLIC="BOwPGVdaON00Aqor0hyG7HLR6nx9VX3YA1FhlrwahMiBnBhAqTk_zPUu6BfuQ0F0aRh70r7ru0uxrDR4Is5DVXI";
+      let sub=await reg.pushManager.getSubscription();
+      if(!sub){
+        sub=await reg.pushManager.subscribe({
+          userVisibleOnly:true,
+          applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC)
+        });
+      }
+      const {endpoint,keys}=sub.toJSON();
+      await window.SB.from("push_subscriptions").upsert({
+        user_id:uid,
+        endpoint,
+        p256dh:keys.p256dh,
+        auth:keys.auth
+      },{onConflict:"user_id,endpoint"});
+    }catch(e){console.warn("Push registration failed:",e);}
+  };
+
+  function urlBase64ToUint8Array(base64String){
+    const padding="=".repeat((4-base64String.length%4)%4);
+    const base64=(base64String+padding).replace(/-/g,"+").replace(/_/g,"/");
+    const raw=atob(base64);
+    return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+  }
 
   useEffect(()=>{window.AV_JOBS=jobs;},[jobs]);
   const saveJob=j=>{const u=[j,...jobs];setJobs(u);ls("av_j",u);sbSave(j);};
