@@ -68,6 +68,10 @@ ALTER TABLE daily_logs ADD COLUMN IF NOT EXISTS hours_worked numeric(5,2);
 -- profiles: notification preferences per event type
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notification_prefs jsonb DEFAULT '{}';
 
+-- profiles: commission rates for sales reps
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS commission_pct    numeric(5,2)  DEFAULT 0;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS commission_dollar numeric(10,2) DEFAULT 0;
+
 -- notifications: add new types without breaking existing constraint
 ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN (

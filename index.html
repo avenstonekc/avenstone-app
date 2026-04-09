@@ -2767,6 +2767,7 @@ const sbInviteStaff=async(name,email,role)=>{
 };
 const sbSetUserActive=async(id,val)=>window.SB.from("profiles").update({is_active:val}).eq("id",id);
 const sbSetUserRole=async(id,role)=>window.SB.from("profiles").update({role}).eq("id",id);
+const sbSaveCommission=async(id,pct,dollar)=>window.SB.from("profiles").update({commission_pct:Number(pct)||0,commission_dollar:Number(dollar)||0}).eq("id",id);
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── LEAD PIPELINE KANBAN ────────────────────────────────────────────────────
 const PIPELINE_COLS=[
@@ -2843,6 +2844,7 @@ function UserMgmt(){
   const[saving,setSaving]=useState(false);
   const[err,setErr]=useState("");
   const[editRole,setEditRole]=useState(null); // {id, role}
+  const[commEdit,setCommEdit]=useState(null); // {id, pct, dollar}
   useEffect(()=>{sbLoadTeam().then(d=>{setTeam(d);setLoading(false);});},[]);
   const invite=async()=>{
     if(!form.name.trim()||!form.email.trim()){setErr("Name and email required.");return;}
@@ -2862,6 +2864,12 @@ function UserMgmt(){
     setTeam(p=>p.map(x=>x.id===editRole.id?{...x,role:editRole.role}:x));
     setEditRole(null);
   };
+  const saveComm=async()=>{
+    if(!commEdit)return;
+    await sbSaveCommission(commEdit.id,commEdit.pct,commEdit.dollar);
+    setTeam(p=>p.map(x=>x.id===commEdit.id?{...x,commission_pct:Number(commEdit.pct)||0,commission_dollar:Number(commEdit.dollar)||0}:x));
+    setCommEdit(null);
+  };
   const ssty={appearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32};
   return(
     <div style={{padding:20,maxWidth:700}}>
@@ -2871,24 +2879,56 @@ function UserMgmt(){
       </div>
       {loading&&<div style={{textAlign:"center",padding:40,color:"#9CA3AF"}}>Loading...</div>}
       {team.map(u=>(
-        <div key={u.id} style={{background:"#fff",border:"1px solid #E8E4DC",padding:"14px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:14,opacity:u.is_active?1:0.55}}>
-          <div style={{width:40,height:40,background:"#0A1F4418",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#0A1F44",flexShrink:0}}>{(u.full_name||u.email||"?")[0].toUpperCase()}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:14,fontWeight:600,color:"#0A1F44"}}>{u.full_name||u.email}</div>
-            <div style={{fontSize:12,color:"#9CA3AF",marginTop:2}}>{u.email}</div>
-          </div>
-          {editRole?.id===u.id?(
-            <div style={{display:"flex",gap:6,alignItems:"center"}}>
-              <select className="finp" style={{...ssty,padding:"6px 32px 6px 10px",fontSize:12,height:32,marginBottom:0}} value={editRole.role} onChange={e=>setEditRole(p=>({...p,role:e.target.value}))}>
-                {STAFF_ROLES.map(r=><option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-              </select>
-              <button className="btn btn-gold" style={{padding:"5px 12px",fontSize:11}} onClick={saveRole}>Save</button>
-              <button className="btn btn-ghost" style={{padding:"5px 10px",fontSize:11}} onClick={()=>setEditRole(null)}>✕</button>
+        <div key={u.id} style={{background:"#fff",border:"1px solid #E8E4DC",padding:"14px 16px",marginBottom:8,opacity:u.is_active?1:0.55}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{width:40,height:40,background:"#0A1F4418",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#0A1F44",flexShrink:0}}>{(u.full_name||u.email||"?")[0].toUpperCase()}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:600,color:"#0A1F44"}}>{u.full_name||u.email}</div>
+              <div style={{fontSize:12,color:"#9CA3AF",marginTop:2}}>{u.email}</div>
             </div>
-          ):(
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <span style={{fontSize:11,background:"#0A1F4412",color:"#0A1F44",padding:"3px 10px",fontWeight:600,cursor:"pointer"}} onClick={()=>setEditRole({id:u.id,role:u.role})} title="Click to change role">{ROLE_LABELS[u.role]||u.role}</span>
-              <button onClick={()=>toggleActive(u)} style={{background:u.is_active?"#FEF2F2":"#F0FDF4",border:`1px solid ${u.is_active?"#FECACA":"#BBF7D0"}`,color:u.is_active?"#ef4444":"#16a34a",padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>{u.is_active?"Deactivate":"Reactivate"}</button>
+            {editRole?.id===u.id?(
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <select className="finp" style={{...ssty,padding:"6px 32px 6px 10px",fontSize:12,height:32,marginBottom:0}} value={editRole.role} onChange={e=>setEditRole(p=>({...p,role:e.target.value}))}>
+                  {STAFF_ROLES.map(r=><option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                </select>
+                <button className="btn btn-gold" style={{padding:"5px 12px",fontSize:11}} onClick={saveRole}>Save</button>
+                <button className="btn btn-ghost" style={{padding:"5px 10px",fontSize:11}} onClick={()=>setEditRole(null)}>✕</button>
+              </div>
+            ):(
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{fontSize:11,background:"#0A1F4412",color:"#0A1F44",padding:"3px 10px",fontWeight:600,cursor:"pointer"}} onClick={()=>setEditRole({id:u.id,role:u.role})} title="Click to change role">{ROLE_LABELS[u.role]||u.role}</span>
+                <button onClick={()=>toggleActive(u)} style={{background:u.is_active?"#FEF2F2":"#F0FDF4",border:`1px solid ${u.is_active?"#FECACA":"#BBF7D0"}`,color:u.is_active?"#ef4444":"#16a34a",padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>{u.is_active?"Deactivate":"Reactivate"}</button>
+              </div>
+            )}
+          </div>
+          {u.role==="sales_rep"&&(
+            <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #F3F0EB"}}>
+              {commEdit?.id===u.id?(
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:11,color:"#6B7280"}}>Commission %</span>
+                    <input type="number" min="0" max="100" step="0.1" style={{width:70,padding:"4px 8px",border:"1px solid #E8E4DC",fontSize:12,borderRadius:4}} value={commEdit.pct} onChange={e=>setCommEdit(p=>({...p,pct:e.target.value}))} placeholder="0"/>
+                  </div>
+                  <span style={{fontSize:11,color:"#9CA3AF"}}>or</span>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:11,color:"#6B7280"}}>Flat $ per job</span>
+                    <input type="number" min="0" step="1" style={{width:80,padding:"4px 8px",border:"1px solid #E8E4DC",fontSize:12,borderRadius:4}} value={commEdit.dollar} onChange={e=>setCommEdit(p=>({...p,dollar:e.target.value}))} placeholder="0"/>
+                  </div>
+                  <button className="btn btn-gold" style={{padding:"4px 12px",fontSize:11}} onClick={saveComm}>Save</button>
+                  <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} onClick={()=>setCommEdit(null)}>✕</button>
+                </div>
+              ):(
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:11,color:"#9CA3AF"}}>Commission:</span>
+                  {Number(u.commission_pct||0)>0
+                    ?<span style={{fontSize:11,fontWeight:700,color:"#C9A84C"}}>{u.commission_pct}%</span>
+                    :Number(u.commission_dollar||0)>0
+                    ?<span style={{fontSize:11,fontWeight:700,color:"#C9A84C"}}>${u.commission_dollar} flat</span>
+                    :<span style={{fontSize:11,color:"#9CA3AF"}}>Not set</span>
+                  }
+                  <button onClick={()=>setCommEdit({id:u.id,pct:u.commission_pct||"",dollar:u.commission_dollar||""})} style={{background:"none",border:"none",fontSize:11,color:"#C9A84C",cursor:"pointer",fontWeight:600,padding:0}}>Edit</button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -3201,18 +3241,27 @@ function LoginScr(){
   );
 }
 
-function Reports({jobs}){
-  const active=jobs.filter(j=>!["complete","on_hold"].includes(j.status));
-  const complete=jobs.filter(j=>j.status==="complete");
-  const leads=jobs.filter(j=>j.status==="lead");
-  const bids=jobs.filter(j=>j.status==="bid_sent");
-  const signed=jobs.filter(j=>j.status==="signed");
-  const inProgress=jobs.filter(j=>["demo","framing","rough_mep","drywall","finish","punch"].includes(j.status));
+function Reports({jobs,profile}){
+  const isOwner=profile?.role==="owner";
+  const isRep=profile?.role==="sales_rep";
+  // Filter jobs by role — reps only see their own
+  const myJobs=isOwner?jobs:jobs.filter(j=>(j.assigned_rep||"")===(profile?.full_name||profile?.email||"__none__"));
+  const active=myJobs.filter(j=>!["complete","on_hold"].includes(j.status));
+  const complete=myJobs.filter(j=>j.status==="complete");
+  const leads=myJobs.filter(j=>j.status==="lead");
+  const bids=myJobs.filter(j=>j.status==="bid_sent");
+  const signed=myJobs.filter(j=>j.status==="signed");
+  const inProgress=myJobs.filter(j=>["demo","framing","rough_mep","drywall","finish","punch"].includes(j.status));
   const[subRatings,setSubRatings]=useState([]);
   const[logStats,setLogStats]=useState([]);
+  const[payments,setPayments]=useState([]);
+  const[repProfiles,setRepProfiles]=useState([]);
+  const[reportTab,setReportTab]=useState("overview");
   useEffect(()=>{
     window.SB.from("sub_ratings").select("sub_id,stars,sub:sub_id(full_name,trade)").eq("tenant_id",window.AV_TENANT).then(({data})=>{if(data)setSubRatings(data);});
     window.SB.from("daily_logs").select("job_id,crew_count,hours_worked,job:job_id(address)").eq("tenant_id",window.AV_TENANT).then(({data})=>{if(data)setLogStats(data);});
+    window.SB.from("payments").select("*").eq("tenant_id",window.AV_TENANT).eq("status","paid").then(({data})=>{if(data)setPayments(data);});
+    if(isOwner){window.SB.from("profiles").select("*").eq("tenant_id",window.AV_TENANT).in("role",["sales_rep","owner","project_manager"]).then(({data})=>{if(data)setRepProfiles(data);});}
   },[]);
   // Sub leaderboard
   const subMap={};
@@ -3224,26 +3273,55 @@ function Reports({jobs}){
   const logRows=Object.values(logByJob).sort((a,b)=>b.hours-a.hours).slice(0,8);
   const totalHours=logStats.reduce((a,l)=>a+Number(l.hours_worked||0),0);
 
-  const totalContract=jobs.reduce((a,j)=>a+Number(j.contract_value||0),0);
-  const totalCOs=jobs.reduce((a,j)=>a+Number(j.co_total||0),0);
+  const totalContract=myJobs.reduce((a,j)=>a+Number(j.contract_value||0),0);
+  const totalCOs=myJobs.reduce((a,j)=>a+Number(j.co_total||0),0);
   const totalRevenue=totalContract+totalCOs;
   const completedRevenue=complete.reduce((a,j)=>a+Number(j.contract_value||0)+Number(j.co_total||0),0);
   const pipelineValue=bids.reduce((a,j)=>a+Number(j.contract_value||0),0);
   const activeValue=inProgress.reduce((a,j)=>a+Number(j.contract_value||0),0);
+  const totalCollected=payments.reduce((a,p)=>a+Number(p.amount||0),0);
+  const totalOutstanding=totalRevenue-totalCollected;
 
-  // Jobs by rep
+  // Jobs by rep (owner view)
   const byRep={};
-  jobs.forEach(j=>{const r=j.assigned_rep||"Unassigned";if(!byRep[r])byRep[r]={total:0,active:0,complete:0,value:0};byRep[r].total++;if(!["complete","on_hold"].includes(j.status))byRep[r].active++;if(j.status==="complete")byRep[r].complete++;byRep[r].value+=Number(j.contract_value||0);});
+  jobs.forEach(j=>{
+    const r=j.assigned_rep||"Unassigned";
+    if(!byRep[r])byRep[r]={name:r,total:0,active:0,complete:0,value:0,collected:0,commission_pct:0};
+    byRep[r].total++;
+    if(!["complete","on_hold"].includes(j.status))byRep[r].active++;
+    if(j.status==="complete")byRep[r].complete++;
+    byRep[r].value+=Number(j.contract_value||0);
+  });
+  // Apply commission rates from profiles
+  repProfiles.forEach(p=>{
+    const key=p.full_name||p.email||"";
+    if(byRep[key])byRep[key].commission_pct=Number(p.commission_pct||0);
+  });
+  payments.forEach(p=>{
+    const j=jobs.find(jj=>jj.id===p.job_id);
+    if(j){const r=j.assigned_rep||"Unassigned";if(byRep[r])byRep[r].collected+=Number(p.amount||0);}
+  });
   const repRows=Object.entries(byRep).sort((a,b)=>b[1].value-a[1].value);
 
-  // Jobs by status
-  const statusBreakdown=STATS.map(s=>({...s,count:jobs.filter(j=>j.status===s.id).length,value:jobs.filter(j=>j.status===s.id).reduce((a,j)=>a+Number(j.contract_value||0),0)})).filter(s=>s.count>0);
+  // Status breakdown
+  const statusBreakdown=STATS.map(s=>({...s,count:myJobs.filter(j=>j.status===s.id).length,value:myJobs.filter(j=>j.status===s.id).reduce((a,j)=>a+Number(j.contract_value||0),0)})).filter(s=>s.count>0);
 
-  // Monthly revenue (last 6 months based on created date)
+  // Monthly revenue (last 6 months)
   const now=new Date();
   const months=Array.from({length:6},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);return{label:d.toLocaleDateString("en-US",{month:"short",year:"2-digit"}),year:d.getFullYear(),month:d.getMonth()};});
-  const monthlyData=months.map(m=>({...m,value:jobs.filter(j=>{const d=new Date(j.created);return d.getFullYear()===m.year&&d.getMonth()===m.month;}).reduce((a,j)=>a+Number(j.contract_value||0),0)}));
-  const maxMonthly=Math.max(...monthlyData.map(m=>m.value),1);
+  const monthlyData=months.map(m=>({
+    ...m,
+    contracted:myJobs.filter(j=>{const d=new Date(j.created);return d.getFullYear()===m.year&&d.getMonth()===m.month;}).reduce((a,j)=>a+Number(j.contract_value||0),0),
+    collected:payments.filter(p=>{const d=new Date(p.created_at);return d.getFullYear()===m.year&&d.getMonth()===m.month;}).reduce((a,p)=>a+Number(p.amount||0),0),
+  }));
+  const maxMonthly=Math.max(...monthlyData.map(m=>Math.max(m.contracted,m.collected)),1);
+
+  // My commission (rep view)
+  const myCommPct=Number(repProfiles.find(p=>p.id===profile?.id)?.commission_pct||0);
+  const myCommDollar=Number(repProfiles.find(p=>p.id===profile?.id)?.commission_dollar||0);
+  const myCollected=payments.filter(p=>{const j=myJobs.find(jj=>jj.id===p.job_id);return!!j;}).reduce((a,p)=>a+Number(p.amount||0),0);
+  const myCommEarned=myCommDollar>0?(myJobs.filter(j=>j.status==="complete").length*myCommDollar):(myCollected*(myCommPct/100));
+  const myCommPending=myCommDollar>0?((myJobs.filter(j=>["signed","demo","framing","rough_mep","drywall","finish","punch"].includes(j.status)).length)*myCommDollar):(totalOutstanding*(myCommPct/100));
 
   const Stat=({label,value,sub,color})=>(
     <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:"18px 20px"}}>
@@ -3253,134 +3331,164 @@ function Reports({jobs}){
     </div>
   );
 
+  const REPORT_TABS=isOwner
+    ?[{id:"overview",lb:"Overview"},{id:"revenue",lb:"Revenue"},{id:"commissions",lb:"Commissions"},{id:"labor",lb:"Labor"}]
+    :[{id:"overview",lb:"Overview"},{id:"commissions",lb:"My Commission"}];
+
   return(
     <div style={{padding:20,maxWidth:900}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44"}}>Reporting</div>
-        <button className="btn btn-ghost" style={{fontSize:12,display:"flex",alignItems:"center",gap:6}} onClick={()=>{
-          const rows=[["Address","Client","Status","Contract","CO Total","Rep","Target"].join(","),...jobs.map(j=>[`"${j.address||""}"`,`"${j.client_name||""}"`,j.status||"",j.contract_value||0,j.co_total||0,`"${j.assigned_rep||""}"`,j.target_completion||""].join(","))];
+        <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44"}}>Reports</div>
+        {!isOwner&&<div style={{fontSize:12,color:"#9CA3AF",marginTop:2}}>Your projects only</div>}</div>
+        <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>{
+          const rows=[["Address","Client","Status","Contract","CO Total","Collected","Rep","Target"].join(","),...myJobs.map(j=>{const col=payments.filter(p=>p.job_id===j.id).reduce((a,p)=>a+Number(p.amount||0),0);return[`"${j.address||""}"`,`"${j.client_name||""}"`,j.status||"",j.contract_value||0,j.co_total||0,col,`"${j.assigned_rep||""}"`,j.target_completion||""].join(",");})];
           const blob=new Blob([rows.join("\n")],{type:"text/csv"});
-          const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`avenstone-projects-${new Date().toISOString().slice(0,10)}.csv`;a.click();
+          const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`avenstone-report-${new Date().toISOString().slice(0,10)}.csv`;a.click();
         }}>⬇ Export CSV</button>
       </div>
 
-      {/* Top stats */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
-        <Stat label="Total Revenue" value={f$(totalRevenue)} sub={totalCOs>0?`incl. ${f$(totalCOs)} in COs`:null} color="#0A1F44"/>
-        <Stat label="Completed" value={f$(completedRevenue)} sub={`${complete.length} jobs`} color="#22c55e"/>
-        <Stat label="Active Work" value={f$(activeValue)} sub={`${inProgress.length} jobs in progress`} color="#f59e0b"/>
-        <Stat label="Pipeline" value={f$(pipelineValue)} sub={`${bids.length} bids out`} color="#6366f1"/>
-        <Stat label="Total Jobs" value={jobs.length} sub={`${leads.length} leads · ${signed.length} signed`}/>
-        <Stat label="Avg Job Value" value={jobs.length?f$(Math.round(totalContract/jobs.length)):f$(0)} sub="contract value"/>
+      {/* Report tabs */}
+      <div style={{display:"flex",borderBottom:"1px solid #E8E4DC",marginBottom:20}}>
+        {REPORT_TABS.map(t=><button key={t.id} onClick={()=>setReportTab(t.id)} style={{padding:"8px 16px",border:"none",background:"transparent",fontWeight:600,fontSize:12,cursor:"pointer",borderBottom:`2px solid ${reportTab===t.id?"#C9A84C":"transparent"}`,color:reportTab===t.id?"#0A1F44":"#9CA3AF"}}>{t.lb}</button>)}
       </div>
 
-      {/* Monthly bar chart */}
-      <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20,marginBottom:20}}>
-        <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:16}}>Jobs Started — Last 6 Months</div>
-        <div style={{display:"flex",alignItems:"flex-end",gap:8,height:120}}>
-          {monthlyData.map(m=>(
-            <div key={m.label} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-              <div style={{fontSize:10,color:"#9CA3AF",fontWeight:600}}>{m.value>0?f$(m.value):""}</div>
-              <div style={{width:"100%",background:m.value>0?"#0A1F44":"#F7F5F0",borderRadius:"3px 3px 0 0",height:`${Math.max((m.value/maxMonthly)*90,m.value>0?6:0)}px`,minHeight:m.value>0?6:0,transition:"height 0.3s"}}/>
-              <div style={{fontSize:10,color:"#9CA3AF"}}>{m.label}</div>
-            </div>
-          ))}
+      {reportTab==="overview"&&<>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
+          <Stat label="Total Contracted" value={f$(totalRevenue)} sub={totalCOs>0?`incl. ${f$(totalCOs)} COs`:null}/>
+          <Stat label="Collected" value={f$(totalCollected)} sub="payments received" color="#22c55e"/>
+          <Stat label="Outstanding" value={f$(Math.max(totalOutstanding,0))} sub="not yet collected" color="#f59e0b"/>
+          <Stat label="Completed" value={f$(completedRevenue)} sub={`${complete.length} jobs`} color="#22c55e"/>
+          <Stat label="Pipeline" value={f$(pipelineValue)} sub={`${bids.length} bids out`} color="#6366f1"/>
+          <Stat label="Avg Job Value" value={myJobs.length?f$(Math.round(totalContract/myJobs.length)):f$(0)} sub="contract value"/>
         </div>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
-        {/* Status breakdown */}
-        <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
-          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>By Status</div>
-          {statusBreakdown.map(s=>(
-            <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:s.c,flexShrink:0}}/>
-              <div style={{flex:1,fontSize:13,color:"#374151"}}>{s.lb}</div>
-              <div style={{fontSize:12,fontWeight:700,color:"#0A1F44",minWidth:20,textAlign:"right"}}>{s.count}</div>
-              {s.value>0&&<div style={{fontSize:11,color:"#9CA3AF",minWidth:70,textAlign:"right"}}>{f$(s.value)}</div>}
-            </div>
-          ))}
-          {!statusBreakdown.length&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No jobs yet</div>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+          <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>By Status</div>
+            {statusBreakdown.map(s=>(
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:s.c,flexShrink:0}}/>
+                <div style={{flex:1,fontSize:13,color:"#374151"}}>{s.lb}</div>
+                <div style={{fontSize:12,fontWeight:700,color:"#0A1F44",minWidth:20,textAlign:"right"}}>{s.count}</div>
+                {s.value>0&&<div style={{fontSize:11,color:"#9CA3AF",minWidth:70,textAlign:"right"}}>{f$(s.value)}</div>}
+              </div>
+            ))}
+            {!statusBreakdown.length&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No jobs yet</div>}
+          </div>
+          {complete.length>0&&<div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Completed Jobs</div>
+            {complete.slice(0,8).map(j=>{const col=payments.filter(p=>p.job_id===j.id).reduce((a,p)=>a+Number(p.amount||0),0);const tot=Number(j.contract_value||0)+Number(j.co_total||0);return(
+              <div key={j.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:"1px solid #F3F0E8"}}>
+                <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:"#0A1F44",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.address}</div>{j.assigned_rep&&<div style={{fontSize:11,color:"#9CA3AF"}}>{j.assigned_rep}</div>}</div>
+                <div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:13,fontWeight:700,color:"#22c55e"}}>{f$(tot)}</div>{col<tot&&<div style={{fontSize:10,color:"#f59e0b"}}>{f$(tot-col)} outstanding</div>}</div>
+              </div>
+            );})}
+          </div>}
         </div>
+      </>}
 
-        {/* By rep */}
+      {reportTab==="revenue"&&isOwner&&<>
+        <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20,marginBottom:20}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:16}}>Monthly — Contracted vs Collected</div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:8,height:140}}>
+            {monthlyData.map(m=>(
+              <div key={m.label} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                <div style={{fontSize:9,color:"#9CA3AF",fontWeight:600,textAlign:"center"}}>{m.contracted>0?f$(m.contracted):""}</div>
+                <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:100}}>
+                  <div style={{flex:1,background:"#0A1F44",borderRadius:"2px 2px 0 0",height:`${Math.max((m.contracted/maxMonthly)*100,m.contracted>0?4:0)}px`,transition:"height 0.3s"}}/>
+                  <div style={{flex:1,background:"#22c55e",borderRadius:"2px 2px 0 0",height:`${Math.max((m.collected/maxMonthly)*100,m.collected>0?4:0)}px`,transition:"height 0.3s"}}/>
+                </div>
+                <div style={{fontSize:9,color:"#9CA3AF"}}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:16,marginTop:12,fontSize:11,color:"#9CA3AF"}}>
+            <span><span style={{display:"inline-block",width:10,height:10,background:"#0A1F44",borderRadius:2,marginRight:4}}/>Contracted</span>
+            <span><span style={{display:"inline-block",width:10,height:10,background:"#22c55e",borderRadius:2,marginRight:4}}/>Collected</span>
+          </div>
+        </div>
         <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
-          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>By Rep</div>
+          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Revenue by Rep</div>
           {repRows.map(([rep,d])=>(
-            <div key={rep} style={{marginBottom:12}}>
+            <div key={rep} style={{marginBottom:14,paddingBottom:14,borderBottom:"1px solid #F3F0E8"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                 <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{rep}</div>
-                <div style={{fontSize:12,color:"#9CA3AF"}}>{d.total} jobs · {f$(d.value)}</div>
+                <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#0A1F44"}}>{f$(d.value)}</div><div style={{fontSize:11,color:"#22c55e"}}>{f$(d.collected)} collected</div></div>
               </div>
-              <div style={{display:"flex",gap:4,fontSize:11,color:"#9CA3AF"}}>
-                <span style={{color:"#6366f1"}}>{d.active} active</span>
-                <span>·</span>
-                <span style={{color:"#22c55e"}}>{d.complete} complete</span>
+              <div style={{display:"flex",gap:12,fontSize:11,color:"#9CA3AF"}}>
+                <span>{d.total} jobs</span><span style={{color:"#6366f1"}}>{d.active} active</span><span style={{color:"#22c55e"}}>{d.complete} complete</span>
               </div>
             </div>
           ))}
-          {!repRows.length&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No data yet</div>}
         </div>
-      </div>
+      </>}
 
-      {/* Recent completions */}
-      {complete.length>0&&<div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20,marginBottom:20}}>
-        <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Completed Jobs</div>
-        {complete.slice(0,10).map(j=>(
-          <div key={j.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:"1px solid #F3F0E8"}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{j.address}</div>
-              {j.client_name&&<div style={{fontSize:11,color:"#9CA3AF"}}>{j.client_name}</div>}
-            </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontSize:13,fontWeight:700,color:"#22c55e"}}>{f$(Number(j.contract_value||0)+Number(j.co_total||0))}</div>
-              {j.assigned_rep&&<div style={{fontSize:11,color:"#9CA3AF"}}>{j.assigned_rep}</div>}
-            </div>
+      {reportTab==="commissions"&&<>
+        {isOwner&&<div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20,marginBottom:20}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Commission Rates — set per rep in Team settings</div>
+          {repRows.map(([rep,d])=>{
+            const commPct=d.commission_pct||0;
+            const earned=d.collected*(commPct/100);
+            const pending=(d.value-d.collected)*(commPct/100);
+            return(
+              <div key={rep} style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,paddingBottom:12,borderBottom:"1px solid #F3F0E8"}}>
+                <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{rep}</div><div style={{fontSize:11,color:"#9CA3AF"}}>{commPct}% commission</div></div>
+                <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#22c55e"}}>{f$(earned)} earned</div><div style={{fontSize:11,color:"#f59e0b"}}>{f$(pending)} pending</div></div>
+              </div>
+            );
+          })}
+          {!repRows.length&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No reps yet</div>}
+        </div>}
+        {!isOwner&&<>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+            <Stat label="Commission Earned" value={f$(myCommEarned)} sub={myCommPct>0?`${myCommPct}% of collected`:(myCommDollar>0?`${f$(myCommDollar)}/sale`:"")} color="#22c55e"/>
+            <Stat label="Commission Pending" value={f$(myCommPending)} sub="on active jobs" color="#f59e0b"/>
           </div>
-        ))}
-      </div>}
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
-        {/* Sub leaderboard */}
-        <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
-          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Sub Leaderboard</div>
-          {subLeaderboard.length===0&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No ratings yet</div>}
-          {subLeaderboard.map((s,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <div style={{width:24,height:24,background:"#0A1F44",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#C9A84C",flexShrink:0}}>{i+1}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{s.name}</div>
-                {s.trade&&<div style={{fontSize:11,color:"#9CA3AF"}}>{s.trade}</div>}
+          <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>My Jobs</div>
+            {myJobs.map(j=>{const col=payments.filter(p=>p.job_id===j.id).reduce((a,p)=>a+Number(p.amount||0),0);const comm=myCommDollar>0?(j.status==="complete"?myCommDollar:0):(col*(myCommPct/100));return(
+              <div key={j.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:"1px solid #F3F0E8"}}>
+                <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:"#0A1F44",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.address}</div><div style={{fontSize:11,color:"#9CA3AF"}}>{j.status}</div></div>
+                <div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:12,color:"#374151"}}>{f$(Number(j.contract_value||0))}</div>{comm>0&&<div style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{f$(comm)} commission</div>}</div>
               </div>
-              <div style={{textAlign:"right"}}>
-                <StarRating value={Math.round(s.avg)} readonly size={12}/>
-                <div style={{fontSize:11,color:"#9CA3AF"}}>{s.avg.toFixed(1)} · {s.cnt} review{s.cnt!==1?"s":""}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Daily log hours */}
-        <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Labor Hours by Job</div>
-            {totalHours>0&&<div style={{fontSize:12,fontWeight:700,color:"#0A1F44"}}>{totalHours.toLocaleString()} total hrs</div>}
+            );})}
           </div>
-          {logRows.length===0&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No daily logs yet</div>}
-          {logRows.map((r,i)=>(
-            <div key={i} style={{marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600,color:"#374151",marginBottom:3}}>
-                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:8}}>{r.address}</span>
-                <span style={{flexShrink:0,color:"#0A1F44"}}>{r.hours} hrs</span>
-              </div>
-              <div style={{background:"#F7F5F0",height:6,borderRadius:3}}>
-                <div style={{background:"#C9A84C",height:6,borderRadius:3,width:`${Math.min((r.hours/Math.max(...logRows.map(x=>x.hours),1))*100,100)}%`,transition:"width 0.4s"}}/>
-              </div>
-              <div style={{fontSize:10,color:"#9CA3AF",marginTop:2}}>{r.logs} log{r.logs!==1?"s":""} · avg {r.logs?Math.round(r.crew/r.logs):0} crew</div>
+        </>}
+      </>}
+
+      {reportTab==="labor"&&isOwner&&<>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Labor Hours by Job</div>
+              {totalHours>0&&<div style={{fontSize:12,fontWeight:700,color:"#0A1F44"}}>{totalHours.toLocaleString()} total</div>}
             </div>
-          ))}
+            {logRows.length===0&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No daily logs yet</div>}
+            {logRows.map((r,i)=>(
+              <div key={i} style={{marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600,color:"#374151",marginBottom:3}}>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:8}}>{r.address}</span>
+                  <span style={{flexShrink:0,color:"#0A1F44"}}>{r.hours} hrs</span>
+                </div>
+                <div style={{background:"#F7F5F0",height:6,borderRadius:3}}>
+                  <div style={{background:"#C9A84C",height:6,borderRadius:3,width:`${Math.min((r.hours/Math.max(...logRows.map(x=>x.hours),1))*100,100)}%`,transition:"width 0.4s"}}/>
+                </div>
+                <div style={{fontSize:10,color:"#9CA3AF",marginTop:2}}>{r.logs} log{r.logs!==1?"s":""} · avg {r.logs?Math.round(r.crew/r.logs):0} crew</div>
+              </div>
+            ))}
+          </div>
+          <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Sub Leaderboard</div>
+            {subLeaderboard.length===0&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No ratings yet</div>}
+            {subLeaderboard.map((s,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                <div style={{width:24,height:24,background:"#0A1F44",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#C9A84C",flexShrink:0}}>{i+1}</div>
+                <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{s.name}</div>{s.trade&&<div style={{fontSize:11,color:"#9CA3AF"}}>{s.trade}</div>}</div>
+                <div style={{textAlign:"right"}}><StarRating value={Math.round(s.avg)} readonly size={12}/><div style={{fontSize:11,color:"#9CA3AF"}}>{s.avg.toFixed(1)} · {s.cnt} review{s.cnt!==1?"s":""}</div></div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </>}
     </div>
   );
 }
@@ -3611,7 +3719,7 @@ function App(){
           {pg==="takeoff"&&isStaff&&<TkOf onBack={()=>setPg("dashboard")}/>}
           {pg==="subs"&&isStaff&&<SubDir profile={profile}/>}
           {pg==="team"&&profile?.role==="owner"&&<UserMgmt/>}
-          {pg==="reports"&&isOwnerOrRep&&<Reports jobs={jobs}/>}
+          {pg==="reports"&&isOwnerOrRep&&<Reports jobs={jobs} profile={profile}/>}
           {pg==="pipeline"&&isOwnerOrRep&&<div style={{padding:"16px 20px"}}>
             <div style={{marginBottom:16}}><div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44"}}>Lead Pipeline</div><div style={{fontSize:13,color:"#9CA3AF",marginTop:2}}>Drag jobs between columns to update status</div></div>
             <Pipeline jobs={jobs} onStatusChange={(jid,status)=>{const u=jobs.map(j=>j.id===jid?{...j,status}:j);setJobs(u);ls("av_j",u);sbUpd(jid,{status});}} onOpenJob={j=>{setPg("jobs");setPendingJobId(j.id);}}/>
