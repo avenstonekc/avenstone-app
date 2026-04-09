@@ -1464,14 +1464,101 @@ function ClientScheduleView({jobId}){
   );
 }
 
-function SubDir(){
+const sbLoadSubRatings=async subId=>{
+  const{data}=await window.SB.from("sub_ratings").select("*,rater:rater_id(full_name,role)").eq("sub_id",subId).order("created_at",{ascending:false});
+  return data||[];
+};
+const sbSubmitRating=async(subId,stars,comment,jobId)=>{
+  const{data,error}=await window.SB.from("sub_ratings").upsert({tenant_id:window.AV_TENANT,sub_id:subId,rater_id:window.AV_USER_ID,job_id:jobId||null,stars,comment:comment||null},{onConflict:"tenant_id,sub_id,rater_id,job_id"}).select().single();
+  return{data,error};
+};
+
+function StarRating({value=0,onChange,readonly=false,size=18}){
+  const[hover,setHover]=useState(0);
+  return(
+    <div style={{display:"flex",gap:1}}>
+      {[1,2,3,4,5].map(s=>(
+        <span key={s} style={{fontSize:size,cursor:readonly?"default":"pointer",color:(hover||value)>=s?"#C9A84C":"#D1D5DB",lineHeight:1,userSelect:"none"}}
+          onClick={()=>!readonly&&onChange&&onChange(s)}
+          onMouseEnter={()=>!readonly&&setHover(s)}
+          onMouseLeave={()=>!readonly&&setHover(0)}>★</span>
+      ))}
+    </div>
+  );
+}
+
+function SubRateModal({sub,onClose,profile}){
+  const[ratings,setRatings]=useState([]);
+  const[stars,setStars]=useState(0);
+  const[comment,setComment]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[done,setDone]=useState(false);
+  const canRate=profile&&["client","sales_rep","owner"].includes(profile.role);
+  useEffect(()=>{sbLoadSubRatings(sub.id).then(setRatings);},[sub.id]);
+  const avg=ratings.length?ratings.reduce((a,r)=>a+r.stars,0)/ratings.length:0;
+  const submit=async()=>{
+    if(!stars)return;
+    setSaving(true);
+    const{error}=await sbSubmitRating(sub.id,stars,comment,null);
+    if(!error){setDone(true);sbLoadSubRatings(sub.id).then(setRatings);}
+    setSaving(false);
+  };
+  return(
+    <div className="overlay" onClick={onClose}><div className="modal" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+        <div>
+          <div className="modal-title" style={{marginBottom:4}}>{sub.full_name||sub.email}</div>
+          {sub.trade&&<div style={{fontSize:12,color:"#C9A84C",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{sub.trade}</div>}
+        </div>
+        {ratings.length>0&&<div style={{textAlign:"right"}}>
+          <StarRating value={Math.round(avg)} readonly size={16}/>
+          <div style={{fontSize:11,color:"#9CA3AF",marginTop:2}}>{avg.toFixed(1)} avg · {ratings.length} review{ratings.length!==1?"s":""}</div>
+        </div>}
+      </div>
+      {canRate&&!done&&<div style={{background:"#F7F5F0",border:"1px solid #E8E4DC",borderRadius:6,padding:16,marginBottom:16}}>
+        <div style={{fontSize:13,fontWeight:600,color:"#0A1F44",marginBottom:10}}>Leave a Rating</div>
+        <div style={{marginBottom:12}}><StarRating value={stars} onChange={setStars} size={28}/></div>
+        <textarea className="finp" rows={2} placeholder="Optional comment..." value={comment} onChange={e=>setComment(e.target.value)} style={{resize:"vertical"}}/>
+        <button className="btn btn-navy" style={{marginTop:10,width:"100%"}} onClick={submit} disabled={saving||!stars}>{saving?"Saving...":"Submit Rating"}</button>
+      </div>}
+      {done&&<div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",color:"#16a34a",padding:"10px 14px",borderRadius:4,fontSize:13,marginBottom:16,fontWeight:600}}>Rating submitted — thank you!</div>}
+      {ratings.length>0&&<div>
+        <div style={{fontSize:12,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Reviews</div>
+        {ratings.map(r=>(
+          <div key={r.id} style={{borderBottom:"1px solid #F3F4F6",paddingBottom:10,marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+              <StarRating value={r.stars} readonly size={14}/>
+              <span style={{fontSize:11,color:"#9CA3AF"}}>{r.rater?.full_name||"Anonymous"} · {new Date(r.created_at).toLocaleDateString()}</span>
+            </div>
+            {r.comment&&<div style={{fontSize:13,color:"#6B7280"}}>{r.comment}</div>}
+          </div>
+        ))}
+      </div>}
+      {!ratings.length&&!canRate&&<div style={{textAlign:"center",padding:"20px 0",color:"#9CA3AF",fontSize:13}}>No ratings yet</div>}
+      <button className="btn btn-ghost" style={{width:"100%",marginTop:4}} onClick={onClose}>Close</button>
+    </div></div>
+  );
+}
+
+function SubDir({profile}){
   const[subs,setSubs]=useState([]);
   const[loading,setLoading]=useState(true);
   const[showAdd,setShowAdd]=useState(false);
   const[form,setForm]=useState({name:"",email:"",trade:"",phone:""});
   const[saving,setSaving]=useState(false);
   const[err,setErr]=useState("");
-  useEffect(()=>{sbLoadSubDirectory().then(d=>{setSubs(d);setLoading(false);});},[]);
+  const[ratingSub,setRatingSub]=useState(null);
+  const[avgMap,setAvgMap]=useState({});
+  useEffect(()=>{sbLoadSubDirectory().then(async d=>{
+    setSubs(d);setLoading(false);
+    // load all ratings for avg display
+    const{data}=await window.SB.from("sub_ratings").select("sub_id,stars").eq("tenant_id",window.AV_TENANT);
+    if(data){
+      const map={};
+      data.forEach(r=>{if(!map[r.sub_id])map[r.sub_id]={sum:0,cnt:0};map[r.sub_id].sum+=r.stars;map[r.sub_id].cnt+=1;});
+      setAvgMap(map);
+    }
+  });},[]);
   const addSub=async()=>{
     if(!form.name.trim()||!form.email.trim()){setErr("Name and email are required.");return;}
     setSaving(true);setErr("");
@@ -1481,28 +1568,41 @@ function SubDir(){
     setForm({name:"",email:"",trade:"",phone:""});
     setShowAdd(false);setSaving(false);
   };
+  const isOwnerOrMgr=profile&&["owner","sales_rep","project_manager"].includes(profile.role);
+  const canRate=profile&&["client","sales_rep","owner"].includes(profile.role);
   return(
     <div style={{padding:20,maxWidth:700}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44"}}>Sub Directory</div><div style={{fontSize:13,color:"#9CA3AF",marginTop:2}}>Contractors and subcontractors</div></div>
-        <button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6}} onClick={()=>setShowAdd(true)}><span style={{width:14,height:14}}>{Ic.plus}</span>Add Sub</button>
+        {isOwnerOrMgr&&<button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6}} onClick={()=>setShowAdd(true)}><span style={{width:14,height:14}}>{Ic.plus}</span>Add Sub</button>}
       </div>
       {loading&&<div style={{textAlign:"center",padding:40,color:"#9CA3AF"}}>Loading...</div>}
       {!loading&&!subs.length&&<div className="empty">{Ic.home}<div className="empty-t">No subs yet</div><div>Add your first subcontractor above</div></div>}
-      {subs.map(s=>(
-        <div key={s.id} style={{background:"#fff",border:"1px solid #E8E4DC",padding:"14px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:14}}>
-          <div style={{width:40,height:40,background:"#0A1F4418",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#0A1F44",flexShrink:0}}>{(s.full_name||s.email||"?")[0].toUpperCase()}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:14,fontWeight:600,color:"#0A1F44"}}>{s.full_name||s.email}</div>
-            <div style={{fontSize:12,color:"#9CA3AF",marginTop:2,display:"flex",gap:12,flexWrap:"wrap"}}>
-              {s.trade&&<span>{s.trade}</span>}
-              {s.email&&<span>{s.email}</span>}
-              {s.phone&&<span>{s.phone}</span>}
+      {subs.map(s=>{
+        const rt=avgMap[s.id];
+        const avg=rt?rt.sum/rt.cnt:0;
+        return(
+          <div key={s.id} style={{background:"#fff",border:"1px solid #E8E4DC",padding:"14px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:14}}>
+            <div style={{width:40,height:40,background:"#0A1F4418",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#0A1F44",flexShrink:0}}>{(s.full_name||s.email||"?")[0].toUpperCase()}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:600,color:"#0A1F44"}}>{s.full_name||s.email}</div>
+              <div style={{fontSize:12,color:"#9CA3AF",marginTop:2,display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+                {s.trade&&<span>{s.trade}</span>}
+                {s.email&&<span>{s.email}</span>}
+                {s.phone&&<span>{s.phone}</span>}
+              </div>
+              {rt&&<div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                <StarRating value={Math.round(avg)} readonly size={13}/>
+                <span style={{fontSize:11,color:"#9CA3AF"}}>{avg.toFixed(1)} ({rt.cnt})</span>
+              </div>}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+              <span style={{fontSize:10,background:s.is_active?"#F0FDF4":"#F7F5F0",color:s.is_active?"#16a34a":"#9CA3AF",padding:"3px 10px",border:`1px solid ${s.is_active?"#BBF7D0":"#E8E4DC"}`,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{s.is_active?"Active":"Inactive"}</span>
+              <button onClick={()=>setRatingSub(s)} style={{background:"transparent",border:"1px solid #E8E4DC",borderRadius:4,padding:"4px 10px",fontSize:11,cursor:"pointer",color:canRate?"#C9A84C":"#9CA3AF",fontWeight:600}}>{canRate?"Rate / Reviews":"Reviews"}</button>
             </div>
           </div>
-          <span style={{fontSize:10,background:s.is_active?"#F0FDF4":"#F7F5F0",color:s.is_active?"#16a34a":"#9CA3AF",padding:"3px 10px",border:`1px solid ${s.is_active?"#BBF7D0":"#E8E4DC"}`,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{s.is_active?"Active":"Inactive"}</span>
-        </div>
-      ))}
+        );
+      })}
       {showAdd&&<div className="overlay" onClick={()=>setShowAdd(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-title">Add Subcontractor</div>
         {[["name","Full Name","John Smith",true],["email","Email","john@smithelectric.com",true],["trade","Trade / Specialty","Electrical"],["phone","Phone","(816) 555-1234"]].map(([k,lb,ph,req])=>(
@@ -1512,6 +1612,7 @@ function SubDir(){
         <div style={{fontSize:12,color:"#9CA3AF",marginBottom:12,lineHeight:1.6}}>An invite link will be emailed to this sub so they can log in and view their assigned jobs, upload photos, and send messages.</div>
         <div style={{display:"flex",gap:10}}><button className="btn btn-ghost" style={{flex:1}} onClick={()=>{setShowAdd(false);setErr("");}}>Cancel</button><button className={`btn ${form.name&&form.email?"btn-navy":"btn-ghost"}`} style={{flex:1}} onClick={addSub} disabled={saving||!form.name||!form.email}>{saving?"Sending invite...":"Add & Send Invite"}</button></div>
       </div></div>}
+      {ratingSub&&<SubRateModal sub={ratingSub} onClose={()=>setRatingSub(null)} profile={profile}/>}
     </div>
   );
 }
@@ -2155,7 +2256,7 @@ function Dash({nav,jobs,profile}){
       <div style={{padding:mob?"16px":"32px"}}>
         <div style={{marginBottom:28}}><div style={{fontFamily:"'DM Serif Display',serif",fontSize:28,color:"#0A1F44",marginBottom:4}}>Good {greet}, {profile?.full_name?.split(" ")[0]||"there"}.</div><div style={{fontSize:13,color:"#9CA3AF"}}>{today}</div></div>
         <div className="stat-grid">
-          {[["Active Projects",active,""],["Pipeline",f$(pipeline),"gold"],["Signed This Month",signed,""],["Bids Outstanding",bids,""]].map(([lb,v,cls])=><div key={lb} className="stat"><div className="stat-lbl">{lb}</div><div className={`stat-val${cls?" "+cls:""}`}>{v}</div></div>)}
+          {[["Active Projects",active,"","jobs"],["Pipeline",f$(pipeline),"gold","pipeline"],["Signed This Month",signed,"","jobs"],["Bids Outstanding",bids,"","pipeline"]].map(([lb,v,cls,pg])=><div key={lb} className="stat" onClick={()=>nav(pg)} style={{cursor:"pointer",transition:"box-shadow 0.15s,transform 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 16px rgba(10,31,68,0.1)";e.currentTarget.style.transform="translateY(-1px)";}} onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.transform="none";}}><div className="stat-lbl">{lb}</div><div className={`stat-val${cls?" "+cls:""}`}>{v}</div></div>)}
         </div>
         <div className="sec-hd"><h2>Quick Start</h2></div>
         <div className="act-grid" style={{display:"grid",gap:16,marginBottom:28}}>
@@ -2274,7 +2375,7 @@ function App(){
   return(
     <><div className="app">
       <div className="sidebar">
-        <div className="sb-logo"><img src={L} alt="Avenstone"/></div>
+        <div className="sb-logo" onClick={()=>setPg("dashboard")} style={{cursor:"pointer"}}><img src={L} alt="Avenstone"/></div>
         <nav className="sb-nav">
           {NAV.reduce((acc,item,i)=>{if(i===0||item.sec!==NAV[i-1].sec)acc.push({type:"s",lb:item.sec,k:`s${i}`});acc.push(item);return acc;},[]).map(item=>
             item.type==="s"
@@ -2309,7 +2410,7 @@ function App(){
       </div>
       <div className="main">
         <div className="mob-hdr">
-          <img src={L} alt="Avenstone" style={{width:44,height:44,objectFit:"contain"}}/>
+          <img src={L} alt="Avenstone" style={{width:44,height:44,objectFit:"contain",cursor:"pointer"}} onClick={()=>setPg("dashboard")}/>
           <div style={{flex:1}}><div style={{fontSize:8,color:"#C9A84C",letterSpacing:4,textTransform:"uppercase"}}>Avenstone Group</div><div style={{fontSize:13,fontWeight:600,color:"#fff",letterSpacing:0.5}}>Field Estimator</div></div>
           <button onClick={()=>setShowNotif(true)} style={{position:"relative",background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.6)",padding:4,display:"flex",alignItems:"center"}}>
             <span style={{width:20,height:20,display:"flex"}}>{Ic.bell}</span>
@@ -2335,7 +2436,7 @@ function App(){
           {pg==="intake"&&isOwnerOrRep&&<FormScr title="Project Intake" secs={IQ} rules={IR} ftype="intake" onBack={()=>setPg("dashboard")} onSave={saveJob}/>}
           {pg==="bid"&&isOwnerOrRep&&<FormScr title="Bid and Proposal" secs={BQ} rules={BR} ftype="bid" onBack={()=>setPg("dashboard")}/>}
           {pg==="takeoff"&&isStaff&&<TkOf onBack={()=>setPg("dashboard")}/>}
-          {pg==="subs"&&isStaff&&<SubDir/>}
+          {pg==="subs"&&isStaff&&<SubDir profile={profile}/>}
           {pg==="team"&&profile?.role==="owner"&&<UserMgmt/>}
           {pg==="reports"&&isOwnerOrRep&&<Reports jobs={jobs}/>}
           {pg==="pipeline"&&isOwnerOrRep&&<div style={{padding:"16px 20px"}}>
