@@ -1278,9 +1278,9 @@ function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile}){
   const[showNew,setShowNew]=useState(false);
   const[newA,setNewA]=useState("");
   const[fil,setFil]=useState("all");
+  const[search,setSearch]=useState("");
   const[loading,setLoading]=useState(false);
   useEffect(()=>{setLoading(true);sbLoad().then(d=>{if(d){setJobs(d);ls("av_j",d);}setLoading(false);});},[]);
-  // Auto-select a job when navigating here from a notification click
   useEffect(()=>{
     if(pendingJobId&&!loading){setSel(pendingJobId);clearPendingJobId();}
   },[pendingJobId,loading]);
@@ -1289,14 +1289,20 @@ function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile}){
   const del=id=>{if(!window.confirm("Delete this job?"))return;const u=jobs.filter(j=>j.id!==id);setJobs(u);ls("av_j",u);sbDel(id);setSel(null);};
   const selJ=jobs.find(j=>j.id===sel);
   if(selJ)return<JobDet job={selJ} upd={ch=>upd(selJ.id,ch)} del={()=>del(selJ.id)} back={()=>setSel(null)} profile={profile}/>;
-  const list=fil==="all"?jobs:jobs.filter(j=>j.status===fil);
+  const q=search.toLowerCase().trim();
+  const filtered=(fil==="all"?jobs:jobs.filter(j=>j.status===fil)).filter(j=>!q||(j.address||"").toLowerCase().includes(q)||(j.client_name||"").toLowerCase().includes(q)||(j.assigned_rep||"").toLowerCase().includes(q));
   const mob=isMob();
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#F7F5F0"}}>
       <div style={{background:"#fff",borderBottom:"1px solid #E8E4DC",padding:"16px 24px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
         <button style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",width:24,height:24,display:"flex",alignItems:"center"}} onClick={onBack}>{Ic.back}</button>
         <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44",flex:1}}>Projects</div>
-        <span style={{fontSize:12,color:"#9CA3AF",marginRight:8}}>{jobs.length} total</span>
+        <div style={{position:"relative",flex:"0 1 220px"}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search projects..." style={{width:"100%",border:"1px solid #E8E4DC",borderRadius:4,padding:"6px 10px 6px 28px",fontSize:12,color:"#374151",outline:"none",boxSizing:"border-box",background:"#F7F5F0"}}/>
+          <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#9CA3AF",fontSize:13,pointerEvents:"none"}}>⌕</span>
+          {search&&<button onClick={()=>setSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>}
+        </div>
+        <span style={{fontSize:12,color:"#9CA3AF",marginRight:8}}>{filtered.length}{search||fil!=="all"?` / ${jobs.length}`:""} jobs</span>
         <button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6}} onClick={()=>setShowNew(true)}><span style={{width:14,height:14}}>{Ic.plus}</span>New</button>
       </div>
       <div style={{background:"#fff",borderBottom:"1px solid #E8E4DC",padding:"10px 24px",flexShrink:0}}>
@@ -1307,9 +1313,9 @@ function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile}){
       </div>
       <div style={{flex:1,overflowY:"auto",padding:mob?"12px":"24px"}}>
         {loading&&<div style={{textAlign:"center",padding:"48px",color:"#9CA3AF",fontSize:14}}>Loading projects...</div>}
-        {!loading&&!list.length&&<div className="empty">{Ic.home}<div className="empty-t">No projects yet</div><div>Tap New to add your first project</div></div>}
-        {!loading&&list.length>0&&!mob&&<div className="card"><table className="tbl"><thead><tr><th>Property</th><th>Status</th><th>Contract</th><th>Rep</th><th>Target</th></tr></thead><tbody>{list.map(j=>{const rev=Number(j.contract_value||0)+Number(j.co_total||0);return<tr key={j.id} onClick={()=>setSel(j.id)}><td><div className="cell-a">{j.address}</div>{j.client_name&&<div className="cell-b">{j.client_name}{j.client_phone?" · "+j.client_phone:""}</div>}</td><td><span className="badge" style={{background:sc(j.status)+"15",color:sc(j.status)}}><span className="bdot" style={{background:sc(j.status)}}/>{sl(j.status)}</span></td><td>{rev>0?<span style={{fontWeight:700,color:"#0A1F44"}}>{f$(rev)}</span>:<span style={{color:"#9CA3AF",fontSize:12}}>—</span>}</td><td>{j.assigned_rep?<span className="tag">{j.assigned_rep}</span>:<span style={{color:"#9CA3AF",fontSize:12}}>—</span>}</td><td style={{color:"#9CA3AF",fontSize:12}}>{j.target_completion||"—"}</td></tr>;})}</tbody></table></div>}
-        {!loading&&list.length>0&&mob&&list.map(j=>{const rev=Number(j.contract_value||0)+Number(j.co_total||0);return<div key={j.id} className="jcard" style={{borderLeftColor:sc(j.status)}} onClick={()=>setSel(j.id)}><div style={{fontWeight:600,fontSize:15,color:"#0A1F44",marginBottom:3}}>{j.address}</div>{j.client_name&&<div style={{fontSize:12,color:"#C9A84C",fontWeight:500,marginBottom:10}}>{j.client_name}</div>}<div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}><span className="badge" style={{background:sc(j.status)+"15",color:sc(j.status)}}><span className="bdot" style={{background:sc(j.status)}}/>{sl(j.status)}</span>{rev>0&&<span style={{fontWeight:700,fontSize:14,color:"#0A1F44"}}>{f$(rev)}</span>}{j.photos?.length>0&&<span style={{fontSize:11,color:"#9CA3AF"}}>{j.photos.length} photos</span>}{j.assigned_rep&&<span className="tag">{j.assigned_rep}</span>}</div></div>;})}
+        {!loading&&!filtered.length&&<div className="empty">{Ic.home}<div className="empty-t">{search?"No matches":"No projects yet"}</div><div>{search?`No projects match "${search}"`:"Tap New to add your first project"}</div></div>}
+        {!loading&&filtered.length>0&&!mob&&<div className="card"><table className="tbl"><thead><tr><th>Property</th><th>Status</th><th>Contract</th><th>Rep</th><th>Target</th></tr></thead><tbody>{filtered.map(j=>{const rev=Number(j.contract_value||0)+Number(j.co_total||0);return<tr key={j.id} onClick={()=>setSel(j.id)}><td><div className="cell-a">{j.address}</div>{j.client_name&&<div className="cell-b">{j.client_name}{j.client_phone?" · "+j.client_phone:""}</div>}</td><td><span className="badge" style={{background:sc(j.status)+"15",color:sc(j.status)}}><span className="bdot" style={{background:sc(j.status)}}/>{sl(j.status)}</span></td><td>{rev>0?<span style={{fontWeight:700,color:"#0A1F44"}}>{f$(rev)}</span>:<span style={{color:"#9CA3AF",fontSize:12}}>—</span>}</td><td>{j.assigned_rep?<span className="tag">{j.assigned_rep}</span>:<span style={{color:"#9CA3AF",fontSize:12}}>—</span>}</td><td style={{color:"#9CA3AF",fontSize:12}}>{j.target_completion||"—"}</td></tr>;})}</tbody></table></div>}
+        {!loading&&filtered.length>0&&mob&&filtered.map(j=>{const rev=Number(j.contract_value||0)+Number(j.co_total||0);return<div key={j.id} className="jcard" style={{borderLeftColor:sc(j.status)}} onClick={()=>setSel(j.id)}><div style={{fontWeight:600,fontSize:15,color:"#0A1F44",marginBottom:3}}>{j.address}</div>{j.client_name&&<div style={{fontSize:12,color:"#C9A84C",fontWeight:500,marginBottom:10}}>{j.client_name}</div>}<div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}><span className="badge" style={{background:sc(j.status)+"15",color:sc(j.status)}}><span className="bdot" style={{background:sc(j.status)}}/>{sl(j.status)}</span>{rev>0&&<span style={{fontWeight:700,fontSize:14,color:"#0A1F44"}}>{f$(rev)}</span>}{j.photos?.length>0&&<span style={{fontSize:11,color:"#9CA3AF"}}>{j.photos.length} photos</span>}{j.assigned_rep&&<span className="tag">{j.assigned_rep}</span>}</div></div>;})}
       </div>
       {showNew&&<div className="overlay" onClick={()=>setShowNew(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">New Project</div><div className="fg"><label className="flbl">Property Address</label><input className="finp" value={newA} onChange={e=>setNewA(e.target.value)} placeholder="123 Main St, Kansas City MO" onKeyDown={e=>e.key==="Enter"&&add()} autoFocus/></div><div style={{display:"flex",gap:10,marginTop:8}}><button className="btn btn-ghost" style={{flex:1}} onClick={()=>setShowNew(false)}>Cancel</button><button className={`btn ${newA.trim()?"btn-navy":"btn-ghost"}`} style={{flex:1}} onClick={add}>Add Project</button></div></div></div>}
     </div>
@@ -1402,7 +1408,10 @@ function ClientPortal({profile,signOut}){
     setSendingMsg(false);
   };
 
-  const CLIENT_TABS=[{id:"schedule",lb:"Schedule",ic:"sched"},{id:"photos",lb:"Photos",ic:"cam"},{id:"msgs",lb:"Messages",ic:"note"}];
+  const CLIENT_TABS=[{id:"schedule",lb:"Schedule",ic:"sched"},{id:"photos",lb:"Photos",ic:"cam"},{id:"msgs",lb:"Messages",ic:"note"},{id:"request",lb:"Request Change",ic:"warn"}];
+  const[crForm,setCrForm]=useState({description:"",reason:""});
+  const[crSaving,setCrSaving]=useState(false);
+  const[crDone,setCrDone]=useState(false);
 
   if(loading)return(
     <div style={{minHeight:"100dvh",background:"#0A1F44",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
@@ -1451,10 +1460,14 @@ function ClientPortal({profile,signOut}){
         <div className="tabbar">{CLIENT_TABS.map(t=><button key={t.id} className={`tab${tab===t.id?" on":""}`} onClick={()=>setTab(t.id)}><span style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic[t.ic]||Ic.info}</span>{t.lb}</button>)}</div>
         <div style={{flex:1,overflowY:"auto",padding:16}}>
           {tab==="schedule"&&<ClientScheduleView jobId={job.id}/>}
-          {tab==="photos"&&<div>
-            {!(job.photos||[]).length&&<div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Your contractor will upload progress photos here</div></div>}
-            <div className="pgrid">{(job.photos||[]).map(p=><div key={p.id} className="pcell"><div style={{position:"absolute",inset:0}}><img src={p.url||p.data} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div></div>)}</div>
-          </div>}
+          {tab==="photos"&&(()=>{
+            const[clbIdx,setClbIdx]=useState(null);
+            return<div>
+              {!(job.photos||[]).length&&<div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Your contractor will upload progress photos here</div></div>}
+              <div className="pgrid">{(job.photos||[]).map((p,i)=><div key={p.id} className="pcell" onClick={()=>setClbIdx(i)} style={{cursor:"pointer"}}><div style={{position:"absolute",inset:0}}><img src={p.url||p.data} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div></div>)}</div>
+              {clbIdx!==null&&<PhotoLightbox photos={job.photos||[]} startIdx={clbIdx} onClose={()=>setClbIdx(null)}/>}
+            </div>;
+          })()}
           {tab==="msgs"&&<div style={{display:"flex",flexDirection:"column",minHeight:400}}>
             {!msgsLoaded&&<div style={{textAlign:"center",padding:32,color:"#9CA3AF",fontSize:13}}>Loading...</div>}
             {msgsLoaded&&<>
@@ -1481,6 +1494,26 @@ function ClientPortal({profile,signOut}){
                   <button className={`btn ${msgTxt.trim()?"btn-navy":"btn-ghost"}`} style={{padding:"10px 16px",flexShrink:0}} onClick={sendMsg} disabled={sendingMsg||!msgTxt.trim()}>{sendingMsg?"...":"Send"}</button>
                 </div>
               </div>
+            </>}
+          </div>}
+          {tab==="request"&&<div style={{maxWidth:500}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Request a Change</div>
+            <div style={{fontSize:13,color:"#6B7280",marginBottom:16,lineHeight:1.6}}>Submit a change request and your contractor will review it. Approved requests become official change orders.</div>
+            {crDone?<div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",color:"#16a34a",padding:"14px 16px",borderRadius:4,fontSize:14,fontWeight:600,textAlign:"center",marginBottom:12}}>
+              ✓ Change request submitted! Your contractor will review it shortly.
+              <div style={{marginTop:10}}><button className="btn btn-ghost" style={{width:"100%"}} onClick={()=>{setCrDone(false);setCrForm({description:"",reason:""});}}>Submit Another</button></div>
+            </div>:<>
+              <div className="fg"><label className="flbl"><span className="freq">*</span>What change are you requesting?</label><textarea className="finp fta" rows={3} value={crForm.description} onChange={e=>setCrForm(p=>({...p,description:e.target.value}))} placeholder="e.g. Add a walk-in closet to master bedroom, upgrade countertops to quartz..."/></div>
+              <div className="fg"><label className="flbl">Why / Additional context</label><textarea className="finp fta" rows={2} value={crForm.reason} onChange={e=>setCrForm(p=>({...p,reason:e.target.value}))} placeholder="Any details that would help your contractor understand..."/></div>
+              <button className="btn btn-navy" style={{width:"100%"}} disabled={crSaving||!crForm.description.trim()} onClick={async()=>{
+                if(!crForm.description.trim()||!job)return;
+                setCrSaving(true);
+                const num=`CR-${Date.now().toString().slice(-4)}`;
+                const co={id:Date.now().toString(),job_id:job.id,co_number:num,description:crForm.description.trim(),reason:crForm.reason.trim()||"Client-requested change",amount:0,status:"pending",created_at:new Date().toISOString()};
+                await window.SB.from("change_orders").insert({...co,tenant_id:window.AV_TENANT});
+                sbNotify("co_submitted",`Client change request on ${job.address}`,crForm.description.trim().slice(0,120),job.id,window.AV_USER_ID);
+                setCrSaving(false);setCrDone(true);
+              }}>{crSaving?"Submitting...":"Submit Change Request"}</button>
             </>}
           </div>}
           {tab==="logs"&&<div>
@@ -2124,6 +2157,86 @@ function UserMgmt(){
   );
 }
 
+const NOTIF_EVENTS=[
+  {key:"note_posted",lb:"New note posted"},
+  {key:"phase_complete",lb:"Phase marked complete"},
+  {key:"co_submitted",lb:"Change order submitted"},
+  {key:"co_approved",lb:"Change order approved"},
+  {key:"co_rejected",lb:"Change order rejected"},
+  {key:"job_message",lb:"New message"},
+  {key:"assigned_to_job",lb:"Assigned to project"},
+  {key:"phase_overdue",lb:"Phase overdue"},
+  {key:"document_uploaded",lb:"Document uploaded"},
+  {key:"daily_log_submitted",lb:"Daily log submitted"},
+];
+
+function SettingsModal({profile,setProfile,onClose}){
+  const[form,setForm]=useState({full_name:profile?.full_name||"",phone:profile?.phone||""});
+  const[prefs,setPrefs]=useState(()=>profile?.notification_prefs||{});
+  const[saving,setSaving]=useState(false);
+  const[saved,setSaved]=useState(false);
+  const[tab,setTab]=useState("profile");
+  const togglePref=async(key,channel)=>{
+    const cur=prefs[key]||{email:true,sms:true};
+    const next={...prefs,[key]:{...cur,[channel]:!cur[channel]}};
+    setPrefs(next);
+    await window.SB.from("profiles").update({notification_prefs:next}).eq("id",profile.id);
+    setProfile(p=>({...p,notification_prefs:next}));
+  };
+  const saveProfile=async()=>{
+    setSaving(true);
+    await window.SB.from("profiles").update({full_name:form.full_name,phone:form.phone}).eq("id",profile.id);
+    setProfile(p=>({...p,...form}));
+    setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2000);
+  };
+  return(
+    <div className="overlay" onClick={onClose}><div className="modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:18,color:"#0A1F44"}}>Settings</div>
+        <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",fontSize:18,lineHeight:1}}>✕</button>
+      </div>
+      <div style={{display:"flex",border:"1px solid #E8E4DC",borderRadius:4,overflow:"hidden",marginBottom:16}}>
+        {[["profile","Profile"],["notifs","Notifications"]].map(([v,lb])=>(
+          <button key={v} onClick={()=>setTab(v)} style={{flex:1,padding:"8px 0",fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:tab===v?"#0A1F44":"transparent",color:tab===v?"#C9A84C":"#9CA3AF"}}>{lb}</button>
+        ))}
+      </div>
+      {tab==="profile"&&<>
+        <div className="fg"><label className="flbl">Full Name</label><input className="finp" value={form.full_name} onChange={e=>setForm(p=>({...p,full_name:e.target.value}))}/></div>
+        <div className="fg"><label className="flbl">Phone (for SMS alerts)</label><input className="finp" type="tel" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="(816) 555-0000"/></div>
+        <div style={{background:"#F7F5F0",border:"1px solid #E8E4DC",padding:"10px 14px",borderRadius:4,marginBottom:16}}>
+          <div style={{fontSize:12,color:"#6B7280"}}>Email: <strong style={{color:"#0A1F44"}}>{profile?.email}</strong></div>
+          <div style={{fontSize:12,color:"#9CA3AF",marginTop:4}}>Role: <strong style={{color:"#0A1F44"}}>{profile?.role}</strong></div>
+        </div>
+        <button className="btn btn-navy" style={{width:"100%"}} onClick={saveProfile} disabled={saving}>{saving?"Saving...":(saved?"Saved!":"Save Changes")}</button>
+      </>}
+      {tab==="notifs"&&<>
+        <div style={{fontSize:11,color:"#9CA3AF",marginBottom:12,lineHeight:1.6}}>Choose which events trigger email and SMS notifications. SMS requires a phone number and SMS alerts enabled.</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:"8px 12px",alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Event</div>
+          <div style={{fontSize:10,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,textAlign:"center"}}>Email</div>
+          <div style={{fontSize:10,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,textAlign:"center"}}>SMS</div>
+          {NOTIF_EVENTS.map(({key,lb})=>{
+            const p=prefs[key]||{email:true,sms:true};
+            const Toggle=({on,onToggle})=>(
+              <div onClick={onToggle} style={{width:28,height:16,background:on?"#C9A84C":"#E8E4DC",borderRadius:8,position:"relative",cursor:"pointer",transition:"background 0.2s",margin:"0 auto"}}>
+                <div style={{position:"absolute",top:2,left:on?14:2,width:12,height:12,background:"#fff",borderRadius:"50%",transition:"left 0.2s"}}/>
+              </div>
+            );
+            return(
+              <React.Fragment key={key}>
+                <div style={{fontSize:12,color:"#374151"}}>{lb}</div>
+                <Toggle on={p.email!==false} onToggle={()=>togglePref(key,"email")}/>
+                <Toggle on={p.sms!==false} onToggle={()=>togglePref(key,"sms")}/>
+              </React.Fragment>
+            );
+          })}
+        </div>
+        <div style={{fontSize:11,color:"#9CA3AF",marginTop:8}}>Changes save automatically.</div>
+      </>}
+    </div></div>
+  );
+}
+
 function NotifPanel({notifs,onClose,onMarkAllRead,onClickNotif}){
   const unread=notifs.filter(n=>!n.read).length;
   const typeIcon={note_posted:"note",phase_complete:"check",co_submitted:"warn",co_approved:"check",co_rejected:"warn",message:"note",assigned_to_job:"home",phase_overdue:"warn",document_uploaded:"folder",daily_log_submitted:"clip"};
@@ -2284,7 +2397,14 @@ function Reports({jobs}){
 
   return(
     <div style={{padding:20,maxWidth:900}}>
-      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44",marginBottom:20}}>Reporting</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44"}}>Reporting</div>
+        <button className="btn btn-ghost" style={{fontSize:12,display:"flex",alignItems:"center",gap:6}} onClick={()=>{
+          const rows=[["Address","Client","Status","Contract","CO Total","Rep","Target"].join(","),...jobs.map(j=>[`"${j.address||""}"`,`"${j.client_name||""}"`,j.status||"",j.contract_value||0,j.co_total||0,`"${j.assigned_rep||""}"`,j.target_completion||""].join(","))];
+          const blob=new Blob([rows.join("\n")],{type:"text/csv"});
+          const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`avenstone-projects-${new Date().toISOString().slice(0,10)}.csv`;a.click();
+        }}>⬇ Export CSV</button>
+      </div>
 
       {/* Top stats */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
@@ -2456,6 +2576,7 @@ function App(){
   const[jobs,setJobs]=useState(()=>ll("av_j",[]));
   const[notifs,setNotifs]=useState([]);
   const[showNotif,setShowNotif]=useState(false);
+  const[showSettings,setShowSettings]=useState(false);
   const[pendingJobId,setPendingJobId]=useState(null);
 
   useEffect(()=>{
@@ -2578,6 +2699,9 @@ function App(){
               </div>
               <span style={{fontSize:10,color:"rgba(255,255,255,0.35)",userSelect:"none"}}>SMS alerts</span>
             </label>
+            <button onClick={()=>setShowSettings(true)} title="Settings" style={{background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.3)",padding:4,display:"flex",alignItems:"center",transition:"color 0.15s"}} onMouseEnter={e=>e.currentTarget.style.color="rgba(255,255,255,0.7)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.3)"}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
           </div>
         </div>
       </div>
@@ -2632,7 +2756,9 @@ function App(){
         </div>
       </div>
     </div>
-    {showNotif&&<NotifPanel notifs={notifs} onClose={()=>setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif}/>}</>
+    {showNotif&&<NotifPanel notifs={notifs} onClose={()=>setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif}/>}
+    {showSettings&&<SettingsModal profile={profile} setProfile={setProfile} onClose={()=>setShowSettings(false)}/>}
+    </>
   );
 }
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
