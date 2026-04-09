@@ -2203,7 +2203,16 @@ function SettingsModal({profile,setProfile,onClose}){
       {tab==="profile"&&<>
         <div className="fg"><label className="flbl">Full Name</label><input className="finp" value={form.full_name} onChange={e=>setForm(p=>({...p,full_name:e.target.value}))}/></div>
         <div className="fg"><label className="flbl">Phone (for SMS alerts)</label><input className="finp" type="tel" value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="(816) 555-0000"/></div>
-        <div style={{background:"#F7F5F0",border:"1px solid #E8E4DC",padding:"10px 14px",borderRadius:4,marginBottom:16}}>
+        <div style={{background:"#F7F5F0",border:"1px solid #E8E4DC",padding:"12px 14px",borderRadius:4,marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>SMS Alerts</div>
+              <div style={{fontSize:11,color:"#9CA3AF",marginTop:2}}>Receive text messages for notifications</div>
+            </div>
+            <div onClick={async()=>{const val=!profile.notification_sms;await window.SB.from("profiles").update({notification_sms:val}).eq("id",profile.id);setProfile(p=>({...p,notification_sms:val}));}} style={{width:36,height:20,background:profile?.notification_sms?"#C9A84C":"#D1D5DB",borderRadius:10,position:"relative",cursor:"pointer",transition:"background 0.2s",flexShrink:0}}>
+              <div style={{position:"absolute",top:2,left:profile?.notification_sms?18:2,width:16,height:16,background:"#fff",borderRadius:"50%",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+            </div>
+          </div>
           <div style={{fontSize:12,color:"#6B7280"}}>Email: <strong style={{color:"#0A1F44"}}>{profile?.email}</strong></div>
           <div style={{fontSize:12,color:"#9CA3AF",marginTop:4}}>Role: <strong style={{color:"#0A1F44"}}>{profile?.role}</strong></div>
         </div>
@@ -2692,15 +2701,10 @@ function App(){
               <span style={{width:16,height:16,display:"flex"}}>{Ic.logout}</span>
             </button>
           </div>
-          <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}>
-            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",flex:1}} title="Toggle SMS notifications">
-              <div onClick={async()=>{const val=!profile.notification_sms;await window.SB.from("profiles").update({notification_sms:val}).eq("id",profile.id);setProfile(p=>({...p,notification_sms:val}));}} style={{width:28,height:16,background:profile?.notification_sms?"#C9A84C":"rgba(255,255,255,0.15)",borderRadius:8,position:"relative",cursor:"pointer",transition:"background 0.2s",flexShrink:0}}>
-                <div style={{position:"absolute",top:2,left:profile?.notification_sms?14:2,width:12,height:12,background:"#fff",borderRadius:"50%",transition:"left 0.2s"}}/>
-              </div>
-              <span style={{fontSize:10,color:"rgba(255,255,255,0.35)",userSelect:"none"}}>SMS alerts</span>
-            </label>
-            <button onClick={()=>setShowSettings(true)} title="Settings" style={{background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.3)",padding:4,display:"flex",alignItems:"center",transition:"color 0.15s"}} onMouseEnter={e=>e.currentTarget.style.color="rgba(255,255,255,0.7)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.3)"}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <div style={{marginTop:8,display:"flex",justifyContent:"flex-end"}}>
+            <button onClick={()=>setShowSettings(true)} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer",color:"rgba(255,255,255,0.4)",padding:"5px 10px",display:"flex",alignItems:"center",gap:6,fontSize:11,borderRadius:4,transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.color="rgba(255,255,255,0.8)";e.currentTarget.style.borderColor="rgba(255,255,255,0.3)";}} onMouseLeave={e=>{e.currentTarget.style.color="rgba(255,255,255,0.4)";e.currentTarget.style.borderColor="rgba(255,255,255,0.1)";}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              Settings
             </button>
           </div>
         </div>
