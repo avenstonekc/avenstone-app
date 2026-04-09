@@ -310,6 +310,41 @@ const sbNotify=async(type,title,body,jobId,excludeId)=>{
     );
   }catch(e){console.error("sbNotify error:",e);}
 };
+// ── SUB DIRECTORY & MESSAGING HELPERS ────────────────────────────────────────
+const INVITE_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/send-invite";
+const ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ";
+const sbLoadSubDirectory=async()=>{
+  const{data}=await window.SB.from("profiles").select("*").eq("tenant_id",window.AV_TENANT).eq("role","sub").order("full_name");
+  return data||[];
+};
+const sbInviteSub=async(name,email,trade,phone)=>{
+  const res=await fetch(INVITE_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ANON_KEY}`},body:JSON.stringify({email,full_name:name,role:"sub",trade,phone,tenant_id:window.AV_TENANT})});
+  return res.json();
+};
+const sbLoadJobSubs=async jid=>{
+  const{data}=await window.SB.from("job_subs").select("*,profile:profiles(id,full_name,email,trade,phone)").eq("job_id",jid);
+  return data||[];
+};
+const sbAssignSub=async(jid,subId)=>{
+  const{data}=await window.SB.from("job_subs").insert({tenant_id:window.AV_TENANT,job_id:jid,sub_id:subId}).select().single();
+  return data;
+};
+const sbUnassignSub=async(jid,subId)=>window.SB.from("job_subs").delete().eq("job_id",jid).eq("sub_id",subId);
+const sbLoadMessages=async jid=>{
+  const{data}=await window.SB.from("job_messages").select("*,sender:profiles(id,full_name,role)").eq("job_id",jid).order("created_at",{ascending:true});
+  return data||[];
+};
+const sbPostMessage=async(jid,content)=>{
+  const{data}=await window.SB.from("job_messages").insert({tenant_id:window.AV_TENANT,job_id:jid,sender_id:window.AV_USER_ID,content}).select("*,sender:profiles(id,full_name,role)").single();
+  return data;
+};
+const sbLoadSubJobs=async subId=>{
+  const{data:asgn}=await window.SB.from("job_subs").select("job_id").eq("sub_id",subId);
+  if(!asgn||!asgn.length)return[];
+  const ids=asgn.map(a=>a.job_id);
+  const{data}=await window.SB.from("jobs").select("id,address,status,client_name,created").in("id",ids);
+  return data||[];
+};
 // ─────────────────────────────────────────────────────────────────────────────
 
 const IQ=[
@@ -476,11 +511,11 @@ function FormScr({title,secs,rules,ftype,onBack,onSave}){
   );
 }
 
-function JobDet({job,upd,del,back}){
+function JobDet({job,upd,del,back,profile}){
   const[tab,setTab]=useState("info");
   const[showSt,setShowSt]=useState(false);
   const[nt,setNt]=useState("");
-  const[na,setNa]=useState("Kalin");
+  const[na,setNa]=useState(()=>profile?.full_name||"Kalin");
   const[saving,setSaving]=useState(false);
   const[upl,setUpl]=useState(false);
   const[uplPct,setUplPct]=useState(0);
@@ -575,7 +610,46 @@ function JobDet({job,upd,del,back}){
   },[tab,phasesLoaded]);
   // ───────────────────────────────────────────────────────────────────────────
 
-  const TABS=[{id:"info",lb:"Info",ic:"info"},{id:"sched",lb:"Schedule",ic:"sched"},{id:"notes",lb:"Notes",ic:"note"},{id:"photos",lb:"Photos",ic:"cam"},{id:"docs",lb:"Documents",ic:"folder"},{id:"co",lb:"Change Orders",ic:"warn"}];
+  // ── MESSAGES STATE ───────────────────────────────────────────────────────────
+  const[msgs,setMsgs]=useState([]);
+  const[msgsLoaded,setMsgsLoaded]=useState(false);
+  const[msgTxt,setMsgTxt]=useState("");
+  const[sendingMsg,setSendingMsg]=useState(false);
+  const msgsEndRef=useRef();
+  useEffect(()=>{
+    if(tab!=="msgs"||msgsLoaded)return;
+    sbLoadMessages(job.id).then(d=>{setMsgs(d);setMsgsLoaded(true);});
+  },[tab,msgsLoaded]);
+  useEffect(()=>{if(msgs.length&&msgsEndRef.current)msgsEndRef.current.scrollIntoView({behavior:"smooth"});},[msgs]);
+  const sendMsg=async()=>{
+    if(!msgTxt.trim())return;setSendingMsg(true);
+    const m=await sbPostMessage(job.id,msgTxt.trim());
+    if(m){setMsgs(p=>[...p,m]);sbNotify("job_message",`Message on ${job.address}`,msgTxt.trim().slice(0,120),job.id,window.AV_USER_ID);setMsgTxt("");}
+    setSendingMsg(false);
+  };
+  // ── JOB SUBS STATE ───────────────────────────────────────────────────────────
+  const[jobSubs,setJobSubs]=useState([]);
+  const[jobSubsLoaded,setJobSubsLoaded]=useState(false);
+  const[allSubs,setAllSubs]=useState([]);
+  const[showSubPicker,setShowSubPicker]=useState(false);
+  useEffect(()=>{
+    if(tab!=="info"||jobSubsLoaded)return;
+    sbLoadJobSubs(job.id).then(d=>setJobSubs(d));
+    sbLoadSubDirectory().then(d=>setAllSubs(d));
+    setJobSubsLoaded(true);
+  },[tab,jobSubsLoaded]);
+  const assignSub=async sub=>{
+    const row=await sbAssignSub(job.id,sub.id);
+    if(row)setJobSubs(p=>[...p,{...row,profile:sub}]);
+    sbNotify("assigned_to_job",`Assigned to ${job.address}`,`You've been added to this project`,job.id,sub.id);
+    setShowSubPicker(false);
+  };
+  const unassignSub=async sub=>{
+    await sbUnassignSub(job.id,sub.id);
+    setJobSubs(p=>p.filter(js=>js.sub_id!==sub.id));
+  };
+  // ───────────────────────────────────────────────────────────────────────────
+  const TABS=[{id:"info",lb:"Info",ic:"info"},{id:"sched",lb:"Schedule",ic:"sched"},{id:"notes",lb:"Notes",ic:"note"},{id:"photos",lb:"Photos",ic:"cam"},{id:"docs",lb:"Documents",ic:"folder"},{id:"co",lb:"Change Orders",ic:"warn"},{id:"msgs",lb:"Messages",ic:"note"}];
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#F7F5F0"}}>
       <div style={{background:"#0A1F44",padding:"16px 20px",flexShrink:0}}>
@@ -605,6 +679,24 @@ function JobDet({job,upd,del,back}){
               {!job.client_name&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"20px",color:"#9CA3AF",fontSize:13,background:"#fff",border:"1px solid #E8E4DC"}}>Tap Edit to add client and job details</div>}
             </div>
           )}
+          {/* ── Assigned Subs ── */}
+          <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginTop:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Assigned Subs</div>
+              <button className="btn btn-ghost" style={{padding:"5px 12px",fontSize:11,display:"flex",alignItems:"center",gap:5}} onClick={()=>setShowSubPicker(true)}><span style={{width:12,height:12,display:"flex"}}>{Ic.plus}</span>Add Sub</button>
+            </div>
+            {!jobSubs.length&&<div style={{textAlign:"center",padding:"16px 0",color:"#9CA3AF",fontSize:13}}>No subs assigned yet</div>}
+            {jobSubs.map(js=>{const p=js.profile||{};return(
+              <div key={js.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #F3F0E8"}}>
+                <div style={{width:32,height:32,background:"#0A1F4422",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#0A1F44",flexShrink:0}}>{(p.full_name||"?")[0].toUpperCase()}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{p.full_name||p.email}</div>
+                  {p.trade&&<div style={{fontSize:11,color:"#9CA3AF"}}>{p.trade}</div>}
+                </div>
+                <button onClick={()=>unassignSub(p)} style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",padding:4,fontSize:16,lineHeight:1}} title="Remove">✕</button>
+              </div>
+            );})}
+          </div>
           <button className="btn btn-danger" style={{width:"100%",marginTop:8,padding:11}} onClick={del}>Delete Job</button>
         </div>}
         {tab==="sched"&&<div>
@@ -763,14 +855,56 @@ function JobDet({job,upd,del,back}){
             </div>
           </div>)}
         </div>}
+        {tab==="msgs"&&<div style={{display:"flex",flexDirection:"column",height:"100%",minHeight:400}}>
+          {!msgsLoaded&&<div style={{textAlign:"center",padding:32,color:"#9CA3AF",fontSize:13}}>Loading messages...</div>}
+          {msgsLoaded&&<>
+            <div style={{flex:1,overflowY:"auto",paddingBottom:8}}>
+              {!msgs.length&&<div className="empty">{Ic.note}<div className="empty-t">No messages yet</div><div>Start the conversation below</div></div>}
+              {msgs.map(m=>{
+                const mine=m.sender_id===window.AV_USER_ID;
+                const nm=m.sender?.full_name||"Unknown";
+                const rl=m.sender?.role||"";
+                const roleBadge={owner:"Owner",sales_rep:"Sales",project_manager:"PM",sub:"Sub",client:"Client"}[rl]||rl;
+                return(
+                  <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:mine?"flex-end":"flex-start",marginBottom:12}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                      {!mine&&<div style={{width:24,height:24,background:"#0A1F4422",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#0A1F44"}}>{nm[0].toUpperCase()}</div>}
+                      <span style={{fontSize:11,color:"#9CA3AF",fontWeight:600}}>{mine?"You":nm}</span>
+                      {!mine&&roleBadge&&<span style={{fontSize:9,background:"#E8E4DC",color:"#6B7280",padding:"1px 6px",borderRadius:4,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{roleBadge}</span>}
+                      <span style={{fontSize:10,color:"#D1C9B8"}}>{fDT(m.created_at)}</span>
+                    </div>
+                    <div style={{maxWidth:"80%",background:mine?"#0A1F44":"#fff",color:mine?"#fff":"#374151",padding:"10px 14px",borderRadius:mine?"12px 12px 2px 12px":"12px 12px 12px 2px",fontSize:13,lineHeight:1.55,border:mine?"none":"1px solid #E8E4DC",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>{m.content}</div>
+                  </div>
+                );
+              })}
+              <div ref={msgsEndRef}/>
+            </div>
+            <div style={{borderTop:"1px solid #E8E4DC",paddingTop:12,flexShrink:0,background:"#F7F5F0"}}>
+              <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                <textarea className="finp fta" value={msgTxt} onChange={e=>setMsgTxt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();}}} placeholder="Type a message… (Enter to send)" rows={2} style={{flex:1,marginBottom:0,resize:"none"}}/>
+                <button className={`btn ${msgTxt.trim()?"btn-navy":"btn-ghost"}`} style={{padding:"10px 16px",flexShrink:0}} onClick={sendMsg} disabled={sendingMsg||!msgTxt.trim()}>{sendingMsg?"...":"Send"}</button>
+              </div>
+            </div>
+          </>}
+        </div>}
       </div>
       {showSt&&<div className="overlay" onClick={()=>setShowSt(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">Update Status</div>{STATS.map(s=><button key={s.id} className={`st-opt${job.status===s.id?" on":""}`} onClick={()=>{upd({status:s.id});setShowSt(false);}}><span style={{width:10,height:10,borderRadius:"50%",background:s.c,flexShrink:0}}/>{s.lb}{job.status===s.id&&<span style={{marginLeft:"auto",color:"#C9A84C",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.check}</span>}</button>)}</div></div>}
       {showCO&&<div className="overlay" onClick={()=>setShowCO(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">New Change Order</div><div className="fg"><label className="flbl"><span className="freq">*</span>Description</label><input className="finp" value={cod} onChange={e=>setCod(e.target.value)} placeholder="What work is being added or changed?"/></div><div className="fg"><label className="flbl">Reason</label><input className="finp" value={cor} onChange={e=>setCor(e.target.value)} placeholder="Why is this change needed?"/></div><div className="fg"><label className="flbl"><span className="freq">*</span>Amount ($)</label><input className="finp" type="number" value={coa} onChange={e=>setCoa(e.target.value)} placeholder="e.g. 2500"/></div><div style={{display:"flex",gap:10,marginTop:8}}><button className="btn btn-ghost" style={{flex:1}} onClick={()=>setShowCO(false)}>Cancel</button><button className={`btn ${cod.trim()&&coa?"btn-gold":"btn-ghost"}`} style={{flex:1}} onClick={addCO} disabled={savCO||!cod.trim()||!coa}>{savCO?"Saving...":"Create CO"}</button></div></div></div>}
+      {showSubPicker&&<div className="overlay" onClick={()=>setShowSubPicker(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">Assign Sub</div>
+        {!allSubs.length&&<div style={{textAlign:"center",padding:20,color:"#9CA3AF",fontSize:13}}>No subs in directory yet. Add subs from the Subs page first.</div>}
+        {allSubs.filter(s=>!jobSubs.find(js=>js.sub_id===s.id)).map(s=>(
+          <button key={s.id} onClick={()=>assignSub(s)} style={{width:"100%",background:"#fff",border:"1px solid #E8E4DC",padding:"12px 14px",cursor:"pointer",textAlign:"left",marginBottom:6,display:"flex",alignItems:"center",gap:10}} onMouseEnter={e=>e.currentTarget.style.borderColor="#C9A84C"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E8E4DC"}>
+            <div style={{width:32,height:32,background:"#0A1F4422",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#0A1F44"}}>{(s.full_name||s.email||"?")[0].toUpperCase()}</div>
+            <div><div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{s.full_name||s.email}</div>{s.trade&&<div style={{fontSize:11,color:"#9CA3AF"}}>{s.trade}</div>}</div>
+          </button>
+        ))}
+        <button className="btn btn-ghost" style={{width:"100%",marginTop:4}} onClick={()=>setShowSubPicker(false)}>Cancel</button>
+      </div></div>}
     </div>
   );
 }
 
-function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId}){
+function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile}){
   const[sel,setSel]=useState(null);
   const[showNew,setShowNew]=useState(false);
   const[newA,setNewA]=useState("");
@@ -785,7 +919,7 @@ function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId}){
   const add=()=>{if(!newA.trim())return;const j={id:Date.now().toString(),address:newA.trim(),status:"lead",created:new Date().toISOString(),scope:"",sqft:"",photos:[],activity:[],change_orders:[],client_name:"",client_phone:"",client_email:"",assigned_rep:"",assigned_subs:"",contract_value:0,co_total:0,target_completion:""};const u=[j,...jobs];setJobs(u);ls("av_j",u);sbSave(j);setNewA("");setShowNew(false);setSel(j.id);};
   const del=id=>{if(!window.confirm("Delete this job?"))return;const u=jobs.filter(j=>j.id!==id);setJobs(u);ls("av_j",u);sbDel(id);setSel(null);};
   const selJ=jobs.find(j=>j.id===sel);
-  if(selJ)return<JobDet job={selJ} upd={ch=>upd(selJ.id,ch)} del={()=>del(selJ.id)} back={()=>setSel(null)}/>;
+  if(selJ)return<JobDet job={selJ} upd={ch=>upd(selJ.id,ch)} del={()=>del(selJ.id)} back={()=>setSel(null)} profile={profile}/>;
   const list=fil==="all"?jobs:jobs.filter(j=>j.status===fil);
   const mob=isMob();
   return(
@@ -832,6 +966,179 @@ function TkOf({onBack}){
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SubDir(){
+  const[subs,setSubs]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[showAdd,setShowAdd]=useState(false);
+  const[form,setForm]=useState({name:"",email:"",trade:"",phone:""});
+  const[saving,setSaving]=useState(false);
+  const[err,setErr]=useState("");
+  useEffect(()=>{sbLoadSubDirectory().then(d=>{setSubs(d);setLoading(false);});},[]);
+  const addSub=async()=>{
+    if(!form.name.trim()||!form.email.trim()){setErr("Name and email are required.");return;}
+    setSaving(true);setErr("");
+    const res=await sbInviteSub(form.name.trim(),form.email.trim(),form.trade.trim(),form.phone.trim());
+    if(res.error){setErr(res.error);setSaving(false);return;}
+    setSubs(await sbLoadSubDirectory());
+    setForm({name:"",email:"",trade:"",phone:""});
+    setShowAdd(false);setSaving(false);
+  };
+  return(
+    <div style={{padding:20,maxWidth:700}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44"}}>Sub Directory</div><div style={{fontSize:13,color:"#9CA3AF",marginTop:2}}>Contractors and subcontractors</div></div>
+        <button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6}} onClick={()=>setShowAdd(true)}><span style={{width:14,height:14}}>{Ic.plus}</span>Add Sub</button>
+      </div>
+      {loading&&<div style={{textAlign:"center",padding:40,color:"#9CA3AF"}}>Loading...</div>}
+      {!loading&&!subs.length&&<div className="empty">{Ic.home}<div className="empty-t">No subs yet</div><div>Add your first subcontractor above</div></div>}
+      {subs.map(s=>(
+        <div key={s.id} style={{background:"#fff",border:"1px solid #E8E4DC",padding:"14px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:14}}>
+          <div style={{width:40,height:40,background:"#0A1F4418",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#0A1F44",flexShrink:0}}>{(s.full_name||s.email||"?")[0].toUpperCase()}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:14,fontWeight:600,color:"#0A1F44"}}>{s.full_name||s.email}</div>
+            <div style={{fontSize:12,color:"#9CA3AF",marginTop:2,display:"flex",gap:12,flexWrap:"wrap"}}>
+              {s.trade&&<span>{s.trade}</span>}
+              {s.email&&<span>{s.email}</span>}
+              {s.phone&&<span>{s.phone}</span>}
+            </div>
+          </div>
+          <span style={{fontSize:10,background:s.is_active?"#F0FDF4":"#F7F5F0",color:s.is_active?"#16a34a":"#9CA3AF",padding:"3px 10px",border:`1px solid ${s.is_active?"#BBF7D0":"#E8E4DC"}`,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{s.is_active?"Active":"Inactive"}</span>
+        </div>
+      ))}
+      {showAdd&&<div className="overlay" onClick={()=>setShowAdd(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">Add Subcontractor</div>
+        {[["name","Full Name","John Smith",true],["email","Email","john@smithelectric.com",true],["trade","Trade / Specialty","Electrical"],["phone","Phone","(816) 555-1234"]].map(([k,lb,ph,req])=>(
+          <div className="fg" key={k}><label className="flbl">{req&&<span className="freq">*</span>}{lb}</label><input className="finp" value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} placeholder={ph}/></div>
+        ))}
+        {err&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"8px 12px",fontSize:12,marginBottom:10}}>{err}</div>}
+        <div style={{fontSize:12,color:"#9CA3AF",marginBottom:12,lineHeight:1.6}}>An invite link will be emailed to this sub so they can log in and view their assigned jobs, upload photos, and send messages.</div>
+        <div style={{display:"flex",gap:10}}><button className="btn btn-ghost" style={{flex:1}} onClick={()=>{setShowAdd(false);setErr("");}}>Cancel</button><button className={`btn ${form.name&&form.email?"btn-navy":"btn-ghost"}`} style={{flex:1}} onClick={addSub} disabled={saving||!form.name||!form.email}>{saving?"Sending invite...":"Add & Send Invite"}</button></div>
+      </div></div>}
+    </div>
+  );
+}
+
+function SubPortal({profile,signOut}){
+  const[jobs,setJobs]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[sel,setSel]=useState(null);
+  useEffect(()=>{
+    if(profile?.id)sbLoadSubJobs(profile.id).then(d=>{setJobs(d);setLoading(false);});
+  },[profile?.id]);
+  const SUB_TABS=[{id:"info",lb:"Info",ic:"info"},{id:"photos",lb:"Photos",ic:"cam"},{id:"msgs",lb:"Messages",ic:"note"}];
+  if(sel){
+    // Minimal job detail for sub — info (read-only), photos, messages
+    return <SubJobView job={sel} back={()=>setSel(null)} profile={profile}/>;
+  }
+  return(
+    <div style={{minHeight:"100dvh",background:"#F7F5F0"}}>
+      <div style={{background:"#0A1F44",padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{flex:1}}><div style={{fontSize:9,color:"#C9A84C",letterSpacing:4,textTransform:"uppercase"}}>Avenstone Group</div><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>My Projects</div></div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>{profile?.full_name}</div>
+        <button onClick={signOut} style={{background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.4)",display:"flex",alignItems:"center",padding:4}}><span style={{width:16,height:16,display:"flex"}}>{Ic.logout}</span></button>
+      </div>
+      <div style={{padding:16}}>
+        {loading&&<div style={{textAlign:"center",padding:40,color:"#9CA3AF"}}>Loading your projects...</div>}
+        {!loading&&!jobs.length&&<div className="empty" style={{paddingTop:60}}>{Ic.home}<div className="empty-t">No projects assigned yet</div><div>Your contractor will assign you to a project</div></div>}
+        {jobs.map(j=>(
+          <div key={j.id} onClick={()=>setSel(j)} style={{background:"#fff",border:"1px solid #E8E4DC",borderLeft:`4px solid ${sc(j.status)}`,padding:"14px 16px",marginBottom:10,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#C9A84C"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E8E4DC"}>
+            <div style={{fontSize:14,fontWeight:600,color:"#0A1F44",marginBottom:4}}>{j.address}</div>
+            <div style={{display:"flex",gap:12,alignItems:"center"}}>
+              {j.client_name&&<span style={{fontSize:12,color:"#9CA3AF"}}>{j.client_name}</span>}
+              <span style={{fontSize:10,background:sc(j.status)+"18",color:sc(j.status),padding:"2px 8px",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>{sl(j.status)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SubJobView({job,back,profile}){
+  const[tab,setTab]=useState("info");
+  const[msgs,setMsgs]=useState([]);
+  const[msgsLoaded,setMsgsLoaded]=useState(false);
+  const[msgTxt,setMsgTxt]=useState("");
+  const[sendingMsg,setSendingMsg]=useState(false);
+  const[photos,setPhotos]=useState(job.photos||[]);
+  const[upl,setUpl]=useState(false);
+  const[uplPct,setUplPct]=useState(0);
+  const pr=useRef();
+  const msgsEndRef=useRef();
+  const SUB_TABS=[{id:"info",lb:"Info",ic:"info"},{id:"photos",lb:"Photos",ic:"cam"},{id:"msgs",lb:"Messages",ic:"note"}];
+  useEffect(()=>{
+    if(tab!=="msgs"||msgsLoaded)return;
+    sbLoadMessages(job.id).then(d=>{setMsgs(d);setMsgsLoaded(true);});
+  },[tab,msgsLoaded]);
+  useEffect(()=>{if(msgs.length&&msgsEndRef.current)msgsEndRef.current.scrollIntoView({behavior:"smooth"});},[msgs]);
+  const sendMsg=async()=>{
+    if(!msgTxt.trim())return;setSendingMsg(true);
+    const m=await sbPostMessage(job.id,msgTxt.trim());
+    if(m){setMsgs(p=>[...p,m]);sbNotify("job_message",`Message on ${job.address}`,msgTxt.trim().slice(0,120),job.id,window.AV_USER_ID);setMsgTxt("");}
+    setSendingMsg(false);
+  };
+  const onFile=async e=>{
+    const files=Array.from(e.target.files);if(!files.length)return;
+    setUpl(true);setUplPct(0);const res=[];
+    for(let i=0;i<files.length;i++){const p=await sbPhoto(job.id,files[i]);if(p)res.push(p);setUplPct(Math.round(((i+1)/files.length)*100));}
+    if(res.length)setPhotos(p=>[...p,...res]);
+    setUpl(false);setUplPct(0);
+  };
+  return(
+    <div style={{minHeight:"100dvh",background:"#F7F5F0",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#0A1F44",padding:"16px 20px",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={back} style={{background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.6)",width:24,height:24,display:"flex",alignItems:"center"}}>{Ic.back}</button>
+          <div><div style={{fontSize:9,color:"rgba(255,255,255,0.4)",letterSpacing:2,textTransform:"uppercase",marginBottom:2}}>Project</div><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>{job.address}</div></div>
+        </div>
+      </div>
+      <div className="tabbar">{SUB_TABS.map(t=><button key={t.id} className={`tab${tab===t.id?" on":""}`} onClick={()=>setTab(t.id)}><span style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic[t.ic]||Ic.info}</span>{t.lb}</button>)}</div>
+      <div style={{flex:1,overflowY:"auto",padding:16}}>
+        {tab==="info"&&<div className="ig">
+          {[["Address",job.address],["Status",sl(job.status)],["Client",job.client_name],["Started",fD(job.created)]].filter(([,v])=>v).map(([lb,v])=><div className="ii" key={lb}><div className="ii-l">{lb}</div><div className="ii-v">{v}</div></div>)}
+        </div>}
+        {tab==="photos"&&<div>
+          <div style={{marginBottom:16}}>
+            <input ref={pr} type="file" accept="image/*,video/*" multiple onChange={onFile} style={{display:"none"}}/>
+            <button className="btn btn-outline" style={{width:"100%",padding:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8}} onClick={()=>pr.current.click()} disabled={upl}><span style={{width:16,height:16}}>{Ic.cam}</span>Upload Photos / Video</button>
+          </div>
+          {upl&&<div className="upbar"><div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Uploading</span><span style={{fontSize:11,color:"#C9A84C",fontWeight:700}}>{uplPct}%</span></div><div className="uptr"><div className="upfl" style={{width:`${uplPct}%`}}/></div></div>}
+          {!photos.length&&!upl&&<div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Upload site photos above</div></div>}
+          <div className="pgrid">{photos.map(p=><div key={p.id} className="pcell"><div style={{position:"absolute",inset:0}}>{p.type==="video"?<video src={p.url||p.data} controls style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<img src={p.url||p.data} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}</div></div>)}</div>
+        </div>}
+        {tab==="msgs"&&<div style={{display:"flex",flexDirection:"column",minHeight:300}}>
+          {!msgsLoaded&&<div style={{textAlign:"center",padding:32,color:"#9CA3AF",fontSize:13}}>Loading...</div>}
+          {msgsLoaded&&<>
+            <div style={{flex:1,overflowY:"auto",paddingBottom:8}}>
+              {!msgs.length&&<div className="empty">{Ic.note}<div className="empty-t">No messages yet</div><div>Send a message to your contractor below</div></div>}
+              {msgs.map(m=>{
+                const mine=m.sender_id===window.AV_USER_ID;
+                const nm=m.sender?.full_name||"Contractor";
+                return(
+                  <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:mine?"flex-end":"flex-start",marginBottom:12}}>
+                    <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+                      <span style={{fontSize:11,color:"#9CA3AF",fontWeight:600}}>{mine?"You":nm}</span>
+                      <span style={{fontSize:10,color:"#D1C9B8"}}>{fDT(m.created_at)}</span>
+                    </div>
+                    <div style={{maxWidth:"80%",background:mine?"#0A1F44":"#fff",color:mine?"#fff":"#374151",padding:"10px 14px",borderRadius:mine?"12px 12px 2px 12px":"12px 12px 12px 2px",fontSize:13,lineHeight:1.55,border:mine?"none":"1px solid #E8E4DC"}}>{m.content}</div>
+                  </div>
+                );
+              })}
+              <div ref={msgsEndRef}/>
+            </div>
+            <div style={{borderTop:"1px solid #E8E4DC",paddingTop:12,background:"#F7F5F0"}}>
+              <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                <textarea className="finp fta" value={msgTxt} onChange={e=>setMsgTxt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();}}} placeholder="Type a message… (Enter to send)" rows={2} style={{flex:1,marginBottom:0,resize:"none"}}/>
+                <button className={`btn ${msgTxt.trim()?"btn-navy":"btn-ghost"}`} style={{padding:"10px 16px",flexShrink:0}} onClick={sendMsg} disabled={sendingMsg||!msgTxt.trim()}>{sendingMsg?"...":"Send"}</button>
+              </div>
+            </div>
+          </>}
+        </div>}
       </div>
     </div>
   );
@@ -1057,7 +1364,10 @@ function App(){
 
   if(!session)return <LoginScr/>;
 
-  // Client portal — stripped view; full build in Step 8
+  // Sub portal — assigned jobs, photos, messaging
+  if(profile?.role==="sub")return <SubPortal profile={profile} signOut={signOut}/>;
+
+  // Client portal — coming in Step 12
   if(profile?.role==="client")return(
     <div style={{minHeight:"100dvh",background:"#F7F5F0",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:24,textAlign:"center"}}>
       <img src={L} alt="Avenstone" style={{width:72,height:72,objectFit:"contain"}}/>
@@ -1080,6 +1390,7 @@ function App(){
       {id:"bid",lb:"Bids",ic:"doc",sec:"Field",badge:jobs.filter(j=>j.status==="bid_sent").length},
     ]:[]),
     ...(isStaff?[{id:"takeoff",lb:"Materials",ic:"box",sec:"Field"}]:[]),
+    ...(isStaff?[{id:"subs",lb:"Subs",ic:"home",sec:"People"}]:[]),
   ];
 
   return(
@@ -1134,16 +1445,18 @@ function App(){
         </div>
         <div className="pg-wrap">
           {pg==="dashboard"&&<Dash nav={setPg} jobs={jobs} profile={profile}/>}
-          {pg==="jobs"&&<JobsScr jobs={jobs} setJobs={setJobs} onBack={()=>setPg("dashboard")} pendingJobId={pendingJobId} clearPendingJobId={()=>setPendingJobId(null)}/>}
+          {pg==="jobs"&&<JobsScr jobs={jobs} setJobs={setJobs} onBack={()=>setPg("dashboard")} pendingJobId={pendingJobId} clearPendingJobId={()=>setPendingJobId(null)} profile={profile}/>}
           {pg==="intake"&&isOwnerOrRep&&<FormScr title="Project Intake" secs={IQ} rules={IR} ftype="intake" onBack={()=>setPg("dashboard")} onSave={saveJob}/>}
           {pg==="bid"&&isOwnerOrRep&&<FormScr title="Bid and Proposal" secs={BQ} rules={BR} ftype="bid" onBack={()=>setPg("dashboard")}/>}
           {pg==="takeoff"&&isStaff&&<TkOf onBack={()=>setPg("dashboard")}/>}
+          {pg==="subs"&&isStaff&&<SubDir/>}
         </div>
         <div className="bot-nav">
           {[
             {id:"dashboard",ic:"grid",lb:"Home"},
             {id:"jobs",ic:"home",lb:"Projects"},
             ...(isOwnerOrRep?[{id:"intake",ic:"clip",lb:"Intake"},{id:"bid",ic:"doc",lb:"Bid"}]:[]),
+            ...(isStaff?[{id:"subs",ic:"home",lb:"Subs"}]:[]),
           ].map(t=>(
             <button key={t.id} className={`bn-item${pg===t.id?" on":""}`} onClick={()=>setPg(t.id)}>
               <span style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",color:pg===t.id?"#C9A84C":"#9CA3AF"}}>{Ic[t.ic]||Ic.grid}</span>
