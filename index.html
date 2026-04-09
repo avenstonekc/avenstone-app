@@ -578,6 +578,14 @@ function JobDet({job,upd,del,back,profile}){
   const apCO=async id=>{await sbUpdCO(id,{status:"approved",approved_at:new Date().toISOString()});const u=(job.change_orders||[]).map(c=>c.id===id?{...c,status:"approved"}:c);const nct=u.filter(c=>c.status==="approved").reduce((a,c)=>a+Number(c.amount||0),0);upd({change_orders:u,co_total:nct});const co=(job.change_orders||[]).find(c=>c.id===id);if(co)sbNotify("co_approved",`CO approved on ${job.address}`,`${co.co_number} (${f$(co.amount)}) has been approved`,job.id,window.AV_USER_ID);};
   const rjCO=async id=>{await sbUpdCO(id,{status:"rejected"});upd({change_orders:(job.change_orders||[]).map(c=>c.id===id?{...c,status:"rejected"}:c)});const co=(job.change_orders||[]).find(c=>c.id===id);if(co)sbNotify("co_rejected",`CO rejected on ${job.address}`,`${co.co_number} has been rejected`,job.id,window.AV_USER_ID);};
 
+  // ── LIGHTBOX STATE ──────────────────────────────────────────────────────────
+  const[lbIdx,setLbIdx]=useState(null);
+  // ── SCHEDULE VIEW ───────────────────────────────────────────────────────────
+  const[schedView,setSchedView]=useState("list"); // "list" | "gantt"
+
+  // ── INVOICE STATE ───────────────────────────────────────────────────────────
+  const[showInvoice,setShowInvoice]=useState(false);
+
   // ── DOCUMENTS STATE ─────────────────────────────────────────────────────────
   const[docs,setDocs]=useState([]);
   const[docsLoaded,setDocsLoaded]=useState(false);
@@ -810,16 +818,60 @@ function JobDet({job,upd,del,back,profile}){
             {phases.length>0&&(()=>{
               const done=phases.filter(p=>p.status==="complete").length;
               const pct=Math.round((done/phases.length)*100);
+              // Gantt vars
+              const datedPhases=phases.filter(p=>p.start_date&&p.end_date);
+              const allDates=datedPhases.flatMap(p=>[new Date(p.start_date),new Date(p.end_date)]);
+              const minD=allDates.length?new Date(Math.min(...allDates)):null;
+              const maxD=allDates.length?new Date(Math.max(...allDates)):null;
+              const totalDays=minD&&maxD?Math.max((maxD-minD)/86400000,1):1;
               return(
+                <>
                 <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginBottom:16}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                     <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Phase Progress</div>
-                    <div style={{fontSize:12,color:"#0A1F44",fontWeight:700}}>{done} of {phases.length} complete &middot; {pct}%</div>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{fontSize:12,color:"#0A1F44",fontWeight:700}}>{done} of {phases.length} complete &middot; {pct}%</div>
+                      <div style={{display:"flex",border:"1px solid #E8E4DC",borderRadius:4,overflow:"hidden"}}>
+                        {[["list","List"],["gantt","Timeline"]].map(([v,lb])=>(
+                          <button key={v} onClick={()=>setSchedView(v)} style={{padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:schedView===v?"#0A1F44":"transparent",color:schedView===v?"#C9A84C":"#9CA3AF"}}>{lb}</button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                   <div style={{background:"#E8E4DC",height:6,borderRadius:3}}>
                     <div style={{background:"#22c55e",height:6,borderRadius:3,width:`${pct}%`,transition:"width 0.4s"}}/>
                   </div>
                 </div>
+                {schedView==="gantt"&&datedPhases.length>0&&<div style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginBottom:16,overflowX:"auto"}}>
+                  <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Timeline</div>
+                  {datedPhases.map(p=>{
+                    const s=(new Date(p.start_date)-minD)/86400000;
+                    const len=Math.max((new Date(p.end_date)-new Date(p.start_date))/86400000,1);
+                    const left=`${(s/totalDays)*100}%`;
+                    const width=`${Math.max((len/totalDays)*100,2)}%`;
+                    const col=phSc(p.status);
+                    return(
+                      <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                        <div style={{width:120,fontSize:11,fontWeight:600,color:"#374151",flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.phase_name}</div>
+                        <div style={{flex:1,height:20,background:"#F7F5F0",borderRadius:3,position:"relative",minWidth:100}}>
+                          <div style={{position:"absolute",left,width,height:"100%",background:col,borderRadius:3,display:"flex",alignItems:"center",paddingLeft:6,overflow:"hidden"}}>
+                            <span style={{fontSize:9,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fD(p.start_date)}</span>
+                          </div>
+                        </div>
+                        <div style={{width:70,fontSize:10,color:"#9CA3AF",flexShrink:0,textAlign:"right"}}>{fD(p.end_date)}</div>
+                      </div>
+                    );
+                  })}
+                  <div style={{display:"flex",gap:10,marginTop:12,flexWrap:"wrap"}}>
+                    {[["not_started","#9CA3AF","Not Started"],["in_progress","#f59e0b","In Progress"],["complete","#22c55e","Complete"],["blocked","#ef4444","Blocked"]].map(([s,c,lb])=>(
+                      <div key={s} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#6B7280"}}>
+                        <div style={{width:10,height:10,borderRadius:2,background:c}}/>{lb}
+                      </div>
+                    ))}
+                  </div>
+                </div>}
+                {schedView==="gantt"&&datedPhases.length===0&&<div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20,marginBottom:16,textAlign:"center",color:"#9CA3AF",fontSize:13}}>Set start and end dates on phases to view timeline</div>}
+                </>
               );
             })()}
             {phases.map(ph=>{
@@ -887,7 +939,8 @@ function JobDet({job,upd,del,back,profile}){
           </div>
           {upl&&<div className="upbar"><div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:11,color:"#6B7280",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Uploading to cloud</span><span style={{fontSize:11,color:"#C9A84C",fontWeight:700}}>{uplPct}%</span></div><div className="uptr"><div className="upfl" style={{width:`${uplPct}%`}}/></div></div>}
           {!(job.photos||[]).length&&!upl&&<div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Tap Add Photos to get started</div></div>}
-          <div className="pgrid">{(job.photos||[]).map(p=><div key={p.id} className="pcell"><div style={{position:"absolute",inset:0}}>{p.type==="video"?<video src={p.url||p.data} controls style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<img src={p.url||p.data} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}</div><button className="pdel" onClick={()=>delP(p.id)}>✕</button></div>)}</div>
+          <div className="pgrid">{(job.photos||[]).map((p,i)=><div key={p.id} className="pcell" onClick={()=>setLbIdx(i)} style={{cursor:"pointer"}}><div style={{position:"absolute",inset:0}}>{p.type==="video"?<video src={p.url||p.data} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<img src={p.url||p.data} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}</div><button className="pdel" onClick={e=>{e.stopPropagation();delP(p.id);}}>✕</button></div>)}</div>
+          {lbIdx!==null&&<PhotoLightbox photos={job.photos||[]} startIdx={lbIdx} onClose={()=>setLbIdx(null)}/>}
         </div>}
         {tab==="docs"&&<div>
           {/* Upload row */}
@@ -942,7 +995,10 @@ function JobDet({job,upd,del,back,profile}){
         {tab==="co"&&<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <div><div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Change Orders</div>{coT>0&&<div style={{fontSize:13,color:"#f59e0b",fontWeight:600,marginTop:2}}>Approved: {f$(coT)}</div>}</div>
-            <button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6}} onClick={()=>setShowCO(true)}><span style={{width:14,height:14}}>{Ic.plus}</span>New CO</button>
+            <div style={{display:"flex",gap:8}}>
+              {apCOs.length>0&&<button className="btn btn-outline" style={{display:"flex",alignItems:"center",gap:6,fontSize:12}} onClick={()=>setShowInvoice(true)}><span style={{width:13,height:13}}>{Ic.doc}</span>Invoice</button>}
+              <button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6}} onClick={()=>setShowCO(true)}><span style={{width:14,height:14}}>{Ic.plus}</span>New CO</button>
+            </div>
           </div>
           {!(job.change_orders||[]).length&&<div className="empty">{Ic.doc}<div className="empty-t">No change orders</div><div>Tap New CO to document a scope change</div></div>}
           {(job.change_orders||[]).map((co,i)=><div key={co.id||i} className="co-item" style={{borderLeftColor:co.status==="approved"?"#22c55e":co.status==="rejected"?"#ef4444":"#f59e0b"}}>
@@ -1170,6 +1226,38 @@ function JobDet({job,upd,del,back,profile}){
         </div>}
       </div>
       {showSt&&<div className="overlay" onClick={()=>setShowSt(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">Update Status</div>{STATS.map(s=><button key={s.id} className={`st-opt${job.status===s.id?" on":""}`} onClick={()=>{upd({status:s.id});setShowSt(false);}}><span style={{width:10,height:10,borderRadius:"50%",background:s.c,flexShrink:0}}/>{s.lb}{job.status===s.id&&<span style={{marginLeft:"auto",color:"#C9A84C",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.check}</span>}</button>)}</div></div>}
+      {showInvoice&&<div className="overlay" onClick={()=>setShowInvoice(false)}><div className="modal" style={{maxWidth:540}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:18,color:"#0A1F44"}}>Invoice Summary</div><div style={{fontSize:12,color:"#9CA3AF",marginTop:2}}>{job.address}</div></div>
+          <button onClick={()=>window.print()} style={{background:"#0A1F44",color:"#C9A84C",border:"none",padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",borderRadius:3}}>Print / Save PDF</button>
+        </div>
+        <div style={{borderTop:"2px solid #0A1F44",borderBottom:"1px solid #E8E4DC",padding:"12px 0",marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>
+            <span>Item</span><span>Amount</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #F3F0E8",fontSize:14}}>
+            <span style={{color:"#374151"}}>Base Contract — {job.scope||"General Construction"}</span>
+            <span style={{fontWeight:700,color:"#0A1F44"}}>{f$(cv)}</span>
+          </div>
+          {apCOs.map(co=>(
+            <div key={co.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #F3F0E8",fontSize:13}}>
+              <div>
+                <div style={{color:"#374151"}}>{co.co_number} — {co.description}</div>
+                {co.reason&&<div style={{fontSize:11,color:"#9CA3AF"}}>{co.reason}</div>}
+              </div>
+              <span style={{fontWeight:600,color:"#f59e0b",flexShrink:0,marginLeft:16}}>{f$(Number(co.amount))}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0"}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#0A1F44",textTransform:"uppercase",letterSpacing:1}}>Total</div>
+          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:26,color:"#0A1F44"}}>{f$(rev)}</div>
+        </div>
+        {job.client_name&&<div style={{marginTop:8,fontSize:12,color:"#9CA3AF"}}>Client: {job.client_name}{job.client_email?` · ${job.client_email}`:""}</div>}
+        <div style={{marginTop:16,display:"flex",gap:8}}>
+          <button className="btn btn-ghost" style={{flex:1}} onClick={()=>setShowInvoice(false)}>Close</button>
+        </div>
+      </div></div>}
       {showCO&&<div className="overlay" onClick={()=>setShowCO(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">New Change Order</div><div className="fg"><label className="flbl"><span className="freq">*</span>Description</label><input className="finp" value={cod} onChange={e=>setCod(e.target.value)} placeholder="What work is being added or changed?"/></div><div className="fg"><label className="flbl">Reason</label><input className="finp" value={cor} onChange={e=>setCor(e.target.value)} placeholder="Why is this change needed?"/></div><div className="fg"><label className="flbl"><span className="freq">*</span>Amount ($)</label><input className="finp" type="number" value={coa} onChange={e=>setCoa(e.target.value)} placeholder="e.g. 2500"/></div><div style={{display:"flex",gap:10,marginTop:8}}><button className="btn btn-ghost" style={{flex:1}} onClick={()=>setShowCO(false)}>Cancel</button><button className={`btn ${cod.trim()&&coa?"btn-gold":"btn-ghost"}`} style={{flex:1}} onClick={addCO} disabled={savCO||!cod.trim()||!coa}>{savCO?"Saving...":"Create CO"}</button></div></div></div>}
       {showSubPicker&&<div className="overlay" onClick={()=>setShowSubPicker(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">Assign Sub</div>
         {!allSubs.length&&<div style={{textAlign:"center",padding:20,color:"#9CA3AF",fontSize:13}}>No subs in directory yet. Add subs from the Subs page first.</div>}
@@ -1483,6 +1571,34 @@ function StarRating({value=0,onChange,readonly=false,size=18}){
           onMouseEnter={()=>!readonly&&setHover(s)}
           onMouseLeave={()=>!readonly&&setHover(0)}>★</span>
       ))}
+    </div>
+  );
+}
+
+function PhotoLightbox({photos,startIdx,onClose}){
+  const[idx,setIdx]=useState(startIdx||0);
+  const p=photos[idx];
+  useEffect(()=>{
+    const onKey=e=>{if(e.key==="ArrowRight")setIdx(i=>Math.min(i+1,photos.length-1));else if(e.key==="ArrowLeft")setIdx(i=>Math.max(i-1,0));else if(e.key==="Escape")onClose();};
+    window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);
+  },[photos.length,onClose]);
+  if(!p)return null;
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <button onClick={onClose} style={{position:"absolute",top:16,right:20,background:"transparent",border:"none",color:"#fff",fontSize:28,cursor:"pointer",lineHeight:1}}>✕</button>
+      <div style={{position:"absolute",top:16,left:20,color:"rgba(255,255,255,0.5)",fontSize:13}}>{idx+1} / {photos.length}</div>
+      <div style={{maxWidth:"90vw",maxHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>e.stopPropagation()}>
+        {p.type==="video"
+          ?<video src={p.url||p.data} controls style={{maxWidth:"90vw",maxHeight:"80vh",borderRadius:4}}/>
+          :<img src={p.url||p.data} alt="" style={{maxWidth:"90vw",maxHeight:"80vh",objectFit:"contain",borderRadius:4}}/>}
+      </div>
+      {photos.length>1&&<>
+        <button onClick={e=>{e.stopPropagation();setIdx(i=>Math.max(i-1,0));}} disabled={idx===0} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",width:40,height:40,borderRadius:"50%",fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx===0?0.3:1}}>‹</button>
+        <button onClick={e=>{e.stopPropagation();setIdx(i=>Math.min(i+1,photos.length-1));}} disabled={idx===photos.length-1} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",width:40,height:40,borderRadius:"50%",fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx===photos.length-1?0.3:1}}>›</button>
+        <div style={{position:"absolute",bottom:20,display:"flex",gap:6}}>
+          {photos.map((_,i)=><div key={i} onClick={e=>{e.stopPropagation();setIdx(i);}} style={{width:i===idx?20:6,height:6,borderRadius:3,background:i===idx?"#C9A84C":"rgba(255,255,255,0.3)",cursor:"pointer",transition:"all 0.2s"}}/>)}
+        </div>
+      </>}
     </div>
   );
 }
@@ -2121,6 +2237,21 @@ function Reports({jobs}){
   const bids=jobs.filter(j=>j.status==="bid_sent");
   const signed=jobs.filter(j=>j.status==="signed");
   const inProgress=jobs.filter(j=>["demo","framing","rough_mep","drywall","finish","punch"].includes(j.status));
+  const[subRatings,setSubRatings]=useState([]);
+  const[logStats,setLogStats]=useState([]);
+  useEffect(()=>{
+    window.SB.from("sub_ratings").select("sub_id,stars,sub:sub_id(full_name,trade)").eq("tenant_id",window.AV_TENANT).then(({data})=>{if(data)setSubRatings(data);});
+    window.SB.from("daily_logs").select("job_id,crew_count,hours_worked,job:job_id(address)").eq("tenant_id",window.AV_TENANT).then(({data})=>{if(data)setLogStats(data);});
+  },[]);
+  // Sub leaderboard
+  const subMap={};
+  subRatings.forEach(r=>{const k=r.sub_id;if(!subMap[k])subMap[k]={name:r.sub?.full_name||"Unknown",trade:r.sub?.trade||"",sum:0,cnt:0};subMap[k].sum+=r.stars;subMap[k].cnt++;});
+  const subLeaderboard=Object.values(subMap).map(s=>({...s,avg:s.sum/s.cnt})).sort((a,b)=>b.avg-a.avg||b.cnt-a.cnt).slice(0,8);
+  // Daily log hours by job
+  const logByJob={};
+  logStats.forEach(l=>{const k=l.job_id;if(!logByJob[k])logByJob[k]={address:l.job?.address||l.job_id,hours:0,crew:0,logs:0};logByJob[k].hours+=Number(l.hours_worked||0);logByJob[k].crew+=Number(l.crew_count||0);logByJob[k].logs++;});
+  const logRows=Object.values(logByJob).sort((a,b)=>b.hours-a.hours).slice(0,8);
+  const totalHours=logStats.reduce((a,l)=>a+Number(l.hours_worked||0),0);
 
   const totalContract=jobs.reduce((a,j)=>a+Number(j.contract_value||0),0);
   const totalCOs=jobs.reduce((a,j)=>a+Number(j.co_total||0),0);
@@ -2215,7 +2346,7 @@ function Reports({jobs}){
       </div>
 
       {/* Recent completions */}
-      {complete.length>0&&<div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+      {complete.length>0&&<div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20,marginBottom:20}}>
         <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Completed Jobs</div>
         {complete.slice(0,10).map(j=>(
           <div key={j.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:"1px solid #F3F0E8"}}>
@@ -2230,6 +2361,48 @@ function Reports({jobs}){
           </div>
         ))}
       </div>}
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+        {/* Sub leaderboard */}
+        <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Sub Leaderboard</div>
+          {subLeaderboard.length===0&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No ratings yet</div>}
+          {subLeaderboard.map((s,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <div style={{width:24,height:24,background:"#0A1F44",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#C9A84C",flexShrink:0}}>{i+1}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>{s.name}</div>
+                {s.trade&&<div style={{fontSize:11,color:"#9CA3AF"}}>{s.trade}</div>}
+              </div>
+              <div style={{textAlign:"right"}}>
+                <StarRating value={Math.round(s.avg)} readonly size={12}/>
+                <div style={{fontSize:11,color:"#9CA3AF"}}>{s.avg.toFixed(1)} · {s.cnt} review{s.cnt!==1?"s":""}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Daily log hours */}
+        <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Labor Hours by Job</div>
+            {totalHours>0&&<div style={{fontSize:12,fontWeight:700,color:"#0A1F44"}}>{totalHours.toLocaleString()} total hrs</div>}
+          </div>
+          {logRows.length===0&&<div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",padding:20}}>No daily logs yet</div>}
+          {logRows.map((r,i)=>(
+            <div key={i} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600,color:"#374151",marginBottom:3}}>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:8}}>{r.address}</span>
+                <span style={{flexShrink:0,color:"#0A1F44"}}>{r.hours} hrs</span>
+              </div>
+              <div style={{background:"#F7F5F0",height:6,borderRadius:3}}>
+                <div style={{background:"#C9A84C",height:6,borderRadius:3,width:`${Math.min((r.hours/Math.max(...logRows.map(x=>x.hours),1))*100,100)}%`,transition:"width 0.4s"}}/>
+              </div>
+              <div style={{fontSize:10,color:"#9CA3AF",marginTop:2}}>{r.logs} log{r.logs!==1?"s":""} · avg {r.logs?Math.round(r.crew/r.logs):0} crew</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
