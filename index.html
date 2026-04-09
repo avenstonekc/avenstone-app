@@ -2181,6 +2181,14 @@ function App(){
               <span style={{width:16,height:16,display:"flex"}}>{Ic.logout}</span>
             </button>
           </div>
+          <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",flex:1}} title="Toggle SMS notifications">
+              <div onClick={async()=>{const val=!profile.notification_sms;await window.SB.from("profiles").update({notification_sms:val}).eq("id",profile.id);setProfile(p=>({...p,notification_sms:val}));}} style={{width:28,height:16,background:profile?.notification_sms?"#C9A84C":"rgba(255,255,255,0.15)",borderRadius:8,position:"relative",cursor:"pointer",transition:"background 0.2s",flexShrink:0}}>
+                <div style={{position:"absolute",top:2,left:profile?.notification_sms?14:2,width:12,height:12,background:"#fff",borderRadius:"50%",transition:"left 0.2s"}}/>
+              </div>
+              <span style={{fontSize:10,color:"rgba(255,255,255,0.35)",userSelect:"none"}}>SMS alerts</span>
+            </label>
+          </div>
         </div>
       </div>
       <div className="main">
