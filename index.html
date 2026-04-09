@@ -315,6 +315,8 @@ const sbNotify=async(type,title,body,jobId,excludeId)=>{
 const INVITE_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/send-invite";
 const CLIENT_LINK_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/send-client-link";
 const BID_INVITE_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/send-bid-invite";
+const PAYMENT_LINK_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/create-payment-link";
+const AI_ESTIMATOR_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-estimator";
 const ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ";
 const sbLoadSubDirectory=async()=>{
   const{data}=await window.SB.from("profiles").select("*").eq("tenant_id",window.AV_TENANT).eq("role","sub").order("full_name");
@@ -761,8 +763,66 @@ function JobDet({job,upd,del,back,profile}){
     if(d){setLogs(p=>[d,...p]);sbNotify("daily_log_submitted",`Daily log — ${job.address}`,`${logForm.log_date}: ${(logForm.work_completed||"").slice(0,80)}`,job.id,window.AV_USER_ID);setShowLogForm(false);setLogForm({log_date:new Date().toISOString().slice(0,10),weather:"Clear",crew_count:"",hours_worked:"",work_completed:"",materials_used:"",issues:""});}
     setLogSaving(false);
   };
+  // ── AI ESTIMATOR STATE ───────────────────────────────────────────────────────
+  const[showEstimator,setShowEstimator]=useState(false);
+  const[estMessages,setEstMessages]=useState([]);
+  const[estInput,setEstInput]=useState("");
+  const[estLoading,setEstLoading]=useState(false);
+  const[estStarted,setEstStarted]=useState(false);
+  const[estForm,setEstForm]=useState({scope:"",rooms:"",sqft:"",special:""});
+  const openEstimator=async()=>{
+    setShowEstimator(true);
+    const saved=await sbLoadEstimate(job.id);
+    if(saved?.messages?.length){setEstMessages(saved.messages);setEstStarted(true);}
+    else{setEstMessages([]);setEstStarted(false);setEstForm({scope:"",rooms:"",sqft:"",special:""});}
+  };
+  const sendEstimatorMessage=async(msgOverride)=>{
+    const text=msgOverride||estInput.trim();
+    if(!text||estLoading)return;
+    const newMessages=[...estMessages,{role:"user",content:text}];
+    setEstMessages(newMessages);
+    setEstInput("");
+    setEstLoading(true);
+    const res=await fetch(AI_ESTIMATOR_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ANON_KEY}`},body:JSON.stringify({messages:newMessages})});
+    const data=await res.json();
+    const reply=data.content||"Sorry, something went wrong. Please try again.";
+    const finalMessages=[...newMessages,{role:"assistant",content:reply}];
+    setEstMessages(finalMessages);
+    setEstLoading(false);
+    sbSaveEstimate(job.id,finalMessages);
+  };
+  const startEstimate=()=>{
+    if(!estForm.scope.trim())return;
+    setEstStarted(true);
+    const prompt=`Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms?`Rooms: ${estForm.rooms}\n`:""}${estForm.sqft?`Square Footage: ${estForm.sqft} sqft\n`:""}${estForm.special?`Special Notes: ${estForm.special}\n`:""}`;
+    sendEstimatorMessage(prompt);
+  };
+  // ── PAYMENTS STATE ────────────────────────────────────────────────────────────
+  const[payments,setPayments]=useState([]);
+  const[paymentsLoaded,setPaymentsLoaded]=useState(false);
+  const[showPayForm,setShowPayForm]=useState(false);
+  const[payForm,setPayForm]=useState({description:"",amount:"",payment_type:"deposit",client_email:job.client_email||"",client_name:job.client_name||""});
+  const[paySending,setPaySending]=useState(false);
+  const[payErr,setPayErr]=useState("");
+  useEffect(()=>{
+    if(tab!=="payments"||paymentsLoaded)return;
+    sbLoadPayments(job.id).then(d=>{setPayments(d);setPaymentsLoaded(true);});
+  },[tab,paymentsLoaded]);
+  const sendPaymentRequest=async()=>{
+    if(!payForm.description.trim()||!payForm.amount||!payForm.client_email.trim())return;
+    setPaySending(true);setPayErr("");
+    const r=await sbCreatePaymentLink({job_id:job.id,tenant_id:window.AV_TENANT,amount:payForm.amount,description:payForm.description.trim(),payment_type:payForm.payment_type,client_email:payForm.client_email.trim(),client_name:payForm.client_name.trim(),job_address:job.address,created_by:window.AV_USER_ID});
+    if(r.payment){
+      setPayments(p=>[r.payment,...p]);
+      setShowPayForm(false);
+      setPayForm({description:"",amount:"",payment_type:"deposit",client_email:job.client_email||"",client_name:job.client_name||""});
+    }else{
+      setPayErr(r.error||"Failed to send payment request");
+    }
+    setPaySending(false);
+  };
   // ───────────────────────────────────────────────────────────────────────────
-  const TABS=[{id:"info",lb:"Info",ic:"info"},{id:"sched",lb:"Schedule",ic:"sched"},{id:"notes",lb:"Notes",ic:"note"},{id:"photos",lb:"Photos",ic:"cam"},{id:"docs",lb:"Documents",ic:"folder"},{id:"co",lb:"Change Orders",ic:"warn"},{id:"msgs",lb:"Messages",ic:"note"},{id:"bids",lb:"Bids",ic:"doc"},{id:"logs",lb:"Daily Logs",ic:"clip"}];
+  const TABS=[{id:"info",lb:"Info",ic:"info"},{id:"sched",lb:"Schedule",ic:"sched"},{id:"notes",lb:"Notes",ic:"note"},{id:"photos",lb:"Photos",ic:"cam"},{id:"docs",lb:"Documents",ic:"folder"},{id:"co",lb:"Change Orders",ic:"warn"},{id:"msgs",lb:"Messages",ic:"note"},{id:"bids",lb:"Bids",ic:"doc"},{id:"logs",lb:"Daily Logs",ic:"clip"},{id:"payments",lb:"Payments",ic:"doc"}];
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#F7F5F0"}}>
       <div style={{background:"#0A1F44",padding:"16px 20px",flexShrink:0}}>
@@ -1018,6 +1078,14 @@ function JobDet({job,upd,del,back,profile}){
           </div>)}
         </div>}
         {tab==="bids"&&<div>
+          {/* AI ESTIMATOR */}
+          <div style={{background:"#0A1F44",borderRadius:6,padding:16,marginBottom:20,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"#C9A84C",letterSpacing:0.3}}>AI Estimator</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",marginTop:2}}>Generate a trade-by-trade material &amp; labor estimate</div>
+            </div>
+            <button className="btn btn-gold" onClick={openEstimator} style={{flexShrink:0}}>Open Estimator</button>
+          </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <div><div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Invitations to Bid</div></div>
             <button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6}} onClick={()=>setShowNewITB(true)}><span style={{width:14,height:14}}>{Ic.plus}</span>New ITB</button>
@@ -1225,7 +1293,87 @@ function JobDet({job,upd,del,back,profile}){
             <div style={{display:"flex",gap:10,marginTop:4}}><button className="btn btn-ghost" style={{flex:1}} onClick={()=>setShowLogForm(false)}>Cancel</button><button className="btn btn-navy" style={{flex:1}} onClick={submitLog} disabled={logSaving}>{logSaving?"Saving...":"Submit Log"}</button></div>
           </div></div>}
         </div>}
+        {tab==="payments"&&<div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Client Payments</div>
+              {payments.filter(p=>p.status==="paid").length>0&&<div style={{fontSize:13,color:"#22c55e",fontWeight:600,marginTop:2}}>Collected: {f$(payments.filter(p=>p.status==="paid").reduce((s,p)=>s+Number(p.amount),0))}</div>}
+            </div>
+            <button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6}} onClick={()=>{setPayForm({description:"",amount:"",payment_type:"deposit",client_email:job.client_email||"",client_name:job.client_name||""});setPayErr("");setShowPayForm(true);}}><span style={{width:14,height:14}}>{Ic.plus}</span>Request Payment</button>
+          </div>
+          {!paymentsLoaded&&<div style={{textAlign:"center",padding:32,color:"#9CA3AF",fontSize:13}}>Loading...</div>}
+          {paymentsLoaded&&!payments.length&&<div className="empty">{Ic.doc}<div className="empty-t">No payments yet</div><div>Send a payment request to the client</div></div>}
+          {payments.map(p=>(
+            <div key={p.id} style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginBottom:10,display:"flex",alignItems:"center",gap:12}}>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <span style={{fontSize:14,fontWeight:700,color:"#0A1F44"}}>{p.description}</span>
+                  <span style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:12,background:p.status==="paid"?"#D1FAE5":"#FEF9EC",color:p.status==="paid"?"#065F46":"#92400E",textTransform:"uppercase",letterSpacing:0.5}}>{p.status}</span>
+                </div>
+                <div style={{fontSize:12,color:"#9CA3AF"}}>{p.client_email}{p.payment_type&&` · ${p.payment_type}`}{p.created_at&&` · ${fD(p.created_at.slice(0,10))}`}</div>
+                {p.paid_at&&<div style={{fontSize:12,color:"#22c55e",marginTop:2}}>Paid {fD(p.paid_at.slice(0,10))}</div>}
+              </div>
+              <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:"#0A1F44",flexShrink:0}}>{f$(Number(p.amount))}</div>
+            </div>
+          ))}
+          {showPayForm&&<div className="overlay" onClick={()=>setShowPayForm(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">Request Payment</div>
+            {payErr&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#B91C1C",padding:"10px 12px",fontSize:13,marginBottom:12,borderRadius:4}}>{payErr}</div>}
+            <div className="fg"><label className="flbl"><span className="freq">*</span>Description</label><input className="finp" value={payForm.description} onChange={e=>setPayForm(p=>({...p,description:e.target.value}))} placeholder="e.g. Deposit — Kitchen Remodel"/></div>
+            <div className="fg"><label className="flbl"><span className="freq">*</span>Amount ($)</label><input className="finp" type="number" step="0.01" value={payForm.amount} onChange={e=>setPayForm(p=>({...p,amount:e.target.value}))} placeholder="e.g. 5000"/></div>
+            <div className="fg"><label className="flbl">Payment Type</label>
+              <select className="finp" value={payForm.payment_type} onChange={e=>setPayForm(p=>({...p,payment_type:e.target.value}))} style={{appearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32}}>
+                <option value="deposit">Deposit</option>
+                <option value="progress">Progress Payment</option>
+                <option value="final">Final Payment</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div className="fg"><label className="flbl"><span className="freq">*</span>Client Email</label><input className="finp" type="email" value={payForm.client_email} onChange={e=>setPayForm(p=>({...p,client_email:e.target.value}))} placeholder="client@email.com"/></div>
+            <div className="fg"><label className="flbl">Client Name</label><input className="finp" value={payForm.client_name} onChange={e=>setPayForm(p=>({...p,client_name:e.target.value}))} placeholder="Full name (optional)"/></div>
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              <button className="btn btn-ghost" style={{flex:1}} onClick={()=>setShowPayForm(false)}>Cancel</button>
+              <button className={`btn ${payForm.description.trim()&&payForm.amount&&payForm.client_email.trim()?"btn-gold":"btn-ghost"}`} style={{flex:1}} onClick={sendPaymentRequest} disabled={paySending||!payForm.description.trim()||!payForm.amount||!payForm.client_email.trim()}>{paySending?"Sending...":"Send Request"}</button>
+            </div>
+          </div></div>}
+        </div>}
       </div>
+      {showEstimator&&<div className="overlay" onClick={()=>setShowEstimator(false)}><div className="modal" style={{maxWidth:660,height:"85vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexShrink:0}}>
+          <div><div style={{fontFamily:"'DM Serif Display',serif",fontSize:18,color:"#0A1F44"}}>AI Estimator</div><div style={{fontSize:12,color:"#9CA3AF",marginTop:2}}>{job.address}</div></div>
+          <div style={{display:"flex",gap:8}}>
+            {estStarted&&<button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>{setEstMessages([]);setEstStarted(false);setEstForm({scope:"",rooms:"",sqft:"",special:""});}}>Reset</button>}
+            <button onClick={()=>setShowEstimator(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",fontSize:20,lineHeight:1}}>×</button>
+          </div>
+        </div>
+        {!estStarted&&<div style={{flex:1,overflowY:"auto"}}>
+          <div className="fg"><label className="flbl"><span className="freq">*</span>Scope of Work</label><textarea className="finp fta" rows={3} value={estForm.scope} onChange={e=>setEstForm(p=>({...p,scope:e.target.value}))} placeholder="e.g. Full kitchen remodel — demo existing, new cabinets, countertops, flooring, electrical updates, plumbing relocation"/></div>
+          <div className="fg"><label className="flbl">Rooms / Areas</label><input className="finp" value={estForm.rooms} onChange={e=>setEstForm(p=>({...p,rooms:e.target.value}))} placeholder="e.g. Kitchen, Master Bath, Living Room"/></div>
+          <div className="fg"><label className="flbl">Square Footage</label><input className="finp" type="number" value={estForm.sqft} onChange={e=>setEstForm(p=>({...p,sqft:e.target.value}))} placeholder="e.g. 1200"/></div>
+          <div className="fg"><label className="flbl">Special Notes</label><textarea className="finp fta" rows={2} value={estForm.special} onChange={e=>setEstForm(p=>({...p,special:e.target.value}))} placeholder="High-end finishes, specific products, client requests, existing conditions..."/></div>
+          <button className={`btn ${estForm.scope.trim()?"btn-navy":"btn-ghost"}`} style={{width:"100%",marginTop:4}} onClick={startEstimate} disabled={!estForm.scope.trim()||estLoading}>Generate Estimate</button>
+        </div>}
+        {estStarted&&<>
+          <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:12,marginBottom:12}}>
+            {estMessages.map((m,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+                {m.role==="assistant"&&<div style={{width:28,height:28,background:"#0A1F44",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#C9A84C",flexShrink:0,marginRight:8,marginTop:2}}>AI</div>}
+                <div style={{maxWidth:"85%",background:m.role==="user"?"#0A1F44":"#fff",color:m.role==="user"?"#fff":"#374151",padding:"10px 14px",borderRadius:m.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px",fontSize:13,lineHeight:1.7,border:m.role==="assistant"?"1px solid #E8E4DC":"none",whiteSpace:"pre-wrap"}}>
+                  {m.content}
+                </div>
+              </div>
+            ))}
+            {estLoading&&<div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:28,height:28,background:"#0A1F44",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#C9A84C",flexShrink:0}}>AI</div>
+              <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:"10px 14px",borderRadius:"12px 12px 12px 2px",fontSize:13,color:"#9CA3AF"}}>Generating estimate...</div>
+            </div>}
+          </div>
+          <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <input className="finp" style={{flex:1,margin:0}} value={estInput} onChange={e=>setEstInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&sendEstimatorMessage()} placeholder="Ask a follow-up — adjust scope, change materials, add a trade..." disabled={estLoading}/>
+            <button className="btn btn-navy" onClick={()=>sendEstimatorMessage()} disabled={estLoading||!estInput.trim()}>Send</button>
+          </div>
+        </>}
+      </div></div>}
       {showSt&&<div className="overlay" onClick={()=>setShowSt(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">Update Status</div>{STATS.map(s=><button key={s.id} className={`st-opt${job.status===s.id?" on":""}`} onClick={()=>{upd({status:s.id});setShowSt(false);}}><span style={{width:10,height:10,borderRadius:"50%",background:s.c,flexShrink:0}}/>{s.lb}{job.status===s.id&&<span style={{marginLeft:"auto",color:"#C9A84C",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.check}</span>}</button>)}</div></div>}
       {showInvoice&&<div className="overlay" onClick={()=>setShowInvoice(false)}><div className="modal" style={{maxWidth:540}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
@@ -2001,6 +2149,26 @@ const sbSubmitDailyLog=async log=>{
   return data;
 };
 // ─────────────────────────────────────────────────────────────────────────────
+// ─── AI ESTIMATOR HELPERS ────────────────────────────────────────────────────
+const sbLoadEstimate=async jid=>{
+  const{data}=await window.SB.from("job_estimates").select("*").eq("job_id",jid).single();
+  return data||null;
+};
+const sbSaveEstimate=async(jid,messages)=>{
+  const{data}=await window.SB.from("job_estimates").upsert({job_id:jid,tenant_id:window.AV_TENANT,messages,updated_at:new Date().toISOString()},{onConflict:"job_id"}).select().single();
+  return data;
+};
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── PAYMENTS HELPERS ─────────────────────────────────────────────────────────
+const sbLoadPayments=async jid=>{
+  const{data}=await window.SB.from("payments").select("*,created_by_profile:profiles!payments_created_by_fkey(full_name)").eq("job_id",jid).order("created_at",{ascending:false});
+  return data||[];
+};
+const sbCreatePaymentLink=async p=>{
+  const res=await fetch(PAYMENT_LINK_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ANON_KEY}`},body:JSON.stringify(p)});
+  return res.json();
+};
+// ─────────────────────────────────────────────────────────────────────────────
 // ─── USER MANAGEMENT HELPERS ─────────────────────────────────────────────────
 const STAFF_ROLES=["owner","sales_rep","project_manager"];
 const ROLE_LABELS={owner:"Owner",sales_rep:"Sales Rep",project_manager:"Project Manager",sub:"Contractor",client:"Client"};
@@ -2750,7 +2918,6 @@ function App(){
     {id:"dashboard",lb:"Dashboard",ic:"grid",sec:"Main"},
     {id:"jobs",lb:"Projects",ic:"home",sec:"Main",badge:jobs.filter(j=>!["complete","on_hold"].includes(j.status)).length},
     ...(isOwnerOrRep?[
-      {id:"intake",lb:"Intake",ic:"clip",sec:"Field"},
       {id:"bid",lb:"Bids",ic:"doc",sec:"Field",badge:jobs.filter(j=>j.status==="bid_sent").length},
     ]:[]),
     ...(isStaff?[{id:"takeoff",lb:"Materials",ic:"box",sec:"Field"}]:[]),
@@ -2802,7 +2969,7 @@ function App(){
         <div className="top-bar">
           <div style={{fontSize:13,color:"#9CA3AF"}}><strong style={{color:"#0A1F44"}}>{NAV.find(n=>n.id===pg)?.lb||"Dashboard"}</strong>&nbsp;·&nbsp;{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
           <div style={{display:"flex",gap:10,alignItems:"center"}}>
-            {isOwnerOrRep&&<><button className="btn btn-ghost" onClick={()=>setPg("intake")}>New Intake</button><button className="btn btn-navy" onClick={()=>setPg("jobs")}>+ New Project</button></>}
+            {isOwnerOrRep&&<button className="btn btn-navy" onClick={()=>setPg("jobs")}>+ New Project</button>}
             <button onClick={()=>setShowNotif(true)} title="Notifications" style={{position:"relative",background:"transparent",border:"1px solid #E8E4DC",color:"#6B7280",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#C9A84C"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E8E4DC"}>
               <span style={{width:16,height:16,display:"flex"}}>{Ic.bell}</span>
               {unreadCount>0&&<span style={{position:"absolute",top:-6,right:-6,background:"#C9A84C",color:"#0A1F44",width:18,height:18,borderRadius:"50%",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>{unreadCount>9?"9+":unreadCount}</span>}
@@ -2827,8 +2994,8 @@ function App(){
           {[
             {id:"dashboard",ic:"grid",lb:"Home"},
             {id:"jobs",ic:"home",lb:"Projects"},
-            ...(isOwnerOrRep?[{id:"intake",ic:"clip",lb:"Intake"},{id:"bid",ic:"doc",lb:"Bid"}]:[]),
             ...(isStaff?[{id:"subs",ic:"home",lb:"Subs"}]:[]),
+            ...(isOwnerOrRep?[{id:"reports",ic:"box",lb:"Reports"}]:[]),
           ].map(t=>(
             <button key={t.id} className={`bn-item${pg===t.id?" on":""}`} onClick={()=>setPg(t.id)}>
               <span style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",color:pg===t.id?"#C9A84C":"#9CA3AF"}}>{Ic[t.ic]||Ic.grid}</span>
