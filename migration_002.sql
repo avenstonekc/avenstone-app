@@ -73,7 +73,8 @@ ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
 ALTER TABLE notifications ADD CONSTRAINT notifications_type_check CHECK (type IN (
   'note_posted','phase_complete','co_submitted','co_approved','co_rejected',
   'bid_received','message','assigned_to_job','phase_overdue',
-  'document_uploaded','daily_log_submitted','payment_received'
+  'document_uploaded','daily_log_submitted','payment_received',
+  'contract_signed','completion_signed'
 ));
 
 
@@ -99,6 +100,37 @@ ALTER TABLE job_subs          ENABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================
+-- SECTION 3b: SIGNATURE & ONBOARDING TABLES
+-- ============================================================
+
+-- Contract / document signatures
+CREATE TABLE IF NOT EXISTS contract_signatures (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      uuid NOT NULL REFERENCES tenants(id),
+  job_id         text NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  type           text NOT NULL CHECK (type IN ('contract','change_order','completion','lien_waiver','subcontractor_agreement')),
+  reference_id   uuid,
+  signed_by_name  text,
+  signed_by_email text,
+  signature_data  text,
+  signed_at       timestamptz DEFAULT now(),
+  document_url    text,
+  created_at      timestamptz DEFAULT now()
+);
+
+-- Sub onboarding columns
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS w9_url text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS w9_submitted_at timestamptz;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS insurance_url text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS insurance_expiry date;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS insurance_verified boolean DEFAULT false;
+
+-- contract_signed flag on jobs
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contract_signed boolean DEFAULT false;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contract_signed_at timestamptz;
+
+
+-- ============================================================
 -- SECTION 5: DROP AND RECREATE ALL RLS POLICIES
 -- Drops every policy on every table so this file is fully
 -- re-runnable — no manual fixes needed after schema changes.
@@ -113,7 +145,8 @@ BEGIN
         'change_orders','job_phases','job_documents',
         'invitations_to_bid','bid_responses','daily_logs',
         'sub_reviews','messages','notifications',
-        'payments','push_subscriptions','job_subs','job_estimates'
+        'payments','push_subscriptions','job_subs','job_estimates',
+        'contract_signatures'
       )
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON %I', r.policyname, r.tablename);
@@ -303,6 +336,19 @@ CREATE POLICY "job_subs: owner/pm insert" ON job_subs FOR INSERT
   WITH CHECK (tenant_id = get_my_tenant_id() AND get_my_role() IN ('owner','project_manager'));
 CREATE POLICY "job_subs: owner/pm delete" ON job_subs FOR DELETE
   USING (tenant_id = get_my_tenant_id() AND get_my_role() IN ('owner','project_manager'));
+
+-- ── CONTRACT SIGNATURES ───────────────────────────────────────
+ALTER TABLE contract_signatures ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "sigs: staff read" ON contract_signatures FOR SELECT
+  USING (tenant_id = get_my_tenant_id() AND get_my_role() IN ('owner','project_manager','sales_rep'));
+CREATE POLICY "sigs: staff insert" ON contract_signatures FOR INSERT
+  WITH CHECK (tenant_id = get_my_tenant_id() AND get_my_role() IN ('owner','project_manager','sales_rep'));
+CREATE POLICY "sigs: client/sub insert own" ON contract_signatures FOR INSERT
+  WITH CHECK (
+    tenant_id = get_my_tenant_id()
+    AND get_my_role() IN ('client','sub')
+    AND signed_by_email = (SELECT email FROM profiles WHERE id = auth.uid() LIMIT 1)
+  );
 
 
 -- ============================================================

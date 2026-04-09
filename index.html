@@ -189,8 +189,8 @@ const isMob=()=>window.innerWidth<768;
 
 // SUPABASE
 const sbSave=async j=>{try{await window.SB.from("jobs").upsert({id:j.id,tenant_id:window.AV_TENANT,address:j.address,status:j.status,scope:j.scope||"",sqft:j.sqft||"",created_at:j.created,intake_answers:j.ans||{},client_name:j.client_name||"",client_phone:j.client_phone||"",client_email:j.client_email||"",assigned_rep:j.assigned_rep||"",assigned_subs:j.assigned_subs||"",contract_value:Number(j.contract_value||0),co_total:Number(j.co_total||0),target_completion:j.target_completion||""});}catch(e){console.error(e);}};
-const sbLoad=async()=>{try{const{data,error}=await window.SB.from("jobs").select("*").order("created_at",{ascending:false});if(error||!data)return null;return await Promise.all(data.map(async j=>{const[{data:ph},{data:nt},{data:co}]=await Promise.all([window.SB.from("photos").select("*").eq("job_id",j.id).order("created_at",{ascending:true}),window.SB.from("job_notes").select("*").eq("job_id",j.id).order("created_at",{ascending:false}),window.SB.from("change_orders").select("*").eq("job_id",j.id).order("created_at",{ascending:false})]);return{id:j.id,address:j.address,status:j.status,scope:j.scope||"",sqft:j.sqft||"",created:j.created_at,ans:j.intake_answers||{},client_name:j.client_name||"",client_phone:j.client_phone||"",client_email:j.client_email||"",assigned_rep:j.assigned_rep||"",assigned_subs:j.assigned_subs||"",contract_value:Number(j.contract_value||0),co_total:Number(j.co_total||0),target_completion:j.target_completion||"",photos:(ph||[]).map(p=>({id:p.id,type:p.type,url:p.url,name:p.name})),activity:nt||[],change_orders:co||[]};}));}catch(e){console.error(e);return null;}};
-const sbUpd=async(id,ch)=>{try{const ok=["status","scope","sqft","client_name","client_phone","client_email","assigned_rep","assigned_subs","contract_value","co_total","target_completion"];const p={};ok.forEach(k=>{if(ch[k]!==undefined)p[k]=ch[k];});if(Object.keys(p).length)await window.SB.from("jobs").update(p).eq("id",id);}catch(e){}};
+const sbLoad=async()=>{try{const{data,error}=await window.SB.from("jobs").select("*").order("created_at",{ascending:false});if(error||!data)return null;return await Promise.all(data.map(async j=>{const[{data:ph},{data:nt},{data:co}]=await Promise.all([window.SB.from("photos").select("*").eq("job_id",j.id).order("created_at",{ascending:true}),window.SB.from("job_notes").select("*").eq("job_id",j.id).order("created_at",{ascending:false}),window.SB.from("change_orders").select("*").eq("job_id",j.id).order("created_at",{ascending:false})]);return{id:j.id,address:j.address,status:j.status,scope:j.scope||"",sqft:j.sqft||"",created:j.created_at,ans:j.intake_answers||{},client_name:j.client_name||"",client_phone:j.client_phone||"",client_email:j.client_email||"",assigned_rep:j.assigned_rep||"",assigned_subs:j.assigned_subs||"",contract_value:Number(j.contract_value||0),co_total:Number(j.co_total||0),target_completion:j.target_completion||"",contract_signed:j.contract_signed||false,contract_signed_at:j.contract_signed_at||null,photos:(ph||[]).map(p=>({id:p.id,type:p.type,url:p.url,name:p.name})),activity:nt||[],change_orders:co||[]};}));}catch(e){console.error(e);return null;}};
+const sbUpd=async(id,ch)=>{try{const ok=["status","scope","sqft","client_name","client_phone","client_email","assigned_rep","assigned_subs","contract_value","co_total","target_completion","contract_signed","contract_signed_at"];const p={};ok.forEach(k=>{if(ch[k]!==undefined)p[k]=ch[k];});if(Object.keys(p).length)await window.SB.from("jobs").update(p).eq("id",id);}catch(e){}};
 const sbDel=async id=>{try{const{data:ph}=await window.SB.from("photos").select("url").eq("job_id",id);if(ph?.length){const paths=ph.map(p=>p.url?.split("/job-photos/")[1]).filter(Boolean);if(paths.length)await window.SB.storage.from("job-photos").remove(paths);}await Promise.all([window.SB.from("photos").delete().eq("job_id",id),window.SB.from("job_notes").delete().eq("job_id",id),window.SB.from("change_orders").delete().eq("job_id",id),window.SB.from("jobs").delete().eq("id",id)]);}catch(e){}};
 const sbNote=async(jid,content,author)=>{try{const{data,error}=await window.SB.from("job_notes").insert({job_id:jid,tenant_id:window.AV_TENANT,content,author,created_at:new Date().toISOString()}).select().single();return error?null:data;}catch(e){return null;}};
 const sbPhoto=async(jid,file)=>{try{const ext=file.name.split(".").pop()||"jpg";const path=`${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;const{error:ue}=await window.SB.storage.from("job-photos").upload(path,file,{contentType:file.type,upsert:false});if(ue){console.error(ue);return null;}const{data:ud}=window.SB.storage.from("job-photos").getPublicUrl(path);const url=ud.publicUrl;const row={id:Date.now().toString()+Math.random(),job_id:jid,tenant_id:window.AV_TENANT,type:file.type.startsWith("video")?"video":"photo",url,name:file.name};await window.SB.from("photos").insert(row);return{id:row.id,type:row.type,url,name:file.name};}catch(e){console.error(e);return null;}};
@@ -318,6 +318,7 @@ const CLIENT_LINK_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/sen
 const BID_INVITE_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/send-bid-invite";
 const PAYMENT_LINK_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/create-payment-link";
 const AI_ESTIMATOR_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-estimator";
+const CONTRACT_EMAIL_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/send-contract-email";
 const ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ";
 const sbLoadSubDirectory=async()=>{
   const{data}=await window.SB.from("profiles").select("*").eq("tenant_id",window.AV_TENANT).eq("role","sub").order("full_name");
@@ -392,6 +393,106 @@ const sbLoadSubJobs=async subId=>{
   return data||[];
 };
 // ─────────────────────────────────────────────────────────────────────────────
+// ─── SIGNATURE / CONTRACT HELPERS ────────────────────────────────────────────
+const toBase64=blob=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.readAsDataURL(blob);});
+const sbSaveSignature=async(sig)=>{
+  const{data,error}=await window.SB.from("contract_signatures").insert({...sig,tenant_id:window.AV_TENANT}).select().single();
+  return error?null:data;
+};
+const sbSendContractEmail=async(job,contractType,pdfBlob)=>{
+  const b64=pdfBlob?await toBase64(pdfBlob):null;
+  const res=await fetch(CONTRACT_EMAIL_URL,{
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":`Bearer ${ANON_KEY}`},
+    body:JSON.stringify({email:job.client_email,client_name:job.client_name||"",job_address:job.address||"",job_id:job.id,tenant_id:window.AV_TENANT,contract_type:contractType,...(b64?{pdf_base64:b64}:{})}),
+  });
+  return res.json();
+};
+const buildGenericPDF=({docType,job,bodyText,signaturePng})=>{
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:"pt",format:"letter"});
+  const navy=[10,31,68];const gold=[201,168,76];const gray=[107,114,128];
+  const W=612;const M=48;const CW=W-M*2;
+  // Header
+  doc.setFillColor(...navy);doc.rect(0,0,W,80,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(20);doc.setTextColor(...gold);
+  doc.text("AVENSTONE GROUP",M,34);
+  doc.setFontSize(9);doc.setFont("helvetica","normal");doc.setTextColor(...gold);
+  doc.text(docType,M,50);
+  doc.setTextColor(200,200,200);doc.setFontSize(9);
+  doc.text("avenstonekc.com  \u00b7  Kansas City, MO",W-M,34,{align:"right"});
+  let y=100;
+  // Job info
+  doc.setFontSize(11);doc.setFont("helvetica","bold");doc.setTextColor(...navy);
+  doc.text(job.address||"",M,y);y+=16;
+  if(job.client_name){doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(...gray);doc.text(`Client: ${job.client_name}`,M,y);y+=14;}
+  doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(...gray);
+  doc.text(`Date: ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}`,M,y);y+=24;
+  doc.setDrawColor(...gold);doc.setLineWidth(1.5);doc.line(M,y,W-M,y);y+=20;
+  // Body text
+  doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(55,65,81);
+  const lines=doc.splitTextToSize(bodyText,CW);
+  lines.forEach(line=>{if(y>710){doc.addPage();y=60;}doc.text(line,M,y);y+=13;});
+  // Signature image
+  if(signaturePng){
+    y+=20;
+    if(y>660){doc.addPage();y=60;}
+    doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...navy);
+    doc.text("Signed:",M,y);y+=8;
+    try{doc.addImage(signaturePng,"PNG",M,y,200,60);}catch(e){}
+    y+=70;
+    doc.setDrawColor(200,200,200);doc.setLineWidth(0.5);doc.line(M,y,M+200,y);
+    y+=12;doc.setFontSize(8);doc.setTextColor(...gray);doc.text("Client Signature",M,y);
+  }
+  // Footer all pages
+  const pages=doc.getNumberOfPages();
+  const now=new Date().toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"});
+  for(let i=1;i<=pages;i++){
+    doc.setPage(i);
+    doc.setFillColor(...navy);doc.rect(0,772,W,40,"F");
+    doc.setFontSize(8);doc.setTextColor(...gold);doc.setFont("helvetica","bold");
+    doc.text("AVENSTONE GROUP LLC",M,788);
+    doc.setTextColor(180,180,180);doc.setFont("helvetica","normal");
+    doc.text(`Page ${i} of ${pages}`,W/2,788,{align:"center"});
+    doc.text(now,W-M,788,{align:"right"});
+  }
+  return doc;
+};
+const DEFAULT_CONTRACT_TEXT=(job)=>`CONSTRUCTION SERVICES AGREEMENT
+
+This Construction Services Agreement ("Agreement") is entered into as of the date signed below between Avenstone Group LLC ("Contractor") and ${job.client_name||"[Client Name]"} ("Client") for the property located at ${job.address||"[Property Address]"}.
+
+1. SCOPE OF WORK
+Contractor agrees to furnish all labor, materials, equipment, and services necessary to complete the renovation work as described in the project scope ("the Work"). The specific scope, specifications, and any drawings are incorporated herein by reference.
+
+2. CONTRACT PRICE
+The total contract price for the Work is ${window.f$?window.f$(job.contract_value||0):"$0.00"} ("Contract Price"), subject to modifications via approved Change Orders.
+
+3. PAYMENT SCHEDULE
+A) Deposit: 25% due upon signing this Agreement.
+B) Progress Payments: Invoiced at milestones mutually agreed upon.
+C) Final Payment: Remaining balance due upon substantial completion.
+All payments are due within 5 business days of invoice.
+
+4. COMMENCEMENT AND COMPLETION
+Work shall commence within 5 business days of receipt of the deposit. Estimated completion: ${job.target_completion||"[To be determined]"}. Delays caused by weather, materials availability, or Client-requested changes shall extend the schedule accordingly.
+
+5. CHANGE ORDERS
+Any changes to the scope of work must be documented in a written Change Order signed by both parties before work proceeds. Change Orders may adjust the Contract Price and/or schedule.
+
+6. WARRANTIES
+Contractor warrants all workmanship for a period of one (1) year from the date of substantial completion. Manufacturer warranties on materials are passed through to Client.
+
+7. INSURANCE
+Contractor maintains general liability insurance and workers' compensation coverage as required by Missouri law. Certificates of insurance are available upon request.
+
+8. DISPUTE RESOLUTION
+Any disputes arising under this Agreement shall first be submitted to mediation before pursuing other remedies. This Agreement shall be governed by the laws of the State of Missouri.
+
+9. ENTIRE AGREEMENT
+This Agreement, together with any attached exhibits and Change Orders, constitutes the entire agreement between the parties and supersedes all prior negotiations and representations.
+
+By signing below, Client acknowledges reading and agreeing to all terms of this Agreement.`;
 
 const IQ=[
   {id:"basics",lb:"Project Basics",ic:"clip",qs:[
@@ -481,6 +582,183 @@ const BQ=[
 const IR=[{f:a=>!a.address,m:"Property address required"},{f:a=>!a.scope_type,m:"Scope type required"},{f:a=>!a.total_sqft,m:"Total sqft required"},{f:a=>!a.foundation_type,m:"Foundation type required"}];
 const BR=[{f:a=>!a.bid_type,m:"Bid type required"},{f:a=>!a.property_address,m:"Property address required"},{f:a=>!a.trades||!a.trades.length,m:"Select at least one trade"},{f:a=>!a.line_items,m:"Line items required"}];
 
+// ─── SIGNATURE PAD ───────────────────────────────────────────────────────────
+function SignaturePad({onSave,onCancel,label="Draw your signature below"}){
+  const cvs=useRef(null);
+  const[drawing,setDrawing]=useState(false);
+  const[empty,setEmpty]=useState(true);
+  const getXY=(e,el)=>{const r=el.getBoundingClientRect();if(e.touches){return[e.touches[0].clientX-r.left,e.touches[0].clientY-r.top];}return[e.clientX-r.left,e.clientY-r.top];};
+  const down=e=>{e.preventDefault();const c=cvs.current;const ctx=c.getContext("2d");const[x,y]=getXY(e,c);ctx.beginPath();ctx.moveTo(x,y);setDrawing(true);setEmpty(false);};
+  const move=e=>{if(!drawing)return;e.preventDefault();const c=cvs.current;const ctx=c.getContext("2d");ctx.strokeStyle="#0A1F44";ctx.lineWidth=2;ctx.lineCap="round";ctx.lineJoin="round";const[x,y]=getXY(e,c);ctx.lineTo(x,y);ctx.stroke();};
+  const up=e=>{setDrawing(false);};
+  const clear=()=>{const c=cvs.current;c.getContext("2d").clearRect(0,0,c.width,c.height);setEmpty(true);};
+  const save=()=>{if(empty)return;const png=cvs.current.toDataURL("image/png");onSave(png);};
+  return(
+    <div style={{background:"#fff",border:"1px solid #E8E4DC",borderRadius:6,padding:16}}>
+      <div style={{fontSize:12,fontWeight:600,color:"#0A1F44",marginBottom:8}}>{label}</div>
+      <canvas ref={cvs} width={460} height={140}
+        style={{display:"block",border:"2px solid #C9A84C",borderRadius:4,cursor:"crosshair",touchAction:"none",maxWidth:"100%",background:"#FAFAF8"}}
+        onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={up}
+        onTouchStart={down} onTouchMove={move} onTouchEnd={up}
+      />
+      <div style={{display:"flex",gap:8,marginTop:12}}>
+        <button className="btn btn-ghost" style={{flex:1}} onClick={clear}>Clear</button>
+        {onCancel&&<button className="btn btn-ghost" style={{flex:1}} onClick={onCancel}>Cancel</button>}
+        <button className={`btn ${empty?"btn-ghost":"btn-gold"}`} style={{flex:2}} onClick={save} disabled={empty}>Sign & Submit</button>
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── CONTRACT MODAL ──────────────────────────────────────────────────────────
+function ContractModal({job,onClose,onSent}){
+  const[contractText,setContractText]=useState(()=>DEFAULT_CONTRACT_TEXT(job));
+  const[clientName,setClientName]=useState(job.client_name||"");
+  const[clientEmail,setClientEmail]=useState(job.client_email||"");
+  const[sending,setSending]=useState(false);
+  const[sent,setSent]=useState(false);
+  const[err,setErr]=useState("");
+  const send=async()=>{
+    if(!clientEmail.trim()){setErr("Client email is required.");return;}
+    setSending(true);setErr("");
+    // Build PDF with contract text (no signature yet — client will sign)
+    const doc=buildGenericPDF({docType:"CONTRACT",job:{...job,client_name:clientName,client_email:clientEmail},bodyText:contractText,signaturePng:null});
+    const blob=doc.output("blob");
+    const res=await sbSendContractEmail({...job,client_name:clientName,client_email:clientEmail},"contract",blob);
+    if(res.error){setErr(res.error);setSending(false);return;}
+    setSent(true);setSending(false);
+    if(onSent)onSent(clientEmail,clientName);
+  };
+  return(
+    <div className="overlay" onClick={onClose}><div className="modal" style={{maxWidth:640,maxHeight:"90vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-title" style={{flexShrink:0}}>Send Contract</div>
+      {sent?(
+        <div style={{padding:"20px 0",textAlign:"center"}}>
+          <div style={{width:48,height:48,background:"#22c55e",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",color:"#fff",fontSize:20}}>✓</div>
+          <div style={{fontWeight:600,color:"#0A1F44",marginBottom:4}}>Contract sent!</div>
+          <div style={{fontSize:13,color:"#9CA3AF",marginBottom:16}}>{clientEmail}</div>
+          <button className="btn btn-ghost" style={{width:"100%"}} onClick={onClose}>Close</button>
+        </div>
+      ):(
+        <div style={{overflowY:"auto",flex:1}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <div className="fg"><label className="flbl">Client Name</label><input className="finp" value={clientName} onChange={e=>setClientName(e.target.value)} placeholder="Full name"/></div>
+            <div className="fg"><label className="flbl"><span className="freq">*</span>Client Email</label><input className="finp" type="email" value={clientEmail} onChange={e=>setClientEmail(e.target.value)} placeholder="client@email.com"/></div>
+          </div>
+          <div className="fg"><label className="flbl">Contract Text</label><textarea className="finp fta" rows={14} value={contractText} onChange={e=>setContractText(e.target.value)} style={{resize:"vertical",fontFamily:"monospace",fontSize:11,lineHeight:1.5}}/></div>
+          {err&&<div style={{fontSize:12,color:"#ef4444",marginBottom:8}}>{err}</div>}
+          <div style={{display:"flex",gap:10,marginTop:8,flexShrink:0}}>
+            <button className="btn btn-ghost" style={{flex:1}} onClick={onClose}>Cancel</button>
+            <button className={`btn ${clientEmail?"btn-navy":"btn-ghost"}`} style={{flex:2}} onClick={send} disabled={sending||!clientEmail}>{sending?"Sending...":"Send Contract to Client"}</button>
+          </div>
+        </div>
+      )}
+    </div></div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── CLIENT SIGN CONTRACT MODAL ──────────────────────────────────────────────
+function ClientSignContractModal({job,onClose,onSigned}){
+  const[step,setStep]=useState("review");// review | sign | done
+  const[sigPng,setSigPng]=useState(null);
+  const[saving,setSaving]=useState(false);
+  const contractText=DEFAULT_CONTRACT_TEXT(job);
+  const submit=async(png)=>{
+    setSigPng(png);setSaving(true);
+    // Build signed PDF
+    const doc=buildGenericPDF({docType:"CONTRACT",job,bodyText:contractText,signaturePng:png});
+    const blob=doc.output("blob");
+    // Upload to job-documents
+    const file=new File([blob],`Contract — ${job.address||job.id}.pdf`,{type:"application/pdf"});
+    const up=await sbUploadDoc(job.id,file,"contract");
+    // Save signature record
+    await sbSaveSignature({job_id:job.id,type:"contract",signed_by_name:job.client_name||"",signed_by_email:job.client_email||"",signature_data:png,signed_at:new Date().toISOString(),document_url:up?.doc?.file_url||null});
+    // Update job
+    await window.SB.from("jobs").update({contract_signed:true,contract_signed_at:new Date().toISOString()}).eq("id",job.id);
+    // Notify staff
+    sbNotify("note_posted",`Contract signed — ${job.address}`,"The client has signed the contract.",job.id,window.AV_USER_ID);
+    setSaving(false);setStep("done");
+    if(onSigned)onSigned();
+  };
+  return(
+    <div className="overlay" onClick={onClose}><div className="modal" style={{maxWidth:580,maxHeight:"90vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+      {step==="review"&&<>
+        <div className="modal-title">Review Contract</div>
+        <div style={{overflowY:"auto",flex:1,marginBottom:12}}>
+          <pre style={{fontSize:11,lineHeight:1.6,whiteSpace:"pre-wrap",color:"#374151",fontFamily:"sans-serif"}}>{contractText}</pre>
+        </div>
+        <div style={{display:"flex",gap:10,flexShrink:0}}>
+          <button className="btn btn-ghost" style={{flex:1}} onClick={onClose}>Cancel</button>
+          <button className="btn btn-gold" style={{flex:2}} onClick={()=>setStep("sign")}>I've Read It — Sign →</button>
+        </div>
+      </>}
+      {step==="sign"&&<>
+        <div className="modal-title">Sign Contract</div>
+        <div style={{marginBottom:12,fontSize:13,color:"#6B7280"}}>By signing below, you agree to the contract terms for <strong>{job.address}</strong>.</div>
+        <SignaturePad onSave={submit} onCancel={()=>setStep("review")} label="Draw your signature"/>
+        {saving&&<div style={{textAlign:"center",fontSize:13,color:"#9CA3AF",marginTop:12}}>Saving signed contract...</div>}
+      </>}
+      {step==="done"&&<>
+        <div style={{padding:"24px 0",textAlign:"center"}}>
+          <div style={{width:48,height:48,background:"#22c55e",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",color:"#fff",fontSize:20}}>✓</div>
+          <div style={{fontWeight:600,color:"#0A1F44",marginBottom:4}}>Contract Signed!</div>
+          <div style={{fontSize:13,color:"#9CA3AF",marginBottom:16}}>Your signed contract has been saved.</div>
+          <button className="btn btn-ghost" style={{width:"100%"}} onClick={onClose}>Close</button>
+        </div>
+      </>}
+    </div></div>
+  );
+}
+
+// ─── COMPLETION SIGN-OFF MODAL ───────────────────────────────────────────────
+function CompletionSignoffModal({job,onClose,onSigned}){
+  const[step,setStep]=useState("review");
+  const[saving,setSaving]=useState(false);
+  const completionText=`PROJECT COMPLETION SIGN-OFF\n\nProject Address: ${job.address}\nClient: ${job.client_name||""}\nDate: ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}\n\nI, the undersigned, confirm that all work described in the Construction Services Agreement and any approved Change Orders has been completed to my satisfaction at the above property.\n\nI acknowledge that:\n• All work has been completed per the agreed scope\n• I have had the opportunity to inspect all work\n• Any punch list items have been addressed\n• Final payment is now due per the payment schedule\n\nBy signing below, I release Avenstone Group LLC from any further obligations under the contract, with the exception of warranty claims which remain in effect for one (1) year from this date.`;
+  const submit=async(png)=>{
+    setSaving(true);
+    const doc=buildGenericPDF({docType:"COMPLETION SIGN-OFF",job,bodyText:completionText,signaturePng:png});
+    const blob=doc.output("blob");
+    const file=new File([blob],`Completion Sign-off — ${job.address||job.id}.pdf`,{type:"application/pdf"});
+    const up=await sbUploadDoc(job.id,file,"contract");
+    await sbSaveSignature({job_id:job.id,type:"completion",signed_by_name:job.client_name||"",signed_by_email:job.client_email||"",signature_data:png,signed_at:new Date().toISOString(),document_url:up?.doc?.file_url||null});
+    sbNotify("note_posted",`Completion signed — ${job.address}`,"The client has signed the completion sign-off.",job.id,window.AV_USER_ID);
+    setSaving(false);setStep("done");
+    if(onSigned)onSigned();
+  };
+  return(
+    <div className="overlay" onClick={onClose}><div className="modal" style={{maxWidth:560,maxHeight:"90vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+      {step==="review"&&<>
+        <div className="modal-title">Completion Sign-off</div>
+        <div style={{overflowY:"auto",flex:1,marginBottom:12}}>
+          <pre style={{fontSize:11,lineHeight:1.6,whiteSpace:"pre-wrap",color:"#374151",fontFamily:"sans-serif"}}>{completionText}</pre>
+        </div>
+        <div style={{display:"flex",gap:10,flexShrink:0}}>
+          <button className="btn btn-ghost" style={{flex:1}} onClick={onClose}>Cancel</button>
+          <button className="btn btn-gold" style={{flex:2}} onClick={()=>setStep("sign")}>I've Read It — Sign →</button>
+        </div>
+      </>}
+      {step==="sign"&&<>
+        <div className="modal-title">Sign Completion</div>
+        <div style={{marginBottom:12,fontSize:13,color:"#6B7280"}}>By signing, you confirm the work at <strong>{job.address}</strong> is complete and satisfactory.</div>
+        <SignaturePad onSave={submit} onCancel={()=>setStep("review")} label="Draw your signature"/>
+        {saving&&<div style={{textAlign:"center",fontSize:13,color:"#9CA3AF",marginTop:12}}>Saving...</div>}
+      </>}
+      {step==="done"&&<>
+        <div style={{padding:"24px 0",textAlign:"center"}}>
+          <div style={{width:48,height:48,background:"#22c55e",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",color:"#fff",fontSize:20}}>✓</div>
+          <div style={{fontWeight:600,color:"#0A1F44",marginBottom:4}}>Sign-off Complete</div>
+          <div style={{fontSize:13,color:"#9CA3AF",marginBottom:16}}>PDF saved to documents.</div>
+          <button className="btn btn-ghost" style={{width:"100%"}} onClick={onClose}>Close</button>
+        </div>
+      </>}
+    </div></div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function Fld({q,v,set}){
   const filled=v&&(Array.isArray(v)?v.length>0:v!=="");
   const selStyle={appearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32};
@@ -567,6 +845,8 @@ function JobDet({job,upd,del,back,profile}){
   const[uplPct,setUplPct]=useState(0);
   const[showCO,setShowCO]=useState(false);
   const[editInf,setEditInf]=useState(false);
+  const[showContract,setShowContract]=useState(false);
+  const[showCompletion,setShowCompletion]=useState(false);
   const[cod,setCod]=useState("");const[cor,setCor]=useState("");const[coa,setCoa]=useState("");const[savCO,setSavCO]=useState(false);
   const[inf,setInf]=useState({client_name:job.client_name||"",client_phone:job.client_phone||"",client_email:job.client_email||"",assigned_rep:job.assigned_rep||"",assigned_subs:job.assigned_subs||"",contract_value:job.contract_value||"",target_completion:job.target_completion||"",sqft:job.sqft||""});
   const pr=useRef();const vr=useRef();
@@ -903,6 +1183,37 @@ function JobDet({job,upd,del,back,profile}){
             {job.client_email&&<ClientLinkButton job={job}/>}
             </div>
           )}
+          {/* ── Contract Section ── */}
+          {["owner","sales_rep","project_manager"].includes(profile?.role)&&(
+            <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginTop:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Contract</div>
+                  {job.contract_signed&&<div style={{fontSize:12,color:"#22c55e",fontWeight:600,marginTop:3}}>✓ Signed by client</div>}
+                  {!job.contract_signed&&job.client_email&&<div style={{fontSize:12,color:"#f59e0b",marginTop:3}}>Awaiting signature</div>}
+                  {!job.client_email&&<div style={{fontSize:12,color:"#9CA3AF",marginTop:3}}>Add client email to send contract</div>}
+                </div>
+                {job.client_email&&!job.contract_signed&&(
+                  <button className="btn btn-navy" style={{fontSize:12,padding:"7px 16px"}} onClick={()=>setShowContract(true)}>Send Contract</button>
+                )}
+                {job.contract_signed&&(
+                  <span style={{fontSize:11,background:"#F0FDF4",color:"#16a34a",padding:"4px 12px",border:"1px solid #BBF7D0",fontWeight:600}}>Signed</span>
+                )}
+              </div>
+            </div>
+          )}
+          {/* ── Completion Sign-off ── */}
+          {["owner","sales_rep","project_manager"].includes(profile?.role)&&["complete","punch"].includes(job.status)&&(
+            <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginTop:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Completion Sign-off</div>
+                  <div style={{fontSize:12,color:"#6B7280",marginTop:3}}>Have the client sign off that work is complete</div>
+                </div>
+                {job.client_email&&<button className="btn btn-gold" style={{fontSize:12,padding:"7px 16px"}} onClick={()=>setShowCompletion(true)}>Send Sign-off</button>}
+              </div>
+            </div>
+          )}
           {/* ── Assigned Subs ── */}
           <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginTop:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -1120,7 +1431,16 @@ function JobDet({job,upd,del,back,profile}){
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12}}>
               <span style={{fontSize:11,color:"#9CA3AF"}}>{fD(co.created_at)}</span>
-              {co.status==="pending"&&<div style={{display:"flex",gap:8}}>
+              {co.status==="pending"&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {["owner","project_manager"].includes(profile?.role)&&job.client_email&&(
+                  <button className="btn" style={{background:"#0A1F44",border:"1px solid #0A1F44",color:"#C9A84C",padding:"5px 12px",fontSize:11,fontWeight:600}} onClick={async()=>{
+                    const coText=`CHANGE ORDER: ${co.co_number||""}\n\nProject: ${job.address}\nClient: ${job.client_name||""}\n\nDescription:\n${co.description||""}\n\nReason: ${co.reason||""}\n\nAmount: ${f$(co.amount||0)}\n\nThis Change Order must be approved by the client before work proceeds.`;
+                    const doc=buildGenericPDF({docType:"CHANGE ORDER",job,bodyText:coText,signaturePng:null});
+                    const blob=doc.output("blob");
+                    await sbSendContractEmail(job,"change_order",blob);
+                    alert(`Change order sent to ${job.client_email} for signature.`);
+                  }}>Send for Approval</button>
+                )}
                 <button className="btn" style={{background:"#F0FDF4",border:"1px solid #BBF7D0",color:"#16a34a",padding:"5px 12px",fontSize:11,fontWeight:600}} onClick={()=>apCO(co.id)}>✓ Approve</button>
                 <button className="btn" style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#ef4444",padding:"5px 12px",fontSize:11,fontWeight:600}} onClick={()=>rjCO(co.id)}>✕ Reject</button>
               </div>}
@@ -1489,6 +1809,8 @@ function JobDet({job,upd,del,back,profile}){
         ))}
         <button className="btn btn-ghost" style={{width:"100%",marginTop:4}} onClick={()=>setShowSubPicker(false)}>Cancel</button>
       </div></div>}
+      {showContract&&<ContractModal job={job} onClose={()=>setShowContract(false)} onSent={(email,name)=>{upd({client_email:email,client_name:name});setShowContract(false);}}/>}
+      {showCompletion&&<CompletionSignoffModal job={job} onClose={()=>setShowCompletion(false)} onSigned={()=>setShowCompletion(false)}/>}
     </div>
   );
 }
@@ -1604,12 +1926,13 @@ function ClientPortal({profile,signOut}){
   const[msgTxt,setMsgTxt]=useState("");
   const[sendingMsg,setSendingMsg]=useState(false);
   const[tab,setTab]=useState("schedule");
+  const[showSignContract,setShowSignContract]=useState(false);
   const msgsEndRef=useRef();
 
   useEffect(()=>{
     if(!profile?.id)return;
     // Load jobs where client_user_id = this profile
-    window.SB.from("jobs").select("id,address,status,client_name,contract_value,co_total,target_completion,created,photos,change_orders").eq("client_user_id",profile.id).then(({data})=>{setJobs(data||[]);setLoading(false);});
+    window.SB.from("jobs").select("id,address,status,client_name,client_email,contract_value,co_total,target_completion,created,photos,change_orders,contract_signed,contract_signed_at").eq("client_user_id",profile.id).then(({data})=>{setJobs(data||[]);setLoading(false);});
   },[profile?.id]);
 
   const job=sel?jobs.find(j=>j.id===sel):null;
@@ -1677,6 +2000,12 @@ function ClientPortal({profile,signOut}){
       </div>}
 
       {job&&<>
+        {/* Contract sign banner */}
+        {!job.contract_signed&&<div style={{background:"#FEF9EC",borderBottom:"2px solid #C9A84C",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+          <div style={{fontSize:13,color:"#92400e",fontWeight:600}}>Your contract is ready to sign</div>
+          <button className="btn btn-gold" style={{fontSize:12,padding:"7px 16px",flexShrink:0}} onClick={()=>setShowSignContract(true)}>Sign Contract</button>
+        </div>}
+        {job.contract_signed&&<div style={{background:"#F0FDF4",borderBottom:"1px solid #BBF7D0",padding:"8px 16px",fontSize:12,color:"#16a34a",fontWeight:600}}>✓ Contract signed</div>}
         <div className="tabbar">{CLIENT_TABS.map(t=><button key={t.id} className={`tab${tab===t.id?" on":""}`} onClick={()=>setTab(t.id)}><span style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic[t.ic]||Ic.info}</span>{t.lb}</button>)}</div>
         <div style={{flex:1,overflowY:"auto",padding:16}}>
           {tab==="schedule"&&<ClientScheduleView jobId={job.id}/>}
@@ -1768,6 +2097,7 @@ function ClientPortal({profile,signOut}){
             </div></div>}
           </div>}
         </div>
+        {showSignContract&&job&&<ClientSignContractModal job={job} onClose={()=>setShowSignContract(false)} onSigned={()=>{setJobs(js=>js.map(j=>j.id===job.id?{...j,contract_signed:true}:j));setShowSignContract(false);}}/>}
       </>}
     </div>
   );
@@ -1909,6 +2239,109 @@ function SubRateModal({sub,onClose,profile}){
   );
 }
 
+function SubOnboardingModal({sub,onClose,onUpdated}){
+  const[tab,setTab]=useState("w9");
+  const[w9Uploading,setW9Uploading]=useState(false);
+  const[insUploading,setInsUploading]=useState(false);
+  const[insExpiry,setInsExpiry]=useState(sub.insurance_expiry||"");
+  const[insVerified,setInsVerified]=useState(sub.insurance_verified||false);
+  const[savingIns,setSavingIns]=useState(false);
+  const w9Ref=useRef();const insRef=useRef();
+  const uploadW9=async(file)=>{
+    if(!file)return;setW9Uploading(true);
+    const ext=file.name.split(".").pop()||"pdf";
+    const path=`w9/${sub.id}_${Date.now()}.${ext}`;
+    const{error:ue}=await window.SB.storage.from("job-documents").upload(path,file,{contentType:file.type,upsert:true});
+    if(ue){setW9Uploading(false);alert("Upload failed: "+ue.message);return;}
+    const{data:ud}=window.SB.storage.from("job-documents").getPublicUrl(path);
+    const url=ud.publicUrl;
+    await window.SB.from("profiles").update({w9_url:url,w9_submitted_at:new Date().toISOString()}).eq("id",sub.id);
+    if(onUpdated)onUpdated({...sub,w9_url:url,w9_submitted_at:new Date().toISOString()});
+    setW9Uploading(false);
+  };
+  const uploadIns=async(file)=>{
+    if(!file)return;setInsUploading(true);
+    const ext=file.name.split(".").pop()||"pdf";
+    const path=`insurance/${sub.id}_${Date.now()}.${ext}`;
+    const{error:ue}=await window.SB.storage.from("job-documents").upload(path,file,{contentType:file.type,upsert:true});
+    if(ue){setInsUploading(false);alert("Upload failed: "+ue.message);return;}
+    const{data:ud}=window.SB.storage.from("job-documents").getPublicUrl(path);
+    const url=ud.publicUrl;
+    await window.SB.from("profiles").update({insurance_url:url}).eq("id",sub.id);
+    if(onUpdated)onUpdated({...sub,insurance_url:url});
+    setInsUploading(false);
+  };
+  const saveInsDetails=async()=>{
+    setSavingIns(true);
+    await window.SB.from("profiles").update({insurance_expiry:insExpiry||null,insurance_verified:insVerified}).eq("id",sub.id);
+    if(onUpdated)onUpdated({...sub,insurance_expiry:insExpiry,insurance_verified:insVerified});
+    setSavingIns(false);
+  };
+  return(
+    <div className="overlay" onClick={onClose}><div className="modal" style={{maxWidth:500}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+        <div><div className="modal-title" style={{marginBottom:2}}>{sub.full_name||sub.email}</div>
+          {sub.trade&&<div style={{fontSize:12,color:"#C9A84C",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{sub.trade}</div>}
+        </div>
+        <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",fontSize:18,lineHeight:1}}>✕</button>
+      </div>
+      <div style={{display:"flex",gap:0,marginBottom:16,border:"1px solid #E8E4DC",borderRadius:4,overflow:"hidden"}}>
+        {[["w9","W-9"],["ins","Insurance"],["agreement","Agreement"]].map(([id,lb])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{flex:1,padding:"8px 0",fontSize:12,fontWeight:600,cursor:"pointer",border:"none",borderRight:"1px solid #E8E4DC",background:tab===id?"#0A1F44":"#fff",color:tab===id?"#C9A84C":"#9CA3AF"}}>{lb}</button>
+        ))}
+      </div>
+      {tab==="w9"&&<div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>W-9 Form</div>
+            {sub.w9_submitted_at?
+              <div style={{fontSize:12,color:"#22c55e",marginTop:2}}>✓ Submitted {new Date(sub.w9_submitted_at).toLocaleDateString()}</div>:
+              <div style={{fontSize:12,color:"#f59e0b",marginTop:2}}>Not submitted</div>}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            {sub.w9_url&&<a href={sub.w9_url} target="_blank" className="btn btn-ghost" style={{fontSize:12,padding:"7px 14px"}}>View</a>}
+            <button className="btn btn-navy" style={{fontSize:12,padding:"7px 14px"}} onClick={()=>w9Ref.current.click()} disabled={w9Uploading}>{w9Uploading?"Uploading...":"Upload W-9"}</button>
+          </div>
+        </div>
+        <input ref={w9Ref} type="file" accept=".pdf,image/*" style={{display:"none"}} onChange={e=>uploadW9(e.target.files[0])}/>
+        {!sub.w9_url&&!sub.w9_submitted_at&&<div style={{background:"#FEF9EC",border:"1px solid #FDE68A",padding:"10px 14px",fontSize:12,color:"#78350F",borderRadius:4}}>W-9 has not been received for this subcontractor. Upload a signed copy or request them to submit one.</div>}
+      </div>}
+      {tab==="ins"&&<div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:600,color:"#0A1F44"}}>Certificate of Insurance</div>
+            {sub.insurance_url?
+              <div style={{fontSize:12,color:"#22c55e",marginTop:2}}>✓ On file{sub.insurance_verified?" · Verified":""}</div>:
+              <div style={{fontSize:12,color:"#f59e0b",marginTop:2}}>Not on file</div>}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            {sub.insurance_url&&<a href={sub.insurance_url} target="_blank" className="btn btn-ghost" style={{fontSize:12,padding:"7px 14px"}}>View</a>}
+            <button className="btn btn-navy" style={{fontSize:12,padding:"7px 14px"}} onClick={()=>insRef.current.click()} disabled={insUploading}>{insUploading?"Uploading...":"Upload COI"}</button>
+          </div>
+        </div>
+        <input ref={insRef} type="file" accept=".pdf,image/*" style={{display:"none"}} onChange={e=>uploadIns(e.target.files[0])}/>
+        <div className="fg" style={{marginTop:12}}><label className="flbl">Expiry Date</label><input className="finp" type="date" value={insExpiry} onChange={e=>setInsExpiry(e.target.value)}/></div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <input type="checkbox" id="ins-verified" checked={insVerified} onChange={e=>setInsVerified(e.target.checked)} style={{width:16,height:16,cursor:"pointer"}}/>
+          <label htmlFor="ins-verified" style={{fontSize:13,color:"#374151",cursor:"pointer"}}>Insurance verified</label>
+        </div>
+        {(insExpiry||insVerified!==sub.insurance_verified)&&<button className="btn btn-gold" style={{width:"100%"}} onClick={saveInsDetails} disabled={savingIns}>{savingIns?"Saving...":"Save Insurance Details"}</button>}
+        {sub.insurance_expiry&&new Date(sub.insurance_expiry)<new Date()&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"10px 14px",fontSize:12,borderRadius:4,marginTop:10}}>⚠ Insurance expired on {new Date(sub.insurance_expiry).toLocaleDateString()}</div>}
+      </div>}
+      {tab==="agreement"&&<div>
+        <div style={{fontSize:13,fontWeight:600,color:"#0A1F44",marginBottom:8}}>Subcontractor Agreement</div>
+        <div style={{fontSize:13,color:"#6B7280",marginBottom:16,lineHeight:1.6}}>Send a digital subcontractor agreement for {sub.full_name||"this sub"} to sign electronically.</div>
+        <button className="btn btn-navy" style={{width:"100%"}} onClick={async()=>{
+          if(!sub.email){alert("No email on file for this sub.");return;}
+          const res=await fetch(CONTRACT_EMAIL_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ANON_KEY}`},body:JSON.stringify({email:sub.email,client_name:sub.full_name||"",job_address:"Subcontractor Agreement",job_id:"sub-"+sub.id,tenant_id:window.AV_TENANT,contract_type:"subcontractor_agreement"})});
+          if(res.ok)alert(`Agreement sent to ${sub.email}`);
+        }}>Send Agreement for Signature</button>
+      </div>}
+      <button className="btn btn-ghost" style={{width:"100%",marginTop:12}} onClick={onClose}>Close</button>
+    </div></div>
+  );
+}
+
 function SubDir({profile}){
   const[subs,setSubs]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -1917,6 +2350,7 @@ function SubDir({profile}){
   const[saving,setSaving]=useState(false);
   const[err,setErr]=useState("");
   const[ratingSub,setRatingSub]=useState(null);
+  const[onboardingSub,setOnboardingSub]=useState(null);
   const[avgMap,setAvgMap]=useState({});
   useEffect(()=>{sbLoadSubDirectory().then(async d=>{
     setSubs(d);setLoading(false);
@@ -1967,7 +2401,10 @@ function SubDir({profile}){
             </div>
             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
               <span style={{fontSize:10,background:s.is_active?"#F0FDF4":"#F7F5F0",color:s.is_active?"#16a34a":"#9CA3AF",padding:"3px 10px",border:`1px solid ${s.is_active?"#BBF7D0":"#E8E4DC"}`,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{s.is_active?"Active":"Inactive"}</span>
-              <button onClick={()=>setRatingSub(s)} style={{background:"transparent",border:"1px solid #E8E4DC",borderRadius:4,padding:"4px 10px",fontSize:11,cursor:"pointer",color:canRate?"#C9A84C":"#9CA3AF",fontWeight:600}}>{canRate?"Rate / Reviews":"Reviews"}</button>
+              <div style={{display:"flex",gap:6}}>
+                {isOwnerOrMgr&&<button onClick={()=>setOnboardingSub(s)} style={{background:"transparent",border:"1px solid #C9A84C",borderRadius:4,padding:"4px 10px",fontSize:11,cursor:"pointer",color:"#C9A84C",fontWeight:600}}>Onboarding</button>}
+                <button onClick={()=>setRatingSub(s)} style={{background:"transparent",border:"1px solid #E8E4DC",borderRadius:4,padding:"4px 10px",fontSize:11,cursor:"pointer",color:canRate?"#C9A84C":"#9CA3AF",fontWeight:600}}>{canRate?"Rate / Reviews":"Reviews"}</button>
+              </div>
             </div>
           </div>
         );
@@ -1982,6 +2419,7 @@ function SubDir({profile}){
         <div style={{display:"flex",gap:10}}><button className="btn btn-ghost" style={{flex:1}} onClick={()=>{setShowAdd(false);setErr("");}}>Cancel</button><button className={`btn ${form.name&&form.email?"btn-navy":"btn-ghost"}`} style={{flex:1}} onClick={addSub} disabled={saving||!form.name||!form.email}>{saving?"Sending invite...":"Add & Send Invite"}</button></div>
       </div></div>}
       {ratingSub&&<SubRateModal sub={ratingSub} onClose={()=>setRatingSub(null)} profile={profile}/>}
+      {onboardingSub&&<SubOnboardingModal sub={onboardingSub} onClose={()=>setOnboardingSub(null)} onUpdated={updated=>{setSubs(ss=>ss.map(s=>s.id===updated.id?updated:s));setOnboardingSub(updated);}}/>}
     </div>
   );
 }
@@ -2244,11 +2682,11 @@ const buildEstimatePDF=async(job,messages)=>{
   doc.setFontSize(20);doc.setTextColor(201,168,76);
   doc.text("AVENSTONE GROUP",M,34);
   doc.setFontSize(9);doc.setFont("helvetica","normal");
-  doc.setTextColor(200,200,200);
+  doc.setTextColor(...gold);
   doc.text("ESTIMATE",M,50);
   doc.setTextColor(200,200,200);
   doc.setFontSize(9);
-  doc.text("avenstonekc.com  ·  Kansas City, MO",W-M,34,{align:"right"});
+  doc.text("avenstonekc.com  \u00b7  Kansas City, MO",W-M,34,{align:"right"});
   y=100;
   // Job info
   doc.setFontSize(11);doc.setFont("helvetica","bold");doc.setTextColor(...navy);
@@ -2275,14 +2713,13 @@ const buildEstimatePDF=async(job,messages)=>{
     doc.setFontSize(8);doc.setTextColor(...gold);doc.setFont("helvetica","bold");
     doc.text("AVENSTONE GROUP LLC",M,788);
     doc.setTextColor(180,180,180);doc.setFont("helvetica","normal");
-    doc.text("This estimate is valid for 30 days.",W/2,788,{align:"center"});
-    doc.text(`Page ${i} of ${pages}`,W-M,788,{align:"right"});
+    doc.text(`Page ${i} of ${pages}`,W/2,788,{align:"center"});
+    doc.text(new Date().toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}),W-M,788,{align:"right"});
   }
   return doc;
 };
 
 const sbSendEstimateEmail=async(job,pdfBlob)=>{
-  const toBase64=blob=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.readAsDataURL(blob);});
   const b64=await toBase64(pdfBlob);
   const html=`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F7F5F0;font-family:sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F5F0;padding:40px 16px;">
