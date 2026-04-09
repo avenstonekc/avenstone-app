@@ -848,7 +848,7 @@ function JobDet({job,upd,del,back,profile}){
         </div>}
         {tab==="notes"&&<div>
           <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginBottom:16}}>
-            <div style={{display:"flex",gap:8,marginBottom:12}}>{["Kalin","Blake"].map(r=><button key={r} onClick={()=>setNa(r)} style={{background:na===r?"#0A1F44":"transparent",border:`1.5px solid ${na===r?"#0A1F44":"#E8E4DC"}`,color:na===r?"#fff":"#6B7280",padding:"6px 16px",fontFamily:"'DM Sans',sans-serif",fontSize:12,cursor:"pointer",fontWeight:600}}>{r}</button>)}</div>
+            <div style={{fontSize:11,color:"#9CA3AF",marginBottom:10}}>Posting as <strong style={{color:"#0A1F44"}}>{na}</strong></div>
             <textarea className="finp fta" value={nt} onChange={e=>setNt(e.target.value)} placeholder="Site conditions, phase updates, sub notes..." rows={3} style={{marginBottom:10}}/>
             <button className={`btn ${nt.trim()?"btn-navy":"btn-ghost"}`} style={{width:"100%"}} onClick={addNote} disabled={saving||!nt.trim()}>{saving?"Saving...":"Add Note"}</button>
           </div>
