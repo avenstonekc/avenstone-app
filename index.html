@@ -312,6 +312,7 @@ const sbNotify=async(type,title,body,jobId,excludeId)=>{
 };
 // ── SUB DIRECTORY & MESSAGING HELPERS ────────────────────────────────────────
 const INVITE_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/send-invite";
+const CLIENT_LINK_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/send-client-link";
 const BID_INVITE_URL="https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/send-bid-invite";
 const ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ";
 const sbLoadSubDirectory=async()=>{
@@ -375,6 +376,10 @@ const sbSubmitBid=async(itbId,amount,notes,quoteFile)=>{
 };
 const sbUpdateBidStatus=async(id,status)=>window.SB.from("bid_responses").update({status}).eq("id",id);
 // ─────────────────────────────────────────────────────────────────────────────
+const sbSendClientLink=async(email,clientName,jobAddress,jobId)=>{
+  const res=await fetch(CLIENT_LINK_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ANON_KEY}`},body:JSON.stringify({email,client_name:clientName,job_address:jobAddress,job_id:jobId,tenant_id:window.AV_TENANT})});
+  return res.json();
+};
 const sbLoadSubJobs=async subId=>{
   const{data:asgn}=await window.SB.from("job_subs").select("job_id").eq("sub_id",subId);
   if(!asgn||!asgn.length)return[];
@@ -759,6 +764,7 @@ function JobDet({job,upd,del,back,profile}){
             <div className="ig">
               {[["Client",job.client_name],["Phone",job.client_phone],["Email",job.client_email],["Rep",job.assigned_rep],["Subs",job.assigned_subs],["Sqft",job.sqft],["Target",job.target_completion],["Created",fD(job.created)]].filter(([,v])=>v).map(([lb,v])=><div className="ii" key={lb}><div className="ii-l">{lb}</div><div className="ii-v">{v}</div></div>)}
               {!job.client_name&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:"20px",color:"#9CA3AF",fontSize:13,background:"#fff",border:"1px solid #E8E4DC"}}>Tap Edit to add client and job details</div>}
+            {job.client_email&&<ClientLinkButton job={job}/>}
             </div>
           )}
           {/* ── Assigned Subs ── */}
@@ -1183,6 +1189,187 @@ function TkOf({onBack}){
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ClientLinkButton({job}){
+  const[sending,setSending]=useState(false);
+  const[sent,setSent]=useState(false);
+  const[err,setErr]=useState("");
+  const send=async()=>{
+    setSending(true);setErr("");
+    const res=await sbSendClientLink(job.client_email,job.client_name,job.address,job.id);
+    if(res.error)setErr(res.error);
+    else setSent(true);
+    setSending(false);
+  };
+  return(
+    <div style={{gridColumn:"1/-1",background:"#F7F5F0",border:"1px solid #E8E4DC",padding:"12px 14px",marginTop:4}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#0A1F44"}}>Client Portal</div>
+          <div style={{fontSize:11,color:"#9CA3AF",marginTop:2}}>Send {job.client_name||job.client_email} a magic link to view progress and message you</div>
+        </div>
+        {sent?(
+          <div style={{fontSize:12,color:"#22c55e",fontWeight:600}}>✓ Link sent!</div>
+        ):(
+          <button className="btn btn-ghost" style={{fontSize:11,padding:"6px 14px",flexShrink:0,whiteSpace:"nowrap"}} onClick={send} disabled={sending}>{sending?"Sending...":"Send Client Link"}</button>
+        )}
+      </div>
+      {err&&<div style={{fontSize:11,color:"#ef4444",marginTop:6}}>{err}</div>}
+    </div>
+  );
+}
+
+function ClientPortal({profile,signOut}){
+  const[jobs,setJobs]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[sel,setSel]=useState(null);
+  const[msgs,setMsgs]=useState([]);
+  const[msgsLoaded,setMsgsLoaded]=useState(false);
+  const[msgTxt,setMsgTxt]=useState("");
+  const[sendingMsg,setSendingMsg]=useState(false);
+  const[tab,setTab]=useState("schedule");
+  const msgsEndRef=useRef();
+
+  useEffect(()=>{
+    if(!profile?.id)return;
+    // Load jobs where client_user_id = this profile
+    window.SB.from("jobs").select("id,address,status,client_name,contract_value,co_total,target_completion,created,photos,change_orders").eq("client_user_id",profile.id).then(({data})=>{setJobs(data||[]);setLoading(false);});
+  },[profile?.id]);
+
+  const job=sel?jobs.find(j=>j.id===sel):null;
+
+  useEffect(()=>{
+    if(!job||msgsLoaded)return;
+    sbLoadMessages(job.id).then(d=>{setMsgs(d);setMsgsLoaded(true);});
+  },[job,msgsLoaded]);
+
+  useEffect(()=>{if(msgs.length&&msgsEndRef.current)msgsEndRef.current.scrollIntoView({behavior:"smooth"});},[msgs]);
+
+  const sendMsg=async()=>{
+    if(!msgTxt.trim()||!job)return;setSendingMsg(true);
+    const m=await sbPostMessage(job.id,msgTxt.trim());
+    if(m){setMsgs(p=>[...p,m]);sbNotify("job_message",`Client message on ${job.address}`,msgTxt.trim().slice(0,120),job.id,window.AV_USER_ID);setMsgTxt("");}
+    setSendingMsg(false);
+  };
+
+  const CLIENT_TABS=[{id:"schedule",lb:"Schedule",ic:"sched"},{id:"photos",lb:"Photos",ic:"cam"},{id:"msgs",lb:"Messages",ic:"note"}];
+
+  if(loading)return(
+    <div style={{minHeight:"100dvh",background:"#0A1F44",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
+      <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",letterSpacing:3,textTransform:"uppercase"}}>Loading</div>
+    </div>
+  );
+
+  if(!jobs.length)return(
+    <div style={{minHeight:"100dvh",background:"#F7F5F0",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:24,textAlign:"center"}}>
+      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:"#0A1F44"}}>No projects found</div>
+      <div style={{fontSize:14,color:"#9CA3AF",maxWidth:320,lineHeight:1.7}}>Your contractor hasn't linked your account to a project yet. Please reach out to them directly.</div>
+      <button className="btn btn-ghost" style={{marginTop:8}} onClick={signOut}>Sign Out</button>
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:"100dvh",background:"#F7F5F0"}}>
+      <div style={{background:"#0A1F44",padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:9,color:"#C9A84C",letterSpacing:4,textTransform:"uppercase",marginBottom:2}}>Avenstone Group</div>
+          {!job?(
+            <div style={{fontSize:15,fontWeight:600,color:"#fff"}}>My Projects</div>
+          ):(
+            <div>
+              <button onClick={()=>{setSel(null);setMsgsLoaded(false);setTab("schedule");}} style={{background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.5)",fontSize:12,padding:0,marginBottom:2}}>← Back</button>
+              <div style={{fontSize:15,fontWeight:600,color:"#fff"}}>{job.address}</div>
+            </div>
+          )}
+        </div>
+        <button onClick={signOut} style={{background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.35)",display:"flex",alignItems:"center",padding:4}}><span style={{width:16,height:16,display:"flex"}}>{Ic.logout}</span></button>
+      </div>
+
+      {!job&&<div style={{padding:16}}>
+        {jobs.map(j=>(
+          <div key={j.id} onClick={()=>setSel(j.id)} style={{background:"#fff",border:"1px solid #E8E4DC",borderLeft:`4px solid ${sc(j.status)}`,padding:"16px",marginBottom:10,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#C9A84C"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E8E4DC"}>
+            <div style={{fontSize:15,fontWeight:600,color:"#0A1F44",marginBottom:6}}>{j.address}</div>
+            <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{fontSize:10,background:sc(j.status)+"18",color:sc(j.status),padding:"3px 10px",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>{sl(j.status)}</span>
+              {j.target_completion&&<span style={{fontSize:12,color:"#9CA3AF"}}>Target: {j.target_completion}</span>}
+            </div>
+          </div>
+        ))}
+      </div>}
+
+      {job&&<>
+        <div className="tabbar">{CLIENT_TABS.map(t=><button key={t.id} className={`tab${tab===t.id?" on":""}`} onClick={()=>setTab(t.id)}><span style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic[t.ic]||Ic.info}</span>{t.lb}</button>)}</div>
+        <div style={{flex:1,overflowY:"auto",padding:16}}>
+          {tab==="schedule"&&<ClientScheduleView jobId={job.id}/>}
+          {tab==="photos"&&<div>
+            {!(job.photos||[]).length&&<div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Your contractor will upload progress photos here</div></div>}
+            <div className="pgrid">{(job.photos||[]).map(p=><div key={p.id} className="pcell"><div style={{position:"absolute",inset:0}}><img src={p.url||p.data} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div></div>)}</div>
+          </div>}
+          {tab==="msgs"&&<div style={{display:"flex",flexDirection:"column",minHeight:400}}>
+            {!msgsLoaded&&<div style={{textAlign:"center",padding:32,color:"#9CA3AF",fontSize:13}}>Loading...</div>}
+            {msgsLoaded&&<>
+              <div style={{flex:1,overflowY:"auto",paddingBottom:8}}>
+                {!msgs.length&&<div className="empty">{Ic.note}<div className="empty-t">No messages yet</div><div>Send your contractor a message below</div></div>}
+                {msgs.map(m=>{
+                  const mine=m.sender_id===window.AV_USER_ID;
+                  const nm=m.sender?.full_name||"Contractor";
+                  return(
+                    <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:mine?"flex-end":"flex-start",marginBottom:12}}>
+                      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+                        <span style={{fontSize:11,color:"#9CA3AF",fontWeight:600}}>{mine?"You":nm}</span>
+                        <span style={{fontSize:10,color:"#D1C9B8"}}>{fDT(m.created_at)}</span>
+                      </div>
+                      <div style={{maxWidth:"80%",background:mine?"#0A1F44":"#fff",color:mine?"#fff":"#374151",padding:"10px 14px",borderRadius:mine?"12px 12px 2px 12px":"12px 12px 12px 2px",fontSize:13,lineHeight:1.55,border:mine?"none":"1px solid #E8E4DC"}}>{m.content}</div>
+                    </div>
+                  );
+                })}
+                <div ref={msgsEndRef}/>
+              </div>
+              <div style={{borderTop:"1px solid #E8E4DC",paddingTop:12,background:"#F7F5F0"}}>
+                <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                  <textarea className="finp fta" value={msgTxt} onChange={e=>setMsgTxt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();}}} placeholder="Message your contractor… (Enter to send)" rows={2} style={{flex:1,marginBottom:0,resize:"none"}}/>
+                  <button className={`btn ${msgTxt.trim()?"btn-navy":"btn-ghost"}`} style={{padding:"10px 16px",flexShrink:0}} onClick={sendMsg} disabled={sendingMsg||!msgTxt.trim()}>{sendingMsg?"...":"Send"}</button>
+                </div>
+              </div>
+            </>}
+          </div>}
+        </div>
+      </>}
+    </div>
+  );
+}
+
+function ClientScheduleView({jobId}){
+  const[phases,setPhases]=useState([]);
+  const[loaded,setLoaded]=useState(false);
+  useEffect(()=>{sbLoadPhases(jobId).then(d=>{setPhases(d);setLoaded(true);});},[jobId]);
+  if(!loaded)return <div style={{textAlign:"center",padding:32,color:"#9CA3AF",fontSize:13}}>Loading schedule...</div>;
+  if(!phases.length)return <div className="empty">{Ic.sched}<div className="empty-t">Schedule not set</div><div>Your contractor will add the project schedule here</div></div>;
+  const done=phases.filter(p=>p.status==="complete").length;
+  const pct=Math.round((done/phases.length)*100);
+  return(
+    <div>
+      <div style={{background:"#fff",border:"1px solid #E8E4DC",padding:16,marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1}}>Overall Progress</div>
+          <div style={{fontSize:12,color:"#0A1F44",fontWeight:700}}>{pct}% complete</div>
+        </div>
+        <div style={{background:"#E8E4DC",height:8,borderRadius:4}}>
+          <div style={{background:"#22c55e",height:8,borderRadius:4,width:`${pct}%`,transition:"width 0.4s"}}/>
+        </div>
+      </div>
+      {phases.map(ph=>(
+        <div key={ph.id} style={{background:"#fff",border:"1px solid #E8E4DC",borderLeft:`3px solid ${phSc(ph.status)}`,marginBottom:8,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:600,color:"#0A1F44",marginBottom:2}}>{ph.phase_name}</div>
+            {(ph.start_date||ph.end_date)&&<div style={{fontSize:11,color:"#9CA3AF"}}>{ph.start_date?fD(ph.start_date):"TBD"} → {ph.end_date?fD(ph.end_date):"TBD"}</div>}
+          </div>
+          <span style={{fontSize:9,background:phSc(ph.status)+"18",color:phSc(ph.status),padding:"3px 8px",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,whiteSpace:"nowrap"}}>{phSl(ph.status)}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1947,15 +2134,8 @@ function App(){
   // Sub portal — assigned jobs, photos, messaging
   if(profile?.role==="sub")return <SubPortal profile={profile} signOut={signOut}/>;
 
-  // Client portal — coming in Step 12
-  if(profile?.role==="client")return(
-    <div style={{minHeight:"100dvh",background:"#F7F5F0",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:24,textAlign:"center"}}>
-      <img src={L} alt="Avenstone" style={{width:72,height:72,objectFit:"contain"}}/>
-      <div style={{fontFamily:"'DM Serif Display',serif",fontSize:22,color:"#0A1F44"}}>Your project portal is coming soon.</div>
-      <div style={{fontSize:14,color:"#9CA3AF",maxWidth:320,lineHeight:1.7}}>Your contractor will send you a direct link when your project view is ready.</div>
-      <button className="btn btn-ghost" style={{marginTop:8}} onClick={signOut}>Sign Out</button>
-    </div>
-  );
+  // Client portal
+  if(profile?.role==="client")return <ClientPortal profile={profile} signOut={signOut}/>;
 
   const isOwnerOrRep=["owner","sales_rep"].includes(profile?.role);
   const isStaff=["owner","sales_rep","project_manager"].includes(profile?.role);
