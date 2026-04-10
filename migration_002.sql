@@ -133,6 +133,12 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS insurance_verified boolean DEFAULT
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contract_signed boolean DEFAULT false;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contract_signed_at timestamptz;
 
+-- client communication preference per job
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS client_notify text DEFAULT 'portal';
+
+-- store Stripe checkout URL so client can pay directly from portal
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS stripe_checkout_url text;
+
 
 -- ============================================================
 -- SECTION 5: DROP AND RECREATE ALL RLS POLICIES
