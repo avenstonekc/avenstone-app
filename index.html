@@ -2997,10 +2997,13 @@ function UserMgmt(){
   const invite=async()=>{
     if(!form.name.trim()||!form.email.trim()){setErr("Name and email required.");return;}
     setSaving(true);setErr("");
-    const res=await sbInviteStaff(form.name.trim(),form.email.trim(),form.role);
-    if(res.error){setErr(res.error);setSaving(false);return;}
-    setTeam(await sbLoadTeam());
-    setForm({name:"",email:"",role:"sales_rep"});setShowAdd(false);setSaving(false);
+    try{
+      const res=await sbInviteStaff(form.name.trim(),form.email.trim(),form.role);
+      if(res.error){setErr(res.error);setSaving(false);return;}
+      setTeam(await sbLoadTeam());
+      setForm({name:"",email:"",role:"sales_rep"});setShowAdd(false);
+    }catch(e){setErr(e?.message||"Something went wrong — check that the send-invite function is deployed");}
+    setSaving(false);
   };
   const toggleActive=async u=>{
     await sbSetUserActive(u.id,!u.is_active);
