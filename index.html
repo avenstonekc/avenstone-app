@@ -1158,6 +1158,60 @@ function JobDet({job,upd,del,back,profile}){
   };
   // ───────────────────────────────────────────────────────────────────────────
 
+  // ── PROPOSAL STATE ───────────────────────────────────────────────────────────
+  const[showProposal,setShowProposal]=useState(false);
+  const[propLoading,setPropLoading]=useState(false);
+  const[propLineItems,setPropLineItems]=useState([]);
+  const[propScope,setPropScope]=useState([]);
+  const[propPmFee,setPropPmFee]=useState("1200");
+  const[propMargin,setPropMargin]=useState("25");
+  const[propNum,setPropNum]=useState("001");
+  const[propSchedule,setPropSchedule]=useState([]);
+  const[propErr,setPropErr]=useState("");
+  const[propGenerating,setPropGenerating]=useState(false);
+
+  const openProposal=async()=>{
+    const lastAI=estMessages.filter(m=>m.role==="assistant").pop();
+    if(!lastAI)return;
+    setPropLoading(true);setPropErr("");setShowProposal(true);setPropLineItems([]);setPropScope([]);
+    const ANON=window.ANON_KEY||"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ";
+    try{
+      const extractMsgs=[...estMessages,{role:"user",content:"EXTRACT_JSON_FOR_PROPOSAL"}];
+      const res=await fetch(AI_ESTIMATOR_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ANON}`},body:JSON.stringify({messages:extractMsgs})});
+      const data=await res.json();
+      const raw=data.content||"";
+      const match=raw.match(/\{[\s\S]*\}/);
+      if(!match)throw new Error("Could not parse proposal data");
+      const parsed=JSON.parse(match[0]);
+      setPropLineItems(parsed.line_items||[]);
+      setPropScope(parsed.scope_summary||[]);
+      const sub=(parsed.line_items||[]).reduce((a,l)=>a+Number(l.amount||0),0);
+      const dep=Math.round(sub*0.15);
+      const mid=Math.min(5000,Math.round(sub*0.35));
+      const bal=sub-dep-mid;
+      setPropSchedule([{milestone:"Deposit — Contract Signing",timing:"Due at signing",amount:dep},{milestone:"Draw 1 — Rough-In Complete",timing:"Upon rough-in approval",amount:mid},{milestone:"Final Payment — Project Complete",timing:"Upon completion",amount:bal>0?bal:0}]);
+      setPropNum(`${new Date().getFullYear()}-${String(Math.floor(Math.random()*900)+100)}`);
+    }catch(e){setPropErr(e.message||"Failed to extract proposal data");}
+    setPropLoading(false);
+  };
+
+  const generateProposalPDF=async(download=true)=>{
+    setPropGenerating(true);
+    try{
+      const doc=buildProposalPDF(job,propLineItems,propScope,{pmFee:Number(propPmFee||0),margin:Number(propMargin||25),proposalNum:propNum,schedule:propSchedule});
+      if(download){
+        doc.save(`Proposal — ${job.address}.pdf`);
+      }else{
+        const blob=doc.output("blob");
+        const file=new File([blob],`Proposal — ${job.address}.pdf`,{type:"application/pdf"});
+        const r=await sbUploadDoc(job.id,file,"proposal");
+        if(r.doc){setDocs(p=>[r.doc,...p]);}
+      }
+    }catch(e){console.error("Proposal PDF error:",e);}
+    setPropGenerating(false);
+  };
+  // ───────────────────────────────────────────────────────────────────────────
+
   // --- PROPOSAL MODAL ---
   const ProposalModal=showProposal?(<div className="overlay" onClick={()=>setShowProposal(false)}>
     <div className="modal" style={{maxWidth:720,maxHeight:"92vh",overflowY:"auto",padding:0}} onClick={e=>e.stopPropagation()}>
@@ -1845,7 +1899,8 @@ function JobDet({job,upd,del,back,profile}){
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {estSaveMsg&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{estSaveMsg}</span>}
             {estStarted&&<><button className="btn btn-ghost" style={{fontSize:11}} onClick={saveEstimatePDF} disabled={estSaving}>{estSaving?"Saving...":"Save PDF"}</button>
-            <button className="btn btn-gold" style={{fontSize:11}} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient?"Sending...":"Send to Client"}</button>
+            <button className="btn btn-ghost" style={{fontSize:11}} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient?"Sending...":"Send to Client"}</button>
+            <button className="btn btn-gold" style={{fontSize:11}} onClick={openProposal}>Generate Proposal →</button>
             <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>{setEstMessages([]);setEstStarted(false);setEstForm({scope:"",rooms:"",sqft:"",special:""});}}>Reset</button></>}
             <button onClick={()=>setShowEstimator(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",fontSize:20,lineHeight:1}}>×</button>
           </div>
