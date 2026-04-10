@@ -107,8 +107,8 @@ select option{background:#fff;color:#0A1F44}
 .jcard{background:#fff;border:1px solid #E8E4DC;border-left:4px solid;padding:16px;margin-bottom:12px;cursor:pointer;transition:box-shadow 0.15s}
 .jcard:hover{box-shadow:0 4px 16px rgba(10,31,68,0.08)}
 /* TABS */
-.tabbar{display:flex;border-bottom:1px solid #E8E4DC;background:#fff;flex-shrink:0}
-.tab{flex:1;padding:13px 8px;border:none;background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:#9CA3AF;letter-spacing:0.5px;text-transform:uppercase;border-bottom:2px solid transparent;transition:all 0.15s;display:flex;flex-direction:column;align-items:center;gap:3px}
+.tabbar{display:flex;flex-wrap:wrap;background:#fff;flex-shrink:0;border-bottom:1px solid #E8E4DC}
+.tab{flex:0 0 20%;padding:10px 4px;border:none;background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:10px;font-weight:600;color:#9CA3AF;letter-spacing:0.5px;text-transform:uppercase;border-bottom:2px solid transparent;transition:all 0.15s;display:flex;flex-direction:column;align-items:center;gap:3px}
 .tab.on{color:#0A1F44;border-bottom-color:#C9A84C}
 .tab svg{width:16px;height:16px}
 /* MODAL */
@@ -837,6 +837,8 @@ function FormScr({title,secs,rules,ftype,onBack,onSave}){
     </div>
   );
 }
+
+class JobDetBoundary extends React.Component{constructor(p){super(p);this.state={err:null};}static getDerivedStateFromError(e){return{err:e};}componentDidCatch(e,info){console.error("JobDet render error:",e,info);}render(){if(this.state.err){return(<div style={{flex:1,display:"flex",flexDirection:"column",background:"#F7F5F0"}}><div style={{background:"#0A1F44",padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}><button style={{background:"transparent",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.6)",width:24,height:24,display:"flex",alignItems:"center"}} onClick={this.props.back}>{"←"}</button><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>Project</div></div><div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,gap:16}}><div style={{fontSize:32}}>⚠️</div><div style={{fontSize:16,fontWeight:600,color:"#0A1F44",textAlign:"center"}}>Something went wrong loading this project</div><div style={{fontSize:13,color:"#9CA3AF",textAlign:"center",maxWidth:300}}>{this.state.err?.message||"Unknown error"}</div><button className="btn btn-navy" style={{marginTop:8}} onClick={this.props.back}>← Back to Projects</button></div></div>);}return this.props.children;}}
 
 function JobDet({job,upd,del,back,profile}){
   const[tab,setTab]=useState("info");
@@ -1960,7 +1962,7 @@ function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile,ope
   const add=()=>{if(!newA.trim())return;const j={id:Date.now().toString(),address:newA.trim(),status:"lead",created:new Date().toISOString(),scope:"",sqft:"",photos:[],activity:[],change_orders:[],client_name:"",client_phone:"",client_email:"",assigned_rep:"",assigned_subs:"",contract_value:0,co_total:0,target_completion:""};const u=[j,...jobs];setJobs(u);ls("av_j",u);sbSave(j);setNewA("");setShowNew(false);setSel(j.id);};
   const del=id=>{if(!window.confirm("Delete this job?"))return;const u=jobs.filter(j=>j.id!==id);setJobs(u);ls("av_j",u);sbDel(id);setSel(null);};
   const selJ=jobs.find(j=>j.id===sel);
-  if(selJ)return<JobDet job={selJ} upd={ch=>upd(selJ.id,ch)} del={()=>del(selJ.id)} back={()=>setSel(null)} profile={profile}/>;
+  if(selJ)return<JobDetBoundary back={()=>setSel(null)}><JobDet job={selJ} upd={ch=>upd(selJ.id,ch)} del={()=>del(selJ.id)} back={()=>setSel(null)} profile={profile}/></JobDetBoundary>;
   const q=search.toLowerCase().trim();
   const filtered=(fil==="all"?jobs:jobs.filter(j=>j.status===fil)).filter(j=>!q||(j.address||"").toLowerCase().includes(q)||(j.client_name||"").toLowerCase().includes(q)||(j.assigned_rep||"").toLowerCase().includes(q));
   const mob=isMob();
