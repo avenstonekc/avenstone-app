@@ -1853,7 +1853,7 @@ function JobDet({job,upd,del,back,profile}){
   );
 }
 
-function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile}){
+function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile,openNew,clearOpenNew}){
   const[sel,setSel]=useState(null);
   const[showNew,setShowNew]=useState(false);
   const[newA,setNewA]=useState("");
@@ -1864,6 +1864,7 @@ function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile}){
   useEffect(()=>{
     if(pendingJobId&&!loading){setSel(pendingJobId);clearPendingJobId();}
   },[pendingJobId,loading]);
+  useEffect(()=>{if(openNew){setShowNew(true);clearOpenNew&&clearOpenNew();}},[openNew]);
   const upd=(id,ch)=>{const u=jobs.map(j=>j.id===id?{...j,...ch}:j);setJobs(u);ls("av_j",u);sbUpd(id,ch);};
   const add=()=>{if(!newA.trim())return;const j={id:Date.now().toString(),address:newA.trim(),status:"lead",created:new Date().toISOString(),scope:"",sqft:"",photos:[],activity:[],change_orders:[],client_name:"",client_phone:"",client_email:"",assigned_rep:"",assigned_subs:"",contract_value:0,co_total:0,target_completion:""};const u=[j,...jobs];setJobs(u);ls("av_j",u);sbSave(j);setNewA("");setShowNew(false);setSel(j.id);};
   const del=id=>{if(!window.confirm("Delete this job?"))return;const u=jobs.filter(j=>j.id!==id);setJobs(u);ls("av_j",u);sbDel(id);setSel(null);};
@@ -3725,6 +3726,7 @@ function App(){
   const[showNotif,setShowNotif]=useState(false);
   const[showSettings,setShowSettings]=useState(false);
   const[pendingJobId,setPendingJobId]=useState(null);
+  const[pendingNew,setPendingNew]=useState(false);
 
   useEffect(()=>{
     // Check for an existing session on first load
@@ -3890,7 +3892,7 @@ function App(){
         <div className="top-bar">
           <div style={{fontSize:13,color:"#9CA3AF"}}><strong style={{color:"#0A1F44"}}>{NAV.find(n=>n.id===pg)?.lb||"Dashboard"}</strong>&nbsp;·&nbsp;{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
           <div style={{display:"flex",gap:10,alignItems:"center"}}>
-            {isOwnerOrRep&&<button className="btn btn-navy" onClick={()=>setPg("jobs")}>+ New Project</button>}
+            {isOwnerOrRep&&<button className="btn btn-navy" onClick={()=>{setPg("jobs");setPendingNew(true);}}>+ New Project</button>}
             <button onClick={()=>setShowNotif(true)} title="Notifications" style={{position:"relative",background:"transparent",border:"1px solid #E8E4DC",color:"#6B7280",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#C9A84C"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E8E4DC"}>
               <span style={{width:16,height:16,display:"flex"}}>{Ic.bell}</span>
               {unreadCount>0&&<span style={{position:"absolute",top:-6,right:-6,background:"#C9A84C",color:"#0A1F44",width:18,height:18,borderRadius:"50%",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>{unreadCount>9?"9+":unreadCount}</span>}
@@ -3899,7 +3901,7 @@ function App(){
         </div>
         <div className="pg-wrap">
           {pg==="dashboard"&&<Dash nav={setPg} jobs={jobs} profile={profile}/>}
-          {pg==="jobs"&&<JobsScr jobs={jobs} setJobs={setJobs} onBack={()=>setPg("dashboard")} pendingJobId={pendingJobId} clearPendingJobId={()=>setPendingJobId(null)} profile={profile}/>}
+          {pg==="jobs"&&<JobsScr jobs={jobs} setJobs={setJobs} onBack={()=>setPg("dashboard")} pendingJobId={pendingJobId} clearPendingJobId={()=>setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={()=>setPendingNew(false)}/>}
           {pg==="intake"&&isOwnerOrRep&&<FormScr title="Project Intake" secs={IQ} rules={IR} ftype="intake" onBack={()=>setPg("dashboard")} onSave={saveJob}/>}
           {pg==="bid"&&isOwnerOrRep&&<FormScr title="Bid and Proposal" secs={BQ} rules={BR} ftype="bid" onBack={()=>setPg("dashboard")}/>}
           {pg==="takeoff"&&isStaff&&<TkOf onBack={()=>setPg("dashboard")}/>}
