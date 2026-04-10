@@ -810,6 +810,7 @@ function FormScr({title,secs,rules,ftype,onBack,onSave}){
   );
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#F7F5F0"}}>
+      {ProposalModal}
       <div style={{background:"#fff",borderBottom:"1px solid #E8E4DC",padding:"16px 24px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
         <button style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",width:24,height:24,display:"flex",alignItems:"center"}} onClick={onBack}>{Ic.back}</button>
         <div style={{flex:1}}><div style={{fontFamily:"'DM Serif Display',serif",fontSize:18,color:"#0A1F44"}}>{title}</div>{(ans.address||ans.property_address)&&<div style={{fontSize:12,color:"#9CA3AF",marginTop:1}}>{ans.address||ans.property_address}</div>}</div>
@@ -1153,6 +1154,87 @@ function JobDet({job,upd,del,back,profile}){
     setPaySending(false);
   };
   // ───────────────────────────────────────────────────────────────────────────
+
+  // --- PROPOSAL MODAL ---
+  const ProposalModal=showProposal?(<div className="overlay" onClick={()=>setShowProposal(false)}>
+    <div className="modal" style={{maxWidth:720,maxHeight:"92vh",overflowY:"auto",padding:0}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:"#0A1F44",padding:"18px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:"8px 8px 0 0"}}>
+        <div style={{color:"#C9A84C",fontFamily:"'DM Serif Display',serif",fontSize:18}}>Generate Proposal</div>
+        <button onClick={()=>setShowProposal(false)} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.5)",fontSize:20,cursor:"pointer",lineHeight:1}}>×</button>
+      </div>
+      <div style={{padding:24}}>
+        {propErr&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"10px 14px",borderRadius:4,fontSize:13,marginBottom:16}}>{propErr}</div>}
+        {propLoading?(<div style={{textAlign:"center",padding:40,color:"#9CA3AF"}}><div style={{fontSize:13}}>Extracting line items from estimate...</div></div>):(
+          <React.Fragment>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}}>
+              <div className="fg"><label className="flbl">Proposal #</label><input className="finp" value={propNum} onChange={e=>setPropNum(e.target.value)}/></div>
+              <div className="fg"><label className="flbl">PM Fee ($)</label><input className="finp" type="number" value={propPmFee} onChange={e=>setPropPmFee(e.target.value)}/></div>
+              <div className="fg"><label className="flbl">Profit Margin (%)</label>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <input type="range" min="15" max="40" step="1" value={propMargin} onChange={e=>setPropMargin(e.target.value)} style={{flex:1}}/>
+                  <span style={{fontSize:14,fontWeight:700,color:"#0A1F44",minWidth:36}}>{propMargin}%</span>
+                </div>
+              </div>
+            </div>
+            {propLineItems.length>0&&(()=>{
+              const sub=propLineItems.reduce((a,l)=>a+Number(l.amount||0),0);
+              const pm=Number(propPmFee)||0;
+              const profit=Math.round(sub*(Number(propMargin)/100));
+              const total=sub+pm+profit;
+              return(<div style={{background:"#F7F5F0",border:"1px solid #E8E4DC",borderRadius:6,padding:16,marginBottom:20,display:"flex",gap:0}}>
+                {[["Subtotal","$"+sub.toLocaleString()],["PM Fee","$"+pm.toLocaleString()],["Profit ("+propMargin+"%)","$"+profit.toLocaleString()],["TOTAL","$"+total.toLocaleString()]].map(([lbl,val],i)=>(
+                  <div key={i} style={{flex:1,textAlign:"center",borderRight:i<3?"1px solid #E8E4DC":"none",padding:"0 8px"}}>
+                    <div style={{fontSize:10,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>{lbl}</div>
+                    <div style={{fontSize:i===3?18:14,fontWeight:700,color:i===3?"#C9A84C":"#0A1F44"}}>{val}</div>
+                  </div>
+                ))}
+              </div>);
+            })()}
+            {propLineItems.length>0&&(
+              <div style={{marginBottom:20}}>
+                <div style={{fontSize:11,fontWeight:600,color:"#0A1F44",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Line Items</div>
+                <div style={{border:"1px solid #E8E4DC",borderRadius:6,overflow:"hidden"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"2fr 80px 90px 28px",background:"#0A1F44",padding:"6px 10px",gap:8}}>
+                    {["Description","QTY","Amount",""].map(h=><div key={h} style={{fontSize:10,fontWeight:600,color:"#C9A84C"}}>{h}</div>)}
+                  </div>
+                  {propLineItems.map((li,i)=>{
+                    const isFirst=i===0||propLineItems[i-1].trade!==li.trade;
+                    return(<React.Fragment key={i}>
+                      {isFirst&&<div style={{background:"#F3F0EB",padding:"4px 10px",fontSize:10,fontWeight:700,color:"#0A1F44",borderTop:"1px solid #E8E4DC"}}>{li.trade}</div>}
+                      <div style={{display:"grid",gridTemplateColumns:"2fr 80px 90px 28px",padding:"4px 10px",gap:8,borderTop:"1px solid #F3F0EB",alignItems:"center",background:i%2===0?"#fff":"#FAFAF8"}}>
+                        <input value={li.description||""} onChange={e=>{const u=[...propLineItems];u[i]={...u[i],description:e.target.value};setPropLineItems(u);}} style={{fontSize:11,border:"none",background:"transparent",color:"#374151",outline:"none",width:"100%"}}/>
+                        <input value={li.qty_label||""} onChange={e=>{const u=[...propLineItems];u[i]={...u[i],qty_label:e.target.value};setPropLineItems(u);}} style={{fontSize:11,border:"none",background:"transparent",color:"#6B7280",outline:"none"}}/>
+                        <input type="number" value={li.amount||""} onChange={e=>{const u=[...propLineItems];u[i]={...u[i],amount:e.target.value};setPropLineItems(u);}} style={{fontSize:11,border:"none",background:"transparent",color:"#0A1F44",fontWeight:600,outline:"none",textAlign:"right"}}/>
+                        <button onClick={()=>setPropLineItems(propLineItems.filter((_,j)=>j!==i))} style={{background:"transparent",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,padding:0}}>×</button>
+                      </div>
+                    </React.Fragment>);
+                  })}
+                </div>
+                <button onClick={()=>setPropLineItems([...propLineItems,{trade:"GENERAL",description:"",qty_label:"1 LS",amount:0}])} style={{fontSize:11,color:"#C9A84C",background:"transparent",border:"none",cursor:"pointer",marginTop:6,padding:0}}>+ Add line item</button>
+              </div>
+            )}
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#0A1F44",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Payment Schedule</div>
+              {propSchedule.map((ps,i)=>(
+                <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 100px 28px",gap:8,marginBottom:8,alignItems:"center"}}>
+                  <input className="finp" value={ps.milestone} onChange={e=>{const u=[...propSchedule];u[i]={...u[i],milestone:e.target.value};setPropSchedule(u);}} placeholder="Milestone"/>
+                  <input className="finp" value={ps.timing} onChange={e=>{const u=[...propSchedule];u[i]={...u[i],timing:e.target.value};setPropSchedule(u);}} placeholder="Timing"/>
+                  <input className="finp" type="number" value={ps.amount} onChange={e=>{const u=[...propSchedule];u[i]={...u[i],amount:e.target.value};setPropSchedule(u);}} placeholder="Amount"/>
+                  <button onClick={()=>setPropSchedule(propSchedule.filter((_,j)=>j!==i))} style={{background:"transparent",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14}}>×</button>
+                </div>
+              ))}
+              <button onClick={()=>setPropSchedule([...propSchedule,{milestone:"",timing:"At milestone",amount:""}])} style={{fontSize:11,color:"#C9A84C",background:"transparent",border:"none",cursor:"pointer",padding:0}}>+ Add milestone</button>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button className="btn btn-ghost" style={{flex:1}} onClick={()=>generateProposalPDF(true)} disabled={propGenerating||propLineItems.length===0}>{propGenerating?"Generating...":"Download PDF"}</button>
+              <button className="btn btn-gold" style={{flex:1}} onClick={()=>generateProposalPDF(false)} disabled={propGenerating||propLineItems.length===0}>{propGenerating?"Generating...":"Save to Documents"}</button>
+            </div>
+          </React.Fragment>
+        )}
+      </div>
+    </div>
+  </div>):null;
+
   const TABS=[{id:"info",lb:"Info",ic:"info"},{id:"sched",lb:"Schedule",ic:"sched"},{id:"notes",lb:"Notes",ic:"note"},{id:"photos",lb:"Photos",ic:"cam"},{id:"docs",lb:"Documents",ic:"folder"},{id:"co",lb:"Change Orders",ic:"warn"},{id:"msgs",lb:"Messages",ic:"note"},{id:"bids",lb:"Estimate",ic:"doc"},{id:"logs",lb:"Daily Logs",ic:"clip"},{id:"payments",lb:"Payments",ic:"doc"}];
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#F7F5F0"}}>
