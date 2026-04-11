@@ -2153,7 +2153,7 @@ function ClientPortal({profile,signOut}){
 
   useEffect(()=>{
     if(!profile?.id)return;
-    window.SB.from("jobs").select("id,address,status,client_name,client_email,contract_value,co_total,target_completion,created_at,contract_signed,contract_signed_at,client_notify").eq("client_user_id",profile.id).then(({data})=>{setJobs(data||[]);setLoading(false);});
+    window.SB.from("jobs").select("*").or(`client_user_id.eq.${profile.id},client_email.eq.${profile.email}`).then(({data})=>{setJobs(data||[]);setLoading(false);});
   },[profile?.id]);
 
   const job=sel?jobs.find(j=>j.id===sel):null;
