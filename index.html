@@ -673,13 +673,15 @@ function ClientSignContractModal({job,onClose,onSigned}){
     // Build signed PDF
     const doc=buildGenericPDF({docType:"CONTRACT",job,bodyText:contractText,signaturePng:png});
     const blob=doc.output("blob");
-    // Upload to job-documents
-    const file=new File([blob],`Contract — ${job.address||job.id}.pdf`,{type:"application/pdf"});
+    // Upload to job-documents — visible to both client and rep
+    const file=new File([blob],`Signed Contract — ${job.address||job.id}.pdf`,{type:"application/pdf"});
     const up=await sbUploadDoc(job.id,file,"contract");
+    // Make doc visible to client
+    if(up?.doc?.id)await window.SB.from("job_documents").update({client_visible:true}).eq("id",up.doc.id);
     // Save signature record
     await sbSaveSignature({job_id:job.id,type:"contract",signed_by_name:job.client_name||"",signed_by_email:job.client_email||"",signature_data:png,signed_at:new Date().toISOString(),document_url:up?.doc?.file_url||null});
-    // Update job
-    await window.SB.from("jobs").update({contract_signed:true,contract_signed_at:new Date().toISOString()}).eq("id",job.id);
+    // Update job — mark signed and flip status to active
+    await window.SB.from("jobs").update({contract_signed:true,contract_signed_at:new Date().toISOString(),status:"active"}).eq("id",job.id);
     // Notify staff
     sbNotify("note_posted",`Contract signed — ${job.address}`,"The client has signed the contract.",job.id,window.AV_USER_ID);
     setSaving(false);setStep("done");
@@ -2418,7 +2420,7 @@ function ClientPortal({profile,signOut}){
           </div>}
 
         </div>
-        {showSignContract&&job&&<ClientSignContractModal job={job} onClose={()=>setShowSignContract(false)} onSigned={()=>{setJobs(js=>js.map(j=>j.id===job.id?{...j,contract_signed:true}:j));setShowSignContract(false);}}/>}
+        {showSignContract&&job&&<ClientSignContractModal job={job} onClose={()=>setShowSignContract(false)} onSigned={()=>{setJobs(js=>js.map(j=>j.id===job.id?{...j,contract_signed:true,contract_signed_at:new Date().toISOString(),status:"active"}:j));setShowSignContract(false);}}/>}
       </>}
     </div>
   );
