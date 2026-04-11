@@ -399,7 +399,7 @@ const sbLoadSubJobs=async subId=>{
 // ─── SIGNATURE / CONTRACT HELPERS ────────────────────────────────────────────
 const toBase64=blob=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(",")[1]);rd.readAsDataURL(blob);});
 const sbSaveSignature=async(sig)=>{
-  const{data,error}=await window.SB.from("contract_signatures").insert({...sig,tenant_id:window.AV_TENANT}).select().single();
+  const{data,error}=await window.SB.from("contract_signatures").insert({...sig,tenant_id:sig.tenant_id||window.AV_TENANT}).select().single();
   return error?null:data;
 };
 const sbSendContractEmail=async(job,contractType,pdfBlob)=>{
@@ -671,15 +671,27 @@ function ClientSignContractModal({job,onClose,onSigned}){
   const submit=async(png)=>{
     setSigPng(png);setSaving(true);
     // Build signed PDF
-    const doc=buildGenericPDF({docType:"CONTRACT",job,bodyText:contractText,signaturePng:png});
-    const blob=doc.output("blob");
-    // Upload to job-documents — visible to both client and rep
-    const file=new File([blob],`Signed Contract — ${job.address||job.id}.pdf`,{type:"application/pdf"});
-    const up=await sbUploadDoc(job.id,file,"contract");
-    // Make doc visible to client
-    if(up?.doc?.id)await window.SB.from("job_documents").update({client_visible:true}).eq("id",up.doc.id);
-    // Save signature record
-    await sbSaveSignature({job_id:job.id,type:"contract",signed_by_name:job.client_name||"",signed_by_email:job.client_email||"",signature_data:png,signed_at:new Date().toISOString(),document_url:up?.doc?.file_url||null});
+    const pdfDoc=buildGenericPDF({docType:"CONTRACT",job,bodyText:contractText,signaturePng:png});
+    const blob=pdfDoc.output("blob");
+    const fileName=`Signed Contract — ${job.address||job.id}.pdf`;
+    const file=new File([blob],fileName,{type:"application/pdf"});
+    // Upload to storage — use job.tenant_id explicitly (window.AV_TENANT may be null for clients)
+    let fileUrl=null;
+    try{
+      const path=`${job.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`;
+      const{error:ue}=await window.SB.storage.from("job-documents").upload(path,file,{contentType:"application/pdf",upsert:false});
+      if(!ue){
+        const{data:ud}=window.SB.storage.from("job-documents").getPublicUrl(path);
+        fileUrl=ud.publicUrl;
+        // Insert doc row with client_visible:true directly — no UPDATE needed
+        await window.SB.from("job_documents").insert({
+          job_id:job.id,tenant_id:job.tenant_id,name:fileName,
+          file_url:fileUrl,file_type:"contract",version:1,client_visible:true
+        });
+      }else{console.error("Signed contract upload error:",ue);}
+    }catch(e){console.error("Signed contract save error:",e);}
+    // Save signature record — pass tenant_id from job explicitly
+    await sbSaveSignature({job_id:job.id,tenant_id:job.tenant_id,type:"contract",signed_by_name:job.client_name||"",signed_by_email:job.client_email||"",signature_data:png,signed_at:new Date().toISOString(),document_url:fileUrl});
     // Update job — mark signed and flip status to active
     await window.SB.from("jobs").update({contract_signed:true,contract_signed_at:new Date().toISOString(),status:"active"}).eq("id",job.id);
     // Notify staff
