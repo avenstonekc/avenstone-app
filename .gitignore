@@ -5,3 +5,10 @@ Thumbs.db
 
 # Supabase local dev (migrations dir is a duplicate — migration_001.sql at root is canonical)
 supabase/
+
+# Playwright test artifacts
+test-results/
+playwright-report/
+
+# Claude Code worktrees
+.claude/worktrees/
