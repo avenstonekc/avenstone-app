@@ -8,7 +8,7 @@ module.exports = defineConfig({
   reporter: [["list"], ["html", { open: "never", outputFolder: "test-results/html" }]],
   use: {
     headless: true,
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 390, height: 844 }, // iPhone 14 — mobile test
     screenshot: "only-on-failure",
     video: "retain-on-failure",
     baseURL: "http://localhost:3737",

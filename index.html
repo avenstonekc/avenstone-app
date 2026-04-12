@@ -112,6 +112,12 @@ select option{background:#fff;color:#0A1F44}
 .tab{flex:0 0 20%;padding:10px 4px;border:none;background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:10px;font-weight:600;color:#9CA3AF;letter-spacing:0.5px;text-transform:uppercase;border-bottom:2px solid transparent;transition:all 0.15s;display:flex;flex-direction:column;align-items:center;gap:3px}
 .tab.on{color:#0A1F44;border-bottom-color:#C9A84C}
 .tab svg{width:16px;height:16px}
+/* Mobile tab bar: override flex with grid AFTER base style so cascade works correctly.
+   CSS grid guarantees exactly 5 tabs per row (avoids sub-pixel rounding that causes 3 rows) */
+@media(max-width:767px){
+  .tabbar{display:grid;grid-template-columns:repeat(5,1fr)}
+  .tab{padding:8px 2px;font-size:9px}
+}
 /* MODAL */
 .overlay{position:fixed;inset:0;background:rgba(10,31,68,0.5);z-index:1000;display:flex;align-items:flex-end;justify-content:center}
 @media(min-width:768px){.overlay{align-items:center}}
@@ -389,11 +395,12 @@ const sbSendClientLink=async(email,clientName,jobAddress,jobId)=>{
   return res.json();
 };
 const sbLoadSubJobs=async subId=>{
-  const{data:asgn}=await window.SB.from("job_subs").select("job_id").eq("sub_id",subId);
-  if(!asgn||!asgn.length)return[];
-  const ids=asgn.map(a=>a.job_id);
-  const{data}=await window.SB.from("jobs").select("id,address,status,client_name,created").in("id",ids);
-  return data||[];
+  // Query job_phases where assigned_sub_id=subId — sub can SELECT these rows via can_access_job() RLS
+  const{data:phases}=await window.SB.from("job_phases").select("job_id").eq("assigned_sub_id",subId);
+  if(!phases||!phases.length)return[];
+  const ids=[...new Set(phases.map(p=>p.job_id))];
+  const{data}=await window.SB.from("jobs").select("id,address,status,client_name,created_at").in("id",ids);
+  return(data||[]).map(j=>({...j,created:j.created_at}));
 };
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── SIGNATURE / CONTRACT HELPERS ────────────────────────────────────────────
@@ -2039,16 +2046,25 @@ function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile,ope
   const mob=isMob();
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#F7F5F0"}}>
-      <div style={{background:"#fff",borderBottom:"1px solid #E8E4DC",padding:"16px 24px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-        <button style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",width:24,height:24,display:"flex",alignItems:"center"}} onClick={onBack}>{Ic.back}</button>
-        <div style={{fontFamily:"'DM Serif Display',serif",fontSize:20,color:"#0A1F44",flex:1}}>Projects</div>
-        <div style={{position:"relative",flex:"0 1 220px"}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search projects..." style={{width:"100%",border:"1px solid #E8E4DC",borderRadius:4,padding:"6px 10px 6px 28px",fontSize:12,color:"#374151",outline:"none",boxSizing:"border-box",background:"#F7F5F0"}}/>
-          <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#9CA3AF",fontSize:13,pointerEvents:"none"}}>⌕</span>
-          {search&&<button onClick={()=>setSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>}
+      <div style={{background:"#fff",borderBottom:"1px solid #E8E4DC",flexShrink:0}}>
+        {/* Row 1: back + title + (search on desktop) + count + new */}
+        <div style={{padding:mob?"12px 16px":"16px 24px",display:"flex",alignItems:"center",gap:mob?8:12}}>
+          <button style={{background:"transparent",border:"none",cursor:"pointer",color:"#9CA3AF",width:24,height:24,display:"flex",alignItems:"center",flexShrink:0}} onClick={onBack}>{Ic.back}</button>
+          <div style={{fontFamily:"'DM Serif Display',serif",fontSize:mob?18:20,color:"#0A1F44",flex:1}}>Projects</div>
+          {!mob&&<div style={{position:"relative",flex:"0 1 220px"}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search projects..." style={{width:"100%",border:"1px solid #E8E4DC",borderRadius:4,padding:"6px 10px 6px 28px",fontSize:12,color:"#374151",outline:"none",boxSizing:"border-box",background:"#F7F5F0"}}/>
+            <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#9CA3AF",fontSize:13,pointerEvents:"none"}}>⌕</span>
+            {search&&<button onClick={()=>setSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>}
+          </div>}
+          {!mob&&<span style={{fontSize:12,color:"#9CA3AF",marginRight:8}}>{filtered.length}{search||fil!=="all"?` / ${jobs.length}`:""} jobs</span>}
+          <button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}} onClick={()=>setShowNew(true)}><span style={{width:14,height:14}}>{Ic.plus}</span>New</button>
         </div>
-        <span style={{fontSize:12,color:"#9CA3AF",marginRight:8}}>{filtered.length}{search||fil!=="all"?` / ${jobs.length}`:""} jobs</span>
-        <button className="btn btn-navy" style={{display:"flex",alignItems:"center",gap:6}} onClick={()=>setShowNew(true)}><span style={{width:14,height:14}}>{Ic.plus}</span>New</button>
+        {/* Row 2 on mobile: full-width search bar */}
+        {mob&&<div style={{padding:"0 16px 12px",position:"relative"}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search projects..." style={{width:"100%",border:"1px solid #E8E4DC",borderRadius:4,padding:"8px 32px 8px 32px",fontSize:13,color:"#374151",outline:"none",boxSizing:"border-box",background:"#F7F5F0"}}/>
+          <span style={{position:"absolute",left:24,top:"50%",transform:"translateY(-50%)",color:"#9CA3AF",fontSize:14,pointerEvents:"none"}}>⌕</span>
+          {search&&<button onClick={()=>setSearch("")} style={{position:"absolute",right:24,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>}
+        </div>}
       </div>
       <div style={{background:"#fff",borderBottom:"1px solid #E8E4DC",padding:"10px 24px",flexShrink:0}}>
         <div className="filbar">
