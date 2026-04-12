@@ -96,6 +96,10 @@ test.describe("Jobs List (Rep)", () => {
 // SUITE 3: Send Contract Modal (Rep side)
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe("Send Contract (Rep)", () => {
+  test.beforeAll(async () => {
+    await resetTestJob(); // ensure contract is unsigned so Send Contract button is visible
+  });
+
   test("Send Contract button is visible on job detail", async ({ page }) => {
     await loginAsRep(page);
     await openTestJob(page);
