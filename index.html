@@ -2028,9 +2028,38 @@ function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile,ope
   const[sel,setSel]=useState(null);
   const[showNew,setShowNew]=useState(false);
   const[newA,setNewA]=useState("");
-  const[fil,setFil]=useState("all");
+  const[addrSuggestions,setAddrSuggestions]=useState([]);
+  const[addrLoading,setAddrLoading]=useState(false);
+  const addrTimer=React.useRef(null);
+  const fil_=useState("all");const[fil,setFil]=fil_;
   const[search,setSearch]=useState("");
   const[loading,setLoading]=useState(false);
+
+  const fetchSuggestions=async(val)=>{
+    if(val.length<4){setAddrSuggestions([]);return;}
+    setAddrLoading(true);
+    try{
+      const res=await fetch("https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/address-autocomplete",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${ANON_KEY}`},
+        body:JSON.stringify({input:val}),
+      });
+      const data=await res.json();
+      setAddrSuggestions(Array.isArray(data)?data:[]);
+    }catch{setAddrSuggestions([]);}
+    setAddrLoading(false);
+  };
+
+  const onAddrChange=(val)=>{
+    setNewA(val);
+    clearTimeout(addrTimer.current);
+    addrTimer.current=setTimeout(()=>fetchSuggestions(val),300);
+  };
+
+  const pickAddr=(desc)=>{
+    setNewA(desc);
+    setAddrSuggestions([]);
+  };
   useEffect(()=>{setLoading(true);const repFilter=profile?.role==="sales_rep"?profile.full_name:null;sbLoad(repFilter).then(d=>{if(d){setJobs(d);ls("av_j",d);}setLoading(false);});},[]);
   useEffect(()=>{
     if(pendingJobId&&!loading){setSel(pendingJobId);clearPendingJobId();}
@@ -2078,7 +2107,29 @@ function JobsScr({jobs,setJobs,onBack,pendingJobId,clearPendingJobId,profile,ope
         {!loading&&filtered.length>0&&!mob&&<div className="card"><table className="tbl"><thead><tr><th>Property</th><th>Status</th><th>Contract</th><th>Rep</th><th>Target</th></tr></thead><tbody>{filtered.map(j=>{const rev=Number(j.contract_value||0)+Number(j.co_total||0);return<tr key={j.id} onClick={()=>setSel(j.id)}><td><div className="cell-a">{j.address}</div>{j.client_name&&<div className="cell-b">{j.client_name}{j.client_phone?" · "+j.client_phone:""}</div>}</td><td><span className="badge" style={{background:sc(j.status)+"15",color:sc(j.status)}}><span className="bdot" style={{background:sc(j.status)}}/>{sl(j.status)}</span></td><td>{rev>0?<span style={{fontWeight:700,color:"#0A1F44"}}>{f$(rev)}</span>:<span style={{color:"#9CA3AF",fontSize:12}}>—</span>}</td><td>{j.assigned_rep?<span className="tag">{j.assigned_rep}</span>:<span style={{color:"#9CA3AF",fontSize:12}}>—</span>}</td><td style={{color:"#9CA3AF",fontSize:12}}>{j.target_completion||"—"}</td></tr>;})}</tbody></table></div>}
         {!loading&&filtered.length>0&&mob&&filtered.map(j=>{const rev=Number(j.contract_value||0)+Number(j.co_total||0);return<div key={j.id} className="jcard" style={{borderLeftColor:sc(j.status)}} onClick={()=>setSel(j.id)}><div style={{fontWeight:600,fontSize:15,color:"#0A1F44",marginBottom:3}}>{j.address}</div>{j.client_name&&<div style={{fontSize:12,color:"#C9A84C",fontWeight:500,marginBottom:10}}>{j.client_name}</div>}<div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}><span className="badge" style={{background:sc(j.status)+"15",color:sc(j.status)}}><span className="bdot" style={{background:sc(j.status)}}/>{sl(j.status)}</span>{rev>0&&<span style={{fontWeight:700,fontSize:14,color:"#0A1F44"}}>{f$(rev)}</span>}{j.photos?.length>0&&<span style={{fontSize:11,color:"#9CA3AF"}}>{j.photos.length} photos</span>}{j.assigned_rep&&<span className="tag">{j.assigned_rep}</span>}</div></div>;})}
       </div>
-      {showNew&&<div className="overlay" onClick={()=>setShowNew(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">New Project</div><div className="fg"><label className="flbl">Property Address</label><input className="finp" value={newA} onChange={e=>setNewA(e.target.value)} placeholder="123 Main St, Kansas City MO" onKeyDown={e=>e.key==="Enter"&&add()} autoFocus/></div><div style={{display:"flex",gap:10,marginTop:8}}><button className="btn btn-ghost" style={{flex:1}} onClick={()=>setShowNew(false)}>Cancel</button><button className={`btn ${newA.trim()?"btn-navy":"btn-ghost"}`} style={{flex:1}} onClick={add}>Add Project</button></div></div></div>}
+      {showNew&&<div className="overlay" onClick={()=>{setShowNew(false);setAddrSuggestions([]);}}><div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">New Project</div>
+        <div className="fg">
+          <label className="flbl">Property Address</label>
+          <div style={{position:"relative"}}>
+            <input className="finp" value={newA} onChange={e=>onAddrChange(e.target.value)} placeholder="123 Main St, Kansas City MO" onKeyDown={e=>e.key==="Enter"&&add()} autoFocus autocomplete="off"/>
+            {addrLoading&&<span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"#9CA3AF"}}>...</span>}
+            {addrSuggestions.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #E8E4DC",borderRadius:4,boxShadow:"0 4px 12px rgba(0,0,0,0.08)",zIndex:100,marginTop:2}}>
+              {addrSuggestions.map((s,i)=>(
+                <div key={i} onClick={()=>pickAddr(s.description)} style={{padding:"10px 14px",fontSize:13,color:"#374151",cursor:"pointer",borderBottom:i<addrSuggestions.length-1?"1px solid #F3F0EB":"none"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#F7F5F0"}
+                  onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                  {s.description}
+                </div>
+              ))}
+            </div>}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,marginTop:8}}>
+          <button className="btn btn-ghost" style={{flex:1}} onClick={()=>{setShowNew(false);setAddrSuggestions([]);}}>Cancel</button>
+          <button className={`btn ${newA.trim()?"btn-navy":"btn-ghost"}`} style={{flex:1}} onClick={add}>Add Project</button>
+        </div>
+      </div></div>}
     </div>
   );
 }
