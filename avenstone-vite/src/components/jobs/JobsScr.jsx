@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY } from '../../lib/supabase';
 import { Ic, STATS, sc, sl, f$, isMob, ls } from '../../lib/utils';
 import JobDet from './JobDet';
+import AiIntakeWizard from '../ai/AiIntakeWizard';
 
 class JobDetBoundary extends Error {}
 
@@ -32,6 +33,7 @@ function ErrorBoundary({ back, children }) {
 export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew }) {
   const [sel, setSel] = useState(null);
   const [showNew, setShowNew] = useState(false);
+  const [showIntake, setShowIntake] = useState(false);
   const [newA, setNewA] = useState('');
   const [addrSuggestions, setAddrSuggestions] = useState([]);
   const [addrLoading, setAddrLoading] = useState(false);
@@ -101,6 +103,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
             {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>✕</button>}
           </div>}
           {!mob && <span style={{ fontSize: 12, color: '#9CA3AF', marginRight: 8 }}>{filtered.length}{search || fil !== 'all' ? ` / ${jobs.length}` : ''} jobs</span>}
+          <button className="btn btn-gold" style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, fontSize: 12 }} onClick={() => setShowIntake(true)}>✦ AI Intake</button>
           <button className="btn btn-navy" style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} onClick={() => setShowNew(true)}><span style={{ width: 14, height: 14 }}>{Ic.plus}</span>New</button>
         </div>
         {mob && <div style={{ padding: '0 16px 12px', position: 'relative' }}>
@@ -121,6 +124,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
         {!loading && filtered.length > 0 && !mob && <div className="card"><table className="tbl"><thead><tr><th>Property</th><th>Status</th><th>Contract</th><th>Rep</th><th>Target</th></tr></thead><tbody>{filtered.map(j => { const rev = Number(j.contract_value || 0) + Number(j.co_total || 0); return <tr key={j.id} onClick={() => setSel(j.id)}><td><div className="cell-a">{j.address}</div>{j.client_name && <div className="cell-b">{j.client_name}{j.client_phone ? ' · ' + j.client_phone : ''}</div>}</td><td><span className="badge" style={{ background: sc(j.status) + '15', color: sc(j.status) }}><span className="bdot" style={{ background: sc(j.status) }} />{sl(j.status)}</span></td><td>{rev > 0 ? <span style={{ fontWeight: 700, color: '#0A1F44' }}>{f$(rev)}</span> : <span style={{ color: '#9CA3AF', fontSize: 12 }}>—</span>}</td><td>{j.assigned_rep ? <span className="tag">{j.assigned_rep}</span> : <span style={{ color: '#9CA3AF', fontSize: 12 }}>—</span>}</td><td style={{ color: '#9CA3AF', fontSize: 12 }}>{j.target_completion || '—'}</td></tr>; })}</tbody></table></div>}
         {!loading && filtered.length > 0 && mob && filtered.map(j => { const rev = Number(j.contract_value || 0) + Number(j.co_total || 0); return <div key={j.id} className="jcard" style={{ borderLeftColor: sc(j.status) }} onClick={() => setSel(j.id)}><div style={{ fontWeight: 600, fontSize: 15, color: '#0A1F44', marginBottom: 3 }}>{j.address}</div>{j.client_name && <div style={{ fontSize: 12, color: '#C9A84C', fontWeight: 500, marginBottom: 10 }}>{j.client_name}</div>}<div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}><span className="badge" style={{ background: sc(j.status) + '15', color: sc(j.status) }}><span className="bdot" style={{ background: sc(j.status) }} />{sl(j.status)}</span>{rev > 0 && <span style={{ fontWeight: 700, fontSize: 14, color: '#0A1F44' }}>{f$(rev)}</span>}{j.photos?.length > 0 && <span style={{ fontSize: 11, color: '#9CA3AF' }}>{j.photos.length} photos</span>}{j.assigned_rep && <span className="tag">{j.assigned_rep}</span>}</div></div>; })}
       </div>
+      {showIntake && <AiIntakeWizard profile={profile} onClose={() => setShowIntake(false)} onJobCreated={newJob => { setJobs(prev => [newJob, ...prev]); setShowIntake(false); }} />}
       {showNew && <div className="overlay" onClick={() => { setShowNew(false); setAddrSuggestions([]); }}>
         <div className="modal" onClick={e => e.stopPropagation()}>
           <div className="modal-title">New Project</div>

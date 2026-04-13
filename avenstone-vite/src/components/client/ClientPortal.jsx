@@ -4,6 +4,7 @@ import { Ic, sc, sl, f$, fD, fDT, phSc, phSl } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
 import AiCompanionChat from '../shared/AiCompanionChat';
+import AiIntakeWizard from '../ai/AiIntakeWizard';
 
 async function sbSubmitRating(subId, stars, comment, jobId) {
   const { data, error } = await sb.from('sub_ratings').upsert({ tenant_id: AV_TENANT, sub_id: subId, rater_id: AV_USER_ID, job_id: jobId || null, stars, comment: comment || null }, { onConflict: 'tenant_id,sub_id,rater_id,job_id' }).select().single();
@@ -126,6 +127,7 @@ export default function ClientPortal({ profile, signOut }) {
   const [loaded, setLoaded] = useState({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false });
   const [msgTxt, setMsgTxt] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
+  const [showIntake, setShowIntake] = useState(false);
   const [showSignContract, setShowSignContract] = useState(false);
   const [crForm, setCrForm] = useState({ description: '', reason: '' });
   const [crSaving, setCrSaving] = useState(false);
@@ -240,6 +242,7 @@ export default function ClientPortal({ profile, signOut }) {
       </div>
 
       {!job && <div style={{ padding: 16 }}>
+        <button className="btn btn-gold" style={{ width: '100%', marginBottom: 16, fontSize: 14, padding: '12px 16px' }} onClick={() => setShowIntake(true)}>+ Start a New Project</button>
         {jobs.map(j => (
           <div key={j.id} onClick={() => openJob(j.id)} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `4px solid ${sc(j.status)}`, padding: 16, marginBottom: 10, cursor: 'pointer' }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#0A1F44', marginBottom: 6 }}>{j.address}</div>
@@ -630,7 +633,8 @@ export default function ClientPortal({ profile, signOut }) {
           </div>}
         </div>
 
-        {showSignContract && job && <ClientSignContractModal job={job} onClose={() => setShowSignContract(false)} onSigned={() => { setJobs(js => js.map(j => j.id === job.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'active' } : j)); setShowSignContract(false); }} />}
+        {showIntake && <AiIntakeWizard profile={profile} onClose={() => setShowIntake(false)} onJobCreated={newJob => { setJobs(prev => [newJob, ...prev]); setShowIntake(false); }} />}
+      {showSignContract && job && <ClientSignContractModal job={job} onClose={() => setShowSignContract(false)} onSigned={() => { setJobs(js => js.map(j => j.id === job.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'active' } : j)); setShowSignContract(false); }} />}
         {job && <AiCompanionChat job={job} profile={{ ...profile, role: 'client' }} />}
       </>}
     </div>

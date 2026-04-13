@@ -3,8 +3,11 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Supabase local dev (migrations dir is a duplicate — migration_001.sql at root is canonical)
-supabase/
+# Supabase local dev artifacts
+supabase/.branches/
+supabase/.db/
+supabase/.temp/
+supabase/config.toml
 
 # Playwright test artifacts
 test-results/

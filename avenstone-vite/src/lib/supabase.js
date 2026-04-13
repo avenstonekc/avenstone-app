@@ -25,6 +25,7 @@ export const AI_ESTIMATOR_URL  = `${FN}/ai-estimator`;
 export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
 export const NOTIFY_REALTOR_URL = `${FN}/notify-realtor`;
 export const authHeader = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` });
+export const AI_INTAKE_URL          = `${FN}/ai-intake`;
 export const AI_COMPANION_URL       = `${FN}/ai-companion`;
 export const AI_HOME_URL            = `${FN}/ai-home-companion`;
 export const PROCESS_TRANSCRIPT_URL = `${FN}/process-transcript`;
