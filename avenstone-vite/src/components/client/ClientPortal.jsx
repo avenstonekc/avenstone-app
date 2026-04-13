@@ -3,6 +3,7 @@ import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage,
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
+import AiCompanionChat from '../shared/AiCompanionChat';
 
 async function sbSubmitRating(subId, stars, comment, jobId) {
   const { data, error } = await sb.from('sub_ratings').upsert({ tenant_id: AV_TENANT, sub_id: subId, rater_id: AV_USER_ID, job_id: jobId || null, stars, comment: comment || null }, { onConflict: 'tenant_id,sub_id,rater_id,job_id' }).select().single();
@@ -46,6 +47,50 @@ function ClientScheduleView({ jobId }) {
           <span style={{ fontSize: 9, background: phSc(ph.status) + '18', color: phSc(ph.status), padding: '3px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>{phSl(ph.status)}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+const JOB_STAGES = [
+  { label: 'Review', statuses: ['lead'] },
+  { label: 'Proposal', statuses: ['bid_sent'] },
+  { label: 'Contract', statuses: ['signed'] },
+  { label: 'In Progress', statuses: ['active', 'demo', 'framing', 'rough_mep', 'drywall', 'finish'] },
+  { label: 'Final Touches', statuses: ['punch'] },
+  { label: 'Complete', statuses: ['complete'] },
+];
+
+function ProgressStepper({ status }) {
+  const curIdx = JOB_STAGES.findIndex(s => s.statuses.includes(status));
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '16px 20px', marginBottom: 16, overflowX: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', minWidth: 320 }}>
+        {JOB_STAGES.map((s, i) => {
+          const done = i < curIdx;
+          const active = i === curIdx;
+          return (
+            <div key={s.label} style={{ display: 'flex', alignItems: 'flex-start', flex: i < JOB_STAGES.length - 1 ? 1 : 'none' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  background: done ? '#22c55e' : active ? '#0A1F44' : '#F3F0EB',
+                  border: active ? '2.5px solid #C9A84C' : 'none',
+                  color: done || active ? '#fff' : '#9CA3AF',
+                  fontSize: done ? 12 : 11, fontWeight: 700,
+                  boxShadow: active ? '0 0 0 4px rgba(201,168,76,0.18)' : 'none',
+                  transition: 'all 0.3s ease',
+                }}>
+                  {done ? '✓' : i + 1}
+                </div>
+                <div style={{ fontSize: 9, fontWeight: active ? 700 : 500, color: active ? '#0A1F44' : done ? '#22c55e' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap', textAlign: 'center' }}>{s.label}</div>
+              </div>
+              {i < JOB_STAGES.length - 1 && (
+                <div style={{ flex: 1, height: 2, background: done ? '#22c55e' : '#E8E4DC', marginTop: 13, transition: 'background 0.4s ease' }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -119,7 +164,7 @@ export default function ClientPortal({ profile, signOut }) {
   }, [job?.id, tab]);
 
   useEffect(() => {
-    if (!job || tab !== 'payments' || loaded.payments) return;
+    if (!job || (tab !== 'payments' && tab !== 'overview') || loaded.payments) return;
     sb.from('payments').select('*').eq('job_id', job.id).order('created_at', { ascending: false }).then(({ data }) => { setPayments(data || []); setLoaded(p => ({ ...p, payments: true })); });
   }, [job?.id, tab]);
 
@@ -129,6 +174,26 @@ export default function ClientPortal({ profile, signOut }) {
   }, [job?.id, tab]);
 
   useEffect(() => { if (msgs.length && msgsEndRef.current) msgsEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    const ch = sb.channel('client-job-updates')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'jobs', filter: `client_user_id=eq.${profile.id}` }, payload => {
+        setJobs(prev => prev.map(j => j.id === payload.new.id ? { ...j, ...payload.new } : j));
+      })
+      .subscribe();
+    return () => sb.removeChannel(ch);
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!job?.id) return;
+    const ch = sb.channel('client-phase-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_phases', filter: `job_id=eq.${job.id}` }, () => {
+        sbLoadPhases(job.id).then(d => setPhases(d));
+      })
+      .subscribe();
+    return () => sb.removeChannel(ch);
+  }, [job?.id]);
 
   const openJob = id => {
     setSel(id); setTab('overview');
@@ -200,49 +265,159 @@ export default function ClientPortal({ profile, signOut }) {
 
         <div style={{ padding: 16, maxWidth: 720, margin: '0 auto' }}>
           {tab === 'overview' && <>
-            <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Details</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13 }}>
-                {job.address && <div style={{ gridColumn: '1/-1', marginBottom: 4 }}><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Address</div><div style={{ fontWeight: 600, color: '#0A1F44' }}>{job.address}</div></div>}
-                {job.client_name && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Name</div><div style={{ color: '#374151' }}>{job.client_name}</div></div>}
-                {job.client_phone && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Phone</div><div style={{ color: '#374151' }}>{job.client_phone}</div></div>}
-                {job.client_email && <div style={{ gridColumn: '1/-1' }}><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Email</div><div style={{ color: '#374151' }}>{job.client_email}</div></div>}
-                {job.spouse_name && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Spouse</div><div style={{ color: '#374151' }}>{job.spouse_name}</div></div>}
-                {job.spouse_phone && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Spouse Phone</div><div style={{ color: '#374151' }}>{job.spouse_phone}</div></div>}
-                {job.spouse_email && <div style={{ gridColumn: '1/-1' }}><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Spouse Email</div><div style={{ color: '#374151' }}>{job.spouse_email}</div></div>}
-                {job.assigned_rep && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Your Rep</div><div style={{ color: '#374151' }}>{job.assigned_rep}</div></div>}
-                {job.target_completion && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Target Completion</div><div style={{ color: '#374151' }}>{job.target_completion}</div></div>}
-              </div>
-            </div>
-            <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
-              <div style={{ marginBottom: loaded.phases && phases.length ? 16 : 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Current Status</div>
-                <span style={{ fontSize: 13, background: sc(job.status) + '18', color: sc(job.status), padding: '4px 14px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{CLIENT_STATUS(job.status)}</span>
-              </div>
-              {loaded.phases && phases.length > 0 && (() => {
-                const done = phases.filter(p => p.status === 'complete').length;
-                const pct = Math.round((done / phases.length) * 100);
-                const current = phases.find(p => p.status === 'in_progress') || phases.find(p => p.status === 'pending');
-                return (
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#9CA3AF', marginBottom: 5 }}>
-                      <span>{current ? `Currently: ${current.phase_name}` : `${done} of ${phases.length} phases done`}</span>
-                      <span style={{ fontWeight: 700, color: pct === 100 ? '#22c55e' : '#0A1F44' }}>{pct}%</span>
+            {/* A) Status Hero Card */}
+            {(() => {
+              const done = loaded.phases ? phases.filter(p => p.status === 'complete').length : 0;
+              const total = loaded.phases ? phases.length : 0;
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+              return (
+                <div style={{ background: '#0A1F44', padding: '24px 20px', marginBottom: 16, borderRadius: 2 }}>
+                  <div style={{ fontSize: 9, color: '#C9A84C', letterSpacing: 4, textTransform: 'uppercase', marginBottom: 8 }}>Project Status</div>
+                  <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: '#fff', lineHeight: 1.2, marginBottom: 6 }}>{CLIENT_STATUS(job.status)}</div>
+                  {job.address && <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginBottom: 2 }}>{job.address}</div>}
+                  {job.client_name && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 20 }}>{job.client_name}</div>}
+                  {loaded.phases && total > 0 && (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>
+                        <span>{done} of {total} phases complete</span>
+                        <span style={{ fontWeight: 700, color: pct === 100 ? '#22c55e' : '#C9A84C' }}>{pct}%</span>
+                      </div>
+                      <div style={{ background: 'rgba(255,255,255,0.12)', height: 8, borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ background: pct === 100 ? '#22c55e' : '#C9A84C', height: 8, borderRadius: 4, width: `${pct}%`, transition: 'width 0.6s ease' }} />
+                      </div>
                     </div>
-                    <div style={{ background: '#F3F0EB', height: 10, borderRadius: 5 }}><div style={{ background: pct === 100 ? '#22c55e' : '#C9A84C', height: 10, borderRadius: 5, width: `${pct}%`, transition: 'width 0.4s' }} /></div>
-                  </div>
-                );
-              })()}
-            </div>
+                  )}
+                  {!loaded.phases && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>Loading phases...</div>}
+                </div>
+              );
+            })()}
 
-            {Number(job.contract_value || 0) > 0 && <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Your Investment</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 12 }}>
-                <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>Contract Value</div><div style={{ fontSize: 17, fontWeight: 700, color: '#0A1F44', fontFamily: "'DM Serif Display',serif" }}>{f$(Number(job.contract_value || 0))}</div></div>
-                {Number(job.co_total || 0) > 0 && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>Approved Changes</div><div style={{ fontSize: 17, fontWeight: 700, color: '#f59e0b', fontFamily: "'DM Serif Display',serif" }}>+{f$(Number(job.co_total || 0))}</div></div>}
-                <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>Total</div><div style={{ fontSize: 17, fontWeight: 700, color: '#0A1F44', fontFamily: "'DM Serif Display',serif" }}>{f$(Number(job.contract_value || 0) + Number(job.co_total || 0))}</div></div>
-              </div>
-            </div>}
+            <ProgressStepper status={job.status} />
+
+            {/* B) Next Milestone Card */}
+            {loaded.phases && phases.length > 0 && (() => {
+              const inProgress = phases.find(p => p.status === 'in_progress');
+              const next = inProgress || phases.find(p => p.status === 'pending');
+              const allDone = phases.every(p => p.status === 'complete');
+              return (
+                <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: '4px solid #C9A84C', padding: 20, marginBottom: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>What's Happening Next</div>
+                  {allDone ? (
+                    <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>🎉</div>
+                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44', marginBottom: 4 }}>Your project is complete!</div>
+                      <div style={{ fontSize: 13, color: '#6B7280' }}>All phases have been finished. Thank you for choosing us.</div>
+                    </div>
+                  ) : next ? (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                        {inProgress && <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', display: 'inline-block', flexShrink: 0, animation: 'pulse 1.8s ease-in-out infinite', boxShadow: '0 0 0 0 rgba(34,197,94,0.4)' }} />}
+                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44' }}>{next.phase_name}</div>
+                        {inProgress && <span style={{ fontSize: 10, background: '#D1FAE5', color: '#065F46', padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0 }}>In Progress</span>}
+                      </div>
+                      {(next.start_date || next.end_date) && (
+                        <div style={{ fontSize: 12, color: '#9CA3AF' }}>
+                          {next.start_date && <span>Starts: <strong style={{ color: '#374151' }}>{fD(next.start_date)}</strong></span>}
+                          {next.start_date && next.end_date && <span style={{ margin: '0 8px', color: '#E8E4DC' }}>·</span>}
+                          {next.end_date && <span>Est. end: <strong style={{ color: '#374151' }}>{fD(next.end_date)}</strong></span>}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: '#6B7280' }}>Schedule not set yet — your contractor will update this soon.</div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* C) Next Payment Card */}
+            {loaded.payments && (() => {
+              const pending = payments.filter(p => p.status === 'pending' || p.status === 'due');
+              if (!pending.length) return null;
+              const next = pending[0];
+              return (
+                <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Your Next Payment</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#0A1F44', marginBottom: 4 }}>{f$(Number(next.amount))}</div>
+                      {next.description && <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>{next.description}</div>}
+                      {next.due_date && <div style={{ fontSize: 12, color: '#9CA3AF' }}>Due: <strong style={{ color: '#374151' }}>{fD(next.due_date)}</strong></div>}
+                    </div>
+                    {next.stripe_checkout_url && (
+                      <a href={next.stripe_checkout_url} target="_blank" rel="noreferrer" style={{ background: '#0A1F44', color: '#C9A84C', padding: '10px 18px', fontWeight: 700, fontSize: 13, textDecoration: 'none', flexShrink: 0, alignSelf: 'center' }}>Pay Now →</a>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 12, fontSize: 11, color: '#9CA3AF', borderTop: '1px solid #F3F0EB', paddingTop: 10 }}>Contact your contractor with payment questions.</div>
+                </div>
+              );
+            })()}
+
+            {/* D) Quick Stats Row */}
+            {Number(job.contract_value || 0) > 0 && (() => {
+              const contractTotal = Number(job.contract_value || 0) + Number(job.co_total || 0);
+              const paid = loaded.payments ? payments.filter(p => p.status === 'paid' || p.status === 'completed').reduce((s, p) => s + Number(p.amount || 0), 0) : 0;
+              const remaining = contractTotal - paid;
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: '#E8E4DC', marginBottom: 16 }}>
+                  {[
+                    { lb: 'Contract Value', val: f$(contractTotal) },
+                    { lb: 'Paid to Date', val: f$(paid), green: paid > 0 },
+                    { lb: 'Remaining', val: f$(Math.max(0, remaining)) },
+                  ].map(({ lb, val, green }) => (
+                    <div key={lb} style={{ background: '#fff', padding: '14px 12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
+                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: green ? '#22c55e' : '#0A1F44', fontWeight: 700 }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* What to Expect */}
+            {loaded.phases && phases.length > 0 && (() => {
+              const PHASE_DESC = name => {
+                const n = (name || '').toLowerCase();
+                if (/demo|demolition/.test(n)) return 'Your contractor will remove existing materials. Expect noise and dust. The space will look rough — that\'s normal.';
+                if (/framing/.test(n)) return 'The structural skeleton of your project takes shape. You\'ll start to see the layout come to life.';
+                if (/rough_mep|rough mep|electrical|plumbing|hvac/.test(n)) return 'Behind-the-walls work: electrical, plumbing, and HVAC are installed before walls close up.';
+                if (/insulation/.test(n)) return 'Insulation goes in for energy efficiency and soundproofing.';
+                if (/drywall/.test(n)) return 'Walls and ceilings get closed up. The space starts looking like a real room.';
+                if (/paint|painting/.test(n)) return 'Color goes on the walls. This is where the vision really starts to show.';
+                if (/flooring/.test(n)) return 'Floors are installed. One of the most visible transformations.';
+                if (/trim|fixtures|finish/.test(n)) return 'Final details: trim, fixtures, hardware. The polish that makes it look finished.';
+                if (/punch/.test(n)) return 'Final walkthrough and touch-ups. Almost done.';
+                if (/complete/.test(n)) return 'Your project is complete!';
+                return null;
+              };
+              const upcoming = phases
+                .filter(p => p.status !== 'complete')
+                .slice(0, 3)
+                .map(p => ({ ...p, desc: PHASE_DESC(p.phase_name) }))
+                .filter(p => p.desc);
+              if (!upcoming.length) return null;
+              return (
+                <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 16 }}>What to Expect</div>
+                  {upcoming.map((ph, i) => (
+                    <div key={ph.id} style={{ display: 'flex', gap: 14, marginBottom: i < upcoming.length - 1 ? 18 : 0, paddingBottom: i < upcoming.length - 1 ? 18 : 0, borderBottom: i < upcoming.length - 1 ? '1px solid #F3F0EB' : 'none' }}>
+                      <div style={{ width: 32, height: 32, background: ph.status === 'in_progress' ? '#D1FAE5' : '#F3F0EB', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, color: ph.status === 'in_progress' ? '#065F46' : '#9CA3AF', fontWeight: 700, marginTop: 2 }}>{i + 1}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44', marginBottom: 4 }}>{ph.phase_name}</div>
+                        <div style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.6, marginBottom: ph.start_date || ph.end_date ? 6 : 0 }}>{ph.desc}</div>
+                        {(ph.start_date || ph.end_date) && (
+                          <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+                            {ph.start_date && <span>{fD(ph.start_date)}</span>}
+                            {ph.start_date && ph.end_date && <span> → </span>}
+                            {ph.end_date && <span>{fD(ph.end_date)}</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {['complete', 'punch'].includes(job.status) && jobReview !== null && (jobReview ?
               <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: 20, marginBottom: 16 }}>
@@ -321,8 +496,48 @@ export default function ClientPortal({ profile, signOut }) {
 
           {tab === 'photos' && <div>
             {!loaded.photos && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
-            {loaded.photos && !photos.length && <div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Your contractor will upload progress photos here</div></div>}
-            <div className="pgrid">{photos.map((p, i) => <div key={p.id} className="pcell" onClick={() => setClbIdx(i)} style={{ cursor: 'pointer' }}><div style={{ position: 'absolute', inset: 0 }}><img src={p.url || p.data} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div></div>)}</div>
+            {loaded.photos && !photos.length && <div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Your contractor will add progress photos here</div></div>}
+            {loaded.photos && photos.length > 0 && (() => {
+              // Group photos by week starting Monday
+              const getWeekKey = dateStr => {
+                const d = new Date(dateStr);
+                const day = d.getDay(); // 0=Sun
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+                const mon = new Date(d.setDate(diff));
+                return mon.toISOString().slice(0, 10);
+              };
+              const fmt = key => {
+                const d = new Date(key + 'T12:00:00');
+                const end = new Date(d); end.setDate(d.getDate() + 6);
+                const opts = { month: 'short', day: 'numeric' };
+                return `Week of ${d.toLocaleDateString('en-US', opts)}`;
+              };
+              const groups = {};
+              photos.forEach((p, i) => {
+                const key = getWeekKey(p.created_at || new Date().toISOString());
+                if (!groups[key]) groups[key] = [];
+                groups[key].push({ ...p, _i: i });
+              });
+              const sortedKeys = Object.keys(groups).sort().reverse();
+              return (
+                <div>
+                  {sortedKeys.map(key => (
+                    <div key={key} style={{ marginBottom: 24 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #E8E4DC' }}>{fmt(key)}</div>
+                      <div className="pgrid">
+                        {groups[key].map(p => (
+                          <div key={p.id} className="pcell" onClick={() => setClbIdx(p._i)} style={{ cursor: 'pointer' }}>
+                            <div style={{ position: 'absolute', inset: 0 }}>
+                              <img src={p.url || p.data} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             {clbIdx !== null && <PhotoLightbox photos={photos} startIdx={clbIdx} onClose={() => setClbIdx(null)} />}
           </div>}
 
@@ -416,6 +631,7 @@ export default function ClientPortal({ profile, signOut }) {
         </div>
 
         {showSignContract && job && <ClientSignContractModal job={job} onClose={() => setShowSignContract(false)} onSigned={() => { setJobs(js => js.map(j => j.id === job.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'active' } : j)); setShowSignContract(false); }} />}
+        {job && <AiCompanionChat job={job} profile={{ ...profile, role: 'client' }} />}
       </>}
     </div>
   );

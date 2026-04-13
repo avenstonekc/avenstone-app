@@ -23,9 +23,11 @@ import SettingsModal from './components/modals/SettingsModal';
 import AiKnowledgeScr from './components/ai/AiKnowledgeScr';
 import AiSetupWizard from './components/ai/AiSetupWizard';
 import AiHomeScr from './components/ai/AiHomeScr';
+import PublicProfile from './components/public/PublicProfile';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const STATUS_TOKEN = new URLSearchParams(window.location.search).get('st');
+const PRO_TENANT = new URLSearchParams(window.location.search).get('pro');
 const INVITE_TYPE = new URLSearchParams(window.location.hash.replace('#', '')).get('type');
 
 export default function App() {
@@ -97,14 +99,15 @@ export default function App() {
     setShowNotif(false);
   };
 
+  if (STATUS_TOKEN) return <StatusPage token={STATUS_TOKEN} />;
+  if (PRO_TENANT) return <PublicProfile tenantId={PRO_TENANT} />;
+
   if (authLoading) return (
     <div style={{ minHeight: '100dvh', background: '#0A1F44', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
       <img src={logo} alt="Avenstone" style={{ width: 64, height: 64, objectFit: 'contain', opacity: 0.7 }} />
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: 3, textTransform: 'uppercase' }}>Loading</div>
     </div>
   );
-
-  if (STATUS_TOKEN) return <StatusPage token={STATUS_TOKEN} />;
   if (!session) return <LoginScr />;
 
   if ((INVITE_TYPE === 'invite' || INVITE_TYPE === 'recovery') && session) {

@@ -1,5 +1,5 @@
-import { useState, Fragment } from 'react';
-import { sb } from '../../lib/supabase';
+import { useState, useEffect, Fragment } from 'react';
+import { sb, AV_TENANT } from '../../lib/supabase';
 import PushEnableButton from '../shared/PushEnableButton';
 
 const NOTIF_EVENTS = [
@@ -24,6 +24,25 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
   const [pwForm, setPwForm] = useState({ newPw: '', confirmPw: '' });
   const [pwSaving, setPwSaving] = useState(false);
   const [pwMsg, setPwMsg] = useState('');
+  const [co, setCo] = useState({ company_name: '', city: '', state: '', phone: '', website: '', tagline: '', year_founded: '', license_number: '' });
+  const [coSaving, setCoSaving] = useState(false);
+  const [coSaved, setCoSaved] = useState(false);
+  const [profileUrl, setProfileUrl] = useState('');
+
+  useEffect(() => {
+    if (profile?.role !== 'owner' || !AV_TENANT) return;
+    sb.from('company_profiles').select('*').eq('tenant_id', AV_TENANT).maybeSingle().then(({ data }) => {
+      if (data) { setCo({ company_name: data.company_name || '', city: data.city || '', state: data.state || '', phone: data.phone || '', website: data.website || '', tagline: data.tagline || '', year_founded: data.year_founded || '', license_number: data.license_number || '' }); }
+      setProfileUrl(`${window.location.origin}?pro=${AV_TENANT}`);
+    });
+  }, [profile?.role]);
+
+  const saveCompany = async () => {
+    setCoSaving(true);
+    const row = { tenant_id: AV_TENANT, company_name: co.company_name, city: co.city, state: co.state, phone: co.phone, website: co.website, tagline: co.tagline, year_founded: co.year_founded ? parseInt(co.year_founded) : null, license_number: co.license_number, updated_at: new Date().toISOString() };
+    await sb.from('company_profiles').upsert(row, { onConflict: 'tenant_id' });
+    setCoSaving(false); setCoSaved(true); setTimeout(() => setCoSaved(false), 2500);
+  };
 
   const changePassword = async () => {
     if (!pwForm.newPw || pwForm.newPw.length < 8) { setPwMsg('Password must be at least 8 characters.'); return; }
@@ -63,7 +82,7 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18, lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ display: 'flex', border: '1px solid #E8E4DC', borderRadius: 4, overflow: 'hidden', marginBottom: 16 }}>
-          {[['profile', 'Profile'], ['notifs', 'Notifications'], ['security', 'Security']].map(([v, lb]) => (
+          {[['profile', 'Profile'], ['notifs', 'Notifications'], ['security', 'Security'], ...(profile?.role === 'owner' ? [['company', 'My Profile']] : [])].map(([v, lb]) => (
             <button key={v} onClick={() => setTab(v)} style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', background: tab === v ? '#0A1F44' : 'transparent', color: tab === v ? '#C9A84C' : '#9CA3AF' }}>{lb}</button>
           ))}
         </div>
@@ -107,6 +126,30 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
             })}
           </div>
           <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 8 }}>Changes save automatically.</div>
+        </>}
+
+        {tab === 'company' && profile?.role === 'owner' && <>
+          <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '10px 14px', marginBottom: 16, fontSize: 12.5, color: '#1E40AF' }}>
+            Your public profile is how homeowners find and vet your company on the Avenstone Network.
+            {profileUrl && <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 11, background: '#DBEAFE', padding: '2px 6px', borderRadius: 4, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileUrl}</span>
+              <button onClick={() => { navigator.clipboard.writeText(profileUrl); }} style={{ background: '#1D4ED8', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}>Copy Link</button>
+            </div>}
+          </div>
+          <div className="fg"><label className="flbl">Company Name *</label><input className="finp" value={co.company_name} onChange={e => setCo(p => ({ ...p, company_name: e.target.value }))} placeholder="Avenstone Contracting" /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 8 }}>
+            <div className="fg"><label className="flbl">City</label><input className="finp" value={co.city} onChange={e => setCo(p => ({ ...p, city: e.target.value }))} placeholder="Kansas City" /></div>
+            <div className="fg"><label className="flbl">State</label><input className="finp" value={co.state} onChange={e => setCo(p => ({ ...p, state: e.target.value }))} placeholder="MO" maxLength={2} /></div>
+          </div>
+          <div className="fg"><label className="flbl">Tagline</label><input className="finp" value={co.tagline} onChange={e => setCo(p => ({ ...p, tagline: e.target.value }))} placeholder="Building KC's finest homes since 2010" /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div className="fg"><label className="flbl">Business Phone</label><input className="finp" type="tel" value={co.phone} onChange={e => setCo(p => ({ ...p, phone: e.target.value }))} placeholder="(816) 555-0000" /></div>
+            <div className="fg"><label className="flbl">Year Founded</label><input className="finp" type="number" value={co.year_founded} onChange={e => setCo(p => ({ ...p, year_founded: e.target.value }))} placeholder="2010" /></div>
+          </div>
+          <div className="fg"><label className="flbl">License Number</label><input className="finp" value={co.license_number} onChange={e => setCo(p => ({ ...p, license_number: e.target.value }))} placeholder="MO-12345" /></div>
+          <div className="fg"><label className="flbl">Website</label><input className="finp" value={co.website} onChange={e => setCo(p => ({ ...p, website: e.target.value }))} placeholder="https://yoursite.com" /></div>
+          <button className="btn btn-navy" style={{ width: '100%', marginBottom: 8 }} onClick={saveCompany} disabled={coSaving || !co.company_name}>{coSaving ? 'Saving...' : coSaved ? '✓ Saved!' : 'Save Company Profile'}</button>
+          {profileUrl && <a href={profileUrl} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'center', fontSize: 12, color: '#C9A84C', textDecoration: 'none' }}>Preview public profile →</a>}
         </>}
 
         {tab === 'security' && <>
