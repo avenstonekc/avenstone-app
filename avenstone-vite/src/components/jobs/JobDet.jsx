@@ -10,6 +10,7 @@ import EstimateTab from './tabs/EstimateTab';
 import MessagesTab from './tabs/MessagesTab';
 import LogsTab from './tabs/LogsTab';
 import PaymentsTab from './tabs/PaymentsTab';
+import ConsultationTab from './tabs/ConsultationTab';
 
 const TABS = [
   { id: 'info', lb: 'Info', ic: 'info' },
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'bids', lb: 'Estimate', ic: 'doc' },
   { id: 'logs', lb: 'Daily Logs', ic: 'clip' },
   { id: 'payments', lb: 'Payments', ic: 'doc' },
+  { id: 'session', lb: 'AI Session', ic: 'grid' },
 ];
 
 export default function JobDet({ job, upd, del, back, profile }) {
@@ -95,6 +97,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
         {tab === 'bids' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
         {tab === 'logs' && <LogsTab job={job} />}
         {tab === 'payments' && <PaymentsTab job={job} />}
+        {tab === 'session' && <ConsultationTab job={job} profile={profile} />}
       </div>
 
       {/* Status picker modal */}
