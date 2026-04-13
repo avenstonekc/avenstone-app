@@ -11,6 +11,7 @@ import MessagesTab from './tabs/MessagesTab';
 import LogsTab from './tabs/LogsTab';
 import PaymentsTab from './tabs/PaymentsTab';
 import ConsultationTab from './tabs/ConsultationTab';
+import AiCompanionChat from '../shared/AiCompanionChat';
 
 const TABS = [
   { id: 'info', lb: 'Info', ic: 'info' },
@@ -99,6 +100,8 @@ export default function JobDet({ job, upd, del, back, profile }) {
         {tab === 'payments' && <PaymentsTab job={job} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} />}
       </div>
+
+      <AiCompanionChat job={job} profile={profile} />
 
       {/* Status picker modal */}
       {showSt && <div className="overlay" onClick={() => setShowSt(false)}><div className="modal" onClick={e => e.stopPropagation()}>

@@ -204,8 +204,12 @@ export default function ClientPortal({ profile, signOut }) {
               <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Details</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13 }}>
                 {job.address && <div style={{ gridColumn: '1/-1', marginBottom: 4 }}><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Address</div><div style={{ fontWeight: 600, color: '#0A1F44' }}>{job.address}</div></div>}
-                {job.client_name && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Client</div><div style={{ color: '#374151' }}>{job.client_name}</div></div>}
+                {job.client_name && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Name</div><div style={{ color: '#374151' }}>{job.client_name}</div></div>}
                 {job.client_phone && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Phone</div><div style={{ color: '#374151' }}>{job.client_phone}</div></div>}
+                {job.client_email && <div style={{ gridColumn: '1/-1' }}><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Email</div><div style={{ color: '#374151' }}>{job.client_email}</div></div>}
+                {job.spouse_name && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Spouse</div><div style={{ color: '#374151' }}>{job.spouse_name}</div></div>}
+                {job.spouse_phone && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Spouse Phone</div><div style={{ color: '#374151' }}>{job.spouse_phone}</div></div>}
+                {job.spouse_email && <div style={{ gridColumn: '1/-1' }}><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Spouse Email</div><div style={{ color: '#374151' }}>{job.spouse_email}</div></div>}
                 {job.assigned_rep && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Your Rep</div><div style={{ color: '#374151' }}>{job.assigned_rep}</div></div>}
                 {job.target_completion && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Target Completion</div><div style={{ color: '#374151' }}>{job.target_completion}</div></div>}
               </div>

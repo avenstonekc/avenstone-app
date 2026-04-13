@@ -29,10 +29,11 @@ These apply to every session. Follow them without being reminded.
 
 - **Code only by default** — no explanations, no commentary, no "here's what I did" summaries unless explicitly asked
 - **Never ask clarifying questions** — make a reasonable decision, implement it, note the assumption in a single line comment if needed
-- **Always run tests after any code change** — `npx playwright test tests/portals-e2e.spec.js --reporter=list`
+- **Always run tests after any code change — no exceptions** — `npx playwright test tests/portals-e2e.spec.js --reporter=list`. Run this before moving to the next task. Do NOT ask Kalin if tests passed — run them yourself and report the result.
+- **Test all three viewports every time** — desktop (1280px), tablet (768px), mobile (390px). A feature that isn't verified on all three is not done. The Playwright suite covers all three — a passing suite means all viewports pass.
 - **Best effort, keep moving** — if something is ambiguous, pick the most logical path and go
 - **No refactoring to Vite/components** — stay single-file until explicitly told otherwise
-- **One task at a time** — finish and test before moving to the next
+- **One task at a time** — finish, test, confirm passing, THEN move to the next
 - **If context is getting long** — summarize what was done and what's next before the session ends
 - **Screenshots > descriptions** — if there's a UI bug, look at the screenshot first
 - **Prefer editing existing code** over adding new code when possible
@@ -137,8 +138,91 @@ Also: `on_hold`
 ## Design tokens
 
 - Navy: `#0A1F44`, Gold: `#C9A84C`, Cream bg: `#F7F5F0`, Border: `#E8E4DC`
-- Fonts: `DM Serif Display` (headings), `DM Sans` (body)
+- Error red: `#EF4444` / `#FEE2E2`, Success green: `#22c55e` / `#D1FAE5`, Warning amber: `#f59e0b` / `#FEF3C7`
+- Fonts: `DM Serif Display` (headings/serifs), `DM Sans` (body/UI)
 - CSS utility classes: `.btn`, `.btn-navy`, `.btn-gold`, `.btn-ghost`, `.finp`, `.fg`, `.flbl`, `.modal`, `.overlay`, `.badge`, `.card`, `.sb-item`
+
+---
+
+## Visual Design Language (HOW it should feel)
+
+Avenstone is a **premium field operations tool** used by contractors on job sites. The UI should feel like a high-end native iOS app, not a SaaS dashboard. Every screen should feel like it was designed, not assembled.
+
+### Aesthetic principles
+- **Confident and calm** — dark navy headers, cream backgrounds, gold accents. Never busy.
+- **iMessage-style chat** — user messages right/navy, AI messages left/white. Typing dots. No corporate chatbot chrome.
+- **Cards over tables** — information lives in bordered cards (`border: 1px solid #E8E4DC`), not HTML tables.
+- **Typography hierarchy** — section labels in `11px / uppercase / #9CA3AF / letterSpacing: 1`, values in `13-14px / #374151`, headings in `DM Serif Display`.
+
+### Spacing & sizing
+- Card padding: `16-20px`
+- Section gap: `16px`
+- Button height: `36-44px` (larger on mobile)
+- Border radius: `8px` small, `10-12px` cards, `20px` pills/badges, `50%` avatars
+- Mobile root padding: `14px`, Desktop: `20-24px`
+
+### Motion
+- Slide-up panels (mobile): `slideUp 0.25s ease`
+- Slide-in panels (desktop): `slideIn 0.22s ease`
+- Overlay fade: `0.15s`
+- Progress bars: `transition: width 0.4s`
+- Button hover: `transition: all 0.15s`
+
+### States (always handle all of these)
+- **Loading**: spinner (`border-top: gold, border: #E8E4DC, border-radius: 50%, animation: spin`) or typing dots
+- **Empty**: centered text + muted icon, never raw blank space
+- **Error**: red banner with `×` dismiss button (`#FEE2E2` bg, `#991B1B` text)
+- **Success**: green banner or pill (`#D1FAE5` bg, `#22c55e` text), auto-dismiss after 4s
+
+### Floating elements
+- Floating action buttons: `52px` circle, `position: fixed`, navy bg + gold border, `box-shadow: 0 4px 20px rgba(10,31,68,0.35)`
+- Mobile: `bottom: 74px` (above bot-nav), Desktop: `bottom: 28px`
+- Modals: `.overlay` + `.modal` classes, `max-width: 640px`, `max-height: 90vh`
+
+---
+
+## Information Architecture — Where Features Live
+
+Before building anything, decide where it belongs. Use this map:
+
+### Top-level navigation (sidebar + bot-nav)
+Only screens a user needs **daily** or navigates to directly. Currently:
+- `dashboard` — overview, stats, quick actions
+- `jobs` → `JobDet` — everything about a specific job
+- `calendar` — schedule view
+- `pipeline` — lead kanban (owner/rep only)
+- `reports` — revenue, performance (owner/rep only)
+- `subs` — subcontractor directory (staff only)
+- `team` — user management (owner only)
+
+**Rule**: If a feature is job-specific, it belongs inside `JobDet` as a tab — not a new top-level screen.
+
+### Job detail tabs (inside JobDet)
+Each tab = a distinct workflow on a job. Current tabs:
+`Info → Schedule → Notes → Photos → Documents → Change Orders → Messages → Estimate → Daily Logs → Payments → AI Session`
+
+**Rule**: Add a new tab when a workflow needs persistent state and the user will return to it repeatedly. Don't add tabs for one-time actions.
+
+### Floating elements (always accessible within a screen)
+Used for **contextual AI or quick actions** that overlay the current view without navigating away:
+- `AiCompanionChat` — floating sparkle button on all job detail views. Opens a panel. Does not replace the current tab.
+
+**Rule**: Floating elements are for tools that assist the current task, not replace it. One floating button max per screen.
+
+### Modals
+Used for **single-action confirmations or short forms**: send contract, assign sub, update status, sign completion. Always triggered by a button. Never used for complex multi-step flows.
+
+### Edge functions as features
+Some features are pure backend (no dedicated UI screen). They appear as:
+- A button that fires the function → result shown inline or as a notification
+- A scheduled cron that runs silently and posts to `job_notes` or `notifications`
+
+**Rule**: AI features that analyze or act on a job belong as edge functions + a trigger button in the relevant tab, not as a new screen.
+
+### Icon system
+- All icons in `Ic` object in `src/lib/utils.jsx` — SVG, `viewBox="0 0 24 24"`, `stroke="currentColor"`, `strokeWidth="1.5"`
+- To use: `<span style={{ width: 16, height: 16, display: 'flex' }}>{Ic.iconName}</span>`
+- Add new icons to `Ic` in utils, never inline one-off SVGs in components
 
 ---
 
@@ -194,10 +278,39 @@ SQL migrations live in `supabase/migrations/` — gitignored but tracked locally
 Apply via Supabase Management API:
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/cbfftukmhqvvjlrlnltk/database/query" \
-  -H "Authorization: Bearer sbp_24e47bbb7d72a5384a74f288a1355301c8492967" \
+  -H "Authorization: Bearer <SUPABASE_PAT>" \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"<sql>\"}"
 ```
+
+---
+
+## Edge Function Deploys
+
+Edge functions live in `supabase/functions/<name>/index.ts`.
+
+**How to deploy (Claude runs this autonomously):**
+```bash
+# Unset any conflicting env var first, then deploy with PAT inline
+unset SUPABASE_ACCESS_TOKEN
+SUPABASE_ACCESS_TOKEN=<SUPABASE_PAT> npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
+```
+
+**Deploy all AI functions at once:**
+```bash
+unset SUPABASE_ACCESS_TOKEN
+for fn in process-transcript generate-estimate-from-session ai-estimator ai-project-manager; do
+  SUPABASE_ACCESS_TOKEN=<SUPABASE_PAT> npx supabase functions deploy $fn --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
+done
+```
+
+**PAT token:** Stored in CLAUDE.md once refreshed. To refresh: Supabase dashboard → Account (top right) → Access Tokens → Generate new token.  
+**Current PAT:** `sbp_6c442a7c0d6bc4c9ff1e2cf2e3132e0458634afe` — Active as of April 13 2026.
+
+**max_tokens guidelines (Claude API):**
+- Claude Sonnet (large JSON output, estimates): `8192`
+- Claude Haiku (extraction, small JSON): `2048`
+- Claude Opus (analysis, reasoning): `4096`
 
 ---
 

@@ -62,6 +62,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
   const [showSubPicker, setShowSubPicker] = useState(false);
   const [showContract, setShowContract] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
+  const [contractSentBanner, setContractSentBanner] = useState('');
   const [proposalDoc, setProposalDoc] = useState(null);
 
   useEffect(() => {
@@ -97,7 +98,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
       </div>
       {editInf ? (
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 16 }}>
-          {[['client_name','Client Name','John Smith'],['client_phone','Phone','(816) 555-1234'],['client_email','Email','john@email.com'],['assigned_rep','Rep','Kalin'],['assigned_subs','Subs','KC Electric, etc.'],['contract_value','Contract Value ($)','85000'],['target_completion','Target Completion','June 15, 2026'],['sqft','Sqft','1879'],['referring_realtor_name','Referring Realtor','Jane Smith'],['referring_realtor_phone','Realtor Phone','(816) 555-9876'],['referring_realtor_email','Realtor Email','jane@realty.com']].map(([k, lb, ph]) => (
+          {[['client_name','Client Name','John Smith'],['client_phone','Phone','(816) 555-1234'],['client_email','Email','john@email.com'],['spouse_name','Spouse Name','Jane Smith'],['spouse_phone','Spouse Phone','(816) 555-5678'],['spouse_email','Spouse Email','jane@email.com'],['assigned_rep','Rep','Kalin'],['assigned_subs','Subs','KC Electric, etc.'],['contract_value','Contract Value ($)','85000'],['target_completion','Target Completion','June 15, 2026'],['sqft','Sqft','1879'],['referring_realtor_name','Referring Realtor','Jane Smith'],['referring_realtor_phone','Realtor Phone','(816) 555-9876'],['referring_realtor_email','Realtor Email','jane@realty.com']].map(([k, lb, ph]) => (
             <div className="fg" key={k}><label className="flbl">{lb}</label><input className="finp" value={inf[k] || ''} onChange={e => setInf(p => ({ ...p, [k]: e.target.value }))} placeholder={ph} /></div>
           ))}
           <div className="fg"><label className="flbl">Client Communication</label>
@@ -112,7 +113,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         </div>
       ) : (
         <div className="ig">
-          {[['Client', job.client_name], ['Phone', job.client_phone], ['Email', job.client_email], ['Rep', job.assigned_rep], ['Subs', job.assigned_subs], ['Sqft', job.sqft], ['Target', job.target_completion], ['Created', fD(job.created)], ['Notify', { portal: 'Portal Only', email: 'Email', sms: 'SMS', all: 'Email + SMS' }[job.client_notify || 'portal']], ['Realtor', job.referring_realtor_name], ['Realtor Ph', job.referring_realtor_phone], ['Realtor Em', job.referring_realtor_email]].filter(([, v]) => v).map(([lb, v]) => (
+          {[['Client', job.client_name], ['Phone', job.client_phone], ['Email', job.client_email], ['Spouse', job.spouse_name], ['Spouse Ph', job.spouse_phone], ['Spouse Em', job.spouse_email], ['Rep', job.assigned_rep], ['Subs', job.assigned_subs], ['Sqft', job.sqft], ['Target', job.target_completion], ['Created', fD(job.created)], ['Notify', { portal: 'Portal Only', email: 'Email', sms: 'SMS', all: 'Email + SMS' }[job.client_notify || 'portal']], ['Realtor', job.referring_realtor_name], ['Realtor Ph', job.referring_realtor_phone], ['Realtor Em', job.referring_realtor_email]].filter(([, v]) => v).map(([lb, v]) => (
             <div className="ii" key={lb}><div className="ii-l">{lb}</div><div className="ii-v">{v}</div></div>
           ))}
           {!job.client_name && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '20px', color: '#9CA3AF', fontSize: 13, background: '#fff', border: '1px solid #E8E4DC' }}>Tap Edit to add client and job details</div>}
@@ -129,6 +130,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
               {job.contract_signed && <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600, marginTop: 3 }}>✓ Signed by client</div>}
               {!job.contract_signed && job.client_email && <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 3 }}>{proposalDoc ? `Using: ${proposalDoc.name}` : 'Awaiting signature'}</div>}
               {!job.client_email && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 3 }}>Add client email to send contract</div>}
+              {contractSentBanner && <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600, marginTop: 3 }}>✓ Contract sent to {contractSentBanner}</div>}
             </div>
             {job.client_email && !job.contract_signed && (
               <button className="btn btn-navy" style={{ fontSize: 12, padding: '7px 16px' }} onClick={() => setShowContract(true)}>Send Contract</button>
@@ -182,7 +184,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         ))}
         <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={() => setShowSubPicker(false)}>Cancel</button>
       </div></div>}
-      {showContract && <ContractModal job={job} onClose={() => setShowContract(false)} onSent={(email, name) => { upd({ client_email: email, client_name: name }); }} proposalDoc={proposalDoc} />}
+      {showContract && <ContractModal job={job} onClose={() => setShowContract(false)} onSent={(email, name) => { upd({ client_email: email, client_name: name }); setShowContract(false); setContractSentBanner(email); setTimeout(() => setContractSentBanner(''), 4000); }} proposalDoc={proposalDoc} />}
       {showCompletion && <CompletionSignoffModal job={job} onClose={() => setShowCompletion(false)} onSigned={() => setShowCompletion(false)} />}
     </div>
   );

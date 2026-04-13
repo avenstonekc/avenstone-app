@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { sb, AV_USER_ID, AV_TENANT, ANON_KEY } from '../../../lib/supabase';
-import { Ic, f$ } from '../../../lib/utils';
+import { Ic, f$, isMob } from '../../../lib/utils';
 
 const PROCESS_TRANSCRIPT_URL = `https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/process-transcript`;
 const GENERATE_ESTIMATE_URL = `https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/generate-estimate-from-session`;
@@ -82,6 +82,7 @@ function LikelihoodBadge({ likelihood }) {
 }
 
 export default function ConsultationTab({ job, profile }) {
+  const mob = isMob();
   const [sessionId, setSessionId] = useState(null);
   const [phase, setPhase] = useState('idle');
   const [isRecording, setIsRecording] = useState(false);
@@ -662,7 +663,7 @@ export default function ConsultationTab({ job, profile }) {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10 }}>
         <button className="btn btn-navy" style={{ flex: 1 }} onClick={startMeasuring}>
           Start Measuring
         </button>
@@ -704,9 +705,9 @@ export default function ConsultationTab({ job, profile }) {
           background: '#fff',
           border: `1px solid ${BORDER}`,
           borderRadius: 10,
-          padding: 16,
-          minHeight: 280,
-          maxHeight: 360,
+          padding: mob ? 10 : 16,
+          minHeight: mob ? 160 : 280,
+          maxHeight: mob ? 220 : 360,
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
@@ -822,7 +823,7 @@ export default function ConsultationTab({ job, profile }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {/* Estimate breakdown */}
         <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ background: NAV, color: '#fff', padding: '14px 20px' }}>
+          <div style={{ background: NAV, color: '#fff', padding: mob ? '12px 14px' : '14px 20px' }}>
             <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18 }}>Estimate Breakdown</span>
           </div>
           <div style={{ padding: 0 }}>
@@ -836,7 +837,7 @@ export default function ConsultationTab({ job, profile }) {
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'flex-start',
-                  padding: '14px 20px',
+                  padding: mob ? '10px 14px' : '14px 20px',
                   borderBottom: i < trades.length - 1 ? `1px solid ${BORDER}` : 'none',
                   background: i % 2 === 0 ? '#fff' : CREAM,
                 }}
@@ -864,7 +865,7 @@ export default function ConsultationTab({ job, profile }) {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: '16px 20px',
+              padding: mob ? '12px 14px' : '16px 20px',
               background: NAV,
               color: '#fff',
             }}>
@@ -879,7 +880,7 @@ export default function ConsultationTab({ job, profile }) {
         {/* OH SHIT moments */}
         {ohShitMoments.length > 0 && (
           <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ background: '#7F1D1D', color: '#fff', padding: '14px 20px' }}>
+            <div style={{ background: '#7F1D1D', color: '#fff', padding: mob ? '12px 14px' : '14px 20px' }}>
               <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18 }}>
                 OH SHIT Moments
               </span>
@@ -895,13 +896,13 @@ export default function ConsultationTab({ job, profile }) {
                   <div
                     key={key}
                     style={{
-                      padding: '16px 20px',
+                      padding: mob ? '12px 14px' : '16px 20px',
                       borderBottom: i < ohShitMoments.length - 1 ? `1px solid ${BORDER}` : 'none',
                       background: included ? '#FFFBEB' : '#fff',
                       transition: 'background 0.15s',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', justifyContent: 'space-between', alignItems: mob ? 'flex-start' : 'flex-start', gap: mob ? 8 : 12 }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                           <LikelihoodBadge likelihood={m.likelihood || 'medium'} />
@@ -949,7 +950,7 @@ export default function ConsultationTab({ job, profile }) {
         )}
 
         {/* Save to estimate tab */}
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10 }}>
           <button
             className="btn btn-gold"
             style={{ flex: 1, fontSize: 15, padding: '14px 0' }}
@@ -960,7 +961,7 @@ export default function ConsultationTab({ job, profile }) {
           </button>
           <button
             className="btn btn-ghost"
-            style={{ minWidth: 120 }}
+            style={{ minWidth: mob ? 'auto' : 120 }}
             onClick={() => {
               setPhase('idle');
               setSessionId(null);
@@ -998,7 +999,7 @@ export default function ConsultationTab({ job, profile }) {
         style={{
           background: CREAM,
           borderRadius: 14,
-          padding: 24,
+          padding: mob ? 14 : 24,
           fontFamily: 'DM Sans, sans-serif',
         }}
       >
@@ -1008,7 +1009,7 @@ export default function ConsultationTab({ job, profile }) {
             <h2
               style={{
                 fontFamily: 'DM Serif Display, serif',
-                fontSize: 22,
+                fontSize: mob ? 18 : 22,
                 color: NAV,
                 margin: 0,
                 lineHeight: 1.2,
