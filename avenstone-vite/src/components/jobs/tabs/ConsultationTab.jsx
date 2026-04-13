@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sb, AV_USER_ID, AV_TENANT } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY } from '../../../lib/supabase';
 import { Ic, f$ } from '../../../lib/utils';
 
 const PROCESS_TRANSCRIPT_URL = `https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/process-transcript`;
@@ -152,13 +152,10 @@ export default function ConsultationTab({ job, profile }) {
     }
   };
 
-  const getHeaders = async () => {
-    const { data: { session } } = await sb.auth.getSession();
-    return {
-      Authorization: `Bearer ${session?.access_token}`,
-      'Content-Type': 'application/json',
-    };
-  };
+  const getHeaders = () => ({
+    Authorization: `Bearer ${ANON_KEY}`,
+    'Content-Type': 'application/json',
+  });
 
   // ─── Mic / Speech Recognition ─────────────────────────────────────────────
 
@@ -244,14 +241,14 @@ export default function ConsultationTab({ job, profile }) {
       const chunk = transcriptRef.current;
       if (!chunk || chunk.trim().length < 20) return;
       try {
-        const headers = await getHeaders();
+        const headers = getHeaders();
         const res = await fetch(PROCESS_TRANSCRIPT_URL, {
           method: 'POST',
           headers,
           body: JSON.stringify({
             session_id: sessionIdRef.current || sid,
             job_id: job.id,
-            transcript: chunk,
+            transcript_chunk: chunk,
             mode: 'ambient',
           }),
         });
@@ -320,7 +317,7 @@ export default function ConsultationTab({ job, profile }) {
       setTradeMessages([]);
 
       // Open the measure conversation
-      const headers = await getHeaders();
+      const headers = getHeaders();
       const openingContext = [
         `Job: ${job.name || job.title || job.id}`,
         job.address ? `Address: ${job.address}` : '',
@@ -338,7 +335,7 @@ export default function ConsultationTab({ job, profile }) {
         body: JSON.stringify({
           session_id: sessionId,
           job_id: job.id,
-          transcript: openingContext,
+          transcript_chunk: openingContext,
           mode: 'measure',
           trade: null,
           is_opening: true,
@@ -369,14 +366,14 @@ export default function ConsultationTab({ job, profile }) {
     setTradeMessages(updated);
 
     try {
-      const headers = await getHeaders();
+      const headers = getHeaders();
       const res = await fetch(PROCESS_TRANSCRIPT_URL, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           session_id: sessionId,
           job_id: job.id,
-          transcript: text,
+          transcript_chunk: text,
           mode: 'measure',
           trade: currentTrade || null,
           conversation_history: updated,
@@ -452,7 +449,7 @@ export default function ConsultationTab({ job, profile }) {
     setGenerating(true);
     setErr('');
     try {
-      const headers = await getHeaders();
+      const headers = getHeaders();
       const res = await fetch(GENERATE_ESTIMATE_URL, {
         method: 'POST',
         headers,
