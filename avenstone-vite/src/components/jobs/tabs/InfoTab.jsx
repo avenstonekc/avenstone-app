@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_TENANT, AV_USER_ID, sbNotify, sbSendContractEmail, sbLoadJobSubs, sbLoadSubDirectory, sbAssignSub, sbUnassignSub, sbSendClientLink, sbLoadDocs, sbLoadSequences } from '../../../lib/supabase';
+import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbLoadJobSubs, sbLoadSubDirectory, sbAssignSub, sbUnassignSub, sbSendClientLink, sbLoadDocs } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildGenericPDF } from '../../../lib/pdf';
 import ContractModal from '../../modals/ContractModal';
@@ -63,10 +63,6 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
   const [showContract, setShowContract] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
   const [proposalDoc, setProposalDoc] = useState(null);
-  const [sequences, setSequences] = useState([]);
-  const [activeEnrollments, setActiveEnrollments] = useState([]);
-  const [showSeqPicker, setShowSeqPicker] = useState(false);
-  const [startingSeq, setStartingSeq] = useState(false);
 
   useEffect(() => {
     if (jobSubsLoaded) return;
@@ -76,65 +72,8 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
       const p = docs.find(d => d.file_type === 'proposal');
       if (p) setProposalDoc(p);
     });
-    sbLoadSequences().then(d => setSequences(d.filter(s => s.status === 'active')));
-    loadEnrollments();
     setJobSubsLoaded(true);
   }, [jobSubsLoaded]);
-
-  const loadEnrollments = async () => {
-    if (!job.client_phone && !job.client_email) return;
-    // Find contact matching this client
-    let q = sb.from('contacts').select('id').eq('tenant_id', AV_TENANT);
-    if (job.client_email) q = q.eq('email', job.client_email);
-    else q = q.eq('phone', job.client_phone);
-    const { data: contacts } = await q.limit(1);
-    if (!contacts?.length) return;
-    const { data: enrolls } = await sb.from('sequence_enrollments')
-      .select('*, sequence:sequences(name)')
-      .eq('contact_id', contacts[0].id)
-      .eq('status', 'active');
-    setActiveEnrollments(enrolls || []);
-  };
-
-  const startSequence = async (seq) => {
-    if (!job.client_phone && !job.client_email) return;
-    setStartingSeq(true);
-    // Find or create contact from job data
-    let contactId;
-    let q = sb.from('contacts').select('id').eq('tenant_id', AV_TENANT);
-    if (job.client_email) q = q.eq('email', job.client_email);
-    else q = q.eq('phone', job.client_phone);
-    const { data: existing } = await q.limit(1);
-    if (existing?.length) {
-      contactId = existing[0].id;
-    } else {
-      const nameParts = (job.client_name || '').trim().split(' ');
-      const { data: newC } = await sb.from('contacts').insert({
-        tenant_id: AV_TENANT,
-        first_name: nameParts[0] || job.client_name || '',
-        last_name: nameParts.slice(1).join(' ') || '',
-        email: job.client_email || '',
-        phone: job.client_phone || '',
-        source: 'job',
-        status: 'contacted',
-        job_id: job.id,
-        created_at: new Date().toISOString(),
-      }).select().single();
-      contactId = newC?.id;
-    }
-    if (!contactId) { setStartingSeq(false); return; }
-    const steps = seq.steps || [];
-    const firstStep = steps[0];
-    const nextSendAt = firstStep?.day === 0 ? new Date().toISOString() : new Date(Date.now() + (firstStep?.day || 0) * 86400000).toISOString();
-    await sb.from('sequence_enrollments').insert({
-      tenant_id: AV_TENANT, sequence_id: seq.id, contact_id: contactId,
-      status: 'active', current_step: 0, next_send_at: nextSendAt,
-      enrolled_at: new Date().toISOString(),
-    });
-    await loadEnrollments();
-    setShowSeqPicker(false);
-    setStartingSeq(false);
-  };
 
   const saveInf = () => { upd({ ...inf }); setEditInf(false); };
 
@@ -201,30 +140,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         </div>
       )}
 
-      {['owner', 'sales_rep'].includes(profile?.role) && (job.client_phone || job.client_email) && (
-        <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginTop: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: activeEnrollments.length ? 12 : 0 }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Client Follow-up</div>
-              {!activeEnrollments.length && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 3 }}>No active sequences — start one to auto-text {job.client_name || 'this client'}</div>}
-            </div>
-            {sequences.length > 0 && <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px', flexShrink: 0 }} onClick={() => setShowSeqPicker(true)}>+ Start Sequence</button>}
-            {sequences.length === 0 && <span style={{ fontSize: 11, color: '#9CA3AF' }}>No active sequences — build one first</span>}
-          </div>
-          {activeEnrollments.map(e => (
-            <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #F3F0E8' }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{e.sequence?.name || 'Sequence'}</div>
-                <div style={{ fontSize: 11, color: '#9CA3AF' }}>Step {e.current_step + 1} · Next: {e.next_send_at ? new Date(e.next_send_at).toLocaleDateString() : '—'}</div>
-              </div>
-              <button onClick={async () => { await sb.from('sequence_enrollments').update({ status: 'stopped' }).eq('id', e.id); loadEnrollments(); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 16, padding: 4 }} title="Stop">✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && ['complete', 'punch'].includes(job.status) && (
+{['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && ['complete', 'punch'].includes(job.status) && (
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginTop: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
@@ -268,31 +184,6 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
       </div></div>}
       {showContract && <ContractModal job={job} onClose={() => setShowContract(false)} onSent={(email, name) => { upd({ client_email: email, client_name: name }); }} proposalDoc={proposalDoc} />}
       {showCompletion && <CompletionSignoffModal job={job} onClose={() => setShowCompletion(false)} onSigned={() => setShowCompletion(false)} />}
-      {showSeqPicker && (
-        <div className="overlay" onClick={() => setShowSeqPicker(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">Start a Follow-up Sequence</div>
-            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 14 }}>
-              Texts will go to {job.client_name || 'client'} at <strong>{job.client_phone || job.client_email}</strong>. First message fires within 15 min.
-            </div>
-            {sequences.map(seq => (
-              <button key={seq.id} onClick={() => startSequence(seq)} disabled={startingSeq}
-                style={{ width: '100%', background: '#fff', border: '1px solid #E8E4DC', padding: '12px 14px', cursor: 'pointer', textAlign: 'left', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12, transition: 'border-color 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = '#C9A84C'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = '#E8E4DC'}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#0A1F44' }}>{seq.name}</div>
-                  {seq.description && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{seq.description}</div>}
-                  <div style={{ fontSize: 11, color: '#C9A84C', marginTop: 4 }}>{(seq.steps || []).length} messages · {seq.steps?.[seq.steps.length - 1]?.day || 0} day drip</div>
-                </div>
-                <span style={{ color: '#C9A84C', fontSize: 18 }}>→</span>
-              </button>
-            ))}
-            {startingSeq && <div style={{ textAlign: 'center', padding: 12, color: '#9CA3AF', fontSize: 13 }}>Enrolling...</div>}
-            <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={() => setShowSeqPicker(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

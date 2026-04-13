@@ -18,8 +18,6 @@ import Pipeline from './components/common/Pipeline';
 import UserMgmt from './components/common/UserMgmt';
 import StatusPage from './components/common/StatusPage';
 import SubDir from './components/sub/SubDir';
-import ContactsScr from './components/common/ContactsScr';
-import SequencesScr from './components/common/SequencesScr';
 import NotifPanel from './components/shared/NotifPanel';
 import SettingsModal from './components/modals/SettingsModal';
 
@@ -114,7 +112,7 @@ export default function App() {
     { id: 'dashboard', lb: 'Dashboard', ic: 'grid', sec: 'Main' },
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
-    ...(isOwnerOrRep ? [{ id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'contacts', lb: 'Contacts', ic: 'note', sec: 'Sales' }, { id: 'sequences', lb: 'Sequences', ic: 'clip', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }] : []),
+    ...(isOwnerOrRep ? [{ id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }] : []),
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
   ];
@@ -203,8 +201,6 @@ export default function App() {
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
             {pg === 'calendar' && isOwnerOrRep && <CalScr jobs={jobs} profile={profile} onSelectJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
-            {pg === 'contacts' && isOwnerOrRep && <ContactsScr profile={profile} />}
-            {pg === 'sequences' && isOwnerOrRep && <SequencesScr profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ marginBottom: 16 }}>
@@ -228,9 +224,8 @@ export default function App() {
             {[
               { id: 'dashboard', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
-              ...(isOwnerOrRep ? [{ id: 'contacts', ic: 'note', lb: 'Contacts' }] : []),
-              ...(isOwnerOrRep ? [{ id: 'sequences', ic: 'clip', lb: 'Sequences' }] : []),
-              ...(isStaff && !isOwnerOrRep ? [{ id: 'subs', ic: 'home', lb: 'Subs' }] : []),
+              ...(isStaff ? [{ id: 'subs', ic: 'home', lb: 'Subs' }] : []),
+              ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
                 <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: pg === t.id ? '#C9A84C' : '#9CA3AF' }}>{Ic[t.ic] || Ic.grid}</span>
