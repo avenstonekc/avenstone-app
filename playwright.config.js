@@ -17,7 +17,7 @@ module.exports = defineConfig({
   webServer: {
     command: "npx serve . -p 3737 -s",
     port: 3737,
-    reuseExistingServer: false,
+    reuseExistingServer: true,
     timeout: 120000,
   },
 });

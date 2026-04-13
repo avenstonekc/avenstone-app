@@ -30,7 +30,7 @@ async function loginAsRep(page) {
   await page.fill("input[type='email']", REP_EMAIL);
   await page.fill("input[type='password']", REP_PASSWORD);
   await page.click("button:has-text('Sign In')");
-  await expect(page.locator("text=Dashboard").first()).toBeVisible({ timeout: 15000 });
+  await expect(page.locator("text=Good").first()).toBeVisible({ timeout: 15000 }); // "Good morning/afternoon/evening"
 }
 
 // Helper: log in as client (uses password instead of magic link)
@@ -42,9 +42,13 @@ async function loginAsClient(page) {
   await expect(page.locator(`text=${TEST_JOB_ADDRESS}`)).toBeVisible({ timeout: 15000 });
 }
 
+async function navToProjects(page) {
+  // On mobile the sidebar is hidden — click the bottom nav button instead
+  await page.locator("button.bn-item").filter({ hasText: "Projects" }).click();
+}
+
 async function openTestJob(page) {
-  // Navigate to Projects list
-  await page.click("text=Projects");
+  await navToProjects(page);
   await expect(page.locator(`text=${TEST_JOB_ADDRESS}`)).toBeVisible({ timeout: 10000 });
   await page.locator(`text=${TEST_JOB_ADDRESS}`).first().click();
   // Job detail loads with INFO tab — verify by checking the tab exists
@@ -70,7 +74,7 @@ test.describe("Staff Login", () => {
 
   test("correct credentials log in and show Dashboard", async ({ page }) => {
     await loginAsRep(page);
-    await expect(page.locator("text=Good")).toBeVisible({ timeout: 8000 }); // "Good afternoon, Test."
+    await expect(page.locator("text=Quick Start")).toBeVisible({ timeout: 8000 });
   });
 });
 
@@ -80,7 +84,7 @@ test.describe("Staff Login", () => {
 test.describe("Jobs List (Rep)", () => {
   test("Dunham Rd job is visible in Projects list", async ({ page }) => {
     await loginAsRep(page);
-    await page.click("text=Projects");
+    await navToProjects(page);
     await expect(page.locator(`text=${TEST_JOB_ADDRESS}`)).toBeVisible({ timeout: 10000 });
   });
 
