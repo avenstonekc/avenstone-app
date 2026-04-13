@@ -60,6 +60,13 @@ const CLIENT_TABS = [
   { id: 'request', lb: 'Change Request', ic: 'warn' },
 ];
 
+const CLIENT_STATUS = s => ({
+  lead: 'In Review', bid_sent: 'Proposal Sent', signed: 'Contract Signed',
+  active: 'In Progress', demo: 'In Progress', framing: 'In Progress',
+  rough_mep: 'In Progress', drywall: 'In Progress', finish: 'In Progress',
+  punch: 'Final Touches', complete: 'Complete', on_hold: 'On Hold',
+}[s] || sl(s));
+
 export default function ClientPortal({ profile, signOut }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -194,15 +201,19 @@ export default function ClientPortal({ profile, signOut }) {
         <div style={{ padding: 16, maxWidth: 720, margin: '0 auto' }}>
           {tab === 'overview' && <>
             <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: loaded.phases && phases.length ? 16 : 0 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Current Status</div>
-                  <span style={{ fontSize: 13, background: sc(job.status) + '18', color: sc(job.status), padding: '4px 14px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{sl(job.status)}</span>
-                </div>
-                {job.target_completion && <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Target Completion</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{job.target_completion}</div>
-                </div>}
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Details</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 13 }}>
+                {job.address && <div style={{ gridColumn: '1/-1', marginBottom: 4 }}><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Address</div><div style={{ fontWeight: 600, color: '#0A1F44' }}>{job.address}</div></div>}
+                {job.client_name && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Client</div><div style={{ color: '#374151' }}>{job.client_name}</div></div>}
+                {job.client_phone && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Phone</div><div style={{ color: '#374151' }}>{job.client_phone}</div></div>}
+                {job.assigned_rep && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Your Rep</div><div style={{ color: '#374151' }}>{job.assigned_rep}</div></div>}
+                {job.target_completion && <div><div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 2 }}>Target Completion</div><div style={{ color: '#374151' }}>{job.target_completion}</div></div>}
+              </div>
+            </div>
+            <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
+              <div style={{ marginBottom: loaded.phases && phases.length ? 16 : 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Current Status</div>
+                <span style={{ fontSize: 13, background: sc(job.status) + '18', color: sc(job.status), padding: '4px 14px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{CLIENT_STATUS(job.status)}</span>
               </div>
               {loaded.phases && phases.length > 0 && (() => {
                 const done = phases.filter(p => p.status === 'complete').length;

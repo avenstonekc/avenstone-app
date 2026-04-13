@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbLoadJobSubs, sbLoadSubDirectory, sbAssignSub, sbUnassignSub, sbSendClientLink } from '../../../lib/supabase';
+import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbLoadJobSubs, sbLoadSubDirectory, sbAssignSub, sbUnassignSub, sbSendClientLink, sbLoadDocs } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildGenericPDF } from '../../../lib/pdf';
 import ContractModal from '../../modals/ContractModal';
@@ -62,11 +62,16 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
   const [showSubPicker, setShowSubPicker] = useState(false);
   const [showContract, setShowContract] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
+  const [proposalDoc, setProposalDoc] = useState(null);
 
   useEffect(() => {
     if (jobSubsLoaded) return;
     sbLoadJobSubs(job.id).then(d => setJobSubs(d));
     sbLoadSubDirectory().then(d => setAllSubs(d));
+    sbLoadDocs(job.id).then(docs => {
+      const p = docs.find(d => d.file_type === 'proposal');
+      if (p) setProposalDoc(p);
+    });
     setJobSubsLoaded(true);
   }, [jobSubsLoaded]);
 
@@ -122,7 +127,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
             <div>
               <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Contract</div>
               {job.contract_signed && <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600, marginTop: 3 }}>✓ Signed by client</div>}
-              {!job.contract_signed && job.client_email && <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 3 }}>Awaiting signature</div>}
+              {!job.contract_signed && job.client_email && <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 3 }}>{proposalDoc ? `Using: ${proposalDoc.name}` : 'Awaiting signature'}</div>}
               {!job.client_email && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 3 }}>Add client email to send contract</div>}
             </div>
             {job.client_email && !job.contract_signed && (
@@ -177,7 +182,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         ))}
         <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={() => setShowSubPicker(false)}>Cancel</button>
       </div></div>}
-      {showContract && <ContractModal job={job} onClose={() => setShowContract(false)} onSent={(email, name) => { upd({ client_email: email, client_name: name }); }} />}
+      {showContract && <ContractModal job={job} onClose={() => setShowContract(false)} onSent={(email, name) => { upd({ client_email: email, client_name: name }); }} proposalDoc={proposalDoc} />}
       {showCompletion && <CompletionSignoffModal job={job} onClose={() => setShowCompletion(false)} onSigned={() => setShowCompletion(false)} />}
     </div>
   );
