@@ -1,0 +1,134 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const TWILIO_SID   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
+const TWILIO_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+const TWILIO_FROM  = Deno.env.get("TWILIO_FROM")!;
+const SB_URL       = Deno.env.get("SUPABASE_URL")!;
+const SB_SERVICE   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, content-type",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  try {
+    const sb = createClient(SB_URL, SB_SERVICE);
+    const now = new Date().toISOString();
+
+    // Find all active enrollments due to send
+    const { data: due, error } = await sb
+      .from("sequence_enrollments")
+      .select("*, sequence:sequences(*), contact:contacts(*)")
+      .eq("status", "active")
+      .lte("next_send_at", now);
+
+    if (error) throw error;
+    if (!due?.length) {
+      return new Response(JSON.stringify({ ok: true, sent: 0 }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    let sent = 0;
+    const results = [];
+
+    for (const enrollment of due) {
+      const contact = enrollment.contact;
+      const sequence = enrollment.sequence;
+      const steps: Array<{ day: number; label: string; message: string }> = sequence?.steps || [];
+      const stepIndex = enrollment.current_step;
+
+      if (stepIndex >= steps.length) {
+        // All steps done — mark complete
+        await sb.from("sequence_enrollments")
+          .update({ status: "complete", completed_at: now })
+          .eq("id", enrollment.id);
+        results.push({ id: enrollment.id, action: "completed" });
+        continue;
+      }
+
+      const step = steps[stepIndex];
+      const phone = contact?.phone;
+
+      if (!phone) {
+        results.push({ id: enrollment.id, action: "skipped", reason: "no phone" });
+        continue;
+      }
+
+      // Normalize to E.164
+      const raw = phone.replace(/\D/g, "");
+      const toE164 = raw.startsWith("1") ? `+${raw}` : `+1${raw}`;
+
+      // Send SMS via Twilio
+      const twilioRes = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`)}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({ From: TWILIO_FROM, To: toE164, Body: step.message }),
+        }
+      );
+
+      const twilioData = await twilioRes.json();
+
+      if (!twilioRes.ok) {
+        console.error(`Twilio error for enrollment ${enrollment.id}:`, twilioData.message);
+        results.push({ id: enrollment.id, action: "error", reason: twilioData.message });
+        continue;
+      }
+
+      // Save to contact_messages
+      await sb.from("contact_messages").insert({
+        tenant_id: enrollment.tenant_id,
+        contact_id: contact.id,
+        direction: "outbound",
+        body: step.message,
+        from_number: TWILIO_FROM,
+        to_number: toE164,
+        twilio_sid: twilioData.sid,
+        status: "sent",
+        created_at: now,
+      });
+
+      // Advance enrollment to next step
+      const nextIndex = stepIndex + 1;
+      if (nextIndex >= steps.length) {
+        // Last step just sent — mark complete
+        await sb.from("sequence_enrollments")
+          .update({ current_step: nextIndex, status: "complete", completed_at: now, next_send_at: null })
+          .eq("id", enrollment.id);
+        results.push({ id: enrollment.id, action: "completed_last_step" });
+      } else {
+        // Schedule next step
+        const nextStep = steps[nextIndex];
+        const daysUntilNext = nextStep.day - step.day;
+        const nextSendAt = new Date(Date.now() + daysUntilNext * 24 * 60 * 60 * 1000).toISOString();
+        await sb.from("sequence_enrollments")
+          .update({ current_step: nextIndex, next_send_at: nextSendAt })
+          .eq("id", enrollment.id);
+        results.push({ id: enrollment.id, action: "advanced", next_step: nextIndex, next_send_at: nextSendAt });
+      }
+
+      // Update contact last_contacted_at
+      await sb.from("contacts").update({ last_contacted_at: now }).eq("id", contact.id);
+
+      sent++;
+    }
+
+    return new Response(JSON.stringify({ ok: true, sent, results }), {
+      headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error("sequence-runner error:", e);
+    return new Response(JSON.stringify({ error: String(e) }), {
+      status: 500, headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  }
+});
