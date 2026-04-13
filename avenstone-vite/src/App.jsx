@@ -21,7 +21,6 @@ import SubDir from './components/sub/SubDir';
 import NotifPanel from './components/shared/NotifPanel';
 import SettingsModal from './components/modals/SettingsModal';
 import AiKnowledgeScr from './components/ai/AiKnowledgeScr';
-import AiSetupWizard from './components/ai/AiSetupWizard';
 import AiHomeScr from './components/ai/AiHomeScr';
 import PublicProfile from './components/public/PublicProfile';
 import ReviewPage from './components/public/ReviewPage';
@@ -46,7 +45,6 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [pendingJobId, setPendingJobId] = useState(null);
   const [pendingNew, setPendingNew] = useState(false);
-  const [showAiSetup, setShowAiSetup] = useState(false);
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session: s } }) => {
@@ -67,13 +65,6 @@ export default function App() {
     setProfile(data);
     setSession(data?.tenant_id, uid);
     sbLoadNotifs().then(d => setNotifs(d));
-    // Check if owner needs AI setup wizard
-    if (data?.role === 'owner' && data?.tenant_id) {
-      sb.from('ai_knowledge')
-        .select('id', { count: 'exact', head: true })
-        .eq('tenant_id', data.tenant_id)
-        .then(({ count }) => { if ((count ?? 0) === 0) setShowAiSetup(true); });
-    }
     setAuthLoading(false);
   };
 
@@ -262,7 +253,6 @@ export default function App() {
 
       {showNotif && <NotifPanel notifs={notifs} onClose={() => setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif} />}
       {showSettings && <SettingsModal profile={profile} setProfile={setProfile} onClose={() => setShowSettings(false)} />}
-      {showAiSetup && <AiSetupWizard profile={profile} onDone={() => setShowAiSetup(false)} />}
     </>
   );
 }
