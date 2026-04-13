@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { ANON_KEY } from '../../lib/supabase';
+import { sb, ANON_KEY, AI_COMPANION_URL, AV_USER_ID } from '../../lib/supabase';
 import { isMob } from '../../lib/utils';
-
-const COMPANION_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-companion';
 
 const NAV   = '#0A1F44';
 const GOLD  = '#C9A84C';
@@ -64,12 +62,36 @@ export default function AiCompanionChat({ job, profile }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  // Load existing conversation history from DB on first open
   useEffect(() => {
-    if (open && !hasOpened && job?.id) {
-      setHasOpened(true);
+    if (!open || hasOpened || !job?.id || !profile?.id) return;
+    setHasOpened(true);
+
+    const load = async () => {
+      const role = profile?.role || 'sales_rep';
+      const { data: companion } = await sb
+        .from('job_ai_companions')
+        .select('id, conversation_history')
+        .eq('job_id', job.id)
+        .eq('user_id', profile.id)
+        .eq('role', role)
+        .maybeSingle();
+
+      if (companion?.id) {
+        setCompanionId(companion.id);
+        const hist = (companion.conversation_history || []).slice(-10);
+        if (hist.length > 0) {
+          // Restore last messages so conversation feels continuous
+          setMessages(hist.map(m => ({ role: m.role === 'assistant' ? 'ai' : 'user', text: m.content })));
+          return; // Don't fire opening brief — they've been here before
+        }
+      }
+      // First time — fire the brief
       sendMessage('brief me on this job', true);
-    }
-    if (open) setTimeout(() => inputRef.current?.focus(), 300);
+    };
+
+    load();
+    setTimeout(() => inputRef.current?.focus(), 300);
   }, [open]);
 
   const sendMessage = async (text, isOpening = false) => {
@@ -80,7 +102,7 @@ export default function AiCompanionChat({ job, profile }) {
     setLoading(true);
 
     try {
-      const res = await fetch(COMPANION_URL, {
+      const res = await fetch(AI_COMPANION_URL, {
         method: 'POST',
         headers: { Authorization: `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({

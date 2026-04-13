@@ -2,401 +2,372 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Memory
-
-Persistent memory for this project lives at:
-`C:\Users\Kalin\.claude\projects\C--WINDOWS-system32\memory\`
-
-**Always read `MEMORY.md` in that folder first.** It indexes all memory files including:
-- Active to-do list, bugs, and feature queue (`project_todo.md`)
-- Team members, emails, auth IDs, roles (`user_team.md`)
-- Testing and workflow preferences (`feedback_test_before_next.md`)
-
 ---
 
 ## What this app is
 
-Avenstone — a construction job management platform for Avenstone Contracting (Kansas City, MO). Manages leads, proposals, contracts, client signing, documents, photos, subs, scheduling, change orders, payments, and AI estimating.
+**Avenstone** — an AI-powered construction field operations platform for Avenstone Contracting (Kansas City, MO). Manages the full job lifecycle: leads → AI consultation → estimate → proposal → contract → field ops → client portal → payments.
 
-Deployed at: `https://avenstone-app.vercel.app`  
-GitHub: `avenstonekc/avenstone-app`
+**Competitive advantage:** AI embedded at every step of field operations. Not a CRM. Not a marketing tool. The thing that makes crews smarter, faster, and more profitable on every job.
+
+- Live app: `https://avenstone-app.vercel.app`
+- GitHub: `avenstonekc/avenstone-app`
+- Supabase project ref: `cbfftukmhqvvjlrlnltk`
+- Supabase URL: `https://cbfftukmhqvvjlrlnltk.supabase.co`
+- Avenstone tenant ID: `00000000-0000-0000-0000-000000000001`
+- Kalin's auth ID: `8171742a-b586-4f13-be61-744e191a1896`
+- **Never send contracts or test emails to `kalin@avenstonekc.com`** — it will set his role to `client`
 
 ---
 
-## Working Preferences (READ FIRST)
+## Working Preferences (READ FIRST — follow every session)
 
-These apply to every session. Follow them without being reminded.
-
-- **Code only by default** — no explanations, no commentary, no "here's what I did" summaries unless explicitly asked
-- **Never ask clarifying questions** — make a reasonable decision, implement it, note the assumption in a single line comment if needed
-- **Always run tests after any code change — no exceptions** — `npx playwright test tests/portals-e2e.spec.js --reporter=list`. Run this before moving to the next task. Do NOT ask Kalin if tests passed — run them yourself and report the result.
-- **Test all three viewports every time** — desktop (1280px), tablet (768px), mobile (390px). A feature that isn't verified on all three is not done. The Playwright suite covers all three — a passing suite means all viewports pass.
-- **Best effort, keep moving** — if something is ambiguous, pick the most logical path and go
-- **No refactoring to Vite/components** — stay single-file until explicitly told otherwise
-- **One task at a time** — finish, test, confirm passing, THEN move to the next
-- **If context is getting long** — summarize what was done and what's next before the session ends
+- **Code only by default** — no explanations, no commentary unless explicitly asked
+- **Never ask clarifying questions** — make a reasonable decision and implement it
+- **Best effort, keep moving** — ambiguous? pick the most logical path and go
+- **One task at a time** — finish it, then move on
+- **Prefer editing existing code** over adding new files when possible
 - **Screenshots > descriptions** — if there's a UI bug, look at the screenshot first
-- **Prefer editing existing code** over adding new code when possible
-- **Every feature ships on all three viewports** — mobile (390px), tablet (768px), desktop (1280px). No exceptions. When adding a new screen: (1) add it to the sidebar NAV, (2) add it to the bottom nav `bot-nav` for mobile, (3) verify the component uses `isMob()` for layout switching. A feature that doesn't work on mobile is not done.
-- **Think before building** — when Kalin floats an idea, stop and reason honestly before running with it: (1) Is there existing software that already does this better? (2) What's the realistic failure rate? (3) Does this fit Avenstone's actual competitive advantage? Say "X already does this better, here's what makes more sense" if that's the truth. Do NOT just start building because he mentioned it. Brainstorming is not a build order.
+- **Think before building** — when an idea is floated, reason honestly: (1) Does existing software already do this better? (2) What's the realistic failure rate? (3) Does it fit Avenstone's actual competitive advantage? Say so if the answer is no.
 
-### Context & Token Management (CRITICAL)
+### Every feature ships on all three viewports
+Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
+- Add new screens to both `NAV` array (sidebar) and `bot-nav` (mobile)
+- Use `isMob()` from `src/lib/utils.jsx` for layout switching
+- iPad (768px) uses desktop layout — sidebar visible, bottom nav hidden
 
-The response text limit is ~32,000 tokens. Tool call outputs do NOT count against it. This means:
-
-- **Never echo file contents in your response** — read with tools, write with tools, don't print to chat
-- **Before any large task** — analyze: (1) output size, (2) whether subagents/chunked approach needed, (3) failure mode. Identify this BEFORE starting, not after burning usage
-- **Files > 150 lines** — use a background subagent with explicit instruction: "Write using the Write tool only. Do NOT output file content in your response." Subagents that echo content hit the 32k cap instantly
-- **Parallel subagents** — when writing multiple files simultaneously, spawn them in parallel (5 files = 5 subagents = 5x faster, no cap risk)
-- **Reading large files** — read only the section you need (use offset/limit). Don't re-read files you just edited
-- **When stuck or spinning** — stop after 2 attempts, surface the blocker to Kalin, don't retry blindly
-- **North star** — one goal: build the best app possible. Right tool, right job, no spinning in circles
+### Context & Token Management
+- **Never echo file contents in your response** — read with tools, write with tools
+- **Files > 150 lines** — use a background subagent. Tell it: "Write using the Write tool only. Do NOT output file content."
+- **Parallel subagents** — when writing multiple files simultaneously, spawn in parallel
+- **Reading large files** — use offset/limit. Don't re-read files you just edited
+- **When stuck** — stop after 2 attempts, surface the blocker, don't retry blindly
 
 ---
 
 ## Architecture
 
-**Live app:** `avenstone-vite/` — Vite + React 18, built and deployed via Vercel.
+**Stack:** Vite + React 18, deployed via Vercel
 - Build: `cd avenstone-vite && npm install && npm run build` → output: `avenstone-vite/dist/`
-- Entry: `avenstone-vite/src/main.jsx` → `src/App.jsx` → component tree
-- Supabase JS v2 via npm (`@supabase/supabase-js`)
-- Components organized under `src/components/` by feature (auth, dashboard, jobs, client, sub, modals, forms, shared)
-- `src/lib/` — utilities (ai.js, formData.js, etc.)
+- Entry: `avenstone-vite/src/main.jsx` → `src/App.jsx`
+- Routing: state-based (`pg` state in `App.jsx`) — no React Router
+- Supabase JS v2 via npm
 
-**Legacy:** Root-level `index.html` is the original single-file app. No longer deployed. Kept as reference only.
+**Legacy:** Root-level `index.html` = original single-file app. No longer deployed. Frozen. All new features go in the Vite app.
+
+### Folder structure
+```
+avenstone-vite/src/
+├── components/
+│   ├── ai/           — AiCompanionChat, AiKnowledgeScr, AiSetupWizard
+│   ├── auth/         — LoginScr, SetPasswordScr
+│   ├── client/       — ClientPortal
+│   ├── common/       — UserMgmt, ContactsScr, SequencesScr, TkOf, Pipeline, StatusPage
+│   ├── dashboard/    — DashScr, CalScr, Reports
+│   ├── forms/        — FormScr
+│   ├── jobs/         — JobsScr, JobDet + tabs/
+│   ├── modals/       — SettingsModal, ContractModal, etc.
+│   ├── shared/       — AiCompanionChat, NotifPanel, StarRating, PhotoLightbox
+│   └── sub/          — SubPortal, SubDir, SubJobView
+├── lib/
+│   ├── supabase.js   — Supabase client, ALL edge function URLs, ALL sb* helpers
+│   ├── utils.jsx     — Icons (Ic), formatters (f$, fD, fDT), isMob(), status helpers
+│   ├── utils.js      — localStorage helpers (ls, ll)
+│   ├── formData.js   — Intake & bid form structure
+│   ├── pdf.js        — PDF generation
+│   └── ai.js         — callEstimator, extractProposalData
+├── App.jsx           — Main layout, routing, session, NAV array
+├── main.jsx          — Entry point
+└── index.css         — Global styles, utility classes
+```
+
+### Adding new code
+- New components: `src/components/<feature>/ComponentName.jsx`
+- New Supabase helpers: add to `src/lib/supabase.js` with `sb*` prefix
+- New edge function URLs: export from `src/lib/supabase.js` alongside existing URLs
+- New CSS: global styles in `src/index.css`; prefer existing utility classes
+- New icons: add to `Ic` object in `src/lib/utils.jsx` — never inline SVGs in components
+- New top-level screens: (1) add to `NAV` array, (2) add render in `pg-wrap`, (3) add to `bot-nav` if needed
 
 ---
 
 ## Supabase
 
-- Project ref: `cbfftukmhqvvjlrlnltk`
-- URL: `https://cbfftukmhqvvjlrlnltk.supabase.co`
-- Avenstone tenant ID: `00000000-0000-0000-0000-000000000001`
-- Kalin's auth ID: `8171742a-b586-4f13-be61-744e191a1896`
-- **Never send contracts or test emails to `kalin@avenstonekc.com`** — it will set his role to `client`
+### Tables
+**Core:** `jobs`, `profiles`, `photos`, `job_notes`, `job_documents`, `change_orders`, `contract_signatures`, `job_messages`, `job_subs`, `invitations_to_bid`, `bid_responses`, `payments`, `notifications`, `schedule_phases`, `daily_logs`, `job_phases`, `job_estimates`, `contacts`, `sequences`, `sequence_enrollments`, `job_reviews`, `sub_ratings`
 
-**Tables:** `jobs`, `profiles`, `photos`, `job_notes`, `job_documents`, `change_orders`, `contract_signatures`, `job_messages`, `job_subs`, `invitations_to_bid`, `bid_responses`, `payments`, `notifications`, `schedule_phases`, `daily_logs`, `job_phases`
+**AI tables:**
+- `job_ai_companions` — one record per (user_id, job_id, role). Stores full `conversation_history` (JSONB array of `{role, content}` messages). The AI companion's persistent memory.
+- `ai_knowledge` — tenant-specific learnings injected into every AI companion prompt. Fields: `tenant_id`, `category`, `content`, `active`, `created_by`, `created_at`
+- `ai_error_logs` — black box recorder for every AI failure. Fields: `function_name`, `error_type`, `error_message`, `user_input`, `ai_raw_response`, `session_id`, `job_id`, `user_id`, `tenant_id`, `metadata`, `created_at`
+- `consultation_sessions` — each on-site AI consultation session
+- `consultation_extractions` — ambient listening output (concerns, budget, risks, scope hints)
+- `consultation_measurements` — per-trade measurements from measure mode
 
 **Storage buckets:** `job-photos` (public), `job-documents` (private), `bid-quotes` (private)
 
-**Edge Functions:** `send-contract-email`, `invite-user`, `send-bid-invite`, `notify-realtor`, `send-estimate-email`, `create-payment-link`
-
 **RLS helpers:** `get_my_role()`, `get_my_tenant_id()`, `can_access_job(job_id)`
 
----
+### Edge Functions
+All URLs exported from `src/lib/supabase.js`:
 
-## Global state / key globals
+| Export | Function | Purpose |
+|--------|----------|---------|
+| `AI_COMPANION_URL` | `ai-companion` | Per-person per-job AI with full job context + memory |
+| `PROCESS_TRANSCRIPT_URL` | `process-transcript` | AI consultation — ambient extraction + measure mode |
+| `AI_ERROR_LOGGER_URL` | `ai-error-logger` | Silent black box error recorder |
+| `AI_ESTIMATOR_URL` | `ai-estimator` | Estimate chat |
+| `CONTRACT_EMAIL_URL` | `send-contract-email` | Contract email with PDF |
+| `INVITE_URL` | `send-invite` | Staff/sub invitation |
+| `CLIENT_LINK_URL` | `send-client-link` | Client magic link |
+| `BID_INVITE_URL` | `send-bid-invite` | Sub bid invitation |
+| `PAYMENT_LINK_URL` | `create-payment-link` | Stripe payment link |
+| `NOTIFY_REALTOR_URL` | `notify-realtor` | Realtor referral notification |
 
-- `window.SB` — Supabase client
-- `window.AV_TENANT` — current user's tenant_id (set on login via `loadProfile`)
-- `window.AV_USER_ID` — current user's auth UID
-- `window.AV_JOBS` — jobs array kept in sync for cross-component access
-
----
-
-## DB helper naming
-
-All Supabase helpers are top-level functions prefixed `sb*`:
-`sbLoad`, `sbSave`, `sbUpd`, `sbNote`, `sbPhoto`, `sbCO`, `sbUploadDoc`, `sbLoadDocs`, `sbDelDoc`, `sbToggleDocVisible`, `sbSaveSignature`, `sbSendContractEmail`, `sbNotify`, `sbPostMessage`, `sbCreateITB`, `sbSubmitBid`, `sbCreatePaymentLink`
-
----
-
-## Component structure (current)
-
-```
-App (screen state: "dashboard"|"jobs"|"intake"|"bid"|"takeoff"|"client"|"sub")
-├── DashScr           — dashboard stats + quick-start cards
-├── JobsScr           — job list with filters; drills into JobDet
-│   └── JobDet        — multi-tab job detail (INFO/SCHEDULE/NOTES/PHOTOS/DOCUMENTS/
-│                        CHANGE ORDERS/MESSAGES/ESTIMATE/DAILY LOGS/PAYMENTS)
-├── FormScr           — multi-step AI intake & bid forms
-├── ClientScr         — client portal (magic link or password login)
-│   └── ClientJobScr  — client job detail (Overview/Docs/Payments/Messages/Change Requests)
-├── SubScr            — sub portal
-├── LoginScr          — email+password or magic link login
-└── Modals: ContractModal, ClientSignContractModal, CompletionSignoffModal,
-            SignaturePad, PaymentModal, ITBModal, SubPickerModal, etc.
-```
-
----
-
-## Auth / roles
-
-Roles: `owner`, `project_manager`, `sales_rep`, `sub`, `client`  
-Login: email+password (`signInWithPassword`) or magic link (`signInWithOtp`)  
-Clients get magic links from `send-contract-email` edge function; also support password login.
-
----
-
-## Job statuses
-
-`lead → bid_sent → active → demo → framing → rough_mep → drywall → finish → punch → complete`  
-Also: `on_hold`
-
----
-
-## Design tokens
-
-- Navy: `#0A1F44`, Gold: `#C9A84C`, Cream bg: `#F7F5F0`, Border: `#E8E4DC`
-- Error red: `#EF4444` / `#FEE2E2`, Success green: `#22c55e` / `#D1FAE5`, Warning amber: `#f59e0b` / `#FEF3C7`
-- Fonts: `DM Serif Display` (headings/serifs), `DM Sans` (body/UI)
-- CSS utility classes: `.btn`, `.btn-navy`, `.btn-gold`, `.btn-ghost`, `.finp`, `.fg`, `.flbl`, `.modal`, `.overlay`, `.badge`, `.card`, `.sb-item`
-
----
-
-## Visual Design Language (HOW it should feel)
-
-Avenstone is a **premium field operations tool** used by contractors on job sites. The UI should feel like a high-end native iOS app, not a SaaS dashboard. Every screen should feel like it was designed, not assembled.
-
-### Aesthetic principles
-- **Confident and calm** — dark navy headers, cream backgrounds, gold accents. Never busy.
-- **iMessage-style chat** — user messages right/navy, AI messages left/white. Typing dots. No corporate chatbot chrome.
-- **Cards over tables** — information lives in bordered cards (`border: 1px solid #E8E4DC`), not HTML tables.
-- **Typography hierarchy** — section labels in `11px / uppercase / #9CA3AF / letterSpacing: 1`, values in `13-14px / #374151`, headings in `DM Serif Display`.
-
-### Spacing & sizing
-- Card padding: `16-20px`
-- Section gap: `16px`
-- Button height: `36-44px` (larger on mobile)
-- Border radius: `8px` small, `10-12px` cards, `20px` pills/badges, `50%` avatars
-- Mobile root padding: `14px`, Desktop: `20-24px`
-
-### Motion
-- Slide-up panels (mobile): `slideUp 0.25s ease`
-- Slide-in panels (desktop): `slideIn 0.22s ease`
-- Overlay fade: `0.15s`
-- Progress bars: `transition: width 0.4s`
-- Button hover: `transition: all 0.15s`
-
-### States (always handle all of these)
-- **Loading**: spinner (`border-top: gold, border: #E8E4DC, border-radius: 50%, animation: spin`) or typing dots
-- **Empty**: centered text + muted icon, never raw blank space
-- **Error**: red banner with `×` dismiss button (`#FEE2E2` bg, `#991B1B` text)
-- **Success**: green banner or pill (`#D1FAE5` bg, `#22c55e` text), auto-dismiss after 4s
-
-### Floating elements
-- Floating action buttons: `52px` circle, `position: fixed`, navy bg + gold border, `box-shadow: 0 4px 20px rgba(10,31,68,0.35)`
-- Mobile: `bottom: 74px` (above bot-nav), Desktop: `bottom: 28px`
-- Modals: `.overlay` + `.modal` classes, `max-width: 640px`, `max-height: 90vh`
-
----
-
-## Information Architecture — Where Features Live
-
-Before building anything, decide where it belongs. Use this map:
-
-### Top-level navigation (sidebar + bot-nav)
-Only screens a user needs **daily** or navigates to directly. Currently:
-- `dashboard` — overview, stats, quick actions
-- `jobs` → `JobDet` — everything about a specific job
-- `calendar` — schedule view
-- `pipeline` — lead kanban (owner/rep only)
-- `reports` — revenue, performance (owner/rep only)
-- `subs` — subcontractor directory (staff only)
-- `team` — user management (owner only)
-
-**Rule**: If a feature is job-specific, it belongs inside `JobDet` as a tab — not a new top-level screen.
-
-### Job detail tabs (inside JobDet)
-Each tab = a distinct workflow on a job. Current tabs:
-`Info → Schedule → Notes → Photos → Documents → Change Orders → Messages → Estimate → Daily Logs → Payments → AI Session`
-
-**Rule**: Add a new tab when a workflow needs persistent state and the user will return to it repeatedly. Don't add tabs for one-time actions.
-
-### Floating elements (always accessible within a screen)
-Used for **contextual AI or quick actions** that overlay the current view without navigating away:
-- `AiCompanionChat` — floating sparkle button on all job detail views. Opens a panel. Does not replace the current tab.
-
-**Rule**: Floating elements are for tools that assist the current task, not replace it. One floating button max per screen.
-
-### Modals
-Used for **single-action confirmations or short forms**: send contract, assign sub, update status, sign completion. Always triggered by a button. Never used for complex multi-step flows.
-
-### Edge functions as features
-Some features are pure backend (no dedicated UI screen). They appear as:
-- A button that fires the function → result shown inline or as a notification
-- A scheduled cron that runs silently and posts to `job_notes` or `notifications`
-
-**Rule**: AI features that analyze or act on a job belong as edge functions + a trigger button in the relevant tab, not as a new screen.
-
-### Icon system
-- All icons in `Ic` object in `src/lib/utils.jsx` — SVG, `viewBox="0 0 24 24"`, `stroke="currentColor"`, `strokeWidth="1.5"`
-- To use: `<span style={{ width: 16, height: 16, display: 'flex' }}>{Ic.iconName}</span>`
-- Add new icons to `Ic` in utils, never inline one-off SVGs in components
-
----
-
-## Testing
-
-**Primary suite:** `tests/portals-e2e.spec.js` — 123 tests, all passing (as of April 2026)  
-**Roles × Viewports:** PM, Sales Rep, Sub × Desktop 1280×800, Mobile 390×844, iPad 768×1024  
-**Steps per role:** Login → AI Estimator → Save PDF → Proposal → Contract → Signing → Notes → Status → Change Orders → Payments → Phases → DB Verification
-
+### Edge Function Deploy
 ```bash
-npx playwright test tests/portals-e2e.spec.js --reporter=list   # full suite (~26 min)
-npx playwright test tests/portals-e2e.spec.js --grep "Step 1"   # run one step across all roles
-npx playwright test tests/portals-e2e.spec.js --grep "Desktop"  # desktop only
+unset SUPABASE_ACCESS_TOKEN
+SUPABASE_ACCESS_TOKEN=<PAT> npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
+```
+**Current PAT:** `sbp_6c442a7c0d6bc4c9ff1e2cf2e3132e0458634afe` — Active as of April 13 2026.
+
+**Deploy all AI functions at once:**
+```bash
+unset SUPABASE_ACCESS_TOKEN
+for fn in ai-companion process-transcript ai-error-logger; do
+  SUPABASE_ACCESS_TOKEN=sbp_6c442a7c0d6bc4c9ff1e2cf2e3132e0458634afe npx supabase functions deploy $fn --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
+done
 ```
 
-Test accounts:
-- PM: `test-pm@avenstonekc.com` / `TestPM2026!`
-- Rep: `test-rep@avenstonekc.com` / `TestRep2026!`
-- Sub: `test-sub@avenstonekc.com` / `TestSub2026!`
-- Client: `kalinspratling@gmail.com` / `TestClient2026!`
-
-**Always run tests before pushing a new feature or after fixing a bug.**
+**Anthropic model guidelines:**
+- Sonnet (`claude-sonnet-4-6`): complex reasoning, large output — `max_tokens: 4096`
+- Haiku (`claude-haiku-4-5-20251001`): fast extraction, small JSON — `max_tokens: 2048`
+- Opus (`claude-opus-4-6`): deep analysis, project manager — `max_tokens: 4096`
 
 ---
 
-## Known Gotchas (hard-won, don't repeat these mistakes)
+## Vercel Deployment
 
-- **Job IDs must be valid UUIDs** — the app's `add()` function uses `Date.now().toString()` which Supabase silently rejects. Always create test jobs via admin client with a real UUID.
-- **`sbLoadSubJobs` uses `job_phases`** — subs can SELECT `job_phases` via RLS but may not have SELECT on `job_subs`. Query `job_phases.assigned_sub_id` to find a sub's jobs.
-- **`assigned_rep` filter uses `profile.full_name`** — not email. `sbLoad()` filters sales rep jobs by `profile.full_name`. When setting up test data, use the rep's display name (e.g. "Test Rep"), not their email.
-- **React-controlled inputs need native setter** — `.type()` / `.fill()` unreliable for Babel+UMD React. Use `page.evaluate()` with `Object.getOwnPropertyDescriptor` to set value and dispatch `input` + `change` events.
-- **iPad (768px) uses desktop layout** — `@media(min-width:768px)` shows sidebar, hides bottom nav. Tests must check both `.sb-item` and `.bn-item` when navigating.
-- **10-tab tabbar overflows on narrow screens** — use `tab.scrollIntoViewIfNeeded()` before clicking tabs like "Estimate" (tab #8).
-- **AI estimator `page.click("Save PDF")` can trigger navigation** — use `{ noWaitAfter: true }` to prevent Playwright hanging on PDF blob navigation.
-- **Test-runner timeout is NOT catchable** — `test.setTimeout()` aborts at the runner level. Use `Promise.race()` with a JS `setTimeout` to enforce hard caps that throw real catchable errors.
-- **Clean up `job_estimates` in afterAll** — FK constraint blocks job DELETE if estimates exist. Always include `job_estimates` in cleanup loops.
-- **Never use `retries > 1`** with `test.describe.serial` — retries restart the whole serial block from Step 1, multiplying runtime.
+**Auto-deploys** on every push to `main`. Takes ~60-90 seconds.
 
----
+**If a deploy fails:**
+1. Go to vercel.com → avenstone-app → the red failed deployment
+2. Click **"View Build Logs"** tab
+3. Scroll to the bottom — the last error line is the cause
+4. Paste it to Claude — do NOT try to diagnose without seeing it
 
-## Adding new code
+**Common Vercel failures:**
+- **"Cannot deploy from GitHub"** — Vercel lost GitHub OAuth. Fix: Vercel → Settings → Git → Disconnect → Reconnect GitHub
+- **Build error** — always run `cd avenstone-vite && npm run build` locally first. If it passes locally and fails on Vercel, the error is in the Vercel build logs.
+- **Missing import / wrong path** — check the exact file path and casing (Linux is case-sensitive, Windows is not)
+- **Large bundle warning** — not an error, just a warning. Does not cause deploy failure.
 
-- New React components: `avenstone-vite/src/components/<feature>/ComponentName.jsx`
-- New Supabase helpers: `avenstone-vite/src/lib/` or colocate near the component that owns them
-- New CSS: use existing Tailwind/utility classes; global styles in `avenstone-vite/src/index.css`
-- New Edge Functions: `supabase/functions/<name>/index.ts` — deploy via Supabase dashboard
+**Manual redeploy:** Vercel dashboard → avenstone-app → Deployments → click the failed one → "Redeploy"
 
----
-
-## Migrations
-
-SQL migrations live in `supabase/migrations/` — gitignored but tracked locally.  
+### SQL Migrations
 Apply via Supabase Management API:
 ```bash
 curl -X POST "https://api.supabase.com/v1/projects/cbfftukmhqvvjlrlnltk/database/query" \
-  -H "Authorization: Bearer <SUPABASE_PAT>" \
+  -H "Authorization: Bearer <PAT>" \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"<sql>\"}"
 ```
 
 ---
 
-## Edge Function Deploys
+## The AI System — How It All Connects
 
-Edge functions live in `supabase/functions/<name>/index.ts`.
+This is Avenstone's core competitive advantage. Every piece connects:
 
-**How to deploy (Claude runs this autonomously):**
-```bash
-# Unset any conflicting env var first, then deploy with PAT inline
-unset SUPABASE_ACCESS_TOKEN
-SUPABASE_ACCESS_TOKEN=<SUPABASE_PAT> npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
+```
+NEW TENANT ONBOARDS
+  └── AiSetupWizard fires (0 knowledge entries detected)
+      └── 7 questions → ai_knowledge table populated
+          └── AI now knows: labor rate, markup, draw structure,
+              lead time, client comms, CO policy, specialties
+
+SALES REP GOES ON-SITE
+  └── AI Consultation tab (process-transcript edge function)
+      ├── AMBIENT MODE — listens to client conversation
+      │   └── Extracts: concerns, scope hints, budget signals,
+      │       decision makers, timeline, risk flags, action items
+      │       → saved to consultation_extractions
+      └── MEASURE MODE — guides rep trade-by-trade
+          └── Multi-turn conversation with full memory (40 msg window)
+              → measurements saved to consultation_measurements
+
+JOB BECOMES ACTIVE
+  └── AI Companion available on every job (ai-companion edge function)
+      ├── Per person, per job — Sales Rep, PM, Sub, Client each get their own
+      ├── Loads full job context on every call:
+      │   job details, notes, change orders, payments, phases, subs
+      ├── Injects company knowledge from ai_knowledge (active entries only)
+      ├── Persistent memory — conversation_history stored in job_ai_companions
+      │   Resumable — reopening the companion loads last 10 messages
+      └── Sliding window — last 20 messages sent to API (token safety)
+
+ERRORS ANYWHERE
+  └── ai-error-logger edge function (fire-and-forget, never blocks)
+      └── Captures: function name, error type, raw AI response, user input
+          → ai_error_logs table — query to see what broke and why
+
+COMPANY LEARNS OVER TIME
+  └── AI Knowledge screen (owner only, sidebar)
+      ├── Add/edit/toggle entries by category
+      ├── Active entries injected into every companion conversation
+      └── "Retake Setup" button re-runs the AiSetupWizard
 ```
 
-**Deploy all AI functions at once:**
-```bash
-unset SUPABASE_ACCESS_TOKEN
-for fn in process-transcript generate-estimate-from-session ai-estimator ai-project-manager; do
-  SUPABASE_ACCESS_TOKEN=<SUPABASE_PAT> npx supabase functions deploy $fn --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
-done
+### AI Component Map
+| Component | File | Purpose |
+|-----------|------|---------|
+| `AiCompanionChat` | `components/shared/AiCompanionChat.jsx` | Floating sparkle button on job detail. Loads history on open. |
+| `AiKnowledgeScr` | `components/ai/AiKnowledgeScr.jsx` | CRUD for ai_knowledge entries. Owner only. |
+| `AiSetupWizard` | `components/ai/AiSetupWizard.jsx` | 7-question onboarding wizard. Fires on first login if 0 entries. |
+
+---
+
+## Component Architecture
+
+### Routing
+State-based in `App.jsx`. `pg` state drives which screen renders.
+```jsx
+// Add a new screen:
+// 1. NAV array (sidebar):
+{ id: 'my-screen', lb: 'Label', ic: 'grid', sec: 'Section' }
+// 2. pg-wrap render:
+{pg === 'my-screen' && <MyScreen profile={profile} />}
+// 3. bot-nav (mobile bottom bar) if needed
 ```
 
-**PAT token:** Stored in CLAUDE.md once refreshed. To refresh: Supabase dashboard → Account (top right) → Access Tokens → Generate new token.  
-**Current PAT:** `sbp_6c442a7c0d6bc4c9ff1e2cf2e3132e0458634afe` — Active as of April 13 2026.
+### Screen component pattern
+```jsx
+export default function MyScr({ profile }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
 
-**max_tokens guidelines (Claude API):**
-- Claude Sonnet (large JSON output, estimates): `8192`
-- Claude Haiku (extraction, small JSON): `2048`
-- Claude Opus (analysis, reasoning): `4096`
+  useEffect(() => { load(); }, []);
 
----
+  const load = async () => {
+    const { data } = await sb.from('table').select('*').eq('tenant_id', AV_TENANT);
+    setItems(data || []);
+    setLoading(false);
+  };
+  // ...
+}
+```
+Always filter by `AV_TENANT`. Always handle loading, empty, and error states.
 
-## Current Focus
+### Auth & Roles
+- Roles: `owner`, `project_manager`, `sales_rep`, `sub`, `client`
+- `profile` object passed as prop throughout — contains `id`, `tenant_id`, `role`, `full_name`
+- Session globals: `AV_TENANT`, `AV_USER_ID` — set on login, imported from `supabase.js`
 
-**Avenstone's competitive advantage is field operations + AI — not marketing automation.**
+### Job statuses (in order)
+`lead → bid_sent → active → demo → framing → rough_mep → drywall → finish → punch → complete`
+Also: `on_hold`
 
-- GHL handles marketing. Keep it. The GHL webhook (already built) hands leads to Avenstone automatically.
-- Avenstone owns everything after the handoff: estimate → proposal → contract → field ops → LiDAR → AI consultation.
-- Do NOT rebuild what GHL already does well. If a feature idea overlaps with GHL, stop and think before building.
-
-**Priority order:**
-1. AI Consultation tab — polish end-to-end on mobile (voice → transcript → measurements → estimate)
-2. Capacitor native app wrap — once Apple Developer account approved (MacInCloud ready)
-3. LiDAR room scanning — after Capacitor, via Swift RoomPlan plugin
-4. AI on top of GHL — Claude-powered lead responses through GHL's API (smarter GHL, not a replacement)
-
-**The HTML app is complete and frozen. All new features go in the Vite app.**
-
----
-
-## Feature Roadmap (native app, priority order)
-
-### Phase 1 — Core (CMD building now)
-1. **Vite app** — 1:1 port of HTML app into proper React components. Same Supabase backend. In progress.
-
-### Phase 2 — AI Consultation & Mic
-2. **AI Consultation Feature** — ambient listening + wake word + conversational measure + OH SHIT moments + on-site estimate generation. Full spec: `docs/AI_CONSULTATION_BLUEPRINT.md`
-3. **GHL webhook receiver** — Edge Function auto-creates job when deal stage changes in GHL. Assigns rep, fires notification. Zero clicks.
-
-### Phase 3 — App Store (Capacitor)
-4. **Capacitor wrapper** — wraps Vite app into native iOS/Android shell. One afternoon. Unlocks all native hardware.
-5. **LiDAR room scanning** — RoomPlan API via Swift Capacitor plugin. Auto-populates all measure fields in 60 seconds. Full spec at bottom of `docs/AI_CONSULTATION_BLUEPRINT.md`
-6. **AR finish picker** — RealityKit overlays tile/paint/fixtures on client's actual room in real time. Closes deals before you leave the house.
-
-### Phase 4 — Intelligence & Scale
-7. **Dashboard** — revenue by month, jobs by status funnel, rep leaderboard, cost/SF trends
-8. **Sub scheduling** — calendar view, mark phases complete, availability status
-9. **Client portal upgrades** — progress timeline, photo gallery, real-time status
-10. **AI sales avatar** — AI demo agent that walks prospects through a live demo, provisions their tenant, deploys their app on the call, starts free trial automatically
-11. **White-label + Stripe billing** — multi-tenant onboarding, subscription tiers, plan enforcement. After core is stable.
+### Information Architecture
+- **Top nav** — daily-use screens only. Job-specific features belong in `JobDet` tabs.
+- **JobDet tabs** — Info, Schedule, Notes, Photos, Documents, Change Orders, Messages, Estimate, Daily Logs, Payments, AI Session
+- **Floating elements** — `AiCompanionChat` floats over job detail. One floating button max per screen.
+- **Modals** — single-action confirmations or short forms only. Never complex multi-step flows.
+- **Edge functions** — AI features that analyze a job = edge function + trigger button in the relevant tab, not a new screen.
 
 ---
 
-## AI Consultation Feature — Quick Reference
+## Design System
 
-Full spec: `docs/AI_CONSULTATION_BLUEPRINT.md`
+### Tokens
+- Navy: `#0A1F44` | Gold: `#C9A84C` | Cream: `#F7F5F0` | Border: `#E8E4DC`
+- Error: `#EF4444` / `#FEE2E2` | Success: `#22c55e` / `#D1FAE5` | Warning: `#f59e0b` / `#FEF3C7`
+- Fonts: `DM Serif Display` (headings) · `DM Sans` (body)
 
-**New Supabase tables needed:**
-- `consultation_sessions` — each on-site consultation
-- `consultation_extractions` — ambient listening output (concerns, risks, scope)
-- `consultation_measurements` — per-trade measurements from active measure mode
-- `oh_shit_moments` — flagged change order risks with pricing
+### CSS utility classes (defined in `index.css`)
+`.btn` `.btn-navy` `.btn-gold` `.btn-ghost` `.finp` `.fg` `.flbl` `.modal` `.overlay` `.badge` `.card` `.sb-item` `.tbl`
 
-**New edge functions needed:**
-- `process-transcript` — runs Claude extraction on transcript chunks
-- `generate-estimate-from-session` — assembles full estimate from measurements
+### Spacing
+- Card padding: `16-20px` | Section gap: `16px` | Button height: `36-44px`
+- Border radius: `8px` small · `10-12px` cards · `20px` pills · `50%` avatars
+- Mobile padding: `14px` | Desktop: `20-24px`
 
-**Key tech:**
-- Wake word: Picovoice Porcupine ("Avenstone start", "Avenstone note", "Avenstone measure", "Avenstone done")
-- STT: Deepgram Nova-3 Streaming or AssemblyAI Universal-Streaming
-- AI extraction: Claude Haiku (cost-optimized)
-- Hardware option: Plaud NotePin ($149) for noisy environments
+### Icons
+All in `Ic` object in `src/lib/utils.jsx`. Use as:
+```jsx
+<span style={{ width: 16, height: 16, display: 'flex' }}>{Ic.trash}</span>
+```
+Available: `grid, home, clip, doc, box, back, plus, chev, check, edit, info, note, cam, vid, warn, trash, logout, bell, cal, sched, folder, dl, eye`
+
+### States — always handle all four
+- **Loading** — spinner or typing dots, never blank
+- **Empty** — centered text + muted icon
+- **Error** — red banner `#FEE2E2` with dismiss
+- **Success** — green pill `#D1FAE5`, auto-dismiss 4s
+
+### Motion
+- Slide-up (mobile): `slideUp 0.25s ease` | Slide-in (desktop): `slideIn 0.22s ease`
+- Overlay fade: `0.15s` | Progress bars: `width 0.4s` | Button hover: `all 0.15s`
+
+### Floating action button
+```jsx
+position: 'fixed', bottom: mob ? 74 : 28, right: 18,
+width: 52, height: 52, borderRadius: '50%',
+background: '#0A1F44', border: '2px solid #C9A84C',
+boxShadow: '0 4px 20px rgba(10,31,68,0.35)', zIndex: 1000
+```
 
 ---
 
-## GHL Integration Plan (in progress)
+## Testing
 
-GoHighLevel is being built out in parallel. When the webhook is ready:
+**Primary suite:** `tests/portals-e2e.spec.js` — 123 tests
+**Run:**
+```bash
+npx playwright test tests/portals-e2e.spec.js --reporter=list   # full suite
+npx playwright test tests/portals-e2e.spec.js --grep "Step 1"   # one step
+npx playwright test tests/portals-e2e.spec.js --grep "Desktop"  # desktop only
+```
 
-- GHL deal moves to "Proposal" stage → POST to Supabase Edge Function
-- Function creates job row with UUID, sets `status: "lead"`, assigns `assigned_rep` by matching GHL contact owner to `profiles.full_name`
-- Fires notification to assigned rep
-- Avenstone handles everything from there: estimate → proposal → contract → fulfillment
+**Test accounts:**
+- PM: `test-pm@avenstonekc.com` / `TestPM2026!`
+- Rep: `test-rep@avenstonekc.com` / `TestRep2026!`
+- Sub: `test-sub@avenstonekc.com` / `TestSub2026!`
+- Client: `kalinspratling@gmail.com` / `TestClient2026!`
 
-Webhook payload will include: contact name, address, phone, email, deal value, assigned user name.
+---
+
+## Known Gotchas
+
+- **Job IDs must be valid UUIDs** — `Date.now().toString()` is silently rejected by Supabase
+- **`sbLoadSubJobs` uses `job_phases`** — subs can SELECT `job_phases` but not `job_subs`
+- **`assigned_rep` filter uses `profile.full_name`** — not email
+- **React-controlled inputs** — use `page.evaluate()` with native setter in Playwright, not `.fill()`
+- **iPad (768px)** — uses desktop layout, sidebar visible, bottom nav hidden
+- **10-tab tabbar** — use `scrollIntoViewIfNeeded()` before clicking deep tabs like "Estimate"
+- **AI companion job_id** — must be a real UUID that exists in `jobs` table. FK constraint will reject fake IDs.
+- **Never use `retries > 1`** with `test.describe.serial` — restarts the whole block from Step 1
+- **Clean up `job_estimates` in afterAll** — FK constraint blocks job DELETE if estimates exist
+
+---
+
+## Priority Order (what we're building)
+
+1. **AI Consultation polish** — voice → transcript → measurements → estimate, end-to-end on mobile
+2. **Capacitor native app** — iOS wrapper, once Apple Developer account approved (MacInCloud ready)
+3. **LiDAR room scanning** — after Capacitor, via Swift RoomPlan plugin
+4. **Client portal upgrades** — progress timeline, real-time status, photo gallery
+5. **White-label + Stripe billing** — multi-tenant onboarding after core is stable
+
+**GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 
 ---
 
 ## Common Task Patterns
 
-When Kalin says one of these, this is what he means:
-
-- **"add a feature"** — build it in `index.html`, add CSS in the style block, add any needed `sb*` helpers, run tests
-- **"fix the bug"** — read the error, find root cause, fix it, run tests, done
+- **"add a feature"** — build in `avenstone-vite/src/`, add CSS, add `sb*` helper, wire to NAV
+- **"fix the bug"** — read the error, find root cause, fix it, done
 - **"clean it up"** — remove dead code, fix inconsistent naming, tighten CSS, don't change behavior
-- **"make it smarter"** — add AI involvement to an existing feature (summarize, suggest, automate)
-- **"wire it up"** — connect two existing pieces that should talk to each other (usually a button to a Supabase call or edge function)
-- **"test it"** — run `npx playwright test tests/portals-e2e.spec.js --reporter=list` and report the result
+- **"make it smarter"** — add AI to an existing feature (summarize, suggest, automate)
+- **"wire it up"** — connect two existing pieces (button → Supabase call or edge function)
+- **"test it"** — run the Playwright suite and report the result

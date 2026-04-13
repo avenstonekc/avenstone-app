@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { ANON_KEY } from '../../lib/supabase';
+import { ANON_KEY, AI_HOME_URL } from '../../lib/supabase';
 import { isMob } from '../../lib/utils';
-
-const AI_HOME_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-home-companion';
 
 const IcSparkle = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '100%', height: '100%' }}>

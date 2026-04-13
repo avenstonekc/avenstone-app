@@ -25,6 +25,10 @@ export const AI_ESTIMATOR_URL  = `${FN}/ai-estimator`;
 export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
 export const NOTIFY_REALTOR_URL = `${FN}/notify-realtor`;
 export const authHeader = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` });
+export const AI_COMPANION_URL       = `${FN}/ai-companion`;
+export const AI_HOME_URL            = `${FN}/ai-home-companion`;
+export const PROCESS_TRANSCRIPT_URL = `${FN}/process-transcript`;
+export const AI_ERROR_LOGGER_URL    = `${FN}/ai-error-logger`;
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 export const sbSave = async j => {
@@ -413,3 +417,21 @@ export const fetchAddressSuggestions = async input => {
     return await res.json();
   } catch { return []; }
 };
+
+// ─── Materials ────────────────────────────────────────────────────────────────
+export const MATERIAL_STATUSES = ['needed','ordered','delivered','installed'];
+export const MATERIAL_UNITS = ['sq ft','lin ft','ea','box','sheet','gal','bag','ton','yd','roll','set'];
+
+export const sbLoadMaterials = async jid => {
+  const { data } = await sb.from('job_materials').select('*').eq('job_id', jid).order('created_at', { ascending: true });
+  return data || [];
+};
+export const sbSaveMaterial = async mat => {
+  const { data, error } = await sb.from('job_materials').insert({ ...mat, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();
+  return { data, error };
+};
+export const sbUpdMaterial = async (id, ch) => {
+  const { data, error } = await sb.from('job_materials').update(ch).eq('id', id).select().single();
+  return { data, error };
+};
+export const sbDelMaterial = async id => sb.from('job_materials').delete().eq('id', id);

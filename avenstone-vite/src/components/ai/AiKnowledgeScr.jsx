@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { sb, AV_TENANT } from '../../lib/supabase';
 import { Ic } from '../../lib/utils';
+import AiSetupWizard from './AiSetupWizard';
 
 const NAV   = '#0A1F44';
 const GOLD  = '#C9A84C';
@@ -58,6 +59,7 @@ export default function AiKnowledgeScr({ profile }) {
   const [saving, setSaving]     = useState(false);
   const [err, setErr]           = useState('');
   const [deleting, setDeleting] = useState(null);
+  const [showWizard, setShowWizard] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -143,14 +145,23 @@ export default function AiKnowledgeScr({ profile }) {
             </span>
           </div>
         </div>
-        <button
-          onClick={openAdd}
-          className="btn btn-navy"
-          style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
-        >
-          <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.plus}</span>
-          Add Knowledge
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setShowWizard(true)}
+            className="btn btn-ghost"
+            style={{ whiteSpace: 'nowrap', fontSize: 13 }}
+          >
+            ✦ Retake Setup
+          </button>
+          <button
+            onClick={openAdd}
+            className="btn btn-navy"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+          >
+            <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.plus}</span>
+            Add Knowledge
+          </button>
+        </div>
       </div>
 
       {/* Info banner */}
@@ -255,6 +266,11 @@ export default function AiKnowledgeScr({ profile }) {
             );
           })}
         </div>
+      )}
+
+      {/* Retake setup wizard */}
+      {showWizard && (
+        <AiSetupWizard profile={profile} onDone={() => { setShowWizard(false); load(); }} />
       )}
 
       {/* Add / Edit Modal */}

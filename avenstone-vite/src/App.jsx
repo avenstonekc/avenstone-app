@@ -120,10 +120,10 @@ export default function App() {
   const roleLabel = { owner: 'Owner', sales_rep: 'Sales Rep', project_manager: 'Project Manager', sub: 'Contractor' }[profile?.role] || 'User';
 
   const NAV = [
-    { id: 'dashboard', lb: 'Dashboard', ic: 'grid', sec: 'Main' },
+    { id: 'dashboard', lb: 'AI Home', ic: 'grid', sec: 'Main' },
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
-    ...(isOwnerOrRep ? [{ id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }] : []),
+    ...(isOwnerOrRep ? [{ id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }, { id: 'stats', lb: 'Stats', ic: 'box', sec: 'Sales' }] : []),
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc', sec: 'Settings' }] : []),

@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { AV_USER_ID, ANON_KEY, NOTIFY_REALTOR_URL, sbNotify } from '../../lib/supabase';
+import { AV_USER_ID, ANON_KEY, NOTIFY_REALTOR_URL, sbNotify, authHeader } from '../../lib/supabase';
 import { Ic, sc, sl, f$, STATS } from '../../lib/utils';
 
 const AI_PM_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-project-manager';
-const AI_PM_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ';
 import InfoTab from './tabs/InfoTab';
 import ScheduleTab from './tabs/ScheduleTab';
 import { NotesTab, PhotosTab } from './tabs/NotesPhotosTab';
@@ -15,10 +14,12 @@ import LogsTab from './tabs/LogsTab';
 import PaymentsTab from './tabs/PaymentsTab';
 import ConsultationTab from './tabs/ConsultationTab';
 import AiCompanionChat from '../shared/AiCompanionChat';
+import MaterialsTab from './tabs/MaterialsTab';
 
 const TABS = [
   { id: 'info', lb: 'Info', ic: 'info' },
   { id: 'sched', lb: 'Schedule', ic: 'sched' },
+  { id: 'materials', lb: 'Materials', ic: 'box' },
   { id: 'notes', lb: 'Notes', ic: 'note' },
   { id: 'photos', lb: 'Photos', ic: 'cam' },
   { id: 'docs', lb: 'Documents', ic: 'folder' },
@@ -45,7 +46,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
     try {
       const res = await fetch(AI_PM_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_PM_ANON}` },
+        headers: authHeader(),
         body: JSON.stringify({ job_id: job.id, request_type: 'analyze', send_sms: false }),
       });
       if (!res.ok) {
@@ -137,6 +138,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
         )}
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
+        {tab === 'materials' && <MaterialsTab job={job} profile={profile} />}
         {tab === 'notes' && <NotesTab job={job} upd={upd} profile={profile} />}
         {tab === 'photos' && <PhotosTab job={job} upd={upd} />}
         {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
