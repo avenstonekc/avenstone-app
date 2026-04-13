@@ -170,23 +170,50 @@ export default function ConsultationTab({ job, profile }) {
         setErr('Speech recognition is not supported in this browser. Use Chrome for full functionality.');
         return false;
       }
-      const recog = new SpeechRecognition();
-      recog.continuous = true;
-      recog.interimResults = true;
-      recog.onresult = (e) => {
-        const text = Array.from(e.results)
-          .map((r) => r[0].transcript)
-          .join(' ');
-        setTranscript(text);
+      const accumulatedRef = { current: transcriptRef.current };
+      const stillRecording = { current: true };
+
+      const startRecog = () => {
+        if (!stillRecording.current) return;
+        const recog = new SpeechRecognition();
+        recog.continuous = true;
+        recog.interimResults = true;
+        recog.lang = 'en-US';
+
+        recog.onresult = (e) => {
+          // Append only newly finalized results to avoid duplication
+          let newText = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            if (e.results[i].isFinal) {
+              newText += e.results[i][0].transcript + ' ';
+            }
+          }
+          if (newText) {
+            accumulatedRef.current = (accumulatedRef.current + ' ' + newText).trim();
+            setTranscript(accumulatedRef.current);
+          }
+        };
+
+        recog.onerror = (e) => {
+          if (e.error === 'not-allowed') {
+            setErr('Microphone access denied. Allow mic in browser settings.');
+            stillRecording.current = false;
+          }
+          // aborted / no-speech / network: just restart
+        };
+
+        recog.onend = () => {
+          if (stillRecording.current) {
+            setTimeout(startRecog, 300);
+          }
+        };
+
+        recog.start();
+        recognitionRef.current = recog;
       };
-      recog.onerror = (e) => {
-        console.warn('Speech recognition error:', e.error);
-        if (e.error !== 'no-speech') {
-          setErr(`Mic error: ${e.error}`);
-        }
-      };
-      recog.start();
-      recognitionRef.current = recog;
+
+      startRecog();
+      recognitionRef.current = { stop: () => { stillRecording.current = false; recognitionRef.current?.abort?.(); } };
       setIsRecording(true);
       return true;
     } catch (e) {
