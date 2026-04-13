@@ -385,6 +385,26 @@ export const sbLoadContactMessages = async contactId => {
   return data || [];
 };
 
+// ─── Sequences (follow-up automation) ────────────────────────────────────────
+export const sbLoadSequences = async () => {
+  const { data } = await sb.from('sequences').select('*').eq('tenant_id', AV_TENANT).order('created_at', { ascending: false });
+  return data || [];
+};
+export const sbSaveSequence = async seq => {
+  const { data, error } = await sb.from('sequences').insert({ ...seq, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();
+  return { data, error };
+};
+export const sbUpdSequence = async (id, ch) => sb.from('sequences').update(ch).eq('id', id);
+export const sbLoadEnrollments = async seqId => {
+  const { data } = await sb.from('sequence_enrollments').select('*, contact:contacts(first_name, last_name, phone, email)').eq('sequence_id', seqId).order('enrolled_at', { ascending: false });
+  return data || [];
+};
+export const sbEnrollContact = async (seqId, contactId, nextSendAt) => {
+  const { data, error } = await sb.from('sequence_enrollments').insert({ tenant_id: AV_TENANT, sequence_id: seqId, contact_id: contactId, status: 'active', current_step: 0, next_send_at: nextSendAt, enrolled_at: new Date().toISOString() }).select().single();
+  return { data, error };
+};
+export const sbStopEnrollment = async id => sb.from('sequence_enrollments').update({ status: 'stopped' }).eq('id', id);
+
 // ─── Address autocomplete ─────────────────────────────────────────────────────
 export const fetchAddressSuggestions = async input => {
   if (!input || input.length < 3) return [];
