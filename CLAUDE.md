@@ -387,15 +387,17 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 1. **Capacitor native app** — iOS wrapper. Apple Developer account submitted, waiting on approval. MacInCloud ready to build.
 
-2. **LiDAR room scanning** — blocked on Capacitor. Full build plan:
-   - Write custom Swift Capacitor plugin wrapping Apple RoomPlan API
-   - Phase 1: single room scan → extracts L x W x H + sq ft → replaces manual entry in AiIntakeWizard Step 2
-   - Phase 2: multi-room session (RoomPlan 2.0, iOS 17+) → rooms stitched into full floor plan → exported as image + structured data → attached to job + sent with estimate request
-   - Phase 3: material visualization — photo of room + selected material → AI renders what it looks like (post-core)
-   - Used by: sales reps on-site AND clients self-scanning from home
-   - Hardware requirement: iPhone 12 Pro or later / iPad Pro 2020+ (LiDAR only — base iPhones excluded)
-   - Main goal: floor plan accurate enough to drive a real estimate without a site visit
-   - AiIntakeWizard measurement step slot already exists — ready to wire in
+2. **LiDAR room scanning** — React side BUILT, Swift plugin waiting on Apple Developer approval.
+   - **Built:** `src/lib/lidar.js` — Capacitor bridge. Runs in simulation mode on web (mock room dimensions with realistic scan animation). TODO comments mark exactly where to wire in the Swift plugin.
+   - **Built:** `src/components/ai/LidarScanner.jsx` — full scanning UI: room naming, scan progress animation, floor plan SVG preview, total sq ft, remove rooms. Simulation mode banner shown on web.
+   - **Built:** `AiIntakeWizard.jsx` Step 2 — toggle between "Scan Rooms" (LidarScanner) and "Enter Manually" (original grid). Both paths output identical room data to Step 3.
+   - **Still needed (post Apple Developer approval):**
+     - Write Swift Capacitor plugin wrapping RoomPlan API (`RoomPlanPlugin.swift`)
+     - Phase 1: single room scan → real L x W x H (replaces simulation)
+     - Phase 2: multi-room session (RoomPlan 2.0, iOS 17+) → stitched floor plan → exported as image + PDF → attached to job
+     - Phase 3: material visualization (photo + material selection → AI renders preview)
+   - Hardware: iPhone 12 Pro+ / iPad Pro 2020+ only (LiDAR hardware required)
+   - Goal: floor plan accurate enough to estimate without a site visit
 
 3. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
 
@@ -405,7 +407,7 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 6. **Sub portal upgrades** — daily log submission, phase confirmation, AI companion for subs.
 
-**Done:** AI intake wizard, client portal progress stepper + realtime, notification bell, ai-pm-nightly smart alerts, GitHub Actions auto-deploy, ai_knowledge seeded with KC mid-tier GC pricing (21 entries — all trades, labor rates, markup, draw schedule, CO policy, estimating guidelines).
+**Done:** AI intake wizard, client portal progress stepper + realtime, notification bell, ai-pm-nightly smart alerts, GitHub Actions auto-deploy, ai_knowledge seeded with KC mid-tier GC pricing (21 entries — all trades, labor rates, markup, draw schedule, CO policy, estimating guidelines), LiDAR scanner React UI + Capacitor bridge (simulation mode, Swift plugin pending).
 
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 

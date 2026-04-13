@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { sb, AV_TENANT, AV_USER_ID, sbNotify, ANON_KEY } from '../../lib/supabase';
+import LidarScanner from './LidarScanner';
 
 const AI_INTAKE_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-intake';
 
@@ -63,6 +64,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated }) {
   const [loading, setLoading] = useState(false);
   const [readyForMeasurements, setReadyForMeasurements] = useState(false);
   const [rooms, setRooms] = useState([{ name: '', length: '', width: '', height: '' }]);
+  const [scanMode, setScanMode] = useState('lidar'); // 'lidar' | 'manual'
   const [extracted, setExtracted] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [fields, setFields] = useState({});
@@ -696,141 +698,104 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated }) {
         {/* ── Step 2: Measurements ─────────────────────────────────────────── */}
         {step === 2 && (
           <>
-            <div className="av-body">
-              {error && (
-                <div className="av-error">
-                  <span>{error}</span>
-                  <button
-                    onClick={() => setError(null)}
-                    style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 16, padding: 0 }}
-                    aria-label="Dismiss error"
-                  >
-                    ×
+            {/* Mode toggle */}
+            <div style={{ display: 'flex', gap: 0, padding: '12px 20px 0', flexShrink: 0 }}>
+              {[{ id: 'lidar', label: '📱 Scan Rooms' }, { id: 'manual', label: '✏️ Enter Manually' }].map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setScanMode(m.id)}
+                  style={{
+                    flex: 1,
+                    padding: '9px 0',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: "'DM Sans', sans-serif",
+                    border: '1.5px solid #E8E4DC',
+                    borderRadius: m.id === 'lidar' ? '8px 0 0 8px' : '0 8px 8px 0',
+                    background: scanMode === m.id ? '#0A1F44' : '#F7F5F0',
+                    color: scanMode === m.id ? '#fff' : '#7a7060',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            {/* LiDAR scan mode */}
+            {scanMode === 'lidar' && (
+              <div className="av-body" style={{ paddingTop: 12 }}>
+                {error && (
+                  <div className="av-error">
+                    <span>{error}</span>
+                    <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 16, padding: 0 }}>×</button>
+                  </div>
+                )}
+                <LidarScanner
+                  rooms={rooms.filter(r => r.sqft || (r.length && r.width))}
+                  onRoomsChange={scanned => setRooms(scanned.length ? scanned : [{ name: '', length: '', width: '', height: '' }])}
+                  onDone={() => setStep(3)}
+                />
+              </div>
+            )}
+
+            {/* Manual entry mode */}
+            {scanMode === 'manual' && (
+              <>
+                <div className="av-body">
+                  {error && (
+                    <div className="av-error">
+                      <span>{error}</span>
+                      <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 16, padding: 0 }}>×</button>
+                    </div>
+                  )}
+                  <p style={{ fontSize: 14, color: '#5a4e38', marginTop: 0, lineHeight: 1.6 }}>
+                    Enter the dimensions of each room or area involved in the project.
+                  </p>
+                  <div className="av-section-label">Rooms / Areas</div>
+                  {rooms.map((room, idx) => {
+                    const sqft = calcSqft(room);
+                    return (
+                      <div className="av-room-card" key={idx}>
+                        <div className="av-room-grid">
+                          <div className="av-room-name">
+                            <label style={{ fontSize: 12, color: '#7a7060', fontWeight: 600, display: 'block', marginBottom: 4 }}>Area Name</label>
+                            <input className="av-input-mini" placeholder="e.g. Living Room" value={room.name} onChange={(e) => updateRoom(idx, 'name', e.target.value)} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 12, color: '#7a7060', fontWeight: 600, display: 'block', marginBottom: 4 }}>Length (ft)</label>
+                            <input className="av-input-mini" type="number" min="0" placeholder="0" value={room.length} onChange={(e) => updateRoom(idx, 'length', e.target.value)} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 12, color: '#7a7060', fontWeight: 600, display: 'block', marginBottom: 4 }}>Width (ft)</label>
+                            <input className="av-input-mini" type="number" min="0" placeholder="0" value={room.width} onChange={(e) => updateRoom(idx, 'width', e.target.value)} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 12, color: '#7a7060', fontWeight: 600, display: 'block', marginBottom: 4 }}>Height (ft)</label>
+                            <input className="av-input-mini" type="number" min="0" placeholder="opt." value={room.height} onChange={(e) => updateRoom(idx, 'height', e.target.value)} />
+                          </div>
+                          <div className="av-room-del" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 1 }}>
+                            {rooms.length > 1 && (
+                              <button className="av-del-btn" onClick={() => removeRoom(idx)} aria-label={`Remove ${room.name || 'area'}`} title="Remove">×</button>
+                            )}
+                          </div>
+                        </div>
+                        {sqft !== null && <div className="av-sqft-badge">{sqft.toLocaleString()} sq ft</div>}
+                      </div>
+                    );
+                  })}
+                  <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={addRoom}>+ Add Area</button>
+                  {totalSqft > 0 && <div className="av-total-sqft">Total: {totalSqft.toLocaleString()} sq ft</div>}
+                </div>
+                <div className="av-step-footer">
+                  <button className="btn btn-gold" style={{ width: '100%' }} onClick={() => setStep(3)}>Continue to Review →</button>
+                  <button className="av-skip" onClick={() => { setRooms([{ name: '', length: '', width: '', height: '' }]); setStep(3); }}>
+                    Skip — I don't have measurements yet
                   </button>
                 </div>
-              )}
-
-              <p style={{ fontSize: 14, color: '#5a4e38', marginTop: 0, lineHeight: 1.6 }}>
-                Help us understand the size of the space. A precise scan happens on-site — this gives our estimators a head start.
-              </p>
-
-              <div className="av-section-label">Rooms / Areas</div>
-
-              {rooms.map((room, idx) => {
-                const sqft = calcSqft(room);
-                return (
-                  <div className="av-room-card" key={idx}>
-                    <div className="av-room-grid">
-                      <div className="av-room-name">
-                        <label style={{ fontSize: 12, color: '#7a7060', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                          Area Name
-                        </label>
-                        <input
-                          className="av-input-mini"
-                          placeholder="e.g. Living Room"
-                          value={room.name}
-                          onChange={(e) => updateRoom(idx, 'name', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 12, color: '#7a7060', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                          Length (ft)
-                        </label>
-                        <input
-                          className="av-input-mini"
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={room.length}
-                          onChange={(e) => updateRoom(idx, 'length', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 12, color: '#7a7060', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                          Width (ft)
-                        </label>
-                        <input
-                          className="av-input-mini"
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={room.width}
-                          onChange={(e) => updateRoom(idx, 'width', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 12, color: '#7a7060', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                          Height (ft)
-                        </label>
-                        <input
-                          className="av-input-mini"
-                          type="number"
-                          min="0"
-                          placeholder="opt."
-                          value={room.height}
-                          onChange={(e) => updateRoom(idx, 'height', e.target.value)}
-                        />
-                      </div>
-                      <div className="av-room-del" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 1 }}>
-                        {rooms.length > 1 && (
-                          <button
-                            className="av-del-btn"
-                            onClick={() => removeRoom(idx)}
-                            aria-label={`Remove ${room.name || 'area'}`}
-                            title="Remove"
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {sqft !== null && (
-                      <div className="av-sqft-badge">{sqft.toLocaleString()} sq ft</div>
-                    )}
-                  </div>
-                );
-              })}
-
-              <button
-                className="btn btn-ghost"
-                style={{ width: '100%', marginTop: 4 }}
-                onClick={addRoom}
-              >
-                + Add Area
-              </button>
-
-              {totalSqft > 0 && (
-                <div className="av-total-sqft">
-                  Total: {totalSqft.toLocaleString()} sq ft
-                </div>
-              )}
-
-              <div className="av-lidar-card">
-                <div className="av-lidar-icon">📱</div>
-                <div className="av-lidar-text">
-                  <strong>Precise LiDAR scanning</strong> available in the Avenstone mobile app. Capture exact room dimensions with your phone's depth sensor.
-                </div>
-              </div>
-            </div>
-
-            <div className="av-step-footer">
-              <button
-                className="btn btn-gold"
-                style={{ width: '100%' }}
-                onClick={() => setStep(3)}
-              >
-                Continue to Review →
-              </button>
-              <button
-                className="av-skip"
-                onClick={() => {
-                  setRooms([{ name: '', length: '', width: '', height: '' }]);
-                  setStep(3);
-                }}
-              >
-                Skip — I don't have measurements yet
-              </button>
-            </div>
+              </>
+            )}
           </>
         )}
 
