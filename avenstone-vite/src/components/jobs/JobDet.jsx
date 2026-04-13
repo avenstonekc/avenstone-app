@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { AV_USER_ID, ANON_KEY, NOTIFY_REALTOR_URL, sbNotify } from '../../lib/supabase';
 import { Ic, sc, sl, f$, STATS } from '../../lib/utils';
+
+const AI_PM_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-project-manager';
+const AI_PM_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ';
 import InfoTab from './tabs/InfoTab';
 import ScheduleTab from './tabs/ScheduleTab';
 import { NotesTab, PhotosTab } from './tabs/NotesPhotosTab';
@@ -31,6 +34,32 @@ export default function JobDet({ job, upd, del, back, profile }) {
   const [tab, setTab] = useState('info');
   const [showSt, setShowSt] = useState(false);
   const [editInf, setEditInf] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiBanner, setAiBanner] = useState(null); // { type: 'success'|'error', msg: string }
+
+  const canRunAi = profile?.role === 'owner' || profile?.role === 'project_manager';
+
+  const runAiAnalysis = async () => {
+    setAnalyzing(true);
+    setAiBanner(null);
+    try {
+      const res = await fetch(AI_PM_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_PM_ANON}` },
+        body: JSON.stringify({ job_id: job.id, request_type: 'analyze', send_sms: false }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      setAiBanner({ type: 'success', msg: 'AI analysis complete — check Notes tab' });
+    } catch (err) {
+      setAiBanner({ type: 'error', msg: String(err?.message || err) });
+    } finally {
+      setAnalyzing(false);
+      setTimeout(() => setAiBanner(null), 4000);
+    }
+  };
   const [inf, setInf] = useState({
     client_name: job.client_name || '',
     client_phone: job.client_phone || '',
@@ -69,6 +98,19 @@ export default function JobDet({ job, upd, del, back, profile }) {
           <button onClick={() => setShowSt(true)} style={{ background: sc(job.status) + '22', border: `1px solid ${sc(job.status)}55`, color: sc(job.status), padding: '6px 12px', fontFamily: "'DM Sans',sans-serif", fontSize: 11, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
             {sl(job.status)}<span style={{ width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.7 }}>{Ic.chev}</span>
           </button>
+          {canRunAi && (
+            <button
+              title="Run AI Analysis"
+              disabled={analyzing}
+              onClick={runAiAnalysis}
+              style={{ width: 36, height: 36, borderRadius: 8, background: analyzing ? '#0d2a5e' : '#0A1F44', border: '1px solid #C9A84C55', cursor: analyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: analyzing ? 0.7 : 1 }}
+            >
+              {analyzing
+                ? <span style={{ width: 16, height: 16, border: '2px solid #C9A84C', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'aiSpin 0.7s linear infinite' }} />
+                : <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9A84C' }}>{Ic.grid}</span>
+              }
+            </button>
+          )}
         </div>
         {rev > 0 && <div className="cbar">
           <div className="cc"><div className="cc-l">Contract</div><div className="cc-v" style={{ color: '#fff' }}>{f$(cv)}</div></div>
@@ -88,6 +130,11 @@ export default function JobDet({ job, upd, del, back, profile }) {
 
       {/* Tab content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        {aiBanner && (
+          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, background: aiBanner.type === 'success' ? '#D1FAE5' : '#FEE2E2', color: aiBanner.type === 'success' ? '#065f46' : '#991b1b', border: `1px solid ${aiBanner.type === 'success' ? '#6ee7b7' : '#fca5a5'}` }}>
+            {aiBanner.msg}
+          </div>
+        )}
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'notes' && <NotesTab job={job} upd={upd} profile={profile} />}
