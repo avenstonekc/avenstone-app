@@ -23,8 +23,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Working Preferences (READ FIRST — follow every session)
 
 - **Code only by default** — no explanations, no commentary unless explicitly asked
-- **Never ask clarifying questions** — make a reasonable decision and implement it
-- **Best effort, keep moving** — ambiguous? pick the most logical path and go
+- **Never ask clarifying questions about implementation** — make a reasonable decision and go
+- **Ask only when the decision affects real users or is irreversible** — e.g. sending emails, firing notifications, deleting data. One line check saves a rework.
+- **Best effort, keep moving** — ambiguous? pick the most logical path and implement it
 - **One task at a time** — finish it, then move on
 - **Prefer editing existing code** over adding new files when possible
 - **Screenshots > descriptions** — if there's a UI bug, look at the screenshot first
@@ -38,8 +39,9 @@ Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
 
 ### Context & Token Management
 - **Never echo file contents in your response** — read with tools, write with tools
-- **Files > 150 lines** — use a background subagent. Tell it: "Write using the Write tool only. Do NOT output file content."
-- **Parallel subagents** — when writing multiple files simultaneously, spawn in parallel
+- **New files > 150 lines** — use a background subagent. Tell it: "Write using the Write tool only. Do NOT output file content."
+- **Edits to existing large files** — use the Edit tool directly, not a subagent. Targeted edits are faster and more reliable.
+- **Parallel subagents** — when writing multiple new files simultaneously, spawn in parallel
 - **Reading large files** — use offset/limit. Don't re-read files you just edited
 - **When stuck** — stop after 2 attempts, surface the blocker, don't retry blindly
 
@@ -59,7 +61,7 @@ Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
 ```
 avenstone-vite/src/
 ├── components/
-│   ├── ai/           — AiCompanionChat, AiKnowledgeScr, AiSetupWizard
+│   ├── ai/           — AiKnowledgeScr, AiSetupWizard, AiIntakeWizard
 │   ├── auth/         — LoginScr, SetPasswordScr
 │   ├── client/       — ClientPortal
 │   ├── common/       — UserMgmt, ContactsScr, SequencesScr, TkOf, Pipeline, StatusPage
@@ -67,7 +69,7 @@ avenstone-vite/src/
 │   ├── forms/        — FormScr
 │   ├── jobs/         — JobsScr, JobDet + tabs/
 │   ├── modals/       — SettingsModal, ContractModal, etc.
-│   ├── shared/       — AiCompanionChat, NotifPanel, StarRating, PhotoLightbox
+│   ├── shared/       — AiCompanionChat, NotifPanel, StarRating, PhotoLightbox, PushEnableButton
 │   └── sub/          — SubPortal, SubDir, SubJobView
 ├── lib/
 │   ├── supabase.js   — Supabase client, ALL edge function URLs, ALL sb* helpers
@@ -88,6 +90,7 @@ avenstone-vite/src/
 - New CSS: global styles in `src/index.css`; prefer existing utility classes
 - New icons: add to `Ic` object in `src/lib/utils.jsx` — never inline SVGs in components
 - New top-level screens: (1) add to `NAV` array, (2) add render in `pg-wrap`, (3) add to `bot-nav` if needed
+- Complex multi-step flows: full-screen overlay, not a modal. Modals are for single-action confirmations only.
 
 ---
 
@@ -114,6 +117,8 @@ All URLs exported from `src/lib/supabase.js`:
 | Export | Function | Purpose |
 |--------|----------|---------|
 | `AI_COMPANION_URL` | `ai-companion` | Per-person per-job AI with full job context + memory |
+| `AI_INTAKE_URL` | `ai-intake` | 3-step project intake wizard — chat → measurements → submit lead |
+| `AI_PM_NIGHTLY_URL` | `ai-pm-nightly` | Daily job analysis — 6 rule checks, targeted notifications |
 | `PROCESS_TRANSCRIPT_URL` | `process-transcript` | AI consultation — ambient extraction + measure mode |
 | `AI_ERROR_LOGGER_URL` | `ai-error-logger` | Silent black box error recorder |
 | `AI_ESTIMATOR_URL` | `ai-estimator` | Estimate chat |
@@ -125,19 +130,20 @@ All URLs exported from `src/lib/supabase.js`:
 | `NOTIFY_REALTOR_URL` | `notify-realtor` | Realtor referral notification |
 
 ### Edge Function Deploy
+**Functions auto-deploy via GitHub Actions on every push to `supabase/functions/**`.** Manual deploy is a fallback only.
+
 ```bash
-unset SUPABASE_ACCESS_TOKEN
-SUPABASE_ACCESS_TOKEN=<PAT> npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
+# Manual fallback (use only if GitHub Actions is broken):
+export SUPABASE_ACCESS_TOKEN=sbp_9fa9e8b5e69d1c615f2540b01ab843498c4b37bc
+npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
 ```
 **Current PAT:** `sbp_9fa9e8b5e69d1c615f2540b01ab843498c4b37bc` — No expiry. Set April 13 2026.
 
-**Deploy all AI functions at once:**
-```bash
-unset SUPABASE_ACCESS_TOKEN
-for fn in ai-companion process-transcript ai-error-logger; do
-  SUPABASE_ACCESS_TOKEN=sbp_6c442a7c0d6bc4c9ff1e2cf2e3132e0458634afe npx supabase functions deploy $fn --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
-done
-```
+**GitHub Actions secrets required:**
+- `SUPABASE_ACCESS_TOKEN` — PAT above
+- `SUPABASE_PROJECT_REF` — `cbfftukmhqvvjlrlnltk`
+- `SUPABASE_URL` — `https://cbfftukmhqvvjlrlnltk.supabase.co`
+- `SUPABASE_ANON_KEY` — the anon key from supabase.js
 
 **Anthropic model guidelines:**
 - Sonnet (`claude-sonnet-4-6`): complex reasoning, large output — `max_tokens: 4096`
@@ -180,6 +186,14 @@ curl -X POST "https://api.supabase.com/v1/projects/cbfftukmhqvvjlrlnltk/database
 This is Avenstone's core competitive advantage. Every piece connects:
 
 ```
+CLIENT / REP GOES ON-SITE
+  └── AI Intake Wizard (ai-intake edge function)
+      ├── 3-step: AI chat → measurements → review + submit
+      ├── Sonnet for conversation, Haiku for structured extraction
+      ├── Uses ai_knowledge for company context
+      ├── Measurement step is LiDAR-ready (slot exists, manual input now)
+      └── On submit → creates jobs record (status: lead) → notifies owner/sales
+
 NEW TENANT ONBOARDS
   └── AiSetupWizard fires (0 knowledge entries detected)
       └── 7 questions → ai_knowledge table populated
@@ -206,6 +220,16 @@ JOB BECOMES ACTIVE
       │   Resumable — reopening the companion loads last 10 messages
       └── Sliding window — last 20 messages sent to API (token safety)
 
+DAILY — ON FIRST LOGIN
+  └── ai-pm-nightly fires once per calendar day (localStorage date check)
+      ├── 6 deterministic rule checks per active job:
+      │   contract_unsigned, payment_overdue, phase_starting_soon,
+      │   no_daily_log, co_pending_approval, job_stale
+      ├── 24h deduplication — same alert never fires twice in a day
+      ├── Right person notified: client alerts → client, ops alerts → PM/owner
+      └── Jobs with 2+ alerts → Opus narrative (fire-and-forget)
+          → all alerts land in notification bell on login
+
 ERRORS ANYWHERE
   └── ai-error-logger edge function (fire-and-forget, never blocks)
       └── Captures: function name, error type, raw AI response, user input
@@ -214,7 +238,7 @@ ERRORS ANYWHERE
 COMPANY LEARNS OVER TIME
   └── AI Knowledge screen (owner only, sidebar)
       ├── Add/edit/toggle entries by category
-      ├── Active entries injected into every companion conversation
+      ├── Active entries injected into every companion + intake conversation
       └── "Retake Setup" button re-runs the AiSetupWizard
 ```
 
@@ -222,6 +246,7 @@ COMPANY LEARNS OVER TIME
 | Component | File | Purpose |
 |-----------|------|---------|
 | `AiCompanionChat` | `components/shared/AiCompanionChat.jsx` | Floating sparkle button on job detail. Loads history on open. |
+| `AiIntakeWizard` | `components/ai/AiIntakeWizard.jsx` | 3-step intake: chat → measurements → submit. Client portal + jobs screen. |
 | `AiKnowledgeScr` | `components/ai/AiKnowledgeScr.jsx` | CRUD for ai_knowledge entries. Owner only. |
 | `AiSetupWizard` | `components/ai/AiSetupWizard.jsx` | 7-question onboarding wizard. Fires on first login if 0 entries. |
 
@@ -272,7 +297,8 @@ Also: `on_hold`
 - **Top nav** — daily-use screens only. Job-specific features belong in `JobDet` tabs.
 - **JobDet tabs** — Info, Schedule, Notes, Photos, Documents, Change Orders, Messages, Estimate, Daily Logs, Payments, AI Session
 - **Floating elements** — `AiCompanionChat` floats over job detail. One floating button max per screen.
-- **Modals** — single-action confirmations or short forms only. Never complex multi-step flows.
+- **Modals** — single-action confirmations or short forms only.
+- **Full-screen overlays** — complex multi-step flows (e.g. AiIntakeWizard). Never cram these into a modal.
 - **Edge functions** — AI features that analyze a job = edge function + trigger button in the relevant tab, not a new screen.
 
 ---
@@ -321,17 +347,21 @@ boxShadow: '0 4px 20px rgba(10,31,68,0.35)', zIndex: 1000
 
 ## Testing
 
-**Primary suite:** `tests/portals-e2e.spec.js` — 123 tests
+**Suites:**
+- `tests/portals-e2e.spec.js` — 123 tests. Full role/viewport coverage: PM, rep, sub across desktop/mobile/iPad.
+- `tests/new-features.spec.js` — AI intake wizard, notification bell, client portal progress stepper.
+
 **Run:**
 ```bash
-npx playwright test tests/portals-e2e.spec.js --reporter=list   # full suite
-npx playwright test tests/portals-e2e.spec.js --grep "Step 1"   # one step
-npx playwright test tests/portals-e2e.spec.js --grep "Desktop"  # desktop only
+npx playwright test tests/portals-e2e.spec.js --reporter=list         # full suite
+npx playwright test tests/new-features.spec.js --reporter=list        # new features
+npx playwright test tests/portals-e2e.spec.js --grep "Step 1"        # one step
+npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop only
 ```
 
 **Test accounts:**
 - PM: `test-pm@avenstonekc.com` / `TestPM2026!`
-- Rep: `test-rep@avenstonekc.com` / `TestRep2026!`
+- Rep: `test-salesrep@avenstonekc.com` / `TestSalesRep2026!`
 - Sub: `test-sub@avenstonekc.com` / `TestSub2026!`
 - Client: `kalinspratling@gmail.com` / `TestClient2026!`
 
@@ -348,16 +378,20 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"  # desktop only
 - **AI companion job_id** — must be a real UUID that exists in `jobs` table. FK constraint will reject fake IDs.
 - **Never use `retries > 1`** with `test.describe.serial` — restarts the whole block from Step 1
 - **Clean up `job_estimates` in afterAll** — FK constraint blocks job DELETE if estimates exist
+- **Nav label for Projects screen** — `lb: 'Projects'` in NAV array and bot-nav. Use `"Projects"` in test selectors, not `"jobs"`.
+- **Supabase PAT** — generate with **No expiry**. Short-lived tokens break GitHub Actions silently.
 
 ---
 
 ## Priority Order (what we're building)
 
-1. **AI Consultation polish** — voice → transcript → measurements → estimate, end-to-end on mobile
-2. **Capacitor native app** — iOS wrapper, once Apple Developer account approved (MacInCloud ready)
-3. **LiDAR room scanning** — after Capacitor, via Swift RoomPlan plugin
-4. **Client portal upgrades** — progress timeline, real-time status, photo gallery
-5. **White-label + Stripe billing** — multi-tenant onboarding after core is stable
+1. **Capacitor native app** — iOS wrapper, once Apple Developer account approved (MacInCloud ready)
+2. **LiDAR room scanning** — after Capacitor, via Swift RoomPlan plugin. Measurement step in AiIntakeWizard is already slotted.
+3. **White-label + Stripe billing** — multi-tenant onboarding after core is stable
+4. **AI PM dashboard** — owner screen surfacing nightly report data, job health, alert history
+5. **Sub portal upgrades** — daily log submission, phase confirmation, AI companion for subs
+
+**Done:** AI intake wizard, client portal progress stepper + realtime, notification bell, ai-pm-nightly smart alerts, GitHub Actions auto-deploy.
 
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 
@@ -370,4 +404,5 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"  # desktop only
 - **"clean it up"** — remove dead code, fix inconsistent naming, tighten CSS, don't change behavior
 - **"make it smarter"** — add AI to an existing feature (summarize, suggest, automate)
 - **"wire it up"** — connect two existing pieces (button → Supabase call or edge function)
-- **"test it"** — run the Playwright suite and report the result
+- **"test it"** — run both Playwright suites and report results
+- **"deploy it"** — push to main, GitHub Actions handles functions, Vercel handles frontend
