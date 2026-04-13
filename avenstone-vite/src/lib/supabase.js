@@ -31,6 +31,7 @@ export const AI_COMPANION_URL       = `${FN}/ai-companion`;
 export const AI_HOME_URL            = `${FN}/ai-home-companion`;
 export const PROCESS_TRANSCRIPT_URL = `${FN}/process-transcript`;
 export const AI_ERROR_LOGGER_URL    = `${FN}/ai-error-logger`;
+export const AI_FIELD_AGENT_URL     = `${FN}/ai-field-agent`;
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 export const sbSave = async j => {

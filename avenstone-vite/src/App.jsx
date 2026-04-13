@@ -25,6 +25,7 @@ import AiHomeScr from './components/ai/AiHomeScr';
 import PublicProfile from './components/public/PublicProfile';
 import ReviewPage from './components/public/ReviewPage';
 import LeadsScr from './components/leads/LeadsScr';
+import AiFieldAgent from './components/ai/AiFieldAgent';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -130,6 +131,7 @@ export default function App() {
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
     ...(isOwnerOrRep ? [{ id: 'leads', lb: 'Leads', ic: 'doc', sec: 'Sales' }, { id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }, { id: 'stats', lb: 'Stats', ic: 'box', sec: 'Sales' }] : []),
+    ...(isStaff ? [{ id: 'field-agent', lb: 'Field Agent', ic: 'grid', sec: 'AI' }] : []),
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc', sec: 'Settings' }] : []),
@@ -221,6 +223,7 @@ export default function App() {
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
             {pg === 'calendar' && isOwnerOrRep && <CalScr jobs={jobs} profile={profile} onSelectJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'leads' && isOwnerOrRep && <LeadsScr profile={profile} onConvertToJob={c => { setPg('jobs'); setPendingNew(true); }} />}
+            {pg === 'field-agent' && isStaff && <AiFieldAgent profile={profile} currentJob={jobs.find(j => j.id === pendingJobId) || null} />}
             {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
@@ -245,7 +248,7 @@ export default function App() {
             {[
               { id: 'dashboard', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
-              ...(isStaff ? [{ id: 'subs', ic: 'home', lb: 'Subs' }] : []),
+              ...(isStaff ? [{ id: 'field-agent', ic: 'grid', lb: '⚡ Agent' }] : []),
               ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
