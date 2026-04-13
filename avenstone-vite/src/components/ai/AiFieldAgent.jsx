@@ -226,7 +226,7 @@ export default function AiFieldAgent({ profile, currentJob }) {
   };
 
   // ── Send message to edge function ─────────────────────────────────────────
-  const sendMessage = async (text: string) => {
+  const sendMessage = async (text) => {
     if (!text?.trim()) return;
     setVoiceState('thinking');
     setMessages(p => [...p, { role: 'user', text }]);
