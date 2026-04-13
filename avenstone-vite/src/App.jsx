@@ -18,6 +18,7 @@ import Pipeline from './components/common/Pipeline';
 import UserMgmt from './components/common/UserMgmt';
 import StatusPage from './components/common/StatusPage';
 import SubDir from './components/sub/SubDir';
+import ContactsScr from './components/common/ContactsScr';
 import NotifPanel from './components/shared/NotifPanel';
 import SettingsModal from './components/modals/SettingsModal';
 
@@ -112,7 +113,7 @@ export default function App() {
     { id: 'dashboard', lb: 'Dashboard', ic: 'grid', sec: 'Main' },
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
-    ...(isOwnerOrRep ? [{ id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }] : []),
+    ...(isOwnerOrRep ? [{ id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'contacts', lb: 'Contacts', ic: 'note', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }] : []),
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
   ];
@@ -201,6 +202,7 @@ export default function App() {
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
             {pg === 'calendar' && isOwnerOrRep && <CalScr jobs={jobs} profile={profile} onSelectJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
+            {pg === 'contacts' && isOwnerOrRep && <ContactsScr profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ marginBottom: 16 }}>

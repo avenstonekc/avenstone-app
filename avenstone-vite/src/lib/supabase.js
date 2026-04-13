@@ -363,6 +363,28 @@ export const sbSetUserActive = async (id, val) => sb.from('profiles').update({ i
 export const sbSetUserRole = async (id, role) => sb.from('profiles').update({ role }).eq('id', id);
 export const sbSaveCommission = async (id, pct, dollar) => sb.from('profiles').update({ commission_pct: Number(pct) || 0, commission_dollar: Number(dollar) || 0 }).eq('id', id);
 
+// ─── Contacts (CRM) ───────────────────────────────────────────────────────────
+export const CONTACT_STATUSES = ['new','contacted','qualified','customer','lost'];
+export const CONTACT_SOURCES = ['manual','website','referral','facebook','instagram','google','ghl','other'];
+
+export const sbLoadContacts = async () => {
+  const { data } = await sb.from('contacts').select('*').eq('tenant_id', AV_TENANT).order('created_at', { ascending: false });
+  return data || [];
+};
+export const sbSaveContact = async c => {
+  const { data, error } = await sb.from('contacts').insert({ ...c, tenant_id: AV_TENANT, created_at: new Date().toISOString() }).select().single();
+  return { data, error };
+};
+export const sbUpdContact = async (id, ch) => {
+  const { data, error } = await sb.from('contacts').update(ch).eq('id', id).select().single();
+  return { data, error };
+};
+export const sbDelContact = async id => sb.from('contacts').delete().eq('id', id);
+export const sbLoadContactMessages = async contactId => {
+  const { data } = await sb.from('contact_messages').select('*').eq('contact_id', contactId).order('created_at', { ascending: true });
+  return data || [];
+};
+
 // ─── Address autocomplete ─────────────────────────────────────────────────────
 export const fetchAddressSuggestions = async input => {
   if (!input || input.length < 3) return [];
