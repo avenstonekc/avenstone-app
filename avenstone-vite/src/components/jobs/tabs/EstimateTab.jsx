@@ -65,8 +65,26 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
   const openEstimator = async () => {
     setShowEstimator(true);
     const saved = await sbLoadEstimate(job.id);
-    if (saved?.messages?.length) { setEstMessages(saved.messages); setEstStarted(true); }
-    else { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', sqft: '', special: '' }); }
+    if (saved?.messages?.length) { setEstMessages(saved.messages); setEstStarted(true); return; }
+
+    // Auto-load measurement transcripts and consultation notes from job docs
+    const jobDocs = docs || [];
+    const measureDoc = jobDocs.find(d => d.file_type === 'measurements');
+    const transcriptDoc = jobDocs.find(d => d.file_type === 'transcript');
+    const contextParts = [];
+    if (job.scope) contextParts.push(`Project scope: ${job.scope}`);
+    if (job.sqft) contextParts.push(`Approximate square footage: ${job.sqft} SF`);
+    if (measureDoc) contextParts.push(`Field measurements on file: ${measureDoc.name} (attached in job documents)`);
+    if (transcriptDoc) contextParts.push(`Consultation transcript on file: ${transcriptDoc.name} (attached in job documents)`);
+
+    setEstMessages([]);
+    setEstStarted(false);
+    setEstForm({
+      scope: job.scope || '',
+      rooms: contextParts.length ? contextParts.join('\n') : '',
+      sqft: job.sqft || '',
+      special: [measureDoc ? '✓ Field measurements saved' : '', transcriptDoc ? '✓ Consultation notes saved' : ''].filter(Boolean).join(' · '),
+    });
   };
 
   const sendEstimatorMessage = async (msgOverride, fileOverride) => {

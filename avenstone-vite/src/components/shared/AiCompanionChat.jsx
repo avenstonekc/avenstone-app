@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sb, ANON_KEY, AI_COMPANION_URL, AV_USER_ID } from '../../lib/supabase';
+import { sb, ANON_KEY, AI_COMPANION_URL, AV_USER_ID, sbUploadDoc } from '../../lib/supabase';
 import { isMob } from '../../lib/utils';
 
 const NAV    = '#0A1F44';
@@ -105,6 +105,22 @@ export default function AiCompanionChat({ job, profile }) {
   const [voiceMode, setVoiceMode]     = useState(false);
   const [voiceState, setVoiceState]   = useState('idle'); // idle | listening | thinking | speaking
   const [interimText, setInterimText] = useState('');
+
+  // Transcript save
+  const [txSaving, setTxSaving] = useState(false);
+  const [txSaved, setTxSaved]   = useState(false);
+
+  const saveTranscript = async () => {
+    if (!job?.id || messages.length < 2 || txSaving) return;
+    setTxSaving(true);
+    const content = messages.map(m => `${m.role === 'user' ? 'Rep' : 'AI'}: ${m.text}`).join('\n\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const file = new File([blob], `consultation_${(job.address || job.id).replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.txt`, { type: 'text/plain' });
+    await sbUploadDoc(job.id, file, 'transcript');
+    setTxSaving(false);
+    setTxSaved(true);
+    setTimeout(() => setTxSaved(false), 3000);
+  };
 
   const bottomRef     = useRef(null);
   const inputRef      = useRef(null);
@@ -447,6 +463,23 @@ export default function AiCompanionChat({ job, profile }) {
             >
               <IcPhone />
             </button>
+
+            {/* Save transcript button — shows when there are enough messages */}
+            {messages.length >= 2 && job?.id && (
+              <button
+                onClick={saveTranscript}
+                disabled={txSaving}
+                title="Save transcript to job"
+                style={{
+                  width: 34, height: 34, borderRadius: 8, border: 'none', cursor: txSaving ? 'not-allowed' : 'pointer',
+                  background: txSaved ? '#22C55E' : 'rgba(255,255,255,0.10)',
+                  color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, fontSize: 15, transition: 'background 0.2s',
+                }}
+              >
+                {txSaved ? '✓' : txSaving ? '…' : '💾'}
+              </button>
+            )}
 
             <button
               onClick={() => { exitVoiceMode(); setOpen(false); }}
