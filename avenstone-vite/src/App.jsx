@@ -228,8 +228,9 @@ export default function App() {
             {[
               { id: 'dashboard', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
-              ...(isStaff ? [{ id: 'subs', ic: 'home', lb: 'Subs' }] : []),
-              ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
+              ...(isOwnerOrRep ? [{ id: 'contacts', ic: 'note', lb: 'Contacts' }] : []),
+              ...(isOwnerOrRep ? [{ id: 'sequences', ic: 'clip', lb: 'Sequences' }] : []),
+              ...(isStaff && !isOwnerOrRep ? [{ id: 'subs', ic: 'home', lb: 'Subs' }] : []),
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
                 <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: pg === t.id ? '#C9A84C' : '#9CA3AF' }}>{Ic[t.ic] || Ic.grid}</span>

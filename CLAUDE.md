@@ -36,6 +36,7 @@ These apply to every session. Follow them without being reminded.
 - **If context is getting long** — summarize what was done and what's next before the session ends
 - **Screenshots > descriptions** — if there's a UI bug, look at the screenshot first
 - **Prefer editing existing code** over adding new code when possible
+- **Every feature ships on all three viewports** — mobile (390px), tablet (768px), desktop (1280px). No exceptions. When adding a new screen: (1) add it to the sidebar NAV, (2) add it to the bottom nav `bot-nav` for mobile, (3) verify the component uses `isMob()` for layout switching. A feature that doesn't work on mobile is not done.
 
 ### Context & Token Management (CRITICAL)
 
