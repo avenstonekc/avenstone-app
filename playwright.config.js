@@ -15,7 +15,7 @@ module.exports = defineConfig({
   },
   workers: 1, // Run tests sequentially — they share DB state
   webServer: {
-    command: "npx serve . -p 3737 -s",
+    command: "npx serve avenstone-vite/dist -p 3737 -s",
     port: 3737,
     reuseExistingServer: true,
     timeout: 120000,
