@@ -249,7 +249,7 @@ export default function ConsultationTab({ job, profile }) {
         .from('consultation_sessions')
         .insert({
           job_id: job.id,
-          rep_id: userId,
+          started_by: userId,
           tenant_id: tenantId,
           status: 'ambient',
           started_at: new Date().toISOString(),
