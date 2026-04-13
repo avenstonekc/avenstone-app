@@ -203,9 +203,19 @@ curl -X POST "https://api.supabase.com/v1/projects/cbfftukmhqvvjlrlnltk/database
 
 ## Current Focus
 
-**The HTML app is complete and frozen. All new features go in the native app.**
+**Avenstone's competitive advantage is field operations + AI — not marketing automation.**
 
-The HTML app serves as the working spec and reference for the native build. The Supabase backend is shared — same tables, same RLS, same edge functions.
+- GHL handles marketing. Keep it. The GHL webhook (already built) hands leads to Avenstone automatically.
+- Avenstone owns everything after the handoff: estimate → proposal → contract → field ops → LiDAR → AI consultation.
+- Do NOT rebuild what GHL already does well. If a feature idea overlaps with GHL, stop and think before building.
+
+**Priority order:**
+1. AI Consultation tab — polish end-to-end on mobile (voice → transcript → measurements → estimate)
+2. Capacitor native app wrap — once Apple Developer account approved (MacInCloud ready)
+3. LiDAR room scanning — after Capacitor, via Swift RoomPlan plugin
+4. AI on top of GHL — Claude-powered lead responses through GHL's API (smarter GHL, not a replacement)
+
+**The HTML app is complete and frozen. All new features go in the Vite app.**
 
 ---
 
