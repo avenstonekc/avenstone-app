@@ -158,7 +158,7 @@ export default function AiFieldAgent({ profile, currentJob }) {
   const stopSpeaking = () => window.speechSynthesis?.cancel();
 
   // ── STT ───────────────────────────────────────────────────────────────────
-  const startListening = useCallback((opts: { confirmMode?: boolean } = {}) => {
+  const startListening = useCallback((opts = {}) => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
     stopSpeaking();
@@ -211,7 +211,7 @@ export default function AiFieldAgent({ profile, currentJob }) {
   };
 
   // ── Handle voice yes/no during confirmation ───────────────────────────────
-  const handleConfirmVoice = (text: string) => {
+  const handleConfirmVoice = (text) => {
     const t = text.toLowerCase().trim();
     const yes = ['yes','yeah','yep','confirm','do it','correct','right','sure','okay','ok','affirmative'].some(w => t.includes(w));
     const no  = ['no','nope','cancel','stop','abort','negative','wrong','never mind'].some(w => t.includes(w));
