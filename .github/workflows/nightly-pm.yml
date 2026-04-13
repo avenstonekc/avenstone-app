@@ -1,0 +1,18 @@
+name: Nightly AI Project Manager
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 1:00 AM CST (UTC-5) every night
+  workflow_dispatch:       # manual trigger for testing
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ai-pm-nightly
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/ai-pm-nightly" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}'
