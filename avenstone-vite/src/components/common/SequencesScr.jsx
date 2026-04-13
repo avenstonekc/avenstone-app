@@ -60,6 +60,7 @@ export default function SequencesScr({ profile }) {
     name: '', description: '', trigger: 'manual', goal: '', context: '', steps_count: 3
   });
   const [generatedSteps, setGeneratedSteps] = useState(null);
+  const [genError, setGenError] = useState('');
   const [editingSteps, setEditingSteps] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showEnroll, setShowEnroll] = useState(false);
@@ -106,6 +107,7 @@ export default function SequencesScr({ profile }) {
 
   async function generateSequence() {
     setCreating(true);
+    setGenError('');
     try {
       const res = await fetch(`${FN}/ai-generate-sequence`, {
         method: 'POST',
@@ -118,9 +120,13 @@ export default function SequencesScr({ profile }) {
         })
       });
       const json = await res.json();
-      if (json.steps) setGeneratedSteps(json.steps);
+      if (json.steps && json.steps.length) {
+        setGeneratedSteps(json.steps);
+      } else {
+        setGenError(json.error || 'AI did not return steps — try rephrasing your goal.');
+      }
     } catch (e) {
-      // silently fail — user can retry
+      setGenError('Network error: ' + e.message);
     }
     setCreating(false);
   }
@@ -531,12 +537,23 @@ export default function SequencesScr({ profile }) {
                   />
                 </div>
 
+                {genError && (
+                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', padding: '10px 14px', borderRadius: 6, fontSize: 13 }}>
+                    {genError}
+                  </div>
+                )}
+                {(!createForm.name || !createForm.goal) && (
+                  <div style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'right' }}>
+                    Fill in Name and Goal to generate
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
                   <button className="btn btn-ghost" onClick={closeCreate}>Cancel</button>
                   <button
                     className="btn btn-gold"
                     onClick={generateSequence}
                     disabled={creating || !createForm.name || !createForm.goal}
+                    style={{ opacity: (creating || !createForm.name || !createForm.goal) ? 0.5 : 1 }}
                   >
                     {creating ? 'Generating...' : 'Generate with AI ✨'}
                   </button>
