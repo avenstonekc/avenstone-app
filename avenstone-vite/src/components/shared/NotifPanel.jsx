@@ -2,7 +2,7 @@ import { Ic, fDT } from '../../lib/utils';
 
 export default function NotifPanel({ notifs, onClose, onMarkAllRead, onClickNotif }) {
   const unread = notifs.filter(n => !n.read).length;
-  const typeIcon = { note_posted: 'note', phase_complete: 'check', co_submitted: 'warn', co_approved: 'check', co_rejected: 'warn', message: 'note', assigned_to_job: 'home', phase_overdue: 'warn', document_uploaded: 'folder', daily_log_submitted: 'clip' };
+  const typeIcon = { note_posted: 'note', phase_complete: 'check', co_submitted: 'warn', co_approved: 'check', co_rejected: 'warn', message: 'note', assigned_to_job: 'home', phase_overdue: 'warn', document_uploaded: 'folder', daily_log_submitted: 'clip', contract_unsigned: 'doc', payment_overdue: 'warn', phase_starting_soon: 'sched', no_daily_log: 'clip', co_pending_approval: 'warn', job_stale: 'info', new_lead: 'plus' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', justifyContent: 'flex-end' }}>
