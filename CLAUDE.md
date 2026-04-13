@@ -129,7 +129,7 @@ All URLs exported from `src/lib/supabase.js`:
 unset SUPABASE_ACCESS_TOKEN
 SUPABASE_ACCESS_TOKEN=<PAT> npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
 ```
-**Current PAT:** `sbp_36fe9af1adbdb3968cf66a5936445930dcfd6258` — Active as of April 13 2026.
+**Current PAT:** `sbp_9fa9e8b5e69d1c615f2540b01ab843498c4b37bc` — No expiry. Set April 13 2026.
 
 **Deploy all AI functions at once:**
 ```bash
