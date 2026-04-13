@@ -229,12 +229,13 @@ export default function AiCompanionChat({ job, profile }) {
 
     recog.onerror = e => {
       setInterimText('');
-      if (e.error === 'no-speech') {
-        // Restart silently
-        setTimeout(() => { if (voiceModeRef.current) startListening(); }, 600);
-      } else {
+      // 'not-allowed' = mic denied — kill voice mode
+      // Everything else (no-speech, audio-capture, network) = retry
+      if (e.error === 'not-allowed') {
         setVoiceMode(false);
         setVoiceState('idle');
+      } else {
+        setTimeout(() => { if (voiceModeRef.current) startListening(); }, 800);
       }
     };
 
@@ -250,14 +251,16 @@ export default function AiCompanionChat({ job, profile }) {
   // ── Voice mode toggle ────────────────────────────────────────────────────────
   const enterVoiceMode = async () => {
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Check mic permission then immediately release the stream —
+      // iOS blocks SpeechRecognition if getUserMedia stream is still open
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
     } catch {
       alert('Microphone access is required for voice mode.');
       return;
     }
     // iOS REQUIRES speechSynthesis to be triggered inside a user gesture.
-    // We unlock it here (synchronously during the tap handler) so async
-    // speak() calls work after the fetch response comes back.
+    // Unlock it synchronously here so async speak() calls work later.
     if (window.speechSynthesis) {
       loadVoices();
       const unlock = new SpeechSynthesisUtterance('');
@@ -266,7 +269,8 @@ export default function AiCompanionChat({ job, profile }) {
     }
     setVoiceMode(true);
     setVoiceState('idle');
-    setTimeout(() => startListening(), 300);
+    // Longer delay on iOS to let audio session settle after releasing stream
+    setTimeout(() => startListening(), 600);
   };
 
   const exitVoiceMode = () => {
