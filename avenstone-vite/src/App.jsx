@@ -20,6 +20,7 @@ import StatusPage from './components/common/StatusPage';
 import SubDir from './components/sub/SubDir';
 import NotifPanel from './components/shared/NotifPanel';
 import SettingsModal from './components/modals/SettingsModal';
+import AiKnowledgeScr from './components/ai/AiKnowledgeScr';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const STATUS_TOKEN = new URLSearchParams(window.location.search).get('st');
@@ -115,6 +116,7 @@ export default function App() {
     ...(isOwnerOrRep ? [{ id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }] : []),
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
+    ...(profile?.role === 'owner' ? [{ id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc', sec: 'Settings' }] : []),
   ];
 
   return (
@@ -201,6 +203,7 @@ export default function App() {
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
             {pg === 'calendar' && isOwnerOrRep && <CalScr jobs={jobs} profile={profile} onSelectJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
+            {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ marginBottom: 16 }}>
