@@ -251,7 +251,7 @@ export default function ConsultationTab({ job, profile }) {
           job_id: job.id,
           started_by: userId,
           tenant_id: tenantId,
-          status: 'ambient',
+          status: 'active',
           started_at: new Date().toISOString(),
         })
         .select()
@@ -286,7 +286,7 @@ export default function ConsultationTab({ job, profile }) {
     }
 
     try {
-      await sb.from('consultation_sessions').update({ status: 'measure' }).eq('id', sessionId);
+      // status stays 'active' — phase tracked in UI state only
 
       setPhase('measure');
       setCurrentTrade('');
