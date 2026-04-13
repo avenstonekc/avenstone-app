@@ -53,11 +53,14 @@ The response text limit is ~32,000 tokens. Tool call outputs do NOT count agains
 
 ## Architecture
 
-Single HTML file (`index.html`) — no build step, no bundler, no npm for the app itself.
-- React 18.2 + Babel Standalone (JSX transpiled at runtime)
-- Supabase JS v2 via CDN — initialized as `window.SB`
-- jsPDF via CDN for PDF generation
-- All code lives inside `<script type="text/babel">` starting around line 178
+**Live app:** `avenstone-vite/` — Vite + React 18, built and deployed via Vercel.
+- Build: `cd avenstone-vite && npm install && npm run build` → output: `avenstone-vite/dist/`
+- Entry: `avenstone-vite/src/main.jsx` → `src/App.jsx` → component tree
+- Supabase JS v2 via npm (`@supabase/supabase-js`)
+- Components organized under `src/components/` by feature (auth, dashboard, jobs, client, sub, modals, forms, shared)
+- `src/lib/` — utilities (ai.js, formData.js, etc.)
+
+**Legacy:** Root-level `index.html` is the original single-file app. No longer deployed. Kept as reference only.
 
 ---
 
@@ -176,9 +179,9 @@ Test accounts:
 
 ## Adding new code
 
-- New React components: inside `<script type="text/babel">`, before `ReactDOM.createRoot()`
-- New `sb*` helpers: near the other helpers (~lines 193–420)
-- New CSS: in the `<style>` block (~lines 27–176)
+- New React components: `avenstone-vite/src/components/<feature>/ComponentName.jsx`
+- New Supabase helpers: `avenstone-vite/src/lib/` or colocate near the component that owns them
+- New CSS: use existing Tailwind/utility classes; global styles in `avenstone-vite/src/index.css`
 - New Edge Functions: `supabase/functions/<name>/index.ts` — deploy via Supabase dashboard
 
 ---
