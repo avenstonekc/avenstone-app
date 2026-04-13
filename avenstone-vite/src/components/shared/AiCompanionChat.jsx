@@ -370,7 +370,7 @@ export default function AiCompanionChat({ job, profile }) {
         <button
           onClick={() => setOpen(true)}
           style={{
-            position: 'fixed', bottom: mob ? 74 : 28, right: 18,
+            position: 'fixed', bottom: mob ? 'calc(env(safe-area-inset-bottom, 0px) + 80px)' : 28, right: 18,
             width: 52, height: 52, borderRadius: '50%',
             background: NAV, border: `2px solid ${GOLD}`, color: GOLD,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -457,7 +457,7 @@ export default function AiCompanionChat({ job, profile }) {
               </div>
 
               {/* Status bar */}
-              <div style={{ padding: '12px 16px', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ padding: '12px 16px', paddingBottom: 'max(12px, env(safe-area-inset-bottom, 12px))', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{
                     width: 8, height: 8, borderRadius: '50%',
@@ -520,7 +520,7 @@ export default function AiCompanionChat({ job, profile }) {
               </div>
 
               {/* Input bar */}
-              <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 12px', background: '#fff', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ borderTop: `1px solid ${BORDER}`, padding: '10px 12px', paddingBottom: 'max(10px, env(safe-area-inset-bottom, 10px))', background: '#fff', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                 <textarea
                   ref={inputRef} rows={1} className="finp"
                   style={{ flex: 1, resize: 'none', fontFamily: "'DM Sans',sans-serif", fontSize: 14, lineHeight: 1.45, padding: '9px 12px', maxHeight: 100, overflowY: 'auto' }}
