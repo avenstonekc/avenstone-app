@@ -385,13 +385,27 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 ## Priority Order (what we're building)
 
-1. **Capacitor native app** — iOS wrapper, once Apple Developer account approved (MacInCloud ready)
-2. **LiDAR room scanning** — after Capacitor, via Swift RoomPlan plugin. Measurement step in AiIntakeWizard is already slotted.
-3. **White-label + Stripe billing** — multi-tenant onboarding after core is stable
-4. **AI PM dashboard** — owner screen surfacing nightly report data, job health, alert history
-5. **Sub portal upgrades** — daily log submission, phase confirmation, AI companion for subs
+1. **Capacitor native app** — iOS wrapper. Apple Developer account submitted, waiting on approval. MacInCloud ready to build.
 
-**Done:** AI intake wizard, client portal progress stepper + realtime, notification bell, ai-pm-nightly smart alerts, GitHub Actions auto-deploy.
+2. **LiDAR room scanning** — blocked on Capacitor. Full build plan:
+   - Write custom Swift Capacitor plugin wrapping Apple RoomPlan API
+   - Phase 1: single room scan → extracts L x W x H + sq ft → replaces manual entry in AiIntakeWizard Step 2
+   - Phase 2: multi-room session (RoomPlan 2.0, iOS 17+) → rooms stitched into full floor plan → exported as image + structured data → attached to job + sent with estimate request
+   - Phase 3: material visualization — photo of room + selected material → AI renders what it looks like (post-core)
+   - Used by: sales reps on-site AND clients self-scanning from home
+   - Hardware requirement: iPhone 12 Pro or later / iPad Pro 2020+ (LiDAR only — base iPhones excluded)
+   - Main goal: floor plan accurate enough to drive a real estimate without a site visit
+   - AiIntakeWizard measurement step slot already exists — ready to wire in
+
+3. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
+
+4. **Test AI estimator with live data** — ai_knowledge now seeded with KC pricing. Open a job, ask the AI Companion for a rough estimate, verify it produces real dollar figures.
+
+5. **AI PM dashboard** — owner screen surfacing nightly alert data, job health scores, alert history.
+
+6. **Sub portal upgrades** — daily log submission, phase confirmation, AI companion for subs.
+
+**Done:** AI intake wizard, client portal progress stepper + realtime, notification bell, ai-pm-nightly smart alerts, GitHub Actions auto-deploy, ai_knowledge seeded with KC mid-tier GC pricing (21 entries — all trades, labor rates, markup, draw schedule, CO policy, estimating guidelines).
 
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 
