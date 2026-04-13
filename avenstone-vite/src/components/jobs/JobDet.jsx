@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AV_USER_ID, ANON_KEY, NOTIFY_REALTOR_URL, sbNotify, authHeader } from '../../lib/supabase';
+import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, sbNotify, authHeader } from '../../lib/supabase';
 import { Ic, sc, sl, f$, STATS } from '../../lib/utils';
 
 const AI_PM_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-project-manager';
@@ -37,6 +37,14 @@ export default function JobDet({ job, upd, del, back, profile }) {
   const [editInf, setEditInf] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiBanner, setAiBanner] = useState(null); // { type: 'success'|'error', msg: string }
+  const [reviewCopied, setReviewCopied] = useState(false);
+
+  const reviewLink = `${window.location.origin}?review=${job.id}&rt=${AV_TENANT}`;
+  const copyReviewLink = () => {
+    navigator.clipboard.writeText(reviewLink);
+    setReviewCopied(true);
+    setTimeout(() => setReviewCopied(false), 2500);
+  };
 
   const canRunAi = profile?.role === 'owner' || profile?.role === 'project_manager';
 
@@ -131,6 +139,21 @@ export default function JobDet({ job, upd, del, back, profile }) {
 
       {/* Tab content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        {job.status === 'complete' && canRunAi && (
+          <div style={{ background: 'linear-gradient(135deg,#0A1F44,#1a3a6e)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#C9A84C', marginBottom: 2 }}>🌟 Request a Review</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+                Send {job.client_name || 'your client'} this link — their review goes straight to your public profile.
+              </div>
+            </div>
+            <button
+              onClick={copyReviewLink}
+              style={{ background: reviewCopied ? '#22C55E' : '#C9A84C', color: '#0A1F44', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
+              {reviewCopied ? '✓ Copied!' : 'Copy Review Link'}
+            </button>
+          </div>
+        )}
         {aiBanner && (
           <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, background: aiBanner.type === 'success' ? '#D1FAE5' : '#FEE2E2', color: aiBanner.type === 'success' ? '#065f46' : '#991b1b', border: `1px solid ${aiBanner.type === 'success' ? '#6ee7b7' : '#fca5a5'}` }}>
             {aiBanner.msg}

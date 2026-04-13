@@ -24,11 +24,16 @@ import AiKnowledgeScr from './components/ai/AiKnowledgeScr';
 import AiSetupWizard from './components/ai/AiSetupWizard';
 import AiHomeScr from './components/ai/AiHomeScr';
 import PublicProfile from './components/public/PublicProfile';
+import ReviewPage from './components/public/ReviewPage';
+import LeadsScr from './components/leads/LeadsScr';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
-const STATUS_TOKEN = new URLSearchParams(window.location.search).get('st');
-const PRO_TENANT = new URLSearchParams(window.location.search).get('pro');
-const INVITE_TYPE = new URLSearchParams(window.location.hash.replace('#', '')).get('type');
+const _params     = new URLSearchParams(window.location.search);
+const STATUS_TOKEN = _params.get('st');
+const PRO_TENANT   = _params.get('pro');
+const REVIEW_JOB   = _params.get('review');
+const REVIEW_TENANT = _params.get('rt');
+const INVITE_TYPE  = new URLSearchParams(window.location.hash.replace('#', '')).get('type');
 
 export default function App() {
   const [session, setSessionState] = useState(null);
@@ -100,7 +105,8 @@ export default function App() {
   };
 
   if (STATUS_TOKEN) return <StatusPage token={STATUS_TOKEN} />;
-  if (PRO_TENANT) return <PublicProfile tenantId={PRO_TENANT} />;
+  if (PRO_TENANT)   return <PublicProfile tenantId={PRO_TENANT} />;
+  if (REVIEW_JOB || REVIEW_TENANT) return <ReviewPage jobId={REVIEW_JOB} tenantId={REVIEW_TENANT} />;
 
   if (authLoading) return (
     <div style={{ minHeight: '100dvh', background: '#0A1F44', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
@@ -126,7 +132,7 @@ export default function App() {
     { id: 'dashboard', lb: 'AI Home', ic: 'grid', sec: 'Main' },
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
-    ...(isOwnerOrRep ? [{ id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }, { id: 'stats', lb: 'Stats', ic: 'box', sec: 'Sales' }] : []),
+    ...(isOwnerOrRep ? [{ id: 'leads', lb: 'Leads', ic: 'doc', sec: 'Sales' }, { id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }, { id: 'stats', lb: 'Stats', ic: 'box', sec: 'Sales' }] : []),
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc', sec: 'Settings' }] : []),
@@ -217,6 +223,7 @@ export default function App() {
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
             {pg === 'calendar' && isOwnerOrRep && <CalScr jobs={jobs} profile={profile} onSelectJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
+            {pg === 'leads' && isOwnerOrRep && <LeadsScr profile={profile} onConvertToJob={c => { setPg('jobs'); setPendingNew(true); }} />}
             {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
