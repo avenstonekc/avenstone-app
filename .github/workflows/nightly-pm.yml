@@ -1,9 +1,7 @@
 name: Nightly AI Project Manager
 
 on:
-  schedule:
-    - cron: '0 6 * * *'  # 1:00 AM CST (UTC-5) every night
-  workflow_dispatch:       # manual trigger for testing
+  workflow_dispatch:  # manual trigger only — daily analysis runs on first login via the app
 
 jobs:
   run:

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs } from './lib/supabase';
+import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, AI_PM_NIGHTLY_URL, ANON_KEY } from './lib/supabase';
 import { Ic, STATS, sc, sl, f$, ls, ll } from './lib/utils';
 import { IQ, IR, BQ, BR } from './lib/formData';
 import logo from './assets/logo.png';
@@ -65,6 +65,12 @@ export default function App() {
     setProfile(data);
     setSession(data?.tenant_id, uid);
     sbLoadNotifs().then(d => setNotifs(d));
+    // Trigger PM analysis once per day on first login
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem('av_pm_date') !== today) {
+      localStorage.setItem('av_pm_date', today);
+      fetch(AI_PM_NIGHTLY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` }, body: '{}' }).catch(() => {});
+    }
     setAuthLoading(false);
   };
 
