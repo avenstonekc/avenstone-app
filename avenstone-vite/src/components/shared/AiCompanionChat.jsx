@@ -140,6 +140,16 @@ export default function AiCompanionChat({ job, profile }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
   };
 
+  // iOS virtual keyboard fires onChange with \n instead of keydown Enter
+  const onInputChange = e => {
+    const val = e.target.value;
+    if (mob && val.endsWith('\n')) {
+      sendMessage(val.trim());
+    } else {
+      setInput(val);
+    }
+  };
+
   if (!job?.id) return null;
 
   // Panel sizing
@@ -276,8 +286,9 @@ export default function AiCompanionChat({ job, profile }) {
               style={{ flex: 1, resize: 'none', fontFamily: "'DM Sans',sans-serif", fontSize: 14, lineHeight: 1.45, padding: '9px 12px', maxHeight: 100, overflowY: 'auto' }}
               placeholder="Ask anything about this job…"
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={onInputChange}
               onKeyDown={onKeyDown}
+              enterKeyHint="send"
               disabled={loading}
             />
             <button
