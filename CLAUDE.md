@@ -37,6 +37,7 @@ These apply to every session. Follow them without being reminded.
 - **Screenshots > descriptions** — if there's a UI bug, look at the screenshot first
 - **Prefer editing existing code** over adding new code when possible
 - **Every feature ships on all three viewports** — mobile (390px), tablet (768px), desktop (1280px). No exceptions. When adding a new screen: (1) add it to the sidebar NAV, (2) add it to the bottom nav `bot-nav` for mobile, (3) verify the component uses `isMob()` for layout switching. A feature that doesn't work on mobile is not done.
+- **Think before building** — when Kalin floats an idea, stop and reason honestly before running with it: (1) Is there existing software that already does this better? (2) What's the realistic failure rate? (3) Does this fit Avenstone's actual competitive advantage? Say "X already does this better, here's what makes more sense" if that's the truth. Do NOT just start building because he mentioned it. Brainstorming is not a build order.
 
 ### Context & Token Management (CRITICAL)
 
