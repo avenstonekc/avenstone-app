@@ -145,8 +145,23 @@ export default function AiCompanionChat({ job, profile }) {
   }, [open]);
 
   // ── Speech synthesis ────────────────────────────────────────────────────────
+  const voicesRef = useRef([]);
+
+  // Load voices — they load async on first call
+  const loadVoices = () => {
+    const v = window.speechSynthesis?.getVoices() || [];
+    if (v.length) { voicesRef.current = v; return; }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        voicesRef.current = window.speechSynthesis.getVoices();
+      };
+    }
+  };
+
+  useEffect(() => { loadVoices(); }, []);
+
   const getBestVoice = () => {
-    const voices = window.speechSynthesis?.getVoices() || [];
+    const voices = voicesRef.current.length ? voicesRef.current : (window.speechSynthesis?.getVoices() || []);
     return (
       voices.find(v => v.name === 'Samantha') ||                           // iOS
       voices.find(v => v.name === 'Karen')    ||                           // iOS AU
@@ -240,9 +255,17 @@ export default function AiCompanionChat({ job, profile }) {
       alert('Microphone access is required for voice mode.');
       return;
     }
+    // iOS REQUIRES speechSynthesis to be triggered inside a user gesture.
+    // We unlock it here (synchronously during the tap handler) so async
+    // speak() calls work after the fetch response comes back.
+    if (window.speechSynthesis) {
+      loadVoices();
+      const unlock = new SpeechSynthesisUtterance('');
+      window.speechSynthesis.speak(unlock);
+      window.speechSynthesis.cancel();
+    }
     setVoiceMode(true);
     setVoiceState('idle');
-    // Small delay so state settles
     setTimeout(() => startListening(), 300);
   };
 
@@ -436,15 +459,17 @@ export default function AiCompanionChat({ job, profile }) {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0f172a', overflow: 'hidden' }}>
               {/* Recent messages (last 2 for context) */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 10 }}>
-                {messages.slice(-3).map((msg, i) => (
+                {messages.slice(-4).map((msg, i) => (
                   <div key={i} style={{
-                    padding: '8px 12px', borderRadius: 10, fontSize: 13, lineHeight: 1.5,
-                    background: msg.role === 'user' ? 'rgba(255,255,255,0.08)' : 'rgba(201,168,76,0.12)',
-                    color: msg.role === 'user' ? 'rgba(255,255,255,0.6)' : 'rgba(201,168,76,0.9)',
+                    padding: '10px 14px', borderRadius: 10, fontSize: 13, lineHeight: 1.6,
+                    background: msg.role === 'user' ? 'rgba(255,255,255,0.08)' : 'rgba(201,168,76,0.10)',
+                    color: msg.role === 'user' ? 'rgba(255,255,255,0.55)' : 'rgba(230,200,120,0.95)',
                     alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '85%',
+                    maxWidth: '90%',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
                   }}>
-                    {msg.text.length > 180 ? msg.text.slice(0, 180) + '…' : msg.text}
+                    {msg.text}
                   </div>
                 ))}
               </div>
