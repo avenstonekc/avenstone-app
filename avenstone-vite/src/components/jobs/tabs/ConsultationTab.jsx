@@ -101,12 +101,62 @@ export default function ConsultationTab({ job, profile }) {
   const [savingEstimate, setSavingEstimate] = useState(false);
   const [estimateSaved, setEstimateSaved] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
+  const [measureListening, setMeasureListening] = useState(false);
 
   const recognitionRef = useRef(null);
+  const measureRecogRef = useRef(null);
   const transcriptRef = useRef('');
   const ambientIntervalRef = useRef(null);
   const chatBottomRef = useRef(null);
   const sessionIdRef = useRef(null);
+  const voicesRef = useRef([]);
+
+  // Load TTS voices
+  useEffect(() => {
+    const load = () => { voicesRef.current = window.speechSynthesis?.getVoices() || []; };
+    load();
+    if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = load;
+  }, []);
+
+  const speakMeasure = (text) => {
+    if (!window.speechSynthesis || !text) return;
+    window.speechSynthesis.cancel();
+    const clean = text.replace(/[*_`#>\-]/g, '').replace(/\n+/g, '. ').trim();
+    const utt = new SpeechSynthesisUtterance(clean);
+    const voices = voicesRef.current;
+    utt.voice = voices.find(v => v.name === 'Samantha') ||
+                voices.find(v => v.name === 'Karen') ||
+                voices.find(v => v.name.includes('Google') && v.lang === 'en-US') ||
+                voices.find(v => v.lang.startsWith('en-US')) ||
+                voices[0] || null;
+    utt.rate = 1.0; utt.pitch = 1; utt.volume = 1;
+    window.speechSynthesis.speak(utt);
+  };
+
+  const startMeasureMic = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    window.speechSynthesis?.cancel();
+    const recog = new SR();
+    recog.continuous = false;
+    recog.interimResults = false;
+    recog.lang = 'en-US';
+    recog.onstart = () => setMeasureListening(true);
+    recog.onresult = e => {
+      const text = e.results[0]?.[0]?.transcript || '';
+      if (text) setRepInput(text);
+    };
+    recog.onend = () => { setMeasureListening(false); measureRecogRef.current = null; };
+    recog.onerror = () => { setMeasureListening(false); measureRecogRef.current = null; };
+    measureRecogRef.current = recog;
+    recog.start();
+  };
+
+  const stopMeasureMic = () => {
+    measureRecogRef.current?.stop();
+    measureRecogRef.current = null;
+    setMeasureListening(false);
+  };
 
   // Keep sessionIdRef in sync
   useEffect(() => {
@@ -347,6 +397,7 @@ export default function ConsultationTab({ job, profile }) {
 
       const firstMsg = json.next_question || "What trades are we looking at today? (e.g. roofing, HVAC, electrical, plumbing…)";
       setTradeMessages([{ role: 'ai', text: firstMsg }]);
+      speakMeasure(firstMsg);
     } catch (e) {
       setErr(`Failed to start measuring: ${e.message}`);
       setPhase('ambient');
@@ -396,14 +447,14 @@ export default function ConsultationTab({ job, profile }) {
       const aiReply = json.next_question;
       if (aiReply) {
         setTradeMessages((prev) => [...prev, { role: 'ai', text: aiReply }]);
+        speakMeasure(aiReply);
       }
 
       // Check if all trades done
       if (json.all_trades_complete) {
-        setTradeMessages((prev) => [
-          ...prev,
-          { role: 'ai', text: "Great — I have all the measurements I need. Ready to generate the estimate whenever you are." },
-        ]);
+        const doneMsg = "Great — I have all the measurements I need. Ready to generate the estimate whenever you are.";
+        setTradeMessages((prev) => [...prev, { role: 'ai', text: doneMsg }]);
+        speakMeasure(doneMsg);
       }
     } catch (e) {
       setErr(`Send failed: ${e.message}`);
@@ -754,7 +805,7 @@ export default function ConsultationTab({ job, profile }) {
         <input
           className="finp"
           style={{ flex: 1 }}
-          placeholder="Type your answer…"
+          placeholder={measureListening ? 'Listening…' : 'Type or tap mic to answer…'}
           value={repInput}
           onChange={(e) => setRepInput(e.target.value)}
           onKeyDown={(e) => {
@@ -766,10 +817,23 @@ export default function ConsultationTab({ job, profile }) {
           disabled={sendingMsg}
         />
         <button
+          onClick={measureListening ? stopMeasureMic : startMeasureMic}
+          disabled={sendingMsg}
+          style={{
+            width: 40, height: 40, flexShrink: 0, border: `1px solid ${measureListening ? '#EF4444' : BORDER}`,
+            background: measureListening ? '#FEE2E2' : '#fff', color: measureListening ? '#EF4444' : '#6B7280',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: 6, fontSize: 18,
+          }}
+          title={measureListening ? 'Stop recording' : 'Speak your answer'}
+        >
+          🎙
+        </button>
+        <button
           className="btn btn-navy"
           onClick={sendMeasureMessage}
           disabled={sendingMsg || !repInput.trim()}
-          style={{ minWidth: 80 }}
+          style={{ minWidth: 72 }}
         >
           Send
         </button>
