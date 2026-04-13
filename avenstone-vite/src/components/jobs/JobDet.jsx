@@ -38,12 +38,19 @@ export default function JobDet({ job, upd, del, back, profile }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [aiBanner, setAiBanner] = useState(null); // { type: 'success'|'error', msg: string }
   const [reviewCopied, setReviewCopied] = useState(false);
+  const [completionCopied, setCompletionCopied] = useState(false);
 
   const reviewLink = `${window.location.origin}?review=${job.id}&rt=${AV_TENANT}`;
+  const completionLink = `${window.location.origin}?completion=${job.id}`;
   const copyReviewLink = () => {
     navigator.clipboard.writeText(reviewLink);
     setReviewCopied(true);
     setTimeout(() => setReviewCopied(false), 2500);
+  };
+  const copyCompletionLink = () => {
+    navigator.clipboard.writeText(completionLink);
+    setCompletionCopied(true);
+    setTimeout(() => setCompletionCopied(false), 2500);
   };
 
   const canRunAi = profile?.role === 'owner' || profile?.role === 'project_manager';
@@ -154,6 +161,40 @@ export default function JobDet({ job, upd, del, back, profile }) {
             </button>
           </div>
         )}
+        {/* Completion Package banner */}
+        {job.status === 'complete' && canRunAi && (() => {
+          const beforePhoto = (job.photos || []).find(p => p.label === 'before');
+          const afterPhoto  = (job.photos || []).find(p => p.label === 'after');
+          const hasPackage  = beforePhoto && afterPhoto;
+          return (
+            <div style={{ background: hasPackage ? 'linear-gradient(135deg,#0d2a1a,#1a4a2e)' : 'linear-gradient(135deg,#1a1a0d,#2a2a14)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', border: `1px solid ${hasPackage ? '#22C55E33' : '#C9A84C33'}` }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: hasPackage ? '#4ADE80' : '#C9A84C', marginBottom: 2 }}>
+                  {hasPackage ? '📦 Completion Package Ready' : '📸 Create Completion Package'}
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                  {hasPackage
+                    ? `Before & after labeled — share this branded page with ${job.client_name || 'your client'} and use it for marketing.`
+                    : 'Go to Photos tab and tap B/A on photos to label your before & after for this project.'}
+                </div>
+              </div>
+              {hasPackage && (
+                <button
+                  onClick={copyCompletionLink}
+                  style={{ background: completionCopied ? '#22C55E' : '#4ADE80', color: '#0A2010', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
+                  {completionCopied ? '✓ Copied!' : '📤 Copy Package Link'}
+                </button>
+              )}
+              {!hasPackage && (
+                <button
+                  onClick={() => setTab('photos')}
+                  style={{ background: 'transparent', color: '#C9A84C', border: '1px solid #C9A84C55', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  Go to Photos →
+                </button>
+              )}
+            </div>
+          );
+        })()}
         {aiBanner && (
           <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, background: aiBanner.type === 'success' ? '#D1FAE5' : '#FEE2E2', color: aiBanner.type === 'success' ? '#065f46' : '#991b1b', border: `1px solid ${aiBanner.type === 'success' ? '#6ee7b7' : '#fca5a5'}` }}>
             {aiBanner.msg}

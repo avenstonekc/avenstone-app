@@ -75,7 +75,7 @@ export const sbLoad = async repName => {
         referring_realtor_phone: j.referring_realtor_phone || '',
         referring_realtor_email: j.referring_realtor_email || '',
         status_token: j.status_token || '',
-        photos: (ph || []).map(p => ({ id: p.id, type: p.type, url: p.url, name: p.name })),
+        photos: (ph || []).map(p => ({ id: p.id, type: p.type, url: p.url, name: p.name, label: p.label || null })),
         activity: nt || [], change_orders: co || [],
       };
     }));
@@ -126,6 +126,14 @@ export const sbPhoto = async (jid, file) => {
     await sb.from('photos').insert(row);
     return { id: row.id, type: row.type, url, name: file.name };
   } catch (e) { console.error(e); return null; }
+};
+
+export const sbLabelPhoto = async (jobId, photoId, label) => {
+  try {
+    if (label) await sb.from('photos').update({ label: null }).eq('job_id', jobId).eq('label', label).neq('id', photoId);
+    await sb.from('photos').update({ label: label || null }).eq('id', photoId);
+    return true;
+  } catch (e) { console.error(e); return false; }
 };
 
 export const sbCO = async co => {

@@ -1,4 +1,5 @@
 import { useState, Fragment } from 'react';
+import LidarScanner from '../../ai/LidarScanner';
 import { ANON_KEY, AI_ESTIMATOR_URL, NOTIFY_REALTOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadITBs, sbCreateITB, sbUpdateITB, sbSendBidInvite, sbUpdateBidStatus, sbLoadSubDirectory, AV_USER_ID, DOC_TYPES, docTypeColor, COMMON_TRADES } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
@@ -6,6 +7,8 @@ import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
 export default function EstimateTab({ job, photos, docs, setDocs }) {
   // ── AI Estimator state ────────────────────────────────────────────────────────
   const [showEstimator, setShowEstimator] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannedRooms, setScannedRooms] = useState([]);
   const [estMessages, setEstMessages] = useState([]);
   const [estInput, setEstInput] = useState('');
   const [estLoading, setEstLoading] = useState(false);
@@ -206,6 +209,24 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
         <button className="btn btn-gold" onClick={openEstimator} style={{ flexShrink: 0 }}>Open Estimator</button>
       </div>
 
+      {/* Room Scanner card */}
+      <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 6, padding: 16, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44', letterSpacing: 0.3 }}>
+            📱 Room Measurements
+            {scannedRooms.length > 0 && <span style={{ marginLeft: 8, fontSize: 11, background: '#D1FAE5', color: '#16a34a', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>{scannedRooms.length} rooms scanned</span>}
+          </div>
+          <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>
+            {scannedRooms.length > 0
+              ? `${scannedRooms.reduce((s, r) => s + (r.sqft || 0), 0).toLocaleString()} total sq ft · LiDAR scan on-site for exact dimensions`
+              : 'Scan rooms on-site for exact dimensions · feeds directly into estimate'}
+          </div>
+        </div>
+        <button className="btn btn-ghost" onClick={() => setShowScanner(true)} style={{ flexShrink: 0, border: '1px solid #E8E4DC' }}>
+          {scannedRooms.length > 0 ? 'Re-scan' : 'Scan Rooms'}
+        </button>
+      </div>
+
       {/* ITB section */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Invitations to Bid</div>
@@ -394,6 +415,9 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
           </div>
         </>}
       </div></div>}
+
+      {/* LiDAR Scanner overlay */}
+      {showScanner && <LidarScanner rooms={scannedRooms} onRoomsChange={setScannedRooms} onDone={() => setShowScanner(false)} />}
 
       {/* Proposal modal */}
       {showProposal && <div className="overlay" onClick={() => setShowProposal(false)}><div className="modal" style={{ maxWidth: 720, maxHeight: '92vh', overflowY: 'auto', padding: 0 }} onClick={e => e.stopPropagation()}>

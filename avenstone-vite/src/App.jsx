@@ -24,6 +24,7 @@ import AiKnowledgeScr from './components/ai/AiKnowledgeScr';
 import AiHomeScr from './components/ai/AiHomeScr';
 import PublicProfile from './components/public/PublicProfile';
 import ReviewPage from './components/public/ReviewPage';
+import CompletionPage from './components/public/CompletionPage';
 import LeadsScr from './components/leads/LeadsScr';
 import AiFieldAgent from './components/ai/AiFieldAgent';
 
@@ -31,9 +32,10 @@ import AiFieldAgent from './components/ai/AiFieldAgent';
 const _params     = new URLSearchParams(window.location.search);
 const STATUS_TOKEN = _params.get('st');
 const PRO_TENANT   = _params.get('pro');
-const REVIEW_JOB   = _params.get('review');
+const REVIEW_JOB    = _params.get('review');
 const REVIEW_TENANT = _params.get('rt');
-const INVITE_TYPE  = new URLSearchParams(window.location.hash.replace('#', '')).get('type');
+const COMPLETION_JOB = _params.get('completion');
+const INVITE_TYPE   = new URLSearchParams(window.location.hash.replace('#', '')).get('type');
 
 export default function App() {
   const [session, setSessionState] = useState(null);
@@ -102,8 +104,9 @@ export default function App() {
     setShowNotif(false);
   };
 
-  if (STATUS_TOKEN) return <StatusPage token={STATUS_TOKEN} />;
-  if (PRO_TENANT)   return <PublicProfile tenantId={PRO_TENANT} />;
+  if (STATUS_TOKEN)   return <StatusPage token={STATUS_TOKEN} />;
+  if (PRO_TENANT)     return <PublicProfile tenantId={PRO_TENANT} />;
+  if (COMPLETION_JOB) return <CompletionPage jobId={COMPLETION_JOB} />;
   if (REVIEW_JOB || REVIEW_TENANT) return <ReviewPage jobId={REVIEW_JOB} tenantId={REVIEW_TENANT} />;
 
   if (authLoading) return (
