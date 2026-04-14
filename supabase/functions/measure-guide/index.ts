@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-explicit-any
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
@@ -40,7 +40,7 @@ Living or bedroom: room length x width, ceiling height, window and door count
 Whole home: every room dimensions plus exterior footprint`;
 }
 
-serve(async (req: Request): Promise<Response> => {
+Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
   }

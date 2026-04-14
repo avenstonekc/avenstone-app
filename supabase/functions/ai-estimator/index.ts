@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 
@@ -230,7 +230,7 @@ Rules for JSON extraction:
 - scope_summary bullets are client-facing (professional language, no pricing)
 - If there are multiple line items per trade, each gets its own object with the same "trade" value`;
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",

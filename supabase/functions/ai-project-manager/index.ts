@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
@@ -68,7 +68,7 @@ async function askClaude(messages: object[]) {
   return data.content?.[0]?.text || "";
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     const { job_id, request_type = "analyze", send_sms = false } = await req.json();
     if (!job_id) return new Response("missing job_id", { status: 400 });

@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SB_URL      = Deno.env.get("SUPABASE_URL")!;
@@ -17,7 +17,7 @@ const ACTIVE_STATUSES = ["active", "demo", "framing", "rough_mep", "drywall", "f
 const daysSince = (dateStr: string) =>
   Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
   }

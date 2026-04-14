@@ -1,4 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const CORS = {
@@ -219,7 +219,7 @@ async function executeAction(sb: any, action: any, tenant_id: string, user_id: s
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {

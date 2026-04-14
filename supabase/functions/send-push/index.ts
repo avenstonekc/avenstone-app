@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 // @deno-types="https://esm.sh/v135/web-push@3.6.7/src/index.d.ts"
 import webpush from "https://esm.sh/web-push@3.6.7?target=deno";
@@ -14,7 +14,7 @@ webpush.setVapidDetails(
   VAPID_PRIVATE
 );
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     const payload = await req.json();
     const notif = payload.record;

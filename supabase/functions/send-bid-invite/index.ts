@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
@@ -7,7 +7,7 @@ const RESEND_KEY = Deno.env.get("RESEND_API_KEY")!;
 const APP_URL = "https://avenstone-app.vercel.app";
 const FROM = "Avenstone Group <notifications@avenstonekc.com>";
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     const { email, sub_name, job_address, trade, description, budget_range, due_date, itb_id, tenant_id } = await req.json();
     if (!email || !itb_id || !tenant_id) return new Response("missing fields", { status: 400 });

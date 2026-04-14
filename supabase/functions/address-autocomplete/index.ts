@@ -1,9 +1,9 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 
 const GOOGLE_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY")!;
 
 // Proxy Google Places Autocomplete — keeps the API key server-side
-serve(async (req) => {
+Deno.serve(async (req) => {
   const { input } = await req.json();
   if (!input || input.length < 3) return new Response("[]", { status: 200 });
 

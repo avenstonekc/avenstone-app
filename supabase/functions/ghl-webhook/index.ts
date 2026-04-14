@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -17,7 +17,7 @@ const TRIGGER_STAGES = [
   "proposal accepted",
 ];
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Allow GET for GHL webhook verification ping
   if (req.method === "GET") {
     return new Response("GHL webhook active", { status: 200 });

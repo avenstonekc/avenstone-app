@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY")!;
@@ -19,7 +19,7 @@ const SUBJECTS: Record<string, string> = {
   phase_overdue:        "Phase overdue",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     const payload = await req.json();
     // Supabase database webhook sends { type, table, schema, record, old_record }

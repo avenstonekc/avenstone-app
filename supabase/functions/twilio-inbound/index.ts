@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const TWILIO_FROM  = Deno.env.get("TWILIO_FROM")!;
@@ -12,7 +12,7 @@ const twiml = (msg?: string) =>
 
 const twimlHeaders = { "Content-Type": "text/xml" };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Twilio sends form-encoded POST
   if (req.method !== "POST") return new Response(twiml(), { headers: twimlHeaders });
 

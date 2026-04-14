@@ -1,9 +1,9 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY")!;
 const FROM = "Avenstone Group <notifications@avenstonekc.com>";
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",

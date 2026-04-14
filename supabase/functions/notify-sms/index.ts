@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const TWILIO_SID   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
@@ -26,7 +26,7 @@ const LABELS: Record<string, string> = {
   completion_signed:   "Project completion signed",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     const payload = await req.json();
     const notif = payload.record;

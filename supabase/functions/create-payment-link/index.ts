@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "https://esm.sh/stripe@13.11.0?target=deno";
 
@@ -11,7 +11,7 @@ const FROM       = "Avenstone Group <notifications@avenstonekc.com>";
 
 const stripe = new Stripe(STRIPE_KEY, { apiVersion: "2023-10-16", httpClient: Stripe.createFetchHttpClient() });
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     const { job_id, tenant_id, amount, description, payment_type, client_email, client_name, job_address, created_by } = await req.json();
     if (!job_id || !amount || !client_email) return new Response("missing fields", { status: 400 });
