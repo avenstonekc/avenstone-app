@@ -47,6 +47,18 @@ const TOOLS = [
       required: ["target", "title", "body"],
     },
   },
+  {
+    name: "create_task",
+    description: "Create an actionable task for the user to check off. Use this during the daily brief for each concrete action item you identify — one task per action. Keep titles short and specific: 'Chase $8,400 draw — 456 Oak St', 'Approve tile CO — 123 Main'. Max 5 tasks per brief.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short actionable task title — address + action" },
+        job_id: { type: "string", description: "Job ID this task relates to (optional)" },
+      },
+      required: ["title"],
+    },
+  },
 ];
 
 async function executeTool(
@@ -91,6 +103,29 @@ async function executeTool(
         }))
       );
       return `Notification sent to ${userIds.length} user(s).`;
+    }
+
+    if (name === "create_task") {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: existing } = await sb
+        .from("daily_tasks")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("title", input.title)
+        .eq("task_date", today)
+        .maybeSingle();
+      if (existing) return `Task already exists: "${input.title}"`;
+
+      const { error } = await sb.from("daily_tasks").insert({
+        tenant_id,
+        user_id,
+        job_id: input.job_id || null,
+        title: input.title,
+        task_date: today,
+        source: "ai",
+      });
+      if (error) return `Error creating task: ${error.message}`;
+      return `Task created: "${input.title}"`;
     }
 
     return `Unknown tool: ${name}`;
@@ -244,7 +279,8 @@ YOU CAN TAKE REAL ACTIONS using your tools: add_note (log something to a specifi
 Opening brief: lead with the single most urgent issue, then top 2-3 action items. End with one focusing question.
 Be sharp and direct — this person is running a construction company, not reading a report.
 Reference jobs by address. Flag financial risks immediately.
-Never mention Claude or Anthropic.${knowledgeBlock}${subPerfAlertsBlock}
+Never mention Claude or Anthropic.
+During the opening brief ONLY: use create_task for each concrete action item you surface (max 5). One task = one specific action. Skip vague items.${knowledgeBlock}${subPerfAlertsBlock}
 
 ACTIVE JOBS (${(activeJobs || []).length} in flight):
 ${jobsSummary}

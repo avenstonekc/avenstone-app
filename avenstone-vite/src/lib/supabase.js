@@ -494,3 +494,9 @@ export const sbLoadPricingApprovals = (tenant_id) =>
 
 export const sbLoadOwnerEscalations = (tenant_id) =>
   sb.from('owner_escalations').select('*, jobs(address)').eq('tenant_id', tenant_id).eq('status', 'pending').order('created_at', { ascending: false }).then(r => r.data || []);
+
+// ─── Daily Tasks ──────────────────────────────────────────────────────────────
+export const sbLoadDailyTasks = (userId) => {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  return sb.from('daily_tasks').select('*').eq('user_id', userId).eq('completed', false).gte('task_date', sevenDaysAgo).order('task_date', { ascending: false }).then(r => r.data || []);
+};
