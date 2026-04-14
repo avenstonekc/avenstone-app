@@ -350,6 +350,29 @@ export default function ConsultationTab({ job, profile }) {
     }
   };
 
+  // ─── Ensure a session exists (create one if needed) ────────────────────────
+
+  const ensureSession = async () => {
+    if (sessionIdRef.current) return sessionIdRef.current;
+    const userId = AV_USER_ID || profile?.id;
+    const tenantId = AV_TENANT || profile?.tenant_id;
+    const { data, error } = await sb
+      .from('consultation_sessions')
+      .insert({
+        job_id: job.id,
+        started_by: userId,
+        tenant_id: tenantId,
+        status: 'active',
+        started_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    setSessionId(data.id);
+    sessionIdRef.current = data.id;
+    return data.id;
+  };
+
   // ─── Transition to Measure ─────────────────────────────────────────────────
 
   const startMeasuring = async () => {
@@ -361,7 +384,8 @@ export default function ConsultationTab({ job, profile }) {
     }
 
     try {
-      // status stays 'active' — phase tracked in UI state only
+      // Guarantee a valid session exists before entering measure mode
+      const sid = await ensureSession();
 
       setPhase('measure');
       setCurrentTrade('');
@@ -384,7 +408,7 @@ export default function ConsultationTab({ job, profile }) {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          session_id: sessionId,
+          session_id: sid,
           job_id: job.id,
           transcript_chunk: openingContext,
           mode: 'measure',
@@ -418,12 +442,14 @@ export default function ConsultationTab({ job, profile }) {
     setTradeMessages(updated);
 
     try {
+      // Use ref so we always get the current session ID regardless of closure staleness
+      const sid = sessionIdRef.current || await ensureSession();
       const headers = getHeaders();
       const res = await fetch(PROCESS_TRANSCRIPT_URL, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          session_id: sessionId,
+          session_id: sid,
           job_id: job.id,
           transcript_chunk: text,
           mode: 'measure',
@@ -469,7 +495,8 @@ export default function ConsultationTab({ job, profile }) {
   const doneMeasuring = async () => {
     setErr('');
     try {
-      await sb.from('consultation_sessions').update({ status: 'complete' }).eq('id', sessionId);
+      const sid = sessionIdRef.current;
+      if (sid) await sb.from('consultation_sessions').update({ status: 'complete' }).eq('id', sid);
       setPhase('complete');
       generateEstimate();
     } catch (e) {
@@ -487,7 +514,8 @@ export default function ConsultationTab({ job, profile }) {
       ambientIntervalRef.current = null;
     }
     try {
-      await sb.from('consultation_sessions').update({ status: 'complete' }).eq('id', sessionId);
+      const sid2 = sessionIdRef.current;
+      if (sid2) await sb.from('consultation_sessions').update({ status: 'complete' }).eq('id', sid2);
       setPhase('complete');
       generateEstimate();
     } catch (e) {
@@ -505,7 +533,7 @@ export default function ConsultationTab({ job, profile }) {
       const res = await fetch(GENERATE_ESTIMATE_URL, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ session_id: sessionId, job_id: job.id }),
+        body: JSON.stringify({ session_id: sessionIdRef.current, job_id: job.id }),
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
@@ -539,7 +567,7 @@ export default function ConsultationTab({ job, profile }) {
 
       const { error } = await sb.from('job_estimates').insert({
         job_id: job.id,
-        session_id: sessionId,
+        session_id: sessionIdRef.current,
         tenant_id: tenantId,
         created_by: userId,
         estimate_data: result.estimate,
@@ -598,9 +626,14 @@ export default function ConsultationTab({ job, profile }) {
 
   const renderIdle = () => (
     <div>
-      <button className="btn btn-gold" style={{ width: '100%', fontSize: 18, padding: '16px 0', marginBottom: 28 }} onClick={startSession}>
-        Start AI Consultation Session
-      </button>
+      <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10, marginBottom: 28 }}>
+        <button className="btn btn-gold" style={{ flex: 1, fontSize: 16, padding: '16px 0' }} onClick={startSession}>
+          Start Consultation + Listen
+        </button>
+        <button className="btn btn-navy" style={{ flex: 1, fontSize: 16, padding: '16px 0' }} onClick={startMeasuring}>
+          Jump to Measuring
+        </button>
+      </div>
 
       {sessions.length > 0 && (
         <div>
