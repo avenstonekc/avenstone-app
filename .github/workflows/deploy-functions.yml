@@ -14,81 +14,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy all edge functions via Management API
-        run: |
-          node -e "
-          const https = require('https');
-          const fs = require('fs');
-          const path = require('path');
-
-          const TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
-          const PROJECT = 'cbfftukmhqvvjlrlnltk';
-
-          const fnsDir = 'supabase/functions';
-          const dirs = fs.readdirSync(fnsDir).filter(f =>
-            fs.statSync(path.join(fnsDir, f)).isDirectory()
-          );
-
-          async function deployFn(slug) {
-            const indexPath = path.join(fnsDir, slug, 'index.ts');
-            if (!fs.existsSync(indexPath)) {
-              console.log('Skipping ' + slug + ' (no index.ts)');
-              return;
-            }
-            const src = fs.readFileSync(indexPath, 'utf8');
-            const body = JSON.stringify({
-              slug,
-              name: slug,
-              body: Buffer.from(src).toString('base64'),
-              verify_jwt: false,
-            });
-
-            // Try PATCH first (update existing), fall back to POST (create new)
-            for (const method of ['PATCH', 'POST']) {
-              const urlPath = method === 'PATCH'
-                ? '/v1/projects/' + PROJECT + '/functions/' + slug
-                : '/v1/projects/' + PROJECT + '/functions';
-
-              const result = await new Promise((resolve) => {
-                const opts = {
-                  hostname: 'api.supabase.com',
-                  path: urlPath,
-                  method,
-                  headers: {
-                    Authorization: 'Bearer ' + TOKEN,
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(body),
-                  },
-                };
-                const req = https.request(opts, (res) => {
-                  let d = '';
-                  res.on('data', c => d += c);
-                  res.on('end', () => resolve({ status: res.statusCode, body: d }));
-                });
-                req.write(body);
-                req.end();
-              });
-
-              if (result.status === 200 || result.status === 201) {
-                const parsed = JSON.parse(result.body);
-                console.log('Deployed ' + slug + ' v' + parsed.version + ' (' + result.status + ')');
-                break;
-              } else if (method === 'PATCH' && result.status === 404) {
-                // Function doesn't exist yet, try POST
-                continue;
-              } else {
-                console.error('Failed to deploy ' + slug + ': ' + result.status + ' ' + result.body.slice(0, 200));
-                process.exit(1);
-              }
-            }
-          }
-
-          (async () => {
-            for (const slug of dirs) {
-              await deployFn(slug);
-            }
-            console.log('All functions deployed.');
-          })();
-          "
+      - name: Deploy all edge functions via Management API (multipart)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: cbfftukmhqvvjlrlnltk
+        run: |
+          set -u
+          FAILED=()
+          DEPLOYED=()
+
+          for dir in supabase/functions/*/; do
+            slug=$(basename "$dir")
+            entry="${dir}index.ts"
+
+            if [ ! -f "$entry" ]; then
+              echo "::warning::Skipping $slug (no index.ts)"
+              continue
+            fi
+
+            echo "→ Deploying $slug"
+
+            response=$(curl -sS -w "\n__HTTP_STATUS__:%{http_code}" \
+              -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/functions/deploy?slug=${slug}" \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              -F "metadata={\"entrypoint_path\":\"index.ts\",\"name\":\"${slug}\",\"verify_jwt\":false};type=application/json" \
+              -F "file=@${entry};type=application/typescript" 2>&1)
+
+            status=$(echo "$response" | grep "__HTTP_STATUS__" | cut -d: -f2)
+            body=$(echo "$response" | sed '/__HTTP_STATUS__/d')
+
+            if [ "$status" = "200" ] || [ "$status" = "201" ]; then
+              echo "  ✓ $slug deployed (HTTP $status)"
+              DEPLOYED+=("$slug")
+            else
+              echo "  ✗ $slug FAILED (HTTP $status)"
+              echo "    Response: $(echo "$body" | head -c 300)"
+              FAILED+=("$slug")
+            fi
+          done
+
+          echo ""
+          echo "════════════════════════════════════════"
+          echo "Deployed: ${#DEPLOYED[@]}  |  Failed: ${#FAILED[@]}"
+          echo "════════════════════════════════════════"
+
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo "Failed functions: ${FAILED[*]}"
+            exit 1
+          fi
