@@ -28,6 +28,7 @@ import CompletionPage from './components/public/CompletionPage';
 import LeadsScr from './components/leads/LeadsScr';
 import AiFieldAgent from './components/ai/AiFieldAgent';
 import MeasureScr from './components/jobs/MeasureScr';
+import MasterAgent from './components/shared/MasterAgent';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -267,6 +268,7 @@ export default function App() {
 
       {showNotif && <NotifPanel notifs={notifs} onClose={() => setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif} />}
       {showSettings && <SettingsModal profile={profile} setProfile={setProfile} onClose={() => setShowSettings(false)} />}
+      {isStaff && <MasterAgent profile={profile} />}
     </>
   );
 }

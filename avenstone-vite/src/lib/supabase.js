@@ -35,6 +35,7 @@ export const AI_FIELD_AGENT_URL     = `${FN}/ai-field-agent`;
 export const MEASURE_GUIDE_URL      = `${FN}/measure-guide`;
 export const AI_SUB_ONBOARD_URL    = `${FN}/ai-sub-onboard`;
 export const AI_SUB_PRICING_URL    = `${FN}/ai-sub-pricing`;
+export const AI_MASTER_URL         = `${FN}/ai-master-agent`;
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 export const sbSave = async j => {
