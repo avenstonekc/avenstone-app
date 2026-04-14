@@ -881,7 +881,7 @@ export default function ConsultationTab({ job, profile }) {
     const est = result.estimate || {};
     const trades = est.trades || est.line_items || [];
     const ohShitMoments = result.oh_shit_moments || [];
-    const total = est.total ?? trades.reduce((sum, t) => sum + (t.total || t.amount || 0), 0);
+    const total = est.total ?? trades.reduce((sum, t) => sum + (t.subtotal || t.total || t.amount || 0), 0);
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -906,12 +906,28 @@ export default function ConsultationTab({ job, profile }) {
                   background: i % 2 === 0 ? '#fff' : CREAM,
                 }}
               >
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, color: NAV, fontSize: 14 }}>
                     {trade.trade || trade.name || trade.category}
                   </div>
                   {trade.description && (
                     <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{trade.description}</div>
+                  )}
+                  {/* Line item details */}
+                  {(trade.line_items || []).length > 0 && (
+                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {(trade.line_items || []).map((li, j) => (
+                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                          <div style={{ fontSize: 11, color: '#6B7280', lineHeight: 1.4, flex: 1 }}>
+                            {li.description || li.name}
+                            {li.qty && li.unit ? <span style={{ color: '#9CA3AF' }}> · {li.qty} {li.unit}</span> : null}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#374151', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                            {f$(li.total || li.amount || (li.qty && li.unit_cost ? li.qty * li.unit_cost : 0) || 0)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                   {trade.confidence !== undefined && (
                     <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
@@ -919,8 +935,8 @@ export default function ConsultationTab({ job, profile }) {
                     </div>
                   )}
                 </div>
-                <div style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, color: NAV, fontSize: 15, whiteSpace: 'nowrap', marginLeft: 16 }}>
-                  {f$(trade.total || trade.amount || 0)}
+                <div style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, color: NAV, fontSize: 15, whiteSpace: 'nowrap', marginLeft: 16, alignSelf: 'flex-start' }}>
+                  {f$(trade.subtotal || trade.total || trade.amount || (trade.line_items || []).reduce((s, li) => s + (li.total || li.amount || (li.qty && li.unit_cost ? li.qty * li.unit_cost : 0) || 0), 0) || 0)}
                 </div>
               </div>
             ))}
