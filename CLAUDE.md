@@ -20,6 +20,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## API Cost Rules (ALWAYS follow — Kalin has been burned twice)
+
+**Before building any AI feature, answer these three questions:**
+1. How often does this fire? (per message, per login, per day, per DB event?)
+2. Which model? Haiku < Sonnet < Opus — never use Opus for anything automatic
+3. Is this user-triggered or automatic? Automatic = must have hard rate limiting
+
+**Rules:**
+- **Never fire Opus automatically** — Opus is for on-demand owner actions only, never background jobs
+- **Never fire any AI on a DB webhook/trigger** — DB events can cascade into thousands of calls
+- **ai-pm-nightly fires Opus narrative** — THIS IS DISABLED. Do not re-enable without explicit approval
+- **Agentic loops** — cap at 3 iterations max on Haiku, 3 on Sonnet. Every loop iteration = full API cost
+- **Conversation history window** — 10 messages max on Haiku agents, 20 max on Sonnet
+- **max_tokens** — Haiku: 1024 for simple responses, 2048 only when tools are active. Sonnet: 2048 default, 4096 only for complex reasoning. Never set higher than needed.
+- **Background automatic functions** (ai-pm-nightly, any cron) — must use Haiku only, no agentic loops
+- **Always state the cost implication** when proposing a new AI feature — "this fires on every X which means Y calls per day"
+
+**Model cost order (cheapest to most expensive):**
+Haiku → Sonnet → Opus. Default to Haiku for anything automatic or high-frequency.
+
+---
+
 ## Working Preferences (READ FIRST — follow every session)
 
 - **Code only by default** — no explanations, no commentary unless explicitly asked
