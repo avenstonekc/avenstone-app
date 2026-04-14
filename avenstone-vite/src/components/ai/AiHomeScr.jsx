@@ -99,7 +99,7 @@ export default function AiHomeScr({ profile, jobs, nav, onOpenJob }) {
       });
 
       const data = await res.json();
-      const aiContent = data.response || data.message || data.content || 'I encountered an issue. Please try again.';
+      const aiContent = data.response || data.message || data.content || (data.error ? `Error: ${data.error}` : 'I encountered an issue. Please try again.');
       const jobRefs = data.job_references || [];
 
       const aiMsg = {
