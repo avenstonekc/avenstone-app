@@ -5,6 +5,7 @@ import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
 import AiCompanionChat from '../shared/AiCompanionChat';
 import AiIntakeWizard from '../ai/AiIntakeWizard';
+import MaterialSelectionScr from '../ai/MaterialSelectionScr';
 
 async function sbSubmitRating(subId, stars, comment, jobId) {
   const { data, error } = await sb.from('sub_ratings').upsert({ tenant_id: AV_TENANT, sub_id: subId, rater_id: AV_USER_ID, job_id: jobId || null, stars, comment: comment || null }, { onConflict: 'tenant_id,sub_id,rater_id,job_id' }).select().single();
@@ -128,6 +129,7 @@ export default function ClientPortal({ profile, signOut }) {
   const [msgTxt, setMsgTxt] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
+  const [showMaterials, setShowMaterials] = useState(false);
   const [showSignContract, setShowSignContract] = useState(false);
   const [crForm, setCrForm] = useState({ description: '', reason: '' });
   const [crSaving, setCrSaving] = useState(false);
@@ -242,7 +244,10 @@ export default function ClientPortal({ profile, signOut }) {
       </div>
 
       {!job && <div style={{ padding: 16 }}>
-        <button className="btn btn-gold" style={{ width: '100%', marginBottom: 16, fontSize: 14, padding: '12px 16px' }} onClick={() => setShowIntake(true)}>+ Start a New Project</button>
+        <button className="btn btn-gold" style={{ width: '100%', marginBottom: 10, fontSize: 14, padding: '12px 16px' }} onClick={() => setShowIntake(true)}>+ Start a New Project</button>
+        <button className="btn btn-navy" style={{ width: '100%', marginBottom: 16, fontSize: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setShowMaterials(true)}>
+          ✨ Pick Materials <span style={{ fontSize: 10, background: '#C9A84C', color: '#0A1F44', padding: '2px 6px', borderRadius: 10, fontWeight: 700 }}>BETA</span>
+        </button>
         {jobs.map(j => (
           <div key={j.id} onClick={() => openJob(j.id)} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `4px solid ${sc(j.status)}`, padding: 16, marginBottom: 10, cursor: 'pointer' }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#0A1F44', marginBottom: 6 }}>{j.address}</div>
@@ -637,6 +642,7 @@ export default function ClientPortal({ profile, signOut }) {
         {job && <AiCompanionChat job={job} profile={{ ...profile, role: 'client' }} />}
       </>}
       {showIntake && <AiIntakeWizard profile={profile} onClose={() => setShowIntake(false)} onJobCreated={newJob => { setJobs(prev => [newJob, ...prev]); setShowIntake(false); }} />}
+      {showMaterials && <MaterialSelectionScr onClose={() => setShowMaterials(false)} />}
     </div>
   );
 }
