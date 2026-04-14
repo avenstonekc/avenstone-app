@@ -198,17 +198,7 @@ Deno.serve(async (req) => {
           );
         }
 
-        // AI narrative for high-alert jobs — fire and forget
-        if (newAlerts.length >= 2) {
-          fetch(AI_PM_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${ANON_KEY}`,
-            },
-            body: JSON.stringify({ job_id: job.id, request_type: "analyze", send_sms: false }),
-          }).catch(() => {});
-        }
+        // AI narrative disabled — too expensive for automatic firing
 
         results.push({
           job_id: job.id,
