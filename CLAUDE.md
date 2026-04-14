@@ -130,17 +130,23 @@ All URLs exported from `src/lib/supabase.js`:
 | `NOTIFY_REALTOR_URL` | `notify-realtor` | Realtor referral notification |
 
 ### Edge Function Deploy
-**Functions auto-deploy via GitHub Actions on every push to `supabase/functions/**`.** Manual deploy is a fallback only.
+**Functions auto-deploy via GitHub Actions on every push to `supabase/functions/**`.** Workflow uses the multipart `POST /v1/projects/{ref}/functions/deploy` Management API endpoint and reports per-function status.
 
 ```bash
 # Manual fallback (use only if GitHub Actions is broken):
-export SUPABASE_ACCESS_TOKEN=sbp_9fa9e8b5e69d1c615f2540b01ab843498c4b37bc
+# Token is in the GitHub secret SUPABASE_ACCESS_TOKEN — never paste it here or in any committed file.
+export SUPABASE_ACCESS_TOKEN=<paste from secure password manager>
 npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
 ```
-**Current PAT:** `sbp_9fa9e8b5e69d1c615f2540b01ab843498c4b37bc` — No expiry. Set April 13 2026.
+
+**PAT rotation gotchas (learned the hard way):**
+- Generate from `https://supabase.com/dashboard/account/tokens` — confirm the account picker shows the org that owns project `cbfftukmhqvvjlrlnltk`
+- **No expiry** — short-lived tokens silently break GitHub Actions
+- Update the `SUPABASE_ACCESS_TOKEN` GitHub secret via `gh secret set SUPABASE_ACCESS_TOKEN < tokenfile.txt` (avoids paste whitespace issues)
+- Never write the token value into CLAUDE.md or any committed file
 
 **GitHub Actions secrets required:**
-- `SUPABASE_ACCESS_TOKEN` — PAT above
+- `SUPABASE_ACCESS_TOKEN` — the PAT
 - `SUPABASE_PROJECT_REF` — `cbfftukmhqvvjlrlnltk`
 - `SUPABASE_URL` — `https://cbfftukmhqvvjlrlnltk.supabase.co`
 - `SUPABASE_ANON_KEY` — the anon key from supabase.js
