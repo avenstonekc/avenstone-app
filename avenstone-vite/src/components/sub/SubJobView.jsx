@@ -1,9 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, AV_USER_ID } from '../../lib/supabase';
-import { Ic, sc, sl, fD, fDT } from '../../lib/utils';
+import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadSubPhases, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, AV_USER_ID } from '../../lib/supabase';
+import { Ic, sc, sl, fD, fDT, f$ } from '../../lib/utils';
 
 const WEATHER_OPTS = ['Clear', 'Partly Cloudy', 'Overcast', 'Rain', 'Heavy Rain', 'Snow', 'Wind', 'Extreme Heat'];
-const SUB_TABS = [{ id: 'info', lb: 'Info', ic: 'info' }, { id: 'photos', lb: 'Photos', ic: 'cam' }, { id: 'logs', lb: 'Daily Log', ic: 'clip' }, { id: 'msgs', lb: 'Messages', ic: 'note' }];
+const SUB_TABS = [
+  { id: 'info', lb: 'Info', ic: 'info' },
+  { id: 'schedule', lb: 'Schedule', ic: 'cal' },
+  { id: 'photos', lb: 'Photos', ic: 'cam' },
+  { id: 'logs', lb: 'Daily Log', ic: 'clip' },
+  { id: 'docs', lb: 'Documents', ic: 'folder' },
+  { id: 'payments', lb: 'Payments', ic: 'box' },
+  { id: 'cos', lb: 'Change Orders', ic: 'doc' },
+  { id: 'msgs', lb: 'Messages', ic: 'note' },
+];
 
 export default function SubJobView({ job, back, profile }) {
   const [tab, setTab] = useState('info');
@@ -21,6 +30,14 @@ export default function SubJobView({ job, back, profile }) {
   const [showLogForm, setShowLogForm] = useState(false);
   const [logForm, setLogForm] = useState({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
   const [logSaving, setLogSaving] = useState(false);
+  const [phases, setPhases] = useState([]);
+  const [phasesLoaded, setPhasesLoaded] = useState(false);
+  const [docs, setDocs] = useState([]);
+  const [docsLoaded, setDocsLoaded] = useState(false);
+  const [payments, setPayments] = useState([]);
+  const [paymentsLoaded, setPaymentsLoaded] = useState(false);
+  const [cos, setCos] = useState([]);
+  const [cosLoaded, setCosLoaded] = useState(false);
 
   useEffect(() => {
     if (tab !== 'msgs' || msgsLoaded) return;
@@ -31,6 +48,26 @@ export default function SubJobView({ job, back, profile }) {
     if (tab !== 'logs' || logsLoaded) return;
     sbLoadDailyLogs(job.id).then(d => { setLogs(d); setLogsLoaded(true); });
   }, [tab, logsLoaded]);
+
+  useEffect(() => {
+    if (tab !== 'schedule' || phasesLoaded) return;
+    sbLoadSubPhases(AV_USER_ID, job.id).then(d => { setPhases(d); setPhasesLoaded(true); });
+  }, [tab, phasesLoaded]);
+
+  useEffect(() => {
+    if (tab !== 'docs' || docsLoaded) return;
+    sbLoadJobDocuments(job.id).then(d => { setDocs(d); setDocsLoaded(true); });
+  }, [tab, docsLoaded]);
+
+  useEffect(() => {
+    if (tab !== 'payments' || paymentsLoaded) return;
+    sbLoadSubPayments(AV_USER_ID, job.id).then(d => { setPayments(d); setPaymentsLoaded(true); });
+  }, [tab, paymentsLoaded]);
+
+  useEffect(() => {
+    if (tab !== 'cos' || cosLoaded) return;
+    sbLoadSubCOs(job.id).then(d => { setCos(d); setCosLoaded(true); });
+  }, [tab, cosLoaded]);
 
   useEffect(() => { if (msgs.length && msgsEndRef.current) msgsEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
@@ -115,6 +152,94 @@ export default function SubJobView({ job, back, profile }) {
             </div>
           ))}
         </div>}
+        {tab === 'schedule' && <div>
+          {!phasesLoaded && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Loading schedule...</div>}
+          {phasesLoaded && !phases.length && <div className="empty">{Ic.cal}<div className="empty-t">No phases assigned to you</div><div>Your contractor will update your schedule here</div></div>}
+          {phases.map(p => {
+            const today = new Date().toISOString().slice(0, 10);
+            const isOverdue = p.end_date && p.end_date < today && p.status !== 'complete';
+            const isActive = p.status === 'in_progress';
+            return (
+              <div key={p.id} style={{ background: '#fff', border: `1px solid #E8E4DC`, borderLeft: `4px solid ${isOverdue ? '#ef4444' : isActive ? '#C9A84C' : p.status === 'complete' ? '#22c55e' : '#E8E4DC'}`, padding: '14px 16px', marginBottom: 10, borderRadius: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{p.name}</div>
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: isOverdue ? '#FEE2E2' : isActive ? '#FEF3C7' : p.status === 'complete' ? '#D1FAE5' : '#F3F4F6', color: isOverdue ? '#991B1B' : isActive ? '#92400E' : p.status === 'complete' ? '#065F46' : '#6B7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    {isOverdue ? 'Overdue' : p.status?.replace(/_/g, ' ') || 'Pending'}
+                  </span>
+                </div>
+                {p.description && <div style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>{p.description}</div>}
+                <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: '#9CA3AF' }}>
+                  {p.start_date && <span>Start: <strong style={{ color: '#374151' }}>{fD(p.start_date)}</strong></span>}
+                  {p.end_date && <span>Due: <strong style={{ color: isOverdue ? '#ef4444' : '#374151' }}>{fD(p.end_date)}</strong></span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>}
+
+        {tab === 'docs' && <div>
+          {!docsLoaded && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Loading documents...</div>}
+          {docsLoaded && !docs.length && <div className="empty">{Ic.folder}<div className="empty-t">No documents yet</div><div>Plans, specs, and permits will appear here</div></div>}
+          {docs.map(d => (
+            <a key={d.id} href={d.url || d.file_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid #E8E4DC', padding: '12px 16px', marginBottom: 8, borderRadius: 8, textDecoration: 'none', color: 'inherit' }}>
+              <span style={{ width: 20, height: 20, flexShrink: 0, color: '#C9A84C', display: 'flex' }}>{Ic.doc}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#0A1F44' }}>{d.name || d.file_name || 'Document'}</div>
+                {d.created_at && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{fD(d.created_at)}</div>}
+              </div>
+              <span style={{ width: 16, height: 16, color: '#9CA3AF', flexShrink: 0 }}>{Ic.dl}</span>
+            </a>
+          ))}
+        </div>}
+
+        {tab === 'payments' && <div>
+          {!paymentsLoaded && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Loading payments...</div>}
+          {paymentsLoaded && !payments.length && <div className="empty">{Ic.box}<div className="empty-t">No payment schedule yet</div><div>Your contractor will set up draws here</div></div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {payments.map(p => {
+              const isPaid = p.status === 'paid';
+              const isOverdue = !isPaid && p.due_date && p.due_date < new Date().toISOString().slice(0, 10);
+              return (
+                <div key={p.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `4px solid ${isPaid ? '#22c55e' : isOverdue ? '#ef4444' : '#C9A84C'}`, padding: '14px 16px', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{p.description || 'Draw'}</div>
+                      {p.due_date && <div style={{ fontSize: 12, color: isOverdue ? '#ef4444' : '#9CA3AF', marginTop: 2 }}>Due: {fD(p.due_date)}</div>}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#0A1F44' }}>{f$(p.amount || 0)}</div>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: isPaid ? '#D1FAE5' : isOverdue ? '#FEE2E2' : '#FEF3C7', color: isPaid ? '#065F46' : isOverdue ? '#991B1B' : '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
+                        {isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Pending'}
+                      </span>
+                    </div>
+                  </div>
+                  {p.notes && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 8 }}>{p.notes}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>}
+
+        {tab === 'cos' && <div>
+          {!cosLoaded && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Loading change orders...</div>}
+          {cosLoaded && !cos.length && <div className="empty">{Ic.doc}<div className="empty-t">No change orders</div><div>Scope changes will appear here</div></div>}
+          {cos.map(co => (
+            <div key={co.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '14px 16px', marginBottom: 8, borderRadius: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{co.title}</div>
+                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: co.status === 'approved' ? '#D1FAE5' : co.status === 'rejected' ? '#FEE2E2' : '#FEF3C7', color: co.status === 'approved' ? '#065F46' : co.status === 'rejected' ? '#991B1B' : '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
+                  {co.status || 'Pending'}
+                </span>
+              </div>
+              {co.description && <div style={{ fontSize: 13, color: '#374151', marginBottom: 8 }}>{co.description}</div>}
+              <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#9CA3AF' }}>
+                {co.amount != null && <span>Amount: <strong style={{ color: co.amount >= 0 ? '#065F46' : '#991B1B' }}>{co.amount >= 0 ? '+' : ''}{f$(co.amount)}</strong></span>}
+                {co.created_at && <span>{fD(co.created_at)}</span>}
+              </div>
+            </div>
+          ))}
+        </div>}
+
         {tab === 'msgs' && <div style={{ display: 'flex', flexDirection: 'column', minHeight: 300 }}>
           {!msgsLoaded && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading...</div>}
           {msgsLoaded && <>

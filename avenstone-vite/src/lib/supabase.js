@@ -33,6 +33,8 @@ export const PROCESS_TRANSCRIPT_URL = `${FN}/process-transcript`;
 export const AI_ERROR_LOGGER_URL    = `${FN}/ai-error-logger`;
 export const AI_FIELD_AGENT_URL     = `${FN}/ai-field-agent`;
 export const MEASURE_GUIDE_URL      = `${FN}/measure-guide`;
+export const AI_SUB_ONBOARD_URL    = `${FN}/ai-sub-onboard`;
+export const AI_SUB_PRICING_URL    = `${FN}/ai-sub-pricing`;
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 export const sbSave = async j => {
@@ -281,6 +283,34 @@ export const sbUpdateBidStatus = async (id, status) => sb.from('bid_responses').
 export const sbSendClientLink = async (email, clientName, jobAddress, jobId) => {
   const res = await fetch(CLIENT_LINK_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, client_name: clientName, job_address: jobAddress, job_id: jobId, tenant_id: AV_TENANT }) });
   return res.json();
+};
+
+// ─── Sub pricing ──────────────────────────────────────────────────────────────
+export const sbLoadSubPricing = async (subId) => {
+  const { data } = await sb.from('sub_pricing').select('*').eq('sub_id', subId).order('trade').order('item_label');
+  return data || [];
+};
+export const sbLoadSubRating = async (subId) => {
+  const { data } = await sb.from('sub_ratings').select('*').eq('sub_id', subId).order('created_at', { ascending: false });
+  if (!data?.length) return null;
+  const avg = data.reduce((s, r) => s + (r.rating || 0), 0) / data.length;
+  return { ratings: data, average: avg, count: data.length };
+};
+export const sbLoadSubPhases = async (subId, jobId) => {
+  const { data } = await sb.from('job_phases').select('*').eq('assigned_sub_id', subId).eq('job_id', jobId).order('phase_order', { ascending: true });
+  return data || [];
+};
+export const sbLoadJobDocuments = async (jobId) => {
+  const { data } = await sb.from('job_documents').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
+  return data || [];
+};
+export const sbLoadSubPayments = async (subId, jobId) => {
+  const { data } = await sb.from('payments').select('*').eq('job_id', jobId).order('due_date', { ascending: true });
+  return data || [];
+};
+export const sbLoadSubCOs = async (jobId) => {
+  const { data } = await sb.from('change_orders').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
+  return data || [];
 };
 
 // ─── Sub jobs ─────────────────────────────────────────────────────────────────
