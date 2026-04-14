@@ -2,9 +2,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
-const TWILIO_SID    = Deno.env.get("TWILIO_ACCOUNT_SID")!;
-const TWILIO_TOKEN  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-const TWILIO_FROM   = Deno.env.get("TWILIO_FROM")!;
 const SB_URL        = Deno.env.get("SUPABASE_URL")!;
 const SB_SERVICE    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -33,22 +30,6 @@ When analyzing a job, structure your response as JSON:
 
 Only include fields relevant to the current request type.`;
 
-async function sendSMS(to: string, body: string) {
-  const raw = to.replace(/\D/g, "");
-  const toE164 = raw.startsWith("1") ? `+${raw}` : `+1${raw}`;
-  await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`)}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({ From: TWILIO_FROM, To: toE164, Body: body }),
-    }
-  );
-}
-
 async function askClaude(messages: object[]) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -70,7 +51,7 @@ async function askClaude(messages: object[]) {
 
 Deno.serve(async (req) => {
   try {
-    const { job_id, request_type = "analyze", send_sms = false } = await req.json();
+    const { job_id, request_type = "analyze" } = await req.json();
     if (!job_id) return new Response("missing job_id", { status: 400 });
 
     const sb = createClient(SB_URL, SB_SERVICE);
@@ -152,21 +133,10 @@ DOCUMENTS: ${(docs || []).map(d => d.name).join(", ") || "None"}
       analysis = { summary: raw };
     }
 
-    // Send SMS to subs if requested and drafts exist
-    const smsSent: string[] = [];
-    if (send_sms && analysis.sms_drafts?.length) {
-      for (const draft of analysis.sms_drafts) {
-        if (draft.to_phone) {
-          await sendSMS(draft.to_phone, draft.message);
-          smsSent.push(draft.to_name || draft.to_phone);
-        }
-      }
-    }
-
     // Save analysis as a job note so it shows in the app
     const summaryNote = analysis.summary || "AI analysis complete.";
     const alerts = (analysis.alerts || []).map((a: any) => `[${a.level?.toUpperCase()}] ${a.message}`).join("\n");
-    const noteContent = `🤖 AI Project Manager Analysis\n\n${summaryNote}${alerts ? "\n\nALERTS:\n" + alerts : ""}${smsSent.length ? "\n\nSMS sent to: " + smsSent.join(", ") : ""}`;
+    const noteContent = `🤖 AI Project Manager Analysis\n\n${summaryNote}${alerts ? "\n\nALERTS:\n" + alerts : ""}`;
 
     await sb.from("job_notes").insert({
       job_id,
@@ -186,7 +156,7 @@ DOCUMENTS: ${(docs || []).map(d => d.name).join(", ") || "None"}
       user_id: job.assigned_rep || null,
     });
 
-    return new Response(JSON.stringify({ analysis, sms_sent: smsSent, note_saved: true }), {
+    return new Response(JSON.stringify({ analysis, note_saved: true }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

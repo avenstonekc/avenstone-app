@@ -1,6 +1,6 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-// v2
+// v3 — real tool use (Option B)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,7 +10,6 @@ const corsHeaders = {
 const ERROR_LOGGER_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-error-logger`;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
-// Fire-and-forget — never throws, never blocks the response
 function logAIError(payload: {
   function_name: string;
   error_type?: string;
@@ -27,6 +26,198 @@ function logAIError(payload: {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}` },
     body: JSON.stringify(payload),
   }).catch(() => {/* swallow */});
+}
+
+const TOOLS = [
+  {
+    name: "add_note",
+    description: "Add a note to the job. Use this when the user asks you to log, record, or note something about the job.",
+    input_schema: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "The note text to add" },
+        note_type: { type: "string", enum: ["general", "client", "issue", "milestone"], description: "Category of note" },
+      },
+      required: ["content"],
+    },
+  },
+  {
+    name: "update_job",
+    description: "Update job fields like status, target_completion, description, or assigned_rep.",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "New job status" },
+        target_completion: { type: "string", description: "Target completion date (YYYY-MM-DD)" },
+        description: { type: "string", description: "Updated job description" },
+        assigned_rep: { type: "string", description: "Name of assigned sales rep" },
+      },
+    },
+  },
+  {
+    name: "create_change_order",
+    description: "Create a change order on this job. Use when the user asks to log a change, add a CO, or record extra work.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short title for the change order" },
+        description: { type: "string", description: "What the change entails" },
+        amount: { type: "number", description: "Dollar amount of the change order" },
+      },
+      required: ["title", "amount"],
+    },
+  },
+  {
+    name: "notify_team",
+    description: "Send a notification to all owners and project managers on this tenant. Use when something urgent needs their attention.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short notification title" },
+        body: { type: "string", description: "Full notification message" },
+      },
+      required: ["title", "body"],
+    },
+  },
+  {
+    name: "add_knowledge",
+    description: "Save a piece of company-specific knowledge so all AI agents remember it going forward.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string", description: "Category like 'pricing', 'process', 'client_comms', 'materials'" },
+        content: { type: "string", description: "The knowledge to save" },
+      },
+      required: ["category", "content"],
+    },
+  },
+  {
+    name: "escalate_to_owner",
+    description: "Route a question or decision to the owner when you need human judgment, approval, or information you don't have. Use for anything outside your authority or genuinely ambiguous.",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "The specific question or decision that needs owner input" },
+        context: { type: "string", description: "Relevant background so the owner has what they need to answer" },
+      },
+      required: ["question"],
+    },
+  },
+];
+
+async function executeTool(
+  name: string,
+  input: Record<string, unknown>,
+  ctx: { job_id: string; tenant_id: string; user_id: string; sb: ReturnType<typeof createClient> }
+): Promise<string> {
+  const { job_id, tenant_id, user_id, sb } = ctx;
+
+  try {
+    if (name === "add_note") {
+      const { error } = await sb.from("job_notes").insert({
+        job_id,
+        tenant_id,
+        content: input.content,
+        note_type: input.note_type || "general",
+        created_by: user_id,
+      });
+      if (error) return `Error adding note: ${error.message}`;
+      return `Note added: "${input.content}"`;
+    }
+
+    if (name === "update_job") {
+      const updates: Record<string, unknown> = {};
+      if (input.status) updates.status = input.status;
+      if (input.target_completion) updates.target_completion = input.target_completion;
+      if (input.description) updates.description = input.description;
+      if (input.assigned_rep) updates.assigned_rep = input.assigned_rep;
+      if (!Object.keys(updates).length) return "No fields to update.";
+      const { error } = await sb.from("jobs").update(updates).eq("id", job_id);
+      if (error) return `Error updating job: ${error.message}`;
+      return `Job updated: ${Object.keys(updates).join(", ")}`;
+    }
+
+    if (name === "create_change_order") {
+      const { error } = await sb.from("change_orders").insert({
+        job_id,
+        tenant_id,
+        title: input.title,
+        description: input.description || "",
+        amount: input.amount,
+        status: "pending",
+      });
+      if (error) return `Error creating change order: ${error.message}`;
+      // Also bump job's co_total
+      const { data: job } = await sb.from("jobs").select("co_total, contract_value").eq("id", job_id).single();
+      if (job) {
+        await sb.from("jobs").update({ co_total: (Number(job.co_total) || 0) + Number(input.amount) }).eq("id", job_id);
+      }
+      return `Change order created: "${input.title}" for $${input.amount}`;
+    }
+
+    if (name === "notify_team") {
+      const { data: team } = await sb
+        .from("profiles")
+        .select("id")
+        .eq("tenant_id", tenant_id)
+        .in("role", ["owner", "project_manager"]);
+      if (!team?.length) return "No team members to notify.";
+      await sb.from("notifications").insert(
+        team.map((u: { id: string }) => ({
+          tenant_id,
+          user_id: u.id,
+          job_id,
+          type: "ai_companion_alert",
+          title: input.title,
+          body: input.body,
+          read: false,
+        }))
+      );
+      return `Notification sent to ${team.length} team member(s).`;
+    }
+
+    if (name === "add_knowledge") {
+      const { error } = await sb.from("ai_knowledge").insert({
+        tenant_id,
+        category: input.category,
+        content: input.content,
+        active: true,
+        created_by: user_id,
+      });
+      if (error) return `Error saving knowledge: ${error.message}`;
+      return `Knowledge saved in category "${input.category}".`;
+    }
+
+    if (name === "escalate_to_owner") {
+      await sb.from("owner_escalations").insert({
+        tenant_id,
+        job_id,
+        source_agent: "ai-companion",
+        question: input.question,
+        context: input.context || "",
+        status: "pending",
+      });
+      const { data: owners } = await sb.from("profiles").select("id").eq("tenant_id", tenant_id).eq("role", "owner");
+      if (owners?.length) {
+        await sb.from("notifications").insert(
+          owners.map((o: { id: string }) => ({
+            tenant_id,
+            user_id: o.id,
+            job_id,
+            type: "owner_escalation",
+            title: "AI needs your input",
+            body: (input.question as string).slice(0, 120),
+            read: false,
+          }))
+        );
+      }
+      return `Question escalated to owner: "${input.question}"`;
+    }
+
+    return `Unknown tool: ${name}`;
+  } catch (e) {
+    return `Tool execution error: ${String(e)}`;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -49,7 +240,6 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Verify job exists first to avoid FK constraint failure on insert
     const { data: jobCheck, error: jobCheckErr } = await supabase
       .from("jobs")
       .select("id")
@@ -57,15 +247,6 @@ Deno.serve(async (req) => {
       .single();
 
     if (jobCheckErr || !jobCheck) {
-      logAIError({
-        function_name: "ai-companion",
-        error_type: "job_not_found",
-        error_message: `Job ${job_id} not found — cannot create companion record`,
-        user_input: message,
-        job_id,
-        user_id,
-        tenant_id,
-      });
       return new Response(
         JSON.stringify({ error: `Job not found: ${job_id}` }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -73,7 +254,7 @@ Deno.serve(async (req) => {
     }
 
     // Load or create companion record
-    let { data: companion, error: companionErr } = await supabase
+    let { data: companion } = await supabase
       .from("job_ai_companions")
       .select("*")
       .eq("job_id", job_id)
@@ -89,16 +270,6 @@ Deno.serve(async (req) => {
         .single();
 
       if (insertErr || !newCompanion) {
-        logAIError({
-          function_name: "ai-companion",
-          error_type: "companion_insert_failed",
-          error_message: insertErr?.message ?? "Insert returned null companion",
-          user_input: message,
-          job_id,
-          user_id,
-          tenant_id,
-          metadata: { insert_error: insertErr },
-        });
         return new Response(
           JSON.stringify({ error: "Failed to create AI companion record", detail: insertErr?.message }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -116,6 +287,8 @@ Deno.serve(async (req) => {
       { data: phases },
       { data: subs },
       { data: materials },
+      { data: knowledge },
+      { data: subPerf },
     ] = await Promise.all([
       supabase.from("jobs").select("*").eq("id", job_id).single(),
       supabase.from("job_notes").select("*").eq("job_id", job_id).order("created_at", { ascending: false }).limit(10),
@@ -124,9 +297,10 @@ Deno.serve(async (req) => {
       supabase.from("schedule_phases").select("*").eq("job_id", job_id).order("start_date"),
       supabase.from("job_subs").select("*, profiles(full_name, phone)").eq("job_id", job_id),
       supabase.from("job_materials").select("*").eq("job_id", job_id).order("created_at"),
+      supabase.from("ai_knowledge").select("category, content").eq("tenant_id", tenant_id).eq("active", true).limit(20),
+      supabase.from("sub_performance").select("sub_id, trade, score, jobs_completed, phases_late, cos_caused").eq("tenant_id", tenant_id),
     ]);
 
-    // Build job context string
     const coTotal = changeOrders?.reduce((s: number, co: any) => s + (co.amount ?? 0), 0) ?? 0;
     const paidTotal = payments?.reduce((s: number, p: any) => s + (p.amount ?? 0), 0) ?? 0;
 
@@ -146,15 +320,23 @@ Description: ${job?.description ?? "N/A"}
 
 SCHEDULE PHASES
 ---------------
-${phases?.map((p: any) => `• ${p.name}: ${p.status} (${p.start_date ?? "?"} → ${p.end_date ?? "?"})`).join("\n") ?? "None"}
+${phases?.map((p: any) => `• ${p.name}: ${p.status} (${p.start_date ?? "?"} → ${p.end_date ?? "?"})`).join("\n") || "None"}
 
 ASSIGNED SUBS
 -------------
-${subs?.map((s: any) => `• ${s.profiles?.full_name ?? "Unknown"} — ${s.trade ?? "N/A"} (${s.profiles?.phone ?? "no phone"})`).join("\n") ?? "None"}
+${subs?.map((s: any) => {
+  const name = s.profiles?.full_name ?? "Unknown";
+  const trade = s.trade ?? "N/A";
+  const perf = (subPerf || []).find((p: any) => p.sub_id === s.sub_id && p.trade === trade);
+  if (perf) {
+    return `• ${name} — ${trade} (📊 score: ${perf.score} | ${perf.jobs_completed} jobs | ${perf.phases_late} late phases)`;
+  }
+  return `• ${name} — ${trade} (${s.profiles?.phone ?? "no phone"})`;
+}).join("\n") || "None"}
 
 CHANGE ORDERS
 -------------
-${changeOrders?.map((co: any) => `• ${co.title ?? "N/A"}: $${(co.amount ?? 0).toLocaleString()} — ${co.status ?? "N/A"}`).join("\n") ?? "None"}
+${changeOrders?.map((co: any) => `• ${co.title ?? "N/A"}: $${(co.amount ?? 0).toLocaleString()} — ${co.status ?? "N/A"}`).join("\n") || "None"}
 
 MATERIALS & ORDERS
 ------------------
@@ -174,89 +356,107 @@ ${(() => {
 
 RECENT NOTES
 ------------
-${notes?.map((n: any) => `• [${n.created_at?.slice(0, 10)}] ${n.content}`).join("\n") ?? "None"}
-`.trim();
+${notes?.map((n: any) => `• [${n.created_at?.slice(0, 10)}] ${n.content}`).join("\n") || "None"}`.trim();
 
-    const systemPrompt = `You are the Avenstone AI Companion — an expert construction project assistant built into the Avenstone job management platform. You have deep knowledge of construction workflows, scheduling, subcontractor coordination, change orders, and client communication.
+    const knowledgeBlock = knowledge?.length
+      ? "\n\nCOMPANY KNOWLEDGE:\n" + knowledge.map((k: any) => `[${k.category.toUpperCase()}] ${k.content}`).join("\n")
+      : "";
+
+    const systemPrompt = `You are the Avenstone AI Companion — an expert construction project assistant built into the Avenstone job management platform.
 
 You are speaking with the job's ${role.replace("_", " ")}. Give direct, practical, and confident answers. Be concise unless detail is needed. Never mention Claude or Anthropic — you are the Avenstone AI.
 
-CRITICAL RULES — never break these:
-- You ADVISE and REMIND. You do NOT take actions. Never say "I will send", "I'll text the client", "I'll schedule" — you don't do those things. Say "You should send", "It's time to text the client", "I'd recommend scheduling".
-- When referencing company policies (e.g. Friday client updates, CO approval process), frame them as reminders prompting the USER to act — not as automated commitments the system fulfills.
-- If a user asks you to take an action (send a text, create a change order, update the schedule), describe exactly what they should do and what to say — but make clear they are the one taking the action.
-- Flag risks directly. If something looks like it will cause a problem, say so plainly.
+YOU CAN TAKE REAL ACTIONS using your tools. When asked to add a note, create a change order, update the job, or notify the team — do it immediately. Don't ask for confirmation unless the action is irreversible and ambiguous. After taking an action, tell the user what you did.
+
+Available tools: add_note, update_job, create_change_order, notify_team, add_knowledge, escalate_to_owner.
 
 When asked to "brief me on this job", respond with a structured summary covering: current status, financial position, active phases, key risks, and what's next.
 
 CURRENT JOB CONTEXT:
-${jobContext}`;
+${jobContext}${knowledgeBlock}`;
 
-    // Sliding window of last 20 messages
     const history: any[] = companion?.conversation_history ?? [];
     const recentHistory = history.slice(-20);
 
-    // Call Anthropic API
-    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": Deno.env.get("ANTHROPIC_API_KEY") ?? "",
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: [
-          ...recentHistory,
-          { role: "user", content: message },
-        ],
-      }),
-    });
+    const toolCtx = { job_id, tenant_id, user_id, sb: supabase };
+    const actions_taken: Array<{ tool: string; result: string }> = [];
 
-    const anthropicData = await anthropicRes.json();
-
-    if (!anthropicRes.ok || anthropicData.error) {
-      const errMsg = anthropicData.error?.message ?? `Anthropic API error ${anthropicRes.status}`;
-      logAIError({
-        function_name: "ai-companion",
-        error_type: "anthropic_api_error",
-        error_message: errMsg,
-        user_input: message,
-        ai_raw_response: JSON.stringify(anthropicData),
-        job_id,
-        user_id,
-        tenant_id,
-        metadata: { status: anthropicRes.status, model: "claude-sonnet-4-5" },
-      });
-      return new Response(
-        JSON.stringify({ error: "AI service error", detail: errMsg }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const reply: string = anthropicData.content?.[0]?.text ?? "I'm sorry, I couldn't generate a response.";
-
-    // Detect action keywords in reply
-    const actionKeywords: { pattern: RegExp; label: string }[] = [
-      { pattern: /added a note/i, label: "Added a note" },
-      { pattern: /created (a )?change order/i, label: "Created a change order" },
-      { pattern: /updated (the )?schedule/i, label: "Updated the schedule" },
-      { pattern: /sent (a )?message/i, label: "Sent a message" },
-      { pattern: /recorded (a )?payment/i, label: "Recorded a payment" },
-      { pattern: /assigned (a )?(sub|subcontractor)/i, label: "Assigned a subcontractor" },
-      { pattern: /marked (as )?complete/i, label: "Marked phase complete" },
-    ];
-    const actions_taken = actionKeywords
-      .filter(({ pattern }) => pattern.test(reply))
-      .map(({ label }) => label);
-
-    // Update conversation history
-    const updatedHistory = [
+    // Agentic loop — max 5 iterations
+    let messages: any[] = [
       ...recentHistory,
       { role: "user", content: message },
-      { role: "assistant", content: reply },
+    ];
+    let finalReply = "";
+    const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+
+    for (let i = 0; i < 5; i++) {
+      const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_KEY,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 4096,
+          system: systemPrompt,
+          tools: TOOLS,
+          messages,
+        }),
+      });
+
+      const data = await anthropicRes.json();
+
+      if (!anthropicRes.ok || data.error) {
+        const errMsg = data.error?.message ?? `Anthropic API error ${anthropicRes.status}`;
+        logAIError({ function_name: "ai-companion", error_type: "anthropic_api_error", error_message: errMsg, user_input: message, job_id, user_id, tenant_id });
+        return new Response(
+          JSON.stringify({ error: "AI service error", detail: errMsg }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Append assistant response to messages
+      messages.push({ role: "assistant", content: data.content });
+
+      if (data.stop_reason === "end_turn") {
+        // Extract text reply
+        finalReply = data.content?.find((b: any) => b.type === "text")?.text ?? "";
+        break;
+      }
+
+      if (data.stop_reason === "tool_use") {
+        const toolUses = data.content.filter((b: any) => b.type === "tool_use");
+        const toolResults: any[] = [];
+
+        for (const tu of toolUses) {
+          const result = await executeTool(tu.name, tu.input, toolCtx);
+          actions_taken.push({ tool: tu.name, result });
+          toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
+        }
+
+        messages.push({ role: "user", content: toolResults });
+      } else {
+        // Unexpected stop reason — break
+        finalReply = data.content?.find((b: any) => b.type === "text")?.text ?? "";
+        break;
+      }
+    }
+
+    if (!finalReply) {
+      finalReply = "Done — I've taken the requested actions.";
+    }
+
+    // Save updated conversation history (text messages only, strip tool blocks)
+    const cleanHistory = messages
+      .filter((m: any) => typeof m.content === "string" && m.content.trim())
+      .slice(-40);
+
+    // Append final assistant reply
+    const updatedHistory = [
+      ...cleanHistory,
+      { role: "assistant", content: finalReply },
     ];
 
     await supabase
@@ -265,17 +465,17 @@ ${jobContext}`;
       .eq("id", companion.id);
 
     return new Response(
-      JSON.stringify({ reply, actions_taken, companion_id: companion.id }),
+      JSON.stringify({ reply: finalReply, actions_taken, companion_id: companion.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     logAIError({
       function_name: "ai-companion",
       error_type: "unhandled_exception",
-      error_message: err.message ?? String(err),
+      error_message: (err as Error).message ?? String(err),
     });
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: (err as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

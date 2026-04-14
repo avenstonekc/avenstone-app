@@ -478,3 +478,19 @@ export const sbUpdMaterial = async (id, ch) => {
   return { data, error };
 };
 export const sbDelMaterial = async id => sb.from('job_materials').delete().eq('id', id);
+
+// ─── Owner Intelligence ───────────────────────────────────────────────────────
+export const sbLoadSubPerformance = (tenant_id) =>
+  sb.from('sub_performance').select('*, profiles(full_name, email, phone)').eq('tenant_id', tenant_id).order('score', { ascending: false }).then(r => r.data || []);
+
+export const sbLoadJobOutcomes = (tenant_id) =>
+  sb.from('job_outcomes').select('*').eq('tenant_id', tenant_id).order('completed_at', { ascending: false }).then(r => r.data || []);
+
+export const sbLoadBidAnalytics = (tenant_id) =>
+  sb.from('bid_analytics').select('*').eq('tenant_id', tenant_id).order('bid_sent_at', { ascending: false }).then(r => r.data || []);
+
+export const sbLoadPricingApprovals = (tenant_id) =>
+  sb.from('sub_pricing_changes').select('*, profiles(full_name)').eq('tenant_id', tenant_id).eq('status', 'pending_owner').order('created_at', { ascending: false }).then(r => r.data || []);
+
+export const sbLoadOwnerEscalations = (tenant_id) =>
+  sb.from('owner_escalations').select('*, jobs(address)').eq('tenant_id', tenant_id).eq('status', 'pending').order('created_at', { ascending: false }).then(r => r.data || []);

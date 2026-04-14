@@ -368,6 +368,37 @@ Deno.serve(async (req) => {
         }
       }
 
+      // When all trades are complete, write a summary note to job_notes
+      if (all_trades_complete && session.job_id) {
+        try {
+          // Load all measurements for this session
+          const { data: allMeasurements } = await sb
+            .from("consultation_measurements")
+            .select("trade, fields")
+            .eq("session_id", session_id);
+
+          if (allMeasurements?.length) {
+            const measureLines = allMeasurements.map((m: any) => {
+              const fieldLines = Object.entries(m.fields || {})
+                .map(([k, v]) => `    ${k}: ${v}`)
+                .join("\n");
+              return `${m.trade.toUpperCase()}\n${fieldLines}`;
+            }).join("\n\n");
+
+            const noteContent = `📐 Field Measure Complete — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}\n\nTrades measured: ${allMeasurements.map((m: any) => m.trade).join(", ")}\n\n${measureLines}`;
+
+            await sb.from("job_notes").insert({
+              job_id: session.job_id,
+              tenant_id: session.tenant_id,
+              content: noteContent,
+              note_type: "milestone",
+            });
+          }
+        } catch {
+          // Don't block the response if note write fails
+        }
+      }
+
       return new Response(
         JSON.stringify({
           ok: true,

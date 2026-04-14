@@ -21,6 +21,7 @@ import SubDir from './components/sub/SubDir';
 import NotifPanel from './components/shared/NotifPanel';
 import SettingsModal from './components/modals/SettingsModal';
 import AiKnowledgeScr from './components/ai/AiKnowledgeScr';
+import OwnerPortal from './components/owner/OwnerPortal';
 import AiHomeScr from './components/ai/AiHomeScr';
 import PublicProfile from './components/public/PublicProfile';
 import ReviewPage from './components/public/ReviewPage';
@@ -140,6 +141,7 @@ export default function App() {
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc', sec: 'Settings' }] : []),
+    ...(profile?.role === 'owner' ? [{ id: 'owner-portal', lb: 'Owner Portal', ic: 'box', sec: 'Settings' }] : []),
   ];
 
   return (
@@ -231,6 +233,7 @@ export default function App() {
             {pg === 'field-agent' && isStaff && <AiFieldAgent profile={profile} currentJob={jobs.find(j => j.id === pendingJobId) || null} />}
             {pg === 'measure' && isStaff && <MeasureScr jobs={jobs} onBack={() => setPg('dashboard')} />}
             {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}
+            {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ marginBottom: 16 }}>
@@ -268,7 +271,7 @@ export default function App() {
 
       {showNotif && <NotifPanel notifs={notifs} onClose={() => setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif} />}
       {showSettings && <SettingsModal profile={profile} setProfile={setProfile} onClose={() => setShowSettings(false)} />}
-      {isStaff && <MasterAgent profile={profile} />}
+      {profile?.role === 'owner' && <MasterAgent profile={profile} />}
     </>
   );
 }

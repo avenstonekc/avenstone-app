@@ -1,5 +1,6 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+// v2 — real tool use (Option B)
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +17,86 @@ function logError(payload: Record<string, unknown>) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") ?? ""}` },
     body: JSON.stringify(payload),
   }).catch(() => {});
+}
+
+const TOOLS = [
+  {
+    name: "add_note",
+    description: "Add a note to a specific job. Use when the user wants to log something about a job from the home screen.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id: { type: "string", description: "The job ID to attach the note to" },
+        content: { type: "string", description: "The note content" },
+        note_type: { type: "string", enum: ["general", "client", "issue", "milestone"], description: "Category of note" },
+      },
+      required: ["job_id", "content"],
+    },
+  },
+  {
+    name: "notify_user",
+    description: "Send a notification to a specific user or all team members. Use for urgent alerts, reminders, or escalations.",
+    input_schema: {
+      type: "object",
+      properties: {
+        target: { type: "string", enum: ["all_owners", "all_team"], description: "Who to notify" },
+        title: { type: "string", description: "Short notification title" },
+        body: { type: "string", description: "Full notification message" },
+        job_id: { type: "string", description: "Related job ID (optional)" },
+      },
+      required: ["target", "title", "body"],
+    },
+  },
+];
+
+async function executeTool(
+  name: string,
+  input: Record<string, unknown>,
+  ctx: { tenant_id: string; user_id: string; sb: ReturnType<typeof createClient> }
+): Promise<string> {
+  const { tenant_id, user_id, sb } = ctx;
+
+  try {
+    if (name === "add_note") {
+      const { error } = await sb.from("job_notes").insert({
+        job_id: input.job_id,
+        tenant_id,
+        content: input.content,
+        note_type: input.note_type || "general",
+        created_by: user_id,
+      });
+      if (error) return `Error adding note: ${error.message}`;
+      return `Note added to job.`;
+    }
+
+    if (name === "notify_user") {
+      let userIds: string[] = [];
+      if (input.target === "all_owners") {
+        const { data } = await sb.from("profiles").select("id").eq("tenant_id", tenant_id).eq("role", "owner");
+        userIds = (data || []).map((u: any) => u.id);
+      } else {
+        const { data } = await sb.from("profiles").select("id").eq("tenant_id", tenant_id).in("role", ["owner", "project_manager", "sales_rep"]);
+        userIds = (data || []).map((u: any) => u.id);
+      }
+      if (!userIds.length) return "No users to notify.";
+      await sb.from("notifications").insert(
+        userIds.map((id) => ({
+          tenant_id,
+          user_id: id,
+          job_id: input.job_id || null,
+          type: "ai_home_alert",
+          title: input.title,
+          body: input.body,
+          read: false,
+        }))
+      );
+      return `Notification sent to ${userIds.length} user(s).`;
+    }
+
+    return `Unknown tool: ${name}`;
+  } catch (e) {
+    return `Tool error: ${String(e)}`;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -46,7 +127,6 @@ Deno.serve(async (req) => {
     const { data: activeJobs } = await jobQuery.limit(20);
     const jobIds = (activeJobs || []).map((j: any) => j.id);
 
-    // Load cross-job intelligence in parallel
     const [
       { data: overduePhases },
       { data: unpaidPayments },
@@ -54,6 +134,7 @@ Deno.serve(async (req) => {
       { data: recentNotifs },
       { data: materialAlerts },
       { data: knowledge },
+      { data: subPerfRaw },
     ] = await Promise.all([
       jobIds.length ? sb.from("schedule_phases")
         .select("job_id, name, end_date, status")
@@ -93,6 +174,11 @@ Deno.serve(async (req) => {
         .eq("tenant_id", tenant_id)
         .eq("active", true)
         .limit(20),
+
+      sb.from("sub_performance")
+        .select("sub_id, trade, score, jobs_completed, phases_late, cos_caused")
+        .eq("tenant_id", tenant_id)
+        .lt("score", 70),
     ]);
 
     const jobMap: Record<string, string> = {};
@@ -107,11 +193,11 @@ Deno.serve(async (req) => {
     const roleLabel = ({ owner: "Owner", project_manager: "Project Manager", sales_rep: "Sales Rep" } as Record<string, string>)[role] || role;
 
     const jobsSummary = (activeJobs || []).map((j: any) =>
-      `• ${j.address} (${j.client_name || "no client"}) — ${j.status} | $${(j.contract_value || 0).toLocaleString()} | Target: ${j.target_completion || "TBD"}`
+      `• [ID: ${j.id}] ${j.address} (${j.client_name || "no client"}) — ${j.status} | $${(j.contract_value || 0).toLocaleString()} | Target: ${j.target_completion || "TBD"}`
     ).join("\n") || "No active jobs.";
 
     const overdueStr = (overduePhases || []).map((p: any) =>
-      `• ${jobMap[p.job_id] || "unknown"}: "${p.name}" was due ${p.end_date} — still ${p.status}`
+      `• ${jobMap[p.job_id] || "unknown"} [${p.job_id}]: "${p.name}" was due ${p.end_date} — still ${p.status}`
     ).join("\n") || "None.";
 
     const paymentsStr = (unpaidPayments || []).map((p: any) =>
@@ -131,6 +217,19 @@ Deno.serve(async (req) => {
 
     const notifsStr = (recentNotifs || []).map((n: any) => `• ${n.title}: ${n.body}`).join("\n") || "No unread alerts.";
 
+    // Load sub names for underperformers
+    let subPerfAlertsBlock = "";
+    if (subPerfRaw && subPerfRaw.length > 0) {
+      const subIds = subPerfRaw.map((p: any) => p.sub_id);
+      const { data: subProfiles } = await sb.from("profiles").select("id, full_name").in("id", subIds);
+      const subNameMap: Record<string, string> = {};
+      for (const p of (subProfiles || [])) subNameMap[p.id] = p.full_name;
+      const bottom3 = subPerfRaw.slice(0, 3);
+      subPerfAlertsBlock = "\n\nSUB PERFORMANCE ALERTS:\n" + bottom3.map((p: any) =>
+        `• ${subNameMap[p.sub_id] || "Unknown"} — ${p.trade || "N/A"} — score ${p.score}/100, ${p.phases_late} late phases in last ${p.jobs_completed} jobs`
+      ).join("\n");
+    }
+
     const knowledgeBlock = (knowledge || []).length > 0
       ? "\n\nCOMPANY KNOWLEDGE:\n" + (knowledge || []).map((k: any) => `[${k.category.toUpperCase()}] ${k.content}`).join("\n")
       : "";
@@ -140,14 +239,12 @@ Deno.serve(async (req) => {
 User: ${roleLabel}
 Today: ${today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
 
-RULES:
-- You ADVISE. You do NOT take actions. "You should call..." not "I'll call..."
-- Opening brief: lead with the single most urgent issue, then top 2-3 action items. End with one focusing question.
-- Be sharp and direct — this person is running a construction company, not reading a report.
-- Reference jobs by address. Flag financial risks immediately.
-- For PMs: proactively flag material order deadlines, phase dependencies, sub confirmations needed.
-- For Sales Reps: flag follow-up timing, proposal status, next steps to close.
-- Never mention Claude or Anthropic.${knowledgeBlock}
+YOU CAN TAKE REAL ACTIONS using your tools: add_note (log something to a specific job), notify_user (send an alert to team members). Job IDs are shown in brackets in the job list below. Use them when calling tools.
+
+Opening brief: lead with the single most urgent issue, then top 2-3 action items. End with one focusing question.
+Be sharp and direct — this person is running a construction company, not reading a report.
+Reference jobs by address. Flag financial risks immediately.
+Never mention Claude or Anthropic.${knowledgeBlock}${subPerfAlertsBlock}
 
 ACTIVE JOBS (${(activeJobs || []).length} in flight):
 ${jobsSummary}
@@ -169,43 +266,72 @@ ${notifsStr}`;
 
     const history = (conversation_history || []).slice(-20);
     const isBrief = !message || message.toLowerCase().includes("brief");
-    const msgs = isBrief
+    let messages: any[] = isBrief
       ? [{ role: "user", content: message || "Brief me on everything I need to handle today." }]
       : [...history, { role: "user", content: message }];
 
-    const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: msgs,
-      }),
-    });
+    const toolCtx = { tenant_id, user_id, sb };
+    const actions_taken: Array<{ tool: string; result: string }> = [];
+    let finalResponse = "";
 
-    const aiData = await aiRes.json();
-
-    if (!aiRes.ok || aiData.error) {
-      const errMsg = aiData.error?.message ?? `Anthropic API ${aiRes.status}`;
-      logError({ function_name: "ai-home-companion", error_type: "anthropic_api_error", error_message: errMsg, user_id, tenant_id });
-      return new Response(JSON.stringify({ error: errMsg }), {
-        status: 502, headers: { ...CORS, "Content-Type": "application/json" },
+    // Agentic loop
+    for (let i = 0; i < 5; i++) {
+      const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_KEY,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1024,
+          system: systemPrompt,
+          tools: TOOLS,
+          messages,
+        }),
       });
+
+      const aiData = await aiRes.json();
+
+      if (!aiRes.ok || aiData.error) {
+        const errMsg = aiData.error?.message ?? `Anthropic API ${aiRes.status}`;
+        logError({ function_name: "ai-home-companion", error_type: "anthropic_api_error", error_message: errMsg, user_id, tenant_id });
+        return new Response(JSON.stringify({ error: errMsg }), {
+          status: 502, headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+
+      messages.push({ role: "assistant", content: aiData.content });
+
+      if (aiData.stop_reason === "end_turn") {
+        finalResponse = aiData.content?.find((b: any) => b.type === "text")?.text ?? "";
+        break;
+      }
+
+      if (aiData.stop_reason === "tool_use") {
+        const toolUses = aiData.content.filter((b: any) => b.type === "tool_use");
+        const toolResults: any[] = [];
+        for (const tu of toolUses) {
+          const result = await executeTool(tu.name, tu.input, toolCtx);
+          actions_taken.push({ tool: tu.name, result });
+          toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
+        }
+        messages.push({ role: "user", content: toolResults });
+      } else {
+        finalResponse = aiData.content?.find((b: any) => b.type === "text")?.text ?? "";
+        break;
+      }
     }
 
-    const response = aiData.content?.[0]?.text ?? "I'm having trouble right now. Try again in a moment.";
+    if (!finalResponse) finalResponse = "Done — actions taken.";
 
     const job_references = (activeJobs || [])
-      .filter((j: any) => response.includes(j.address))
+      .filter((j: any) => finalResponse.includes(j.address))
       .map((j: any) => ({ id: j.id, address: j.address, status: j.status }));
 
     return new Response(
-      JSON.stringify({ response, job_references }),
+      JSON.stringify({ response: finalResponse, job_references, actions_taken }),
       { headers: { ...CORS, "Content-Type": "application/json" } }
     );
 
