@@ -41,14 +41,66 @@ When Kalin says "read test.md" or "let's test X," drop into this flow. No clarif
 8. Report to Kalin with a short summary: what broke, what was wrong, what changed, where the log entry lives. No dumps of screen content.
 9. Resume the test where you left off, or end the session if Kalin says done.
 
+## Git rhythm during a test
+
+This is the commit / push / merge rhythm for test sessions. The three steps are completely separate and do different things — don't confuse them.
+
+| Step | What it does | Who sees it | When |
+|---|---|---|---|
+| **Commit** | Saves a snapshot locally | Nobody yet | After every meaningful fix |
+| **Push** | Uploads commits to GitHub (`origin/claude/<worktree-branch>`) | The repo, as a backup | Right after every commit |
+| **Merge to main** | Ships changes to the live app via Vercel auto-deploy | **Everyone using the live app** | Only when Kalin says "ship it" at the end |
+
+**During the test (happens constantly, Kalin never has to ask):**
+1. Fix a bug → commit immediately with a real message (not random letters — capture what changed and why)
+2. Push to the worktree branch immediately after the commit
+3. Keep testing
+4. Each commit = one save point. If a later fix breaks something, we revert just that one, not the whole session.
+5. Failed attempts DON'T get committed — only the version that actually works.
+
+**At the end of the session (happens once, only when Kalin says "ship it"):**
+1. Merge the worktree branch into main
+2. Vercel auto-deploys the live app in ~60–90 seconds
+3. Done
+
+**Why push during the test is free:** we're driving the local dev server (`preview_start` → `localhost:5173`). The local server hot-reloads as Claude edits files. Pushes to the worktree branch DO NOT touch production. The live app stays frozen on whatever's on main until the final merge. So pushing mid-test disrupts nothing and protects everything.
+
+**Never push directly to main mid-test.** Main is only touched at the final "ship it" moment. That's the one and only trigger for a live deploy.
+
+**Commit message rules:**
+- Short title under 70 chars that describes the change
+- Optional body explaining WHY if it's not obvious from the title
+- Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>`
+- Use HEREDOC format per the Bash tool guidance
+
+## Playwright and automated tests during a session
+
+**Default: DON'T run Playwright during a test session.** Here's why:
+
+1. **Cost.** The Playwright suites hit live Anthropic edge functions (ai-estimator, ai-intake, etc.). Full `portals-e2e.spec.js` is ~25 min and many real AI calls. Full `e2e-bathroom-remodel.spec.js` generates a real estimate. Rough cost: $2–$5 per full suite run.
+2. **Time.** 25–40 minutes of dead time where Kalin learns nothing visually.
+3. **Value mismatch.** Playwright catches REGRESSION (stuff that used to work and broke). Visual testing catches EXPLORATION (stuff that's broken right now). A test session is exploration, not regression.
+4. **Would have missed the bugs we actually caught.** The proposal parser bug Kalin found earlier? Playwright wouldn't have caught it — the regex "matched" just fine in automation. Visual testing caught it because the user-facing symptom was visible.
+
+**When to run Playwright:**
+
+| Moment | Which suite | Why |
+|---|---|---|
+| During a test session | **None** (default) | Visual testing is the right tool |
+| Before merging worktree branch to main | `avenstone.spec.js` (smoke, ~2 min) | Cheap, fast, catches gross breakage before live deploy |
+| Before a major release or risky merge | `portals-e2e.spec.js` or `e2e-bathroom-remodel.spec.js` | Full regression coverage |
+| Nightly via GitHub Actions (future) | Full suite | Catches regressions that sneak in between manual test sessions |
+
+**If Kalin asks to "run the tests" during a session without specifying which, run the smoke suite only (`avenstone.spec.js` — 2 min, minimal AI cost). It's the 80% answer for 2% of the cost.**
+
 ## Never do during a test
 
-- **Don't commit.** Kalin commits manually, or explicitly asks. Bug fixes sit in the worktree until then.
 - **Don't create new files** unless the task requires it. Prefer editing existing files.
-- **Don't run the Playwright suite** unless Kalin asks. Playwright is for regression, not exploratory testing.
+- **Don't run the full Playwright suite** unless Kalin explicitly asks for regression coverage. The smoke suite is the default if any Playwright is asked for.
 - **Don't send emails, fire notifications, or create real payment links.** All three are in the explicit-permission list. If a test flow reaches one of those actions, stop and confirm before clicking.
 - **Don't use `kalin@avenstonekc.com` as any test input.** It will set his role to `client` and break everything.
 - **Don't dump long API responses, full estimates, long AI chat text, or copies of what's on screen into the chat.** Summarize.
+- **Don't push directly to main mid-test.** Main is only touched at the final "ship it" moment.
 
 ## File references
 
