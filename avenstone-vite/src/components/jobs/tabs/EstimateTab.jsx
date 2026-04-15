@@ -144,18 +144,38 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
     setEstSendingClient(false); setTimeout(() => setEstSaveMsg(''), 4000);
   };
 
+  const extractProposalJSON = async (attempt = 1) => {
+    const extractMsgs = [...estMessages, { role: 'user', content: 'EXTRACT_JSON_FOR_PROPOSAL' }];
+    const res = await fetch(AI_ESTIMATOR_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` }, body: JSON.stringify({ messages: extractMsgs }) });
+    if (!res.ok) throw new Error(`Estimator returned HTTP ${res.status}`);
+    const data = await res.json();
+    const raw = (data.content || '').trim();
+    if (!raw) throw new Error('Estimator returned empty response');
+
+    let jsonText = raw;
+    const fence = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (fence) jsonText = fence[1];
+    const brace = jsonText.match(/\{[\s\S]*\}/);
+    if (!brace) {
+      console.error('[openProposal] no JSON braces. raw head:', raw.slice(0, 300));
+      if (attempt < 2) return extractProposalJSON(attempt + 1);
+      throw new Error('No JSON object in estimator response');
+    }
+    try {
+      return JSON.parse(brace[0]);
+    } catch (parseErr) {
+      console.error('[openProposal] JSON.parse failed:', parseErr.message, 'raw tail:', raw.slice(-300));
+      if (attempt < 2) return extractProposalJSON(attempt + 1);
+      throw new Error(`Invalid JSON from estimator: ${parseErr.message}`);
+    }
+  };
+
   const openProposal = async () => {
     const lastAI = estMessages.filter(m => m.role === 'assistant').pop();
     if (!lastAI) return;
     setPropLoading(true); setPropErr(''); setShowProposal(true); setPropLineItems([]);
     try {
-      const extractMsgs = [...estMessages, { role: 'user', content: 'EXTRACT_JSON_FOR_PROPOSAL' }];
-      const res = await fetch(AI_ESTIMATOR_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` }, body: JSON.stringify({ messages: extractMsgs }) });
-      const data = await res.json();
-      const raw = data.content || '';
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error('Could not parse proposal data');
-      const parsed = JSON.parse(match[0]);
+      const parsed = await extractProposalJSON();
       setPropLineItems(parsed.line_items || []);
       const sub = (parsed.line_items || []).reduce((a, l) => a + Number(l.amount || 0), 0);
       const dep = Math.round(sub * 0.15);

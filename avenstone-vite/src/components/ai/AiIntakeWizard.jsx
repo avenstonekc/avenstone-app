@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { sb, AV_TENANT, AV_USER_ID, sbNotify, ANON_KEY } from '../../lib/supabase';
+import LidarScanner from './LidarScanner';
 
 const AI_INTAKE_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-intake';
 
@@ -63,6 +64,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated }) {
   const [loading, setLoading] = useState(false);
   const [readyForMeasurements, setReadyForMeasurements] = useState(false);
   const [rooms, setRooms] = useState([{ name: '', length: '', width: '', height: '' }]);
+  const [inputMode, setInputMode] = useState('lidar');
   const [extracted, setExtracted] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [fields, setFields] = useState({});
@@ -706,6 +708,39 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated }) {
               <p style={{ fontSize: 14, color: '#5a4e38', marginTop: 0, lineHeight: 1.6 }}>
                 Give us a rough idea of the spaces involved. Exact measurements happen on-site.
               </p>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, background: '#ffffff88', padding: 4, borderRadius: 10, border: '1.5px solid #E8E4DC' }}>
+                <button
+                  onClick={() => setInputMode('lidar')}
+                  style={{
+                    flex: 1, padding: '9px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                    background: inputMode === 'lidar' ? '#0A1F44' : 'transparent',
+                    color: inputMode === 'lidar' ? '#fff' : '#5a4e38',
+                    fontWeight: 600, fontSize: 13, fontFamily: 'inherit',
+                  }}
+                >
+                  Scan Rooms (LiDAR)
+                </button>
+                <button
+                  onClick={() => setInputMode('manual')}
+                  style={{
+                    flex: 1, padding: '9px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                    background: inputMode === 'manual' ? '#0A1F44' : 'transparent',
+                    color: inputMode === 'manual' ? '#fff' : '#5a4e38',
+                    fontWeight: 600, fontSize: 13, fontFamily: 'inherit',
+                  }}
+                >
+                  Enter Manually
+                </button>
+              </div>
+              {inputMode === 'lidar' && (
+                <LidarScanner
+                  rooms={rooms.filter((r) => r.name)}
+                  onRoomsChange={(next) => setRooms(next.length ? next : [{ name: '', length: '', width: '', height: '' }])}
+                  onDone={() => setStep(3)}
+                />
+              )}
+              {inputMode === 'manual' && (
+              <>
               <div className="av-section-label">Rooms / Areas</div>
               {rooms.map((room, idx) => {
                 const sqft = calcSqft(room);
@@ -740,6 +775,8 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated }) {
               })}
               <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={addRoom}>+ Add Area</button>
               {totalSqft > 0 && <div className="av-total-sqft">Total: {totalSqft.toLocaleString()} sq ft</div>}
+              </>
+              )}
             </div>
             <div className="av-step-footer">
               <button className="btn btn-gold" style={{ width: '100%' }} onClick={() => setStep(3)}>Continue to Review →</button>

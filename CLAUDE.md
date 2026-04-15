@@ -44,6 +44,9 @@ Haiku → Sonnet → Opus. Default to Haiku for anything automatic or high-frequ
 
 ## Working Preferences (READ FIRST — follow every session)
 
+- **Product vision: [docs/vision.md](docs/vision.md)** — the 12–24 month trajectory (PWA per tenant → AI onboarding chat → native per-tenant App Store pipeline → AI avatar demo). Read it when a decision needs long-term context. Don't relitigate its principles in-session.
+- **Testing workflow: [docs/test.md](docs/test.md)** — how Kalin tests (visual, narrated, bugs halt the test for discussion). Follow it exactly when he says "read test.md" or starts a test.
+- **Bug history lives in [docs/bug-log.md](docs/bug-log.md)** — every bug hit during testing + the fix. See that file's "when to add an entry" section for what qualifies. Keeps CLAUDE.md lean and gives future sessions a searchable record.
 - **Code only by default** — no explanations, no commentary unless explicitly asked
 - **Never ask clarifying questions about implementation** — make a reasonable decision and go
 - **Ask only when the decision affects real users or is irreversible** — e.g. sending emails, firing notifications, deleting data. One line check saves a rework.
