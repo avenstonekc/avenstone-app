@@ -83,23 +83,34 @@ Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
 ```
 avenstone-vite/src/
 ├── components/
-│   ├── ai/           — AiKnowledgeScr, AiSetupWizard, AiIntakeWizard
-│   ├── auth/         — LoginScr, SetPasswordScr
+│   ├── ai/           — AiKnowledgeScr, AiSetupWizard, AiIntakeWizard, AiFieldAgent,
+│   │                   AiHomeScr, LidarScanner, MaterialSelectionScr
+│   ├── auth/         — LoginScr, SetPasswordScr, SignaturePad
 │   ├── client/       — ClientPortal
 │   ├── common/       — UserMgmt, ContactsScr, SequencesScr, TkOf, Pipeline, StatusPage
 │   ├── dashboard/    — DashScr, CalScr, Reports
 │   ├── forms/        — FormScr
-│   ├── jobs/         — JobsScr, JobDet + tabs/
-│   ├── modals/       — SettingsModal, ContractModal, etc.
-│   ├── shared/       — AiCompanionChat, NotifPanel, StarRating, PhotoLightbox, PushEnableButton
-│   └── sub/          — SubPortal, SubDir, SubJobView
+│   ├── jobs/         — JobsScr, JobDet, MeasureScr + tabs/
+│   ├── leads/        — LeadsScr
+│   ├── modals/       — SettingsModal, ContractModal, ClientSignContractModal,
+│   │                   CompletionSignoffModal
+│   ├── owner/        — OwnerPortal
+│   ├── public/       — CompletionPage, PublicProfile, ReviewPage
+│   ├── shared/       — AiCompanionChat, MasterAgent, NotifPanel, StarRating,
+│   │                   PhotoLightbox, PushEnableButton
+│   └── sub/          — SubPortal, SubDir, SubJobView, SubOnboardingModal,
+│                       SubOnboardingWizard, SubRateModal
 ├── lib/
 │   ├── supabase.js   — Supabase client, ALL edge function URLs, ALL sb* helpers
 │   ├── utils.jsx     — Icons (Ic), formatters (f$, fD, fDT), isMob(), status helpers
 │   ├── utils.js      — localStorage helpers (ls, ll)
 │   ├── formData.js   — Intake & bid form structure
 │   ├── pdf.js        — PDF generation
-│   └── ai.js         — callEstimator, extractProposalData
+│   ├── ai.js         — callEstimator, extractProposalData
+│   └── lidar.js      — Capacitor LiDAR bridge (simulation mode on web)
+├── styles/
+│   ├── global.css    — Global overrides
+│   └── tokens.css    — CSS design tokens
 ├── App.jsx           — Main layout, routing, session, NAV array
 ├── main.jsx          — Entry point
 └── index.css         — Global styles, utility classes
@@ -136,20 +147,51 @@ avenstone-vite/src/
 ### Edge Functions
 All URLs exported from `src/lib/supabase.js`:
 
-| Export | Function | Purpose |
-|--------|----------|---------|
-| `AI_COMPANION_URL` | `ai-companion` | Per-person per-job AI with full job context + memory |
-| `AI_INTAKE_URL` | `ai-intake` | 3-step project intake wizard — chat → measurements → submit lead |
-| `AI_PM_NIGHTLY_URL` | `ai-pm-nightly` | Daily job analysis — 6 rule checks, targeted notifications |
-| `PROCESS_TRANSCRIPT_URL` | `process-transcript` | AI consultation — ambient extraction + measure mode |
-| `AI_ERROR_LOGGER_URL` | `ai-error-logger` | Silent black box error recorder |
-| `AI_ESTIMATOR_URL` | `ai-estimator` | Estimate chat |
-| `CONTRACT_EMAIL_URL` | `send-contract-email` | Contract email with PDF |
-| `INVITE_URL` | `send-invite` | Staff/sub invitation |
-| `CLIENT_LINK_URL` | `send-client-link` | Client magic link |
-| `BID_INVITE_URL` | `send-bid-invite` | Sub bid invitation |
-| `PAYMENT_LINK_URL` | `create-payment-link` | Stripe payment link |
-| `NOTIFY_REALTOR_URL` | `notify-realtor` | Realtor referral notification |
+**AI functions:**
+| Function | Purpose |
+|----------|---------|
+| `ai-companion` | Per-person per-job AI with full job context + memory |
+| `ai-intake` | 3-step project intake wizard — chat → measurements → submit lead |
+| `ai-pm-nightly` | Daily job analysis — 6 rule checks, targeted notifications |
+| `ai-field-agent` | Field AI agent |
+| `ai-home-companion` | Home screen AI companion |
+| `ai-master-agent` | Master orchestration agent |
+| `ai-project-manager` | Project manager AI |
+| `ai-estimator` | Estimate chat |
+| `ai-generate-sequence` | AI-generated contact sequences |
+| `ai-sub-onboard` | AI sub onboarding flow |
+| `ai-sub-pricing` | AI sub pricing analysis |
+| `ai-error-logger` | Silent black box error recorder |
+| `process-transcript` | AI consultation — ambient extraction + measure mode |
+| `measure-guide` | Guided measurement assistant |
+| `generate-estimate-from-session` | Estimate generation from consultation session |
+
+**Email / SMS / Push:**
+| Function | Purpose |
+|----------|---------|
+| `send-contract-email` | Contract email with PDF |
+| `send-invite` | Staff/sub invitation |
+| `send-client-link` | Client magic link |
+| `send-bid-invite` | Sub bid invitation |
+| `send-estimate-email` | Estimate email |
+| `send-contact-sms` | SMS to contact |
+| `notify-email` | General email notification |
+| `notify-sms` | General SMS notification |
+| `notify-realtor` | Realtor referral notification |
+| `send-push` | Push notification |
+| `missed-call-textback` | Auto text back on missed call |
+
+**Integrations / Payments / Data:**
+| Function | Purpose |
+|----------|---------|
+| `create-payment-link` | Stripe payment link |
+| `stripe-webhook` | Stripe event handler |
+| `ghl-webhook` | GHL lead handoff receiver |
+| `twilio-inbound` | Inbound Twilio SMS handler |
+| `address-autocomplete` | Address search autocomplete |
+| `get-contractor-profile` | Public contractor profile data |
+| `get-job-status` | Public job status for client |
+| `sequence-runner` | Contact sequence execution |
 
 ### Edge Function Deploy
 **Functions auto-deploy via GitHub Actions on every push to `supabase/functions/**`.** Workflow uses the multipart `POST /v1/projects/{ref}/functions/deploy` Management API endpoint and reports per-function status.
@@ -277,6 +319,10 @@ COMPANY LEARNS OVER TIME
 | `AiIntakeWizard` | `components/ai/AiIntakeWizard.jsx` | 3-step intake: chat → measurements → submit. Client portal + jobs screen. |
 | `AiKnowledgeScr` | `components/ai/AiKnowledgeScr.jsx` | CRUD for ai_knowledge entries. Owner only. |
 | `AiSetupWizard` | `components/ai/AiSetupWizard.jsx` | 7-question onboarding wizard. Fires on first login if 0 entries. |
+| `AiFieldAgent` | `components/ai/AiFieldAgent.jsx` | Field-facing AI agent. |
+| `AiHomeScr` | `components/ai/AiHomeScr.jsx` | AI home screen / dashboard. |
+| `MaterialSelectionScr` | `components/ai/MaterialSelectionScr.jsx` | Material visualization / selection screen. |
+| `MasterAgent` | `components/shared/MasterAgent.jsx` | Master AI orchestration UI component. |
 
 ---
 
@@ -323,7 +369,7 @@ Also: `on_hold`
 
 ### Information Architecture
 - **Top nav** — daily-use screens only. Job-specific features belong in `JobDet` tabs.
-- **JobDet tabs** — Info, Schedule, Notes, Photos, Documents, Change Orders, Messages, Estimate, Daily Logs, Payments, AI Session
+- **JobDet tabs** — Info, Schedule, Notes/Photos, Documents, Change Orders, Messages, Estimate, Daily Logs, Payments, Consultation, Materials, AI Session
 - **Floating elements** — `AiCompanionChat` floats over job detail. One floating button max per screen.
 - **Modals** — single-action confirmations or short forms only.
 - **Full-screen overlays** — complex multi-step flows (e.g. AiIntakeWizard). Never cram these into a modal.
@@ -413,7 +459,7 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 ## Priority Order (what we're building)
 
-1. **Capacitor native app** — iOS wrapper. Apple Developer account submitted, waiting on approval. MacInCloud ready to build.
+1. **Capacitor native app** — iOS wrapper. Apple Developer account active (approved + charged 2026-04-14). MacInCloud ready to build.
 
 2. **LiDAR room scanning** — React side BUILT, Swift plugin waiting on Apple Developer approval.
    - **Built:** `src/lib/lidar.js` — Capacitor bridge. Runs in simulation mode on web (mock room dimensions with realistic scan animation). TODO comments mark exactly where to wire in the Swift plugin.
@@ -450,3 +496,35 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 - **"wire it up"** — connect two existing pieces (button → Supabase call or edge function)
 - **"test it"** — run both Playwright suites and report results
 - **"deploy it"** — push to main, GitHub Actions handles functions, Vercel handles frontend
+
+---
+
+## Memory system
+
+### Session start (before touching any code)
+1. Read CLAUDE_MEMORY.md fully
+2. Count the number of [LOG] entries in the file
+3. If there are 15+ entries: consolidate automatically —
+   compress all but the most recent 10 into a single "## Consolidated history" block,
+   preserve all decisions/blockers/arch notes, rewrite the file in place,
+   then append a [LOG] entry: "Auto-consolidated — [date]"
+4. Acknowledge what the last session left off on
+5. Ask if the goal today is to continue that or something new
+
+### Automatic logging (no prompt needed — fire immediately when triggered)
+Append a [LOG] entry to CLAUDE_MEMORY.md the moment any of these happen:
+- A feature is built or completed
+- A bug is fixed
+- A file is created or significantly changed
+- An architecture or approach decision is made
+- A to-do item is added or marked done
+- A blocker is identified
+
+Use this format:
+
+[LOG — YYYY-MM-DD]
+- Action: one line describing what happened
+- Files: list any files changed
+- Decision: any choice made and why (omit if none)
+- Open: any blocker or follow-up created (omit if none)
+- Next: what logically comes next (omit if obvious)
