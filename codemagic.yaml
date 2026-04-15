@@ -10,7 +10,7 @@ workflows:
         XCODE_WORKSPACE: "avenstone-vite/ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
         BUNDLE_ID: "com.avenstonekc.app"
-      node: 20.11.0
+      node: 22.12.0
       xcode: latest
       cocoapods: default
     triggering:
