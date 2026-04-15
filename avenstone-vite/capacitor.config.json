@@ -3,9 +3,15 @@
   "appName": "Avenstone",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "iosScheme": "https"
   },
   "ios": {
     "contentInset": "always"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
   }
 }
