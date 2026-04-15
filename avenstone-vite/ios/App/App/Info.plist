@@ -47,6 +47,8 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Avenstone uses the camera and LiDAR sensor to scan rooms and capture accurate measurements for estimates.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
