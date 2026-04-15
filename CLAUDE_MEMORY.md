@@ -9,26 +9,32 @@ _Read this file at the start of every session. Append a new entry at the end of 
 
 ---
 
-## Project snapshot (as of 2026-04-14)
+## Project snapshot (as of 2026-04-15)
 
-**Repo:** github.com/avenstonekc/avenstone-app  
-**Deploy:** Vercel  
-**Stack:** React, Supabase  
-**Supabase URL:** https://cbfftukmhqvvjlrlnltk.supabase.co  
+**Repo:** github.com/avenstonekc/avenstone-app
+**Web deploy:** Vercel (auto on push to main)
+**iOS deploy:** Codemagic → TestFlight (auto on push to main, see CLAUDE.md "iOS Build Pipeline")
+**Stack:** React (Vite), Supabase, Capacitor 8 (iOS)
+**Supabase URL:** https://cbfftukmhqvvjlrlnltk.supabase.co
+**iOS bundle:** com.avenstonekc.avenstone · App Store Connect Apple ID 6762308583 · Codemagic app 69dfe87016fca50ea5f10d7b
 
 **Tenants:**
 - Tenant ID: 00000000-0000-0000-0000-000000000001
 - Kalin auth ID: 8171742a-b586-4f13-be61-744e191a1896
 - Blake auth ID: 066c8241-accb-490b-9f98-b8b7cb24c33b
 
-**Active modules:** Job pipeline, leads screen, AI estimator, AI companion (per-job per-person), AI intake wizard, AI field agent, AI home companion, master agent, AI pm-nightly alerts, AI knowledge base, AI setup wizard, LiDAR scanner (React UI + Capacitor bridge, simulation mode), material selection screen, contract gen + signature pad, client portal, owner portal, sub portal + onboarding wizard + rate modal, ITB system, Gantt/list scheduler, PDF gen, consultation tab (ambient + measure mode), materials tab, public pages (completion, review, profile), contact sequences + sequence runner, address autocomplete, push notifications, Stripe payments, GHL webhook, Twilio inbound SMS, multi-tenant arch
+**Active modules:** Job pipeline, leads screen, AI estimator, AI companion (per-job per-person), AI intake wizard (now a pure LiDAR scanner wrapper — Phase 1), AI field agent, AI home companion, master agent, AI pm-nightly alerts, AI knowledge base, AI setup wizard, LiDAR scanner (React UI + Capacitor bridge + RoomPlanPlugin.swift shipped, real scanning on iPhone 12 Pro+/iPad Pro 2020+), material selection screen, contract gen + signature pad, client portal, owner portal, sub portal + onboarding wizard + rate modal, ITB system, Gantt/list scheduler, PDF gen, consultation tab (ambient + measure mode), materials tab, public pages (completion, review, profile), contact sequences + sequence runner, address autocomplete, push notifications, Stripe payments, GHL webhook, Twilio inbound SMS, multi-tenant arch
 
 **Remaining / incomplete:**
 - Lien waiver generation (pdf-lib preferred over jsPDF)
 - Automated tenant provisioning (single-button onboarding script)
-- LiDAR Swift plugin (RoomPlan API) — React side done, Capacitor iOS shell running, Swift plugin not written yet
+- LiDAR Phase 2: RoomPlan 2.0 multi-room capture with live floor plan + walking indicator
+- LiDAR Phase 3: PDF floor plan export, furniture inventory, material visualization overlay
+- LiDAR → job persistence (Phase 1 holds rooms in local state only)
 - White-label onboarding wizard (replace 7-question AiSetupWizard)
 - AI PM dashboard (owner screen for nightly alert data + job health scores)
+
+**Retired / do not use:** MacInCloud (Codemagic replaced it — VM reset issues made it unusable), the old 3-step AI chat + manual grid AiIntakeWizard flow (replaced by pure LiDAR flow)
 
 **Branding:** Navy #0A1F44 / Gold #C9A84C
 

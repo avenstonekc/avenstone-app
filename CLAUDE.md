@@ -107,7 +107,7 @@ avenstone-vite/src/
 │   ├── formData.js   — Intake & bid form structure
 │   ├── pdf.js        — PDF generation
 │   ├── ai.js         — callEstimator, extractProposalData
-│   └── lidar.js      — Capacitor LiDAR bridge (simulation mode on web)
+│   └── lidar.js      — Capacitor LiDAR bridge (real RoomPlan on native iOS, simulation on web)
 ├── styles/
 │   ├── global.css    — Global overrides
 │   └── tokens.css    — CSS design tokens
@@ -251,18 +251,85 @@ curl -X POST "https://api.supabase.com/v1/projects/cbfftukmhqvvjlrlnltk/database
 
 ---
 
+## iOS Build Pipeline (Codemagic → TestFlight)
+
+**Every push to `main` triggers an iOS build automatically.** Codemagic compiles, signs, uploads to TestFlight, and pushes to your phone. **No Mac required, ever. MacInCloud is retired — do not use it.**
+
+**Canonical IDs:**
+- **App bundle identifier**: `com.avenstonekc.avenstone` (NOT `.app` — that was the original mistake that caused a failed upload; the App Store Connect record is locked to `.avenstone`)
+- **App Store Connect Apple ID** (for the app record): `6762308583`
+- **Codemagic app ID**: `69dfe87016fca50ea5f10d7b`
+- **Codemagic workflow**: `ios-testflight` (defined in `codemagic.yaml`)
+
+**Build pipeline (`codemagic.yaml` in repo root):**
+1. Install web deps → `npm install`
+2. Build web assets → `npm run build`
+3. `npx cap sync ios` → copies `dist/` into the Xcode project
+4. `app-store-connect fetch-signing-files` → auto-fetches/creates Distribution cert + provisioning profile
+5. `keychain add-certificates` → loads cert into build keychain
+6. `xcode-project use-profiles` → wires profile into Xcode build settings
+7. **Set build number**: `NEW_BUILD_NUMBER=$(date +%s)` — Unix epoch timestamp, guaranteed monotonic, never collides. Do NOT switch back to `git rev-list --count HEAD` — Codemagic's shallow clone makes it non-deterministic.
+8. `xcode-project build-ipa --project "App.xcodeproj" --scheme "App"` — project-based build (no workspace, Capacitor SPM has no `.xcworkspace`)
+9. Publish to TestFlight via Codemagic's `app_store_connect` integration using env-var credentials
+
+**Required env vars (stored in Codemagic `app_store_credentials` group):**
+| Var | Purpose |
+|-----|---------|
+| `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect API issuer UUID |
+| `APP_STORE_CONNECT_KEY_IDENTIFIER` | 10-char key ID from App Store Connect |
+| `APP_STORE_CONNECT_PRIVATE_KEY` | Raw `.p8` file contents |
+| `CERTIFICATE_PRIVATE_KEY` | RSA 2048 private key used when creating the Distribution cert |
+
+All four are marked `secure: true`. Never commit any of these values to the repo. If any get rotated, update via Codemagic REST API:
+```bash
+curl -X POST -H "x-auth-token: $CODEMAGIC_PAT" \
+  -H "Content-Type: application/json" \
+  -d '{"key":"NAME","value":"VALUE","secure":true,"group":"app_store_credentials"}' \
+  https://api.codemagic.io/apps/69dfe87016fca50ea5f10d7b/variables
+```
+
+**Codemagic PAT:** create at Settings → Integrations → Codemagic API → Show. Never commit it. The one used during setup gives full account access.
+
+**Trigger a build manually:**
+```bash
+curl -X POST -H "x-auth-token: $CODEMAGIC_PAT" \
+  -H "Content-Type: application/json" \
+  -d '{"appId":"69dfe87016fca50ea5f10d7b","workflowId":"ios-testflight","branch":"main"}' \
+  https://api.codemagic.io/builds
+```
+
+**Typical timeline:** build ~12-18 min → Apple processing ~10-30 min → TestFlight push to phone → tap Update → relaunch.
+
+### iOS gotchas (learned the hard way)
+
+- **Bundle identifier is `com.avenstonekc.avenstone`** — if you ever see `com.avenstonekc.app` in `capacitor.config.json`, `codemagic.yaml`, or `project.pbxproj`, it's wrong and TestFlight upload will fail with "Cannot determine the Apple ID from Bundle ID."
+- **`Info.plist` has `ITSAppUsesNonExemptEncryption = false`** — auto-declares standard-HTTPS-only encryption so every build skips App Store Connect's "Missing Compliance" gate. Don't remove it.
+- **`Info.plist` has camera, mic, photo library usage descriptions** — required for RoomPlan (camera + LiDAR), ambient AI consultation (mic), and job photo attachment (photo library). Don't remove.
+- **Capacitor uses Swift Package Manager**, not CocoaPods. There is no `Podfile`, no `.xcworkspace`. Build commands must use `--project "App.xcodeproj"`, never `--workspace`.
+- **`CapacitorHttp` plugin is enabled in `capacitor.config.json`.** This routes `window.fetch` / `XMLHttpRequest` through native iOS URLSession instead of WKWebView. Without it, Supabase edge function calls silently fail with "Load failed" inside the iOS app even though they work on Vercel. Do NOT disable.
+- **Viewport meta is locked**: `user-scalable=no, maximum-scale=1.0, viewport-fit=cover`. iOS webview was rendering the desktop layout until this was tightened.
+- **The `ios/` folder is committed to the repo.** Don't `.gitignore` it or Codemagic won't be able to build.
+- **Internal TestFlight testers only.** External testers trigger Apple Beta App Review which requires filling out test info. We don't do external testing — `codemagic.yaml` publishing block has NO `beta_groups` key for this reason.
+- **Apple Developer team:** active, approved + charged 2026-04-14. Apple ID enrollment uses the same login as App Store Connect.
+- **Backup manual Mac path:** if Codemagic ever breaks, MacInCloud can still run Xcode for a manual Archive → upload. It's a last resort — the VM resets every session so you'd reinstall Xcode every time.
+
+---
+
 ## The AI System — How It All Connects
 
 This is Avenstone's core competitive advantage. Every piece connects:
 
 ```
 CLIENT / REP GOES ON-SITE
-  └── AI Intake Wizard (ai-intake edge function)
-      ├── 3-step: AI chat → measurements → review + submit
-      ├── Sonnet for conversation, Haiku for structured extraction
-      ├── Uses ai_knowledge for company context
-      ├── Measurement step is LiDAR-ready (slot exists, manual input now)
-      └── On submit → creates jobs record (status: lead) → notifies owner/sales
+  └── AI Intake Wizard (components/ai/AiIntakeWizard.jsx)
+      ├── Phase 1 (current): pure LiDAR scanner wrapper — opens directly to
+      │   LidarScanner, no AI chat, no manual grid, no DB write.
+      │   Add Room → name → Start Scan → Apple RoomPlan UI → Done → result.
+      │   Rooms held in local state only (Path A — no persistence yet).
+      └── Phase 2/3 (later): multi-room RoomPlan 2.0 merge + PDF export +
+          job/lead creation on finish.
+  (The original 3-step "AI chat → measurements → review" flow is retired.
+  ai-intake edge function still exists but is no longer called from the app.)
 
 NEW TENANT ONBOARDS
   └── AiSetupWizard fires (0 knowledge entries detected)
@@ -459,29 +526,29 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 ## Priority Order (what we're building)
 
-1. **Capacitor native app** — iOS wrapper. Apple Developer account active (approved + charged 2026-04-14). MacInCloud ready to build.
+1. **LiDAR Phase 2 — RoomPlan 2.0 multi-room capture** (next big piece). iOS 17+ `RoomCaptureSession` in continuous mode: pick room → scan → walk to next → scan → live floor plan builds up with a walking indicator, stitches into one merged model (Magic Plan UX). Requires Swift plugin upgrade + React UI for session control.
 
-2. **LiDAR room scanning** — React side BUILT, Swift plugin waiting on Apple Developer approval.
-   - **Built:** `src/lib/lidar.js` — Capacitor bridge. Runs in simulation mode on web (mock room dimensions with realistic scan animation). TODO comments mark exactly where to wire in the Swift plugin.
-   - **Built:** `src/components/ai/LidarScanner.jsx` — full scanning UI: room naming, scan progress animation, floor plan SVG preview, total sq ft, remove rooms. Simulation mode banner shown on web.
-   - **Built:** `AiIntakeWizard.jsx` Step 2 — toggle between "Scan Rooms" (LidarScanner) and "Enter Manually" (original grid). Both paths output identical room data to Step 3.
-   - **Still needed (post Apple Developer approval):**
-     - Write Swift Capacitor plugin wrapping RoomPlan API (`RoomPlanPlugin.swift`)
-     - Phase 1: single room scan → real L x W x H (replaces simulation)
-     - Phase 2: multi-room session (RoomPlan 2.0, iOS 17+) → stitched floor plan → exported as image + PDF → attached to job
-     - Phase 3: material visualization (photo + material selection → AI renders preview)
-   - Hardware: iPhone 12 Pro+ / iPad Pro 2020+ only (LiDAR hardware required)
-   - Goal: floor plan accurate enough to estimate without a site visit
+2. **LiDAR Phase 3 — PDF floor plan export + furniture inventory + material visualization**. Turn RoomPlan output into a PDF floor plan attached to a job, list detected furniture, and overlay material previews (paint this wall blue, etc.).
 
-3. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
+3. **LiDAR → job persistence**. Currently Phase 1 holds scanned rooms in local state only (Path A). Wire scan results to `jobs` table as a new lead OR attach to an existing job.
 
-4. **Test AI estimator with live data** — ai_knowledge now seeded with KC pricing. Open a job, ask the AI Companion for a rough estimate, verify it produces real dollar figures.
+4. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
 
-5. **AI PM dashboard** — owner screen surfacing nightly alert data, job health scores, alert history.
+5. **Test AI estimator with live data** — ai_knowledge now seeded with KC pricing. Open a job, ask the AI Companion for a rough estimate, verify it produces real dollar figures.
 
-6. **Sub portal upgrades** — daily log submission, phase confirmation, AI companion for subs.
+6. **AI PM dashboard** — owner screen surfacing nightly alert data, job health scores, alert history.
 
-**Done:** AI intake wizard, client portal progress stepper + realtime, notification bell, ai-pm-nightly smart alerts, GitHub Actions auto-deploy, ai_knowledge seeded with KC mid-tier GC pricing (21 entries — all trades, labor rates, markup, draw schedule, CO policy, estimating guidelines), LiDAR scanner React UI + Capacitor bridge (simulation mode, Swift plugin pending).
+7. **Sub portal upgrades** — daily log submission, phase confirmation, AI companion for subs.
+
+**Done:**
+- Client portal progress stepper + realtime
+- Notification bell
+- ai-pm-nightly smart alerts
+- GitHub Actions auto-deploy (Supabase edge functions)
+- ai_knowledge seeded with KC mid-tier GC pricing (21 entries — all trades, labor rates, markup, draw schedule, CO policy, estimating guidelines)
+- **Capacitor iOS native app shipped to TestFlight** (bundle id `com.avenstonekc.avenstone`, Codemagic build pipeline, zero MacInCloud)
+- **RoomPlanPlugin.swift written + wired through Capacitor** — Phase 1 single-room scan returning real length/width/height/sqft/doors/windows in feet on iPhone 12 Pro+ / iPad Pro 2020+ hardware
+- **AiIntakeWizard rewritten as pure LiDAR scanner** (Phase 1) — no AI chat, no manual grid, just Add Room → Start Scan → Done
 
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 
