@@ -7,12 +7,11 @@ workflows:
       groups:
         - app_store_credentials
       vars:
-        XCODE_WORKSPACE: "avenstone-vite/ios/App/App.xcworkspace"
+        XCODE_PROJECT: "avenstone-vite/ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
         BUNDLE_ID: "com.avenstonekc.app"
       node: 22.12.0
       xcode: latest
-      cocoapods: default
     triggering:
       events:
         - push
@@ -33,10 +32,6 @@ workflows:
         script: |
           cd avenstone-vite
           npx cap sync ios
-      - name: Install CocoaPods dependencies
-        script: |
-          cd avenstone-vite/ios/App
-          pod install
       - name: Fetch signing files
         script: |
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
@@ -48,6 +43,7 @@ workflows:
           keychain add-certificates
       - name: Set up signing
         script: |
+          cd avenstone-vite/ios/App
           xcode-project use-profiles
       - name: Set build number
         script: |
@@ -59,7 +55,7 @@ workflows:
         script: |
           cd avenstone-vite/ios/App
           xcode-project build-ipa \
-            --workspace "App.xcworkspace" \
+            --project "App.xcodeproj" \
             --scheme "App"
     artifacts:
       - avenstone-vite/ios/App/build/ios/ipa/*.ipa
