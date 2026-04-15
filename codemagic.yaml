@@ -9,7 +9,7 @@ workflows:
       vars:
         XCODE_PROJECT: "avenstone-vite/ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
-        BUNDLE_ID: "com.avenstonekc.app"
+        BUNDLE_ID: "com.avenstonekc.avenstone"
       node: 22.12.0
       xcode: latest
     triggering:
