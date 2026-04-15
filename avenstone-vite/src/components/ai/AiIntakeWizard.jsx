@@ -57,7 +57,7 @@ function calcSqft(room) {
 }
 
 export default function AiIntakeWizard({ profile, onClose, onJobCreated }) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(2);
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -130,7 +130,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated }) {
     }
   }
 
-  const showContinueBtn = readyForMeasurements || messages.length >= 7;
+  const showContinueBtn = true;
 
   async function runExtract() {
     setExtracting(true);
