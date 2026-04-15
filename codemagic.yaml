@@ -49,8 +49,9 @@ workflows:
       - name: Set build number
         script: |
           cd avenstone-vite/ios/App
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" || echo "0")
-          NEW_BUILD_NUMBER=$(($LATEST_BUILD_NUMBER + 1))
+          # Monotonic build number based on git commit count — always
+          # higher than the last uploaded build, never collides.
+          NEW_BUILD_NUMBER=$(git rev-list --count HEAD)
           agvtool new-version -all $NEW_BUILD_NUMBER
       - name: Build IPA
         script: |
