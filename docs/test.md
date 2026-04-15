@@ -73,30 +73,10 @@ This is the commit / push / merge rhythm for test sessions. The three steps are 
 - Include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>`
 - Use HEREDOC format per the Bash tool guidance
 
-## Playwright and automated tests during a session
-
-**Default: DON'T run Playwright during a test session.** Here's why:
-
-1. **Cost.** The Playwright suites hit live Anthropic edge functions (ai-estimator, ai-intake, etc.). Full `portals-e2e.spec.js` is ~25 min and many real AI calls. Full `e2e-bathroom-remodel.spec.js` generates a real estimate. Rough cost: $2–$5 per full suite run.
-2. **Time.** 25–40 minutes of dead time where Kalin learns nothing visually.
-3. **Value mismatch.** Playwright catches REGRESSION (stuff that used to work and broke). Visual testing catches EXPLORATION (stuff that's broken right now). A test session is exploration, not regression.
-4. **Would have missed the bugs we actually caught.** The proposal parser bug Kalin found earlier? Playwright wouldn't have caught it — the regex "matched" just fine in automation. Visual testing caught it because the user-facing symptom was visible.
-
-**When to run Playwright:**
-
-| Moment | Which suite | Why |
-|---|---|---|
-| During a test session | **None** (default) | Visual testing is the right tool |
-| Before merging worktree branch to main | `avenstone.spec.js` (smoke, ~2 min) | Cheap, fast, catches gross breakage before live deploy |
-| Before a major release or risky merge | `portals-e2e.spec.js` or `e2e-bathroom-remodel.spec.js` | Full regression coverage |
-| Nightly via GitHub Actions (future) | Full suite | Catches regressions that sneak in between manual test sessions |
-
-**If Kalin asks to "run the tests" during a session without specifying which, run the smoke suite only (`avenstone.spec.js` — 2 min, minimal AI cost). It's the 80% answer for 2% of the cost.**
-
 ## Never do during a test
 
 - **Don't create new files** unless the task requires it. Prefer editing existing files.
-- **Don't run the full Playwright suite** unless Kalin explicitly asks for regression coverage. The smoke suite is the default if any Playwright is asked for.
+- **Don't run Playwright.** Test sessions are visual + exploratory. Playwright is for regression and gets handled outside the session workflow — if Kalin wants automated testing, it's a separate conversation, not part of a test session.
 - **Don't send emails, fire notifications, or create real payment links.** All three are in the explicit-permission list. If a test flow reaches one of those actions, stop and confirm before clicking.
 - **Don't use `kalin@avenstonekc.com` as any test input.** It will set his role to `client` and break everything.
 - **Don't dump long API responses, full estimates, long AI chat text, or copies of what's on screen into the chat.** Summarize.
