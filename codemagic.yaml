@@ -1,0 +1,67 @@
+workflows:
+  ios-testflight:
+    name: iOS TestFlight Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: avenstone_app_store_api
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.avenstonekc.app
+      vars:
+        XCODE_WORKSPACE: "avenstone-vite/ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+        APP_STORE_APPLE_ID: 0000000000
+      node: 20.11.0
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+    scripts:
+      - name: Install web dependencies
+        script: |
+          cd avenstone-vite
+          npm install
+      - name: Build web assets
+        script: |
+          cd avenstone-vite
+          npm run build
+      - name: Sync Capacitor iOS
+        script: |
+          cd avenstone-vite
+          npx cap sync ios
+      - name: Install CocoaPods dependencies
+        script: |
+          cd avenstone-vite/ios/App
+          pod install
+      - name: Set build number
+        script: |
+          cd avenstone-vite/ios/App
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" || echo "0")
+          NEW_BUILD_NUMBER=$(($LATEST_BUILD_NUMBER + 1))
+          agvtool new-version -all $NEW_BUILD_NUMBER
+      - name: Set up code signing settings
+        script: |
+          xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          cd avenstone-vite/ios/App
+          xcode-project build-ipa \
+            --workspace "App.xcworkspace" \
+            --scheme "App"
+    artifacts:
+      - avenstone-vite/ios/App/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - avenstone-vite/ios/App/build/ios/xcarchive/*.xcarchive
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal
