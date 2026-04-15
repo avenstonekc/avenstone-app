@@ -2,16 +2,28 @@
  * lidar.js — Capacitor bridge for RoomPlan LiDAR scanning
  *
  * On web / non-native: returns realistic mock scan data for UI development.
- * On native iOS (post Apple Developer approval + Swift plugin): calls RoomPlanPlugin.
+ * On native iOS: calls the Swift RoomPlanPlugin which wraps Apple's RoomPlan API.
  *
- * Plugin interface contract (what the Swift plugin must implement):
+ * Plugin interface contract (implemented in ios/App/CapApp-SPM/Sources/CapApp-SPM/RoomPlanPlugin.swift):
  *   RoomPlanPlugin.startScan({ roomName: string })
- *     → { name, length, width, height, sqft, doors, windows, polygon }
+ *     → { name, length, width, height, sqft, doors, windows, simulated: false }
  *   RoomPlanPlugin.isSupported()
  *     → { supported: boolean }
  *   RoomPlanPlugin.exportFloorPlan({ rooms })
- *     → { imageBase64: string, pdfBase64: string }
+ *     → { imageBase64: string | null, pdfBase64: string | null }
  */
+
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+const RoomPlanPlugin = registerPlugin('RoomPlanPlugin', {
+  web: () => ({
+    isSupported: async () => ({ supported: false }),
+    startScan: async () => { throw new Error('LiDAR only available on native iOS'); },
+    exportFloorPlan: async () => ({ imageBase64: null, pdfBase64: null }),
+  }),
+});
+
+const isNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
 
 // Mock room data by room name for realistic web simulation
 const MOCK_ROOMS = {
@@ -30,13 +42,11 @@ const MOCK_ROOMS = {
 
 function getMockRoom(name) {
   const key = name.toLowerCase().trim();
-  // Try exact match first, then partial match
   const exact = MOCK_ROOMS[key];
   if (exact) return exact;
   for (const [k, v] of Object.entries(MOCK_ROOMS)) {
     if (key.includes(k) || k.includes(key)) return v;
   }
-  // Default: generic room with slight randomness
   return {
     length: Math.round((10 + Math.random() * 8) * 10) / 10,
     width:  Math.round((9  + Math.random() * 6) * 10) / 10,
@@ -48,35 +58,48 @@ function getMockRoom(name) {
 
 /**
  * Check if the device supports LiDAR scanning.
- * On web: always returns false (simulation mode).
- * On native: queries the Swift plugin.
+ * Native iOS: queries the Swift plugin (true on iPhone 12 Pro+ / iPad Pro 2020+).
+ * Web / non-iOS native: always returns false.
  */
 export async function isLidarSupported() {
-  // RoomPlanPlugin only exists after Capacitor + Swift plugin are built.
-  // Until then this always returns false and the scanner runs in simulation mode.
-  return false;
+  if (!isNative) return false;
+  try {
+    const { supported } = await RoomPlanPlugin.isSupported();
+    return !!supported;
+  } catch (err) {
+    console.warn('[lidar] isSupported failed, falling back to simulation:', err);
+    return false;
+  }
 }
 
 /**
  * Scan a single room.
- * On web: simulates a scan with a delay and returns mock data.
- * On native: launches the RoomPlan scanning UI.
+ * Native iOS with LiDAR: launches RoomPlan scanning UI, returns real dimensions.
+ * Web / simulator / non-LiDAR device: simulates with a delay and returns mock data.
  *
  * @param {string} roomName - Name of the room (e.g. "Master Bedroom")
- * @param {function} onProgress - Optional callback for scan progress (0–100)
- * @returns {Promise<{name, length, width, height, sqft, doors, windows}>}
+ * @param {function} onProgress - Optional callback for scan progress (0–100) — only used in simulation mode
+ * @returns {Promise<{name, length, width, height, sqft, doors, windows, simulated}>}
  */
 export async function scanRoom(roomName, onProgress) {
-  // Web / pre-Capacitor simulation — realistic delay with progress callbacks
-  // TODO: when Swift plugin exists, replace this block with:
-  //   const { RoomPlanPlugin } = await import('./RoomPlanPlugin');
-  //   return await RoomPlanPlugin.startScan({ roomName });
+  if (isNative) {
+    try {
+      const { supported } = await RoomPlanPlugin.isSupported();
+      if (supported) {
+        const result = await RoomPlanPlugin.startScan({ roomName });
+        return { ...result, simulated: false };
+      }
+    } catch (err) {
+      console.warn('[lidar] native scan failed, falling back to simulation:', err);
+    }
+  }
+
+  // Simulation fallback (web, non-LiDAR device, or native scan error)
   const steps = [10, 25, 40, 60, 75, 90, 100];
   for (const pct of steps) {
     await new Promise(r => setTimeout(r, 180 + Math.random() * 120));
     if (onProgress) onProgress(pct);
   }
-
   const mock = getMockRoom(roomName);
   const sqft = Math.round(mock.length * mock.width);
   return {
@@ -92,17 +115,18 @@ export async function scanRoom(roomName, onProgress) {
 }
 
 /**
- * Export the full floor plan as an image.
- * On web: returns null (floor plan is rendered client-side via SVG).
- * On native: returns base64 image + PDF from RoomPlan's merged model.
- *
- * @param {Array} rooms - Array of scanned room objects
- * @returns {Promise<{imageBase64, pdfBase64} | null>}
+ * Export the full floor plan as an image + PDF.
+ * Native iOS (Phase 2): returns base64 image + PDF from RoomPlan's merged model.
+ * Web / Phase 1 native: returns null (floor plan rendered client-side via SVG).
  */
-export async function exportFloorPlan(_rooms) {
-  // Returns null until Swift plugin is built.
-  // TODO: when plugin exists:
-  //   const { RoomPlanPlugin } = await import('./RoomPlanPlugin');
-  //   return await RoomPlanPlugin.exportFloorPlan({ rooms });
-  return null; // Web: floor plan rendered as SVG component
+export async function exportFloorPlan(rooms) {
+  if (isNative) {
+    try {
+      return await RoomPlanPlugin.exportFloorPlan({ rooms });
+    } catch (err) {
+      console.warn('[lidar] exportFloorPlan failed:', err);
+      return null;
+    }
+  }
+  return null;
 }

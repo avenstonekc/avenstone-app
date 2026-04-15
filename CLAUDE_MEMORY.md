@@ -26,8 +26,7 @@ _Read this file at the start of every session. Append a new entry at the end of 
 **Remaining / incomplete:**
 - Lien waiver generation (pdf-lib preferred over jsPDF)
 - Automated tenant provisioning (single-button onboarding script)
-- Capacitor iOS build (Apple Developer approved 2026-04-14, MacInCloud ready)
-- LiDAR Swift plugin (RoomPlan API) — React side done, plugin not written yet
+- LiDAR Swift plugin (RoomPlan API) — React side done, Capacitor iOS shell running, Swift plugin not written yet
 - White-label onboarding wizard (replace 7-question AiSetupWizard)
 - AI PM dashboard (owner screen for nightly alert data + job health scores)
 
@@ -48,3 +47,11 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision: Folder structure, edge functions table, AI component map, JobDet tabs, and active modules list were all significantly out of date — updated to reflect current codebase (35 edge functions, full component list, correct tabs)
 - Decision: Apple Developer status updated from "waiting on approval" to "active — approved 2026-04-14"
 - Next: LiDAR Swift plugin implementation — write RoomPlanPlugin.swift (Capacitor plugin wrapping RoomPlan API), Phase 1: single room scan → real L x W x H replacing simulation mode
+
+[LOG — 2026-04-15]
+- Action: Capacitor iOS shell app successfully running on MacInCloud (iPhone 17 Pro simulator). First native iOS launch of Avenstone.
+- Files: avenstone-vite/capacitor.config.json, avenstone-vite/ios/** (added), avenstone-vite/package.json (+@capacitor/core, cli, ios), scripts/mac-setup.sh
+- Decision: appId = com.avenstonekc.app, appName = Avenstone, webDir = dist
+- Decision: Built one-line Mac bootstrap script (curl | bash) that handles Xcode CLI tools, Homebrew, Node, CocoaPods, clone, npm install, cap sync, cap open — zero copy-paste from Windows
+- Decision: Ignored "Communication with Apple failed" + "no provisioning profiles" warnings — only matter for real device / App Store, not simulator
+- Next: Write RoomPlanPlugin.swift (Capacitor plugin wrapping RoomPlan API). Note: simulator has no LiDAR hardware — plugin will build and compile but actual scanning requires real device (iPhone 12 Pro+ or iPad Pro 2020+). Plan: write plugin, compile to verify, then later build IPA for TestFlight or direct device install for real testing.
