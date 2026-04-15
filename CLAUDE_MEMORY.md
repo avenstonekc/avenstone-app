@@ -51,7 +51,23 @@ _Read this file at the start of every session. Append a new entry at the end of 
 [LOG — 2026-04-15]
 - Action: Capacitor iOS shell app successfully running on MacInCloud (iPhone 17 Pro simulator). First native iOS launch of Avenstone.
 - Files: avenstone-vite/capacitor.config.json, avenstone-vite/ios/** (added), avenstone-vite/package.json (+@capacitor/core, cli, ios), scripts/mac-setup.sh
-- Decision: appId = com.avenstonekc.app, appName = Avenstone, webDir = dist
+- Decision: appId = com.avenstonekc.avenstone (matches App Store Connect app record), appName = Avenstone, webDir = dist
 - Decision: Built one-line Mac bootstrap script (curl | bash) that handles Xcode CLI tools, Homebrew, Node, CocoaPods, clone, npm install, cap sync, cap open — zero copy-paste from Windows
-- Decision: Ignored "Communication with Apple failed" + "no provisioning profiles" warnings — only matter for real device / App Store, not simulator
-- Next: Write RoomPlanPlugin.swift (Capacitor plugin wrapping RoomPlan API). Note: simulator has no LiDAR hardware — plugin will build and compile but actual scanning requires real device (iPhone 12 Pro+ or iPad Pro 2020+). Plan: write plugin, compile to verify, then later build IPA for TestFlight or direct device install for real testing.
+
+[LOG — 2026-04-15]
+- Action: Abandoned MacInCloud entirely — VM resets wiped Xcode and repo every disconnect. Switched to Codemagic free tier for iOS builds.
+- Files: codemagic.yaml
+- Decision: Codemagic wired up with App Store Connect API key, distribution cert auto-generated, Unix epoch timestamp used for build numbers (monotonic, collision-proof), CapacitorHttp plugin enabled to route fetch through native URLSession (fixes "load failed" on Supabase edge functions)
+- Decision: every `git push origin main` triggers a Codemagic build → uploads to TestFlight → phone gets update automatically. Zero MacInCloud ever again.
+
+[LOG — 2026-04-15]
+- Action: Wrote RoomPlanPlugin.swift (Capacitor CAPBridgedPlugin wrapping Apple RoomPlan API), built end-to-end, shipped to TestFlight, first install on real iPhone successful.
+- Files: avenstone-vite/ios/App/CapApp-SPM/Sources/CapApp-SPM/RoomPlanPlugin.swift, avenstone-vite/ios/App/App/Info.plist (camera + photo + mic perms + ITSAppUsesNonExemptEncryption=false), avenstone-vite/src/lib/lidar.js
+- Decision: Plugin uses `#if canImport(RoomPlan)` guards so it compiles on simulator but only activates on real iPhone 12 Pro+/iPad Pro 2020+. Phase 1 = single-room scan returning length/width/height/sqft/doors/windows in feet. Phase 2 = RoomPlan 2.0 multi-room merged capture (not built yet). Phase 3 = PDF floor plan export (not built yet).
+
+[LOG — 2026-04-15]
+- Action: CORRECTION — earlier CLAUDE.md claimed "AiIntakeWizard.jsx Step 2 — toggle between Scan Rooms (LidarScanner) and Enter Manually (original grid)" was built. That was **false**. LidarScanner.jsx existed as a standalone component, but was never imported into AiIntakeWizard. Step 2 only showed a manual grid.
+- Action: Completely rewrote AiIntakeWizard as a pure LiDAR scanning flow. Removed AI chat step, removed manual grid, removed review/submit step, removed Supabase lead creation. New wizard is a thin wrapper that renders LidarScanner fullscreen.
+- Files: avenstone-vite/src/components/ai/AiIntakeWizard.jsx (full rewrite), avenstone-vite/src/components/ai/LidarScanner.jsx (fixed async isLidarSupported bug)
+- Decision: Path A — scanned rooms held in local state only, nothing persisted to DB. Lead creation + save-to-job will return in a later phase alongside RoomPlan 2.0 multi-room capture.
+- Next: Test single-room LiDAR scan on real device via TestFlight. If Phase 1 works, next session = Swift plugin upgrade to RoomPlan 2.0 (live floor plan building + walking indicator, Magic Plan style) and PDF export.

@@ -241,13 +241,19 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone }) {
   const [roomName, setRoomName] = useState('');
   const [scanProgress, setScanProgress] = useState(0);
   const [lastScanned, setLastScanned] = useState(null);
-  const [supported, setSupported] = useState(true);
+  const [supported, setSupported] = useState(false);
   const inputRef = useRef(null);
 
   useKeyframes(PULSE_KEYFRAMES);
 
   useEffect(() => {
-    setSupported(isLidarSupported());
+    let cancelled = false;
+    isLidarSupported().then((s) => {
+      if (!cancelled) setSupported(s);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
