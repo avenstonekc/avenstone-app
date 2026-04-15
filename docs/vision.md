@@ -85,9 +85,11 @@ Once enough contractor tenants are on the platform, homeowners can sign up direc
 2. **Data is scoped by `tenant_id`, not by infrastructure.** One Supabase, one Vercel, one repo. Isolation happens via RLS, not by spinning up new databases.
 3. **Brand customization lives in `tenant_settings`, not in code.** Logo, colors, company name, pricing defaults — all database-driven. Never hardcoded.
 4. **Runbooks in git, data in Supabase.** Anything that describes how the system works → markdown file in `docs/`. Anything that varies per tenant → database row. Never mix the two.
-5. **AI is the default interface, not an add-on.** Onboarding, estimating, consultation, PM alerts — every new feature should ask "how would this work if a voice/chat interface was the primary way to use it?" before adding more buttons.
-6. **Apple is the hardest bottleneck for native distribution.** Build the PWA path first (fast, flexible, forgiving). Native App Store comes after you have paying tenants asking for it.
+5. **AI is the default interface in design.** Onboarding, estimating, consultation, PM alerts — every new feature should ask "how would this work if a voice/chat interface was the primary way to use it?" before adding more buttons. This is a DESIGN principle — see #8 for the PRICING principle.
+6. **Apple is the hardest bottleneck for native distribution.** Native iOS comes first for LiDAR access; per-tenant branded native apps are a premium tier because each one requires its own Apple Developer account and automated build pipeline. The PWA path is a lightweight fallback, not the primary delivery.
 7. **Every future tenant should benefit from every bug we fix today.** That's the entire reason [bug-log.md](bug-log.md) exists. Every documented fix is an insurance policy for the fork.
+8. **AI is an optional LAYER on solid PM software, for pricing.** The underlying project management tool (jobs, clients, photos, contracts, payments, schedules, sub portal) works without AI. AI is premium value added on top. This widens the addressable market to contractors who want better PM software today but aren't ready for AI yet. See [pricing.md](pricing.md) for how this maps to tiers.
+9. **Role-based free seats.** Crew, subs, and clients are always free. Only office users (owner, reps, PMs) count toward paid seat limits. This is the single biggest sales unlock — a 10-person GC can buy Starter for $199 because 7 of those seats are free. See [pricing.md](pricing.md) for the seat model.
 
 ---
 
