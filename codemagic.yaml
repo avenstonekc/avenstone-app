@@ -3,16 +3,13 @@ workflows:
     name: iOS TestFlight Build
     max_build_duration: 60
     instance_type: mac_mini_m2
-    integrations:
-      app_store_connect: avenstone_app_store_api
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.avenstonekc.app
+      groups:
+        - app_store_credentials
       vars:
         XCODE_WORKSPACE: "avenstone-vite/ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
-        APP_STORE_APPLE_ID: 0000000000
+        BUNDLE_ID: "com.avenstonekc.app"
       node: 20.11.0
       xcode: latest
       cocoapods: default
@@ -40,15 +37,24 @@ workflows:
         script: |
           cd avenstone-vite/ios/App
           pod install
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Add certificates to keychain
+        script: |
+          keychain initialize
+          keychain add-certificates
+      - name: Set up signing
+        script: |
+          xcode-project use-profiles
       - name: Set build number
         script: |
           cd avenstone-vite/ios/App
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" || echo "0")
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" || echo "0")
           NEW_BUILD_NUMBER=$(($LATEST_BUILD_NUMBER + 1))
           agvtool new-version -all $NEW_BUILD_NUMBER
-      - name: Set up code signing settings
-        script: |
-          xcode-project use-profiles
       - name: Build IPA
         script: |
           cd avenstone-vite/ios/App
@@ -61,7 +67,9 @@ workflows:
       - avenstone-vite/ios/App/build/ios/xcarchive/*.xcarchive
     publishing:
       app_store_connect:
-        auth: integration
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
         beta_groups:
           - Internal
