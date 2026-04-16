@@ -30,6 +30,7 @@ import LeadsScr from './components/leads/LeadsScr';
 import AiFieldAgent from './components/ai/AiFieldAgent';
 import MeasureScr from './components/jobs/MeasureScr';
 import MasterAgent from './components/shared/MasterAgent';
+import AiPmDashboard from './components/dashboard/AiPmDashboard';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -141,6 +142,7 @@ export default function App() {
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc', sec: 'Settings' }] : []),
+    ...(profile?.role === 'owner' ? [{ id: 'ai-pm', lb: 'PM Dashboard', ic: 'bell', sec: 'Settings' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'owner-portal', lb: 'Owner Portal', ic: 'box', sec: 'Settings' }] : []),
   ];
 
@@ -233,6 +235,7 @@ export default function App() {
             {pg === 'field-agent' && isStaff && <AiFieldAgent profile={profile} currentJob={jobs.find(j => j.id === pendingJobId) || null} />}
             {pg === 'measure' && isStaff && <MeasureScr jobs={jobs} onBack={() => setPg('dashboard')} />}
             {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}
+            {pg === 'ai-pm' && profile?.role === 'owner' && <AiPmDashboard profile={profile} />}
             {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
