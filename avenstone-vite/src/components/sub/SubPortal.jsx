@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbLoadSubRating, AV_USER_ID, ANON_KEY } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD } from '../../lib/utils';
+import { t } from '../../lib/i18n';
 import SubJobView from './SubJobView';
 import SubOnboardingWizard from './SubOnboardingWizard';
 
@@ -33,6 +34,13 @@ export default function SubPortal({ profile, signOut }) {
   const [pricing, setPricing] = useState([]);
   const [pricingLoaded, setPricingLoaded] = useState(false);
   const [rating, setRating] = useState(null);
+  const [lang, setLang] = useState(() => localStorage.getItem('av_sub_lang') || 'en');
+
+  const toggleLang = () => {
+    const next = lang === 'en' ? 'es' : 'en';
+    setLang(next);
+    localStorage.setItem('av_sub_lang', next);
+  };
 
   // Pricing AI bot state
   const [botMsgs, setBotMsgs] = useState([]);
@@ -125,7 +133,7 @@ export default function SubPortal({ profile, signOut }) {
     setBotSending(false);
   };
 
-  if (sel) return <SubJobView job={sel} back={() => setSel(null)} profile={profile} />;
+  if (sel) return <SubJobView job={sel} back={() => setSel(null)} profile={profile} lang={lang} />;
   if (showOnboarding && pricingLoaded) return (
     <SubOnboardingWizard
       profile={profile}
@@ -146,9 +154,9 @@ export default function SubPortal({ profile, signOut }) {
   }, {});
 
   const TABS = [
-    { id: 'jobs', lb: 'My Projects', ic: 'home' },
-    { id: 'bids', lb: 'Bid Invitations', ic: 'doc', badge: unreadBids },
-    { id: 'pricing', lb: 'My Pricing', ic: 'box' },
+    { id: 'jobs', lb: t('My Projects', lang), ic: 'home' },
+    { id: 'bids', lb: t('Bid Invitations', lang), ic: 'doc', badge: unreadBids },
+    { id: 'pricing', lb: t('My Pricing', lang), ic: 'box' },
   ];
 
   return (
@@ -166,6 +174,9 @@ export default function SubPortal({ profile, signOut }) {
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{rating.average.toFixed(1)} · {rating.count} review{rating.count !== 1 ? 's' : ''}</div>
           </div>
         )}
+        <button onClick={toggleLang} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, cursor: 'pointer', color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 8px', letterSpacing: 1 }}>
+          {lang === 'en' ? 'ES' : 'EN'}
+        </button>
         <button onClick={signOut} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', padding: 4 }}>
           <span style={{ width: 16, height: 16, display: 'flex' }}>{Ic.logout}</span>
         </button>
@@ -185,8 +196,8 @@ export default function SubPortal({ profile, signOut }) {
       <div style={{ padding: 16 }}>
         {/* Jobs tab */}
         {view === 'jobs' && <>
-          {loading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Loading your projects...</div>}
-          {!loading && !jobs.length && <div className="empty" style={{ paddingTop: 60 }}>{Ic.home}<div className="empty-t">No projects assigned yet</div><div>Your contractor will assign you to a project</div></div>}
+          {loading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>{t('Loading your projects...', lang)}</div>}
+          {!loading && !jobs.length && <div className="empty" style={{ paddingTop: 60 }}>{Ic.home}<div className="empty-t">{t('No projects assigned yet', lang)}</div><div>{t('Your contractor will assign you to a project', lang)}</div></div>}
           {jobs.map(j => (
             <div key={j.id} onClick={() => setSel(j)} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `4px solid ${sc(j.status)}`, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', borderRadius: 8 }} onMouseEnter={e => e.currentTarget.style.borderColor = GOLD} onMouseLeave={e => e.currentTarget.style.borderColor = BORDER}>
               <div style={{ fontSize: 14, fontWeight: 600, color: NAV, marginBottom: 4 }}>{j.address}</div>
@@ -200,8 +211,8 @@ export default function SubPortal({ profile, signOut }) {
 
         {/* Bids tab */}
         {view === 'bids' && <>
-          {itbsLoading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Loading invitations...</div>}
-          {!itbsLoading && !itbs.length && <div className="empty" style={{ paddingTop: 60 }}>{Ic.doc}<div className="empty-t">No bid invitations yet</div><div>Bid invitations from contractors will appear here</div></div>}
+          {itbsLoading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>{t('Loading invitations...', lang)}</div>}
+          {!itbsLoading && !itbs.length && <div className="empty" style={{ paddingTop: 60 }}>{Ic.doc}<div className="empty-t">{t('No bid invitations yet', lang)}</div><div>{t('Bid invitations from contractors will appear here', lang)}</div></div>}
           {itbs.map(itb => {
             const myBid = (itb.responses || []).find(r => r.sub_id === AV_USER_ID);
             // Find relevant stored pricing for this trade
@@ -214,7 +225,7 @@ export default function SubPortal({ profile, signOut }) {
                     {itb.job && <div style={{ fontSize: 12, color: '#9CA3AF' }}>{itb.job.address}</div>}
                   </div>
                   <span style={{ fontSize: 10, background: myBid ? '#F0FDF4' : 'rgba(201,168,76,0.1)', color: myBid ? '#16a34a' : GOLD, padding: '3px 10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, border: `1px solid ${myBid ? '#BBF7D0' : 'rgba(201,168,76,0.3)'}`, borderRadius: 20 }}>
-                    {myBid ? 'Bid Submitted' : 'Awaiting Your Bid'}
+                    {myBid ? t('Bid Submitted', lang) : t('Awaiting Your Bid', lang)}
                   </span>
                 </div>
                 {itb.description && <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, marginBottom: 10 }}>{itb.description}</div>}
@@ -225,7 +236,7 @@ export default function SubPortal({ profile, signOut }) {
                 {/* Your pricing reference */}
                 {tradePricing.length > 0 && !myBid && (
                   <div style={{ background: '#F7F5F0', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Your Pricing on File</div>
+                    <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{t('Your Pricing on File', lang)}</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {tradePricing.slice(0, 6).map(p => (
                         <span key={p.id} style={{ fontSize: 12, color: NAV, background: '#fff', border: `1px solid ${BORDER}`, padding: '2px 8px', borderRadius: 20 }}>
@@ -237,15 +248,15 @@ export default function SubPortal({ profile, signOut }) {
                 )}
                 {myBid ? (
                   <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: 12, borderRadius: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#16a34a', marginBottom: 4 }}>Your bid: {myBid.amount ? f$(myBid.amount) : 'No amount'}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#16a34a', marginBottom: 4 }}>{t('Your bid', lang)}: {myBid.amount ? f$(myBid.amount) : 'No amount'}</div>
                     {myBid.notes && <div style={{ fontSize: 12, color: '#6B7280' }}>{myBid.notes}</div>}
                     {myBid.quote_file_name && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Quote: {myBid.quote_file_name}</div>}
-                    {myBid.status === 'awarded' && <div style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', marginTop: 6 }}>🏆 Your bid was awarded!</div>}
+                    {myBid.status === 'awarded' && <div style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', marginTop: 6 }}>🏆 {t('Your bid was awarded!', lang)}</div>}
                   </div>
                 ) : (
-                  <button className="btn btn-navy" style={{ width: '100%', marginTop: 4 }} onClick={() => { setBidITB(itb); setBidDone(null); }}>Submit Your Bid</button>
+                  <button className="btn btn-navy" style={{ width: '100%', marginTop: 4 }} onClick={() => { setBidITB(itb); setBidDone(null); }}>{t('Submit Your Bid', lang)}</button>
                 )}
-                {bidDone === itb.id && <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600, marginTop: 8, textAlign: 'center' }}>✓ Bid submitted successfully!</div>}
+                {bidDone === itb.id && <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600, marginTop: 8, textAlign: 'center' }}>✓ {t('Bid submitted successfully!', lang)}</div>}
               </div>
             );
           })}
@@ -259,14 +270,14 @@ export default function SubPortal({ profile, signOut }) {
               <div style={{ background: NAV, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 18 }}>✦</span>
                 <div>
-                  <div style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>Pricing Assistant</div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Discuss your rates, request changes, see market context</div>
+                  <div style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>{t('Pricing Assistant', lang)}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>{t('Discuss your rates, request changes, see market context', lang)}</div>
                 </div>
               </div>
               <div style={{ padding: 16 }}>
                 {!botStarted ? (
                   <button className="btn btn-gold" style={{ width: '100%' }} onClick={startPricingBot}>
-                    Open Pricing Chat
+                    {t('Open Pricing Chat', lang)}
                   </button>
                 ) : (
                   <>
@@ -303,9 +314,9 @@ export default function SubPortal({ profile, signOut }) {
             </div>
 
             {/* Stored pricing */}
-            <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: NAV, marginBottom: 12 }}>Your Pricing on File</div>
+            <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: NAV, marginBottom: 12 }}>{t('Your Pricing on File', lang)}</div>
             {!pricing.length ? (
-              <div className="empty">{Ic.box}<div className="empty-t">No pricing on file</div><button className="btn btn-gold" style={{ marginTop: 12 }} onClick={() => setShowOnboarding(true)}>Set Up My Pricing</button></div>
+              <div className="empty">{Ic.box}<div className="empty-t">{t('No pricing on file', lang)}</div><button className="btn btn-gold" style={{ marginTop: 12 }} onClick={() => setShowOnboarding(true)}>{t('Set Up My Pricing', lang)}</button></div>
             ) : (
               Object.entries(pricingByTrade).map(([trade, items]) => (
                 <div key={trade} style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
@@ -328,7 +339,7 @@ export default function SubPortal({ profile, signOut }) {
             )}
             {pricing.length > 0 && (
               <button className="btn btn-ghost" style={{ width: '100%', marginTop: 8 }} onClick={() => setShowOnboarding(true)}>
-                Re-run Pricing Onboarding
+                {t('Re-run Pricing Onboarding', lang)}
               </button>
             )}
           </div>
@@ -338,20 +349,20 @@ export default function SubPortal({ profile, signOut }) {
       {/* Bid submit modal */}
       {bidITB && <div className="overlay" onClick={() => setBidITB(null)}>
         <div className="modal" onClick={e => e.stopPropagation()}>
-          <div className="modal-title">Submit Bid</div>
+          <div className="modal-title">{t('Submit Bid', lang)}</div>
           <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 14 }}>{bidITB.trade} — {bidITB.job?.address || ''}</div>
-          <div className="fg"><label className="flbl">Your Bid Amount ($)</label><input className="finp" type="number" value={bidForm.amount} onChange={e => setBidForm(p => ({ ...p, amount: e.target.value }))} placeholder="e.g. 9500" /></div>
-          <div className="fg"><label className="flbl">Notes / Scope Clarifications</label><textarea className="finp fta" value={bidForm.notes} onChange={e => setBidForm(p => ({ ...p, notes: e.target.value }))} placeholder="Any assumptions, exclusions, or details about your quote..." rows={3} /></div>
+          <div className="fg"><label className="flbl">{t('Your Bid Amount ($)', lang)}</label><input className="finp" type="number" value={bidForm.amount} onChange={e => setBidForm(p => ({ ...p, amount: e.target.value }))} placeholder="e.g. 9500" /></div>
+          <div className="fg"><label className="flbl">{t('Notes / Scope Clarifications', lang)}</label><textarea className="finp fta" value={bidForm.notes} onChange={e => setBidForm(p => ({ ...p, notes: e.target.value }))} placeholder={t('Any assumptions, exclusions, or details about your quote...', lang)} rows={3} /></div>
           <div className="fg" style={{ marginBottom: 0 }}>
-            <label className="flbl">Upload Quote (PDF, Word, Excel)</label>
+            <label className="flbl">{t('Upload Quote (PDF, Word, Excel)', lang)}</label>
             <input ref={bidFileRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => setBidFile(e.target.files[0] || null)} style={{ display: 'none' }} />
             <button className="btn btn-ghost" style={{ width: '100%', padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => bidFileRef.current.click()}>
-              <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.dl}</span>{bidFile ? bidFile.name : 'Choose file to upload'}
+              <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.dl}</span>{bidFile ? bidFile.name : t('Choose file to upload', lang)}
             </button>
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null); }}>Cancel</button>
-            <button className="btn btn-gold" style={{ flex: 1 }} onClick={submitBid} disabled={bidSaving}>{bidSaving ? 'Submitting...' : 'Submit Bid'}</button>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null); }}>{t('Cancel', lang)}</button>
+            <button className="btn btn-gold" style={{ flex: 1 }} onClick={submitBid} disabled={bidSaving}>{bidSaving ? t('Submitting...', lang) : t('Submit Bid', lang)}</button>
           </div>
         </div>
       </div>}

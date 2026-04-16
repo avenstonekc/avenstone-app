@@ -209,7 +209,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
         {tab === 'photos' && <PhotosTab job={job} upd={upd} />}
         {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
         {tab === 'co' && <COTab job={job} upd={upd} profile={profile} />}
-        {tab === 'msgs' && <MessagesTab job={job} />}
+        {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'bids' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
         {tab === 'logs' && <LogsTab job={job} />}
         {tab === 'payments' && <PaymentsTab job={job} />}

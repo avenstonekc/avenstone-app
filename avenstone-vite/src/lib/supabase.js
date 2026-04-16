@@ -244,6 +244,14 @@ export const sbPostMessage = async (jid, content) => {
   const { data } = await sb.from('job_messages').insert({ tenant_id: AV_TENANT, job_id: jid, sender_id: AV_USER_ID, content }).select('*,sender:profiles(id,full_name,role)').single();
   return data;
 };
+export const sbLoadStaffMessages = async jid => {
+  const { data } = await sb.from('staff_messages').select('*,sender:profiles(id,full_name,role)').eq('job_id', jid).order('created_at', { ascending: true });
+  return data || [];
+};
+export const sbPostStaffMessage = async (jid, content) => {
+  const { data } = await sb.from('staff_messages').insert({ tenant_id: AV_TENANT, job_id: jid, sender_id: AV_USER_ID, content }).select('*,sender:profiles(id,full_name,role)').single();
+  return data;
+};
 
 // ─── Invitations to Bid ───────────────────────────────────────────────────────
 export const sbLoadITBs = async jid => {
