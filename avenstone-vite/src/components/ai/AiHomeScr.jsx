@@ -42,10 +42,10 @@ export default function AiHomeScr({ profile, jobs, nav, onOpenJob }) {
   const recognitionRef = useRef(null);
 
   useEffect(() => {
-    if (hasOpened.current) return;
+    if (!profile?.id || hasOpened.current) return;
     hasOpened.current = true;
     sendMessage('brief me', []);
-  }, []);
+  }, [profile?.id]);
 
   useEffect(() => {
     if (!profile?.id) return;
