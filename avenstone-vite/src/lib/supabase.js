@@ -432,6 +432,23 @@ export const sbLoadContactMessages = async contactId => {
   return data || [];
 };
 
+// ─── LiDAR Scans ─────────────────────────────────────────────────────────────
+export const sbSaveLidarScan = async ({ contactId, rooms, totalSqft }) => {
+  const { data, error } = await sb.from('contact_lidar_scans').insert({
+    tenant_id: AV_TENANT,
+    contact_id: contactId,
+    created_by: AV_USER_ID,
+    rooms,
+    total_sqft: totalSqft,
+    room_count: rooms.length,
+  }).select().single();
+  return { data, error };
+};
+export const sbGetContactLidarScans = async contactId => {
+  const { data } = await sb.from('contact_lidar_scans').select('*').eq('contact_id', contactId).order('created_at', { ascending: false });
+  return data || [];
+};
+
 // ─── Sequences (follow-up automation) ────────────────────────────────────────
 export const sbLoadSequences = async () => {
   const { data } = await sb.from('sequences').select('*').eq('tenant_id', AV_TENANT).order('created_at', { ascending: false });

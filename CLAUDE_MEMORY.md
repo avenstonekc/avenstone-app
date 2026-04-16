@@ -76,4 +76,12 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Action: Completely rewrote AiIntakeWizard as a pure LiDAR scanning flow. Removed AI chat step, removed manual grid, removed review/submit step, removed Supabase lead creation. New wizard is a thin wrapper that renders LidarScanner fullscreen.
 - Files: avenstone-vite/src/components/ai/AiIntakeWizard.jsx (full rewrite), avenstone-vite/src/components/ai/LidarScanner.jsx (fixed async isLidarSupported bug)
 - Decision: Path A — scanned rooms held in local state only, nothing persisted to DB. Lead creation + save-to-job will return in a later phase alongside RoomPlan 2.0 multi-room capture.
-- Next: Test single-room LiDAR scan on real device via TestFlight. If Phase 1 works, next session = Swift plugin upgrade to RoomPlan 2.0 (live floor plan building + walking indicator, Magic Plan style) and PDF export.
+- Next: Phase 1 confirmed working on iPhone 17 Pro. Next = Phase 2 continuous multi-room session + contact persistence.
+
+[LOG — 2026-04-15]
+- Action: Phase 1 LiDAR confirmed working on iPhone 17 Pro. Brainstormed and locked LiDAR roadmap Phases 2-4.
+- Files: CLAUDE.md (priority order rewritten), CLAUDE_MEMORY.md
+- Decision: Scans attach to contacts (not jobs directly). Contact must exist first. Scan carries to job documents when job is created. New table needed: contact_lidar_scans.
+- Decision: Phase 2 = continuous multi-room session, one scan walks room to room. ~1,500 sqft limit per session. Larger spaces scan by wing and stitch in Phase 4 editor.
+- Decision: Phase 4 = wing editor + GPS-anchored stitching + window/door type editing. Not urgent.
+- Next: Build Phase 2 Swift plugin upgrade (continuous RoomCaptureSession) + contact persistence (contact_lidar_scans table + attach-to-contact UI)

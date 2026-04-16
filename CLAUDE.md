@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Competitive advantage:** AI embedded at every step of field operations. Not a CRM. Not a marketing tool. The thing that makes crews smarter, faster, and more profitable on every job.
 
+- Local path: `C:\Users\Kalin\OneDrive\Documents\GitHub\avenstone-app`
 - Live app: `https://avenstone-app.vercel.app`
 - GitHub: `avenstonekc/avenstone-app`
 - Supabase project ref: `cbfftukmhqvvjlrlnltk`
@@ -526,19 +527,21 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 ## Priority Order (what we're building)
 
-1. **LiDAR Phase 2 — RoomPlan 2.0 multi-room capture** (next big piece). iOS 17+ `RoomCaptureSession` in continuous mode: pick room → scan → walk to next → scan → live floor plan builds up with a walking indicator, stitches into one merged model (Magic Plan UX). Requires Swift plugin upgrade + React UI for session control.
+1. **LiDAR Phase 2 — continuous multi-room session**. One scan session, room by room: scan → pause → name it → move to next room → repeat → finish → compiles into one merged spatially-accurate floor plan. Swift plugin upgrade to iOS 17 continuous `RoomCaptureSession`. React UI shows live floor plan building as you walk. Single session limit ~1,500 sqft — larger homes scan by wing (see Phase 4).
 
-2. **LiDAR Phase 3 — PDF floor plan export + furniture inventory + material visualization**. Turn RoomPlan output into a PDF floor plan attached to a job, list detected furniture, and overlay material previews (paint this wall blue, etc.).
+2. **LiDAR → contact persistence**. Scans attach to a **contact** record (not a job). Contact must exist in the system first. Scan saves to their documents. When a job is created for that contact, the scan carries over automatically to the job's documents tab. New Supabase table: `contact_lidar_scans` (contact_id, tenant_id, rooms JSONB, floor_plan_svg, sqft_total, created_at).
 
-3. **LiDAR → job persistence**. Currently Phase 1 holds scanned rooms in local state only (Path A). Wire scan results to `jobs` table as a new lead OR attach to an existing job.
+3. **LiDAR Phase 3 — PDF floor plan export**. Export the merged floor plan as a PDF, attach to the contact/job documents. List detected furniture. Material visualization overlay (paint this wall blue) is a future add-on to this phase.
 
-4. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
+4. **LiDAR Phase 4 — wing editor + large-space stitching**. For spaces over ~1,500 sqft, scan in wings. Editor tab in project folder lets you position and connect wing scans into one complete plan. GPS anchoring helps mesh sessions spatially. Window/door type editing also lives here.
 
-5. **Test AI estimator with live data** — ai_knowledge now seeded with KC pricing. Open a job, ask the AI Companion for a rough estimate, verify it produces real dollar figures.
+5. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
 
-6. **AI PM dashboard** — owner screen surfacing nightly alert data, job health scores, alert history.
+6. **Test AI estimator with live data** — ai_knowledge now seeded with KC pricing. Open a job, ask the AI Companion for a rough estimate, verify it produces real dollar figures.
 
-7. **Sub portal upgrades** — daily log submission, phase confirmation, AI companion for subs.
+7. **AI PM dashboard** — owner screen surfacing nightly alert data, job health scores, alert history.
+
+8. **Sub portal upgrades** — daily log submission, phase confirmation, AI companion for subs.
 
 **Done:**
 - Client portal progress stepper + realtime
@@ -549,6 +552,7 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 - **Capacitor iOS native app shipped to TestFlight** (bundle id `com.avenstonekc.avenstone`, Codemagic build pipeline, zero MacInCloud)
 - **RoomPlanPlugin.swift written + wired through Capacitor** — Phase 1 single-room scan returning real length/width/height/sqft/doors/windows in feet on iPhone 12 Pro+ / iPad Pro 2020+ hardware
 - **AiIntakeWizard rewritten as pure LiDAR scanner** (Phase 1) — no AI chat, no manual grid, just Add Room → Start Scan → Done
+- **Phase 1 LiDAR confirmed working on iPhone 17 Pro** — real RoomPlan scans returning live measurements
 
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 

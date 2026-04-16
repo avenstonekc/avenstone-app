@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_TENANT, AV_USER_ID, ANON_KEY } from '../../lib/supabase';
+import { sb, AV_TENANT, AV_USER_ID, ANON_KEY, sbGetContactLidarScans } from '../../lib/supabase';
 import { Ic, isMob } from '../../lib/utils';
 
 const FN = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1';
@@ -62,6 +62,8 @@ export default function ContactsScr({ profile }) {
   const [msgLoading, setMsgLoading] = useState(false);
   const [newMsg, setNewMsg] = useState('');
   const [sending, setSending] = useState(false);
+  const [scans, setScans] = useState([]);
+  const [scansLoading, setScansLoading] = useState(false);
 
   const messagesEndRef = useRef(null);
   const mobile = isMob();
@@ -91,7 +93,9 @@ export default function ContactsScr({ profile }) {
   useEffect(() => { loadContacts(); }, []);
 
   useEffect(() => {
-    if (!selected) { setMessages([]); return; }
+    if (!selected) { setMessages([]); setScans([]); return; }
+    setScansLoading(true);
+    sbGetContactLidarScans(selected.id).then(data => { setScans(data); setScansLoading(false); });
     loadMessages(selected.id);
     const ch = sb.channel('cms-' + selected.id)
       .on('postgres_changes', {
@@ -390,6 +394,42 @@ export default function ContactsScr({ profile }) {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Floor Plans Card */}
+            <div className="card" style={{ padding: 20 }}>
+              <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16, color: '#0A1F44', marginBottom: 14 }}>
+                Floor Plans
+              </div>
+              {scansLoading ? (
+                <div style={{ color: '#9CA3AF', fontSize: 13 }}>Loading...</div>
+              ) : scans.length === 0 ? (
+                <div style={{ color: '#9CA3AF', fontSize: 13 }}>No scans yet. Use the Room Scanner to capture this property.</div>
+              ) : scans.map(scan => (
+                <div key={scan.id} style={{
+                  border: '1px solid #E8E4DC', borderRadius: 8, padding: '12px 16px',
+                  marginBottom: 10, background: '#F7F5F0',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, color: '#0A1F44', fontWeight: 600 }}>
+                      {scan.room_count} {scan.room_count === 1 ? 'room' : 'rooms'} · {(scan.total_sqft || 0).toLocaleString()} sf total
+                    </div>
+                    <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+                      {new Date(scan.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {(scan.rooms || []).map((r, i) => (
+                      <span key={i} style={{
+                        background: '#fff', border: '1px solid #E8E4DC', borderRadius: 6,
+                        padding: '3px 10px', fontSize: 12, color: '#374151',
+                      }}>
+                        {r.name} <span style={{ color: '#C9A84C', fontWeight: 600 }}>{r.sqft} sf</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* SMS Thread Card */}
