@@ -392,6 +392,7 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone }) {
       {phase === 'result' && lastScanned && (
         <ResultPhase
           room={lastScanned}
+          allRooms={rooms}
           onAddAnother={handleAddAnother}
           onDone={onDone}
           headingStyle={headingStyle}
@@ -649,7 +650,9 @@ function ScanningPhase({ roomName, scanProgress, headingStyle }) {
   );
 }
 
-function ResultPhase({ room, onAddAnother, onDone, headingStyle, btnGold, btnNavy }) {
+function ResultPhase({ room, allRooms, onAddAnother, onDone, headingStyle, btnGold, btnNavy }) {
+  const prevRooms = allRooms.filter(r => r.name !== room.name || r !== allRooms[allRooms.length - 1]);
+  const totalSqft = allRooms.reduce((s, r) => s + (r.sqft || 0), 0);
   return (
     <div style={{ textAlign: 'center' }}>
       <div
@@ -774,6 +777,27 @@ function ResultPhase({ room, onAddAnother, onDone, headingStyle, btnGold, btnNav
           </span>
         </div>
       </div>
+
+      {allRooms.length > 1 && (
+        <div style={{ textAlign: 'left', marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: '#888', fontFamily: '"DM Sans", sans-serif', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            All Rooms ({allRooms.length}) · {totalSqft.toLocaleString()} sf total
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {allRooms.map((r, i) => (
+              <div key={i} style={{
+                background: r === allRooms[allRooms.length - 1] ? GOLD : WHITE,
+                color: r === allRooms[allRooms.length - 1] ? WHITE : NAVY,
+                border: `1px solid ${r === allRooms[allRooms.length - 1] ? GOLD : '#E8E4DC'}`,
+                borderRadius: 8, padding: '5px 12px', fontSize: 13,
+                fontFamily: '"DM Sans", sans-serif', fontWeight: 600,
+              }}>
+                {r.name} <span style={{ opacity: 0.75, fontWeight: 400 }}>{r.sqft} sf</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
         <button style={btnGold} onClick={onAddAnother}>

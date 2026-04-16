@@ -15,6 +15,7 @@ import PaymentsTab from './tabs/PaymentsTab';
 import ConsultationTab from './tabs/ConsultationTab';
 import AiCompanionChat from '../shared/AiCompanionChat';
 import MaterialsTab from './tabs/MaterialsTab';
+import FloorPlanTab from './tabs/FloorPlanTab';
 
 const TABS = [
   { id: 'info', lb: 'Info', ic: 'info' },
@@ -28,6 +29,7 @@ const TABS = [
   { id: 'bids', lb: 'Estimate', ic: 'doc' },
   { id: 'logs', lb: 'Daily Logs', ic: 'clip' },
   { id: 'payments', lb: 'Payments', ic: 'doc' },
+  { id: 'floorplan', lb: 'Floor Plan', ic: 'doc' },
   { id: 'session', lb: 'AI Session', ic: 'grid' },
 ];
 
@@ -211,6 +213,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
         {tab === 'bids' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
         {tab === 'logs' && <LogsTab job={job} />}
         {tab === 'payments' && <PaymentsTab job={job} />}
+        {tab === 'floorplan' && <FloorPlanTab job={job} profile={profile} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} />}
       </div>
 

@@ -433,6 +433,21 @@ export const sbLoadContactMessages = async contactId => {
 };
 
 // ─── LiDAR Scans ─────────────────────────────────────────────────────────────
+export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft }) => {
+  const { data, error } = await sb.from('job_lidar_scans').insert({
+    tenant_id: AV_TENANT,
+    job_id: jobId,
+    created_by: AV_USER_ID,
+    rooms,
+    total_sqft: totalSqft,
+    room_count: rooms.length,
+  }).select().single();
+  return { data, error };
+};
+export const sbGetJobLidarScans = async jobId => {
+  const { data } = await sb.from('job_lidar_scans').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
+  return data || [];
+};
 export const sbSaveLidarScan = async ({ contactId, rooms, totalSqft }) => {
   const { data, error } = await sb.from('contact_lidar_scans').insert({
     tenant_id: AV_TENANT,

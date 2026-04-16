@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import LidarScanner from './LidarScanner';
-import { sb, AV_TENANT, sbSaveLidarScan } from '../../lib/supabase';
+import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan } from '../../lib/supabase';
 
 const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
 const CREAM = '#F7F5F0';
 const BORDER = '#E8E4DC';
 
-export default function AiIntakeWizard({ profile, onClose, onJobCreated }) {
+export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }) {
   const [rooms, setRooms] = useState([]);
   const [step, setStep] = useState('scan'); // 'scan' | 'save'
   const [contacts, setContacts] = useState([]);
@@ -25,7 +25,18 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated }) {
 
   function handleScanDone() {
     if (rooms.length === 0) { onClose(); return; }
+    if (jobId) { handleScanDoneJobMode(); return; }
     setStep('save');
+  }
+
+  async function handleScanDoneJobMode() {
+    if (rooms.length === 0) { onClose(); return; }
+    setSaving(true);
+    const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
+    await sbSaveJobLidarScan({ jobId, rooms, totalSqft });
+    setSaving(false);
+    setSavedOk(true);
+    setTimeout(onClose, 1400);
   }
 
   async function handleSave(contactId) {
