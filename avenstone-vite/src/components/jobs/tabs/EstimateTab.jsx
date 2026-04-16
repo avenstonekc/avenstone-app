@@ -79,12 +79,12 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
 
     setEstMessages([]);
     setEstStarted(false);
-    setEstForm({
-      scope: job.scope || '',
-      rooms: contextParts.length ? contextParts.join('\n') : '',
-      sqft: job.sqft || '',
-      special: [measureDoc ? '✓ Field measurements saved' : '', transcriptDoc ? '✓ Consultation notes saved' : ''].filter(Boolean).join(' · '),
-    });
+    setEstForm(prev => ({
+      scope: prev.scope || job.scope || '',
+      rooms: prev.rooms || (contextParts.length ? contextParts.join('\n') : ''),
+      sqft: prev.sqft || String(job.sqft || ''),
+      special: prev.special || [measureDoc ? '✓ Field measurements saved' : '', transcriptDoc ? '✓ Consultation notes saved' : ''].filter(Boolean).join(' · '),
+    }));
   };
 
   const sendEstimatorMessage = async (msgOverride, fileOverride) => {
@@ -373,7 +373,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
       </div></div>}
 
       {/* AI Estimator modal */}
-      {showEstimator && <div className="overlay" onClick={() => setShowEstimator(false)}><div className="modal" style={{ maxWidth: 660, height: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+      {showEstimator && <div className="overlay" onClick={() => { if (!estStarted && estForm.scope.trim()) return; setShowEstimator(false); }}><div className="modal" style={{ maxWidth: 660, height: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexShrink: 0 }}>
           <div><div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44' }}>AI Estimator</div><div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{job.address}</div></div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
