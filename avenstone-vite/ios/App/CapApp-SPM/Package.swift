@@ -19,6 +19,9 @@ let package = Package(
             dependencies: [
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
                 .product(name: "Cordova", package: "capacitor-swift-pm")
+            ],
+            linkerSettings: [
+                .linkedFramework("RoomPlan", .when(platforms: [.iOS]))
             ]
         )
     ]

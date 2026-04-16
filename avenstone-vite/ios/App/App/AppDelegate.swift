@@ -1,6 +1,5 @@
 import UIKit
 import Capacitor
-import CapApp_SPM
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -8,12 +7,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Force-link local SPM plugins so Swift dead-code elimination doesn't
-        // strip them before Capacitor's runtime scanner can find them.
-        // Without these references, @objc classes in CapApp-SPM get stripped
-        // from the final binary and the JS web fallback is used instead.
-        _ = isCapacitorApp
-        _ = RoomPlanPlugin.self
         return true
     }
 
