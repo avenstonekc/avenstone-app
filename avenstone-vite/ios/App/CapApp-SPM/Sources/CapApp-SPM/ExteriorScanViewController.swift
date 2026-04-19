@@ -6,27 +6,53 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
 
     var onComplete: ((Result<[String: Any], Error>) -> Void)?
 
-    // AR state
+    // MARK: - Phase
+
+    private enum ScanPhase { case polygon, height }
+    private var phase: ScanPhase = .polygon
+
+    // MARK: - Polygon state
+
     private var sceneView: ARSCNView!
     private var cornerAnchors: [ARAnchor] = []
     private var sphereNodes: [SCNNode] = []
     private var anchorIndexMap: [UUID: Int] = [:]
     private var lineNodes: [SCNNode] = []
-
-    // Drag state
     private var dragNode: SCNNode?
     private var dragIndex: Int?
     private var panRecognizer: UIPanGestureRecognizer!
 
-    private var didFinish = false
+    // MARK: - Height state
 
-    // UI
+    private var groundY: Float = 0
+    private var capturedHeightPoints: [Double] = []
+    private var heightSource: String = "auto"
+
+    // MARK: - Quality state
+
+    private var hadLimitedTracking = false
+    private var qualityTimer: Timer?
+    private var qualityProgressView: UIProgressView!
+    private var qualityLabel: UILabel!
+
+    // MARK: - Polygon UI
+
     private var cancelButton: UIButton!
     private var undoButton: UIButton!
     private var resetButton: UIButton!
     private var doneButton: UIButton!
     private var statsLabel: UILabel!
     private var trackingLabel: UILabel!
+
+    // MARK: - Height UI
+
+    private var heightPanel: UIView!
+    private var heightInstructionLabel: UILabel!
+    private var heightValueLabel: UILabel!
+    private var retapHeightButton: UIButton!
+    private var confirmHeightButton: UIButton!
+    private var manualEntryButton: UIButton!
+    private var manualHeightField: UITextField!
 
     private let navyColor = UIColor(red: 10/255, green: 31/255, blue: 68/255, alpha: 1)
     private let goldColor = UIColor(red: 201/255, green: 168/255, blue: 76/255, alpha: 1)
@@ -37,7 +63,9 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
         super.viewDidLoad()
         setupARView()
         setupUI()
+        setupHeightPanel()
         setupGestures()
+        setupQualityBar()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -45,10 +73,12 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = .horizontal
         sceneView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+        startQualityTimer()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        stopQualityTimer()
         sceneView.session.pause()
     }
 
@@ -176,6 +206,112 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
         ])
     }
 
+    private func setupHeightPanel() {
+        heightPanel = UIView()
+        heightPanel.translatesAutoresizingMaskIntoConstraints = false
+        heightPanel.backgroundColor = navyColor.withAlphaComponent(0.95)
+        heightPanel.layer.cornerRadius = 20
+        heightPanel.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        heightPanel.isHidden = true
+        view.addSubview(heightPanel)
+
+        heightInstructionLabel = UILabel()
+        heightInstructionLabel.translatesAutoresizingMaskIntoConstraints = false
+        heightInstructionLabel.text = "Aim at the top of the wall (eave or gutter) and tap to measure height"
+        heightInstructionLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+        heightInstructionLabel.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        heightInstructionLabel.textAlignment = .center
+        heightInstructionLabel.numberOfLines = 2
+        heightPanel.addSubview(heightInstructionLabel)
+
+        heightValueLabel = UILabel()
+        heightValueLabel.translatesAutoresizingMaskIntoConstraints = false
+        heightValueLabel.text = "— ft"
+        heightValueLabel.textColor = goldColor
+        heightValueLabel.font = UIFont.systemFont(ofSize: 40, weight: .bold)
+        heightValueLabel.textAlignment = .center
+        heightPanel.addSubview(heightValueLabel)
+
+        retapHeightButton = UIButton(type: .system)
+        retapHeightButton.translatesAutoresizingMaskIntoConstraints = false
+        retapHeightButton.setTitle("Re-tap", for: .normal)
+        retapHeightButton.setTitleColor(.white, for: .normal)
+        retapHeightButton.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        retapHeightButton.backgroundColor = UIColor.white.withAlphaComponent(0.18)
+        retapHeightButton.layer.cornerRadius = 18
+        retapHeightButton.layer.masksToBounds = true
+        retapHeightButton.isHidden = true
+        retapHeightButton.addTarget(self, action: #selector(retapHeightTapped), for: .touchUpInside)
+        heightPanel.addSubview(retapHeightButton)
+
+        confirmHeightButton = UIButton(type: .system)
+        confirmHeightButton.translatesAutoresizingMaskIntoConstraints = false
+        confirmHeightButton.setTitle("Confirm Height", for: .normal)
+        confirmHeightButton.setTitleColor(.black, for: .normal)
+        confirmHeightButton.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .bold)
+        confirmHeightButton.backgroundColor = goldColor
+        confirmHeightButton.layer.cornerRadius = 24
+        confirmHeightButton.layer.masksToBounds = true
+        confirmHeightButton.isEnabled = false
+        confirmHeightButton.alpha = 0.5
+        confirmHeightButton.addTarget(self, action: #selector(confirmHeightTapped), for: .touchUpInside)
+        heightPanel.addSubview(confirmHeightButton)
+
+        manualEntryButton = UIButton(type: .system)
+        manualEntryButton.translatesAutoresizingMaskIntoConstraints = false
+        manualEntryButton.setTitle("Enter manually", for: .normal)
+        manualEntryButton.setTitleColor(UIColor.white.withAlphaComponent(0.55), for: .normal)
+        manualEntryButton.titleLabel?.font = UIFont.systemFont(ofSize: 13)
+        manualEntryButton.addTarget(self, action: #selector(showManualEntry), for: .touchUpInside)
+        heightPanel.addSubview(manualEntryButton)
+
+        manualHeightField = UITextField()
+        manualHeightField.translatesAutoresizingMaskIntoConstraints = false
+        manualHeightField.placeholder = "Height in feet (e.g. 9.5)"
+        manualHeightField.keyboardType = .decimalPad
+        manualHeightField.textAlignment = .center
+        manualHeightField.backgroundColor = .white
+        manualHeightField.layer.cornerRadius = 8
+        manualHeightField.layer.masksToBounds = true
+        manualHeightField.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        manualHeightField.isHidden = true
+        manualHeightField.addTarget(self, action: #selector(manualHeightChanged), for: .editingChanged)
+        heightPanel.addSubview(manualHeightField)
+
+        let safeArea = view.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            heightPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            heightPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            heightPanel.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            heightPanel.heightAnchor.constraint(equalToConstant: 230),
+
+            heightInstructionLabel.topAnchor.constraint(equalTo: heightPanel.topAnchor, constant: 22),
+            heightInstructionLabel.leadingAnchor.constraint(equalTo: heightPanel.leadingAnchor, constant: 24),
+            heightInstructionLabel.trailingAnchor.constraint(equalTo: heightPanel.trailingAnchor, constant: -24),
+
+            heightValueLabel.topAnchor.constraint(equalTo: heightInstructionLabel.bottomAnchor, constant: 10),
+            heightValueLabel.centerXAnchor.constraint(equalTo: heightPanel.centerXAnchor),
+
+            manualEntryButton.topAnchor.constraint(equalTo: heightValueLabel.bottomAnchor, constant: 4),
+            manualEntryButton.centerXAnchor.constraint(equalTo: heightPanel.centerXAnchor),
+
+            manualHeightField.topAnchor.constraint(equalTo: heightValueLabel.bottomAnchor, constant: 4),
+            manualHeightField.centerXAnchor.constraint(equalTo: heightPanel.centerXAnchor),
+            manualHeightField.widthAnchor.constraint(equalToConstant: 200),
+            manualHeightField.heightAnchor.constraint(equalToConstant: 44),
+
+            confirmHeightButton.bottomAnchor.constraint(equalTo: safeArea.bottomAnchor, constant: -16),
+            confirmHeightButton.centerXAnchor.constraint(equalTo: heightPanel.centerXAnchor),
+            confirmHeightButton.widthAnchor.constraint(equalToConstant: 200),
+            confirmHeightButton.heightAnchor.constraint(equalToConstant: 48),
+
+            retapHeightButton.centerYAnchor.constraint(equalTo: confirmHeightButton.centerYAnchor),
+            retapHeightButton.leadingAnchor.constraint(equalTo: heightPanel.leadingAnchor, constant: 20),
+            retapHeightButton.widthAnchor.constraint(equalToConstant: 90),
+            retapHeightButton.heightAnchor.constraint(equalToConstant: 36),
+        ])
+    }
+
     private func setupGestures() {
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         sceneView.addGestureRecognizer(tap)
@@ -192,31 +328,45 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
     // MARK: - Gesture Handlers
 
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
-        guard !didFinish else { return }
-        guard panRecognizer.isEnabled == false else { return }
-
         let loc = gesture.location(in: sceneView)
-        guard let query = sceneView.raycastQuery(from: loc, allowing: .estimatedPlane, alignment: .horizontal) else { return }
-        let results = sceneView.session.raycast(query)
-        guard let hit = results.first else { return }
 
-        let col = hit.worldTransform.columns.3
-        _ = simd_make_float3(col.x, col.y, col.z)
+        switch phase {
+        case .polygon:
+            guard panRecognizer.isEnabled == false else { return }
+            guard let query = sceneView.raycastQuery(from: loc, allowing: .estimatedPlane, alignment: .horizontal) else { return }
+            let results = sceneView.session.raycast(query)
+            guard let hit = results.first else { return }
 
-        let anchor = ARAnchor(transform: hit.worldTransform)
-        let index = cornerAnchors.count
-        cornerAnchors.append(anchor)
-        anchorIndexMap[anchor.identifier] = index
-        sceneView.session.add(anchor: anchor)
+            let col = hit.worldTransform.columns.3
+            let position = simd_make_float3(col.x, col.y, col.z)
 
-        let sphere = makeSphereNode()
-        sphere.simdWorldPosition = simd_make_float3(col.x, col.y, col.z)
-        sceneView.scene.rootNode.addChildNode(sphere)
-        sphereNodes.append(sphere)
+            let anchor = ARAnchor(transform: hit.worldTransform)
+            let index = cornerAnchors.count
+            cornerAnchors.append(anchor)
+            anchorIndexMap[anchor.identifier] = index
+            sceneView.session.add(anchor: anchor)
 
-        updateLines()
-        updateStats()
-        updateButtons()
+            let sphere = makeSphereNode()
+            sphere.simdWorldPosition = position
+            sceneView.scene.rootNode.addChildNode(sphere)
+            sphereNodes.append(sphere)
+
+            updateLines()
+            updateStats()
+            updateButtons()
+
+        case .height:
+            if let query = sceneView.raycastQuery(from: loc, allowing: .estimatedPlane, alignment: .any) {
+                let results = sceneView.session.raycast(query)
+                if let hit = results.first {
+                    let hitY = Double(hit.worldTransform.columns.3.y)
+                    let heightM = max(0, hitY - Double(groundY))
+                    captureHeightPoint(heightM)
+                    return
+                }
+            }
+            statsLabel.text = "No surface detected — try aiming at wall"
+        }
     }
 
     private func makeSphereNode() -> SCNNode {
@@ -251,7 +401,7 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
     }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard let node = dragNode, let idx = dragIndex, !didFinish else { return }
+        guard let node = dragNode, let idx = dragIndex else { return }
 
         let loc = gesture.location(in: sceneView)
 
@@ -405,25 +555,32 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
     // MARK: - Button Actions
 
     @objc private func doneTapped() {
-        let n = sphereNodes.count
-        guard !didFinish, n >= 3 else { return }
-        didFinish = true
+        guard phase == .polygon, sphereNodes.count >= 3 else { return }
+        transitionToHeightPhase()
+    }
 
-        let (perimFt, areaSqft) = computeMeasurements()
+    private func transitionToHeightPhase() {
+        phase = .height
+        stopQualityTimer()
+        groundY = sphereNodes.reduce(0) { $0 + $1.simdWorldPosition.y } / Float(sphereNodes.count)
 
-        let corners: [[String: Double]] = sphereNodes.map { node in
-            ["x": Double(node.simdWorldPosition.x), "z": Double(node.simdWorldPosition.z)]
-        }
+        // Hide polygon controls + quality bar
+        undoButton.isHidden = true
+        resetButton.isHidden = true
+        doneButton.isHidden = true
+        qualityLabel.isHidden = true
+        qualityProgressView.isHidden = true
 
-        let result: [String: Any] = [
-            "corners": corners,
-            "perimeterFt": (perimFt * 10).rounded() / 10,
-            "areaSqft": Int(areaSqft.rounded()),
-            "simulated": false
-        ]
+        // Update tracking label
+        trackingLabel.text = "Height mode — aim at top of wall"
+        trackingLabel.backgroundColor = navyColor.withAlphaComponent(0.85)
 
-        sceneView.session.pause()
-        onComplete?(.success(result))
+        // Update stats for height phase
+        let (_, area) = computeMeasurements()
+        statsLabel.text = String(format: "%.0f sf captured — now set height", area)
+
+        // Show height panel
+        heightPanel.isHidden = false
     }
 
     @objc private func undoTapped() {
@@ -462,19 +619,155 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
     }
 
     @objc private func cancelTapped() {
-        guard !didFinish else { return }
-        didFinish = true
+        stopQualityTimer()
         sceneView.session.pause()
         onComplete?(.failure(NSError(
-            domain: "ExteriorScan",
-            code: -1,
+            domain: "ExteriorScan", code: -1,
             userInfo: [NSLocalizedDescriptionKey: "Scan cancelled"]
         )))
+    }
+
+    private func setupQualityBar() {
+        qualityLabel = UILabel()
+        qualityLabel.translatesAutoresizingMaskIntoConstraints = false
+        qualityLabel.text = "Quality 0"
+        qualityLabel.textColor = UIColor.white.withAlphaComponent(0.75)
+        qualityLabel.font = UIFont.systemFont(ofSize: 11, weight: .medium)
+        qualityLabel.textAlignment = .center
+        view.addSubview(qualityLabel)
+
+        qualityProgressView = UIProgressView(progressViewStyle: .bar)
+        qualityProgressView.translatesAutoresizingMaskIntoConstraints = false
+        qualityProgressView.progress = 0
+        qualityProgressView.trackTintColor = UIColor.white.withAlphaComponent(0.2)
+        qualityProgressView.progressTintColor = CaptureQualityTracker.colorForScore(0)
+        qualityProgressView.layer.cornerRadius = 3
+        qualityProgressView.clipsToBounds = true
+        view.addSubview(qualityProgressView)
+
+        NSLayoutConstraint.activate([
+            qualityLabel.bottomAnchor.constraint(equalTo: doneButton.topAnchor, constant: -10),
+            qualityLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            qualityProgressView.bottomAnchor.constraint(equalTo: qualityLabel.topAnchor, constant: -4),
+            qualityProgressView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            qualityProgressView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            qualityProgressView.heightAnchor.constraint(equalToConstant: 6),
+        ])
+    }
+
+    private func startQualityTimer() {
+        qualityTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self = self, self.phase == .polygon else { return }
+            let score = CaptureQualityTracker.liveExteriorScore(
+                cornerCount: self.sphereNodes.count,
+                hadLimitedTracking: self.hadLimitedTracking
+            )
+            DispatchQueue.main.async { self.updateQualityBar(score: score) }
+        }
+    }
+
+    private func stopQualityTimer() {
+        qualityTimer?.invalidate()
+        qualityTimer = nil
+    }
+
+    private func updateQualityBar(score: Int) {
+        qualityProgressView.setProgress(Float(score) / 100.0, animated: true)
+        qualityProgressView.progressTintColor = CaptureQualityTracker.colorForScore(score)
+        qualityLabel.text = "Quality \(score)"
+    }
+
+    // MARK: - Height Capture
+
+    private func captureHeightPoint(_ heightM: Double) {
+        capturedHeightPoints.append(heightM)
+        let maxH = capturedHeightPoints.max() ?? heightM
+        let heightFt = maxH * 3.28084
+        heightValueLabel.text = String(format: "%.1f ft", heightFt)
+        heightSource = "auto"
+
+        retapHeightButton.isHidden = false
+        confirmHeightButton.isEnabled = true
+        confirmHeightButton.alpha = 1.0
+        manualEntryButton.isHidden = true
+        manualHeightField.isHidden = true
+        manualHeightField.resignFirstResponder()
+    }
+
+    @objc private func retapHeightTapped() {
+        statsLabel.text = "Tap top of wall to add another measurement"
+    }
+
+    @objc private func confirmHeightTapped() {
+        guard !capturedHeightPoints.isEmpty || !(manualHeightField.text ?? "").isEmpty else { return }
+
+        let heightM: Double
+        let source: String
+
+        if !capturedHeightPoints.isEmpty {
+            heightM = capturedHeightPoints.max()!
+            source = heightSource
+        } else {
+            guard let txt = manualHeightField.text,
+                  let ft = Double(txt), ft > 0 else { return }
+            heightM = ft / 3.28084
+            source = "manual"
+        }
+
+        let (perimFt, areaSqft) = computeMeasurements()
+        let corners: [[String: Double]] = sphereNodes.map { node in
+            ["x": Double(node.simdWorldPosition.x), "z": Double(node.simdWorldPosition.z)]
+        }
+
+        let quality = CaptureQualityTracker.scoreFromExteriorResult(
+            cornerCount: sphereNodes.count,
+            perimeterFt: perimFt,
+            hadLimitedTracking: hadLimitedTracking
+        )
+
+        let result: [String: Any] = [
+            "corners": corners,
+            "perimeterFt": (perimFt * 10).rounded() / 10,
+            "areaSqft": Int(areaSqft.rounded()),
+            "heightMeters": (heightM * 100).rounded() / 100,
+            "heightSource": source,
+            "heightPoints": capturedHeightPoints.isEmpty ? [heightM] : capturedHeightPoints,
+            "qualityScore": quality.score,
+            "qualityGrade": quality.grade,
+            "qualityDeductions": quality.deductions,
+            "simulated": false,
+        ]
+
+        sceneView.session.pause()
+        onComplete?(.success(result))
+    }
+
+    @objc private func showManualEntry() {
+        manualEntryButton.isHidden = true
+        manualHeightField.isHidden = false
+        manualHeightField.becomeFirstResponder()
+        heightSource = "manual"
+    }
+
+    @objc private func manualHeightChanged() {
+        guard let txt = manualHeightField.text, let ft = Double(txt), ft >= 2, ft <= 80 else {
+            confirmHeightButton.isEnabled = false
+            confirmHeightButton.alpha = 0.5
+            return
+        }
+        let heightM = ft / 3.28084
+        capturedHeightPoints = []
+        heightValueLabel.text = String(format: "%.1f ft", ft)
+        confirmHeightButton.isEnabled = true
+        confirmHeightButton.alpha = 1.0
+        capturedHeightPoints = [heightM]
+        heightSource = "manual"
     }
 
     // MARK: - ARSCNViewDelegate
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        guard phase == .polygon else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             switch frame.camera.trackingState {
@@ -484,21 +777,26 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
             case .notAvailable:
                 self.trackingLabel.text = "AR unavailable"
                 self.trackingLabel.backgroundColor = UIColor(red: 0.8, green: 0.2, blue: 0.2, alpha: 0.9)
+                self.hadLimitedTracking = true
             case .limited(.initializing):
                 self.trackingLabel.text = "Initializing..."
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
             case .limited(.excessiveMotion):
                 self.trackingLabel.text = "Too much motion — slow down"
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
+                self.hadLimitedTracking = true
             case .limited(.insufficientFeatures):
                 self.trackingLabel.text = "Point at a textured surface"
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
+                self.hadLimitedTracking = true
             case .limited(.relocalizing):
                 self.trackingLabel.text = "Recovering tracking..."
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
+                self.hadLimitedTracking = true
             @unknown default:
                 self.trackingLabel.text = "Limited tracking"
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
+                self.hadLimitedTracking = true
             }
         }
     }

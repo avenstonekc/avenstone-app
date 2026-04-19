@@ -21,6 +21,7 @@ const RoomPlanPlugin = registerPlugin('RoomPlanPlugin', {
     startScan: async () => { throw new Error('LiDAR only available on native iOS'); },
     exportFloorPlan: async () => ({ imageBase64: null, pdfBase64: null }),
     startExteriorScan: async () => { throw new Error('Exterior scan only available on native iOS'); },
+    startInteriorHeightCapture: async () => { throw new Error('Interior height capture only available on native iOS'); },
   }),
 });
 
@@ -111,6 +112,9 @@ export async function scanRoom(roomName, onProgress) {
     sqft,
     doors:   mock.doors,
     windows: mock.windows,
+    qualityScore: 85,
+    qualityGrade: 'B',
+    qualityDeductions: [],
     simulated: true,
   };
 }
@@ -141,8 +145,34 @@ export async function startExteriorScan() {
     ],
     perimeterFt: 141.8,
     areaSqft: 1196,
+    heightMeters: 2.74,
+    heightSource: 'auto',
+    heightPoints: [2.74],
+    qualityScore: 80,
+    qualityGrade: 'B',
+    qualityDeductions: [],
     simulated: true,
   };
+}
+
+/**
+ * Interior height capture — AR tap-to-measure for trey/vaulted ceilings.
+ * Auto-detects floor plane, user taps ceiling. Returns heightMeters.
+ * Native iOS: launches InteriorHeightCaptureViewController.
+ * Web: mock result.
+ */
+export async function startInteriorHeightCapture() {
+  if (isNative) {
+    try {
+      const result = await RoomPlanPlugin.startInteriorHeightCapture({});
+      return { ...result, simulated: false };
+    } catch (err) {
+      if (err?.message?.includes('Cancelled') || err?.message?.includes('cancelled')) throw err;
+      console.warn('[lidar] interior height capture failed:', err);
+    }
+  }
+  await new Promise(r => setTimeout(r, 800));
+  return { heightMeters: 2.74, heightSource: 'auto', simulated: true };
 }
 
 /**

@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import LidarScanner from './LidarScanner';
+import HeightCaptureStep from './HeightCaptureStep';
+import CaptureQualityReport from './CaptureQualityReport';
 import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan } from '../../lib/supabase';
 import { stampGPS } from '../../lib/gps';
+import { metersToFeet } from '../../lib/captureHeight';
+import { gradeLabel } from '../../lib/captureQuality';
 
 const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -10,12 +14,14 @@ const BORDER = '#E8E4DC';
 
 export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }) {
   const [rooms, setRooms] = useState([]);
-  const [step, setStep] = useState('scan'); // 'scan' | 'save'
+  const [step, setStep] = useState('scan'); // 'scan' | 'height' | 'report' | 'save'
   const [contacts, setContacts] = useState([]);
   const [contactSearch, setContactSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [exteriorResult, setExteriorResult] = useState(null);
+  const [heightData, setHeightData] = useState(null); // { heightMeters, heightSource, heightPoints }
+  const [qualityData, setQualityData] = useState(null); // { score, grade, deductions, rooms }
 
   useEffect(() => {
     sb.from('contacts')
@@ -27,52 +33,130 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
 
   function handleScanDone() {
     if (rooms.length === 0) { onClose(); return; }
-    if (jobId) { handleScanDoneJobMode(); return; }
-    setStep('save');
+    setStep('height');
   }
 
-  async function handleScanDoneJobMode() {
-    if (rooms.length === 0) { onClose(); return; }
+  function handleExteriorCapture(result) {
+    setExteriorResult(result);
+    setStep('height');
+  }
+
+  function computeQualityData() {
+    if (exteriorResult) {
+      const score = exteriorResult.qualityScore ?? 70;
+      return {
+        score,
+        grade: exteriorResult.qualityGrade ?? gradeLabel(score),
+        deductions: exteriorResult.qualityDeductions ?? [],
+        rooms: [],
+      };
+    }
+    const scored = rooms.filter(r => r.qualityScore != null);
+    const avgScore = scored.length > 0
+      ? Math.round(scored.reduce((s, r) => s + r.qualityScore, 0) / scored.length)
+      : 70;
+    const deductions = [...new Set(scored.flatMap(r => r.qualityDeductions ?? []))];
+    return {
+      score: avgScore,
+      grade: gradeLabel(avgScore),
+      deductions,
+      rooms: rooms.map(r => ({ name: r.name, sqft: r.sqft, score: r.qualityScore, grade: r.qualityGrade })),
+    };
+  }
+
+  function handleHeightConfirm(heightMeters, heightSource, heightPoints) {
+    setHeightData({ heightMeters, heightSource, heightPoints });
+    setQualityData(computeQualityData());
+    setStep('report');
+  }
+
+  async function handleReportAccept() {
+    const hd = heightData;
+    const qd = qualityData;
+    if (exteriorResult) {
+      if (jobId) {
+        await saveExterior({ ...hd, qualityScore: qd?.score, qualityGrade: qd?.grade, qualityDeductions: qd?.deductions });
+      } else {
+        setStep('save');
+      }
+    } else {
+      if (jobId) {
+        await saveInterior({ ...hd, qualityScore: qd?.score, qualityGrade: qd?.grade, qualityDeductions: qd?.deductions });
+      } else {
+        setStep('save');
+      }
+    }
+  }
+
+  function handleReportRescan() {
+    setRooms([]);
+    setExteriorResult(null);
+    setHeightData(null);
+    setQualityData(null);
+    setStep('scan');
+  }
+
+  async function saveInterior({ heightMeters, heightSource, heightPoints, qualityScore, qualityGrade, qualityDeductions }) {
     setSaving(true);
-    const [totalSqft, gps] = [rooms.reduce((sum, r) => sum + (r.sqft || 0), 0), await stampGPS()];
-    await sbSaveJobLidarScan({ jobId, rooms, totalSqft, captureMode: 'interior', gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy });
+    const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
+    const gps = await stampGPS();
+    await sbSaveJobLidarScan({
+      jobId, rooms, totalSqft, captureMode: 'interior',
+      heightMeters, heightSource, heightPoints,
+      qualityScore: qualityScore ?? qualityData?.score ?? null,
+      qualityGrade: qualityGrade ?? qualityData?.grade ?? null,
+      qualityDeductions: qualityDeductions ?? qualityData?.deductions ?? null,
+      gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
+    });
     setSaving(false);
     setSavedOk(true);
     setTimeout(onClose, 1400);
   }
 
-  async function handleExteriorCapture(result) {
-    setExteriorResult(result);
-    if (jobId) {
-      setSaving(true);
-      const gps = await stampGPS();
-      await sbSaveJobLidarScan({
-        jobId, rooms: [], totalSqft: result.areaSqft,
-        captureMode: 'exterior',
-        outlineData: { corners: result.corners, perimeterFt: result.perimeterFt, areaSqft: result.areaSqft },
-        gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
-      });
-      setSaving(false);
-      setSavedOk(true);
-      setTimeout(onClose, 1400);
-      return;
-    }
-    setStep('save');
+  async function saveExterior({ heightMeters, heightSource, heightPoints, qualityScore, qualityGrade, qualityDeductions }) {
+    setSaving(true);
+    const ext = exteriorResult;
+    const gps = await stampGPS();
+    await sbSaveJobLidarScan({
+      jobId, rooms: [], totalSqft: ext.areaSqft, captureMode: 'exterior',
+      outlineData: { corners: ext.corners, perimeterFt: ext.perimeterFt, areaSqft: ext.areaSqft },
+      heightMeters, heightSource, heightPoints,
+      qualityScore: qualityScore ?? qualityData?.score ?? null,
+      qualityGrade: qualityGrade ?? qualityData?.grade ?? null,
+      qualityDeductions: qualityDeductions ?? qualityData?.deductions ?? null,
+      gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
+    });
+    setSaving(false);
+    setSavedOk(true);
+    setTimeout(onClose, 1400);
   }
 
   async function handleSave(contactId) {
     setSaving(true);
     const gps = await stampGPS();
+    const hm = heightData?.heightMeters ?? null;
+    const hs = heightData?.heightSource ?? null;
+    const hp = heightData?.heightPoints ?? null;
+    const qs = qualityData?.score ?? null;
+    const qg = qualityData?.grade ?? null;
+    const qd = qualityData?.deductions ?? null;
     if (exteriorResult) {
       await sbSaveLidarScan({
         contactId, rooms: [], totalSqft: exteriorResult.areaSqft,
         captureMode: 'exterior',
         outlineData: { corners: exteriorResult.corners, perimeterFt: exteriorResult.perimeterFt, areaSqft: exteriorResult.areaSqft },
+        heightMeters: hm, heightSource: hs, heightPoints: hp,
+        qualityScore: qs, qualityGrade: qg, qualityDeductions: qd,
         gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
       });
     } else {
       const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
-      await sbSaveLidarScan({ contactId, rooms, totalSqft, captureMode: 'interior', gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy });
+      await sbSaveLidarScan({
+        contactId, rooms, totalSqft, captureMode: 'interior',
+        heightMeters: hm, heightSource: hs, heightPoints: hp,
+        qualityScore: qs, qualityGrade: qg, qualityDeductions: qd,
+        gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
+      });
     }
     setSaving(false);
     setSavedOk(true);
@@ -104,10 +188,10 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       }}>
         <div>
           <h2 style={{ fontFamily: '"DM Serif Display", serif', fontSize: 20, margin: 0, lineHeight: 1.1 }}>
-            {step === 'save' ? 'Save Floor Plan' : 'Room Scanner'}
+            {step === 'save' ? 'Save Floor Plan' : step === 'height' ? 'Capture Height' : step === 'report' ? 'Scan Quality' : 'Room Scanner'}
           </h2>
           <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
-            {step === 'save' ? 'Attach scan to a contact' : 'Scan rooms with LiDAR to capture real dimensions'}
+            {step === 'save' ? 'Attach scan to a contact' : step === 'height' ? 'Required for paint, drywall, and siding estimates' : step === 'report' ? 'Review before saving' : 'Scan rooms with LiDAR to capture real dimensions'}
           </div>
         </div>
         <button
@@ -125,6 +209,27 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 14px', WebkitOverflowScrolling: 'touch' }}>
         {step === 'scan' && (
           <LidarScanner rooms={rooms} onRoomsChange={setRooms} onDone={handleScanDone} onExteriorCapture={handleExteriorCapture} />
+        )}
+
+        {step === 'height' && (
+          <HeightCaptureStep
+            captureMode={exteriorResult ? 'exterior' : 'interior'}
+            autoHeightFt={
+              exteriorResult
+                ? (exteriorResult.heightMeters ? metersToFeet(exteriorResult.heightMeters) : null)
+                : (rooms.length > 0 ? Math.max(...rooms.map(r => r.height || 0)) || null : null)
+            }
+            onConfirm={handleHeightConfirm}
+          />
+        )}
+
+        {step === 'report' && qualityData && (
+          <CaptureQualityReport
+            captureMode={exteriorResult ? 'exterior' : 'interior'}
+            qualityData={qualityData}
+            onAccept={handleReportAccept}
+            onRescan={handleReportRescan}
+          />
         )}
 
         {step === 'save' && (

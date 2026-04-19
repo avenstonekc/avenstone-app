@@ -71,6 +71,11 @@ export default function FloorPlanTab({ job, profile }) {
                         Exterior
                       </span>
                     )}
+                    {scan.height_meters == null && (
+                      <span style={{ marginLeft: '8px', fontSize: '11px', fontWeight: '600', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Height missing
+                      </span>
+                    )}
                   </div>
                   <span style={{ fontSize: '13px', color: '#666' }}>
                     {formatSqft(totalSqft)} sf

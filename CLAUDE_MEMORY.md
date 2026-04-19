@@ -105,6 +105,23 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Next: Build PM-Sub chat feature
 
 [LOG — 2026-04-19]
+- Action: Capture v2 Phase 4 shipped — quality meter 0-100, live bar in Swift VCs, post-capture report in React
+- Files: ios/.../CaptureQualityTracker.swift (new — shared scoring class, interior from CapturedRoom + exterior from corner data), RoomPlanPlugin.swift (live quality bar + timer in RoomPlanScanViewController, quality fields in roomToDict result via onQuality closure), ExteriorScanViewController.swift (live bar during polygon phase, hadLimitedTracking flag, quality in result dict), src/lib/captureQuality.js (new — deduction messages + grade helpers), src/components/ai/CaptureQualityReport.jsx (new — score display, deductions, per-room breakdown, Re-scan + Accept), src/components/ai/AiIntakeWizard.jsx (added 'report' step between 'height' and 'save', computeQualityData aggregates interior rooms, quality passed to all save paths), src/lib/lidar.js (quality fields in web mocks)
+- Decision: Interior live bar = duration-based (20→90 over 60s). Final score computed from CapturedRoom after processing (wall count, confidence, ceiling, duration, area). Exterior live bar = corner count + tracking state.
+- Decision: onQuality closure on RoomPlanScanViewController fires before onComplete; capturedQuality local var captured by both closures in sequence.
+- Decision: Aggregate interior quality = average of per-room scores. Deductions = union across all rooms.
+- Decision: Quality saves regardless of Re-scan or Accept choice (Re-scan resets rooms and goes back to scan step).
+
+[LOG — 2026-04-19]
+- Action: Capture v2 Phase 3 shipped — mandatory height capture on all captures, both modes
+- Files: src/lib/captureHeight.js (new — unit conversion + validation), src/components/ai/HeightCaptureStep.jsx (new — shared confirm/override UI), ExteriorScanViewController.swift (rewritten — phase enum, height phase after polygon Done, groundY from corner average, tap-to-raycast height, multi-point array, manual fallback), AiIntakeWizard.jsx (added 'height' step between scan and save, handleHeightConfirm → routes to save/contact picker, all save paths include heightMeters/heightSource/heightPoints), lidar.js (mock includes heightMeters: 2.74, heightSource: 'auto'), FloorPlanTab.jsx (amber 'Height missing' badge on legacy records where height_meters is null)
+- Decision: ExteriorScanViewController stays in AR session across both phases (polygon → height). groundY = average Y of corner spheres. Height raycast uses .any plane alignment to hit walls/soffits.
+- Decision: Interior autoHeightFt = max of room.height values (conservative for takeoffs). Passed to HeightCaptureStep as autoHeightFt.
+- Decision: Legacy records (height_meters IS NULL) get a UI badge only — no DB migration needed.
+- Decision: Height is mandatory — Confirm button disabled until valid value. No skip path.
+- Next: Phase 4 shipped — see log below
+
+[LOG — 2026-04-19]
 - Action: Capture v2 Phase 2 shipped — Exterior Mode AR capture, full end-to-end from scan to save
 - Files: ios/App/CapApp-SPM/Sources/CapApp-SPM/ExteriorScanViewController.swift (new), RoomPlanPlugin.swift (+startExteriorScan method), src/lib/lidar.js (+startExteriorScan export + web mock), src/lib/supabase.js (+outlineData param on both save helpers), src/components/ai/LidarScanner.jsx (mode toggle segmented control, exterior button + scan flow), src/components/ai/AiIntakeWizard.jsx (exterior capture handler, job+contact save paths, exterior summary UI), src/components/jobs/tabs/FloorPlanTab.jsx (exterior scan card with perimeter+corners display)
 - Decision: ExteriorScanViewController uses ARKit ARSCNView + ARWorldTrackingConfiguration (not RoomPlan — LiDAR fails outdoors). Tap corners → gold spheres + cylinder lines. Shoelace formula for area (XZ plane). Long press + pan to drag/reposition corners. Undo/Reset/Done buttons.
