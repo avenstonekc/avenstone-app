@@ -126,9 +126,9 @@ export const sbPhoto = async (jid, file) => {
     if (ue) { console.error(ue); return null; }
     const { data: ud } = sb.storage.from('job-photos').getPublicUrl(path);
     const url = ud.publicUrl;
-    const row = { id: Date.now().toString() + Math.random(), job_id: jid, tenant_id: AV_TENANT, type: file.type.startsWith('video') ? 'video' : 'photo', url, name: file.name };
-    await sb.from('photos').insert(row);
-    return { id: row.id, type: row.type, url, name: file.name };
+    const row = { job_id: jid, tenant_id: AV_TENANT, type: file.type.startsWith('video') ? 'video' : 'photo', url, name: file.name };
+    const { data: inserted } = await sb.from('photos').insert(row).select('id').single();
+    return { id: inserted?.id, type: row.type, url, name: file.name };
   } catch (e) { console.error(e); return null; }
 };
 
@@ -163,9 +163,20 @@ export const sbSavePhase = async ph => {
 export const DOC_TYPES = ['plan','permit','contract','spec','inspection','other'];
 export const docTypeColor = t => ({ plan:'#3B82F6', permit:'#f59e0b', contract:'#22c55e', spec:'#8b5cf6', inspection:'#ef4444', other:'#9CA3AF' }[t] || '#9CA3AF');
 
+const docSignedUrl = async path => {
+  if (!path) return null;
+  const { data } = await sb.storage.from('job-documents').createSignedUrl(path, 3600);
+  return data?.signedUrl || null;
+};
+const docPathFromUrl = url => url?.split('/job-documents/')[1] || null;
+
 export const sbLoadDocs = async jid => {
   const { data } = await sb.from('job_documents').select('*').eq('job_id', jid).order('created_at', { ascending: false });
-  return data || [];
+  if (!data || !data.length) return [];
+  return Promise.all(data.map(async doc => {
+    const signed_url = await docSignedUrl(docPathFromUrl(doc.file_url));
+    return { ...doc, signed_url };
+  }));
 };
 export const sbUploadDoc = async (jid, file, fileType) => {
   try {
@@ -179,7 +190,8 @@ export const sbUploadDoc = async (jid, file, fileType) => {
     const row = { job_id: jid, tenant_id: AV_TENANT, name: file.name, file_url: ud.publicUrl, file_type: fileType || 'other', version, client_visible: false };
     const { data: inserted, error: ie } = await sb.from('job_documents').insert(row).select().single();
     if (ie) return { error: ie.message || 'Save failed' };
-    return { doc: inserted };
+    const signed_url = await docSignedUrl(path);
+    return { doc: { ...inserted, signed_url } };
   } catch (e) { return { error: e.message || 'Unknown error' }; }
 };
 export const sbDelDoc = async doc => {
@@ -267,9 +279,24 @@ export const sbSendBidInvite = async (itb, email, name) => {
   const res = await fetch(BID_INVITE_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, sub_name: name || '', job_address: itb._jobAddress || '', trade: itb.trade || '', description: itb.description || '', budget_range: itb.budget_range || '', due_date: itb.due_date || '', itb_id: itb.id, tenant_id: AV_TENANT }) });
   return res.json();
 };
+const bidQuotePath = url => {
+  if (!url) return null;
+  if (url.startsWith('http')) return url.split('/bid-quotes/')[1] || null;
+  return url;
+};
 export const sbLoadSubITBs = async subId => {
   const { data } = await sb.from('itb_invitees').select('itb:invitations_to_bid(*,responses:bid_responses(*),job:jobs(id,address,status))').eq('sub_id', subId);
-  return (data || []).map(d => d.itb).filter(Boolean);
+  const itbs = (data || []).map(d => d.itb).filter(Boolean);
+  await Promise.all(itbs.flatMap(itb => (itb.responses || []).map(async r => {
+    if (r.quote_file_url) {
+      const path = bidQuotePath(r.quote_file_url);
+      if (path) {
+        const { data: s } = await sb.storage.from('bid-quotes').createSignedUrl(path, 3600);
+        if (s?.signedUrl) r.quote_file_url = s.signedUrl;
+      }
+    }
+  })));
+  return itbs;
 };
 export const sbSubmitBid = async (itbId, amount, notes, quoteFile) => {
   let quote_file_url = null, quote_file_name = null, quote_file_size = null;
@@ -277,8 +304,7 @@ export const sbSubmitBid = async (itbId, amount, notes, quoteFile) => {
     const path = `${AV_USER_ID}/${itbId}/${quoteFile.name}`;
     const { data: up } = await sb.storage.from('bid-quotes').upload(path, quoteFile, { upsert: true });
     if (up) {
-      const { data: pub } = sb.storage.from('bid-quotes').getPublicUrl(path);
-      quote_file_url = pub?.publicUrl || null;
+      quote_file_url = path;
       quote_file_name = quoteFile.name;
       quote_file_size = quoteFile.size;
     }

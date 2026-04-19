@@ -76,7 +76,7 @@ export default function DocsTab({ job, docs, setDocs, docsLoaded, setDocsLoaded 
             <button title={d.client_visible ? 'Hide from client' : 'Show to client'} onClick={() => toggleDocVisible(d)} style={{ background: d.client_visible ? 'rgba(34,197,94,0.1)' : 'transparent', border: `1px solid ${d.client_visible ? '#22c55e' : '#E8E4DC'}`, color: d.client_visible ? '#22c55e' : '#9CA3AF', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
               <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.eye}</span>
             </button>
-            <a href={d.file_url} target="_blank" rel="noreferrer" title="Download" style={{ background: 'transparent', border: '1px solid #E8E4DC', color: '#0A1F44', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', flexShrink: 0 }}>
+            <a href={d.signed_url || d.file_url} target="_blank" rel="noreferrer" title="Download" style={{ background: 'transparent', border: '1px solid #E8E4DC', color: '#0A1F44', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', flexShrink: 0 }}>
               <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.dl}</span>
             </a>
             <button title="Delete" onClick={() => delDoc(d)} style={{ background: 'transparent', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>

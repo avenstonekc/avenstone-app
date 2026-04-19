@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, sbNotify, authHeader } from '../../lib/supabase';
 import { Ic, sc, sl, f$, STATS } from '../../lib/utils';
 
@@ -96,6 +96,11 @@ export default function JobDet({ job, upd, del, back, profile }) {
   // Docs/photos state shared between DocsTab and EstimateTab (for ITB sharing)
   const [docs, setDocs] = useState([]);
   const [docsLoaded, setDocsLoaded] = useState(false);
+
+  // Re-fetch docs every time the user navigates to the docs tab
+  useEffect(() => {
+    if (tab === 'docs') setDocsLoaded(false);
+  }, [tab]);
 
   const apCOs = (job.change_orders || []).filter(c => c.status === 'approved');
   const coT = apCOs.reduce((a, c) => a + Number(c.amount || 0), 0);

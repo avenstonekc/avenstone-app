@@ -1,5 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { sb, AV_TENANT, CONTRACT_EMAIL_URL, ANON_KEY } from '../../lib/supabase';
+
+const signStoragePath = async path => {
+  if (!path) return null;
+  const { data } = await sb.storage.from('job-documents').createSignedUrl(path, 3600);
+  return data?.signedUrl || null;
+};
+const pathFromUrl = url => url?.split('/job-documents/')[1] || null;
 
 export default function SubOnboardingModal({ sub, onClose, onUpdated }) {
   const [tab, setTab] = useState('w9');
@@ -8,7 +15,14 @@ export default function SubOnboardingModal({ sub, onClose, onUpdated }) {
   const [insExpiry, setInsExpiry] = useState(sub.insurance_expiry || '');
   const [insVerified, setInsVerified] = useState(sub.insurance_verified || false);
   const [savingIns, setSavingIns] = useState(false);
+  const [w9SignedUrl, setW9SignedUrl] = useState(null);
+  const [insSignedUrl, setInsSignedUrl] = useState(null);
   const w9Ref = useRef(); const insRef = useRef();
+
+  useEffect(() => {
+    if (sub.w9_url) signStoragePath(pathFromUrl(sub.w9_url)).then(setW9SignedUrl);
+    if (sub.insurance_url) signStoragePath(pathFromUrl(sub.insurance_url)).then(setInsSignedUrl);
+  }, [sub.w9_url, sub.insurance_url]);
 
   const uploadW9 = async file => {
     if (!file) return; setW9Uploading(true);
@@ -19,6 +33,7 @@ export default function SubOnboardingModal({ sub, onClose, onUpdated }) {
     const { data: ud } = sb.storage.from('job-documents').getPublicUrl(path);
     const url = ud.publicUrl;
     await sb.from('profiles').update({ w9_url: url, w9_submitted_at: new Date().toISOString() }).eq('id', sub.id);
+    signStoragePath(path).then(setW9SignedUrl);
     if (onUpdated) onUpdated({ ...sub, w9_url: url, w9_submitted_at: new Date().toISOString() });
     setW9Uploading(false);
   };
@@ -32,6 +47,7 @@ export default function SubOnboardingModal({ sub, onClose, onUpdated }) {
     const { data: ud } = sb.storage.from('job-documents').getPublicUrl(path);
     const url = ud.publicUrl;
     await sb.from('profiles').update({ insurance_url: url }).eq('id', sub.id);
+    signStoragePath(path).then(setInsSignedUrl);
     if (onUpdated) onUpdated({ ...sub, insurance_url: url });
     setInsUploading(false);
   };
@@ -68,7 +84,7 @@ export default function SubOnboardingModal({ sub, onClose, onUpdated }) {
                 : <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 2 }}>Not submitted</div>}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {sub.w9_url && <a href={sub.w9_url} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 14px' }}>View</a>}
+              {sub.w9_url && w9SignedUrl && <a href={w9SignedUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 14px' }}>View</a>}
               <button className="btn btn-navy" style={{ fontSize: 12, padding: '7px 14px' }} onClick={() => w9Ref.current.click()} disabled={w9Uploading}>{w9Uploading ? 'Uploading...' : 'Upload W-9'}</button>
             </div>
           </div>
@@ -85,7 +101,7 @@ export default function SubOnboardingModal({ sub, onClose, onUpdated }) {
                 : <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 2 }}>Not on file</div>}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {sub.insurance_url && <a href={sub.insurance_url} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 14px' }}>View</a>}
+              {sub.insurance_url && insSignedUrl && <a href={insSignedUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 14px' }}>View</a>}
               <button className="btn btn-navy" style={{ fontSize: 12, padding: '7px 14px' }} onClick={() => insRef.current.click()} disabled={insUploading}>{insUploading ? 'Uploading...' : 'Upload COI'}</button>
             </div>
           </div>

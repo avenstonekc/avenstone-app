@@ -20,7 +20,7 @@ export default function COTab({ job, upd, profile }) {
     if (!cod.trim() || !coa) return;
     setSavCO(true);
     const num = `CO-${String((job.change_orders || []).length + 1).padStart(3, '0')}`;
-    const co = { id: Date.now().toString(), job_id: job.id, co_number: num, description: cod.trim(), reason: cor.trim(), amount: Number(coa), status: 'pending', created_at: new Date().toISOString() };
+    const co = { job_id: job.id, co_number: num, description: cod.trim(), reason: cor.trim(), amount: Number(coa), status: 'pending', created_at: new Date().toISOString() };
     const s = await sbCO(co);
     if (s) {
       upd({ change_orders: [s, ...(job.change_orders || [])] });

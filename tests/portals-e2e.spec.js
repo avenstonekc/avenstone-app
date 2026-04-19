@@ -610,6 +610,10 @@ function defineSubFlow(viewport) {
       phase_name: "Demo", phase_order: 1, status: "not_started",
       assigned_sub_id: subId,
     });
+    // Insert a dummy pricing row so SubOnboardingWizard doesn't block the job list
+    await adminSB.from("sub_pricing").upsert({
+      sub_id: subId, tenant_id: TENANT_ID, trade: "General", item_label: "QA placeholder", unit_price: 0,
+    }, { onConflict: "sub_id,trade,item_label" }).select();
   });
 
   test.afterAll(async () => {
@@ -618,6 +622,7 @@ function defineSubFlow(viewport) {
       await adminSB.from(tbl).delete().eq("job_id", testJobId);
     }
     await adminSB.from("jobs").delete().eq("id", testJobId);
+    await adminSB.from("sub_pricing").delete().eq("sub_id", subId).eq("item_label", "QA placeholder");
   });
 
   test(`[Sub — ${viewport.name}] Can log in and see sub portal`, async ({ page }) => {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { sbGetJobLidarScans } from '../../../lib/supabase';
+import { sbGetJobLidarScans, sbUploadDoc } from '../../../lib/supabase';
+import { buildFloorPlanPDF } from '../../../lib/pdf';
 import AiIntakeWizard from '../../ai/AiIntakeWizard';
 import FloorPlanCanvas from '../../ai/FloorPlanCanvas';
 
@@ -7,6 +8,8 @@ export default function FloorPlanTab({ job, profile }) {
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showScanner, setShowScanner] = useState(false);
+  const [exportingId, setExportingId] = useState(null);
+  const [exportedIds, setExportedIds] = useState(new Set());
 
   const loadScans = async () => {
     setLoading(true);
@@ -28,6 +31,21 @@ export default function FloorPlanTab({ job, profile }) {
   };
 
   const formatSqft = (n) => Number(n).toLocaleString();
+
+  const handleExportPDF = async (scan) => {
+    setExportingId(scan.id);
+    try {
+      const doc = buildFloorPlanPDF(scan, job);
+      const blob = doc.output('blob');
+      const date = new Date(scan.created_at || scan.scanned_at).toISOString().slice(0, 10);
+      const filename = `floor-plan-${date}.pdf`;
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      await sbUploadDoc(job.id, file, 'plan');
+      setExportedIds(prev => new Set(prev).add(scan.id));
+    } finally {
+      setExportingId(null);
+    }
+  };
 
   return (
     <div style={{ fontFamily: "'DM Sans', sans-serif", padding: '16px' }}>
@@ -96,7 +114,25 @@ export default function FloorPlanTab({ job, profile }) {
                     )}
                   </div>
                 ) : rooms.length > 0 && (
-                  <FloorPlanCanvas rooms={rooms} compact={rooms.length < 3} />
+                  <>
+                    <FloorPlanCanvas rooms={rooms} compact={rooms.length < 3} />
+                    <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                      {exportedIds.has(scan.id) ? (
+                        <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: '600' }}>
+                          ✓ Saved to Documents
+                        </span>
+                      ) : (
+                        <button
+                          className="btn btn-ghost"
+                          style={{ fontSize: '12px', padding: '4px 12px', height: '28px' }}
+                          disabled={exportingId === scan.id}
+                          onClick={() => handleExportPDF(scan)}
+                        >
+                          {exportingId === scan.id ? 'Exporting…' : 'Export PDF'}
+                        </button>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             );

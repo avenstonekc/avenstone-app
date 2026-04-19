@@ -85,22 +85,20 @@ for (const vp of VIEWPORTS) {
       await navToJobs(page);
       const intakeBtn = page.locator("button").filter({ hasText: /AI Intake/i });
       await intakeBtn.first().click();
-      // Wizard should open — look for step indicator or greeting text
-      await expect(page.locator("text=New Project Intake").or(page.locator("text=Step 1")).first()).toBeVisible({ timeout: 8000 });
-      // AI greeting should be pre-loaded (no API call needed)
-      await expect(page.locator("text=what kind of project").or(page.locator("text=get started")).first()).toBeVisible({ timeout: 8000 });
+      // Wizard is now a LiDAR Room Scanner — look for the scanner header
+      await expect(page.locator("text=Room Scanner").or(page.locator("text=Scan rooms")).first()).toBeVisible({ timeout: 8000 });
     });
 
     test(`[AI Intake — ${vp.name}] Wizard can be closed`, async ({ page }) => {
       await login(page, ROLES.rep.email, ROLES.rep.password);
       await navToJobs(page);
       await page.locator("button").filter({ hasText: /AI Intake/i }).first().click();
-      await expect(page.locator("text=New Project Intake").or(page.locator("text=Step 1")).first()).toBeVisible({ timeout: 8000 });
+      await expect(page.locator("text=Room Scanner").or(page.locator("text=Scan rooms")).first()).toBeVisible({ timeout: 8000 });
       // Close button (×)
-      const closeBtn = page.locator("button").filter({ hasText: /×|✕|close/i }).first();
+      const closeBtn = page.locator("[aria-label='Close']").or(page.locator("button").filter({ hasText: /×/ })).first();
       if (await closeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
         await closeBtn.click();
-        await expect(page.locator("text=New Project Intake")).not.toBeVisible({ timeout: 5000 });
+        await expect(page.locator("text=Room Scanner")).not.toBeVisible({ timeout: 5000 });
       }
     });
   });

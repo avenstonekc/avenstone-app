@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { sb, sbSaveSignature, sbNotify, AV_USER_ID } from '../../lib/supabase';
+import { sb, sbUploadDoc, sbSaveSignature, sbNotify, AV_USER_ID } from '../../lib/supabase';
 import { buildGenericPDF, DEFAULT_CONTRACT_TEXT } from '../../lib/pdf';
 import SignaturePad from '../auth/SignaturePad';
 
@@ -17,17 +17,12 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
 
     let fileUrl = null;
     try {
-      const path = `${job.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`;
-      const { error: ue } = await sb.storage.from('job-documents').upload(path, file, { contentType: 'application/pdf', upsert: false });
-      if (!ue) {
-        const { data: ud } = sb.storage.from('job-documents').getPublicUrl(path);
-        fileUrl = ud.publicUrl;
-        await sb.from('job_documents').insert({
-          job_id: job.id, tenant_id: job.tenant_id, name: fileName,
-          file_url: fileUrl, file_type: 'contract', version: 1, client_visible: true,
-        });
+      const r = await sbUploadDoc(job.id, file, 'contract');
+      if (r.doc) {
+        fileUrl = r.doc.signed_url || r.doc.file_url;
+        await sb.from('job_documents').update({ client_visible: true }).eq('id', r.doc.id);
       } else {
-        console.error('Signed contract upload error:', ue);
+        console.error('Signed contract upload error:', r.error);
       }
     } catch (e) {
       console.error('Signed contract save error:', e);

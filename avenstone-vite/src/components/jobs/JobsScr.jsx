@@ -75,7 +75,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   const upd = (id, ch) => { const u = jobs.map(j => j.id === id ? { ...j, ...ch } : j); setJobs(u); ls('av_j', u); sbUpd(id, ch); };
   const add = () => {
     if (!newA.trim()) return;
-    const j = { id: Date.now().toString(), address: newA.trim(), status: 'lead', created: new Date().toISOString(), scope: '', sqft: '', photos: [], activity: [], change_orders: [], client_name: '', client_phone: '', client_email: '', assigned_rep: '', assigned_subs: '', contract_value: 0, co_total: 0, target_completion: '' };
+    const j = { id: crypto.randomUUID(), address: newA.trim(), status: 'lead', created: new Date().toISOString(), scope: '', sqft: '', photos: [], activity: [], change_orders: [], client_name: '', client_phone: '', client_email: '', assigned_rep: '', assigned_subs: '', contract_value: 0, co_total: 0, target_completion: '' };
     const u = [j, ...jobs]; setJobs(u); ls('av_j', u); sbSave(j); setNewA(''); setShowNew(false); setSel(j.id);
   };
   const del = id => { if (!window.confirm('Delete this job?')) return; const u = jobs.filter(j => j.id !== id); setJobs(u); ls('av_j', u); sbDel(id); setSel(null); };

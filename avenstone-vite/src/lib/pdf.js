@@ -185,6 +185,114 @@ export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, marg
   return doc;
 };
 
+// ─── Floor Plan PDF ───────────────────────────────────────────────────────────
+export const buildFloorPlanPDF = (scan, job) => {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
+  const W = 612, M = 48, CW = W - M * 2;
+  const rooms = scan.rooms || [];
+  const date = new Date(scan.created_at || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const totalSqft = rooms.reduce((s, r) => s + (r.sqft || 0), 0);
+
+  // Header
+  doc.setFillColor(...navy); doc.rect(0, 0, W, 80, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...gold);
+  doc.text('AVENSTONE GROUP', M, 34);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(...gold);
+  doc.text('FLOOR PLAN', M, 50);
+  doc.setTextColor(200, 200, 200); doc.setFontSize(9);
+  doc.text('avenstonekc.com \u00b7 Kansas City, MO', W - M, 34, { align: 'right' });
+
+  // Property info
+  let y = 100;
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(...navy);
+  doc.text(job.address || 'Property Address', M, y); y += 16;
+  if (job.client_name) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray);
+    doc.text(`Client: ${job.client_name}`, M, y); y += 14;
+  }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray);
+  doc.text(`Captured: ${date}`, M, y);
+  doc.text(`${totalSqft.toLocaleString()} sq ft \u00b7 ${rooms.length} room${rooms.length !== 1 ? 's' : ''}`, W - M, y, { align: 'right' });
+  y += 22;
+  doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 16;
+
+  // Floor plan diagram
+  if (rooms.length > 0) {
+    const PAD_R = 7;
+    const maxDim = Math.max(...rooms.flatMap(r => [r.length || 1, r.width || 1]), 1);
+    const scale = Math.min((CW * 0.62) / maxDim, 18);
+
+    let curX = M, curY = y, rowH = 0;
+    const layout = [];
+    for (const room of rooms) {
+      const rw = Math.max(44, (room.length || 10) * scale);
+      const rh = Math.max(36, (room.width || 10) * scale);
+      if (curX + rw > W - M && curX > M) { curY += rowH + PAD_R; curX = M; rowH = 0; }
+      layout.push({ room, x: curX, y: curY, w: rw, h: rh });
+      curX += rw + PAD_R; rowH = Math.max(rowH, rh);
+    }
+
+    for (const { room, x, ry, w, h } of layout.map(l => ({ ...l, ry: l.y }))) {
+      doc.setFillColor(235, 238, 244); doc.setDrawColor(...navy); doc.setLineWidth(1);
+      doc.rect(x, ry, w, h, 'FD');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(Math.min(9, w / 6)); doc.setTextColor(...navy);
+      doc.text(room.name, x + w / 2, h > 50 ? ry + h / 2 - 7 : ry + h / 2, { align: 'center' });
+      if (h > 50) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gold);
+        doc.text(`${(room.sqft || 0).toLocaleString()} sf`, x + w / 2, ry + h / 2 + 8, { align: 'center' });
+      }
+      if (w > 58 && h > 44) {
+        doc.setFontSize(7); doc.setTextColor(160, 160, 160);
+        doc.text(`${room.length} ft`, x + w / 2, ry + h - 4, { align: 'center' });
+      }
+    }
+
+    const diagramBottom = layout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+    const scaleBarFt = Math.round(40 / scale) || 10;
+    const scaleBarPx = scaleBarFt * scale;
+    const sbY = diagramBottom + 12;
+    doc.setDrawColor(180, 180, 180); doc.setLineWidth(1);
+    doc.line(M, sbY, M + scaleBarPx, sbY);
+    doc.line(M, sbY - 3, M, sbY + 3); doc.line(M + scaleBarPx, sbY - 3, M + scaleBarPx, sbY + 3);
+    doc.setFontSize(7); doc.setTextColor(160, 160, 160); doc.setFont('helvetica', 'normal');
+    doc.text(`${scaleBarFt} ft`, M + scaleBarPx / 2, sbY - 5, { align: 'center' });
+    y = sbY + 22;
+  }
+
+  // Room table
+  doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 14;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
+  doc.text('ROOM DETAILS', M, y); y += 12;
+  const cols = [M, M + 185, M + 295, M + 385, M + 460];
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...gray);
+  ['Room', 'Dimensions', 'Height', 'Sq Ft'].forEach((h, i) => doc.text(h, cols[i], y));
+  y += 4; doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81);
+  for (const room of rooms) {
+    if (y > 720) { doc.addPage(); y = 48; }
+    doc.text(room.name || '—', cols[0], y);
+    doc.text(`${room.length || '—'} \u00d7 ${room.width || '—'} ft`, cols[1], y);
+    doc.text(`${room.height || '—'} ft`, cols[2], y);
+    doc.text(`${(room.sqft || 0).toLocaleString()}`, cols[3], y);
+    y += 12;
+  }
+
+  // Footer
+  const pages = doc.getNumberOfPages();
+  const now = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFillColor(...navy); doc.rect(0, 772, W, 40, 'F');
+    doc.setFontSize(8); doc.setTextColor(...gold); doc.setFont('helvetica', 'bold');
+    doc.text('AVENSTONE GROUP LLC', M, 788);
+    doc.setTextColor(180, 180, 180); doc.setFont('helvetica', 'normal');
+    doc.text(`Page ${i} of ${pages}`, W / 2, 788, { align: 'center' });
+    doc.text(now, W - M, 788, { align: 'right' });
+  }
+  return doc;
+};
+
 // ─── Default contract text ────────────────────────────────────────────────────
 export const DEFAULT_CONTRACT_TEXT = (job, f$) => `CONSTRUCTION SERVICES AGREEMENT
 

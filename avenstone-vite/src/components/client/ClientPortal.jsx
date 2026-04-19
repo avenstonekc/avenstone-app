@@ -626,7 +626,7 @@ export default function ClientPortal({ profile, signOut }) {
                 if (!crForm.description.trim() || !job) return;
                 setCrSaving(true);
                 const num = `CR-${Date.now().toString().slice(-4)}`;
-                const co = { id: Date.now().toString(), job_id: job.id, co_number: num, description: crForm.description.trim(), reason: crForm.reason.trim() || 'Client-requested change', amount: 0, status: 'pending', created_at: new Date().toISOString() };
+                const co = { job_id: job.id, co_number: num, description: crForm.description.trim(), reason: crForm.reason.trim() || 'Client-requested change', amount: 0, status: 'pending', created_at: new Date().toISOString() };
                 await sb.from('change_orders').insert({ ...co, tenant_id: AV_TENANT });
                 sbNotify('co_submitted', `Client change request on ${job.address}`, crForm.description.trim().slice(0, 120), job.id, AV_USER_ID);
                 setCrSaving(false); setCrDone(true);
