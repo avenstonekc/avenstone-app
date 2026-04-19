@@ -20,6 +20,7 @@ const RoomPlanPlugin = registerPlugin('RoomPlanPlugin', {
     isSupported: async () => ({ supported: false }),
     startScan: async () => { throw new Error('LiDAR only available on native iOS'); },
     exportFloorPlan: async () => ({ imageBase64: null, pdfBase64: null }),
+    startExteriorScan: async () => { throw new Error('Exterior scan only available on native iOS'); },
   }),
 });
 
@@ -110,6 +111,36 @@ export async function scanRoom(roomName, onProgress) {
     sqft,
     doors:   mock.doors,
     windows: mock.windows,
+    simulated: true,
+  };
+}
+
+/**
+ * Start an exterior perimeter scan using ARKit corner placement.
+ * Native iOS: launches ExteriorScanViewController, user taps corners, shoelace computes area.
+ * Web / non-iOS: returns a mock result after a short delay.
+ *
+ * @returns {Promise<{corners: Array<{x,z}>, perimeterFt: number, areaSqft: number, simulated: boolean}>}
+ */
+export async function startExteriorScan() {
+  if (isNative) {
+    try {
+      const result = await RoomPlanPlugin.startExteriorScan({});
+      return { ...result, simulated: false };
+    } catch (err) {
+      if (err?.message?.includes('cancelled')) throw err;
+      console.warn('[lidar] exterior scan failed, falling back to simulation:', err);
+    }
+  }
+  // Web / non-iOS simulation — mock a rectangular 40×30 building
+  await new Promise(r => setTimeout(r, 1000));
+  return {
+    corners: [
+      { x: 0, z: 0 }, { x: 12.2, z: 0 },
+      { x: 12.2, z: 9.1 }, { x: 0, z: 9.1 },
+    ],
+    perimeterFt: 141.8,
+    areaSqft: 1196,
     simulated: true,
   };
 }

@@ -53,19 +53,43 @@ export default function FloorPlanTab({ job, profile }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {scans.map((scan, i) => {
+            const isExterior = scan.capture_mode === 'exterior';
             const rooms = scan.rooms || [];
-            const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
+            const outline = scan.outline_data || {};
+            const totalSqft = isExterior
+              ? (outline.areaSqft || scan.total_sqft || 0)
+              : rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
             return (
               <div key={scan.id || i} className="card" style={{ padding: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                  <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '16px', color: '#0A1F44' }}>
-                    {formatDate(scan.created_at || scan.scanned_at)}
-                  </span>
+                  <div>
+                    <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '16px', color: '#0A1F44' }}>
+                      {formatDate(scan.created_at || scan.scanned_at)}
+                    </span>
+                    {isExterior && (
+                      <span style={{ marginLeft: '8px', fontSize: '11px', fontWeight: '600', color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Exterior
+                      </span>
+                    )}
+                  </div>
                   <span style={{ fontSize: '13px', color: '#666' }}>
-                    {rooms.length} room{rooms.length !== 1 ? 's' : ''} · {formatSqft(totalSqft)} sf
+                    {formatSqft(totalSqft)} sf
                   </span>
                 </div>
-                {rooms.length > 0 && (
+                {isExterior ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+                    {outline.perimeterFt && (
+                      <span style={{ backgroundColor: '#0A1F44', color: '#fff', fontSize: '12px', fontWeight: '500', borderRadius: '20px', padding: '4px 10px' }}>
+                        {outline.perimeterFt} ft perimeter
+                      </span>
+                    )}
+                    {outline.corners && (
+                      <span style={{ backgroundColor: '#E8E4DC', color: '#555', fontSize: '12px', fontWeight: '500', borderRadius: '20px', padding: '4px 10px' }}>
+                        {outline.corners.length} corners
+                      </span>
+                    )}
+                  </div>
+                ) : rooms.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
                     {rooms.map((room, j) => (
                       <span

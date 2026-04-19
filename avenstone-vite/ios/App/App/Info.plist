@@ -57,5 +57,7 @@
 	<string>Avenstone attaches photos from your library to jobs and estimates.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Avenstone uses the microphone for AI consultation ambient listening during on-site visits.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Avenstone tags scan locations to attach captures to the correct property.</string>
 </dict>
 </plist>

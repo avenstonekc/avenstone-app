@@ -441,7 +441,7 @@ export const sbLoadContactMessages = async contactId => {
 };
 
 // ─── LiDAR Scans ─────────────────────────────────────────────────────────────
-export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft }) => {
+export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode, heightMeters, heightSource, heightPoints, gpsLatitude, gpsLongitude, gpsAccuracy, qualityScore, qualityGrade, qualityDeductions, outlineData }) => {
   const { data, error } = await sb.from('job_lidar_scans').insert({
     tenant_id: AV_TENANT,
     job_id: jobId,
@@ -449,6 +449,17 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft }) => {
     rooms,
     total_sqft: totalSqft,
     room_count: rooms.length,
+    capture_mode: captureMode ?? 'interior',
+    height_meters: heightMeters ?? null,
+    height_source: heightSource ?? null,
+    height_points: heightPoints ?? null,
+    gps_latitude: gpsLatitude ?? null,
+    gps_longitude: gpsLongitude ?? null,
+    gps_accuracy: gpsAccuracy ?? null,
+    quality_score: qualityScore ?? null,
+    quality_grade: qualityGrade ?? null,
+    quality_deductions: qualityDeductions ?? null,
+    outline_data: outlineData ?? null,
   }).select().single();
   return { data, error };
 };
@@ -456,7 +467,7 @@ export const sbGetJobLidarScans = async jobId => {
   const { data } = await sb.from('job_lidar_scans').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
   return data || [];
 };
-export const sbSaveLidarScan = async ({ contactId, rooms, totalSqft }) => {
+export const sbSaveLidarScan = async ({ contactId, rooms, totalSqft, captureMode, heightMeters, heightSource, heightPoints, gpsLatitude, gpsLongitude, gpsAccuracy, qualityScore, qualityGrade, qualityDeductions, outlineData }) => {
   const { data, error } = await sb.from('contact_lidar_scans').insert({
     tenant_id: AV_TENANT,
     contact_id: contactId,
@@ -464,6 +475,17 @@ export const sbSaveLidarScan = async ({ contactId, rooms, totalSqft }) => {
     rooms,
     total_sqft: totalSqft,
     room_count: rooms.length,
+    capture_mode: captureMode ?? 'interior',
+    height_meters: heightMeters ?? null,
+    height_source: heightSource ?? null,
+    height_points: heightPoints ?? null,
+    gps_latitude: gpsLatitude ?? null,
+    gps_longitude: gpsLongitude ?? null,
+    gps_accuracy: gpsAccuracy ?? null,
+    quality_score: qualityScore ?? null,
+    quality_grade: qualityGrade ?? null,
+    quality_deductions: qualityDeductions ?? null,
+    outline_data: outlineData ?? null,
   }).select().single();
   return { data, error };
 };

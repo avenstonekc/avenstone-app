@@ -85,3 +85,39 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision: Phase 2 = continuous multi-room session, one scan walks room to room. ~1,500 sqft limit per session. Larger spaces scan by wing and stitch in Phase 4 editor.
 - Decision: Phase 4 = wing editor + GPS-anchored stitching + window/door type editing. Not urgent.
 - Next: Build Phase 2 Swift plugin upgrade (continuous RoomCaptureSession) + contact persistence (contact_lidar_scans table + attach-to-contact UI)
+
+[LOG — 2026-04-15]
+- Action: Built LiDAR scan persistence — scans attach to jobs via FloorPlan tab and to contacts via ContactsScr
+- Files: supabase.js (+sbSaveJobLidarScan, sbGetJobLidarScans, sbSaveLidarScan, sbGetContactLidarScans), AiIntakeWizard.jsx (+jobId prop, job mode skips contact picker), LidarScanner.jsx (accumulated rooms display in ResultPhase), JobDet.jsx (+FloorPlanTab import + tab), components/jobs/tabs/FloorPlanTab.jsx (new), ContactsScr.jsx (+floor plans card in contact detail)
+- Decision: LiDAR scans live in both contact_lidar_scans and job_lidar_scans tables. Both use TEXT FK (not uuid) because contacts.id and jobs.id are TEXT type. FK constraint error was the key gotcha.
+- Decision: FloorPlanTab is the UX entry point for scanning within a job — opens AiIntakeWizard with jobId prop, reloads on close.
+- Next: Build accumulated rooms display (done), contact picker flow (done), FloorPlanTab (done)
+
+[LOG — 2026-04-15]
+- Action: Built AI PM Dashboard — owner-only screen showing 30-day nightly alert history with stat cards and alert breakdown
+- Files: components/dashboard/AiPmDashboard.jsx (new), App.jsx (+nav item + render, owner-only)
+- Decision: Dashboard loads from notifications table filtered to 6 ai-pm-nightly alert types. Nav item in Settings section, owner role only.
+
+[LOG — 2026-04-15]
+- Action: Analyzed sub portal for upgrade gaps — phase confirmation and sub CO submission are missing; AI companion removed from sub scope per user request
+- Decision: Replace sub AI companion idea with PM-Sub direct chat feature (subs can message project managers directly on a job, separate from the general job messages thread)
+- Open: PM-Sub chat feature not yet built. Sub phase confirmation (mark started/complete) not yet built. Sub CO submission not yet built.
+- Next: Build PM-Sub chat feature
+
+[LOG — 2026-04-19]
+- Action: Capture v2 Phase 2 shipped — Exterior Mode AR capture, full end-to-end from scan to save
+- Files: ios/App/CapApp-SPM/Sources/CapApp-SPM/ExteriorScanViewController.swift (new), RoomPlanPlugin.swift (+startExteriorScan method), src/lib/lidar.js (+startExteriorScan export + web mock), src/lib/supabase.js (+outlineData param on both save helpers), src/components/ai/LidarScanner.jsx (mode toggle segmented control, exterior button + scan flow), src/components/ai/AiIntakeWizard.jsx (exterior capture handler, job+contact save paths, exterior summary UI), src/components/jobs/tabs/FloorPlanTab.jsx (exterior scan card with perimeter+corners display)
+- Decision: ExteriorScanViewController uses ARKit ARSCNView + ARWorldTrackingConfiguration (not RoomPlan — LiDAR fails outdoors). Tap corners → gold spheres + cylinder lines. Shoelace formula for area (XZ plane). Long press + pan to drag/reposition corners. Undo/Reset/Done buttons.
+- Decision: Exterior results stored in outline_data JSONB column (already added in Phase 1 SQL). rooms=[] for exterior scans. capture_mode='exterior' distinguishes them in the UI.
+- Decision: Mode toggle (Interior Rooms / Exterior Outline) lives at top of LidarScanner ListPhase — switches the whole UI context. No extra phases added to React state machine.
+- Next: Phase 3 = height capture (auto-derive interior from LiDAR mesh, exterior via user-tap raycast)
+
+[LOG — 2026-04-19]
+- Action: Capture v2 Phase 1 shipped — CaptureMode enum, expanded data model, GPS stamping module
+- Files: src/lib/captureTypes.js (new), src/lib/gps.js (new), src/lib/supabase.js (sbSaveJobLidarScan + sbSaveLidarScan updated), src/components/ai/AiIntakeWizard.jsx (GPS wired into both save paths), ios/App/App/Info.plist (NSLocationWhenInUseUsageDescription added)
+- Decision: CaptureMode is JS string constants in Phase 1 (no Swift changes). Swift enum added in Phase 2 when AR config branching is needed.
+- Decision: heightMeters at capture level is distinct from per-room height already in room objects. Phase 1 stores null. Phase 3 auto-derives from room heights (interior) or user tap (exterior).
+- Decision: LiDAR roadmap in CLAUDE.md (Phase 2 = multi-room, Phase 3 = PDF) is a separate track from Capture v2 phases. Capture v2 = Exterior Mode + height + GPS + quality meter.
+- DB: job_lidar_scans and contact_lidar_scans both have 10 new nullable columns: capture_mode (default 'interior'), height_meters, height_source, height_points[], gps_latitude, gps_longitude, gps_accuracy, quality_score, quality_grade, quality_deductions (JSONB)
+- Open: Phase 2 = Exterior AR mode + corner placement UI. Phase 3 = height capture (both modes). Phase 4 = quality meter.
+- Next: Capture v2 Phase 2 — Exterior mode AR config + corner placement

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { scanRoom, isLidarSupported } from '../../lib/lidar';
+import { scanRoom, isLidarSupported, startExteriorScan } from '../../lib/lidar';
 
 const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -236,12 +236,14 @@ function RoomCard({ room, onRemove }) {
   );
 }
 
-export default function LidarScanner({ rooms, onRoomsChange, onDone }) {
+export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorCapture }) {
   const [phase, setPhase] = useState('list');
   const [roomName, setRoomName] = useState('');
   const [scanProgress, setScanProgress] = useState(0);
   const [lastScanned, setLastScanned] = useState(null);
   const [supported, setSupported] = useState(false);
+  const [mode, setMode] = useState('interior'); // 'interior' | 'exterior'
+  const [exteriorScanning, setExteriorScanning] = useState(false);
   const inputRef = useRef(null);
 
   useKeyframes(PULSE_KEYFRAMES);
@@ -286,6 +288,17 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone }) {
 
   function handleRemoveRoom(index) {
     onRoomsChange(rooms.filter((_, i) => i !== index));
+  }
+
+  async function handleStartExteriorScan() {
+    setExteriorScanning(true);
+    try {
+      const result = await startExteriorScan();
+      if (onExteriorCapture) onExteriorCapture(result);
+    } catch (err) {
+      // cancelled — no-op
+    }
+    setExteriorScanning(false);
   }
 
   const containerStyle = {
@@ -356,12 +369,13 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone }) {
       {phase === 'list' && (
         <ListPhase
           rooms={rooms}
-          onAddRoom={() => {
-            setRoomName('');
-            setPhase('naming');
-          }}
+          mode={mode}
+          onModeChange={setMode}
+          onAddRoom={() => { setRoomName(''); setPhase('naming'); }}
           onRemoveRoom={handleRemoveRoom}
           onDone={onDone}
+          onStartExteriorScan={handleStartExteriorScan}
+          exteriorScanning={exteriorScanning}
           headingStyle={headingStyle}
           btnGold={btnGold}
           btnNavy={btnNavy}
@@ -404,42 +418,67 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone }) {
   );
 }
 
-function ListPhase({ rooms, onAddRoom, onRemoveRoom, onDone, headingStyle, btnGold, btnNavy }) {
+function ListPhase({ rooms, mode, onModeChange, onAddRoom, onRemoveRoom, onDone, onStartExteriorScan, exteriorScanning, headingStyle, btnGold, btnNavy }) {
   return (
     <div>
-      <h2 style={{ ...headingStyle, fontSize: 22, marginBottom: 18 }}>Room Measurements</h2>
+      {/* Mode toggle */}
+      <div style={{ display: 'flex', background: '#E8E4DC', borderRadius: 8, padding: 3, marginBottom: 20 }}>
+        {['interior', 'exterior'].map(m => (
+          <button
+            key={m}
+            onClick={() => onModeChange(m)}
+            style={{
+              flex: 1, padding: '8px 0', border: 'none', cursor: 'pointer', borderRadius: 6,
+              fontFamily: '"DM Sans", sans-serif', fontWeight: 600, fontSize: 14,
+              background: mode === m ? NAVY : 'transparent',
+              color: mode === m ? '#fff' : '#555',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            {m === 'interior' ? 'Interior Rooms' : 'Exterior Outline'}
+          </button>
+        ))}
+      </div>
 
-      {rooms.length === 0 ? (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '32px 0',
-            color: '#888',
-            fontSize: 14,
-            fontFamily: '"DM Sans", sans-serif',
-          }}
-        >
-          No rooms scanned yet. Add your first room to begin.
-        </div>
+      {mode === 'interior' ? (
+        <>
+          <h2 style={{ ...headingStyle, fontSize: 22, marginBottom: 18 }}>Room Measurements</h2>
+          {rooms.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 0', color: '#888', fontSize: 14, fontFamily: '"DM Sans", sans-serif' }}>
+              No rooms scanned yet. Add your first room to begin.
+            </div>
+          ) : (
+            <>
+              {rooms.map((room, i) => (
+                <RoomCard key={room.name + i} room={room} onRemove={() => onRemoveRoom(i)} />
+              ))}
+              <FloorPlanSVG rooms={rooms} />
+            </>
+          )}
+          <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
+            <button style={btnGold} onClick={onAddRoom}>+ Add Room</button>
+            {rooms.length > 0 && (
+              <button style={btnNavy} onClick={onDone}>Done / Use These Measurements</button>
+            )}
+          </div>
+        </>
       ) : (
         <>
-          {rooms.map((room, i) => (
-            <RoomCard key={room.name + i} room={room} onRemove={() => onRemoveRoom(i)} />
-          ))}
-          <FloorPlanSVG rooms={rooms} />
+          <h2 style={{ ...headingStyle, fontSize: 22, marginBottom: 10 }}>Exterior Outline</h2>
+          <p style={{ fontSize: 13, color: '#666', fontFamily: '"DM Sans", sans-serif', marginBottom: 28, lineHeight: 1.5 }}>
+            Walk the perimeter of the building. Tap each corner to place a marker. The app calculates square footage automatically using AR.
+          </p>
+          {exteriorScanning ? (
+            <div style={{ textAlign: 'center', padding: '16px 0', color: NAVY, fontFamily: '"DM Sans", sans-serif', fontSize: 14, fontWeight: 600 }}>
+              Launching AR scanner...
+            </div>
+          ) : (
+            <button style={{ ...btnGold, width: '100%' }} onClick={onStartExteriorScan}>
+              Start Exterior Scan
+            </button>
+          )}
         </>
       )}
-
-      <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
-        <button style={btnGold} onClick={onAddRoom}>
-          + Add Room
-        </button>
-        {rooms.length > 0 && (
-          <button style={btnNavy} onClick={onDone}>
-            Done / Use These Measurements
-          </button>
-        )}
-      </div>
     </div>
   );
 }

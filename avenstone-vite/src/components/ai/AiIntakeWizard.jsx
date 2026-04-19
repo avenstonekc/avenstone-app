@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import LidarScanner from './LidarScanner';
 import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan } from '../../lib/supabase';
+import { stampGPS } from '../../lib/gps';
 
 const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -14,6 +15,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
   const [contactSearch, setContactSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
+  const [exteriorResult, setExteriorResult] = useState(null);
 
   useEffect(() => {
     sb.from('contacts')
@@ -32,17 +34,46 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
   async function handleScanDoneJobMode() {
     if (rooms.length === 0) { onClose(); return; }
     setSaving(true);
-    const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
-    await sbSaveJobLidarScan({ jobId, rooms, totalSqft });
+    const [totalSqft, gps] = [rooms.reduce((sum, r) => sum + (r.sqft || 0), 0), await stampGPS()];
+    await sbSaveJobLidarScan({ jobId, rooms, totalSqft, captureMode: 'interior', gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy });
     setSaving(false);
     setSavedOk(true);
     setTimeout(onClose, 1400);
   }
 
+  async function handleExteriorCapture(result) {
+    setExteriorResult(result);
+    if (jobId) {
+      setSaving(true);
+      const gps = await stampGPS();
+      await sbSaveJobLidarScan({
+        jobId, rooms: [], totalSqft: result.areaSqft,
+        captureMode: 'exterior',
+        outlineData: { corners: result.corners, perimeterFt: result.perimeterFt, areaSqft: result.areaSqft },
+        gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
+      });
+      setSaving(false);
+      setSavedOk(true);
+      setTimeout(onClose, 1400);
+      return;
+    }
+    setStep('save');
+  }
+
   async function handleSave(contactId) {
     setSaving(true);
-    const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
-    await sbSaveLidarScan({ contactId, rooms, totalSqft });
+    const gps = await stampGPS();
+    if (exteriorResult) {
+      await sbSaveLidarScan({
+        contactId, rooms: [], totalSqft: exteriorResult.areaSqft,
+        captureMode: 'exterior',
+        outlineData: { corners: exteriorResult.corners, perimeterFt: exteriorResult.perimeterFt, areaSqft: exteriorResult.areaSqft },
+        gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
+      });
+    } else {
+      const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
+      await sbSaveLidarScan({ contactId, rooms, totalSqft, captureMode: 'interior', gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy });
+    }
     setSaving(false);
     setSavedOk(true);
     setTimeout(onClose, 1400);
@@ -93,7 +124,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       {/* Body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 14px', WebkitOverflowScrolling: 'touch' }}>
         {step === 'scan' && (
-          <LidarScanner rooms={rooms} onRoomsChange={setRooms} onDone={handleScanDone} />
+          <LidarScanner rooms={rooms} onRoomsChange={setRooms} onDone={handleScanDone} onExteriorCapture={handleExteriorCapture} />
         )}
 
         {step === 'save' && (
@@ -104,27 +135,51 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
               marginBottom: 20, boxShadow: '0 1px 4px rgba(10,31,68,0.08)',
             }}>
               <div style={{ fontFamily: '"DM Serif Display", serif', fontSize: 16, color: NAVY, marginBottom: 10 }}>
-                Scan Summary
+                {exteriorResult ? 'Exterior Scan' : 'Scan Summary'}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {rooms.map((r, i) => (
-                  <div key={i} style={{
-                    background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 8,
-                    padding: '6px 12px', fontSize: 13,
-                  }}>
-                    <span style={{ fontWeight: 600, color: NAVY }}>{r.name}</span>
-                    <span style={{ color: '#777', marginLeft: 6 }}>{r.sqft} sf</span>
+              {exteriorResult ? (
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '6px 14px', fontSize: 13 }}>
+                    <span style={{ color: '#777' }}>Area </span>
+                    <span style={{ fontWeight: 700, color: NAVY }}>{exteriorResult.areaSqft.toLocaleString()} sf</span>
                   </div>
-                ))}
-              </div>
-              <div style={{
-                marginTop: 12, display: 'inline-block', background: GOLD, color: '#fff',
-                borderRadius: 16, padding: '4px 14px', fontSize: 13, fontWeight: 700,
-              }}>
-                Total: {rooms.reduce((s, r) => s + (r.sqft || 0), 0).toLocaleString()} sf
-              </div>
+                  <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '6px 14px', fontSize: 13 }}>
+                    <span style={{ color: '#777' }}>Perimeter </span>
+                    <span style={{ fontWeight: 700, color: NAVY }}>{exteriorResult.perimeterFt} ft</span>
+                  </div>
+                  <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '6px 14px', fontSize: 13 }}>
+                    <span style={{ color: '#777' }}>Corners </span>
+                    <span style={{ fontWeight: 700, color: NAVY }}>{exteriorResult.corners.length}</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {rooms.map((r, i) => (
+                      <div key={i} style={{
+                        background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 8,
+                        padding: '6px 12px', fontSize: 13,
+                      }}>
+                        <span style={{ fontWeight: 600, color: NAVY }}>{r.name}</span>
+                        <span style={{ color: '#777', marginLeft: 6 }}>{r.sqft} sf</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{
+                    marginTop: 12, display: 'inline-block', background: GOLD, color: '#fff',
+                    borderRadius: 16, padding: '4px 14px', fontSize: 13, fontWeight: 700,
+                  }}>
+                    Total: {rooms.reduce((s, r) => s + (r.sqft || 0), 0).toLocaleString()} sf
+                  </div>
+                </>
+              )}
             </div>
 
+            {saving && (
+              <div style={{ textAlign: 'center', padding: '16px 0', color: '#888', fontFamily: '"DM Sans", sans-serif', fontSize: 14 }}>
+                Saving...
+              </div>
+            )}
             {savedOk ? (
               <div style={{
                 textAlign: 'center', padding: '32px 0',

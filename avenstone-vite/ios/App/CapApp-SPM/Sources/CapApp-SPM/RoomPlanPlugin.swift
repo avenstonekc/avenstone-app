@@ -14,7 +14,8 @@ public class RoomPlanPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "isSupported", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startScan", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "exportFloorPlan", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "exportFloorPlan", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startExteriorScan", returnType: CAPPluginReturnPromise)
     ]
 
     private var pendingCall: CAPPluginCall?
@@ -71,6 +72,39 @@ public class RoomPlanPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         #endif
         call.reject("LiDAR scanning requires iOS 16 or later")
+    }
+
+    @objc func startExteriorScan(_ call: CAPPluginCall) {
+        if #available(iOS 13.0, *) {
+            self.pendingCall = call
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                guard let viewController = self.bridge?.viewController else {
+                    call.reject("No view controller available")
+                    self.pendingCall = nil
+                    return
+                }
+                let vc = ExteriorScanViewController()
+                vc.onComplete = { [weak self] result in
+                    guard let self = self else { return }
+                    DispatchQueue.main.async {
+                        viewController.dismiss(animated: true) {
+                            switch result {
+                            case .success(let data):
+                                self.pendingCall?.resolve(data)
+                            case .failure(let error):
+                                self.pendingCall?.reject(error.localizedDescription)
+                            }
+                            self.pendingCall = nil
+                        }
+                    }
+                }
+                vc.modalPresentationStyle = .fullScreen
+                viewController.present(vc, animated: true)
+            }
+            return
+        }
+        call.reject("Exterior scan requires iOS 13 or later")
     }
 
     @objc func exportFloorPlan(_ call: CAPPluginCall) {
