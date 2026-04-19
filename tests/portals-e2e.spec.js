@@ -393,6 +393,13 @@ function defineOwnerFlow(roleKey, jobAddress) {
 
   // ── Step 6 — Send contract ───────────────────────────────────────────────────
   test(`[${R.label}] Step 6 — Send contract to ${CLIENT_EMAIL}`, async ({ page }) => {
+    // Block all outbound email/SMS edge functions — never send real messages during tests
+    await page.route("**/functions/v1/send-contract-email**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }));
+    await page.route("**/functions/v1/send-invite**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }));
+    await page.route("**/functions/v1/notify-email**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }));
+    await page.route("**/functions/v1/notify-sms**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }));
+    await page.route("**/functions/v1/send-push**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }));
+
     await login(page, R.email, R.password);
     await openJob(page, jobAddress);
 
@@ -505,6 +512,9 @@ function defineOwnerFlow(roleKey, jobAddress) {
 
   // ── Step 11 — Payment request ────────────────────────────────────────────────
   test(`[${R.label}] Step 11 — Create deposit payment request $8,500`, async ({ page }) => {
+    // Block outbound communication edge functions — never send real emails/SMS/push during tests
+    await page.route("**/functions/v1/send-**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }));
+    await page.route("**/functions/v1/notify-**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }));
     test.setTimeout(90000);
     await login(page, R.email, R.password);
     await openJob(page, jobAddress);
