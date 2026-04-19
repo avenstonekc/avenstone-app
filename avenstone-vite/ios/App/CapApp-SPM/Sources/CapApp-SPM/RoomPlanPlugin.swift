@@ -191,6 +191,10 @@ public class RoomPlanPlugin: CAPPlugin, CAPBridgedPlugin {
             "sqft": Int(sqft.rounded()),
             "doors": room.doors.count,
             "windows": room.windows.count,
+            "boundingBox": [
+                "minX": Double(minX), "maxX": Double(maxX),
+                "minZ": Double(minZ), "maxZ": Double(maxZ)
+            ],
             "simulated": false
         ]
     }

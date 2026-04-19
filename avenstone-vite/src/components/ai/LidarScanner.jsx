@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { scanRoom, isLidarSupported, startExteriorScan } from '../../lib/lidar';
+import FloorPlanCanvas from './FloorPlanCanvas';
 
 const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -42,113 +43,6 @@ function useKeyframes(css) {
   }, [css]);
 }
 
-function FloorPlanSVG({ rooms }) {
-  const SVG_WIDTH = 560;
-  const COLS = 2;
-  const PAD = 16;
-  const CELL_W = (SVG_WIDTH - PAD * (COLS + 1)) / COLS;
-  const MAX_CELL_H = 110;
-
-  const maxSqft = Math.max(...rooms.map((r) => r.sqft || 1), 1);
-
-  const rows = Math.ceil(rooms.length / COLS);
-  const SVG_HEIGHT = rows * (MAX_CELL_H + PAD) + PAD;
-
-  const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div
-        style={{
-          fontFamily: '"DM Serif Display", serif',
-          fontSize: 15,
-          color: NAVY,
-          marginBottom: 6,
-        }}
-      >
-        Floor Plan Preview
-      </div>
-      <div
-        style={{
-          fontSize: 11,
-          color: '#888',
-          marginBottom: 10,
-          fontFamily: '"DM Sans", sans-serif',
-        }}
-      >
-        (spatial layout available after native scan)
-      </div>
-      <svg
-        width="100%"
-        viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-        xmlns="http://www.w3.org/2000/svg"
-        style={{ display: 'block', borderRadius: 8, background: CREAM }}
-      >
-        {rooms.map((room, i) => {
-          const col = i % COLS;
-          const row = Math.floor(i / COLS);
-          const x = PAD + col * (CELL_W + PAD);
-          const ratio = Math.max(0.35, (room.sqft || 1) / maxSqft);
-          const cellH = Math.max(60, Math.round(MAX_CELL_H * ratio));
-          const y = PAD + row * (MAX_CELL_H + PAD) + (MAX_CELL_H - cellH) / 2;
-
-          return (
-            <g key={room.name + i}>
-              <rect
-                x={x}
-                y={y}
-                width={CELL_W}
-                height={cellH}
-                rx={6}
-                fill={NAVY}
-                fillOpacity={0.1}
-                stroke={NAVY}
-                strokeWidth={1.5}
-              />
-              <text
-                x={x + CELL_W / 2}
-                y={y + cellH / 2 - 6}
-                textAnchor="middle"
-                fontFamily='"DM Sans", sans-serif'
-                fontSize={12}
-                fill={NAVY}
-                fontWeight="600"
-              >
-                {room.name}
-              </text>
-              <text
-                x={x + CELL_W / 2}
-                y={y + cellH / 2 + 12}
-                textAnchor="middle"
-                fontFamily='"DM Sans", sans-serif'
-                fontSize={11}
-                fill={GOLD}
-                fontWeight="500"
-              >
-                {room.sqft ? `${room.sqft.toLocaleString()} sf` : '—'}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-      <div
-        style={{
-          display: 'inline-block',
-          marginTop: 10,
-          background: GOLD,
-          color: WHITE,
-          borderRadius: 20,
-          padding: '5px 16px',
-          fontFamily: '"DM Sans", sans-serif',
-          fontWeight: '600',
-          fontSize: 14,
-        }}
-      >
-        Total: {totalSqft.toLocaleString()} sf
-      </div>
-    </div>
-  );
-}
 
 function RoomCard({ room, onRemove }) {
   return (
@@ -452,7 +346,7 @@ function ListPhase({ rooms, mode, onModeChange, onAddRoom, onRemoveRoom, onDone,
               {rooms.map((room, i) => (
                 <RoomCard key={room.name + i} room={room} onRemove={() => onRemoveRoom(i)} />
               ))}
-              <FloorPlanSVG rooms={rooms} />
+              <FloorPlanCanvas rooms={rooms} />
             </>
           )}
           <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
@@ -817,26 +711,9 @@ function ResultPhase({ room, allRooms, onAddAnother, onDone, headingStyle, btnGo
         </div>
       </div>
 
-      {allRooms.length > 1 && (
-        <div style={{ textAlign: 'left', marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: '#888', fontFamily: '"DM Sans", sans-serif', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            All Rooms ({allRooms.length}) · {totalSqft.toLocaleString()} sf total
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {allRooms.map((r, i) => (
-              <div key={i} style={{
-                background: r === allRooms[allRooms.length - 1] ? GOLD : WHITE,
-                color: r === allRooms[allRooms.length - 1] ? WHITE : NAVY,
-                border: `1px solid ${r === allRooms[allRooms.length - 1] ? GOLD : '#E8E4DC'}`,
-                borderRadius: 8, padding: '5px 12px', fontSize: 13,
-                fontFamily: '"DM Sans", sans-serif', fontWeight: 600,
-              }}>
-                {r.name} <span style={{ opacity: 0.75, fontWeight: 400 }}>{r.sqft} sf</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div style={{ textAlign: 'left', marginBottom: 20 }}>
+        <FloorPlanCanvas rooms={allRooms} highlightLast={true} />
+      </div>
 
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
         <button style={btnGold} onClick={onAddAnother}>

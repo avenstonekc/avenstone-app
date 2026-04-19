@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { sbGetJobLidarScans } from '../../../lib/supabase';
 import AiIntakeWizard from '../../ai/AiIntakeWizard';
+import FloorPlanCanvas from '../../ai/FloorPlanCanvas';
 
 export default function FloorPlanTab({ job, profile }) {
   const [scans, setScans] = useState([]);
@@ -95,24 +96,7 @@ export default function FloorPlanTab({ job, profile }) {
                     )}
                   </div>
                 ) : rooms.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
-                    {rooms.map((room, j) => (
-                      <span
-                        key={j}
-                        style={{
-                          backgroundColor: '#C9A84C',
-                          color: '#fff',
-                          fontSize: '12px',
-                          fontWeight: '500',
-                          borderRadius: '20px',
-                          padding: '4px 10px',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {room.name} {formatSqft(room.sqft)} sf
-                      </span>
-                    ))}
-                  </div>
+                  <FloorPlanCanvas rooms={rooms} compact={rooms.length < 3} />
                 )}
               </div>
             );
