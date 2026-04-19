@@ -43,7 +43,7 @@ export default function FormScr({ title, secs, rules, ftype, onBack, onSave }) {
     try {
       await navigator.clipboard.writeText(json);
       if (ftype === 'intake' && onSave) {
-        onSave({ id: Date.now().toString(), address: ans.address || 'New Job', status: 'lead', created: new Date().toISOString(), scope: ans.scope_type || '', sqft: ans.total_sqft || '', photos: [], activity: [], change_orders: [], client_name: '', client_phone: '', client_email: '', assigned_rep: '', assigned_subs: '', contract_value: 0, co_total: 0, target_completion: '', ans });
+        onSave({ id: crypto.randomUUID(), address: ans.address || 'New Job', status: 'lead', created: new Date().toISOString(), scope: ans.scope_type || '', sqft: ans.total_sqft || '', photos: [], activity: [], change_orders: [], client_name: '', client_phone: '', client_email: '', assigned_rep: '', assigned_subs: '', contract_value: 0, co_total: 0, target_completion: '', ans });
       }
       if (ftype === 'bid' && ans.linked_job_id) {
         try {

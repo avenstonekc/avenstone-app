@@ -168,7 +168,11 @@ const docSignedUrl = async path => {
   const { data } = await sb.storage.from('job-documents').createSignedUrl(path, 3600);
   return data?.signedUrl || null;
 };
-const docPathFromUrl = url => url?.split('/job-documents/')[1] || null;
+const docPathFromUrl = url => {
+  if (!url) return null;
+  if (url.startsWith('http')) return url.split('/job-documents/')[1] || null;
+  return url; // already a plain path
+};
 
 export const sbLoadDocs = async jid => {
   const { data } = await sb.from('job_documents').select('*').eq('job_id', jid).order('created_at', { ascending: false });
@@ -184,10 +188,9 @@ export const sbUploadDoc = async (jid, file, fileType) => {
     const path = `${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error: ue } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type, upsert: false });
     if (ue) { console.error('Doc upload error:', ue); return { error: ue.message || 'Upload failed' }; }
-    const { data: ud } = sb.storage.from('job-documents').getPublicUrl(path);
     const { data: existing } = await sb.from('job_documents').select('version').eq('job_id', jid).eq('name', file.name).order('version', { ascending: false }).limit(1);
     const version = (existing && existing.length ? existing[0].version : 0) + 1;
-    const row = { job_id: jid, tenant_id: AV_TENANT, name: file.name, file_url: ud.publicUrl, file_type: fileType || 'other', version, client_visible: false };
+    const row = { job_id: jid, tenant_id: AV_TENANT, name: file.name, file_url: path, file_type: fileType || 'other', version, client_visible: false };
     const { data: inserted, error: ie } = await sb.from('job_documents').insert(row).select().single();
     if (ie) return { error: ie.message || 'Save failed' };
     const signed_url = await docSignedUrl(path);
@@ -196,7 +199,7 @@ export const sbUploadDoc = async (jid, file, fileType) => {
 };
 export const sbDelDoc = async doc => {
   try {
-    const path = doc.file_url?.split('/job-documents/')[1];
+    const path = docPathFromUrl(doc.file_url);
     if (path) await sb.storage.from('job-documents').remove([path]);
     await sb.from('job_documents').delete().eq('id', doc.id);
   } catch (e) { console.error(e); }

@@ -30,11 +30,9 @@ export default function SubOnboardingModal({ sub, onClose, onUpdated }) {
     const path = `w9/${sub.id}_${Date.now()}.${ext}`;
     const { error: ue } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type, upsert: true });
     if (ue) { setW9Uploading(false); alert('Upload failed: ' + ue.message); return; }
-    const { data: ud } = sb.storage.from('job-documents').getPublicUrl(path);
-    const url = ud.publicUrl;
-    await sb.from('profiles').update({ w9_url: url, w9_submitted_at: new Date().toISOString() }).eq('id', sub.id);
+    await sb.from('profiles').update({ w9_url: path, w9_submitted_at: new Date().toISOString() }).eq('id', sub.id);
     signStoragePath(path).then(setW9SignedUrl);
-    if (onUpdated) onUpdated({ ...sub, w9_url: url, w9_submitted_at: new Date().toISOString() });
+    if (onUpdated) onUpdated({ ...sub, w9_url: path, w9_submitted_at: new Date().toISOString() });
     setW9Uploading(false);
   };
 
@@ -44,11 +42,9 @@ export default function SubOnboardingModal({ sub, onClose, onUpdated }) {
     const path = `insurance/${sub.id}_${Date.now()}.${ext}`;
     const { error: ue } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type, upsert: true });
     if (ue) { setInsUploading(false); alert('Upload failed: ' + ue.message); return; }
-    const { data: ud } = sb.storage.from('job-documents').getPublicUrl(path);
-    const url = ud.publicUrl;
-    await sb.from('profiles').update({ insurance_url: url }).eq('id', sub.id);
+    await sb.from('profiles').update({ insurance_url: path }).eq('id', sub.id);
     signStoragePath(path).then(setInsSignedUrl);
-    if (onUpdated) onUpdated({ ...sub, insurance_url: url });
+    if (onUpdated) onUpdated({ ...sub, insurance_url: path });
     setInsUploading(false);
   };
 
