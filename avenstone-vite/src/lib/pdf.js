@@ -191,55 +191,6 @@ export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, marg
 const _r2 = n => parseFloat((+(n) || 0).toFixed(2));
 const _dim = n => _r2(n).toFixed(2);
 
-// Reconstruct an ordered polygon from unordered wall endpoint pairs.
-// Returns array of {x, z} points if successful, null if walls don't form a clean polygon.
-function _buildWallPolygon(wallSegs, eps = 0.5) {
-  if (!wallSegs || wallSegs.length < 3) return null;
-
-  // Snap nearby endpoints to the same point object
-  const pts = [];
-  const snap = (x, z) => {
-    for (const p of pts) {
-      if (Math.abs(p.x - x) < eps && Math.abs(p.z - z) < eps) return p;
-    }
-    const p = { x, z, id: pts.length };
-    pts.push(p);
-    return p;
-  };
-
-  const edges = [];
-  for (const seg of wallSegs) {
-    const a = snap(seg.x1, seg.z1);
-    const b = snap(seg.x2, seg.z2);
-    if (a.id !== b.id) edges.push([a, b]);
-  }
-  if (edges.length < 3) return null;
-
-  // Build adjacency list
-  const adj = new Map();
-  for (const [a, b] of edges) {
-    if (!adj.has(a.id)) adj.set(a.id, []);
-    if (!adj.has(b.id)) adj.set(b.id, []);
-    adj.get(a.id).push(b);
-    adj.get(b.id).push(a);
-  }
-
-  // Walk the boundary polygon
-  const start = pts[0];
-  const poly = [start];
-  let prev = null, cur = start;
-  for (let i = 0; i < wallSegs.length + 2; i++) {
-    const neighbors = adj.get(cur.id) || [];
-    const next = neighbors.find(n => !prev || n.id !== prev.id);
-    if (!next || next.id === start.id) break;
-    poly.push(next);
-    prev = cur;
-    cur = next;
-  }
-
-  return poly.length >= 3 ? poly : null;
-}
-
 export const buildFloorPlanPDF = (scan, job) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
@@ -288,39 +239,32 @@ export const buildFloorPlanPDF = (scan, job) => {
     }
 
     for (const { room, x, y: ry, w, h } of layout) {
-      const poly = _buildWallPolygon(room.wallSegments);
+      const segs = room.wallSegments;
+      const hasWalls = segs && segs.length > 0;
 
+      // Fill background
       doc.setFillColor(235, 238, 244);
-      doc.setDrawColor(...navy);
-      doc.setLineWidth(2.5);
+      doc.rect(x, ry, w, h, 'F');
 
-      if (poly) {
-        // Draw the actual room shape from RoomPlan wall data
-        const pdfPts = poly.map(p => ({ px: x + p.x * scale, py: ry + p.z * scale }));
-        const lineArr = pdfPts.slice(1).map((p, i) => [p.px - pdfPts[i].px, p.py - pdfPts[i].py]);
-        try {
-          doc.lines(lineArr, pdfPts[0].px, pdfPts[0].py, [1, 1], 'FD', true);
-        } catch (_) {
-          doc.rect(x, ry, w, h, 'FD');
+      if (hasWalls) {
+        // Draw each wall segment as a thick line — shows actual room shape including bump-outs
+        doc.setDrawColor(...navy);
+        doc.setLineWidth(3);
+        for (const seg of segs) {
+          doc.line(
+            x + seg.x1 * scale, ry + seg.z1 * scale,
+            x + seg.x2 * scale, ry + seg.z2 * scale
+          );
         }
       } else {
-        // Fallback: bounding-box rectangle
-        doc.rect(x, ry, w, h, 'FD');
+        // Fallback: plain rectangle outline
+        doc.setDrawColor(...navy);
+        doc.setLineWidth(2);
+        doc.rect(x, ry, w, h, 'S');
       }
 
-      // Centroid for text placement
-      const cx = poly
-        ? pdfPts => pdfPts.reduce((s, p) => s + p.px, 0) / pdfPts.length
-        : () => x + w / 2;
-      const cz = poly
-        ? pdfPts => pdfPts.reduce((s, p) => s + p.py, 0) / pdfPts.length
-        : () => ry + h / 2;
-      const midX = poly
-        ? poly.reduce((s, p) => s + p.x, 0) / poly.length * scale + x
-        : x + w / 2;
-      const midY = poly
-        ? poly.reduce((s, p) => s + p.z, 0) / poly.length * scale + ry
-        : ry + h / 2;
+      const midX = x + w / 2;
+      const midY = ry + h / 2;
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(Math.min(9, w / 6));
