@@ -114,17 +114,18 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
           const fontSize = Math.max(9, Math.min(12, w / 7));
           const stroke = isHighlighted ? GOLD : NAVY;
           const strokeW = isHighlighted ? 2 : 1.5;
+          // Centroid of wall endpoints for text placement (or bounding box center as fallback)
+          const textCX = proc
+            ? x + proc.segs.flatMap(s => [s.x1, s.x2]).reduce((a, v) => a + v, 0) / (proc.segs.length * 2) * scale
+            : x + w / 2;
+          const textCZ = proc
+            ? y + proc.segs.flatMap(s => [s.z1, s.z2]).reduce((a, v) => a + v, 0) / (proc.segs.length * 2) * scale
+            : y + h / 2;
+
           return (
             <g key={room.name + i}>
-              {/* Background fill */}
-              <rect
-                x={x} y={y} width={w} height={h} rx={4}
-                fill={isHighlighted ? GOLD : NAVY}
-                fillOpacity={isHighlighted ? 0.15 : 0.08}
-                stroke="none"
-              />
               {proc ? (
-                /* Axis-aligned wall segments — actual room shape */
+                /* Actual wall shape — no background rect, walls define the room */
                 <>
                   {proc.segs.map((seg, si) => (
                     <line
@@ -154,16 +155,24 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
                   })}
                 </>
               ) : (
-                /* Fallback rectangle outline for old scan data */
-                <rect
-                  x={x} y={y} width={w} height={h} rx={4}
-                  fill="none" stroke={stroke} strokeWidth={strokeW}
-                />
+                /* Fallback: shaded rect outline for old scan data without wall segments */
+                <>
+                  <rect
+                    x={x} y={y} width={w} height={h} rx={4}
+                    fill={isHighlighted ? GOLD : NAVY}
+                    fillOpacity={isHighlighted ? 0.15 : 0.08}
+                    stroke="none"
+                  />
+                  <rect
+                    x={x} y={y} width={w} height={h} rx={4}
+                    fill="none" stroke={stroke} strokeWidth={strokeW}
+                  />
+                </>
               )}
-              {/* Room name */}
+              {/* Room name — centered on wall centroid */}
               <text
-                x={x + w / 2}
-                y={y + (h > 60 ? h / 2 - 8 : h / 2)}
+                x={textCX}
+                y={textCZ - (h > 60 ? 8 : 0)}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fontFamily='"DM Sans", sans-serif'
@@ -176,8 +185,8 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
               {/* sqft — only if room is tall enough */}
               {h > 60 && (
                 <text
-                  x={x + w / 2}
-                  y={y + h / 2 + 10}
+                  x={textCX}
+                  y={textCZ + 10}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontFamily='"DM Sans", sans-serif'
@@ -186,19 +195,6 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
                   fontWeight="500"
                 >
                   {room.sqft ? `${room.sqft.toLocaleString()} sf` : `${proc ? proc.trueWidth.toFixed(1) : (+room.length).toFixed(1)}×${proc ? proc.trueHeight.toFixed(1) : (+room.width).toFixed(1)}`}
-                </text>
-              )}
-              {/* True width along bottom edge */}
-              {w > 80 && h > 50 && (
-                <text
-                  x={x + w / 2}
-                  y={y + h - 5}
-                  textAnchor="middle"
-                  fontFamily='"DM Sans", sans-serif'
-                  fontSize={9}
-                  fill="#999"
-                >
-                  {(proc ? proc.trueWidth : (+room.length)).toFixed(2)} ft
                 </text>
               )}
             </g>
