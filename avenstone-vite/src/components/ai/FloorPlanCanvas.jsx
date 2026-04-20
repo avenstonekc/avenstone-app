@@ -71,15 +71,35 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
         {layout.map(({ room, x, y, w, h }, i) => {
           const isHighlighted = highlightLast && room === lastRoom;
           const fontSize = Math.max(9, Math.min(12, w / 7));
+          const stroke = isHighlighted ? GOLD : NAVY;
+          const strokeW = isHighlighted ? 2 : 1.5;
+          const hasWalls = room.wallSegments && room.wallSegments.length > 0;
           return (
             <g key={room.name + i}>
+              {/* Background fill */}
               <rect
                 x={x} y={y} width={w} height={h} rx={4}
                 fill={isHighlighted ? GOLD : NAVY}
                 fillOpacity={isHighlighted ? 0.15 : 0.08}
-                stroke={isHighlighted ? GOLD : NAVY}
-                strokeWidth={isHighlighted ? 2 : 1.5}
+                stroke="none"
               />
+              {hasWalls ? (
+                /* Draw each wall segment — shows actual room shape including bump-outs */
+                room.wallSegments.map((seg, si) => (
+                  <line
+                    key={si}
+                    x1={x + seg.x1 * scale} y1={y + seg.z1 * scale}
+                    x2={x + seg.x2 * scale} y2={y + seg.z2 * scale}
+                    stroke={stroke} strokeWidth={strokeW} strokeLinecap="round"
+                  />
+                ))
+              ) : (
+                /* Fallback rectangle outline for old scan data */
+                <rect
+                  x={x} y={y} width={w} height={h} rx={4}
+                  fill="none" stroke={stroke} strokeWidth={strokeW}
+                />
+              )}
               {/* Room name */}
               <text
                 x={x + w / 2}
@@ -108,7 +128,7 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
                   {room.sqft ? `${room.sqft.toLocaleString()} sf` : `${room.length}×${room.width}`}
                 </text>
               )}
-              {/* Width dimension along bottom edge */}
+              {/* Dimension along bottom edge */}
               {w > 80 && h > 50 && (
                 <text
                   x={x + w / 2}
@@ -118,7 +138,7 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
                   fontSize={9}
                   fill="#999"
                 >
-                  {room.length} ft
+                  {(+room.length).toFixed(2)} ft
                 </text>
               )}
             </g>
