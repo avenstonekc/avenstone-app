@@ -134,7 +134,7 @@ export default function SubPortal({ profile, signOut }) {
   };
 
   if (sel) return <SubJobView job={sel} back={() => setSel(null)} profile={profile} lang={lang} />;
-  if (showOnboarding && pricingLoaded) return (
+  if (showOnboarding && pricingLoaded && !loading && !jobs.length) return (
     <SubOnboardingWizard
       profile={profile}
       onComplete={() => {

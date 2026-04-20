@@ -37,11 +37,6 @@ class CaptureQualityTracker {
             }
         }
 
-        if room.ceilings.isEmpty {
-            score -= 10
-            deductions.append("missing_ceiling")
-        }
-
         if scanDurationSeconds < 10 {
             score -= 15
             deductions.append("scan_too_short")

@@ -71,7 +71,7 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         let config = ARWorldTrackingConfiguration()
-        config.planeDetection = .horizontal
+        config.planeDetection = [.horizontal, .vertical]
         sceneView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
         startQualityTimer()
     }
@@ -333,14 +333,46 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
         switch phase {
         case .polygon:
             guard panRecognizer.isEnabled == false else { return }
-            guard let query = sceneView.raycastQuery(from: loc, allowing: .estimatedPlane, alignment: .horizontal) else { return }
-            let results = sceneView.session.raycast(query)
-            guard let hit = results.first else { return }
 
-            let col = hit.worldTransform.columns.3
+            // Try raycasts in priority order: existing geometry → estimated any → estimated horizontal
+            // Outdoors, ARKit rarely detects horizontal planes until you've moved around — .any is essential
+            var hit: ARRaycastResult? = nil
+            let strategies: [(ARRaycastQuery.Target, ARRaycastQuery.TargetAlignment)] = [
+                (.existingPlaneGeometry, .any),
+                (.estimatedPlane, .any),
+                (.estimatedPlane, .horizontal)
+            ]
+            for (target, alignment) in strategies {
+                if let q = sceneView.raycastQuery(from: loc, allowing: target, alignment: alignment) {
+                    let r = sceneView.session.raycast(q)
+                    if let first = r.first { hit = first; break }
+                }
+            }
+
+            // Fallback: project tap onto a plane 3 m from camera (always registers)
+            var worldTransform = matrix_identity_float4x4
+            if let h = hit {
+                worldTransform = h.worldTransform
+            } else if let camTransform = sceneView.session.currentFrame?.camera.transform {
+                // Build a point 3 m in front of the camera in world space
+                let forward = simd_make_float3(-camTransform.columns.2.x,
+                                               -camTransform.columns.2.y,
+                                               -camTransform.columns.2.z)
+                let origin = simd_make_float3(camTransform.columns.3.x,
+                                              camTransform.columns.3.y,
+                                              camTransform.columns.3.z)
+                let projected = origin + forward * 3.0
+                worldTransform.columns.3 = simd_make_float4(projected.x, projected.y, projected.z, 1)
+                statsLabel.text = "Corner placed (no surface — move and scan area first)"
+            } else {
+                statsLabel.text = "No surface detected — walk around to map the area"
+                return
+            }
+
+            let col = worldTransform.columns.3
             let position = simd_make_float3(col.x, col.y, col.z)
 
-            let anchor = ARAnchor(transform: hit.worldTransform)
+            let anchor = ARAnchor(transform: worldTransform)
             let index = cornerAnchors.count
             cornerAnchors.append(anchor)
             anchorIndexMap[anchor.identifier] = index
@@ -350,6 +382,13 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
             sphere.simdWorldPosition = position
             sceneView.scene.rootNode.addChildNode(sphere)
             sphereNodes.append(sphere)
+
+            // Pulse animation so the user can clearly see the tap registered
+            let pulseUp = SCNAction.scale(to: 2.0, duration: 0.12)
+            let pulseDown = SCNAction.scale(to: 1.0, duration: 0.18)
+            pulseUp.timingMode = .easeIn
+            pulseDown.timingMode = .easeOut
+            sphere.runAction(SCNAction.sequence([pulseUp, pulseDown]))
 
             updateLines()
             updateStats()
