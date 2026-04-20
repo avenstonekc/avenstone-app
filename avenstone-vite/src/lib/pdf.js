@@ -186,6 +186,60 @@ export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, marg
 };
 
 // ─── Floor Plan PDF ───────────────────────────────────────────────────────────
+
+// Round to 2 decimal places, handling Float32-origin noise (e.g. 27.299999... → 27.30)
+const _r2 = n => parseFloat((+(n) || 0).toFixed(2));
+const _dim = n => _r2(n).toFixed(2);
+
+// Reconstruct an ordered polygon from unordered wall endpoint pairs.
+// Returns array of {x, z} points if successful, null if walls don't form a clean polygon.
+function _buildWallPolygon(wallSegs, eps = 0.5) {
+  if (!wallSegs || wallSegs.length < 3) return null;
+
+  // Snap nearby endpoints to the same point object
+  const pts = [];
+  const snap = (x, z) => {
+    for (const p of pts) {
+      if (Math.abs(p.x - x) < eps && Math.abs(p.z - z) < eps) return p;
+    }
+    const p = { x, z, id: pts.length };
+    pts.push(p);
+    return p;
+  };
+
+  const edges = [];
+  for (const seg of wallSegs) {
+    const a = snap(seg.x1, seg.z1);
+    const b = snap(seg.x2, seg.z2);
+    if (a.id !== b.id) edges.push([a, b]);
+  }
+  if (edges.length < 3) return null;
+
+  // Build adjacency list
+  const adj = new Map();
+  for (const [a, b] of edges) {
+    if (!adj.has(a.id)) adj.set(a.id, []);
+    if (!adj.has(b.id)) adj.set(b.id, []);
+    adj.get(a.id).push(b);
+    adj.get(b.id).push(a);
+  }
+
+  // Walk the boundary polygon
+  const start = pts[0];
+  const poly = [start];
+  let prev = null, cur = start;
+  for (let i = 0; i < wallSegs.length + 2; i++) {
+    const neighbors = adj.get(cur.id) || [];
+    const next = neighbors.find(n => !prev || n.id !== prev.id);
+    if (!next || next.id === start.id) break;
+    poly.push(next);
+    prev = cur;
+    cur = next;
+  }
+
+  return poly.length >= 3 ? poly : null;
+}
+
 export const buildFloorPlanPDF = (scan, job) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
@@ -219,45 +273,84 @@ export const buildFloorPlanPDF = (scan, job) => {
 
   // Floor plan diagram
   if (rooms.length > 0) {
-    const PAD_R = 7;
+    const PAD_R = 10;
     const maxDim = Math.max(...rooms.flatMap(r => [r.length || 1, r.width || 1]), 1);
-    const scale = Math.min((CW * 0.62) / maxDim, 18);
+    const scale = Math.min((CW * 0.58) / maxDim, 20);
 
     let curX = M, curY = y, rowH = 0;
     const layout = [];
     for (const room of rooms) {
-      const rw = Math.max(44, (room.length || 10) * scale);
-      const rh = Math.max(36, (room.width || 10) * scale);
-      if (curX + rw > W - M && curX > M) { curY += rowH + PAD_R; curX = M; rowH = 0; }
+      const rw = Math.max(52, (room.length || 10) * scale);
+      const rh = Math.max(40, (room.width || 10) * scale);
+      if (curX + rw > W - M && curX > M) { curY += rowH + PAD_R + 18; curX = M; rowH = 0; }
       layout.push({ room, x: curX, y: curY, w: rw, h: rh });
       curX += rw + PAD_R; rowH = Math.max(rowH, rh);
     }
 
-    for (const { room, x, ry, w, h } of layout.map(l => ({ ...l, ry: l.y }))) {
-      doc.setFillColor(235, 238, 244); doc.setDrawColor(...navy); doc.setLineWidth(1);
-      doc.rect(x, ry, w, h, 'FD');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(Math.min(9, w / 6)); doc.setTextColor(...navy);
-      doc.text(room.name, x + w / 2, h > 50 ? ry + h / 2 - 7 : ry + h / 2, { align: 'center' });
-      if (h > 50) {
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gold);
-        doc.text(`${(room.sqft || 0).toLocaleString()} sf`, x + w / 2, ry + h / 2 + 8, { align: 'center' });
+    for (const { room, x, y: ry, w, h } of layout) {
+      const poly = _buildWallPolygon(room.wallSegments);
+
+      doc.setFillColor(235, 238, 244);
+      doc.setDrawColor(...navy);
+      doc.setLineWidth(2.5);
+
+      if (poly) {
+        // Draw the actual room shape from RoomPlan wall data
+        const pdfPts = poly.map(p => ({ px: x + p.x * scale, py: ry + p.z * scale }));
+        const lineArr = pdfPts.slice(1).map((p, i) => [p.px - pdfPts[i].px, p.py - pdfPts[i].py]);
+        try {
+          doc.lines(lineArr, pdfPts[0].px, pdfPts[0].py, [1, 1], 'FD', true);
+        } catch (_) {
+          doc.rect(x, ry, w, h, 'FD');
+        }
+      } else {
+        // Fallback: bounding-box rectangle
+        doc.rect(x, ry, w, h, 'FD');
       }
-      if (w > 58 && h > 44) {
-        doc.setFontSize(7); doc.setTextColor(160, 160, 160);
-        doc.text(`${room.length} ft`, x + w / 2, ry + h - 4, { align: 'center' });
+
+      // Centroid for text placement
+      const cx = poly
+        ? pdfPts => pdfPts.reduce((s, p) => s + p.px, 0) / pdfPts.length
+        : () => x + w / 2;
+      const cz = poly
+        ? pdfPts => pdfPts.reduce((s, p) => s + p.py, 0) / pdfPts.length
+        : () => ry + h / 2;
+      const midX = poly
+        ? poly.reduce((s, p) => s + p.x, 0) / poly.length * scale + x
+        : x + w / 2;
+      const midY = poly
+        ? poly.reduce((s, p) => s + p.z, 0) / poly.length * scale + ry
+        : ry + h / 2;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(Math.min(9, w / 6));
+      doc.setTextColor(...navy);
+      doc.text(room.name, midX, midY - 6, { align: 'center' });
+
+      if (h > 44) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(...gold);
+        doc.text(`${(room.sqft || 0).toLocaleString()} sf`, midX, midY + 7, { align: 'center' });
       }
+
+      // Dimension label below room box
+      doc.setFontSize(7);
+      doc.setTextColor(140, 140, 140);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${_dim(room.length)} × ${_dim(room.width)} ft`, x + w / 2, ry + h + 10, { align: 'center' });
     }
 
-    const diagramBottom = layout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+    const diagramBottom = layout.reduce((m, l) => Math.max(m, l.y + l.h), 0) + 18;
     const scaleBarFt = Math.round(40 / scale) || 10;
     const scaleBarPx = scaleBarFt * scale;
-    const sbY = diagramBottom + 12;
     doc.setDrawColor(180, 180, 180); doc.setLineWidth(1);
-    doc.line(M, sbY, M + scaleBarPx, sbY);
-    doc.line(M, sbY - 3, M, sbY + 3); doc.line(M + scaleBarPx, sbY - 3, M + scaleBarPx, sbY + 3);
+    doc.line(M, diagramBottom, M + scaleBarPx, diagramBottom);
+    doc.line(M, diagramBottom - 3, M, diagramBottom + 3);
+    doc.line(M + scaleBarPx, diagramBottom - 3, M + scaleBarPx, diagramBottom + 3);
     doc.setFontSize(7); doc.setTextColor(160, 160, 160); doc.setFont('helvetica', 'normal');
-    doc.text(`${scaleBarFt} ft`, M + scaleBarPx / 2, sbY - 5, { align: 'center' });
-    y = sbY + 22;
+    doc.text(`${scaleBarFt} ft`, M + scaleBarPx / 2, diagramBottom - 5, { align: 'center' });
+    y = diagramBottom + 22;
   }
 
   // Room table
@@ -272,8 +365,8 @@ export const buildFloorPlanPDF = (scan, job) => {
   for (const room of rooms) {
     if (y > 720) { doc.addPage(); y = 48; }
     doc.text(room.name || '—', cols[0], y);
-    doc.text(`${room.length || '—'} \u00d7 ${room.width || '—'} ft`, cols[1], y);
-    doc.text(`${room.height || '—'} ft`, cols[2], y);
+    doc.text(`${_dim(room.length)} \u00d7 ${_dim(room.width)} ft`, cols[1], y);
+    doc.text(`${_dim(room.height)} ft`, cols[2], y);
     doc.text(`${(room.sqft || 0).toLocaleString()}`, cols[3], y);
     y += 12;
   }

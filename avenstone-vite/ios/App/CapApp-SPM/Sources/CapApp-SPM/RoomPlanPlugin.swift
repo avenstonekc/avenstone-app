@@ -183,14 +183,36 @@ public class RoomPlanPlugin: CAPPlugin, CAPBridgedPlugin {
         let heightFt = heightMeters * metersToFeet
         let sqft = lengthFt * widthFt
 
+        // Use string formatting to avoid Float32 → Double precision garbage (e.g. 27.3 → 27.299999...)
+        let fmt2 = { (v: Float) -> Double in Double(String(format: "%.2f", v)) ?? Double(v) }
+
+        // Export each wall as a pair of endpoints, normalized to room origin, in feet.
+        // This lets the PDF renderer draw the actual room shape instead of a bounding-box rectangle.
+        var wallSegments: [[String: Double]] = []
+        for wall in room.walls {
+            let t = wall.transform
+            let cx = t.columns.3.x
+            let cz = t.columns.3.z
+            let halfW = wall.dimensions.x / 2.0
+            // Local X axis of the wall transform = wall direction in world space
+            let dx = t.columns.0.x
+            let dz = t.columns.0.z
+            let x1 = Double((cx + dx * halfW - minX) * metersToFeet)
+            let z1 = Double((cz + dz * halfW - minZ) * metersToFeet)
+            let x2 = Double((cx - dx * halfW - minX) * metersToFeet)
+            let z2 = Double((cz - dz * halfW - minZ) * metersToFeet)
+            wallSegments.append(["x1": x1, "z1": z1, "x2": x2, "z2": z2])
+        }
+
         return [
             "name": name,
-            "length": Double((lengthFt * 10).rounded() / 10),
-            "width": Double((widthFt * 10).rounded() / 10),
-            "height": Double((heightFt * 10).rounded() / 10),
+            "length": fmt2(lengthFt),
+            "width": fmt2(widthFt),
+            "height": fmt2(heightFt),
             "sqft": Int(sqft.rounded()),
             "doors": room.doors.count,
             "windows": room.windows.count,
+            "wallSegments": wallSegments,
             "boundingBox": [
                 "minX": Double(minX), "maxX": Double(maxX),
                 "minZ": Double(minZ), "maxZ": Double(maxZ)

@@ -78,7 +78,7 @@ function RoomCard({ room, onRemove }) {
             marginBottom: 4,
           }}
         >
-          {room.length} ft × {room.width} ft × {room.height} ft (H)
+          {(+room.length).toFixed(2)} ft × {(+room.width).toFixed(2)} ft × {(+room.height).toFixed(2)} ft (H)
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <span
@@ -645,9 +645,9 @@ function ResultPhase({ room, allRooms, onAddAnother, onDone, headingStyle, btnGo
           }}
         >
           {[
-            { label: 'Length', value: `${room.length} ft` },
-            { label: 'Width', value: `${room.width} ft` },
-            { label: 'Height', value: `${room.height} ft` },
+            { label: 'Length', value: `${(+room.length).toFixed(2)} ft` },
+            { label: 'Width', value: `${(+room.width).toFixed(2)} ft` },
+            { label: 'Height', value: `${(+room.height).toFixed(2)} ft` },
           ].map(({ label, value }) => (
             <div
               key={label}

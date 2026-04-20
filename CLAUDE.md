@@ -315,6 +315,8 @@ curl -X POST -H "x-auth-token: $CODEMAGIC_PAT" \
 - **Internal TestFlight testers only.** External testers trigger Apple Beta App Review which requires filling out test info. We don't do external testing — `codemagic.yaml` publishing block has NO `beta_groups` key for this reason.
 - **Apple Developer team:** active, approved + charged 2026-04-14. Apple ID enrollment uses the same login as App Store Connect.
 - **Backup manual Mac path:** if Codemagic ever breaks, MacInCloud can still run Xcode for a manual Archive → upload. It's a last resort — the VM resets every session so you'd reinstall Xcode every time.
+- **RoomPlan API — Xcode 26.2 breaking change:** `CapturedRoom.ceilings` was removed in the iOS 26.2 SDK. Do not reference `room.ceilings` anywhere in Swift code — it will break the Codemagic build. Use `room.walls`, `room.floors`, `room.doors`, `room.windows`, `room.openings`, `room.objects` only. Fixed in `CaptureQualityTracker.swift` 2026-04-19.
+- **ExteriorScan tap fix (2026-04-20):** `ARWorldTrackingConfiguration.planeDetection` must include `.vertical` (not just `.horizontal`) for outdoor use. Raycast in `handleTap` polygon phase uses a 3-tier fallback: `.existingPlaneGeometry .any` → `.estimatedPlane .any` → camera projection at 3 m. Never use `.horizontal`-only alignment outdoors — ARKit won't detect ground planes reliably and taps silently fail.
 
 ---
 
