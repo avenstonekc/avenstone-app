@@ -11,10 +11,15 @@ export default function StatusPage({ token }) {
   const [err, setErr] = useState(null);
 
   useEffect(() => {
-    fetch(`${SB_FN}?token=${encodeURIComponent(token)}`, { headers: { Authorization: `Bearer ${ANON}` } })
-      .then(r => { if (!r.ok) throw new Error('Project not found'); return r.json(); })
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    fetch(`${SB_FN}?token=${encodeURIComponent(token)}`, {
+      signal: ctrl.signal,
+      headers: { Authorization: `Bearer ${ANON}`, apikey: ANON },
+    })
+      .then(r => { clearTimeout(timer); if (!r.ok) throw new Error(`Project not found (${r.status})`); return r.json(); })
       .then(d => setData(d))
-      .catch(e => setErr(e.message));
+      .catch(e => { clearTimeout(timer); setErr(e.name === 'AbortError' ? 'Request timed out — please try again' : (e.message || 'Project not found')); });
   }, [token]);
 
   if (err) return (
