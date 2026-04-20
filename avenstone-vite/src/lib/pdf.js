@@ -191,6 +191,42 @@ export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, marg
 const _r2 = n => parseFloat((+(n) || 0).toFixed(2));
 const _dim = n => _r2(n).toFixed(2);
 
+// Rotate wallSegments so the longest wall is horizontal, normalize to (0,0) origin.
+// Returns { segs: [{x1,z1,x2,z2,len}], trueWidth, trueHeight } or null if degenerate.
+const _processWalls = (wallSegs) => {
+  if (!wallSegs || wallSegs.length === 0) return null;
+  const withLen = wallSegs.map(s => {
+    const dx = s.x2 - s.x1, dz = s.z2 - s.z1;
+    return { ...s, len: Math.sqrt(dx * dx + dz * dz) };
+  });
+  const longest = withLen.reduce((a, b) => b.len > a.len ? b : a);
+  const angle = Math.atan2(longest.z2 - longest.z1, longest.x2 - longest.x1);
+  const ca = Math.cos(-angle), sa = Math.sin(-angle);
+  const rot = (x, z) => [x * ca - z * sa, x * sa + z * ca];
+  const rots = withLen.map(s => {
+    const [rx1, rz1] = rot(s.x1, s.z1);
+    const [rx2, rz2] = rot(s.x2, s.z2);
+    return { x1: rx1, z1: rz1, x2: rx2, z2: rz2, len: s.len };
+  });
+  const allX = rots.flatMap(s => [s.x1, s.x2]);
+  const allZ = rots.flatMap(s => [s.z1, s.z2]);
+  const minX = Math.min(...allX), minZ = Math.min(...allZ);
+  const maxX = Math.max(...allX), maxZ = Math.max(...allZ);
+  let segs = rots.map(s => ({
+    x1: s.x1 - minX, z1: s.z1 - minZ,
+    x2: s.x2 - minX, z2: s.z2 - minZ,
+    len: s.len,
+  }));
+  let tw = maxX - minX, th = maxZ - minZ;
+  if (tw < 0.5 || th < 0.5) return null; // degenerate scan
+  // If portrait → rotate 90° CW to landscape: (x,z) → (z, tw−x)
+  if (th > tw) {
+    segs = segs.map(s => ({ x1: s.z1, z1: tw - s.x1, x2: s.z2, z2: tw - s.x2, len: s.len }));
+    [tw, th] = [th, tw];
+  }
+  return { segs, trueWidth: tw, trueHeight: th };
+};
+
 export const buildFloorPlanPDF = (scan, job) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
@@ -222,70 +258,71 @@ export const buildFloorPlanPDF = (scan, job) => {
   y += 22;
   doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 16;
 
-  // Floor plan diagram
-  if (rooms.length > 0) {
+  // ── Floor plan diagram ──────────────────────────────────────────────────────
+  // Pre-process wall segments for all rooms (axis-alignment + normalization)
+  const roomData = rooms.map(room => ({ room, proc: _processWalls(room.wallSegments) }));
+
+  if (roomData.length > 0) {
     const PAD_R = 10;
-    const maxDim = Math.max(...rooms.flatMap(r => [r.length || 1, r.width || 1]), 1);
-    const scale = Math.min((CW * 0.58) / maxDim, 20);
+    const maxDim = Math.max(
+      ...roomData.map(({ room, proc }) =>
+        proc ? Math.max(proc.trueWidth, proc.trueHeight) : Math.max(room.length || 1, room.width || 1)
+      ), 1
+    );
+    const scale = Math.min((CW * 0.55) / maxDim, 20);
 
     let curX = M, curY = y, rowH = 0;
     const layout = [];
-    for (const room of rooms) {
-      const rw = Math.max(52, (room.length || 10) * scale);
-      const rh = Math.max(40, (room.width || 10) * scale);
-      if (curX + rw > W - M && curX > M) { curY += rowH + PAD_R + 18; curX = M; rowH = 0; }
-      layout.push({ room, x: curX, y: curY, w: rw, h: rh });
+    for (const { room, proc } of roomData) {
+      const rw = Math.max(52, (proc ? proc.trueWidth : (room.length || 10)) * scale);
+      const rh = Math.max(40, (proc ? proc.trueHeight : (room.width || 10)) * scale);
+      if (curX + rw > W - M && curX > M) { curY += rowH + PAD_R + 20; curX = M; rowH = 0; }
+      layout.push({ room, proc, x: curX, y: curY, w: rw, h: rh });
       curX += rw + PAD_R; rowH = Math.max(rowH, rh);
     }
 
-    for (const { room, x, y: ry, w, h } of layout) {
-      const segs = room.wallSegments;
-      const hasWalls = segs && segs.length > 0;
-
-      // Fill background
+    for (const { room, proc, x, y: ry, w, h } of layout) {
       doc.setFillColor(235, 238, 244);
       doc.rect(x, ry, w, h, 'F');
 
-      if (hasWalls) {
-        // Draw each wall segment as a thick line — shows actual room shape including bump-outs
-        doc.setDrawColor(...navy);
-        doc.setLineWidth(3);
-        for (const seg of segs) {
-          doc.line(
-            x + seg.x1 * scale, ry + seg.z1 * scale,
-            x + seg.x2 * scale, ry + seg.z2 * scale
-          );
+      if (proc) {
+        doc.setDrawColor(...navy); doc.setLineWidth(2);
+        for (const seg of proc.segs) {
+          doc.line(x + seg.x1 * scale, ry + seg.z1 * scale, x + seg.x2 * scale, ry + seg.z2 * scale);
+        }
+        // Wall dimension labels — offset outward from room center
+        const cxBox = w / 2, czBox = h / 2;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(90, 90, 90);
+        for (const seg of proc.segs) {
+          if (seg.len < 1) continue;
+          const mx = (seg.x1 + seg.x2) / 2 * scale;
+          const mz = (seg.z1 + seg.z2) / 2 * scale;
+          const vx = mx - cxBox, vz = mz - czBox;
+          const vlen = Math.sqrt(vx * vx + vz * vz) || 1;
+          doc.text(`${seg.len.toFixed(1)}'`, x + mx + (vx / vlen) * 9, ry + mz + (vz / vlen) * 9, { align: 'center' });
         }
       } else {
-        // Fallback: plain rectangle outline
-        doc.setDrawColor(...navy);
-        doc.setLineWidth(2);
+        doc.setDrawColor(...navy); doc.setLineWidth(2);
         doc.rect(x, ry, w, h, 'S');
       }
 
-      const midX = x + w / 2;
-      const midY = ry + h / 2;
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(Math.min(9, w / 6));
-      doc.setTextColor(...navy);
-      doc.text(room.name, midX, midY - 6, { align: 'center' });
+      const midX = x + w / 2, midY = ry + h / 2;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(Math.min(9, w / 6)); doc.setTextColor(...navy);
+      doc.text(room.name, midX, midY - (h > 44 ? 7 : 0), { align: 'center' });
 
       if (h > 44) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.setTextColor(...gold);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gold);
         doc.text(`${(room.sqft || 0).toLocaleString()} sf`, midX, midY + 7, { align: 'center' });
       }
 
-      // Dimension label below room box
-      doc.setFontSize(7);
-      doc.setTextColor(140, 140, 140);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`${_dim(room.length)} × ${_dim(room.width)} ft`, x + w / 2, ry + h + 10, { align: 'center' });
+      // True dimensions below box
+      const dw = proc ? proc.trueWidth : (room.length || 0);
+      const dh = proc ? proc.trueHeight : (room.width || 0);
+      doc.setFontSize(7); doc.setTextColor(140, 140, 140); doc.setFont('helvetica', 'normal');
+      doc.text(`${_dim(dw)} \u00d7 ${_dim(dh)} ft`, x + w / 2, ry + h + 11, { align: 'center' });
     }
 
-    const diagramBottom = layout.reduce((m, l) => Math.max(m, l.y + l.h), 0) + 18;
+    const diagramBottom = layout.reduce((m, l) => Math.max(m, l.y + l.h), 0) + 20;
     const scaleBarFt = Math.round(40 / scale) || 10;
     const scaleBarPx = scaleBarFt * scale;
     doc.setDrawColor(180, 180, 180); doc.setLineWidth(1);
@@ -297,7 +334,7 @@ export const buildFloorPlanPDF = (scan, job) => {
     y = diagramBottom + 22;
   }
 
-  // Room table
+  // ── Room details table ───────────────────────────────────────────────────────
   doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 14;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
   doc.text('ROOM DETAILS', M, y); y += 12;
@@ -306,10 +343,12 @@ export const buildFloorPlanPDF = (scan, job) => {
   ['Room', 'Dimensions', 'Height', 'Sq Ft'].forEach((h, i) => doc.text(h, cols[i], y));
   y += 4; doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81);
-  for (const room of rooms) {
+  for (const { room, proc } of roomData) {
     if (y > 720) { doc.addPage(); y = 48; }
+    const dw = proc ? proc.trueWidth : (room.length || 0);
+    const dh = proc ? proc.trueHeight : (room.width || 0);
     doc.text(room.name || '—', cols[0], y);
-    doc.text(`${_dim(room.length)} \u00d7 ${_dim(room.width)} ft`, cols[1], y);
+    doc.text(`${_dim(dw)} \u00d7 ${_dim(dh)} ft`, cols[1], y);
     doc.text(`${_dim(room.height)} ft`, cols[2], y);
     doc.text(`${(room.sqft || 0).toLocaleString()}`, cols[3], y);
     y += 12;

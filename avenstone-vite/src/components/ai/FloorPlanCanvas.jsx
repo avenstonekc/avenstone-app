@@ -1,6 +1,6 @@
 /**
  * FloorPlanCanvas — proportional SVG floor plan.
- * Uses actual room dimensions (length × width) for scale-accurate relative sizes.
+ * Wall segments are axis-aligned (longest wall horizontal) before rendering.
  * Rooms are packed left-to-right, wrapping to next row when needed.
  */
 
@@ -11,19 +11,57 @@ const CREAM = '#F7F5F0';
 const CANVAS_W = 560;
 const PAD = 10;
 
+// Rotate wallSegments so the longest wall is horizontal, normalize to (0,0) origin.
+// Returns { segs, trueWidth, trueHeight } or null if degenerate.
+function processWallSegs(wallSegs) {
+  if (!wallSegs || wallSegs.length === 0) return null;
+  const withLen = wallSegs.map(s => {
+    const dx = s.x2 - s.x1, dz = s.z2 - s.z1;
+    return { ...s, len: Math.sqrt(dx * dx + dz * dz) };
+  });
+  const longest = withLen.reduce((a, b) => b.len > a.len ? b : a);
+  const angle = Math.atan2(longest.z2 - longest.z1, longest.x2 - longest.x1);
+  const ca = Math.cos(-angle), sa = Math.sin(-angle);
+  const rot = (x, z) => [x * ca - z * sa, x * sa + z * ca];
+  const rots = withLen.map(s => {
+    const [rx1, rz1] = rot(s.x1, s.z1);
+    const [rx2, rz2] = rot(s.x2, s.z2);
+    return { x1: rx1, z1: rz1, x2: rx2, z2: rz2, len: s.len };
+  });
+  const allX = rots.flatMap(s => [s.x1, s.x2]);
+  const allZ = rots.flatMap(s => [s.z1, s.z2]);
+  const minX = Math.min(...allX), minZ = Math.min(...allZ);
+  const maxX = Math.max(...allX), maxZ = Math.max(...allZ);
+  let segs = rots.map(s => ({
+    x1: s.x1 - minX, z1: s.z1 - minZ,
+    x2: s.x2 - minX, z2: s.z2 - minZ,
+    len: s.len,
+  }));
+  let tw = maxX - minX, th = maxZ - minZ;
+  if (tw < 0.5 || th < 0.5) return null;
+  // Portrait → rotate 90° CW to landscape: (x,z) → (z, tw−x)
+  if (th > tw) {
+    segs = segs.map(s => ({ x1: s.z1, z1: tw - s.x1, x2: s.z2, z2: tw - s.x2, len: s.len }));
+    [tw, th] = [th, tw];
+  }
+  return { segs, trueWidth: tw, trueHeight: th };
+}
+
 function layoutRooms(rooms) {
-  const maxDim = Math.max(...rooms.flatMap(r => [r.length || 1, r.width || 1]), 1);
-  // Scale so the largest room fills at most 60% of canvas width, capped at 20px/ft
+  const roomData = rooms.map(room => ({ room, proc: processWallSegs(room.wallSegments) }));
+  const maxDim = Math.max(
+    ...roomData.map(({ room, proc }) =>
+      proc ? Math.max(proc.trueWidth, proc.trueHeight) : Math.max(room.length || 1, room.width || 1)
+    ), 1
+  );
   const scale = Math.min(((CANVAS_W - PAD * 2) * 0.60) / maxDim, 20);
 
   const layout = [];
-  let curX = PAD;
-  let curY = PAD;
-  let rowH = 0;
+  let curX = PAD, curY = PAD, rowH = 0;
 
-  for (const room of rooms) {
-    const w = Math.max(58, (room.length || 10) * scale);
-    const h = Math.max(46, (room.width || 10) * scale);
+  for (const { room, proc } of roomData) {
+    const w = Math.max(58, (proc ? proc.trueWidth : (room.length || 10)) * scale);
+    const h = Math.max(46, (proc ? proc.trueHeight : (room.width || 10)) * scale);
 
     if (curX + w > CANVAS_W - PAD && curX > PAD) {
       curY += rowH + PAD;
@@ -31,12 +69,12 @@ function layoutRooms(rooms) {
       rowH = 0;
     }
 
-    layout.push({ room, x: curX, y: curY, w, h });
+    layout.push({ room, proc, x: curX, y: curY, w, h });
     curX += w + PAD;
     rowH = Math.max(rowH, h);
   }
 
-  const totalH = curY + rowH + PAD * 3 + 20; // extra for scale bar
+  const totalH = curY + rowH + PAD * 3 + 20;
   return { layout, totalH, scale };
 }
 
@@ -68,12 +106,11 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
         xmlns="http://www.w3.org/2000/svg"
         style={{ display: 'block', borderRadius: 8, background: CREAM }}
       >
-        {layout.map(({ room, x, y, w, h }, i) => {
+        {layout.map(({ room, proc, x, y, w, h }, i) => {
           const isHighlighted = highlightLast && room === lastRoom;
           const fontSize = Math.max(9, Math.min(12, w / 7));
           const stroke = isHighlighted ? GOLD : NAVY;
           const strokeW = isHighlighted ? 2 : 1.5;
-          const hasWalls = room.wallSegments && room.wallSegments.length > 0;
           return (
             <g key={room.name + i}>
               {/* Background fill */}
@@ -83,9 +120,9 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
                 fillOpacity={isHighlighted ? 0.15 : 0.08}
                 stroke="none"
               />
-              {hasWalls ? (
-                /* Draw each wall segment — shows actual room shape including bump-outs */
-                room.wallSegments.map((seg, si) => (
+              {proc ? (
+                /* Axis-aligned wall segments — actual room shape */
+                proc.segs.map((seg, si) => (
                   <line
                     key={si}
                     x1={x + seg.x1 * scale} y1={y + seg.z1 * scale}
@@ -125,10 +162,10 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
                   fill={GOLD}
                   fontWeight="500"
                 >
-                  {room.sqft ? `${room.sqft.toLocaleString()} sf` : `${room.length}×${room.width}`}
+                  {room.sqft ? `${room.sqft.toLocaleString()} sf` : `${proc ? proc.trueWidth.toFixed(1) : (+room.length).toFixed(1)}×${proc ? proc.trueHeight.toFixed(1) : (+room.width).toFixed(1)}`}
                 </text>
               )}
-              {/* Dimension along bottom edge */}
+              {/* True width along bottom edge */}
               {w > 80 && h > 50 && (
                 <text
                   x={x + w / 2}
@@ -138,7 +175,7 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
                   fontSize={9}
                   fill="#999"
                 >
-                  {(+room.length).toFixed(2)} ft
+                  {(proc ? proc.trueWidth : (+room.length)).toFixed(2)} ft
                 </text>
               )}
             </g>
