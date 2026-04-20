@@ -688,7 +688,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         }
         Task {
             do {
-                let builder = RoomBuilder(outputOptions: [])
+                let builder = RoomBuilder(options: [])
                 let structure = try await builder.captureStructure(from: capturedDatas)
                 let rooms = self.structureToRooms(structure)
                 await MainActor.run {
