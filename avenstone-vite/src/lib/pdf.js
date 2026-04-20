@@ -200,7 +200,10 @@ const _processWalls = (wallSegs) => {
     return { ...s, len: Math.sqrt(dx * dx + dz * dz) };
   });
   const longest = withLen.reduce((a, b) => b.len > a.len ? b : a);
-  const angle = Math.atan2(longest.z2 - longest.z1, longest.x2 - longest.x1);
+  // Normalize to [-π/2, π/2] so wall direction (x1→x2 vs x2→x1) doesn't mirror the result
+  let angle = Math.atan2(longest.z2 - longest.z1, longest.x2 - longest.x1);
+  if (angle > Math.PI / 2) angle -= Math.PI;
+  if (angle < -Math.PI / 2) angle += Math.PI;
   const ca = Math.cos(-angle), sa = Math.sin(-angle);
   const rot = (x, z) => [x * ca - z * sa, x * sa + z * ca];
   const rots = withLen.map(s => {

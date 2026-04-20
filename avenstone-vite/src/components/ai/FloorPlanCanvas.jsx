@@ -20,7 +20,10 @@ function processWallSegs(wallSegs) {
     return { ...s, len: Math.sqrt(dx * dx + dz * dz) };
   });
   const longest = withLen.reduce((a, b) => b.len > a.len ? b : a);
-  const angle = Math.atan2(longest.z2 - longest.z1, longest.x2 - longest.x1);
+  // Normalize to [-π/2, π/2] so wall direction doesn't mirror the result
+  let angle = Math.atan2(longest.z2 - longest.z1, longest.x2 - longest.x1);
+  if (angle > Math.PI / 2) angle -= Math.PI;
+  if (angle < -Math.PI / 2) angle += Math.PI;
   const ca = Math.cos(-angle), sa = Math.sin(-angle);
   const rot = (x, z) => [x * ca - z * sa, x * sa + z * ca];
   const rots = withLen.map(s => {
@@ -122,14 +125,34 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
               />
               {proc ? (
                 /* Axis-aligned wall segments — actual room shape */
-                proc.segs.map((seg, si) => (
-                  <line
-                    key={si}
-                    x1={x + seg.x1 * scale} y1={y + seg.z1 * scale}
-                    x2={x + seg.x2 * scale} y2={y + seg.z2 * scale}
-                    stroke={stroke} strokeWidth={strokeW} strokeLinecap="round"
-                  />
-                ))
+                <>
+                  {proc.segs.map((seg, si) => (
+                    <line
+                      key={si}
+                      x1={x + seg.x1 * scale} y1={y + seg.z1 * scale}
+                      x2={x + seg.x2 * scale} y2={y + seg.z2 * scale}
+                      stroke={stroke} strokeWidth={strokeW} strokeLinecap="round"
+                    />
+                  ))}
+                  {proc.segs.filter(seg => seg.len >= 1).map((seg, si) => {
+                    const mx = (seg.x1 + seg.x2) / 2 * scale;
+                    const mz = (seg.z1 + seg.z2) / 2 * scale;
+                    const vx = mx - w / 2, vz = mz - h / 2;
+                    const vlen = Math.sqrt(vx * vx + vz * vz) || 1;
+                    return (
+                      <text
+                        key={'d' + si}
+                        x={x + mx + (vx / vlen) * 10}
+                        y={y + mz + (vz / vlen) * 10}
+                        textAnchor="middle" dominantBaseline="middle"
+                        fontFamily='"DM Sans", sans-serif'
+                        fontSize={8} fill="#555"
+                      >
+                        {seg.len.toFixed(1)}'
+                      </text>
+                    );
+                  })}
+                </>
               ) : (
                 /* Fallback rectangle outline for old scan data */
                 <rect
