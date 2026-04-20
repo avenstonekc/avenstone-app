@@ -19,6 +19,7 @@ const RoomPlanPlugin = registerPlugin('RoomPlanPlugin', {
   web: () => ({
     isSupported: async () => ({ supported: false }),
     startScan: async () => { throw new Error('LiDAR only available on native iOS'); },
+    startMultiRoomScan: async () => { throw new Error('LiDAR only available on native iOS'); },
     exportFloorPlan: async () => ({ imageBase64: null, pdfBase64: null }),
     startExteriorScan: async () => { throw new Error('Exterior scan only available on native iOS'); },
     startInteriorHeightCapture: async () => { throw new Error('Interior height capture only available on native iOS'); },
@@ -117,6 +118,37 @@ export async function scanRoom(roomName, onProgress) {
     qualityDeductions: [],
     simulated: true,
   };
+}
+
+/**
+ * Scan multiple rooms in a single continuous ARKit session (Phase 2).
+ * Native iOS: launches ContinuousRoomScanViewController — user scans room by room,
+ *   names each via the native overlay, taps "Complete — Build Floor Plan" to finish.
+ *   Returns all rooms with worldX/worldZ for spatially-accurate floor plan layout.
+ * Web / non-LiDAR: returns 3 mock rooms with world coordinates after a brief delay.
+ *
+ * @returns {Promise<Array<{name,length,width,height,sqft,doors,windows,worldX,worldZ,wallSegments,simulated}>>}
+ */
+export async function scanMultipleRooms() {
+  if (isNative) {
+    try {
+      const { supported } = await RoomPlanPlugin.isSupported();
+      if (supported) {
+        const result = await RoomPlanPlugin.startMultiRoomScan({});
+        return (result.rooms || []).map(r => ({ ...r, simulated: false }));
+      }
+    } catch (err) {
+      if (err?.message?.includes('cancelled') || err?.message?.includes('Cancelled')) throw err;
+      console.warn('[lidar] multi-room scan failed, falling back to simulation:', err);
+    }
+  }
+  // Web / non-LiDAR simulation — 3 connected rooms laid out spatially
+  await new Promise(r => setTimeout(r, 1200));
+  return [
+    { name: 'Living Room',    length: 18.5, width: 14.0, height: 9.0, sqft: 259, doors: 2, windows: 3, worldX: 0,    worldZ: 0,    simulated: true },
+    { name: 'Kitchen',        length: 14.0, width: 12.0, height: 9.0, sqft: 168, doors: 1, windows: 2, worldX: 18.5, worldZ: 0,    simulated: true },
+    { name: 'Master Bedroom', length: 15.0, width: 13.5, height: 9.0, sqft: 202, doors: 1, windows: 2, worldX: 0,    worldZ: 14.0, simulated: true },
+  ];
 }
 
 /**

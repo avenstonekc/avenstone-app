@@ -262,33 +262,76 @@ export const buildFloorPlanPDF = (scan, job) => {
   doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 16;
 
   // ── Floor plan diagram ──────────────────────────────────────────────────────
-  // Pre-process wall segments for all rooms (axis-alignment + normalization)
-  const roomData = rooms.map(room => ({ room, proc: _processWalls(room.wallSegments) }));
+  const worldMode = rooms.some(r => r.worldX !== undefined && r.worldX !== null);
+  const roomData = rooms.map(room => ({ room, proc: worldMode ? null : _processWalls(room.wallSegments) }));
 
   if (roomData.length > 0) {
     const PAD_R = 10;
-    const maxDim = Math.max(
-      ...roomData.map(({ room, proc }) =>
-        proc ? Math.max(proc.trueWidth, proc.trueHeight) : Math.max(room.length || 1, room.width || 1)
-      ), 1
-    );
-    const scale = Math.min((CW * 0.55) / maxDim, 20);
+    let layout, scale;
 
-    let curX = M, curY = y, rowH = 0;
-    const layout = [];
-    for (const { room, proc } of roomData) {
-      const rw = Math.max(52, (proc ? proc.trueWidth : (room.length || 10)) * scale);
-      const rh = Math.max(40, (proc ? proc.trueHeight : (room.width || 10)) * scale);
-      if (curX + rw > W - M && curX > M) { curY += rowH + PAD_R + 20; curX = M; rowH = 0; }
-      layout.push({ room, proc, x: curX, y: curY, w: rw, h: rh });
-      curX += rw + PAD_R; rowH = Math.max(rowH, rh);
+    if (worldMode) {
+      // World-space layout: position rooms using worldX/worldZ
+      const allX = [], allZ = [];
+      rooms.forEach(room => {
+        const wx = room.worldX || 0, wz = room.worldZ || 0;
+        if (room.wallSegments && room.wallSegments.length > 0) {
+          room.wallSegments.forEach(s => { allX.push(wx + s.x1, wx + s.x2); allZ.push(wz + s.z1, wz + s.z2); });
+        } else {
+          allX.push(wx, wx + (room.length || 10)); allZ.push(wz, wz + (room.width || 10));
+        }
+      });
+      const minX = Math.min(...allX), maxX = Math.max(...allX);
+      const minZ = Math.min(...allZ), maxZ = Math.max(...allZ);
+      const trueW = maxX - minX || 1, trueH = maxZ - minZ || 1;
+      scale = Math.min((CW * 0.9) / trueW, (CW * 0.9) / trueH, 20);
+      layout = rooms.map(room => {
+        const wx = room.worldX || 0, wz = room.worldZ || 0;
+        const ox = M + (wx - minX) * scale;
+        const oy = y + (wz - minZ) * scale;
+        let w, h;
+        if (room.wallSegments && room.wallSegments.length > 0) {
+          const xs = room.wallSegments.flatMap(s => [s.x1, s.x2]);
+          const zs = room.wallSegments.flatMap(s => [s.z1, s.z2]);
+          w = Math.max((Math.max(...xs) - Math.min(...xs)) * scale, 20);
+          h = Math.max((Math.max(...zs) - Math.min(...zs)) * scale, 16);
+        } else {
+          w = Math.max((room.length || 10) * scale, 20);
+          h = Math.max((room.width || 10) * scale, 16);
+        }
+        return { room, rawSegs: room.wallSegments || null, proc: null, x: ox, y: oy, w, h };
+      });
+    } else {
+      // Packing layout for single-room or non-world-space scans
+      const maxDim = Math.max(
+        ...roomData.map(({ room, proc }) =>
+          proc ? Math.max(proc.trueWidth, proc.trueHeight) : Math.max(room.length || 1, room.width || 1)
+        ), 1
+      );
+      scale = Math.min((CW * 0.55) / maxDim, 20);
+      let curX = M, curY = y, rowH = 0;
+      layout = [];
+      for (const { room, proc } of roomData) {
+        const rw = Math.max(52, (proc ? proc.trueWidth : (room.length || 10)) * scale);
+        const rh = Math.max(40, (proc ? proc.trueHeight : (room.width || 10)) * scale);
+        if (curX + rw > W - M && curX > M) { curY += rowH + PAD_R + 20; curX = M; rowH = 0; }
+        layout.push({ room, proc, rawSegs: null, x: curX, y: curY, w: rw, h: rh });
+        curX += rw + PAD_R; rowH = Math.max(rowH, rh);
+      }
     }
 
-    for (const { room, proc, x, y: ry, w, h } of layout) {
-      doc.setFillColor(235, 238, 244);
-      doc.rect(x, ry, w, h, 'F');
+    for (const { room, proc, rawSegs, x, y: ry, w, h } of layout) {
+      if (!worldMode) {
+        doc.setFillColor(235, 238, 244);
+        doc.rect(x, ry, w, h, 'F');
+      }
 
-      if (proc) {
+      if (worldMode && rawSegs && rawSegs.length > 0) {
+        // World-space: draw raw wall segments
+        doc.setDrawColor(...navy); doc.setLineWidth(1.5);
+        for (const seg of rawSegs) {
+          doc.line(x + seg.x1 * scale, ry + seg.z1 * scale, x + seg.x2 * scale, ry + seg.z2 * scale);
+        }
+      } else if (proc) {
         doc.setDrawColor(...navy); doc.setLineWidth(2);
         for (const seg of proc.segs) {
           doc.line(x + seg.x1 * scale, ry + seg.z1 * scale, x + seg.x2 * scale, ry + seg.z2 * scale);
@@ -309,7 +352,16 @@ export const buildFloorPlanPDF = (scan, job) => {
         doc.rect(x, ry, w, h, 'S');
       }
 
-      const midX = x + w / 2, midY = ry + h / 2;
+      // Text: centroid of wall endpoints or bounding box center
+      let midX, midY;
+      if (worldMode && rawSegs && rawSegs.length > 0) {
+        const allPts = rawSegs.flatMap(s => [[s.x1, s.z1], [s.x2, s.z2]]);
+        midX = x + allPts.reduce((a, p) => a + p[0], 0) / allPts.length * scale;
+        midY = ry + allPts.reduce((a, p) => a + p[1], 0) / allPts.length * scale;
+      } else {
+        midX = x + w / 2; midY = ry + h / 2;
+      }
+
       doc.setFont('helvetica', 'bold'); doc.setFontSize(Math.min(9, w / 6)); doc.setTextColor(...navy);
       doc.text(room.name, midX, midY - (h > 44 ? 7 : 0), { align: 'center' });
 
@@ -318,11 +370,13 @@ export const buildFloorPlanPDF = (scan, job) => {
         doc.text(`${(room.sqft || 0).toLocaleString()} sf`, midX, midY + 7, { align: 'center' });
       }
 
-      // True dimensions below box
-      const dw = proc ? proc.trueWidth : (room.length || 0);
-      const dh = proc ? proc.trueHeight : (room.width || 0);
-      doc.setFontSize(7); doc.setTextColor(140, 140, 140); doc.setFont('helvetica', 'normal');
-      doc.text(`${_dim(dw)} \u00d7 ${_dim(dh)} ft`, x + w / 2, ry + h + 11, { align: 'center' });
+      if (!worldMode) {
+        // True dimensions below box (packing mode only)
+        const dw = proc ? proc.trueWidth : (room.length || 0);
+        const dh = proc ? proc.trueHeight : (room.width || 0);
+        doc.setFontSize(7); doc.setTextColor(140, 140, 140); doc.setFont('helvetica', 'normal');
+        doc.text(`${_dim(dw)} \u00d7 ${_dim(dh)} ft`, x + w / 2, ry + h + 11, { align: 'center' });
+      }
     }
 
     const diagramBottom = layout.reduce((m, l) => Math.max(m, l.y + l.h), 0) + 20;
@@ -348,6 +402,7 @@ export const buildFloorPlanPDF = (scan, job) => {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81);
   for (const { room, proc } of roomData) {
     if (y > 720) { doc.addPage(); y = 48; }
+    // In world-space mode proc is null; use room.length/width as fallback
     const dw = proc ? proc.trueWidth : (room.length || 0);
     const dh = proc ? proc.trueHeight : (room.width || 0);
     doc.text(room.name || '—', cols[0], y);

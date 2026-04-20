@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { scanRoom, isLidarSupported, startExteriorScan } from '../../lib/lidar';
+import { scanRoom, isLidarSupported, startExteriorScan, scanMultipleRooms } from '../../lib/lidar';
 import FloorPlanCanvas from './FloorPlanCanvas';
 
 const NAVY = '#0A1F44';
@@ -138,6 +138,7 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
   const [supported, setSupported] = useState(false);
   const [mode, setMode] = useState('interior'); // 'interior' | 'exterior'
   const [exteriorScanning, setExteriorScanning] = useState(false);
+  const [multiScanning, setMultiScanning] = useState(false);
   const inputRef = useRef(null);
 
   useKeyframes(PULSE_KEYFRAMES);
@@ -182,6 +183,17 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
 
   function handleRemoveRoom(index) {
     onRoomsChange(rooms.filter((_, i) => i !== index));
+  }
+
+  async function handleStartMultiRoomScan() {
+    setMultiScanning(true);
+    try {
+      const newRooms = await scanMultipleRooms();
+      onRoomsChange([...rooms, ...newRooms]);
+    } catch (err) {
+      // cancelled — no-op
+    }
+    setMultiScanning(false);
   }
 
   async function handleStartExteriorScan() {
@@ -265,7 +277,10 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
           rooms={rooms}
           mode={mode}
           onModeChange={setMode}
+          supported={supported}
           onAddRoom={() => { setRoomName(''); setPhase('naming'); }}
+          onStartMultiRoomScan={handleStartMultiRoomScan}
+          multiScanning={multiScanning}
           onRemoveRoom={handleRemoveRoom}
           onDone={onDone}
           onStartExteriorScan={handleStartExteriorScan}
@@ -312,7 +327,7 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
   );
 }
 
-function ListPhase({ rooms, mode, onModeChange, onAddRoom, onRemoveRoom, onDone, onStartExteriorScan, exteriorScanning, headingStyle, btnGold, btnNavy }) {
+function ListPhase({ rooms, mode, onModeChange, supported, onAddRoom, onStartMultiRoomScan, multiScanning, onRemoveRoom, onDone, onStartExteriorScan, exteriorScanning, headingStyle, btnGold, btnNavy }) {
   return (
     <div>
       {/* Mode toggle */}
@@ -350,8 +365,20 @@ function ListPhase({ rooms, mode, onModeChange, onAddRoom, onRemoveRoom, onDone,
             </>
           )}
           <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
-            <button style={btnGold} onClick={onAddRoom}>+ Add Room</button>
-            {rooms.length > 0 && (
+            {supported ? (
+              multiScanning ? (
+                <div style={{ fontSize: 13, color: NAVY, fontFamily: '"DM Sans", sans-serif', fontWeight: 600, padding: '11px 0' }}>
+                  Launching scanner...
+                </div>
+              ) : (
+                <button style={btnGold} onClick={onStartMultiRoomScan}>
+                  {rooms.length > 0 ? '+ Scan More Rooms' : 'Start Scan'}
+                </button>
+              )
+            ) : (
+              <button style={btnGold} onClick={onAddRoom}>+ Add Room</button>
+            )}
+            {rooms.length > 0 && !multiScanning && (
               <button style={btnNavy} onClick={onDone}>Done / Use These Measurements</button>
             )}
           </div>

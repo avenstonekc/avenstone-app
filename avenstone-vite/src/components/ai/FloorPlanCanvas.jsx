@@ -50,6 +50,45 @@ function processWallSegs(wallSegs) {
   return { segs, trueWidth: tw, trueHeight: th };
 }
 
+// World-space layout: rooms have worldX/worldZ offsets (in feet) from the global origin.
+// Wall segments are in room-local space; no rotation applied — they're already in world orientation.
+function layoutRoomsWorldSpace(rooms) {
+  const allX = [], allZ = [];
+  rooms.forEach(room => {
+    const wx = room.worldX || 0, wz = room.worldZ || 0;
+    if (room.wallSegments && room.wallSegments.length > 0) {
+      room.wallSegments.forEach(s => { allX.push(wx + s.x1, wx + s.x2); allZ.push(wz + s.z1, wz + s.z2); });
+    } else {
+      allX.push(wx, wx + (room.length || 10)); allZ.push(wz, wz + (room.width || 10));
+    }
+  });
+  if (!allX.length) return null;
+
+  const minX = Math.min(...allX), maxX = Math.max(...allX);
+  const minZ = Math.min(...allZ), maxZ = Math.max(...allZ);
+  const trueW = maxX - minX || 1, trueH = maxZ - minZ || 1;
+  const scale = Math.min((CANVAS_W - PAD * 2) / trueW, (CANVAS_W - PAD * 2) / trueH, 20);
+  const totalH = trueH * scale + PAD * 3 + 20;
+
+  const layout = rooms.map(room => {
+    const wx = room.worldX || 0, wz = room.worldZ || 0;
+    const ox = PAD + (wx - minX) * scale;
+    const oy = PAD + (wz - minZ) * scale;
+    let w, h;
+    if (room.wallSegments && room.wallSegments.length > 0) {
+      const xs = room.wallSegments.flatMap(s => [s.x1, s.x2]);
+      const zs = room.wallSegments.flatMap(s => [s.z1, s.z2]);
+      w = Math.max((Math.max(...xs) - Math.min(...xs)) * scale, 20);
+      h = Math.max((Math.max(...zs) - Math.min(...zs)) * scale, 16);
+    } else {
+      w = Math.max((room.length || 10) * scale, 20);
+      h = Math.max((room.width || 10) * scale, 16);
+    }
+    return { room, rawSegs: room.wallSegments || null, x: ox, y: oy, w, h };
+  });
+  return { layout, totalH, scale };
+}
+
 function layoutRooms(rooms) {
   const roomData = rooms.map(room => ({ room, proc: processWallSegs(room.wallSegments) }));
   const maxDim = Math.max(
@@ -84,7 +123,10 @@ function layoutRooms(rooms) {
 export default function FloorPlanCanvas({ rooms, highlightLast = false, compact = false }) {
   if (!rooms || rooms.length === 0) return null;
 
-  const { layout, totalH, scale } = layoutRooms(rooms);
+  const worldMode = rooms.some(r => r.worldX !== undefined && r.worldX !== null);
+  const layoutResult = worldMode ? layoutRoomsWorldSpace(rooms) : layoutRooms(rooms);
+  if (!layoutResult) return null;
+  const { layout, totalH, scale } = layoutResult;
   const totalSqft = rooms.reduce((s, r) => s + (r.sqft || 0), 0);
   const lastRoom = highlightLast ? rooms[rooms.length - 1] : null;
 
@@ -109,23 +151,43 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
         xmlns="http://www.w3.org/2000/svg"
         style={{ display: 'block', borderRadius: 8, background: CREAM }}
       >
-        {layout.map(({ room, proc, x, y, w, h }, i) => {
+        {layout.map((item, i) => {
+          const { room, x, y, w, h } = item;
+          const proc = item.proc || null;
+          const rawSegs = item.rawSegs || null;
           const isHighlighted = highlightLast && room === lastRoom;
           const fontSize = Math.max(9, Math.min(12, w / 7));
           const stroke = isHighlighted ? GOLD : NAVY;
           const strokeW = isHighlighted ? 2 : 1.5;
-          // Centroid of wall endpoints for text placement (or bounding box center as fallback)
-          const textCX = proc
-            ? x + proc.segs.flatMap(s => [s.x1, s.x2]).reduce((a, v) => a + v, 0) / (proc.segs.length * 2) * scale
-            : x + w / 2;
-          const textCZ = proc
-            ? y + proc.segs.flatMap(s => [s.z1, s.z2]).reduce((a, v) => a + v, 0) / (proc.segs.length * 2) * scale
-            : y + h / 2;
+
+          // Centroid of wall endpoints for text placement
+          let textCX, textCZ;
+          if (worldMode && rawSegs && rawSegs.length > 0) {
+            const allPts = rawSegs.flatMap(s => [[s.x1, s.z1], [s.x2, s.z2]]);
+            textCX = x + allPts.reduce((a, p) => a + p[0], 0) / allPts.length * scale;
+            textCZ = y + allPts.reduce((a, p) => a + p[1], 0) / allPts.length * scale;
+          } else if (proc) {
+            textCX = x + proc.segs.flatMap(s => [s.x1, s.x2]).reduce((a, v) => a + v, 0) / (proc.segs.length * 2) * scale;
+            textCZ = y + proc.segs.flatMap(s => [s.z1, s.z2]).reduce((a, v) => a + v, 0) / (proc.segs.length * 2) * scale;
+          } else {
+            textCX = x + w / 2;
+            textCZ = y + h / 2;
+          }
 
           return (
             <g key={room.name + i}>
-              {proc ? (
-                /* Actual wall shape — no background rect, walls define the room */
+              {worldMode && rawSegs && rawSegs.length > 0 ? (
+                /* World-space: raw wall segments, no rotation */
+                rawSegs.map((seg, si) => (
+                  <line
+                    key={si}
+                    x1={x + seg.x1 * scale} y1={y + seg.z1 * scale}
+                    x2={x + seg.x2 * scale} y2={y + seg.z2 * scale}
+                    stroke={stroke} strokeWidth={strokeW} strokeLinecap="round"
+                  />
+                ))
+              ) : proc ? (
+                /* Single-room mode: rotated wall segments */
                 <>
                   {proc.segs.map((seg, si) => (
                     <line
@@ -141,13 +203,10 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
                     const vx = mx - w / 2, vz = mz - h / 2;
                     const vlen = Math.sqrt(vx * vx + vz * vz) || 1;
                     return (
-                      <text
-                        key={'d' + si}
-                        x={x + mx + (vx / vlen) * 10}
-                        y={y + mz + (vz / vlen) * 10}
+                      <text key={'d' + si}
+                        x={x + mx + (vx / vlen) * 10} y={y + mz + (vz / vlen) * 10}
                         textAnchor="middle" dominantBaseline="middle"
-                        fontFamily='"DM Sans", sans-serif'
-                        fontSize={8} fill="#555"
+                        fontFamily='"DM Sans", sans-serif' fontSize={8} fill="#555"
                       >
                         {seg.len.toFixed(1)}'
                       </text>
@@ -155,46 +214,30 @@ export default function FloorPlanCanvas({ rooms, highlightLast = false, compact 
                   })}
                 </>
               ) : (
-                /* Fallback: shaded rect outline for old scan data without wall segments */
+                /* Fallback: shaded rect for no wall segments */
                 <>
-                  <rect
-                    x={x} y={y} width={w} height={h} rx={4}
-                    fill={isHighlighted ? GOLD : NAVY}
-                    fillOpacity={isHighlighted ? 0.15 : 0.08}
-                    stroke="none"
-                  />
-                  <rect
-                    x={x} y={y} width={w} height={h} rx={4}
-                    fill="none" stroke={stroke} strokeWidth={strokeW}
-                  />
+                  <rect x={x} y={y} width={w} height={h} rx={4}
+                    fill={isHighlighted ? GOLD : NAVY} fillOpacity={isHighlighted ? 0.15 : 0.08} stroke="none" />
+                  <rect x={x} y={y} width={w} height={h} rx={4}
+                    fill="none" stroke={stroke} strokeWidth={strokeW} />
                 </>
               )}
-              {/* Room name — centered on wall centroid */}
-              <text
-                x={textCX}
-                y={textCZ - (h > 60 ? 8 : 0)}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fontFamily='"DM Sans", sans-serif'
-                fontSize={fontSize}
-                fill={NAVY}
-                fontWeight="600"
+              {/* Room name */}
+              <text x={textCX} y={textCZ - (h > 60 ? 8 : 0)}
+                textAnchor="middle" dominantBaseline="middle"
+                fontFamily='"DM Sans", sans-serif' fontSize={fontSize} fill={NAVY} fontWeight="600"
               >
                 {room.name}
               </text>
               {/* sqft — only if room is tall enough */}
               {h > 60 && (
-                <text
-                  x={textCX}
-                  y={textCZ + 10}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontFamily='"DM Sans", sans-serif'
-                  fontSize={10}
-                  fill={GOLD}
-                  fontWeight="500"
+                <text x={textCX} y={textCZ + 10}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontFamily='"DM Sans", sans-serif' fontSize={10} fill={GOLD} fontWeight="500"
                 >
-                  {room.sqft ? `${room.sqft.toLocaleString()} sf` : `${proc ? proc.trueWidth.toFixed(1) : (+room.length).toFixed(1)}×${proc ? proc.trueHeight.toFixed(1) : (+room.width).toFixed(1)}`}
+                  {room.sqft ? `${room.sqft.toLocaleString()} sf`
+                    : proc ? `${proc.trueWidth.toFixed(1)}×${proc.trueHeight.toFixed(1)}`
+                    : `${(+room.length).toFixed(1)}×${(+room.width).toFixed(1)}`}
                 </text>
               )}
             </g>
