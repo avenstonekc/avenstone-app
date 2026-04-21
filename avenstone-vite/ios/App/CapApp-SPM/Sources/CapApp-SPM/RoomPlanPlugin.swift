@@ -434,10 +434,12 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
     private var roomCaptureView: RoomCaptureView!
     private let sessionConfig = RoomCaptureSession.Configuration()
     private var capturedRooms: [CapturedRoom] = []
+    private var roomNames: [String] = []
     private var isFinishing = false
     private var isTransitioning = false
     private var isCancelling = false
     private var structuredRooms: [[String: Any]] = []
+    private var pickerCompletion: (() -> Void)?
 
     // Scan HUD
     private var roomCountLabel: UILabel!
@@ -608,16 +610,116 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         guard !isCancelling else { return }
         capturedRooms.append(processedResult)
         isTransitioning = false
-        // Small delay lets the camera pipeline fully tear down before restarting
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        DispatchQueue.main.async {
             guard !self.isCancelling else { return }
             if self.isFinishing {
-                self.processingOverlay.isHidden = false
-                self.buildStructure()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    guard !self.isCancelling else { return }
+                    self.processingOverlay.isHidden = false
+                    self.buildStructure()
+                }
             } else {
-                self.startNextScan()
+                // Show room type picker — user interaction provides natural camera reset delay
+                let roomNum = self.capturedRooms.count
+                self.showRoomPicker(roomNumber: roomNum) { name in
+                    self.roomNames.append(name)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        self.startNextScan()
+                    }
+                }
             }
         }
+    }
+
+    private func showRoomPicker(roomNumber: Int, then completion: @escaping (String) -> Void) {
+        pickerCompletion = completion
+        let navy = UIColor(red: 10/255, green: 31/255, blue: 68/255, alpha: 0.97)
+        let gold = UIColor(red: 201/255, green: 168/255, blue: 76/255, alpha: 1)
+
+        let overlay = UIView()
+        overlay.tag = 9901
+        overlay.backgroundColor = navy
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(overlay)
+
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        let titleLabel = UILabel()
+        titleLabel.text = "Room \(roomNumber) — What did you scan?"
+        titleLabel.textColor = gold
+        titleLabel.font = .systemFont(ofSize: 22, weight: .bold)
+        titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 0
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(titleLabel)
+
+        let subtitleLabel = UILabel()
+        subtitleLabel.text = "Tap a type and the scanner restarts automatically"
+        subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.55)
+        subtitleLabel.font = .systemFont(ofSize: 14)
+        subtitleLabel.textAlignment = .center
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(subtitleLabel)
+
+        let roomTypes = [
+            "Bedroom", "Bathroom", "Kitchen", "Living Room",
+            "Hallway", "Dining Room", "Office", "Laundry Room",
+            "Basement", "Garage"
+        ]
+
+        let vStack = UIStackView()
+        vStack.axis = .vertical
+        vStack.spacing = 12
+        vStack.distribution = .fillEqually
+        vStack.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(vStack)
+
+        for row in 0..<5 {
+            let hStack = UIStackView()
+            hStack.axis = .horizontal
+            hStack.spacing = 12
+            hStack.distribution = .fillEqually
+            for col in 0..<2 {
+                let index = row * 2 + col
+                guard index < roomTypes.count else { continue }
+                let btn = UIButton(type: .system)
+                btn.setTitle(roomTypes[index], for: .normal)
+                btn.setTitleColor(.white, for: .normal)
+                btn.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+                btn.backgroundColor = UIColor.white.withAlphaComponent(0.1)
+                btn.layer.cornerRadius = 14
+                btn.layer.borderWidth = 1
+                btn.layer.borderColor = UIColor.white.withAlphaComponent(0.25).cgColor
+                btn.heightAnchor.constraint(equalToConstant: 54).isActive = true
+                btn.addTarget(self, action: #selector(roomTypeTapped(_:)), for: .touchUpInside)
+                hStack.addArrangedSubview(btn)
+            }
+            vStack.addArrangedSubview(hStack)
+        }
+
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 48),
+            titleLabel.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 24),
+            titleLabel.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -24),
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 10),
+            subtitleLabel.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            vStack.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 36),
+            vStack.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 24),
+            vStack.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -24),
+        ])
+    }
+
+    @objc private func roomTypeTapped(_ sender: UIButton) {
+        guard let name = sender.titleLabel?.text else { return }
+        view.viewWithTag(9901)?.removeFromSuperview()
+        let completion = pickerCompletion
+        pickerCompletion = nil
+        completion?(name)
     }
 
     // MARK: - StructureBuilder
@@ -667,7 +769,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         scrollView.addSubview(contentView)
 
         let titleLabel = UILabel()
-        titleLabel.text = "Name Your Rooms"
+        titleLabel.text = "Confirm Room Names"
         titleLabel.textColor = gold
         titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
         titleLabel.textAlignment = .center
@@ -698,6 +800,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
             let field = UITextField()
             field.placeholder = hint
+            if i < roomNames.count { field.text = roomNames[i] }
             field.backgroundColor = UIColor(red: 1, green: 1, blue: 1, alpha: 1)
             field.textColor = UIColor(red: 0, green: 0, blue: 0, alpha: 1)
             field.defaultTextAttributes = [
