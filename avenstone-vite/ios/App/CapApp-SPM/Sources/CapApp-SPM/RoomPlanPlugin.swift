@@ -443,8 +443,10 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
     private var roomCaptureView: RoomCaptureView!
     private let sessionConfig = RoomCaptureSession.Configuration()
     private var capturedDatas: [CapturedRoomData] = []
+    private var capturedRooms: [CapturedRoom] = []
     private var roomNames: [String] = []
     private var pendingData: CapturedRoomData?
+    private var pendingRoom: CapturedRoom?
     private var isCancelling = false
 
     // Scanning HUD
@@ -654,6 +656,8 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         roomNames.append(raw.isEmpty ? "Room \(n)" : raw)
         if let d = pendingData { capturedDatas.append(d) }
         pendingData = nil
+        if let r = pendingRoom { capturedRooms.append(r) }
+        pendingRoom = nil
     }
 
     // MARK: - RoomCaptureViewDelegate
@@ -668,12 +672,15 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         return true
     }
 
-    func captureView(didPresent processedResult: CapturedRoom, error: Error?) {}
+    func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
+        guard error == nil else { return }
+        pendingRoom = processedResult
+    }
 
     // MARK: - RoomBuilder
 
     private func buildStructure() {
-        guard !capturedDatas.isEmpty else {
+        guard !capturedRooms.isEmpty else {
             dismiss(animated: true) {
                 self.onComplete?(.failure(NSError(domain: "RoomPlan", code: -2,
                     userInfo: [NSLocalizedDescriptionKey: "No rooms scanned"])))
@@ -688,8 +695,8 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         }
         Task {
             do {
-                let builder = RoomBuilder(options: [])
-                let structure = try await builder.buildStructure(from: capturedDatas)
+                let builder = StructureBuilder(options: [])
+                let structure = try await builder.capturedStructure(from: capturedRooms)
                 let rooms = self.structureToRooms(structure)
                 await MainActor.run {
                     self.dismiss(animated: true) { self.onComplete?(.success(rooms)) }
