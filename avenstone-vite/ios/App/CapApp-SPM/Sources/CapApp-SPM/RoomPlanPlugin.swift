@@ -689,7 +689,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         Task {
             do {
                 let builder = RoomBuilder(options: [])
-                let structure = try await builder.captureStructure(from: capturedDatas)
+                let structure = try await builder.buildStructure(from: capturedDatas)
                 let rooms = self.structureToRooms(structure)
                 await MainActor.run {
                     self.dismiss(animated: true) { self.onComplete?(.success(rooms)) }
