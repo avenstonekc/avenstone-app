@@ -545,9 +545,17 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
         nameField = UITextField()
         nameField.placeholder = "e.g. Master Bedroom"
-        nameField.backgroundColor = .white
+        nameField.backgroundColor = UIColor(red: 1, green: 1, blue: 1, alpha: 1)
+        nameField.textColor = UIColor(red: 0, green: 0, blue: 0, alpha: 1)
+        nameField.tintColor = UIColor(red: 10/255, green: 31/255, blue: 68/255, alpha: 1)
+        nameField.overrideUserInterfaceStyle = .light
+        nameField.keyboardAppearance = .light
         nameField.layer.cornerRadius = 10
-        nameField.font = .systemFont(ofSize: 17)
+        nameField.font = .systemFont(ofSize: 17, weight: .regular)
+        nameField.defaultTextAttributes = [
+            .foregroundColor: UIColor(red: 0, green: 0, blue: 0, alpha: 1),
+            .font: UIFont.systemFont(ofSize: 17, weight: .regular)
+        ]
         nameField.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 14, height: 0))
         nameField.leftViewMode = .always
         nameField.autocapitalizationType = .words
@@ -643,10 +651,8 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         guard !isCancelling else { return }
         isCancelling = true
         roomCaptureView.captureSession.stop()
-        dismiss(animated: true) {
-            self.onComplete?(.failure(NSError(domain: "RoomPlan", code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Scan cancelled"])))
-        }
+        onComplete?(.failure(NSError(domain: "RoomPlan", code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Scan cancelled"])))
     }
 
     private func commitRoom() {
@@ -667,6 +673,8 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         pendingData = roomDataForProcessing
         DispatchQueue.main.async {
             self.namingView.isHidden = false
+            self.nameField.textColor = UIColor(red: 0, green: 0, blue: 0, alpha: 1)
+            self.nameField.backgroundColor = UIColor(red: 1, green: 1, blue: 1, alpha: 1)
             self.nameField.becomeFirstResponder()
         }
         return true
@@ -681,10 +689,8 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
     private func buildStructure() {
         guard !capturedRooms.isEmpty else {
-            dismiss(animated: true) {
-                self.onComplete?(.failure(NSError(domain: "RoomPlan", code: -2,
-                    userInfo: [NSLocalizedDescriptionKey: "No rooms scanned"])))
-            }
+            onComplete?(.failure(NSError(domain: "RoomPlan", code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "No rooms scanned"])))
             return
         }
         DispatchQueue.main.async {
@@ -699,11 +705,11 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 let structure = try await builder.capturedStructure(from: capturedRooms)
                 let rooms = self.structureToRooms(structure)
                 await MainActor.run {
-                    self.dismiss(animated: true) { self.onComplete?(.success(rooms)) }
+                    self.onComplete?(.success(rooms))
                 }
             } catch {
                 await MainActor.run {
-                    self.dismiss(animated: true) { self.onComplete?(.failure(error)) }
+                    self.onComplete?(.failure(error))
                 }
             }
         }
@@ -770,12 +776,61 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 ])
             }
 
+            var doorSegs: [[String: Double]] = []
+            for door in room.doors {
+                let t = door.transform
+                let cx = t.columns.3.x, cz = t.columns.3.z
+                let hw = door.dimensions.x / 2.0
+                let dx = t.columns.0.x, dz = t.columns.0.z
+                // Normal (Z-axis) = swing direction in XZ plane
+                let nx = t.columns.2.x, nz = t.columns.2.z
+                doorSegs.append([
+                    "x1": Double((cx + dx * hw - minX) * m2f),
+                    "z1": Double((cz + dz * hw - minZ) * m2f),
+                    "x2": Double((cx - dx * hw - minX) * m2f),
+                    "z2": Double((cz - dz * hw - minZ) * m2f),
+                    "nx": Double(nx), "nz": Double(nz),
+                    "width": Double(door.dimensions.x * m2f),
+                ])
+            }
+
+            var windowSegs: [[String: Double]] = []
+            for window in room.windows {
+                let t = window.transform
+                let cx = t.columns.3.x, cz = t.columns.3.z
+                let hw = window.dimensions.x / 2.0
+                let dx = t.columns.0.x, dz = t.columns.0.z
+                windowSegs.append([
+                    "x1": Double((cx + dx * hw - minX) * m2f),
+                    "z1": Double((cz + dz * hw - minZ) * m2f),
+                    "x2": Double((cx - dx * hw - minX) * m2f),
+                    "z2": Double((cz - dz * hw - minZ) * m2f),
+                ])
+            }
+
+            var openingSegs: [[String: Double]] = []
+            for opening in room.openings {
+                let t = opening.transform
+                let cx = t.columns.3.x, cz = t.columns.3.z
+                let hw = opening.dimensions.x / 2.0
+                let dx = t.columns.0.x, dz = t.columns.0.z
+                openingSegs.append([
+                    "x1": Double((cx + dx * hw - minX) * m2f),
+                    "z1": Double((cz + dz * hw - minZ) * m2f),
+                    "x2": Double((cx - dx * hw - minX) * m2f),
+                    "z2": Double((cz - dz * hw - minZ) * m2f),
+                ])
+            }
+
             return [
                 "name": name,
                 "length": fmt2(lFt), "width": fmt2(wFt), "height": fmt2(hFt),
                 "sqft": Int((lFt * wFt).rounded()),
                 "doors": room.doors.count, "windows": room.windows.count,
                 "wallSegments": wallSegs,
+                "doorSegments": doorSegs,
+                "windowSegments": windowSegs,
+                "openingSegments": openingSegs,
                 "worldX": Double((minX - gMinX) * m2f),
                 "worldZ": Double((minZ - gMinZ) * m2f),
                 "simulated": false,
