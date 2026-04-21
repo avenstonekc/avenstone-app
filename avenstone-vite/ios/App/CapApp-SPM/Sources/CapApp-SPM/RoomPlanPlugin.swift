@@ -608,12 +608,13 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         guard !isCancelling else { return }
         capturedRooms.append(processedResult)
         isTransitioning = false
-        DispatchQueue.main.async {
+        // Small delay lets the camera pipeline fully tear down before restarting
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard !self.isCancelling else { return }
             if self.isFinishing {
                 self.processingOverlay.isHidden = false
                 self.buildStructure()
             } else {
-                // Restart immediately — keeps ARKit world tracking alive between rooms
                 self.startNextScan()
             }
         }

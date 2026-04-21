@@ -511,8 +511,7 @@ export const buildFloorPlanPDF = (scan, job) => {
     if (worldMode) {
       const drawn = new Set(); // deduplicate shared features between adjacent rooms
       for (const { doors, windows, openings } of layout) {
-        // Doors: panel line + 90° arc
-        doc.setDrawColor(...navy); doc.setLineWidth(0.75);
+        // Doors: wall gap + jamb marks + panel line + 90° arc
         for (const door of (doors || [])) {
           const key = `d${Math.round(door.x1*10)},${Math.round(door.z1*10)}`;
           if (drawn.has(key)) continue; drawn.add(key);
@@ -520,7 +519,16 @@ export const buildFloorPlanPDF = (scan, job) => {
           const p2x = worldOriginX + door.x2 * scale, p2z = worldOriginY + door.z2 * scale;
           const dw = Math.hypot(p2x - p1x, p2z - p1z);
           if (dw < 4) continue;
-          // Panel: thin line from jamb1 in swing direction
+          // Erase wall behind door opening
+          doc.setDrawColor(255, 255, 255); doc.setLineWidth(WALL_PT + 2);
+          doc.line(p1x, p1z, p2x, p2z);
+          // Jamb marks — perpendicular lines at each end like wall terminators
+          const wdx = (p2x - p1x) / dw, wdz = (p2z - p1z) / dw;
+          const jLen = 5, px = -wdz * jLen, pz = wdx * jLen;
+          doc.setDrawColor(...navy); doc.setLineWidth(WALL_PT);
+          doc.line(p1x - px, p1z - pz, p1x + px, p1z + pz);
+          doc.line(p2x - px, p2z - pz, p2x + px, p2z + pz);
+          // Door panel: thin line from jamb1 in swing direction
           const panelX = p1x + door.nx * dw, panelZ = p1z + door.nz * dw;
           doc.setDrawColor(...navy); doc.setLineWidth(0.75);
           doc.line(p1x, p1z, panelX, panelZ);
@@ -530,7 +538,7 @@ export const buildFloorPlanPDF = (scan, job) => {
           let diff = ((toJ2 - arcStart) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
           if (diff > Math.PI) diff -= Math.PI * 2;
           const sweep = diff >= 0 ? Math.PI / 2 : -Math.PI / 2;
-          doc.setDrawColor(130, 130, 130); doc.setLineWidth(0.5);
+          doc.setDrawColor(80, 80, 80); doc.setLineWidth(0.5);
           _drawArc(doc, p1x, p1z, dw, arcStart, sweep);
         }
 
