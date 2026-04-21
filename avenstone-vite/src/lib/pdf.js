@@ -430,7 +430,11 @@ export const buildFloorPlanPDF = (scan, job) => {
   const availH = DIAG_H - DIM_OFF * 2;     // ~626
 
   const worldMode = rooms.some(r => r.worldX !== undefined && r.worldX !== null);
-  const roomData = rooms.map(room => ({ room, proc: worldMode ? null : _processWalls(room.wallSegments) }));
+  // Filter out rooms with no usable wall data (Apple StructureBuilder can return empty rooms)
+  const drawableRooms = worldMode
+    ? rooms.filter(r => (r.wallSegments || []).length >= 3)
+    : rooms;
+  const roomData = drawableRooms.map(room => ({ room, proc: worldMode ? null : _processWalls(room.wallSegments) }));
 
   if (roomData.length > 0) {
     let layout = [], scale = 1;
@@ -438,7 +442,7 @@ export const buildFloorPlanPDF = (scan, job) => {
     let planTrueW = 0, planTrueH = 0;
 
     if (worldMode) {
-      const processed = _processAllRooms(rooms);
+      const processed = _processAllRooms(drawableRooms);
       if (processed) {
         const { roomSegs, roomDoors, roomWindows, roomOpenings, trueW, trueH } = processed;
         planTrueW = trueW; planTrueH = trueH;
@@ -447,7 +451,7 @@ export const buildFloorPlanPDF = (scan, job) => {
         // Center the plan within the available drawing area
         worldOriginX = DIAG_LEFT + DIM_OFF + (availW - drawW) / 2;
         worldOriginY = DIAG_TOP + DIM_OFF + (availH - drawH) / 2;
-        layout = rooms.map((room, ri) => {
+        layout = drawableRooms.map((room, ri) => {
           const segs = roomSegs[ri] || [];
           if (!segs.length) return { room, segs: [], doors: [], windows: [], openings: [], x: worldOriginX, y: worldOriginY, w: 40, h: 30 };
           const rxs = segs.flatMap(s => [s.x1, s.x2]), rzs = segs.flatMap(s => [s.z1, s.z2]);
@@ -680,8 +684,18 @@ export const buildFloorPlanPDF = (scan, job) => {
   ['Room', 'Dimensions', 'Height', 'Sq Ft'].forEach((h, i) => doc.text(h, cols[i], y));
   y += 5; doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81);
-  for (const { room, proc } of roomData) {
+  for (const room of rooms) {
     if (y > 720) { doc.addPage(); y = M + 10; }
+    const isEmpty = (room.wallSegments || []).length < 3;
+    if (isEmpty) {
+      doc.text(room.name || '—', cols[0], y);
+      doc.setTextColor(150, 150, 150);
+      doc.text('Scan incomplete', cols[1], y);
+      doc.setTextColor(55, 65, 81);
+      y += 13;
+      continue;
+    }
+    const proc = worldMode ? null : _processWalls(room.wallSegments);
     const dw = proc ? proc.trueWidth : (room.length || 0);
     const dh = proc ? proc.trueHeight : (room.width || 0);
     let tableSqft = room.sqft || 0;
