@@ -542,8 +542,7 @@ export const buildFloorPlanPDF = (scan, job) => {
           _drawArc(doc, p1x, p1z, dw, arcStart, sweep);
         }
 
-        // Windows: triple-line symbol across opening
-        doc.setDrawColor(...navy); doc.setLineWidth(0.75);
+        // Windows: wall gap + jamb marks + triple-line glass symbol
         for (const win of (windows || [])) {
           const key = `w${Math.round(win.x1*10)},${Math.round(win.z1*10)}`;
           if (drawn.has(key)) continue; drawn.add(key);
@@ -551,13 +550,21 @@ export const buildFloorPlanPDF = (scan, job) => {
           const p2x = worldOriginX + win.x2 * scale, p2z = worldOriginY + win.z2 * scale;
           const ww = Math.hypot(p2x - p1x, p2z - p1z);
           if (ww < 3) continue;
-          // Direction perpendicular to the opening
-          const dx = (p2x - p1x) / ww, dz = (p2z - p1z) / ww;
-          const px = -dz, pz = dx; // perpendicular unit vector
-          const off = Math.min(ww * 0.08, 4); // offset for triple lines
-          doc.setLineWidth(0.5);
+          // Erase wall behind window opening
+          doc.setDrawColor(255, 255, 255); doc.setLineWidth(WALL_PT + 2);
+          doc.line(p1x, p1z, p2x, p2z);
+          // Jamb marks
+          const wdx = (p2x - p1x) / ww, wdz = (p2z - p1z) / ww;
+          const jLen = 5, px = -wdz * jLen, pz = wdx * jLen;
+          doc.setDrawColor(...navy); doc.setLineWidth(WALL_PT);
+          doc.line(p1x - px, p1z - pz, p1x + px, p1z + pz);
+          doc.line(p2x - px, p2z - pz, p2x + px, p2z + pz);
+          // Triple parallel lines (glass symbol)
+          const perp = -wdz, perpZ = wdx;
+          const off = Math.min(ww * 0.08, 4);
+          doc.setDrawColor(...navy); doc.setLineWidth(0.5);
           for (const o of [-off, 0, off]) {
-            doc.line(p1x + px * o, p1z + pz * o, p2x + px * o, p2z + pz * o);
+            doc.line(p1x + perp * o, p1z + perpZ * o, p2x + perp * o, p2z + perpZ * o);
           }
         }
 
