@@ -439,7 +439,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
     private var isTransitioning = false
     private var isCancelling = false
     private var structuredRooms: [[String: Any]] = []
-    private var pickerCompletion: (() -> Void)?
+    private var pickerCompletion: ((String) -> Void)?
 
     // Scan HUD
     private var roomCountLabel: UILabel!
