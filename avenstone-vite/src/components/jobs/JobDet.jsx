@@ -32,7 +32,6 @@ const TABS = [
   { id: 'payments', lb: 'Payments', ic: 'doc' },
   { id: 'floorplan', lb: 'Floor Plan', ic: 'doc' },
   { id: 'costs', lb: 'Costs', ic: 'doc' },
-  { id: 'session', lb: 'AI Session', ic: 'grid' },
 ];
 
 export default function JobDet({ job, upd, del, back, profile }) {
