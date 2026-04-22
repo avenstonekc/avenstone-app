@@ -3,7 +3,6 @@ import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage,
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
-import AiCompanionChat from '../shared/AiCompanionChat';
 
 async function sbSubmitRating(subId, stars, comment, jobId) {
   const { data, error } = await sb.from('sub_ratings').upsert({ tenant_id: AV_TENANT, sub_id: subId, rater_id: AV_USER_ID, job_id: jobId || null, stars, comment: comment || null }, { onConflict: 'tenant_id,sub_id,rater_id,job_id' }).select().single();
