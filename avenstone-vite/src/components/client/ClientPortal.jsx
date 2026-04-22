@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify } from '../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbLoadCostItems, sbLoadCostInvoices } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
@@ -97,15 +97,14 @@ function ProgressStepper({ status }) {
   );
 }
 
-const CLIENT_TABS = [
+const BASE_CLIENT_TABS = [
   { id: 'overview', lb: 'Overview', ic: 'info' },
   { id: 'schedule', lb: 'Schedule', ic: 'sched' },
   { id: 'photos', lb: 'Photos', ic: 'cam' },
-  { id: 'docs', lb: 'Documents', ic: 'folder' },
-  { id: 'payments', lb: 'Payments', ic: 'doc' },
+  { id: 'notes', lb: 'Notes', ic: 'note' },
   { id: 'msgs', lb: 'Messages', ic: 'note' },
-  { id: 'request', lb: 'Change Request', ic: 'warn' },
 ];
+const getClientTabs = job => job?.cost_plus ? [...BASE_CLIENT_TABS, { id: 'financials', lb: 'Financials', ic: 'doc' }] : BASE_CLIENT_TABS;
 
 const CLIENT_STATUS = s => ({
   lead: 'In Review', bid_sent: 'Proposal Sent', signed: 'Contract Signed',
@@ -125,7 +124,7 @@ export default function ClientPortal({ profile, signOut }) {
   const [payments, setPayments] = useState([]);
   const [msgs, setMsgs] = useState([]);
   const [jobSubs, setJobSubs] = useState([]);
-  const [loaded, setLoaded] = useState({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false });
+  const [loaded, setLoaded] = useState({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false, notes: false });
   const [msgTxt, setMsgTxt] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
@@ -138,6 +137,11 @@ export default function ClientPortal({ profile, signOut }) {
   const [ratingSaving, setRatingSaving] = useState(false);
   const [ratingDone, setRatingDone] = useState({});
   const [clbIdx, setClbIdx] = useState(null);
+  const [notes, setNotes] = useState([]);
+  const [noteText, setNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [costItems, setCostItems] = useState([]);
+  const [costInvoices, setCostInvoices] = useState([]);
   const [jobReview, setJobReview] = useState(null);
   const [reviewForm, setReviewForm] = useState({ quality: 0, communication: 0, timeliness: 0, would_recommend: null, text: '' });
   const [reviewSaving, setReviewSaving] = useState(false);
@@ -177,7 +181,17 @@ export default function ClientPortal({ profile, signOut }) {
     sbLoadMessages(job.id).then(d => { setMsgs(d); setLoaded(p => ({ ...p, msgs: true })); });
   }, [job?.id, tab]);
 
+  useEffect(() => {
+    if (!job || tab !== 'notes' || loaded.notes) return;
+    sb.from('job_notes').select('*').eq('job_id', job.id).order('created_at', { ascending: true }).then(({ data }) => { setNotes(data || []); setLoaded(p => ({ ...p, notes: true })); });
+  }, [job?.id, tab]);
+
   useEffect(() => { if (msgs.length && msgsEndRef.current) msgsEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+
+  useEffect(() => {
+    if (!job || tab !== 'financials' || !job.cost_plus) return;
+    Promise.all([sbLoadCostItems(job.id), sbLoadCostInvoices(job.id)]).then(([its, invs]) => { setCostItems(its); setCostInvoices(invs); });
+  }, [job?.id, tab]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -203,7 +217,7 @@ export default function ClientPortal({ profile, signOut }) {
     setSel(id); setTab('overview');
     setLoaded({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false });
     setPhases([]); setPhotos([]); setDocs([]); setPayments([]); setMsgs([]); setJobSubs([]);
-    setRatings({}); setRatingDone({}); setJobReview(null);
+    setRatings({}); setRatingDone({}); setJobReview(null); setCostItems([]); setCostInvoices([]); setNotes([]); setNoteText('');
     setReviewForm({ quality: 0, communication: 0, timeliness: 0, would_recommend: null, text: '' }); setReviewDone(false);
     sbLoadJobReview(id).then(r => setJobReview(r || false));
   };
@@ -265,7 +279,7 @@ export default function ClientPortal({ profile, signOut }) {
         {job.contract_signed && <div style={{ background: '#F0FDF4', borderBottom: '1px solid #BBF7D0', padding: '8px 16px', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ Contract signed{job.contract_signed_at ? ` ${fD(job.contract_signed_at.slice(0, 10))}` : ''}</div>}
 
         <div className="tabbar" style={{ overflowX: 'auto', flexWrap: 'nowrap' }}>
-          {CLIENT_TABS.map(t => <button key={t.id} className={`tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)} style={{ whiteSpace: 'nowrap' }}><span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Ic[t.ic] || Ic.info}</span>{t.lb}</button>)}
+          {getClientTabs(job).map(t => <button key={t.id} className={`tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)} style={{ whiteSpace: 'nowrap' }}><span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Ic[t.ic] || Ic.info}</span>{t.lb}</button>)}
         </div>
 
         <div style={{ padding: 16, maxWidth: 720, margin: '0 auto' }}>
@@ -546,27 +560,12 @@ export default function ClientPortal({ profile, signOut }) {
             {clbIdx !== null && <PhotoLightbox photos={photos} startIdx={clbIdx} onClose={() => setClbIdx(null)} />}
           </div>}
 
-          {tab === 'docs' && <div>
-            {!loaded.docs && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
-            {loaded.docs && !docs.length && <div className="empty">{Ic.folder}<div className="empty-t">No documents yet</div><div>Signed contracts and shared documents will appear here</div></div>}
-            {docs.map(d => (
-              <div key={d.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '12px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 36, height: 36, background: '#0A1F4412', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><span style={{ width: 18, height: 18, color: '#0A1F44' }}>{Ic.doc}</span></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{d.file_type}{d.created_at ? ` · ${fD(d.created_at.slice(0, 10))}` : ''}</div>
-                </div>
-                {d.file_url && <a href={d.file_url} target="_blank" rel="noreferrer" style={{ color: '#C9A84C', fontWeight: 600, fontSize: 12, textDecoration: 'none', flexShrink: 0 }}>View →</a>}
-              </div>
-            ))}
-          </div>}
-
           {tab === 'payments' && <div>
             {!loaded.payments && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
             {loaded.payments && !payments.length && <div className="empty">{Ic.doc}<div className="empty-t">No payment requests yet</div><div>Payment requests from your contractor will appear here</div></div>}
             {payments.map(p => (
               <div key={p.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: p.status === 'pending' && p.stripe_checkout_url ? 12 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44', marginBottom: 3 }}>{p.description}</div>
                     <div style={{ fontSize: 12, color: '#9CA3AF' }}>{p.payment_type}{p.created_at ? ` · ${fD(p.created_at.slice(0, 10))}` : ''}{p.paid_at && <span style={{ color: '#22c55e' }}> · Paid {fD(p.paid_at.slice(0, 10))}</span>}</div>
@@ -576,10 +575,6 @@ export default function ClientPortal({ profile, signOut }) {
                     <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: p.status === 'paid' ? '#D1FAE5' : '#FEF9EC', color: p.status === 'paid' ? '#065F46' : '#92400E', textTransform: 'uppercase' }}>{p.status}</span>
                   </div>
                 </div>
-                {p.status === 'pending' && (p.stripe_checkout_url
-                  ? <a href={p.stripe_checkout_url} target="_blank" rel="noreferrer" style={{ display: 'block', background: '#0A1F44', color: '#C9A84C', padding: 12, textAlign: 'center', fontWeight: 700, fontSize: 14, textDecoration: 'none', borderRadius: 4 }}>Pay Now →</a>
-                  : <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', padding: '10px 14px', fontSize: 12, color: '#6B7280', textAlign: 'center' }}>Payment link sent to your email — check your inbox to pay securely.</div>
-                )}
               </div>
             ))}
           </div>}
@@ -613,30 +608,75 @@ export default function ClientPortal({ profile, signOut }) {
             </>}
           </div>}
 
-          {tab === 'request' && <div style={{ maxWidth: 500 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Request a Change</div>
-            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16, lineHeight: 1.6 }}>Submit a change request and your contractor will review it. Approved requests become official change orders.</div>
-            {crDone ? <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#16a34a', padding: '14px 16px', borderRadius: 4, fontSize: 14, fontWeight: 600, textAlign: 'center', marginBottom: 12 }}>
-              ✓ Submitted! Your contractor will review it shortly.
-              <div style={{ marginTop: 10 }}><button className="btn btn-ghost" style={{ width: '100%' }} onClick={() => { setCrDone(false); setCrForm({ description: '', reason: '' }); }}>Submit Another</button></div>
-            </div> : <>
-              <div className="fg"><label className="flbl"><span className="freq">*</span>What change are you requesting?</label><textarea className="finp fta" rows={3} value={crForm.description} onChange={e => setCrForm(p => ({ ...p, description: e.target.value }))} placeholder="e.g. Add a walk-in closet to master bedroom, upgrade countertops to quartz..." /></div>
-              <div className="fg"><label className="flbl">Why / Additional context</label><textarea className="finp fta" rows={2} value={crForm.reason} onChange={e => setCrForm(p => ({ ...p, reason: e.target.value }))} placeholder="Any details that would help your contractor understand..." /></div>
-              <button className="btn btn-navy" style={{ width: '100%' }} disabled={crSaving || !crForm.description.trim()} onClick={async () => {
-                if (!crForm.description.trim() || !job) return;
-                setCrSaving(true);
-                const num = `CR-${Date.now().toString().slice(-4)}`;
-                const co = { job_id: job.id, co_number: num, description: crForm.description.trim(), reason: crForm.reason.trim() || 'Client-requested change', amount: 0, status: 'pending', created_at: new Date().toISOString() };
-                await sb.from('change_orders').insert({ ...co, tenant_id: AV_TENANT });
-                sbNotify('co_submitted', `Client change request on ${job.address}`, crForm.description.trim().slice(0, 120), job.id, AV_USER_ID);
-                setCrSaving(false); setCrDone(true);
-              }}>{crSaving ? 'Submitting...' : 'Submit Change Request'}</button>
+          {tab === 'notes' && <div>
+            {!loaded.notes && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
+            {loaded.notes && <>
+              {!notes.length && <div className="empty">{Ic.note}<div className="empty-t">No notes yet</div><div>Notes from your contractor will appear here</div></div>}
+              {notes.map(n => (
+                <div key={n.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '12px 14px', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>{n.author || 'Contractor'}</span>
+                    <span style={{ fontSize: 11, color: '#9CA3AF' }}>{n.created_at ? fD(n.created_at.slice(0, 10)) : ''}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{n.content}</div>
+                </div>
+              ))}
+              <div style={{ marginTop: 16, borderTop: '1px solid #E8E4DC', paddingTop: 16 }}>
+                <textarea className="finp fta" rows={3} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a note..." style={{ width: '100%', marginBottom: 8, resize: 'none', boxSizing: 'border-box' }} />
+                <button className="btn btn-navy" style={{ width: '100%' }} disabled={savingNote || !noteText.trim()} onClick={async () => {
+                  if (!noteText.trim() || !job) return;
+                  setSavingNote(true);
+                  const { data } = await sb.from('job_notes').insert({ job_id: job.id, tenant_id: job.tenant_id, content: noteText.trim(), author: profile?.full_name || 'Client', created_at: new Date().toISOString() }).select().single();
+                  if (data) setNotes(p => [...p, data]);
+                  setNoteText(''); setSavingNote(false);
+                }}>{savingNote ? 'Saving...' : 'Add Note'}</button>
+              </div>
             </>}
           </div>}
+
+          {tab === 'financials' && job?.cost_plus && <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Costs</div>
+            {!costItems.filter(i => i.client_visible).length && <div className="empty">{Ic.doc}<div className="empty-t">No cost items yet</div><div>Your contractor will add cost details here</div></div>}
+            {costItems.filter(i => i.client_visible).map(item => {
+              const factor = 1 + Number(item.markup_pct || 0) / 100;
+              const clientPrice = Number(item.estimate || 0) * factor;
+              const itemInvs = costInvoices.filter(i => i.cost_item_id === item.id && i.paid);
+              const paidToDate = itemInvs.reduce((a, i) => a + Number(i.amount || 0), 0) * factor;
+              return (
+                <div key={item.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: itemInvs.length ? 12 : 0 }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{item.trade}</div>
+                      {item.vendor && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{item.vendor}</div>}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 12, color: '#9CA3AF' }}>Budget</div>
+                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44' }}>{f$(clientPrice)}</div>
+                      {paidToDate > 0 && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 2 }}>Paid {f$(paidToDate)}</div>}
+                    </div>
+                  </div>
+                  {itemInvs.length > 0 && (
+                    <div style={{ borderTop: '1px solid #F0ECE6', paddingTop: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Paid Invoices</div>
+                      {itemInvs.map(inv => (
+                        <div key={inv.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#374151' }}>
+                          <span>{inv.date || '—'}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontWeight: 600 }}>{f$(Number(inv.amount || 0) * factor)}</span>
+                            {inv.lien_waiver_signed_url && <a href={inv.lien_waiver_signed_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#3B82F6', textDecoration: 'none' }}>📎 Lien Waiver</a>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>}
+
         </div>
 
         {showSignContract && job && <ClientSignContractModal job={job} onClose={() => setShowSignContract(false)} onSigned={() => { setJobs(js => js.map(j => j.id === job.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'active' } : j)); setShowSignContract(false); }} />}
-        {job && <AiCompanionChat job={job} profile={{ ...profile, role: 'client' }} />}
       </>}
       {showIntake && <AiIntakeWizard profile={profile} onClose={() => setShowIntake(false)} onJobCreated={newJob => { setJobs(prev => [newJob, ...prev]); setShowIntake(false); setMaterialsJob(newJob); }} />}
       {materialsJob && <MaterialSelectionScr job={materialsJob} profile={profile} onClose={() => setMaterialsJob(null)} />}

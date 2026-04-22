@@ -565,11 +565,14 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         ])
     }
 
+    private var scanStartDate: Date?
+
     private func startNextScan() {
         let n = capturedRooms.count + 1
         roomCountLabel.text = "Room \(n) — Scan the space"
         nextRoomButton.isEnabled = true
         doneButton.isEnabled = true
+        scanStartDate = Date()
         roomCaptureView.captureSession.run(configuration: sessionConfig)
     }
 
@@ -603,6 +606,9 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
     func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
         guard !isCancelling else { return false }
+        // Reject any completion that fires within 2s of run() — the reused session
+        // fires a ghost callback almost immediately on scan 2+ with leftover state.
+        guard let start = scanStartDate, Date().timeIntervalSince(start) >= 2.0 else { return false }
         return true
     }
 

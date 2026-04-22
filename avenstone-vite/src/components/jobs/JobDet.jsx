@@ -16,6 +16,7 @@ import ConsultationTab from './tabs/ConsultationTab';
 import AiCompanionChat from '../shared/AiCompanionChat';
 import MaterialsTab from './tabs/MaterialsTab';
 import FloorPlanTab from './tabs/FloorPlanTab';
+import CostsTab from './tabs/CostsTab';
 
 const TABS = [
   { id: 'info', lb: 'Info', ic: 'info' },
@@ -30,6 +31,7 @@ const TABS = [
   { id: 'logs', lb: 'Daily Logs', ic: 'clip' },
   { id: 'payments', lb: 'Payments', ic: 'doc' },
   { id: 'floorplan', lb: 'Floor Plan', ic: 'doc' },
+  { id: 'costs', lb: 'Costs', ic: 'doc' },
   { id: 'session', lb: 'AI Session', ic: 'grid' },
 ];
 
@@ -88,6 +90,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
     target_completion: job.target_completion || '',
     sqft: job.sqft || '',
     client_notify: job.client_notify || 'portal',
+    cost_plus: job.cost_plus || false,
     referring_realtor_name: job.referring_realtor_name || '',
     referring_realtor_phone: job.referring_realtor_phone || '',
     referring_realtor_email: job.referring_realtor_email || '',
@@ -219,6 +222,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
         {tab === 'logs' && <LogsTab job={job} />}
         {tab === 'payments' && <PaymentsTab job={job} />}
         {tab === 'floorplan' && <FloorPlanTab job={job} profile={profile} />}
+        {tab === 'costs' && <CostsTab job={job} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} />}
       </div>
 

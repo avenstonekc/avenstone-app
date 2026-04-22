@@ -117,8 +117,6 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
             <div className="ii" key={lb}><div className="ii-l">{lb}</div><div className="ii-v">{v}</div></div>
           ))}
           {!job.client_name && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '20px', color: '#9CA3AF', fontSize: 13, background: '#fff', border: '1px solid #E8E4DC' }}>Tap Edit to add client and job details</div>}
-          {job.client_email && <ClientLinkButton job={job} />}
-          {job.status_token && <StatusLinkButton token={job.status_token} />}
         </div>
       )}
 
@@ -151,6 +149,18 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
             </div>
             {job.client_email && <button className="btn btn-gold" style={{ fontSize: 12, padding: '7px 16px' }} onClick={() => setShowCompletion(true)}>Send Sign-off</button>}
           </div>
+        </div>
+      )}
+
+      {['owner', 'project_manager'].includes(profile?.role) && (
+        <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '12px 16px', marginTop: 16 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={inf.cost_plus || false} onChange={e => upd({ cost_plus: e.target.checked })} style={{ width: 16, height: 16 }} />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>Cost-plus job</div>
+              <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>Client sees financials in their portal</div>
+            </div>
+          </label>
         </div>
       )}
 

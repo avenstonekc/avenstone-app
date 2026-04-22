@@ -55,6 +55,7 @@ Haiku → Sonnet → Opus. Default to Haiku for anything automatic or high-frequ
 - **Think before building** — when an idea is floated, reason honestly: (1) Does existing software already do this better? (2) What's the realistic failure rate? (3) Does it fit Avenstone's actual competitive advantage? Say so if the answer is no.
 - **Flag concerns, don't narrate** — only call out a concern if there's a real one (wrong approach, destructive action, API cost risk). Don't preface every request with an evaluation — that's friction. Just execute. If something is genuinely off, one line is enough before proceeding.
 - **Proactive memory** — if there's a non-obvious way to save significant time in future sessions, add it to memory unprompted.
+- **LiDAR goal is a spatially-accurate floor plan** — every room scan must preserve ARKit world coordinates so rooms are positioned correctly relative to each other. Any fix or approach that breaks spatial alignment (worldX/worldZ) or prevents StructureBuilder from merging rooms is not acceptable, even if it makes individual scans work. If a proposed fix trades floor plan accuracy for scan reliability, STOP and discuss before implementing.
 
 ### Every feature ships on all three viewports
 Mobile (390px), tablet (768px), desktop (1280px). No exceptions.

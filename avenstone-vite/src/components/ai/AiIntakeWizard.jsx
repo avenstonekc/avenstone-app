@@ -19,6 +19,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
   const [contactSearch, setContactSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [exteriorResult, setExteriorResult] = useState(null);
   const [heightData, setHeightData] = useState(null); // { heightMeters, heightSource, heightPoints }
   const [qualityData, setQualityData] = useState(null); // { score, grade, deductions, rooms }
@@ -98,9 +99,10 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
 
   async function saveInterior({ heightMeters, heightSource, heightPoints, qualityScore, qualityGrade, qualityDeductions }) {
     setSaving(true);
+    setSaveError(null);
     const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
     const gps = await stampGPS();
-    await sbSaveJobLidarScan({
+    const { error } = await sbSaveJobLidarScan({
       jobId, rooms, totalSqft, captureMode: 'interior',
       heightMeters, heightSource, heightPoints,
       qualityScore: qualityScore ?? qualityData?.score ?? null,
@@ -109,15 +111,17 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
     });
     setSaving(false);
+    if (error) { setSaveError(error.message || JSON.stringify(error)); return; }
     setSavedOk(true);
     setTimeout(onClose, 1400);
   }
 
   async function saveExterior({ heightMeters, heightSource, heightPoints, qualityScore, qualityGrade, qualityDeductions }) {
     setSaving(true);
+    setSaveError(null);
     const ext = exteriorResult;
     const gps = await stampGPS();
-    await sbSaveJobLidarScan({
+    const { error } = await sbSaveJobLidarScan({
       jobId, rooms: [], totalSqft: ext.areaSqft, captureMode: 'exterior',
       outlineData: { corners: ext.corners, perimeterFt: ext.perimeterFt, areaSqft: ext.areaSqft },
       heightMeters, heightSource, heightPoints,
@@ -127,12 +131,14 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
     });
     setSaving(false);
+    if (error) { setSaveError(error.message || JSON.stringify(error)); return; }
     setSavedOk(true);
     setTimeout(onClose, 1400);
   }
 
   async function handleSave(contactId) {
     setSaving(true);
+    setSaveError(null);
     const gps = await stampGPS();
     const hm = heightData?.heightMeters ?? null;
     const hs = heightData?.heightSource ?? null;
@@ -140,25 +146,27 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
     const qs = qualityData?.score ?? null;
     const qg = qualityData?.grade ?? null;
     const qd = qualityData?.deductions ?? null;
+    let error;
     if (exteriorResult) {
-      await sbSaveLidarScan({
+      ({ error } = await sbSaveLidarScan({
         contactId, rooms: [], totalSqft: exteriorResult.areaSqft,
         captureMode: 'exterior',
         outlineData: { corners: exteriorResult.corners, perimeterFt: exteriorResult.perimeterFt, areaSqft: exteriorResult.areaSqft },
         heightMeters: hm, heightSource: hs, heightPoints: hp,
         qualityScore: qs, qualityGrade: qg, qualityDeductions: qd,
         gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
-      });
+      }));
     } else {
       const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
-      await sbSaveLidarScan({
+      ({ error } = await sbSaveLidarScan({
         contactId, rooms, totalSqft, captureMode: 'interior',
         heightMeters: hm, heightSource: hs, heightPoints: hp,
         qualityScore: qs, qualityGrade: qg, qualityDeductions: qd,
         gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
-      });
+      }));
     }
     setSaving(false);
+    if (error) { setSaveError(error.message || JSON.stringify(error)); return; }
     setSavedOk(true);
     setTimeout(onClose, 1400);
   }
@@ -283,6 +291,11 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
             {saving && (
               <div style={{ textAlign: 'center', padding: '16px 0', color: '#888', fontFamily: '"DM Sans", sans-serif', fontSize: 14 }}>
                 Saving...
+              </div>
+            )}
+            {saveError && (
+              <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#991B1B', fontFamily: '"DM Sans", sans-serif' }}>
+                Save failed: {saveError}
               </div>
             )}
             {savedOk ? (

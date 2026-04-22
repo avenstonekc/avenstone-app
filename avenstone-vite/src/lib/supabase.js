@@ -79,6 +79,7 @@ export const sbLoad = async repName => {
         referring_realtor_phone: j.referring_realtor_phone || '',
         referring_realtor_email: j.referring_realtor_email || '',
         status_token: j.status_token || '',
+        cost_plus: j.cost_plus || false,
         photos: (ph || []).map(p => ({ id: p.id, type: p.type, url: p.url, name: p.name, label: p.label || null })),
         activity: nt || [], change_orders: co || [],
       };
@@ -88,7 +89,7 @@ export const sbLoad = async repName => {
 
 export const sbUpd = async (id, ch) => {
   try {
-    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email'];
+    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email','cost_plus'];
     const p = {};
     ok.forEach(k => { if (ch[k] !== undefined) p[k] = ch[k]; });
     if (Object.keys(p).length) await sb.from('jobs').update(p).eq('id', id);
@@ -205,6 +206,66 @@ export const sbDelDoc = async doc => {
   } catch (e) { console.error(e); }
 };
 export const sbToggleDocVisible = async (id, val) => { await sb.from('job_documents').update({ client_visible: val }).eq('id', id); };
+
+// ─── Cost-plus tracking ───────────────────────────────────────────────────────
+const costFileSignedUrl = async path => {
+  if (!path) return null;
+  const { data } = await sb.storage.from('job-documents').createSignedUrl(path, 3600);
+  return data?.signedUrl || null;
+};
+const costFilePathFromUrl = url => {
+  if (!url) return null;
+  if (url.startsWith('http')) return url.split('/job-documents/')[1] || null;
+  return url;
+};
+export const sbLoadCostItems = async jid => {
+  const { data } = await sb.from('job_cost_items').select('*').eq('job_id', jid).order('created_at', { ascending: true });
+  return data || [];
+};
+export const sbCreateCostItem = async (jid, item) => {
+  const { data, error } = await sb.from('job_cost_items').insert({ ...item, job_id: jid, tenant_id: AV_TENANT, created_at: new Date().toISOString() }).select().single();
+  return { data, error };
+};
+export const sbUpdCostItem = async (id, ch) => {
+  const { data, error } = await sb.from('job_cost_items').update(ch).eq('id', id).select().single();
+  return { data, error };
+};
+export const sbDelCostItem = async id => sb.from('job_cost_items').delete().eq('id', id);
+export const sbLoadCostInvoices = async jid => {
+  const { data } = await sb.from('job_cost_invoices').select('*').eq('job_id', jid).order('created_at', { ascending: true });
+  if (!data || !data.length) return [];
+  return Promise.all(data.map(async inv => {
+    const lien_waiver_signed_url = inv.lien_waiver_file_url
+      ? await costFileSignedUrl(costFilePathFromUrl(inv.lien_waiver_file_url))
+      : null;
+    return { ...inv, lien_waiver_signed_url };
+  }));
+};
+export const sbCreateCostInvoice = async (jid, invoice) => {
+  const { data, error } = await sb.from('job_cost_invoices').insert({ ...invoice, job_id: jid, tenant_id: AV_TENANT, created_at: new Date().toISOString() }).select().single();
+  return { data, error };
+};
+export const sbUpdCostInvoice = async (id, ch) => {
+  const { data, error } = await sb.from('job_cost_invoices').update(ch).eq('id', id).select().single();
+  return { data, error };
+};
+export const sbDelCostInvoice = async id => sb.from('job_cost_invoices').delete().eq('id', id);
+export const sbUploadInvoiceFile = async (jid, invId, file) => {
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+  const path = `${jid}/invoice-${invId}/${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type });
+  if (error) return { error };
+  await sb.from('job_cost_invoices').update({ invoice_file_url: path, invoice_file_name: file.name }).eq('id', invId);
+  return { path };
+};
+export const sbUploadLienWaiver = async (jid, invId, file) => {
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+  const path = `${jid}/lien-${invId}/${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type });
+  if (error) return { error };
+  await sb.from('job_cost_invoices').update({ lien_waiver_file_url: path, lien_waiver_file_name: file.name, lien_waiver_signed_date: new Date().toISOString().slice(0, 10) }).eq('id', invId);
+  return { path };
+};
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 export const sbLoadNotifs = async () => {
