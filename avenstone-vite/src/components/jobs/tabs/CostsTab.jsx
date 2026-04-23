@@ -12,7 +12,8 @@ export default function CostsTab({ job }) {
   const [addingInv, setAddingInv] = useState(null);
   const [newInv, setNewInv] = useState({ date: '', amount: '' });
   const [addingItem, setAddingItem] = useState(false);
-  const [newItem, setNewItem] = useState({ trade: '', vendor: '', estimate: '', markup_pct: '0', client_visible: true });
+  const defaultMarkup = String(job.default_markup_pct || 0);
+  const [newItem, setNewItem] = useState({ trade: '', vendor: '', estimate: '', markup_pct: defaultMarkup, client_visible: true });
 
   useEffect(() => { load(); }, [job.id]);
 
@@ -39,7 +40,7 @@ export default function CostsTab({ job }) {
   const addItem = async () => {
     if (!newItem.trade) return;
     const { data } = await sbCreateCostItem(job.id, { trade: newItem.trade, vendor: newItem.vendor, estimate: Number(newItem.estimate || 0), markup_pct: Number(newItem.markup_pct || 0), client_visible: newItem.client_visible });
-    if (data) { setItems(p => [...p, data]); setNewItem({ trade: '', vendor: '', estimate: '', markup_pct: '0', client_visible: true }); setAddingItem(false); }
+    if (data) { setItems(p => [...p, data]); setNewItem({ trade: '', vendor: '', estimate: '', markup_pct: defaultMarkup, client_visible: true }); setAddingItem(false); }
   };
   const togglePaid = async inv => {
     const { data } = await sbUpdCostInvoice(inv.id, { paid: !inv.paid });

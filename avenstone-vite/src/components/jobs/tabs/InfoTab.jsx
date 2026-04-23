@@ -154,13 +154,29 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
 
       {['owner', 'project_manager'].includes(profile?.role) && (
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '12px 16px', marginTop: 16 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <input type="checkbox" checked={inf.cost_plus || false} onChange={e => upd({ cost_plus: e.target.checked })} style={{ width: 16, height: 16 }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>Cost-plus job</div>
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>Client sees financials in their portal</div>
-            </div>
-          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1 }}>
+              <input type="checkbox" checked={inf.cost_plus || false} onChange={e => upd({ cost_plus: e.target.checked })} style={{ width: 16, height: 16 }} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>Cost-plus job</div>
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>Client sees financials in their portal</div>
+              </div>
+            </label>
+            {inf.cost_plus && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Default markup</div>
+                <input
+                  type="number"
+                  min="0"
+                  max="200"
+                  value={inf.default_markup_pct ?? ''}
+                  onChange={e => upd({ default_markup_pct: Number(e.target.value || 0) })}
+                  style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
+                />
+                <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

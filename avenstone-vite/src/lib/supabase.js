@@ -80,6 +80,7 @@ export const sbLoad = async repName => {
         referring_realtor_email: j.referring_realtor_email || '',
         status_token: j.status_token || '',
         cost_plus: j.cost_plus || false,
+        default_markup_pct: Number(j.default_markup_pct || 0),
         photos: (ph || []).map(p => ({ id: p.id, type: p.type, url: p.url, name: p.name, label: p.label || null })),
         activity: nt || [], change_orders: co || [],
       };
@@ -89,7 +90,7 @@ export const sbLoad = async repName => {
 
 export const sbUpd = async (id, ch) => {
   try {
-    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email','cost_plus'];
+    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email','cost_plus','default_markup_pct'];
     const p = {};
     ok.forEach(k => { if (ch[k] !== undefined) p[k] = ch[k]; });
     if (Object.keys(p).length) await sb.from('jobs').update(p).eq('id', id);
