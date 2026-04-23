@@ -529,6 +529,13 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 - **Clean up `job_estimates` in afterAll** — FK constraint blocks job DELETE if estimates exist
 - **Nav label for Projects screen** — `lb: 'Projects'` in NAV array and bot-nav. Use `"Projects"` in test selectors, not `"jobs"`.
 - **Supabase PAT** — generate with **No expiry**. Short-lived tokens break GitHub Actions silently.
+- **RoomPlan multi-room session lifecycle** — between rooms use `captureSession.stop(pauseARSession: false)` to keep ARKit tracking alive. Final room uses `stop(pauseARSession: true)`. Plain `stop()` defaults to `pauseARSession: true` which kills the ARSession and resets the world origin — rooms will land in random positions when merged. Never change this back.
+
+---
+
+## Diagnosis workflow — when going in circles
+
+If Sonnet (the default Claude Code model) is stuck on a hard architecture or API problem, use `/opus` to generate a targeted diagnostic prompt. Type `/opus <description of the problem>` and Sonnet will write a structured prompt you can paste directly into Opus. Opus diagnoses and writes a fix prompt back. Paste that back to Sonnet to implement. This keeps costs low (Sonnet builds, Opus thinks) and prevents the same wrong approach being retried repeatedly.
 
 ---
 

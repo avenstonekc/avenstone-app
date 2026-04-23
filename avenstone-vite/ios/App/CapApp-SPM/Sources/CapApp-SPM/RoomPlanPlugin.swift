@@ -582,7 +582,8 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         isFinishing = false
         nextRoomButton.isEnabled = false
         doneButton.isEnabled = false
-        roomCaptureView.captureSession.stop()
+        // pauseARSession: false keeps ARKit world coordinates alive so rooms merge spatially
+        roomCaptureView.captureSession.stop(pauseARSession: false)
     }
 
     @objc private func doneScanningTapped() {
@@ -591,7 +592,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         isFinishing = true
         nextRoomButton.isEnabled = false
         doneButton.isEnabled = false
-        roomCaptureView.captureSession.stop()
+        roomCaptureView.captureSession.stop(pauseARSession: true)
     }
 
     @objc private func cancelTapped() {
@@ -606,10 +607,33 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
     func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
         guard !isCancelling else { return false }
-        // Reject any completion that fires within 2s of run() — the reused session
-        // fires a ghost callback almost immediately on scan 2+ with leftover state.
+        if let error = error {
+            let nsErr = error as NSError
+            if nsErr.domain == "com.apple.RoomPlan" && nsErr.code == 101 {
+                // exceedSceneSizeLimit — finalize what we have
+                DispatchQueue.main.async {
+                    self.showSizeLimitAlert()
+                }
+                return false
+            }
+        }
+        // Reject ghost callbacks that fire within 2s of run() on scan 2+
         guard let start = scanStartDate, Date().timeIntervalSince(start) >= 2.0 else { return false }
         return true
+    }
+
+    private func showSizeLimitAlert() {
+        let alert = UIAlertController(
+            title: "Floor Plan Too Large",
+            message: "Finish this section and start a new scan for the remaining rooms.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Finish This Section", style: .default) { _ in
+            self.isFinishing = true
+            self.processingOverlay.isHidden = false
+            self.buildStructure()
+        })
+        present(alert, animated: true)
     }
 
     func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
