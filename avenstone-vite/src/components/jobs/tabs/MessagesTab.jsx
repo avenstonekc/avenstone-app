@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AV_USER_ID, sbLoadMessages, sbPostMessage, sbNotify, sbLoadStaffMessages, sbPostStaffMessage } from '../../../lib/supabase';
+import { AV_USER_ID, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadStaffMessages, sbPostStaffMessage } from '../../../lib/supabase';
 import { Ic, fDT } from '../../../lib/utils';
 
 export default function MessagesTab({ job, profile }) {
@@ -40,6 +40,7 @@ export default function MessagesTab({ job, profile }) {
     if (m) {
       setMsgs(p => [...p, m]);
       sbNotify('job_message', `Message on ${job.address}`, msgTxt.trim().slice(0, 120), job.id, AV_USER_ID);
+      sbNotifyEmail(job.client_user_id, `New message on your project`, msgTxt.trim().slice(0, 160), job.id);
       setMsgTxt('');
     }
     setSendingMsg(false);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbLoadCostItems, sbLoadCostInvoices } from '../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
@@ -138,6 +138,7 @@ export default function ClientPortal({ profile, signOut }) {
   const [savingNote, setSavingNote] = useState(false);
   const [costItems, setCostItems] = useState([]);
   const [costInvoices, setCostInvoices] = useState([]);
+  const [staffOwnerId, setStaffOwnerId] = useState(null);
   const [jobReview, setJobReview] = useState(null);
   const [reviewForm, setReviewForm] = useState({ quality: 0, communication: 0, timeliness: 0, would_recommend: null, text: '' });
   const [reviewSaving, setReviewSaving] = useState(false);
@@ -155,6 +156,7 @@ export default function ClientPortal({ profile, signOut }) {
     if (!job) return;
     if (!loaded.phases) { sbLoadPhases(job.id).then(d => { setPhases(d); setLoaded(p => ({ ...p, phases: true })); }); }
     if (!loaded.subs) { sb.from('job_subs').select('*,profile:profiles(id,full_name,email,trade)').eq('job_id', job.id).then(({ data }) => { setJobSubs(data || []); setLoaded(p => ({ ...p, subs: true })); }); }
+    if (!staffOwnerId) { sb.from('profiles').select('id').eq('tenant_id', AV_TENANT).eq('role', 'owner').limit(1).single().then(({ data }) => { if (data?.id) setStaffOwnerId(data.id); }); }
   }, [job?.id]);
 
   useEffect(() => {
@@ -221,7 +223,7 @@ export default function ClientPortal({ profile, signOut }) {
   const sendMsg = async () => {
     if (!msgTxt.trim() || !job) return; setSendingMsg(true);
     const m = await sbPostMessage(job.id, msgTxt.trim());
-    if (m) { setMsgs(p => [...p, m]); sbNotify('job_message', `Client message on ${job.address}`, msgTxt.trim().slice(0, 120), job.id, AV_USER_ID); setMsgTxt(''); }
+    if (m) { setMsgs(p => [...p, m]); sbNotify('job_message', `Client message on ${job.address}`, msgTxt.trim().slice(0, 120), job.id, AV_USER_ID); sbNotifyEmail(staffOwnerId, `New message from ${profile?.full_name || 'your client'} on ${job.address}`, msgTxt.trim().slice(0, 160), job.id); setMsgTxt(''); }
     setSendingMsg(false);
   };
 

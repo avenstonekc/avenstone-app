@@ -24,6 +24,7 @@ export const PAYMENT_LINK_URL  = `${FN}/create-payment-link`;
 export const AI_ESTIMATOR_URL  = `${FN}/ai-estimator`;
 export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
 export const NOTIFY_REALTOR_URL = `${FN}/notify-realtor`;
+export const NOTIFY_EMAIL_URL   = `${FN}/notify-email`;
 export const authHeader = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` });
 export const AI_INTAKE_URL          = `${FN}/ai-intake`;
 export const AI_PM_NIGHTLY_URL      = `${FN}/ai-pm-nightly`;
@@ -81,6 +82,7 @@ export const sbLoad = async repName => {
         status_token: j.status_token || '',
         cost_plus: j.cost_plus || false,
         default_markup_pct: Number(j.default_markup_pct || 0),
+        client_user_id: j.client_user_id || null,
         photos: (ph || []).map(p => ({ id: p.id, type: p.type, url: p.url, name: p.name, label: p.label || null })),
         activity: nt || [], change_orders: co || [],
       };
@@ -334,6 +336,10 @@ export const sbLoadMessages = async jid => {
 export const sbPostMessage = async (jid, content) => {
   const { data } = await sb.from('job_messages').insert({ tenant_id: AV_TENANT, job_id: jid, sender_id: AV_USER_ID, content }).select('*,sender:profiles(id,full_name,role)').single();
   return data;
+};
+export const sbNotifyEmail = (userId, title, body, jobId) => {
+  if (!userId) return;
+  fetch(NOTIFY_EMAIL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` }, body: JSON.stringify({ record: { user_id: userId, title, body, job_id: jobId, type: 'job_message' } }) }).catch(() => {});
 };
 export const sbLoadStaffMessages = async jid => {
   const { data } = await sb.from('staff_messages').select('*,sender:profiles(id,full_name,role)').eq('job_id', jid).order('created_at', { ascending: true });
