@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices } from '../../lib/supabase';
-import { Ic, sc, sl, f$, fD, fDT, phSc, phSl } from '../../lib/utils';
+import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
 
@@ -126,6 +126,7 @@ export default function ClientPortal({ profile, signOut }) {
   const [showIntake, setShowIntake] = useState(false);
   const [materialsJob, setMaterialsJob] = useState(null); // set when intake completes → auto-opens materials flow
   const [showSignContract, setShowSignContract] = useState(false);
+  const [bannerSignJob, setBannerSignJob] = useState(null);
   const [crForm, setCrForm] = useState({ description: '', reason: '' });
   const [crSaving, setCrSaving] = useState(false);
   const [crDone, setCrDone] = useState(false);
@@ -254,6 +255,18 @@ export default function ClientPortal({ profile, signOut }) {
         </div>
         <button onClick={signOut} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)', padding: 4 }}><span style={{ width: 16, height: 16, display: 'flex' }}>{Ic.logout}</span></button>
       </div>
+
+      {!job && jobs.filter(j => !j.contract_signed).map(j => (
+        <div key={j.id} style={{ background: '#0A1F44', padding: '14px 20px', display: 'flex', flexDirection: isMob() ? 'column' : 'row', alignItems: isMob() ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid rgba(201,168,76,0.25)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', marginBottom: 3 }}>Your contract is ready to sign</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.address}</div>
+          </div>
+          <button style={{ background: '#C9A84C', color: '#0A1F44', border: 'none', padding: '10px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0, borderRadius: 4, letterSpacing: 0.3 }} onClick={() => setBannerSignJob(j)}>
+            Review &amp; Sign
+          </button>
+        </div>
+      ))}
 
       {!job && <div style={{ padding: 16 }}>
         {jobs.map(j => (
@@ -682,6 +695,7 @@ export default function ClientPortal({ profile, signOut }) {
         </div>
 
         {showSignContract && job && <ClientSignContractModal job={job} onClose={() => setShowSignContract(false)} onSigned={() => { setJobs(js => js.map(j => j.id === job.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'active' } : j)); setShowSignContract(false); }} />}
+        {bannerSignJob && <ClientSignContractModal job={bannerSignJob} onClose={() => setBannerSignJob(null)} onSigned={() => { setJobs(js => js.map(j => j.id === bannerSignJob.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'active' } : j)); setBannerSignJob(null); }} />}
       </>}
     </div>
   );

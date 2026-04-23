@@ -23,7 +23,7 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Kalin auth ID: 8171742a-b586-4f13-be61-744e191a1896
 - Blake auth ID: 066c8241-accb-490b-9f98-b8b7cb24c33b
 
-**Active modules:** Job pipeline, leads screen, AI estimator, AI companion (per-job per-person), AI intake wizard (LiDAR scan → height → quality report → save to job or contact), AI field agent, AI home companion, master agent, AI pm-nightly alerts, AI knowledge base, AI setup wizard, LiDAR scanner (interior multi-room + exterior outline, GPS-stamped, quality meter, saves to job_lidar_scans + contact_lidar_scans, FloorPlanTab on JobDet), floor plan PDF (pdf.js, fixtures rendering), AI PM dashboard (owner-only, 30-day alert history), material selection screen, contract gen + signature pad, client portal, owner portal, sub portal + onboarding wizard + rate modal, ITB system, Gantt/list scheduler, PDF gen, consultation tab (ambient + measure mode), materials tab, public pages (completion, review, profile), contact sequences + sequence runner, address autocomplete, push notifications, Stripe payments, GHL webhook, Twilio inbound SMS, multi-tenant arch
+**Active modules:** Job pipeline, leads screen, AI estimator, AI companion (per-job per-person), AI intake wizard (LiDAR scan → height → quality report → save to job or contact), AI field agent, AI home companion, master agent, AI pm-nightly alerts, AI knowledge base, AI setup wizard, LiDAR scanner (interior multi-room + exterior outline, GPS-stamped, quality meter, saves to job_lidar_scans + contact_lidar_scans, FloorPlanTab on JobDet), floor plan PDF (pdf.js, fixtures rendering), AI PM dashboard (owner-only, 30-day alert history), contract gen + signature pad, client portal, owner portal, sub portal + onboarding wizard + rate modal, ITB system, Gantt/list scheduler, PDF gen, consultation tab (ambient + measure mode), materials tab, public pages (completion, review, profile), contact sequences + sequence runner, address autocomplete, push notifications, Stripe payments, GHL webhook, Twilio inbound SMS, multi-tenant arch
 
 **Remaining / incomplete:**
 - Lien waiver generation (pdf-lib preferred over jsPDF)
@@ -32,6 +32,7 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Floor plan PDF: single-room fixture rendering (rotation transform needed — deferred), dimension language overhaul
 - Sub portal upgrades: PM-Sub direct chat, phase confirmation, CO submission (spec'd, not built)
 - White-label onboarding wizard (replace 7-question AiSetupWizard)
+- **Client material selector (MaterialSelectionScr)** — 949-line component exists at `src/components/ai/MaterialSelectionScr.jsx` but is NOT wired into any tab or portal. Client-facing tile/fixture picker. Needs to land on ClientPortal or a new JobDet tab before it ships. Do NOT treat as dead code in future architecture reviews.
 
 **Retired / do not use:** MacInCloud (Codemagic replaced it — VM reset issues made it unusable), the old 3-step AI chat + manual grid AiIntakeWizard flow (replaced by LiDAR capture flow)
 
@@ -159,3 +160,15 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Files: CLAUDE.md (AI System diagram block — replaced stale "Path A — no persistence yet" language with current LiDAR scan flow description; AI Component map — AiIntakeWizard row updated from "3-step intake: chat → measurements → submit" to current LiDAR capture flow), CLAUDE_MEMORY.md (project snapshot date advanced to 2026-04-22; active modules updated; remaining/incomplete updated — removed shipped items, added current backlog)
 - Decision: AI System diagram now describes live flow: scan → height → quality report → save to job or contact. Multi-room and exterior modes noted. Legacy ai-intake edge function noted as no longer called.
 - Decision: CLAUDE_MEMORY.md snapshot "remaining" list trimmed to actual backlog: LiDAR Phase 4 wing editor, sub portal upgrades, lien waivers, automated provisioning. Fixtures and multi-room removed (shipped).
+
+[LOG — 2026-04-22]
+- Action: Track B architecture review (Opus in claude.ai, src.zip baseline ~Apr 16) + full cleanup + two feature ships
+- Files: CLAUDE_MEMORY.md (this entry + MaterialSelectionScr note + active modules update)
+- Files (cleanup): deleted lib/ai.js, lib/captureTypes.js, App.css, src/styles/ folder (global.css + tokens.css), assets/react.svg, assets/vite.svg, assets/hero.png. Renamed SubOnboardingModal.jsx → SubComplianceModal.jsx (SubDir import + function name updated). Centralized hardcoded Supabase project URL + ANON_KEY across 10 component files into supabase.js — added SUPABASE_URL, AI_PM_URL, GENERATE_ESTIMATE_URL, ADDRESS_AUTOCOMPLETE_URL, GET_CONTRACTOR_PROFILE_URL, GET_JOB_STATUS_URL exports.
+- Files (pdf.js): replaced floating W×D bounding-box text in room labels with proper architectural dimension lines — new _drawDimLine helper draws extension lines from wall endpoints, dim line connecting tips, tick marks, measurement text offset outward. Outward normal computed per wall segment (wall midpoint → room centroid = inward; negate perpendicular = outward). Works in both single-room and world-mode. W×D label removed from room centroid entirely.
+- Files (sub portal): supabase.js (+sbSubUpdatePhase, +sbSubSubmitCO), SubJobView.jsx (schedule tab: Mark Started / Mark Complete buttons per phase, fires notification; COs tab: + Request CO form with title/description/amount, fires notification). PM Chat tab was already built.
+- Decision: AV_JOBS / setGlobalJobs kept — review flagged them as dead but FormScr.jsx uses AV_JOBS for the job picker dropdown. Review was wrong.
+- Decision: ConsultationTab split (1,172 lines → 8 files) and LidarScanner split rejected as premature. Only worth doing when a feature forces us back into those files.
+- Decision: MaterialSelectionScr.jsx is WIP (client-facing tile/fixture picker), not dead code. No file imports it because it hasn't been wired yet. Added to Remaining so future reviews don't repeat the flag.
+- Decision: sbSubUpdatePhase gates update on assigned_sub_id = AV_USER_ID. If RLS on job_phases doesn't allow sub UPDATE, phase buttons will silently fail — one-line migration fix if needed on device.
+- Next: LiDAR Phase 4 wing editor, white-label onboarding wizard, lien waivers

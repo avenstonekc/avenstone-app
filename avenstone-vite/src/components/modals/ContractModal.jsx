@@ -15,7 +15,7 @@ export default function ContractModal({ job, onClose, onSent, proposalDoc }) {
     let blob;
     if (proposalDoc) {
       try {
-        const r = await fetch(proposalDoc.file_url);
+        const r = await fetch(proposalDoc.signed_url || proposalDoc.file_url);
         if (!r.ok) throw new Error('Could not fetch proposal PDF');
         blob = await r.blob();
       } catch (e) { setErr(e.message || 'Failed to load proposal PDF'); setSending(false); return; }

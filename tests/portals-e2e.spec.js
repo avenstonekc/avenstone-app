@@ -463,10 +463,15 @@ function defineOwnerFlow(roleKey, jobAddress) {
     await openJob(page, jobAddress);
     await clickTab(page, "Notes");
 
-    await page.fill("textarea[placeholder*='Site conditions']", `${R.label} test note — tile ordered, eta 5 days`);
-    await page.click("button:has-text('Add Note')");
-    await page.waitForTimeout(2000);
-    await expect(page.locator("text=test note").first()).toBeVisible({ timeout: 8000 });
+    const noteTA = page.locator("textarea[placeholder*='Site conditions']");
+    await noteTA.scrollIntoViewIfNeeded();
+    await reactFill(page, "textarea[placeholder*='Site conditions']", `${R.label} test note — tile ordered, eta 5 days`);
+    const addNoteBtn = page.locator("button:has-text('Add Note')");
+    await addNoteBtn.scrollIntoViewIfNeeded();
+    await addNoteBtn.click();
+    await expect(page.locator("text=test note").first()).toBeVisible({ timeout: 10000 });
+    // sbNotify is fire-and-forget — give it time to write to DB before querying
+    await page.waitForTimeout(2500);
 
     const { data: notifs } = await adminSB.from("notifications").select("id").eq("job_id", testJobId).eq("type", "note_posted");
     expect(notifs?.length).toBeGreaterThan(0);
