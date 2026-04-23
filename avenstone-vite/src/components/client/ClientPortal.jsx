@@ -634,20 +634,28 @@ export default function ClientPortal({ profile, signOut }) {
             {!costItems.filter(i => i.client_visible).length && <div className="empty">{Ic.doc}<div className="empty-t">No cost items yet</div><div>Your contractor will add cost details here</div></div>}
             {costItems.filter(i => i.client_visible).map(item => {
               const factor = 1 + Number(item.markup_pct || 0) / 100;
-              const clientPrice = Number(item.estimate || 0) * factor;
+              const estimate = Number(item.estimate || 0);
+              const clientPrice = estimate * factor;
               const itemInvs = costInvoices.filter(i => i.cost_item_id === item.id && i.paid);
               const paidToDate = itemInvs.reduce((a, i) => a + Number(i.amount || 0), 0) * factor;
               return (
                 <div key={item.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: itemInvs.length ? 12 : 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{item.trade}</div>
                       {item.vendor && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{item.vendor}</div>}
+                      {item.proposal_signed_url && (
+                        <a href={item.proposal_signed_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: '#3B82F6', textDecoration: 'none', fontWeight: 600 }}>📄 View Proposal</a>
+                      )}
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 12, color: '#9CA3AF' }}>Budget</div>
-                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44' }}>{f$(clientPrice)}</div>
-                      {paidToDate > 0 && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 2 }}>Paid {f$(paidToDate)}</div>}
+                      <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 4 }}>Estimate</div>
+                      <div style={{ fontSize: 13, color: '#6B7280' }}>{f$(estimate)}</div>
+                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6, marginBottom: 2 }}>Markup</div>
+                      <div style={{ fontSize: 13, color: '#6B7280' }}>{item.markup_pct || 0}%</div>
+                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6, marginBottom: 2 }}>Your Price</div>
+                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44', fontWeight: 700 }}>{f$(clientPrice)}</div>
+                      {paidToDate > 0 && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 4 }}>Paid {f$(paidToDate)}</div>}
                     </div>
                   </div>
                   {itemInvs.length > 0 && (

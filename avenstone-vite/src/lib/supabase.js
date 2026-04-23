@@ -221,7 +221,21 @@ const costFilePathFromUrl = url => {
 };
 export const sbLoadCostItems = async jid => {
   const { data } = await sb.from('job_cost_items').select('*').eq('job_id', jid).order('created_at', { ascending: true });
-  return data || [];
+  if (!data || !data.length) return [];
+  return Promise.all(data.map(async item => {
+    const proposal_signed_url = item.proposal_file_url
+      ? await costFileSignedUrl(costFilePathFromUrl(item.proposal_file_url))
+      : null;
+    return { ...item, proposal_signed_url };
+  }));
+};
+export const sbUploadCostItemProposal = async (jid, itemId, file) => {
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+  const path = `${jid}/proposal-${itemId}/${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type });
+  if (error) return { error };
+  await sb.from('job_cost_items').update({ proposal_file_url: path, proposal_file_name: file.name }).eq('id', itemId);
+  return { path };
 };
 export const sbCreateCostItem = async (jid, item) => {
   const { data, error } = await sb.from('job_cost_items').insert({ ...item, job_id: jid, tenant_id: AV_TENANT, created_at: new Date().toISOString() }).select().single();

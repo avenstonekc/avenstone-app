@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
-import { sbLoadCostItems, sbCreateCostItem, sbUpdCostItem, sbDelCostItem, sbLoadCostInvoices, sbCreateCostInvoice, sbUpdCostInvoice, sbDelCostInvoice, sbUploadLienWaiver } from '../../../lib/supabase';
+import { sbLoadCostItems, sbCreateCostItem, sbUpdCostItem, sbDelCostItem, sbLoadCostInvoices, sbCreateCostInvoice, sbUpdCostInvoice, sbDelCostInvoice, sbUploadLienWaiver, sbUploadCostItemProposal } from '../../../lib/supabase';
 import { f$ } from '../../../lib/utils';
 
 export default function CostsTab({ job }) {
@@ -57,6 +57,11 @@ export default function CostsTab({ job }) {
     const invs = await sbLoadCostInvoices(job.id);
     setInvoices(invs);
   };
+  const uploadProposal = async (item, file) => {
+    await sbUploadCostItemProposal(job.id, item.id, file);
+    const its = await sbLoadCostItems(job.id);
+    setItems(its);
+  };
 
   if (loading) return <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>;
 
@@ -78,7 +83,7 @@ export default function CostsTab({ job }) {
       <div style={{ background: '#fff', border: '1px solid #E8E4DC', overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
           <thead>
-            <tr>{['Trade','Vendor','Estimate','Markup %','Client Price','Paid','Visible',''].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+            <tr>{['Trade','Vendor','Estimate','Markup %','Client Price','Paid','Visible','Proposal',''].map(h => <th key={h} style={th}>{h}</th>)}</tr>
           </thead>
           <tbody>
             {items.map(item => {
@@ -102,6 +107,11 @@ export default function CostsTab({ job }) {
                         : <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: item.client_visible ? '#D1FAE5' : '#F3F4F6', color: item.client_visible ? '#065F46' : '#6B7280' }}>{item.client_visible ? 'Yes' : 'No'}</span>}
                     </td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                      {item.proposal_signed_url
+                        ? <a href={item.proposal_signed_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#3B82F6', textDecoration: 'none' }}>📎 {item.proposal_file_name || 'View'}</a>
+                        : <label style={{ fontSize: 11, color: '#C9A84C', cursor: 'pointer' }}>Attach<input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={e => e.target.files[0] && uploadProposal(item, e.target.files[0])} /></label>}
+                    </td>
+                    <td style={{ ...td, whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                       {isEdit ? (
                         <><button style={{ fontSize: 11, color: '#22c55e', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px' }} onClick={() => saveEdit(item.id)}>Save</button><button style={{ fontSize: 11, color: '#9CA3AF', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px' }} onClick={() => setEditRow(null)}>Cancel</button></>
                       ) : (
@@ -111,7 +121,7 @@ export default function CostsTab({ job }) {
                   </tr>
                   {isExp && (
                     <tr>
-                      <td colSpan={8} style={{ padding: '8px 16px 14px', background: '#F7F5F0', borderBottom: '1px solid #E8E4DC' }}>
+                      <td colSpan={9} style={{ padding: '8px 16px 14px', background: '#F7F5F0', borderBottom: '1px solid #E8E4DC' }}>
                         <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Payments — {item.vendor || item.trade}</div>
                         {!itemInvs.length && <div style={{ fontSize: 12, color: '#9CA3AF', paddingBottom: 8 }}>No payments yet</div>}
                         {itemInvs.map(inv => (
@@ -152,6 +162,7 @@ export default function CostsTab({ job }) {
                 <td style={td}>{f$(Number(newItem.estimate || 0) * (1 + Number(newItem.markup_pct || 0) / 100))}</td>
                 <td style={td}>—</td>
                 <td style={td}><input type="checkbox" checked={newItem.client_visible} onChange={e => setNewItem(p => ({ ...p, client_visible: e.target.checked }))} /></td>
+                <td style={td}>—</td>
                 <td style={{ ...td, whiteSpace: 'nowrap' }}>
                   <button style={{ fontSize: 11, color: '#22c55e', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px' }} onClick={addItem}>Add</button>
                   <button style={{ fontSize: 11, color: '#9CA3AF', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px' }} onClick={() => setAddingItem(false)}>Cancel</button>
@@ -159,7 +170,7 @@ export default function CostsTab({ job }) {
               </tr>
             ) : (
               <tr>
-                <td colSpan={8} style={{ ...td, textAlign: 'center' }}>
+                <td colSpan={9} style={{ ...td, textAlign: 'center' }}>
                   <button style={{ fontSize: 12, color: '#C9A84C', border: 'none', background: 'none', cursor: 'pointer', padding: '6px 0' }} onClick={() => setAddingItem(true)}>+ Add trade</button>
                 </td>
               </tr>
