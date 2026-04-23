@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadSubPhases, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID } from '../../lib/supabase';
+import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadSubPhases, sbSubUpdatePhase, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID } from '../../lib/supabase';
 import { Ic, sc, sl, fD, fDT, f$ } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 
@@ -46,6 +46,10 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const [staffMsgTxt, setStaffMsgTxt] = useState('');
   const [sendingStaffMsg, setSendingStaffMsg] = useState(false);
   const staffMsgsEndRef = useRef();
+  const [phaseUpdating, setPhaseUpdating] = useState(null);
+  const [showCOForm, setShowCOForm] = useState(false);
+  const [coForm, setCoForm] = useState({ title: '', description: '', amount: '' });
+  const [coSaving, setCoSaving] = useState(false);
 
   useEffect(() => {
     if (tab !== 'msgs' || msgsLoaded) return;
@@ -117,6 +121,29 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
       setStaffMsgTxt('');
     }
     setSendingStaffMsg(false);
+  };
+
+  const updatePhase = async (phase, status) => {
+    setPhaseUpdating(phase.id);
+    const updated = await sbSubUpdatePhase(phase.id, status);
+    if (updated) {
+      setPhases(ps => ps.map(p => p.id === phase.id ? { ...p, status } : p));
+      sbNotify('phase_status_update', `Phase update — ${job.address}`, `${phase.name}: ${status.replace(/_/g, ' ')}`, job.id, AV_USER_ID);
+    }
+    setPhaseUpdating(null);
+  };
+
+  const submitCO = async () => {
+    if (!coForm.title.trim()) return;
+    setCoSaving(true);
+    const co = await sbSubSubmitCO({ job_id: job.id, tenant_id: profile.tenant_id, title: coForm.title.trim(), description: coForm.description.trim() || null, amount: coForm.amount });
+    if (co) {
+      setCos(p => [co, ...p]);
+      sbNotify('co_submitted', `Change order request — ${job.address}`, coForm.title.trim(), job.id, AV_USER_ID);
+      setShowCOForm(false);
+      setCoForm({ title: '', description: '', amount: '' });
+    }
+    setCoSaving(false);
   };
 
   const onFile = async e => {
@@ -201,6 +228,18 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
                   {p.start_date && <span>{t('Start', lang)}: <strong style={{ color: '#374151' }}>{fD(p.start_date)}</strong></span>}
                   {p.end_date && <span>{t('Due', lang)}: <strong style={{ color: isOverdue ? '#ef4444' : '#374151' }}>{fD(p.end_date)}</strong></span>}
                 </div>
+                {p.status !== 'complete' && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    {p.status !== 'in_progress' && (
+                      <button className="btn btn-gold" style={{ fontSize: 12, padding: '6px 14px', flex: 1 }} onClick={() => updatePhase(p, 'in_progress')} disabled={phaseUpdating === p.id}>
+                        {phaseUpdating === p.id ? '...' : lang === 'es' ? 'Iniciar Fase' : 'Mark Started'}
+                      </button>
+                    )}
+                    <button className="btn btn-navy" style={{ fontSize: 12, padding: '6px 14px', flex: 1 }} onClick={() => updatePhase(p, 'complete')} disabled={phaseUpdating === p.id}>
+                      {phaseUpdating === p.id ? '...' : lang === 'es' ? 'Marcar Completo' : 'Mark Complete'}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -250,8 +289,26 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
         </div>}
 
         {tab === 'cos' && <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{t('Change Orders', lang)}</div>
+            <button className="btn btn-navy" style={{ fontSize: 12 }} onClick={() => setShowCOForm(true)}>
+              {lang === 'es' ? '+ Solicitar CO' : '+ Request CO'}
+            </button>
+          </div>
+          {showCOForm && (
+            <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 12 }}>{lang === 'es' ? 'Solicitar Cambio de Orden' : 'Request Change Order'}</div>
+              <div className="fg"><label className="flbl">{lang === 'es' ? 'Título' : 'Title'}</label><input className="finp" value={coForm.title} onChange={e => setCoForm(p => ({ ...p, title: e.target.value }))} placeholder={lang === 'es' ? 'Ej. Trabajo adicional en baño' : 'e.g. Additional bathroom work'} /></div>
+              <div className="fg"><label className="flbl">{lang === 'es' ? 'Descripción' : 'Description'}</label><textarea className="finp fta" rows={3} value={coForm.description} onChange={e => setCoForm(p => ({ ...p, description: e.target.value }))} placeholder={lang === 'es' ? 'Describe el trabajo adicional...' : 'Describe the additional scope or reason...'} /></div>
+              <div className="fg"><label className="flbl">{lang === 'es' ? 'Monto Estimado ($)' : 'Estimated Amount ($)'}</label><input className="finp" type="number" value={coForm.amount} onChange={e => setCoForm(p => ({ ...p, amount: e.target.value }))} placeholder="0.00" /></div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowCOForm(false); setCoForm({ title: '', description: '', amount: '' }); }}>{t('Cancel', lang)}</button>
+                <button className="btn btn-gold" style={{ flex: 1 }} onClick={submitCO} disabled={coSaving || !coForm.title.trim()}>{coSaving ? t('Submitting...', lang) : t('Submit Request', lang)}</button>
+              </div>
+            </div>
+          )}
           {!cosLoaded && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>{t('Loading change orders...', lang)}</div>}
-          {cosLoaded && !cos.length && <div className="empty">{Ic.doc}<div className="empty-t">{t('No change orders', lang)}</div><div>{t('Scope changes will appear here', lang)}</div></div>}
+          {cosLoaded && !cos.length && !showCOForm && <div className="empty">{Ic.doc}<div className="empty-t">{t('No change orders', lang)}</div><div>{t('Scope changes will appear here', lang)}</div></div>}
           {cos.map(co => (
             <div key={co.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '14px 16px', marginBottom: 8, borderRadius: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>

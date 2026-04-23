@@ -438,6 +438,23 @@ export const sbLoadSubCOs = async (jobId) => {
   const { data } = await sb.from('change_orders').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
   return data || [];
 };
+export const sbSubUpdatePhase = async (id, status) => {
+  try {
+    const { data, error } = await sb.from('job_phases').update({ status }).eq('id', id).eq('assigned_sub_id', AV_USER_ID).select().single();
+    return error ? null : data;
+  } catch (e) { console.error('sbSubUpdatePhase', e); return null; }
+};
+export const sbSubSubmitCO = async ({ job_id, tenant_id, title, description, amount }) => {
+  try {
+    const { data, error } = await sb.from('change_orders').insert({
+      id: crypto.randomUUID(), job_id, tenant_id,
+      title, description: description || null,
+      amount: amount ? Number(amount) : 0,
+      status: 'pending', created_at: new Date().toISOString(),
+    }).select().single();
+    return error ? null : data;
+  } catch (e) { console.error('sbSubSubmitCO', e); return null; }
+};
 
 // ─── Sub jobs ─────────────────────────────────────────────────────────────────
 export const sbLoadSubJobs = async subId => {
