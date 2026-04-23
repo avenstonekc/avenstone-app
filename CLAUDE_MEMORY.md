@@ -9,7 +9,7 @@ _Read this file at the start of every session. Append a new entry at the end of 
 
 ---
 
-## Project snapshot (as of 2026-04-15)
+## Project snapshot (as of 2026-04-22)
 
 **Repo:** github.com/avenstonekc/avenstone-app
 **Web deploy:** Vercel (auto on push to main)
@@ -23,18 +23,17 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Kalin auth ID: 8171742a-b586-4f13-be61-744e191a1896
 - Blake auth ID: 066c8241-accb-490b-9f98-b8b7cb24c33b
 
-**Active modules:** Job pipeline, leads screen, AI estimator, AI companion (per-job per-person), AI intake wizard (now a pure LiDAR scanner wrapper — Phase 1), AI field agent, AI home companion, master agent, AI pm-nightly alerts, AI knowledge base, AI setup wizard, LiDAR scanner (React UI + Capacitor bridge + RoomPlanPlugin.swift shipped, real scanning on iPhone 12 Pro+/iPad Pro 2020+), material selection screen, contract gen + signature pad, client portal, owner portal, sub portal + onboarding wizard + rate modal, ITB system, Gantt/list scheduler, PDF gen, consultation tab (ambient + measure mode), materials tab, public pages (completion, review, profile), contact sequences + sequence runner, address autocomplete, push notifications, Stripe payments, GHL webhook, Twilio inbound SMS, multi-tenant arch
+**Active modules:** Job pipeline, leads screen, AI estimator, AI companion (per-job per-person), AI intake wizard (LiDAR scan → height → quality report → save to job or contact), AI field agent, AI home companion, master agent, AI pm-nightly alerts, AI knowledge base, AI setup wizard, LiDAR scanner (interior multi-room + exterior outline, GPS-stamped, quality meter, saves to job_lidar_scans + contact_lidar_scans, FloorPlanTab on JobDet), floor plan PDF (pdf.js, fixtures rendering), AI PM dashboard (owner-only, 30-day alert history), material selection screen, contract gen + signature pad, client portal, owner portal, sub portal + onboarding wizard + rate modal, ITB system, Gantt/list scheduler, PDF gen, consultation tab (ambient + measure mode), materials tab, public pages (completion, review, profile), contact sequences + sequence runner, address autocomplete, push notifications, Stripe payments, GHL webhook, Twilio inbound SMS, multi-tenant arch
 
 **Remaining / incomplete:**
 - Lien waiver generation (pdf-lib preferred over jsPDF)
 - Automated tenant provisioning (single-button onboarding script)
-- LiDAR Phase 2: RoomPlan 2.0 multi-room capture with live floor plan + walking indicator
-- LiDAR Phase 3: PDF floor plan export, furniture inventory, material visualization overlay
-- LiDAR → job persistence (Phase 1 holds rooms in local state only)
+- LiDAR Phase 4: wing editor + large-space stitching (>1,500 sqft GPS-anchored multi-session)
+- Floor plan PDF: single-room fixture rendering (rotation transform needed — deferred), dimension language overhaul
+- Sub portal upgrades: PM-Sub direct chat, phase confirmation, CO submission (spec'd, not built)
 - White-label onboarding wizard (replace 7-question AiSetupWizard)
-- AI PM dashboard (owner screen for nightly alert data + job health scores)
 
-**Retired / do not use:** MacInCloud (Codemagic replaced it — VM reset issues made it unusable), the old 3-step AI chat + manual grid AiIntakeWizard flow (replaced by pure LiDAR flow)
+**Retired / do not use:** MacInCloud (Codemagic replaced it — VM reset issues made it unusable), the old 3-step AI chat + manual grid AiIntakeWizard flow (replaced by LiDAR capture flow)
 
 **Branding:** Navy #0A1F44 / Gold #C9A84C
 
@@ -138,3 +137,25 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - DB: job_lidar_scans and contact_lidar_scans both have 10 new nullable columns: capture_mode (default 'interior'), height_meters, height_source, height_points[], gps_latitude, gps_longitude, gps_accuracy, quality_score, quality_grade, quality_deductions (JSONB)
 - Open: Phase 2 = Exterior AR mode + corner placement UI. Phase 3 = height capture (both modes). Phase 4 = quality meter.
 - Next: Capture v2 Phase 2 — Exterior mode AR config + corner placement
+
+[LOG — 2026-04-22]
+- Action: Reconciled CLAUDE.md against CLAUDE_MEMORY.md — updated Priority Order, Done list, and Opus model string
+- Files: CLAUDE.md (Priority Order + Done section rewritten, claude-opus-4-6 → claude-opus-4-7), CLAUDE_MEMORY.md (this entry)
+- Decision: Priority Order now reflects actual next work: fixtures/objects export (Opus spec queued), PDF dimension overhaul, LiDAR Phase 4 wing editor, sub portal upgrades, white-label wizard, lien waivers
+- Decision: Done list updated to include Capture v2 Phases 1-4, LiDAR persistence, AI PM Dashboard, continuous multi-room ARSession, floor plan PDF generator (pdf.js, polishing ongoing)
+
+[LOG — 2026-04-22]
+- Action: Fixtures/objects export shipped end-to-end — Swift serialization + JS PDF rendering
+- Files: RoomPlanPlugin.swift (fixtureCategoryString helper + objectSegs loop in both roomToDict and structureToRooms), src/lib/pdf.js (FIXTURE_LABELS, _drawFixture helper, render loop after openings), src/lib/lidar.js (objects: [] added to all mock rooms)
+- Decision: fixtureCategoryString uses if-equality checks (not switch/@unknown default) because CapturedRoom.Object.Category is a struct, not an enum — same behavior, correct Swift
+- Decision: Render 9 fixture categories: toilet, bathtub, sink, stove, oven, refrigerator, dishwasher, washerDryer, storage. Skip: sofa, chair, table, bed, television, fireplace, stairs, and all unknown. Confidence .low skipped.
+- Decision: Coordinate convention — object center from transform.columns.3.x/z, same minX/minZ offset as walls in same function, converted to feet via m2f/metersToFeet. rotationY = atan2(columns.2.x, columns.2.z) from forward vector.
+- Decision: Render order — fixtures AFTER walls/doors/windows/openings, BEFORE dimension text and room labels. Fixtures draw "inside" walls; labels stay legible on top.
+- Decision: Single-room path (roomToDict) objects are exported to Swift but NOT rendered in JS PDF. Reason: _processWalls rotates rooms for page layout but object coordinates from roomToDict are in unrotated ARKit space. Applying the same rotation transform is deferred to Phase 2 polish.
+- Open: Single-room fixture rendering requires passing the rotation angle from _processWalls to the fixture draw call. Phase 2 item.
+
+[LOG — 2026-04-22]
+- Action: Fixed three contradictions flagged between CLAUDE.md and CLAUDE_MEMORY.md
+- Files: CLAUDE.md (AI System diagram block — replaced stale "Path A — no persistence yet" language with current LiDAR scan flow description; AI Component map — AiIntakeWizard row updated from "3-step intake: chat → measurements → submit" to current LiDAR capture flow), CLAUDE_MEMORY.md (project snapshot date advanced to 2026-04-22; active modules updated; remaining/incomplete updated — removed shipped items, added current backlog)
+- Decision: AI System diagram now describes live flow: scan → height → quality report → save to job or contact. Multi-room and exterior modes noted. Legacy ai-intake edge function noted as no longer called.
+- Decision: CLAUDE_MEMORY.md snapshot "remaining" list trimmed to actual backlog: LiDAR Phase 4 wing editor, sub portal upgrades, lien waivers, automated provisioning. Fixtures and multi-room removed (shipped).

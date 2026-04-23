@@ -222,7 +222,7 @@ npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvj
 **Anthropic model guidelines:**
 - Sonnet (`claude-sonnet-4-6`): complex reasoning, large output — `max_tokens: 4096`
 - Haiku (`claude-haiku-4-5-20251001`): fast extraction, small JSON — `max_tokens: 2048`
-- Opus (`claude-opus-4-6`): deep analysis, project manager — `max_tokens: 4096`
+- Opus (`claude-opus-4-7`): deep analysis, project manager — `max_tokens: 4096`
 
 ---
 
@@ -330,12 +330,12 @@ This is Avenstone's core competitive advantage. Every piece connects:
 ```
 CLIENT / REP GOES ON-SITE
   └── AI Intake Wizard (components/ai/AiIntakeWizard.jsx)
-      ├── Phase 1 (current): pure LiDAR scanner wrapper — opens directly to
-      │   LidarScanner, no AI chat, no manual grid, no DB write.
-      │   Add Room → name → Start Scan → Apple RoomPlan UI → Done → result.
-      │   Rooms held in local state only (Path A — no persistence yet).
-      └── Phase 2/3 (later): multi-room RoomPlan 2.0 merge + PDF export +
-          job/lead creation on finish.
+      LiDAR scanner flow: scan rooms (LidarScanner, iOS RoomPlan)
+        → height capture (HeightCaptureStep — auto from mesh or tap-raycast)
+        → quality report (CaptureQualityReport — score, deductions, Re-scan/Accept)
+        → save to job (job_lidar_scans) or contact (contact_lidar_scans).
+      Supports interior multi-room (RoomCaptureSession, worldX/worldZ) and
+      exterior outline (ARKit corner-placement, outline_data JSONB).
   (The original 3-step "AI chat → measurements → review" flow is retired.
   ai-intake edge function still exists but is no longer called from the app.)
 
@@ -391,7 +391,7 @@ COMPANY LEARNS OVER TIME
 | Component | File | Purpose |
 |-----------|------|---------|
 | `AiCompanionChat` | `components/shared/AiCompanionChat.jsx` | Floating sparkle button on job detail. Loads history on open. |
-| `AiIntakeWizard` | `components/ai/AiIntakeWizard.jsx` | 3-step intake: chat → measurements → submit. Client portal + jobs screen. |
+| `AiIntakeWizard` | `components/ai/AiIntakeWizard.jsx` | LiDAR capture flow: scan → height → quality report → save to job or contact. |
 | `AiKnowledgeScr` | `components/ai/AiKnowledgeScr.jsx` | CRUD for ai_knowledge entries. Owner only. |
 | `AiSetupWizard` | `components/ai/AiSetupWizard.jsx` | 7-question onboarding wizard. Fires on first login if 0 entries. |
 | `AiFieldAgent` | `components/ai/AiFieldAgent.jsx` | Field-facing AI agent. |
@@ -541,21 +541,19 @@ If Sonnet (the default Claude Code model) is stuck on a hard architecture or API
 
 ## Priority Order (what we're building)
 
-1. **LiDAR Phase 2 — continuous multi-room session**. One scan session, room by room: scan → pause → name it → move to next room → repeat → finish → compiles into one merged spatially-accurate floor plan. Swift plugin upgrade to iOS 17 continuous `RoomCaptureSession`. React UI shows live floor plan building as you walk. Single session limit ~1,500 sqft — larger homes scan by wing (see Phase 4).
+1. **Floor plan PDF — fixtures/objects export** (Swift + jsPDF). `RoomPlanPlugin.swift` doesn't export `room.objects` yet. Opus spec in progress (see `.claude/commands/opus-fixtures.md`). Once Swift serializes objects, jsPDF renderer draws furniture footprints on the floor plan with category labels.
 
-2. **LiDAR → contact persistence**. Scans attach to a **contact** record (not a job). Contact must exist in the system first. Scan saves to their documents. When a job is created for that contact, the scan carries over automatically to the job's documents tab. New Supabase table: `contact_lidar_scans` (contact_id, tenant_id, rooms JSONB, floor_plan_svg, sqft_total, created_at).
+2. **Floor plan PDF — dimension language overhaul**. Replace bounding-box W×D labels with proper architectural wall-to-wall dimension lines. Queued after fixtures so both ship together.
 
-3. **LiDAR Phase 3 — PDF floor plan export**. Export the merged floor plan as a PDF, attach to the contact/job documents. List detected furniture. Material visualization overlay (paint this wall blue) is a future add-on to this phase.
+3. **LiDAR Phase 4 — wing editor + large-space stitching**. Spaces over ~1,500 sqft scan in wings. Editor tab lets you position and connect wings into one plan. GPS anchoring helps align sessions spatially. Window/door type editing lives here.
 
-4. **LiDAR Phase 4 — wing editor + large-space stitching**. For spaces over ~1,500 sqft, scan in wings. Editor tab in project folder lets you position and connect wing scans into one complete plan. GPS anchoring helps mesh sessions spatially. Window/door type editing also lives here.
+4. **Sub portal upgrades** — PM-Sub direct chat thread (separate from general job messages, spec'd April 15 but not yet built), phase start/complete confirmation, CO submission by sub.
 
 5. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
 
-6. **Test AI estimator with live data** — ai_knowledge now seeded with KC pricing. Open a job, ask the AI Companion for a rough estimate, verify it produces real dollar figures.
+6. **Lien waiver generation** — pdf-lib preferred over jsPDF. Auto-populate from job, sub, and payment data.
 
-7. **AI PM dashboard** — owner screen surfacing nightly alert data, job health scores, alert history.
-
-8. **Sub portal upgrades** — daily log submission, phase confirmation, AI companion for subs.
+7. **Test AI estimator with live data** — ai_knowledge seeded with KC pricing. Open a job, ask AI Companion for a rough estimate, verify real dollar figures come back.
 
 **Done:**
 - Client portal progress stepper + realtime
@@ -564,9 +562,16 @@ If Sonnet (the default Claude Code model) is stuck on a hard architecture or API
 - GitHub Actions auto-deploy (Supabase edge functions)
 - ai_knowledge seeded with KC mid-tier GC pricing (21 entries — all trades, labor rates, markup, draw schedule, CO policy, estimating guidelines)
 - **Capacitor iOS native app shipped to TestFlight** (bundle id `com.avenstonekc.avenstone`, Codemagic build pipeline, zero MacInCloud)
-- **RoomPlanPlugin.swift written + wired through Capacitor** — Phase 1 single-room scan returning real length/width/height/sqft/doors/windows in feet on iPhone 12 Pro+ / iPad Pro 2020+ hardware
-- **AiIntakeWizard rewritten as pure LiDAR scanner** (Phase 1) — no AI chat, no manual grid, just Add Room → Start Scan → Done
-- **Phase 1 LiDAR confirmed working on iPhone 17 Pro** — real RoomPlan scans returning live measurements
+- **RoomPlanPlugin.swift + Phase 1 single-room scan** — real length/width/height/sqft/doors/windows in feet on iPhone 12 Pro+ / iPad Pro 2020+ hardware, confirmed on iPhone 17 Pro
+- **AiIntakeWizard rewritten as pure LiDAR scanner** — no AI chat, no manual grid; flow is scan → height capture → quality report → save to job or contact
+- **Capture v2 — GPS stamping, CaptureMode, expanded data model** — `job_lidar_scans` + `contact_lidar_scans` gain 10 nullable columns: capture_mode, height_meters, height_source, height_points[], gps_latitude, gps_longitude, gps_accuracy, quality_score, quality_grade, quality_deductions
+- **Capture v2 — Exterior Mode AR capture** — `ExteriorScanViewController.swift` (ARKit tap-to-place corners, shoelace area, long-press drag, undo/reset), full scan-to-save flow, stored as outline_data JSONB with capture_mode='exterior'
+- **Capture v2 — Mandatory height capture** — `HeightCaptureStep.jsx` shared step, interior auto-derives from LiDAR mesh max, exterior via tap-raycast; both modes require confirmation before save; legacy records get amber badge
+- **Capture v2 — Quality meter (0–100)** — `CaptureQualityTracker.swift` shared scoring, live progress bar in Swift VCs, `CaptureQualityReport.jsx` post-capture report with deductions, grade, and Re-scan/Accept
+- **LiDAR scan persistence** — `FloorPlanTab.jsx` on JobDet, contact floor plans card in ContactsScr; both `contact_lidar_scans` and `job_lidar_scans` tables use TEXT FK
+- **Continuous multi-room ARSession** — `ContinuousRoomScanViewController` (iOS 17+), `pauseARSession: false` between rooms preserving ARKit world origin, room-naming modal between scans, StructureBuilder merge on finish
+- **Floor plan PDF generator** (`src/lib/pdf.js`) — jsPDF letter format, wall/door/window/opening rendering with bi-fold symbols, filled checkerboard scale bar, computed scale ratio in title block, room labels with dimensions + sqft, page 2 with branded header and 7-column room details table; fixtures rendering pending Swift objects export
+- **AI PM Dashboard** — owner-only screen (`AiPmDashboard.jsx`), 30-day nightly alert history, stat cards by alert type
 
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 

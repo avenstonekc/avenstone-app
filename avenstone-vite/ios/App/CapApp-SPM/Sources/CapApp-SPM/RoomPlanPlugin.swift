@@ -239,6 +239,27 @@ public class RoomPlanPlugin: CAPPlugin, CAPBridgedPlugin {
             wallSegments.append(["x1": x1, "z1": z1, "x2": x2, "z2": z2])
         }
 
+        var objectSegs: [[String: Any]] = []
+        for obj in room.objects {
+            guard obj.confidence != .low else { continue }
+            guard let categoryStr = fixtureCategoryString(obj.category) else { continue }
+            let ot = obj.transform
+            let objW = Double(obj.dimensions.x * metersToFeet)
+            let objH = Double(obj.dimensions.y * metersToFeet)
+            let objD = Double(obj.dimensions.z * metersToFeet)
+            guard objW >= 0.3 && objD >= 0.3 else { continue }
+            objectSegs.append([
+                "category": categoryStr,
+                "width": objW,
+                "height": objH,
+                "depth": objD,
+                "x": Double((ot.columns.3.x - minX) * metersToFeet),
+                "z": Double((ot.columns.3.z - minZ) * metersToFeet),
+                "rotationY": Double(atan2(ot.columns.2.x, ot.columns.2.z)),
+                "confidence": obj.confidence == .high ? "high" : "medium",
+            ])
+        }
+
         return [
             "name": name,
             "length": fmt2(lengthFt),
@@ -248,6 +269,7 @@ public class RoomPlanPlugin: CAPPlugin, CAPBridgedPlugin {
             "doors": room.doors.count,
             "windows": room.windows.count,
             "wallSegments": wallSegments,
+            "objects": objectSegs,
             "boundingBox": [
                 "minX": Double(minX), "maxX": Double(maxX),
                 "minZ": Double(minZ), "maxZ": Double(maxZ)
@@ -261,6 +283,23 @@ public class RoomPlanPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     #endif
 }
+
+#if canImport(RoomPlan)
+@available(iOS 16.0, *)
+// Returns a lowercase category string for fixtures we render, nil for furniture/unknown to skip.
+private func fixtureCategoryString(_ category: CapturedRoom.Object.Category) -> String? {
+    if category == .toilet       { return "toilet" }
+    if category == .bathtub      { return "bathtub" }
+    if category == .sink         { return "sink" }
+    if category == .stove        { return "stove" }
+    if category == .oven         { return "oven" }
+    if category == .refrigerator { return "refrigerator" }
+    if category == .dishwasher   { return "dishwasher" }
+    if category == .washerDryer  { return "washerDryer" }
+    if category == .storage      { return "storage" }
+    return nil
+}
+#endif
 
 #if canImport(RoomPlan)
 @available(iOS 16.0, *)
@@ -1013,6 +1052,27 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 ])
             }
 
+            var objectSegs: [[String: Any]] = []
+            for obj in room.objects {
+                guard obj.confidence != .low else { continue }
+                guard let categoryStr = fixtureCategoryString(obj.category) else { continue }
+                let ot = obj.transform
+                let oW = Double(obj.dimensions.x * m2f)
+                let oH = Double(obj.dimensions.y * m2f)
+                let oD = Double(obj.dimensions.z * m2f)
+                guard oW >= 0.3 && oD >= 0.3 else { continue }
+                objectSegs.append([
+                    "category": categoryStr,
+                    "width": oW,
+                    "height": oH,
+                    "depth": oD,
+                    "x": Double((ot.columns.3.x - minX) * m2f),
+                    "z": Double((ot.columns.3.z - minZ) * m2f),
+                    "rotationY": Double(atan2(ot.columns.2.x, ot.columns.2.z)),
+                    "confidence": obj.confidence == .high ? "high" : "medium",
+                ])
+            }
+
             let lFt = (maxZ - minZ) * m2f
             let wFt = (maxX - minX) * m2f
             let hFt = maxY * m2f
@@ -1025,6 +1085,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 "doorSegments": doorSegs,
                 "windowSegments": windowSegs,
                 "openingSegments": openingSegs,
+                "objects": objectSegs,
                 "worldX": Double((minX - gMinX) * m2f),
                 "worldZ": Double((minZ - gMinZ) * m2f),
                 "simulated": false,

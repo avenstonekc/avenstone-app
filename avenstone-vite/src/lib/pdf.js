@@ -311,6 +311,11 @@ const _polyAreaFromSegs = (segs) => {
   return Math.abs(area) / 2;
 };
 
+const _perimeterFromSegs = (segs) => {
+  if (!segs || !segs.length) return 0;
+  return segs.reduce((s, seg) => s + Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1), 0);
+};
+
 // Rotate wallSegments so the longest wall is horizontal, normalize to (0,0) origin.
 // Returns { segs: [{x1,z1,x2,z2,len}], trueWidth, trueHeight } or null if degenerate.
 const _processWalls = (wallSegs) => {
@@ -362,6 +367,38 @@ const _drawArc = (doc, cx, cy, r, startAngle, sweepAngle, steps = 10) => {
   }
 };
 
+// ─── Floor Plan — Fixture rendering ──────────────────────────────────────────
+const FIXTURE_LABELS = {
+  toilet: 'WC', bathtub: 'Tub', sink: 'Sink', stove: 'Stove',
+  oven: 'Oven', refrigerator: 'Fridge', dishwasher: 'DW',
+  washerDryer: 'W/D', storage: 'Storage',
+};
+
+// Draw one fixture as a rotated filled rectangle with a centered label.
+// worldX/worldZ: room's global origin offset in feet (0 for single-room path).
+const _drawFixture = (doc, obj, worldOriginX, worldOriginY, scale, worldX, worldZ) => {
+  const w = obj.width * scale, d = obj.depth * scale;
+  if (w < 2 || d < 2) return;
+  const cx = worldOriginX + (worldX + obj.x) * scale;
+  const cy = worldOriginY + (worldZ + obj.z) * scale;
+  const cos = Math.cos(obj.rotationY || 0), sin = Math.sin(obj.rotationY || 0);
+  const hw = w / 2, hd = d / 2;
+  const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]
+    .map(([rx, rz]) => [cx + rx * cos - rz * sin, cy + rx * sin + rz * cos]);
+  doc.setFillColor(229, 229, 229);
+  doc.setDrawColor(10, 31, 68);
+  doc.setLineWidth(0.5);
+  doc.lines(
+    [[corners[1][0]-corners[0][0], corners[1][1]-corners[0][1]],
+     [corners[2][0]-corners[1][0], corners[2][1]-corners[1][1]],
+     [corners[3][0]-corners[2][0], corners[3][1]-corners[2][1]]],
+    corners[0][0], corners[0][1], [1, 1], 'FD', true
+  );
+  const label = FIXTURE_LABELS[obj.category] || 'Obj';
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(10, 31, 68);
+  doc.text(label, cx, cy + 2, { align: 'center' });
+};
+
 export const buildFloorPlanPDF = (scan, job) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
@@ -372,7 +409,10 @@ export const buildFloorPlanPDF = (scan, job) => {
   const WALL_PT = 3.5;     // wall stroke thickness
   const rooms = scan.rooms || [];
   const date = new Date(scan.created_at || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const totalSqft = rooms.reduce((s, r) => s + (r.sqft || 0), 0);
+  const totalSqft = rooms.reduce((s, r) => {
+    const poly = _polyAreaFromSegs(r.wallSegments || []);
+    return s + (poly > 0 ? Math.round(poly) : (r.sqft || 0));
+  }, 0);
 
   // ── Sheet border (construction drawing style) ─────────────────────────────
   doc.setDrawColor(70, 70, 70); doc.setLineWidth(0.75);
@@ -398,9 +438,8 @@ export const buildFloorPlanPDF = (scan, job) => {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(5.5); doc.setTextColor(180, 180, 180);
   doc.text('FLOOR PLAN', TB_X + 36, TB_Y + 30, { align: 'center' });
 
-  // Left-bottom: scale + url
+  // Left-bottom: scale ratio (written after scale is computed) + url
   doc.setFont('helvetica', 'normal'); doc.setFontSize(5.5); doc.setTextColor(...gray);
-  doc.text('SCALE: AS SHOWN', TB_X + 36, TB_Y + TB_H * 0.50 + 11, { align: 'center' });
   doc.text('avenstonekc.com', TB_X + 36, TB_Y + TB_H * 0.50 + 20, { align: 'center' });
 
   // Right column: project info
@@ -528,18 +567,37 @@ export const buildFloorPlanPDF = (scan, job) => {
           doc.setDrawColor(...navy); doc.setLineWidth(WALL_PT);
           doc.line(p1x - px, p1z - pz, p1x + px, p1z + pz);
           doc.line(p2x - px, p2z - pz, p2x + px, p2z + pz);
-          // Door panel: thin line from jamb1 in swing direction
-          const panelX = p1x + door.nx * dw, panelZ = p1z + door.nz * dw;
+          // Door symbol: swing (<= 4 ft), single bi-fold (4-6 ft), double bi-fold (> 6 ft)
           doc.setDrawColor(...navy); doc.setLineWidth(0.75);
-          doc.line(p1x, p1z, panelX, panelZ);
-          // Arc: 90° sweep from panel direction toward jamb2
-          const arcStart = Math.atan2(door.nz, door.nx);
-          const toJ2 = Math.atan2(p2z - p1z, p2x - p1x);
-          let diff = ((toJ2 - arcStart) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-          if (diff > Math.PI) diff -= Math.PI * 2;
-          const sweep = diff >= 0 ? Math.PI / 2 : -Math.PI / 2;
-          doc.setDrawColor(80, 80, 80); doc.setLineWidth(0.5);
-          _drawArc(doc, p1x, p1z, dw, arcStart, sweep);
+          if (door.width <= 4.0) {
+            const panelX = p1x + door.nx * dw, panelZ = p1z + door.nz * dw;
+            doc.line(p1x, p1z, panelX, panelZ);
+            const arcStart = Math.atan2(door.nz, door.nx);
+            const toJ2 = Math.atan2(p2z - p1z, p2x - p1x);
+            let diff = ((toJ2 - arcStart) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+            if (diff > Math.PI) diff -= Math.PI * 2;
+            const sweep = diff >= 0 ? Math.PI / 2 : -Math.PI / 2;
+            doc.setDrawColor(80, 80, 80); doc.setLineWidth(0.5);
+            _drawArc(doc, p1x, p1z, dw, arcStart, sweep);
+          } else if (door.width <= 6.0) {
+            // Single bi-fold: V symbol — two panel lines meeting at center apex
+            const midX = (p1x + p2x) / 2, midZ = (p1z + p2z) / 2;
+            const apexX = midX + door.nx * dw * 0.38, apexZ = midZ + door.nz * dw * 0.38;
+            doc.line(p1x, p1z, apexX, apexZ);
+            doc.line(p2x, p2z, apexX, apexZ);
+          } else {
+            // Double bi-fold: W symbol — four panel lines, two V's
+            const q1x = p1x + (p2x - p1x) * 0.25, q1z = p1z + (p2z - p1z) * 0.25;
+            const q2x = p1x + (p2x - p1x) * 0.75, q2z = p1z + (p2z - p1z) * 0.75;
+            const c1x = (p1x + q1x) / 2 + door.nx * dw * 0.38;
+            const c1z = (p1z + q1z) / 2 + door.nz * dw * 0.38;
+            const c2x = (q2x + p2x) / 2 + door.nx * dw * 0.38;
+            const c2z = (q2z + p2z) / 2 + door.nz * dw * 0.38;
+            doc.line(p1x, p1z, c1x, c1z);
+            doc.line(q1x, q1z, c1x, c1z);
+            doc.line(q2x, q2z, c2x, c2z);
+            doc.line(p2x, p2z, c2x, c2z);
+          }
         }
 
         // Windows: wall gap + jamb marks + triple-line glass symbol
@@ -581,6 +639,20 @@ export const buildFloorPlanPDF = (scan, job) => {
           const px = -dz * 3, pz = dx * 3; // short perpendicular cap
           doc.line(p1x - px, p1z - pz, p1x + px, p1z + pz);
           doc.line(p2x - px, p2z - pz, p2x + px, p2z + pz);
+        }
+      }
+    }
+
+    // ── Fixtures — drawn after walls/doors/windows, before text layers ─────────
+    // Single-room path omitted: roomToDict objects are in unrotated ARKit space
+    // while _processWalls rotates the room for page layout. Rotation transform
+    // needed before single-room fixtures can render (Phase 2 polish).
+    if (worldMode) {
+      for (const { room } of layout) {
+        const objects = room.objects || [];
+        if (!objects.length) continue;
+        for (const obj of objects) {
+          _drawFixture(doc, obj, worldOriginX, worldOriginY, scale, room.worldX || 0, room.worldZ || 0);
         }
       }
     }
@@ -662,11 +734,26 @@ export const buildFloorPlanPDF = (scan, job) => {
         const poly = _polyAreaFromSegs(proc.segs); if (poly > 0) displaySqft = Math.round(poly);
       }
       const fs = Math.max(7, Math.min(11, w / 7));
+      let labelDW = 0, labelDH = 0;
+      if (worldMode) {
+        labelDW = w / scale; labelDH = h / scale;
+      } else if (proc) {
+        labelDW = proc.trueWidth; labelDH = proc.trueHeight;
+      } else {
+        labelDW = room.length || 0; labelDH = room.width || 0;
+      }
+      const showDims = h > 42 && labelDW > 0 && labelDH > 0;
+      const showSqft = h > 28;
+      const nameY = midY - (showDims ? 9 : showSqft ? 4 : 0);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(...navy);
-      doc.text(room.name || '—', midX, midY - (h > 44 ? 7 : 0), { align: 'center' });
-      if (h > 28) {
+      doc.text(room.name || '—', midX, nameY, { align: 'center' });
+      if (showDims) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...gold);
+        doc.text(`${_dim(labelDW)} × ${_dim(labelDH)} ft`, midX, nameY + 9, { align: 'center' });
+      }
+      if (showSqft) {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gold);
-        doc.text(`${displaySqft.toLocaleString()} sf`, midX, midY + 8, { align: 'center' });
+        doc.text(`${displaySqft.toLocaleString()} sf`, midX, nameY + (showDims ? 18 : 9), { align: 'center' });
       }
     }
 
@@ -677,53 +764,89 @@ export const buildFloorPlanPDF = (scan, job) => {
     const sbY = Math.min(planBottom, DIAG_BTM - 8);
     const scaleBarFt = Math.max(1, Math.round(50 / scale));
     const scaleBarPx = scaleBarFt * scale;
-    doc.setDrawColor(110, 110, 110); doc.setLineWidth(1.5);
-    doc.line(DIAG_LEFT + 4, sbY, DIAG_LEFT + 4 + scaleBarPx, sbY);
-    doc.line(DIAG_LEFT + 4, sbY - 4, DIAG_LEFT + 4, sbY + 4);
-    doc.line(DIAG_LEFT + 4 + scaleBarPx, sbY - 4, DIAG_LEFT + 4 + scaleBarPx, sbY + 4);
-    doc.setFontSize(6.5); doc.setTextColor(90, 90, 90); doc.setFont('helvetica', 'normal');
-    doc.text(`${scaleBarFt} ft`, DIAG_LEFT + 4 + scaleBarPx / 2, sbY - 6, { align: 'center' });
+    const sbX0 = DIAG_LEFT + 4;
+    // Filled checkerboard scale bar
+    doc.setFillColor(...navy); doc.rect(sbX0, sbY - 3, scaleBarPx / 2, 5, 'F');
+    doc.setFillColor(255, 255, 255); doc.rect(sbX0 + scaleBarPx / 2, sbY - 3, scaleBarPx / 2, 5, 'F');
+    doc.setDrawColor(70, 70, 70); doc.setLineWidth(0.75); doc.rect(sbX0, sbY - 3, scaleBarPx, 5, 'S');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(70, 70, 70);
+    doc.text(`0`, sbX0, sbY - 5, { align: 'center' });
+    doc.text(`${scaleBarFt} ft`, sbX0 + scaleBarPx, sbY - 5, { align: 'center' });
+    // Computed scale ratio written into title block
+    const scaleRatioText = `1" = ${(72 / scale).toFixed(1)} ft`;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(5.5); doc.setTextColor(...gray);
+    doc.text(scaleRatioText, TB_X + 36, TB_Y + TB_H * 0.50 + 11, { align: 'center' });
   }
 
   // ── Page 2: Room Details ──────────────────────────────────────────────────
   doc.addPage();
-  let y = M + 10;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...navy);
-  doc.text('ROOM DETAILS', M, y); y += 13;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...gray);
-  doc.text(job.address || '', M, y); y += 12;
-  doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 14;
+  // Branded header bar
+  doc.setFillColor(...navy); doc.rect(0, 0, W, 52, 'F');
+  doc.setFillColor(...gold); doc.rect(0, 52, W, 3, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...gold);
+  doc.text('AVENSTONE GROUP', M, 22);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(200, 200, 200);
+  doc.text('ROOM DETAILS', M, 36);
+  doc.setFontSize(8); doc.setTextColor(180, 180, 180);
+  doc.text(job.address || '', W - M, 22, { align: 'right' });
+  doc.text(`${totalSqft.toLocaleString()} sq ft total  ·  ${rooms.length} room${rooms.length !== 1 ? 's' : ''}`, W - M, 36, { align: 'right' });
+  let y = 70;
 
-  const cols = [M, M + 185, M + 290, M + 380, M + 455];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...gray);
-  ['Room', 'Dimensions', 'Height', 'Sq Ft'].forEach((h, i) => doc.text(h, cols[i], y));
+  // Column layout: Room | Floor Area | Perimeter | Wall Area | Ceiling | Doors | Win.
+  const p2cols = [M, M + 115, M + 180, M + 245, M + 318, M + 386, M + 425];
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...gray);
+  ['Room', 'Floor Area', 'Perimeter', 'Wall Area', 'Ceiling', 'Doors', 'Win.'].forEach((lbl, i) => doc.text(lbl, p2cols[i], y));
   y += 5; doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81);
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(55, 65, 81);
+  let totFloor = 0, totPerim = 0, totWall = 0, totDoors = 0, totWin = 0;
   for (const room of rooms) {
     if (y > 720) { doc.addPage(); y = M + 10; }
-    const isEmpty = (room.wallSegments || []).length < 3;
+    const wallSegs = room.wallSegments || [];
+    const isEmpty = wallSegs.length < 3;
     if (isEmpty) {
-      doc.text(room.name || '—', cols[0], y);
+      doc.text(room.name || '—', p2cols[0], y);
       doc.setTextColor(150, 150, 150);
-      doc.text('Scan incomplete', cols[1], y);
+      doc.text('Scan incomplete', p2cols[1], y);
       doc.setTextColor(55, 65, 81);
-      y += 13;
+      y += 12;
       continue;
     }
-    const proc = worldMode ? null : _processWalls(room.wallSegments);
-    const dw = proc ? proc.trueWidth : (room.length || 0);
-    const dh = proc ? proc.trueHeight : (room.width || 0);
+    const proc = worldMode ? null : _processWalls(wallSegs);
     let tableSqft = room.sqft || 0;
-    if (worldMode && room.wallSegments && room.wallSegments.length >= 3) {
-      const poly = _polyAreaFromSegs(room.wallSegments); if (poly > 0) tableSqft = Math.round(poly);
+    if (worldMode && wallSegs.length >= 3) {
+      const poly = _polyAreaFromSegs(wallSegs); if (poly > 0) tableSqft = Math.round(poly);
     } else if (proc && proc.segs && proc.segs.length >= 3) {
       const poly = _polyAreaFromSegs(proc.segs); if (poly > 0) tableSqft = Math.round(poly);
     }
-    doc.text(room.name || '—', cols[0], y);
-    doc.text(`${_dim(dw)} × ${_dim(dh)} ft`, cols[1], y);
-    doc.text(`${_dim(room.height)} ft`, cols[2], y);
-    doc.text(`${tableSqft.toLocaleString()}`, cols[3], y);
-    y += 13;
+    const perim = _perimeterFromSegs(wallSegs);
+    const wallArea = Math.round(wallSegs.reduce((s, seg) =>
+      s + Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1) * (room.height || 0), 0));
+    const doorCount = (room.doorSegments || []).length;
+    const winCount = (room.windowSegments || []).length;
+    totFloor += tableSqft; totPerim += perim; totWall += wallArea;
+    totDoors += doorCount; totWin += winCount;
+    doc.text(room.name || '—', p2cols[0], y);
+    doc.text(`${tableSqft.toLocaleString()} sf`, p2cols[1], y);
+    doc.text(`${perim.toFixed(1)} ft`, p2cols[2], y);
+    doc.text(`${wallArea.toLocaleString()} sf`, p2cols[3], y);
+    doc.text(`${tableSqft.toLocaleString()} sf`, p2cols[4], y);
+    doc.text(`${doorCount}`, p2cols[5], y);
+    doc.text(`${winCount}`, p2cols[6], y);
+    y += 12;
+  }
+  // Totals row
+  if (rooms.length > 1) {
+    y += 3; doc.setDrawColor(...gold); doc.setLineWidth(0.75); doc.line(M, y, W - M, y); y += 8;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...navy);
+    doc.text('TOTAL', p2cols[0], y);
+    doc.text(`${totFloor.toLocaleString()} sf`, p2cols[1], y);
+    doc.text(`—`, p2cols[2], y);
+    doc.text(`${totWall.toLocaleString()} sf`, p2cols[3], y);
+    doc.text(`${totFloor.toLocaleString()} sf`, p2cols[4], y);
+    doc.text(`${totDoors}`, p2cols[5], y);
+    doc.text(`${totWin}`, p2cols[6], y);
+    y += 14;
   }
 
   // Footer on room-details pages only (page 1 uses the title block)
