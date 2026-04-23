@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-
-const AI_MASTER_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-master-agent';
-const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ';
+import { AI_MASTER_URL, ANON_KEY } from '../../lib/supabase';
 
 const EXAMPLE_PROMPTS = [
   'Show me what needs attention today',

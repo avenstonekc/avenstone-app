@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbLoadSubRating, AV_USER_ID, ANON_KEY } from '../../lib/supabase';
+import { sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbLoadSubRating, AV_USER_ID, ANON_KEY, AI_SUB_PRICING_URL } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 import SubJobView from './SubJobView';
 import SubOnboardingWizard from './SubOnboardingWizard';
-
-const AI_SUB_PRICING_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-sub-pricing';
 const NAV = '#0A1F44';
 const GOLD = '#C9A84C';
 const BORDER = '#E8E4DC';

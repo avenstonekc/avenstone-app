@@ -1,9 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, PROCESS_TRANSCRIPT_URL, GENERATE_ESTIMATE_URL } from '../../../lib/supabase';
 import { Ic, f$, isMob } from '../../../lib/utils';
-
-const PROCESS_TRANSCRIPT_URL = `https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/process-transcript`;
-const GENERATE_ESTIMATE_URL = `https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/generate-estimate-from-session`;
 
 const NAV = '#0A1F44';
 const GOLD = '#C9A84C';

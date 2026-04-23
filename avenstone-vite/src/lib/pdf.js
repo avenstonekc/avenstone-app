@@ -355,6 +355,24 @@ const _processWalls = (wallSegs) => {
   return { segs, trueWidth: tw, trueHeight: th };
 };
 
+// Draw an architectural dimension line with extension stubs, tick marks, and label.
+// (wx1,wy1)→(wx2,wy2): wall endpoints in page coords. (nx,ny): outward unit normal.
+const _drawDimLine = (doc, wx1, wy1, wx2, wy2, nx, ny, labelText) => {
+  const EXT = 11; // extension line length (pt)
+  const ex1 = wx1 + nx * EXT, ey1 = wy1 + ny * EXT;
+  const ex2 = wx2 + nx * EXT, ey2 = wy2 + ny * EXT;
+  doc.setDrawColor(110, 110, 110); doc.setLineWidth(0.4);
+  doc.line(wx1, wy1, ex1, ey1);
+  doc.line(wx2, wy2, ex2, ey2);
+  doc.line(ex1, ey1, ex2, ey2);
+  const dl = Math.hypot(ex2 - ex1, ey2 - ey1) || 1;
+  const tdx = -(ey2 - ey1) / dl * 2.5, tdy = (ex2 - ex1) / dl * 2.5;
+  doc.line(ex1 - tdx, ey1 - tdy, ex1 + tdx, ey1 + tdy);
+  doc.line(ex2 - tdx, ey2 - tdy, ex2 + tdx, ey2 + tdy);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(60, 60, 60);
+  doc.text(labelText, (ex1 + ex2) / 2 + nx * 5.5, (ey1 + ey2) / 2 + ny * 5.5, { align: 'center', baseline: 'middle' });
+};
+
 // Draw an arc as line segments. sweepAngle can be negative (CW).
 const _drawArc = (doc, cx, cy, r, startAngle, sweepAngle, steps = 10) => {
   const da = sweepAngle / steps;
@@ -657,38 +675,36 @@ export const buildFloorPlanPDF = (scan, job) => {
       }
     }
 
-    // ── Wall segment labels — deduplicated across rooms in world mode ──────────
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(55, 55, 55);
-
+    // ── Wall dimension lines (architectural style) ────────────────────────────
     if (worldMode) {
+      // Deduplicate shared walls between adjacent rooms
       const allSegs = layout.flatMap(item => item.segs || []);
-      // Overall plan centroid for outward-offset direction
-      const allPts = allSegs.flatMap(s => [[s.x1, s.z1], [s.x2, s.z2]]);
-      const planCX = allPts.length ? worldOriginX + allPts.reduce((a, p) => a + p[0], 0) / allPts.length * scale : worldOriginX;
-      const planCZ = allPts.length ? worldOriginY + allPts.reduce((a, p) => a + p[1], 0) / allPts.length * scale : worldOriginY;
-      // Deduplicate: skip any seg whose midpoint is within 0.4 ft of an already-labeled seg at the same angle
       const labeled = [];
-      for (const seg of allSegs) {
-        const len = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
-        if (len < 0.8) continue;
-        const mx = (seg.x1 + seg.x2) / 2, mz = (seg.z1 + seg.z2) / 2;
-        const dup = labeled.some(ls => {
-          if (Math.hypot(mx - (ls.x1 + ls.x2) / 2, mz - (ls.z1 + ls.z2) / 2) > 0.4) return false;
-          const ll = Math.hypot(ls.x2 - ls.x1, ls.z2 - ls.z1) || 1;
-          return Math.abs(((seg.x2 - seg.x1) / len) * ((ls.x2 - ls.x1) / ll) +
-                          ((seg.z2 - seg.z1) / len) * ((ls.z2 - ls.z1) / ll)) > 0.93;
-        });
-        if (dup) continue;
-        labeled.push(seg);
-        const smx = worldOriginX + mx * scale, smz = worldOriginY + mz * scale;
-        const vx = smx - planCX, vz = smz - planCZ, vl = Math.sqrt(vx * vx + vz * vz) || 1;
-        let lx = smx + (vx / vl) * 13, lz = smz + (vz / vl) * 13;
-        // If label lands outside the drawing area, flip it inward to avoid overlapping dimension lines
-        if (lx < DIAG_LEFT + DIM_OFF || lx > DIAG_RIGHT - DIM_OFF ||
-            lz < DIAG_TOP + DIM_OFF || lz > DIAG_BTM - DIM_OFF) {
-          lx = smx - (vx / vl) * 13; lz = smz - (vz / vl) * 13;
+      for (const item of layout) {
+        if (!item.segs || !item.segs.length) continue;
+        const cxB = item.x + item.w / 2, czB = item.y + item.h / 2;
+        for (const seg of item.segs) {
+          const len = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
+          if (len < 0.8) continue;
+          const mx = (seg.x1 + seg.x2) / 2, mz = (seg.z1 + seg.z2) / 2;
+          const dup = labeled.some(ls => {
+            if (Math.hypot(mx - (ls.x1 + ls.x2) / 2, mz - (ls.z1 + ls.z2) / 2) > 0.4) return false;
+            const ll = Math.hypot(ls.x2 - ls.x1, ls.z2 - ls.z1) || 1;
+            return Math.abs(((seg.x2 - seg.x1) / len) * ((ls.x2 - ls.x1) / ll) +
+                            ((seg.z2 - seg.z1) / len) * ((ls.z2 - ls.z1) / ll)) > 0.93;
+          });
+          if (dup) continue;
+          labeled.push(seg);
+          // Outward normal: wall midpoint → room centroid is inward; perpendicular toward centroid is inward
+          const smx = worldOriginX + mx * scale, smz = worldOriginY + mz * scale;
+          const wdx = seg.x2 - seg.x1, wdz = seg.z2 - seg.z1, wl = len || 1;
+          let nx = -wdz / wl, ny = wdx / wl;
+          // Choose the perpendicular pointing away from room centroid
+          if ((smx - cxB) * nx + (smz - czB) * ny < 0) { nx = -nx; ny = -ny; }
+          const p1x = worldOriginX + seg.x1 * scale, p1y = worldOriginY + seg.z1 * scale;
+          const p2x = worldOriginX + seg.x2 * scale, p2y = worldOriginY + seg.z2 * scale;
+          _drawDimLine(doc, p1x, p1y, p2x, p2y, nx, ny, `${len.toFixed(1)}'`);
         }
-        doc.text(`${len.toFixed(1)}'`, lx, lz, { align: 'center' });
       }
     } else {
       for (const { proc, x, y: ry, w, h } of layout) {
@@ -696,9 +712,13 @@ export const buildFloorPlanPDF = (scan, job) => {
         const cxB = x + w / 2, czB = ry + h / 2;
         for (const seg of proc.segs) {
           if (seg.len < 0.8) continue;
-          const mx = x + (seg.x1 + seg.x2) / 2 * scale, mz = ry + (seg.z1 + seg.z2) / 2 * scale;
-          const vx = mx - cxB, vz = mz - czB, vl = Math.sqrt(vx * vx + vz * vz) || 1;
-          doc.text(`${seg.len.toFixed(1)}'`, mx + (vx / vl) * 10, mz + (vz / vl) * 10, { align: 'center' });
+          const p1x = x + seg.x1 * scale, p1y = ry + seg.z1 * scale;
+          const p2x = x + seg.x2 * scale, p2y = ry + seg.z2 * scale;
+          const mx = (p1x + p2x) / 2, my = (p1y + p2y) / 2;
+          const wdx = seg.x2 - seg.x1, wdz = seg.z2 - seg.z1, wl = seg.len || 1;
+          let nx = -wdz / wl, ny = wdx / wl;
+          if ((mx - cxB) * nx + (my - czB) * ny < 0) { nx = -nx; ny = -ny; }
+          _drawDimLine(doc, p1x, p1y, p2x, p2y, nx, ny, `${seg.len.toFixed(1)}'`);
         }
       }
     }
@@ -734,26 +754,13 @@ export const buildFloorPlanPDF = (scan, job) => {
         const poly = _polyAreaFromSegs(proc.segs); if (poly > 0) displaySqft = Math.round(poly);
       }
       const fs = Math.max(7, Math.min(11, w / 7));
-      let labelDW = 0, labelDH = 0;
-      if (worldMode) {
-        labelDW = w / scale; labelDH = h / scale;
-      } else if (proc) {
-        labelDW = proc.trueWidth; labelDH = proc.trueHeight;
-      } else {
-        labelDW = room.length || 0; labelDH = room.width || 0;
-      }
-      const showDims = h > 42 && labelDW > 0 && labelDH > 0;
       const showSqft = h > 28;
-      const nameY = midY - (showDims ? 9 : showSqft ? 4 : 0);
+      const nameY = midY - (showSqft ? 4 : 0);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(...navy);
       doc.text(room.name || '—', midX, nameY, { align: 'center' });
-      if (showDims) {
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...gold);
-        doc.text(`${_dim(labelDW)} × ${_dim(labelDH)} ft`, midX, nameY + 9, { align: 'center' });
-      }
       if (showSqft) {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...gold);
-        doc.text(`${displaySqft.toLocaleString()} sf`, midX, nameY + (showDims ? 18 : 9), { align: 'center' });
+        doc.text(`${displaySqft.toLocaleString()} sf`, midX, nameY + 9, { align: 'center' });
       }
     }
 

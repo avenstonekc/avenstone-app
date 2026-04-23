@@ -15,6 +15,7 @@ export const setSession = (tenantId, userId) => { AV_TENANT = tenantId; AV_USER_
 export const setGlobalJobs = jobs => { AV_JOBS = jobs; };
 
 // ─── Edge function URLs ───────────────────────────────────────────────────────
+export const SUPABASE_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co';
 export const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ';
 const FN = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1';
 export const INVITE_URL        = `${FN}/send-invite`;
@@ -26,17 +27,22 @@ export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
 export const NOTIFY_REALTOR_URL = `${FN}/notify-realtor`;
 export const NOTIFY_EMAIL_URL   = `${FN}/notify-email`;
 export const authHeader = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` });
-export const AI_INTAKE_URL          = `${FN}/ai-intake`;
-export const AI_PM_NIGHTLY_URL      = `${FN}/ai-pm-nightly`;
-export const AI_COMPANION_URL       = `${FN}/ai-companion`;
-export const AI_HOME_URL            = `${FN}/ai-home-companion`;
-export const PROCESS_TRANSCRIPT_URL = `${FN}/process-transcript`;
-export const AI_ERROR_LOGGER_URL    = `${FN}/ai-error-logger`;
-export const AI_FIELD_AGENT_URL     = `${FN}/ai-field-agent`;
-export const MEASURE_GUIDE_URL      = `${FN}/measure-guide`;
-export const AI_SUB_ONBOARD_URL    = `${FN}/ai-sub-onboard`;
-export const AI_SUB_PRICING_URL    = `${FN}/ai-sub-pricing`;
-export const AI_MASTER_URL         = `${FN}/ai-master-agent`;
+export const AI_INTAKE_URL              = `${FN}/ai-intake`;
+export const AI_PM_NIGHTLY_URL          = `${FN}/ai-pm-nightly`;
+export const AI_PM_URL                  = `${FN}/ai-project-manager`;
+export const AI_COMPANION_URL           = `${FN}/ai-companion`;
+export const AI_HOME_URL                = `${FN}/ai-home-companion`;
+export const PROCESS_TRANSCRIPT_URL     = `${FN}/process-transcript`;
+export const GENERATE_ESTIMATE_URL      = `${FN}/generate-estimate-from-session`;
+export const AI_ERROR_LOGGER_URL        = `${FN}/ai-error-logger`;
+export const AI_FIELD_AGENT_URL         = `${FN}/ai-field-agent`;
+export const MEASURE_GUIDE_URL          = `${FN}/measure-guide`;
+export const AI_SUB_ONBOARD_URL         = `${FN}/ai-sub-onboard`;
+export const AI_SUB_PRICING_URL         = `${FN}/ai-sub-pricing`;
+export const AI_MASTER_URL              = `${FN}/ai-master-agent`;
+export const ADDRESS_AUTOCOMPLETE_URL   = `${FN}/address-autocomplete`;
+export const GET_CONTRACTOR_PROFILE_URL = `${FN}/get-contractor-profile`;
+export const GET_JOB_STATUS_URL         = `${FN}/get-job-status`;
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 export const sbSave = async j => {

@@ -1,11 +1,8 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { SUPABASE_URL, ANON_KEY } from '../../lib/supabase';
 
-// Standalone Supabase client — no auth needed, public anon key
-const sb = createClient(
-  'https://cbfftukmhqvvjlrlnltk.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ'
-);
+const sb = createClient(SUPABASE_URL, ANON_KEY);
 
 function Stars({ value, onChange }) {
   const [hover, setHover] = useState(0);

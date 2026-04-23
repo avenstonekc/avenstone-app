@@ -3,7 +3,7 @@ import { sb, sbLoadSubDirectory, sbInviteSub, AV_TENANT } from '../../lib/supaba
 import { Ic } from '../../lib/utils';
 import StarRating from '../shared/StarRating';
 import SubRateModal from './SubRateModal';
-import SubOnboardingModal from './SubOnboardingModal';
+import SubComplianceModal from './SubComplianceModal';
 
 export default function SubDir({ profile }) {
   const [subs, setSubs] = useState([]);
@@ -92,7 +92,7 @@ export default function SubDir({ profile }) {
         </div>
       </div>}
       {ratingSub && <SubRateModal sub={ratingSub} onClose={() => setRatingSub(null)} profile={profile} />}
-      {onboardingSub && <SubOnboardingModal sub={onboardingSub} onClose={() => setOnboardingSub(null)} onUpdated={updated => { setSubs(ss => ss.map(s => s.id === updated.id ? updated : s)); setOnboardingSub(updated); }} />}
+      {onboardingSub && <SubComplianceModal sub={onboardingSub} onClose={() => setOnboardingSub(null)} onUpdated={updated => { setSubs(ss => ss.map(s => s.id === updated.id ? updated : s)); setOnboardingSub(updated); }} />}
     </div>
   );
 }

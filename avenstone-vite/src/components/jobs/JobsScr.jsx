@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY } from '../../lib/supabase';
+import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY, ADDRESS_AUTOCOMPLETE_URL } from '../../lib/supabase';
 import { Ic, STATS, sc, sl, f$, isMob, ls } from '../../lib/utils';
 import JobDet from './JobDet';
 import AiIntakeWizard from '../ai/AiIntakeWizard';
@@ -46,7 +46,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
     if (val.length < 4) { setAddrSuggestions([]); return; }
     setAddrLoading(true);
     try {
-      const res = await fetch('https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/address-autocomplete', {
+      const res = await fetch(ADDRESS_AUTOCOMPLETE_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
         body: JSON.stringify({ input: val }),
       });

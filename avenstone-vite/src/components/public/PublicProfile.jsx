@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { SUPABASE_URL, ANON_KEY, GET_CONTRACTOR_PROFILE_URL } from '../../lib/supabase';
 
-const sb = createClient(
-  'https://cbfftukmhqvvjlrlnltk.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ'
-);
+const sb = createClient(SUPABASE_URL, ANON_KEY);
 
 function Stars({ rating, size = 16 }) {
   const full = Math.round(rating);
@@ -58,7 +56,7 @@ export default function PublicProfile({ tenantId }) {
 
   useEffect(() => {
     if (!tenantId) { setError(true); setLoading(false); return; }
-    fetch(`https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/get-contractor-profile?tenant=${tenantId}`)
+    fetch(`${GET_CONTRACTOR_PROFILE_URL}?tenant=${tenantId}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => { setData(d); setLoading(false); })
       .catch(() => { setError(true); setLoading(false); });

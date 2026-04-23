@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, sbNotify, authHeader } from '../../lib/supabase';
+import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, AI_PM_URL, sbNotify, authHeader } from '../../lib/supabase';
 import { Ic, sc, sl, f$, STATS } from '../../lib/utils';
-
-const AI_PM_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-project-manager';
 import InfoTab from './tabs/InfoTab';
 import ScheduleTab from './tabs/ScheduleTab';
 import { NotesTab, PhotosTab } from './tabs/NotesPhotosTab';

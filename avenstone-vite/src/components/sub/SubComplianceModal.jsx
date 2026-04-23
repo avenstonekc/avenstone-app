@@ -8,7 +8,7 @@ const signStoragePath = async path => {
 };
 const pathFromUrl = url => url?.split('/job-documents/')[1] || null;
 
-export default function SubOnboardingModal({ sub, onClose, onUpdated }) {
+export default function SubComplianceModal({ sub, onClose, onUpdated }) {
   const [tab, setTab] = useState('w9');
   const [w9Uploading, setW9Uploading] = useState(false);
   const [insUploading, setInsUploading] = useState(false);

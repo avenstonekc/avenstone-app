@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-
-const SB_FN = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/get-job-status';
-const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ';
+import { GET_JOB_STATUS_URL, ANON_KEY } from '../../lib/supabase';
 const SC = { lead: '#9CA3AF', active: '#C9A84C', complete: '#10B981', punch: '#3B82F6', cancelled: '#EF4444', on_hold: '#F97316' };
 const SL = { lead: 'Lead', active: 'Active', complete: 'Complete', punch: 'Punch List', cancelled: 'Cancelled', on_hold: 'On Hold' };
 const phSC = { complete: '#10B981', in_progress: '#C9A84C', not_started: '#E5E7EB' };
@@ -13,9 +11,9 @@ export default function StatusPage({ token }) {
   useEffect(() => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10000);
-    fetch(`${SB_FN}?token=${encodeURIComponent(token)}`, {
+    fetch(`${GET_JOB_STATUS_URL}?token=${encodeURIComponent(token)}`, {
       signal: ctrl.signal,
-      headers: { Authorization: `Bearer ${ANON}`, apikey: ANON },
+      headers: { Authorization: `Bearer ${ANON_KEY}`, apikey: ANON_KEY },
     })
       .then(r => { clearTimeout(timer); if (!r.ok) throw new Error(`Project not found (${r.status})`); return r.json(); })
       .then(d => setData(d))
