@@ -21,6 +21,7 @@ Deno.serve(async (req) => {
 
     if (existing) {
       userId = existing.id;
+      await sb.from("profiles").upsert({ id: userId, tenant_id, full_name: client_name || "", email, role: "client" }, { onConflict: "id" });
     } else {
       const { data, error } = await sb.auth.admin.inviteUserByEmail(email, {
         data: { full_name: client_name || "", role: "client", tenant_id },
