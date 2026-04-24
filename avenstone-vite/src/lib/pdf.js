@@ -917,21 +917,13 @@ export const buildFloorPlanPDF = (scan, job) => {
   const totalFloors = floors.length;
   const totalPages = totalFloors + 1; // floor pages + summary page
 
-  // Determine orientation for first floor to set initial doc format
-  const firstFloorWorldMode = floors[0]?.rooms.some(r => r.worldX !== undefined && r.worldX !== null);
-  const doc = new jsPDF({ unit: 'pt', format: firstFloorWorldMode ? [792, 612] : 'letter', orientation: 'portrait' });
+  // Floor plan pages are always landscape letter (plan content is normalized to trueW ≥ trueH).
+  const doc = new jsPDF({ unit: 'pt', format: [792, 612] });
 
   floors.forEach((floor, fi) => {
-    const worldMode = floor.rooms.some(r => r.worldX !== undefined && r.worldX !== null);
-    const W = worldMode ? 792 : 612;
-    const H = worldMode ? 612 : 792;
-    if (fi === 0) {
-      // First page already created — just render
-    } else {
-      doc.addPage(worldMode ? [792, 612] : 'letter');
-    }
-    const pageNum = fi + 1;
-    _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, pageNum, totalPages, W, H);
+    const W = 792, H = 612;
+    if (fi > 0) doc.addPage([792, 612]);
+    _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H);
   });
 
   // Summary page (always portrait letter)
