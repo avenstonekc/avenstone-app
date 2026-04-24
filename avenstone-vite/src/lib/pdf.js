@@ -875,7 +875,7 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
     y += 5; doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
 
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(55, 65, 81);
-    let fTotFloor = 0, fTotDoors = 0, fTotWin = 0;
+    let fTotFloor = 0, fTotPerim = 0, fTotWallArea = 0, fTotDoors = 0, fTotWin = 0;
 
     for (const room of floor.rooms) {
       if (y > 720) { doc.addPage(); y = M + 10; }
@@ -893,7 +893,7 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
       const perim = _perimeterFromSegs(wallSegs);
       const wallArea = Math.round(wallSegs.reduce((s, seg) => s + Math.hypot(seg.x2-seg.x1, seg.z2-seg.z1) * (room.height || 0), 0));
       const doorCount = (room.doorSegments || []).length, winCount = (room.windowSegments || []).length;
-      fTotFloor += sqft; fTotDoors += doorCount; fTotWin += winCount;
+      fTotFloor += sqft; fTotPerim += perim; fTotWallArea += wallArea; fTotDoors += doorCount; fTotWin += winCount;
       doc.text(room.name || '—', cols[0], y);
       doc.text(`${sqft.toLocaleString()} sf`, cols[1], y);
       doc.text(`${perim.toFixed(1)} ft`, cols[2], y);
@@ -909,6 +909,8 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...navy);
       doc.text(`${floor.floorName} Total`, cols[0], y);
       doc.text(`${fTotFloor.toLocaleString()} sf`, cols[1], y);
+      doc.text(`${fTotPerim.toFixed(1)} ft`, cols[2], y);
+      doc.text(`${fTotWallArea.toLocaleString()} sf`, cols[3], y);
       doc.text(`${fTotDoors}`, cols[5], y); doc.text(`${fTotWin}`, cols[6], y);
       y += 14;
     }
