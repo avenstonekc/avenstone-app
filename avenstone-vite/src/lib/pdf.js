@@ -723,25 +723,31 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
 
     // ── Dimension lines — exterior walls only ─────────────────────────────────
     const planCentX = trueW / 2, planCentZ = trueH / 2;
-    const dimLabeled = [];
+    const placedDims = []; // {nx, nz, dist, tMin, tMax, off}
     for (const seg of allWallSegs) {
       if (seg.interior) continue;
       const len = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
       if (len < 0.8) continue;
       const mx = (seg.x1 + seg.x2) / 2, mz = (seg.z1 + seg.z2) / 2;
-      const dup = dimLabeled.some(ls => {
-        if (Math.hypot(mx - (ls.x1+ls.x2)/2, mz - (ls.z1+ls.z2)/2) > 0.4) return false;
-        const ll = Math.hypot(ls.x2-ls.x1, ls.z2-ls.z1) || 1;
-        return Math.abs(((seg.x2-seg.x1)/len)*((ls.x2-ls.x1)/ll) + ((seg.z2-seg.z1)/len)*((ls.z2-ls.z1)/ll)) > 0.93;
-      });
-      if (dup) continue;
-      dimLabeled.push(seg);
       const wdx = seg.x2 - seg.x1, wdz = seg.z2 - seg.z1, wl = len || 1;
       let nx = -wdz / wl, nz = wdx / wl;
       if ((mx - planCentX) * nx + (mz - planCentZ) * nz < 0) { nx = -nx; nz = -nz; }
+      const dist = nx * mx + nz * mz;
+      const t1 = -nz * seg.x1 + nx * seg.z1, t2 = -nz * seg.x2 + nx * seg.z2;
+      const tMin = Math.min(t1, t2), tMax = Math.max(t1, t2);
+      let isDup = false, off = 44;
+      for (const pd of placedDims) {
+        if (pd.nx * nx + pd.nz * nz < 0.93) continue;
+        if (Math.abs(pd.dist - dist) > 0.5) continue;
+        const overlap = Math.min(pd.tMax, tMax) - Math.max(pd.tMin, tMin);
+        if (overlap / len > 0.5) { isDup = true; break; }
+        if (overlap > -3.0) off = Math.max(off, pd.off + 18);
+      }
+      if (isDup) continue;
+      placedDims.push({ nx, nz, dist, tMin, tMax, off });
       const p1px = oX + seg.x1 * scale, p1py = oY + seg.z1 * scale;
       const p2px = oX + seg.x2 * scale, p2py = oY + seg.z2 * scale;
-      _dimLine(doc, p1px, p1py, p2px, p2py, nx, nz, _feetInches(len));
+      _dimLine(doc, p1px, p1py, p2px, p2py, nx, nz, _feetInches(len), { off });
     }
     // Overall building dimensions (heavier, farther offset)
     _dimLine(doc, oX, oY, oX + trueW * scale, oY, 0, -1, _feetInches(trueW), { off: 62, lw: 1.0 });
