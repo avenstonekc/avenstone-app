@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
       supabase.from("jobs").select("*").eq("id", job_id).single(),
       supabase.from("job_notes").select("*").eq("job_id", job_id).order("created_at", { ascending: false }).limit(10),
       supabase.from("change_orders").select("*").eq("job_id", job_id),
-      supabase.from("payments").select("*").eq("job_id", job_id),
+      supabase.from("job_transactions").select("*").eq("job_id", job_id),
       supabase.from("schedule_phases").select("*").eq("job_id", job_id).order("start_date"),
       supabase.from("job_subs").select("*, profiles(full_name, phone)").eq("job_id", job_id),
       supabase.from("job_materials").select("*").eq("job_id", job_id).order("created_at"),
@@ -302,7 +302,9 @@ Deno.serve(async (req) => {
     ]);
 
     const coTotal = changeOrders?.reduce((s: number, co: any) => s + (co.amount ?? 0), 0) ?? 0;
-    const paidTotal = payments?.reduce((s: number, p: any) => s + (p.amount ?? 0), 0) ?? 0;
+    const totalIn = (payments || []).filter((t: any) => t.direction === 'in' && t.status === 'paid').reduce((s: number, t: any) => s + (t.amount ?? 0), 0);
+    const totalOut = (payments || []).filter((t: any) => t.direction === 'out' && t.status === 'paid').reduce((s: number, t: any) => s + (t.amount ?? 0), 0);
+    const outstanding = (payments || []).filter((t: any) => t.direction === 'in' && t.status === 'pending').reduce((s: number, t: any) => s + (t.amount ?? 0), 0);
 
     const jobContext = `
 JOB DETAILS
@@ -312,8 +314,10 @@ Client: ${job?.client_name ?? "N/A"}
 Status: ${job?.status ?? "N/A"}
 Contract Value: $${(job?.contract_value ?? 0).toLocaleString()}
 Change Orders Total: $${coTotal.toLocaleString()}
-Payments Received: $${paidTotal.toLocaleString()}
-Balance Remaining: $${((job?.contract_value ?? 0) + coTotal - paidTotal).toLocaleString()}
+Income Received (Paid): $${totalIn.toLocaleString()}
+Expenses Paid Out: $${totalOut.toLocaleString()}
+Outstanding (Unpaid Invoices): $${outstanding.toLocaleString()}
+Balance vs Contract: $${((job?.contract_value ?? 0) + coTotal - totalIn).toLocaleString()}
 Start Date: ${job?.start_date ?? "N/A"}
 Target Completion: ${job?.target_completion ?? "N/A"}
 Description: ${job?.description ?? "N/A"}

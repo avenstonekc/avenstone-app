@@ -5,31 +5,25 @@ import InfoTab from './tabs/InfoTab';
 import ScheduleTab from './tabs/ScheduleTab';
 import { NotesTab, PhotosTab } from './tabs/NotesPhotosTab';
 import DocsTab from './tabs/DocsTab';
-import COTab from './tabs/COTab';
-import EstimateTab from './tabs/EstimateTab';
 import MessagesTab from './tabs/MessagesTab';
 import LogsTab from './tabs/LogsTab';
-import PaymentsTab from './tabs/PaymentsTab';
 import ConsultationTab from './tabs/ConsultationTab';
 import AiCompanionChat from '../shared/AiCompanionChat';
 import MaterialsTab from './tabs/MaterialsTab';
 import FloorPlanTab from './tabs/FloorPlanTab';
-import CostsTab from './tabs/CostsTab';
+import FinancialsTab from './tabs/FinancialsTab';
 
 const TABS = [
   { id: 'info', lb: 'Info', ic: 'info' },
+  { id: 'financials', lb: 'Financials', ic: 'doc' },
   { id: 'sched', lb: 'Schedule', ic: 'sched' },
-  { id: 'materials', lb: 'Materials', ic: 'box' },
+  { id: 'msgs', lb: 'Messages', ic: 'note' },
   { id: 'notes', lb: 'Notes', ic: 'note' },
   { id: 'photos', lb: 'Photos', ic: 'cam' },
-  { id: 'docs', lb: 'Documents', ic: 'folder' },
-  { id: 'co', lb: 'Change Orders', ic: 'warn' },
-  { id: 'msgs', lb: 'Messages', ic: 'note' },
-  { id: 'bids', lb: 'Estimate', ic: 'doc' },
   { id: 'logs', lb: 'Daily Logs', ic: 'clip' },
-  { id: 'payments', lb: 'Payments', ic: 'doc' },
-  { id: 'floorplan', lb: 'Floor Plan', ic: 'doc' },
-  { id: 'costs', lb: 'Costs', ic: 'doc' },
+  { id: 'materials', lb: 'Materials', ic: 'box' },
+  { id: 'docs', lb: 'Documents', ic: 'folder' },
+  { id: 'floorplan', lb: 'Scanner', ic: 'doc' },
 ];
 
 export default function JobDet({ job, upd, del, back, profile }) {
@@ -103,8 +97,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
     if (tab === 'docs') setDocsLoaded(false);
   }, [tab]);
 
-  const apCOs = (job.change_orders || []).filter(c => c.status === 'approved');
-  const coT = apCOs.reduce((a, c) => a + Number(c.amount || 0), 0);
+  const coT = Number(job.co_total || 0);
   const cv = Number(job.contract_value || 0);
   const rev = cv + coT;
 
@@ -209,18 +202,15 @@ export default function JobDet({ job, upd, del, back, profile }) {
           </div>
         )}
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} />}
+        {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
-        {tab === 'materials' && <MaterialsTab job={job} profile={profile} />}
+        {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'notes' && <NotesTab job={job} upd={upd} profile={profile} />}
         {tab === 'photos' && <PhotosTab job={job} upd={upd} />}
-        {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
-        {tab === 'co' && <COTab job={job} upd={upd} profile={profile} />}
-        {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
-        {tab === 'bids' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
         {tab === 'logs' && <LogsTab job={job} />}
-        {tab === 'payments' && <PaymentsTab job={job} />}
+        {tab === 'materials' && <MaterialsTab job={job} profile={profile} />}
+        {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
         {tab === 'floorplan' && <FloorPlanTab job={job} profile={profile} />}
-        {tab === 'costs' && <CostsTab job={job} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} />}
       </div>
 

@@ -571,9 +571,19 @@ export const sbLoadJobTransactions = async (jobId, filters = {}) => {
   if (filters.phase_id)  q = q.eq('phase_id', filters.phase_id);
   if (filters.date_from) q = q.gte('date_incurred', filters.date_from);
   if (filters.date_to)   q = q.lte('date_incurred', filters.date_to);
+  if (filters.missing_lien_waiver) q = q.eq('lien_waiver_required', true).is('lien_waiver_url', null);
   q = q.order('date_incurred', { ascending: false });
   const { data } = await q;
   return data || [];
+};
+export const sbLoadJobFinancialSummary = async (jobId) => {
+  const { data } = await sb.from('job_transactions').select('direction,amount,status,lien_waiver_required,lien_waiver_url').eq('job_id', jobId).neq('status', 'void');
+  if (!data) return { total_in: 0, total_out: 0, outstanding: 0, lien_waivers_missing: 0 };
+  const total_in = data.filter(t => t.direction === 'in' && t.status === 'paid').reduce((s, t) => s + Number(t.amount || 0), 0);
+  const total_out = data.filter(t => t.direction === 'out' && t.status === 'paid').reduce((s, t) => s + Number(t.amount || 0), 0);
+  const outstanding = data.filter(t => t.direction === 'in' && t.status === 'pending').reduce((s, t) => s + Number(t.amount || 0), 0);
+  const lien_waivers_missing = data.filter(t => t.lien_waiver_required && !t.lien_waiver_url).length;
+  return { total_in, total_out, outstanding, lien_waivers_missing };
 };
 export const sbCreateTransaction = async tx => {
   const { data, error } = await sb.from('job_transactions').insert({ ...tx, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();

@@ -61,13 +61,17 @@ Deno.serve(async (req) => {
           { data: recentNotifs },
         ] = await Promise.all([
           sb.from("schedule_phases").select("*").eq("job_id", job.id).order("order_index"),
-          sb.from("payments").select("*").eq("job_id", job.id),
+          sb.from("job_transactions").select("*").eq("job_id", job.id),
           sb.from("change_orders").select("*").eq("job_id", job.id),
           sb.from("daily_logs").select("*").eq("job_id", job.id).order("log_date", { ascending: false }).limit(5),
           sb.from("notifications").select("type").eq("job_id", job.id).gte("created_at", new Date(Date.now() - 86400000).toISOString()),
         ]);
 
         const recentTypes = new Set((recentNotifs || []).map((n: { type: string }) => n.type));
+
+        // Split transactions by direction for targeted rules
+        const allTxs = payments || [];
+        const clientPayments = allTxs.filter((t: { direction: string }) => t.direction === 'in');
 
         const alerts: {
           type: string;
@@ -89,7 +93,7 @@ Deno.serve(async (req) => {
         }
 
         // Rule 2: payment_overdue
-        const overdue = (payments || []).filter(
+        const overdue = clientPayments.filter(
           (p: { status: string; due_date: string | null }) =>
             p.status === "overdue" ||
             (p.status === "pending" && p.due_date && p.due_date < today)
@@ -179,6 +183,29 @@ Deno.serve(async (req) => {
             body: `${job.address} — no updates in over 2 weeks. Needs attention.`,
             user_id: ownerUsers?.[0]?.id || null,
             level: "low",
+          });
+        }
+
+        // Rule 7: lien_waiver_missing
+        const lienMissing = allTxs.filter((t: { direction: string; type: string; lien_waiver_required: boolean; lien_waiver_url: string | null }) =>
+          t.direction === 'out' &&
+          ['sub_payout', 'vendor_payment'].includes(t.type) &&
+          t.lien_waiver_required === true &&
+          !t.lien_waiver_url
+        );
+        if (lienMissing.length > 0) {
+          const { data: pmUsers } = await sb
+            .from("profiles")
+            .select("id")
+            .eq("tenant_id", job.tenant_id)
+            .in("role", ["project_manager", "owner"])
+            .limit(1);
+          alerts.push({
+            type: "lien_waiver_missing",
+            title: `${lienMissing.length} lien waiver${lienMissing.length > 1 ? 's' : ''} missing`,
+            body: `${job.address} — ${lienMissing.length} sub/vendor payment${lienMissing.length > 1 ? 's' : ''} need lien waivers`,
+            user_id: pmUsers?.[0]?.id || null,
+            level: "medium",
           });
         }
 
