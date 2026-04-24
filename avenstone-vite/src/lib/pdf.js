@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { floorLabel as _floorLabel } from './captureTypes.js';
 
 // ─── Generic PDF (contract, signoff, etc.) ────────────────────────────────────
 export const buildGenericPDF = ({ docType, job, bodyText, signaturePng }) => {
@@ -347,7 +348,6 @@ const _drawArc = (doc, cx, cy, r, startAngle, sweepAngle, steps = 10) => {
 // No `floor` field in current Swift output — all rooms land on floor 0.
 // When Swift adds a `floor` integer, this grouping will work automatically.
 const _groupByFloor = (rooms) => {
-  const NAMES = { '-2': 'Sub-Basement', '-1': 'Basement', '0': 'First Floor', '1': 'Second Floor', '2': 'Third Floor', '3': 'Fourth Floor' };
   const map = new Map();
   rooms.forEach(r => {
     const f = (r.floor !== undefined && r.floor !== null) ? r.floor : 0;
@@ -356,7 +356,7 @@ const _groupByFloor = (rooms) => {
   });
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([fi, rms]) => ({ floorIndex: fi, floorName: NAMES[String(fi)] || `Floor ${fi + 1}`, rooms: rms }));
+    .map(([fi, rms]) => ({ floorIndex: fi, floorName: _floorLabel(fi), rooms: rms }));
 };
 
 // ─── Dedup shared doors/windows/openings ─────────────────────────────────────
