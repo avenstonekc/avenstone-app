@@ -647,6 +647,16 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       return { room, segs, x: oX + Math.min(...rxs) * scale, y: oY + Math.min(...rzs) * scale, w: (Math.max(...rxs) - Math.min(...rxs)) * scale, h: (Math.max(...rzs) - Math.min(...rzs)) * scale };
     }).filter(Boolean);
 
+    // ── Room fill tint ────────────────────────────────────────────────────────
+    doc.setFillColor(248, 245, 240);
+    for (const { segs } of roomLayouts) {
+      if (segs.length < 3) continue;
+      const poly = _segsToPolyPoints(segs);
+      if (poly.length < 3) continue;
+      const pts = poly.map(p => [oX + p.x * scale, oY + p.z * scale]);
+      doc.lines(pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true);
+    }
+
     // ── Draw walls (poché) ────────────────────────────────────────────────────
     for (const { segs } of roomLayouts) {
       for (const seg of segs) {
