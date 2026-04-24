@@ -494,16 +494,15 @@ const _eraseGap = (doc, p1x, p1y, p2x, p2y, wallThick) => {
 };
 
 // Architectural dimension line. (p1,p2) = wall endpoints in page coords. (nx,ny) = outward unit normal.
-const _dimLine = (doc, p1x, p1y, p2x, p2y, nx, ny, label) => {
-  const OFF = 44; // distance from wall to dim line (pt)
-  const ex1 = p1x + nx * OFF, ey1 = p1y + ny * OFF;
-  const ex2 = p2x + nx * OFF, ey2 = p2y + ny * OFF;
+const _dimLine = (doc, p1x, p1y, p2x, p2y, nx, ny, label, { off = 44, lw = 0.75 } = {}) => {
+  const ex1 = p1x + nx * off, ey1 = p1y + ny * off;
+  const ex2 = p2x + nx * off, ey2 = p2y + ny * off;
   // Extension lines (thin gray)
   doc.setDrawColor(140, 140, 140); doc.setLineWidth(0.25);
   doc.line(p1x + nx * 6, p1y + ny * 6, ex1, ey1);
   doc.line(p2x + nx * 6, p2y + ny * 6, ex2, ey2);
   // Dim line (black)
-  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.5);
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(lw);
   doc.line(ex1, ey1, ex2, ey2);
   // Tick marks — architectural 45° diagonal slashes
   const dl = Math.hypot(ex2 - ex1, ey2 - ey1) || 1;
@@ -734,6 +733,9 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       const p2px = oX + seg.x2 * scale, p2py = oY + seg.z2 * scale;
       _dimLine(doc, p1px, p1py, p2px, p2py, nx, nz, _feetInches(len));
     }
+    // Overall building dimensions (heavier, farther offset)
+    _dimLine(doc, oX, oY, oX + trueW * scale, oY, 0, -1, _feetInches(trueW), { off: 62, lw: 1.0 });
+    _dimLine(doc, oX + trueW * scale, oY, oX + trueW * scale, oY + trueH * scale, 1, 0, _feetInches(trueH), { off: 62, lw: 1.0 });
 
   } else {
     // Non-world mode: packing layout (single-room fallback)
