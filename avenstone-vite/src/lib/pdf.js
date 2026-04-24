@@ -611,16 +611,28 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     const deduped = _dedupFeatures(flatDoors, flatWins, flatOps, floor.floorIndex);
     allDoors = deduped.doors; allWindows = deduped.windows; allOpenings = deduped.openings;
 
-    // Build mid-count map to classify interior walls
-    const midCount = new Map();
-    for (const segs of roomSegs) {
-      const seen = new Set();
-      for (const seg of segs) {
-        const k = `${Math.round((seg.x1+seg.x2)*4)},${Math.round((seg.z1+seg.z2)*4)}`;
-        if (!seen.has(k)) { seen.add(k); midCount.set(k, (midCount.get(k) || 0) + 1); }
+    // Classify walls: interior = passes ALL 3 against a wall in a different room:
+    //   midpoint within 0.5 ft, lengths within 15%, direction vectors parallel (|dot| >= 0.9)
+    const flatWalls = [];
+    roomSegs.forEach((segs, ri) => segs.forEach(seg => {
+      const len = Math.hypot(seg.x2-seg.x1, seg.z2-seg.z1);
+      flatWalls.push({ seg, ri, mx: (seg.x1+seg.x2)/2, mz: (seg.z1+seg.z2)/2, len,
+        ux: len > 0.01 ? (seg.x2-seg.x1)/len : 0, uz: len > 0.01 ? (seg.z2-seg.z1)/len : 0 });
+    }));
+    for (let i = 0; i < flatWalls.length; i++) {
+      for (let j = i+1; j < flatWalls.length; j++) {
+        const a = flatWalls[i], b = flatWalls[j];
+        if (a.ri === b.ri) continue;
+        if (Math.hypot(a.mx-b.mx, a.mz-b.mz) > 0.5) continue;
+        if (Math.abs(a.len-b.len) / Math.max(a.len, b.len, 0.01) > 0.15) continue;
+        if (Math.abs(a.ux*b.ux + a.uz*b.uz) < 0.9) continue;
+        a.seg._interior = true; b.seg._interior = true;
       }
     }
-    const isInterior = (seg) => (midCount.get(`${Math.round((seg.x1+seg.x2)*4)},${Math.round((seg.z1+seg.z2)*4)}`) || 1) > 1;
+    const extCnt = flatWalls.filter(w => !w.seg._interior).length;
+    const intCnt = flatWalls.filter(w => !!w.seg._interior).length;
+    console.log(`[LIDAR_DEBUG] walls: ${extCnt} exterior, ${intCnt} interior`);
+    const isInterior = (seg) => !!seg._interior;
 
     // Collect all wall segs for dim labels
     drawableRooms.forEach((room, ri) => {
