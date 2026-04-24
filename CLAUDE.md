@@ -331,12 +331,18 @@ This is Avenstone's core competitive advantage. Every piece connects:
 ```
 CLIENT / REP GOES ON-SITE
   └── AI Intake Wizard (components/ai/AiIntakeWizard.jsx)
-      LiDAR scanner flow: scan rooms (LidarScanner, iOS RoomPlan)
+      LiDAR scanner flow (LidarScanner.jsx):
+        → floor picker (first scan auto-uses 1st Floor; each subsequent scan
+            shows FloorPicker to select Basement/1st/2nd/3rd Floor —
+            floorIndex passed JS → Swift → stamped on every room dict)
+        → scan rooms (ContinuousRoomScanViewController, iOS RoomPlan, worldX/worldZ)
         → height capture (HeightCaptureStep — auto from mesh or tap-raycast)
         → quality report (CaptureQualityReport — score, deductions, Re-scan/Accept)
-        → save to job (job_lidar_scans) or contact (contact_lidar_scans).
-      Supports interior multi-room (RoomCaptureSession, worldX/worldZ) and
-      exterior outline (ARKit corner-placement, outline_data JSONB).
+        → save to job (job_lidar_scans) or contact (contact_lidar_scans)
+        → PDF: buildFloorPlanPDF → _groupByFloor → one landscape page per floor
+            (poché walls, exterior-only dims, overall bounding dims, room fill
+            tint, left-side title column) + portrait summary page.
+      Supports interior multi-room and exterior outline (ARKit corner-placement).
   (The original 3-step "AI chat → measurements → review" flow is retired.
   ai-intake edge function still exists but is no longer called from the app.)
 
@@ -542,19 +548,17 @@ If Sonnet (the default Claude Code model) is stuck on a hard architecture or API
 
 ## Priority Order (what we're building)
 
-1. **Floor plan PDF — fixtures/objects export** (Swift + jsPDF). `RoomPlanPlugin.swift` doesn't export `room.objects` yet. Opus spec in progress (see `.claude/commands/opus-fixtures.md`). Once Swift serializes objects, jsPDF renderer draws furniture footprints on the floor plan with category labels.
+1. **Floor plan PDF — fixture/object rendering** — Swift already serializes `room.objects` (toilet, bathtub, sink, stove, oven, refrigerator, dishwasher, washerDryer, storage). PDF renderer needs `_drawFixture` reinstated with correct world-space rotation transform (the rotation angle is now returned from `_processAllRooms` so the plumbing exists). Single-room path deferred until multi-room path confirmed working on device.
 
-2. **Floor plan PDF — dimension language overhaul**. Replace bounding-box W×D labels with proper architectural wall-to-wall dimension lines. Queued after fixtures so both ship together.
+2. **LiDAR Phase 4 — wing editor + large-space stitching**. Spaces over ~1,500 sqft scan in wings. Editor tab lets you position and connect wings into one plan. GPS anchoring helps align sessions spatially. Window/door type editing lives here.
 
-3. **LiDAR Phase 4 — wing editor + large-space stitching**. Spaces over ~1,500 sqft scan in wings. Editor tab lets you position and connect wings into one plan. GPS anchoring helps align sessions spatially. Window/door type editing lives here.
+3. **Sub portal upgrades** — PM-Sub direct chat thread (separate from general job messages, spec'd April 15 but not yet built), phase start/complete confirmation, CO submission by sub.
 
-4. **Sub portal upgrades** — PM-Sub direct chat thread (separate from general job messages, spec'd April 15 but not yet built), phase start/complete confirmation, CO submission by sub.
+4. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
 
-5. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
+5. **Lien waiver generation** — pdf-lib preferred over jsPDF. Auto-populate from job, sub, and payment data.
 
-6. **Lien waiver generation** — pdf-lib preferred over jsPDF. Auto-populate from job, sub, and payment data.
-
-7. **Test AI estimator with live data** — ai_knowledge seeded with KC pricing. Open a job, ask AI Companion for a rough estimate, verify real dollar figures come back.
+6. **Test AI estimator with live data** — ai_knowledge seeded with KC pricing. Open a job, ask AI Companion for a rough estimate, verify real dollar figures come back.
 
 **Done:**
 - Client portal progress stepper + realtime
@@ -570,8 +574,10 @@ If Sonnet (the default Claude Code model) is stuck on a hard architecture or API
 - **Capture v2 — Mandatory height capture** — `HeightCaptureStep.jsx` shared step, interior auto-derives from LiDAR mesh max, exterior via tap-raycast; both modes require confirmation before save; legacy records get amber badge
 - **Capture v2 — Quality meter (0–100)** — `CaptureQualityTracker.swift` shared scoring, live progress bar in Swift VCs, `CaptureQualityReport.jsx` post-capture report with deductions, grade, and Re-scan/Accept
 - **LiDAR scan persistence** — `FloorPlanTab.jsx` on JobDet, contact floor plans card in ContactsScr; both `contact_lidar_scans` and `job_lidar_scans` tables use TEXT FK
-- **Continuous multi-room ARSession** — `ContinuousRoomScanViewController` (iOS 17+), `pauseARSession: false` between rooms preserving ARKit world origin, room-naming modal between scans, StructureBuilder merge on finish
-- **Floor plan PDF generator** (`src/lib/pdf.js`) — jsPDF letter format, wall/door/window/opening rendering with bi-fold symbols, filled checkerboard scale bar, computed scale ratio in title block, room labels with dimensions + sqft, page 2 with branded header and 7-column room details table; fixtures rendering pending Swift objects export
+- **Continuous multi-room ARSession** — `ContinuousRoomScanViewController` (iOS 17+), `pauseARSession: false` between rooms preserving ARKit world origin, room-naming modal at end with sqft hints, StructureBuilder merge, polygon-containment name matching
+- **Multi-floor scan flow + floor picker** — `captureTypes.js` (FLOOR_LABELS/floorLabel), `floorIndex` wired JS→Swift→room dicts, `FloorPicker` component in `LidarScanner.jsx` (auto-selects next unscanned floor, shown before each scan after the first)
+- **Floor plan PDF renderer** (`src/lib/pdf.js`) — full architectural renderer: landscape 792×612pt per floor + portrait summary page, `_groupByFloor` → one page per floor, poché walls (6pt exterior / 3pt interior), exterior-only dim lines (3-condition interior detection, collinear tiering, 1.5ft min length), overall bounding dims at off=62, bi-fold symbol for doors ≥4ft, room fill tint RGB(248,245,240), left-side title column (TC_W=108pt), narrow-room label rotation, polygon centroid + polylabel interior-point fallback for labels, graduated scale bar; fixture rendering pending rotation transform
+- **Floor plan PDF dimension language** — architectural wall-to-wall dimension lines with extension lines, tick marks, outward-normal offset replacing bounding-box W×D text
 - **AI PM Dashboard** — owner-only screen (`AiPmDashboard.jsx`), 30-day nightly alert history, stat cards by alert type
 
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
