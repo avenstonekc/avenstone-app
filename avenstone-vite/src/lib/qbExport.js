@@ -37,8 +37,8 @@ export function generateQbCsv(transactions, categoryMap, defaultAddress) {
       esc(amount.toFixed(2)),
       esc(map.qb_account || ''),
       esc(map.qb_class || ''),
-      esc(isIn  ? (tx.payer_or_payee_name || '') : ''),
-      esc(!isIn ? (tx.payer_or_payee_name || '') : ''),
+      esc(isIn  ? (tx.job?.client_name || '') : ''),
+      esc(!isIn ? (tx.payer_or_payee_name || `${TX_LABELS[tx.type] || tx.type} - unnamed`) : ''),
       esc(memo),
       esc(tx.job?.address || defaultAddress || ''),
     ].join(','));

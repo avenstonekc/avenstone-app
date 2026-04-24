@@ -661,7 +661,7 @@ export const sbUpsertQbCategoryMap = async (txType, qbAccount, qbClass) => {
   return { error };
 };
 export const sbLoadTransactionsForExport = async ({ jobId, dateFrom, dateTo, allJobs = false }) => {
-  let q = sb.from('job_transactions').select('*,job:jobs(address)');
+  let q = sb.from('job_transactions').select('*,job:jobs(address,client_name)');
   if (allJobs) q = q.eq('tenant_id', AV_TENANT);
   else if (jobId) q = q.eq('job_id', jobId);
   if (dateFrom) q = q.gte('date_incurred', dateFrom);
