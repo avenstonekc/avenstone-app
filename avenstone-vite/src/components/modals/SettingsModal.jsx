@@ -1,6 +1,13 @@
 import { useState, useEffect, Fragment } from 'react';
-import { sb, AV_TENANT } from '../../lib/supabase';
+import { sb, AV_TENANT, sbLoadQbCategoryMap, sbUpsertQbCategoryMap } from '../../lib/supabase';
 import PushEnableButton from '../shared/PushEnableButton';
+
+const QB_TYPES = [
+  ['client_payment', 'Client Payment'], ['client_deposit', 'Deposit'], ['client_refund', 'Refund'],
+  ['sub_payout', 'Sub Payout'], ['vendor_payment', 'Vendor Payment'], ['material_purchase', 'Materials'],
+  ['equipment_rental', 'Equipment Rental'], ['permit', 'Permit'], ['fuel', 'Fuel'],
+  ['commission', 'Commission'], ['other_expense', 'Other Expense'], ['other_income', 'Other Income'],
+];
 
 const NOTIF_EVENTS = [
   { key: 'note_posted', lb: 'New note posted' },
@@ -28,6 +35,18 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
   const [coSaving, setCoSaving] = useState(false);
   const [coSaved, setCoSaved] = useState(false);
   const [profileUrl, setProfileUrl] = useState('');
+  const [qbMap, setQbMap] = useState({});
+  const [qbSaving, setQbSaving] = useState(null);
+
+  useEffect(() => {
+    if (tab !== 'quickbooks' || profile?.role !== 'owner') return;
+    sbLoadQbCategoryMap().then(rows => {
+      const m = {};
+      rows.forEach(r => { m[r.tx_type] = { account: r.qb_account || '', cls: r.qb_class || '' }; });
+      QB_TYPES.forEach(([t]) => { if (!m[t]) m[t] = { account: '', cls: '' }; });
+      setQbMap(m);
+    });
+  }, [tab]);
 
   useEffect(() => {
     if (profile?.role !== 'owner' || !AV_TENANT) return;
@@ -42,6 +61,13 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
     const row = { tenant_id: AV_TENANT, company_name: co.company_name, city: co.city, state: co.state, phone: co.phone, website: co.website, tagline: co.tagline, year_founded: co.year_founded ? parseInt(co.year_founded) : null, license_number: co.license_number, updated_at: new Date().toISOString() };
     await sb.from('company_profiles').upsert(row, { onConflict: 'tenant_id' });
     setCoSaving(false); setCoSaved(true); setTimeout(() => setCoSaved(false), 2500);
+  };
+
+  const saveQbMapping = async (type) => {
+    setQbSaving(type);
+    const row = qbMap[type] || { account: '', cls: '' };
+    await sbUpsertQbCategoryMap(type, row.account, row.cls);
+    setQbSaving(null);
   };
 
   const changePassword = async () => {
@@ -82,7 +108,7 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18, lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ display: 'flex', border: '1px solid #E8E4DC', borderRadius: 4, overflow: 'hidden', marginBottom: 16 }}>
-          {[['profile', 'Profile'], ['notifs', 'Notifications'], ['security', 'Security'], ...(profile?.role === 'owner' ? [['company', 'My Profile']] : [])].map(([v, lb]) => (
+          {[['profile', 'Profile'], ['notifs', 'Notifications'], ['security', 'Security'], ...(profile?.role === 'owner' ? [['company', 'My Profile'], ['quickbooks', 'QuickBooks']] : [])].map(([v, lb]) => (
             <button key={v} onClick={() => setTab(v)} style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', background: tab === v ? '#0A1F44' : 'transparent', color: tab === v ? '#C9A84C' : '#9CA3AF' }}>{lb}</button>
           ))}
         </div>
@@ -158,6 +184,29 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
           <div className="fg"><label className="flbl">New Password</label><input className="finp" type="password" value={pwForm.newPw} onChange={e => setPwForm(p => ({ ...p, newPw: e.target.value }))} placeholder="At least 8 characters" /></div>
           <div className="fg"><label className="flbl">Confirm Password</label><input className="finp" type="password" value={pwForm.confirmPw} onChange={e => setPwForm(p => ({ ...p, confirmPw: e.target.value }))} placeholder="Re-enter new password" /></div>
           <button className="btn btn-navy" style={{ width: '100%' }} onClick={changePassword} disabled={pwSaving || !pwForm.newPw || !pwForm.confirmPw}>{pwSaving ? 'Updating...' : 'Update Password'}</button>
+        </>}
+
+        {tab === 'quickbooks' && profile?.role === 'owner' && <>
+          <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 12, lineHeight: 1.6 }}>Map each transaction type to a QuickBooks account and class. Changes save on blur.</div>
+          <div style={{ overflowX: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1.2fr 20px', gap: '5px 8px', alignItems: 'center', minWidth: 340 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Type</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>QB Account</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>QB Class</div>
+              <div />
+              {QB_TYPES.map(([type, label]) => {
+                const row = qbMap[type] || { account: '', cls: '' };
+                return (
+                  <Fragment key={type}>
+                    <div style={{ fontSize: 12, color: '#374151', fontWeight: 500, paddingRight: 4 }}>{label}</div>
+                    <input className="finp" style={{ fontSize: 12, padding: '5px 7px' }} value={row.account} placeholder="Account" onChange={e => setQbMap(m => ({ ...m, [type]: { ...row, account: e.target.value } }))} onBlur={() => saveQbMapping(type)} />
+                    <input className="finp" style={{ fontSize: 12, padding: '5px 7px' }} value={row.cls}     placeholder="Class"   onChange={e => setQbMap(m => ({ ...m, [type]: { ...row, cls: e.target.value } }))}     onBlur={() => saveQbMapping(type)} />
+                    <div style={{ fontSize: 10, color: '#22c55e', textAlign: 'center' }}>{qbSaving === type ? '✓' : ''}</div>
+                  </Fragment>
+                );
+              })}
+            </div>
+          </div>
         </>}
       </div>
     </div>

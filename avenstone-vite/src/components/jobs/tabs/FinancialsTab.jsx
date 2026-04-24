@@ -4,7 +4,8 @@ import COTab from './COTab';
 import CostsTab from './CostsTab';
 import TransactionModal from './financials/TransactionModal';
 import LineItemModal from './financials/LineItemModal';
-import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems } from '../../../lib/supabase';
+import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced } from '../../../lib/supabase';
+import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
 import { f$ } from '../../../lib/utils';
 
 const SUB_TABS = [
@@ -35,6 +36,15 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
   const [lineItems, setLineItems] = useState([]);
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [liModal, setLiModal] = useState(null);
+  const [qbModal, setQbModal] = useState(false);
+  const [qbRange, setQbRange] = useState('this_month');
+  const [qbDateFrom, setQbDateFrom] = useState('');
+  const [qbDateTo, setQbDateTo] = useState('');
+  const [qbAllJobs, setQbAllJobs] = useState(false);
+  const [qbMarkSynced, setQbMarkSynced] = useState(true);
+  const [qbExporting, setQbExporting] = useState(false);
+  const [showSynced, setShowSynced] = useState(true);
+  const [catMap, setCatMap] = useState([]);
 
   useEffect(() => {
     if (sub === 'ledger') loadLedger();
@@ -72,7 +82,38 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
 
   const lienCount = txs.filter(t => t.lien_waiver_required && !t.lien_waiver_url).length;
 
+  const openQbModal = async () => {
+    if (!catMap.length) { const m = await sbLoadQbCategoryMap(); setCatMap(m); }
+    setQbModal(true);
+  };
+
+  const runQbExport = async () => {
+    setQbExporting(true);
+    const today = new Date();
+    const y = today.getFullYear(), mo = today.getMonth();
+    const getRange = () => {
+      if (qbRange === 'this_month') return { from: new Date(y, mo, 1).toISOString().slice(0, 10), to: new Date(y, mo + 1, 0).toISOString().slice(0, 10) };
+      if (qbRange === 'this_quarter') { const q = Math.floor(mo / 3); return { from: new Date(y, q * 3, 1).toISOString().slice(0, 10), to: new Date(y, q * 3 + 3, 0).toISOString().slice(0, 10) }; }
+      if (qbRange === 'ytd') return { from: `${y}-01-01`, to: today.toISOString().slice(0, 10) };
+      if (qbRange === 'custom') return { from: qbDateFrom, to: qbDateTo };
+      return { from: null, to: null };
+    };
+    const { from, to } = getRange();
+    const data = await sbLoadTransactionsForExport({ jobId: job.id, dateFrom: from, dateTo: to, allJobs: qbAllJobs });
+    const csv = generateQbCsv(data, catMap, qbAllJobs ? null : job.address);
+    const label = qbAllJobs ? 'all-jobs' : job.address.replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 30);
+    downloadCsv(csv, `qb-${label}-${today.toISOString().slice(0, 10)}.csv`);
+    if (qbMarkSynced) {
+      const ids = data.filter(t => t.status !== 'void' && t.status !== 'draft').map(t => t.id);
+      await sbStampQbSynced(ids);
+    }
+    setQbExporting(false);
+    setQbModal(false);
+    if (qbMarkSynced) loadLedger();
+  };
+
   const filtered = txs.filter(tx => {
+    if (!showSynced && tx.qb_synced_at) return false;
     if (filterDir === 'in' && tx.direction !== 'in') return false;
     if (filterDir === 'out' && tx.direction !== 'out') return false;
     if (filterStatus === 'pending' && tx.status !== 'pending') return false;
@@ -249,7 +290,11 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
             ].map(f => (
               <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: filterStatus === f.id ? '#C9A84C' : '#E8E4DC', background: filterStatus === f.id ? '#C9A84C22' : '#fff', color: filterStatus === f.id ? '#92400e' : '#6B7280', cursor: 'pointer', fontWeight: 500 }}>{f.lb}</button>
             ))}
-            <button onClick={() => setModal({ mode: 'create', tx: {} })} style={{ marginLeft: 'auto', fontSize: 12, padding: '6px 14px', background: '#0A1F44', color: '#C9A84C', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>+ Add</button>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button onClick={() => setShowSynced(s => !s)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: !showSynced ? '#C9A84C' : '#E8E4DC', background: !showSynced ? '#C9A84C22' : '#fff', color: !showSynced ? '#92400e' : '#6B7280', cursor: 'pointer', fontWeight: 500 }}>{showSynced ? 'Hide Synced' : 'Show Synced'}</button>
+              <button onClick={openQbModal} style={{ fontSize: 11, padding: '5px 10px', borderRadius: 6, border: '1px solid #C9A84C', background: '#C9A84C15', color: '#92400e', cursor: 'pointer', fontWeight: 600 }}>QB Export</button>
+              <button onClick={() => setModal({ mode: 'create', tx: {} })} style={{ fontSize: 12, padding: '6px 14px', background: '#0A1F44', color: '#C9A84C', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>+ Add</button>
+            </div>
           </div>
 
           {/* Transaction list */}
@@ -287,6 +332,51 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {qbModal && (
+        <div className="overlay" onClick={() => setQbModal(false)}>
+          <div className="modal" style={{ maxWidth: 380, width: '100%' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44' }}>QuickBooks Export</div>
+              <button onClick={() => setQbModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>Date Range</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {[['this_month', 'This Month'], ['this_quarter', 'This Quarter'], ['ytd', 'YTD'], ['all', 'All Time'], ['custom', 'Custom']].map(([v, lb]) => (
+                  <button key={v} onClick={() => setQbRange(v)} style={{ padding: '8px 0', fontSize: 12, fontWeight: 600, border: '1px solid', borderColor: qbRange === v ? '#0A1F44' : '#E8E4DC', borderRadius: 6, background: qbRange === v ? '#0A1F44' : '#fff', color: qbRange === v ? '#C9A84C' : '#6B7280', cursor: 'pointer' }}>{lb}</button>
+                ))}
+              </div>
+            </div>
+            {qbRange === 'custom' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                {[['From', qbDateFrom, setQbDateFrom], ['To', qbDateTo, setQbDateTo]].map(([lb, val, set]) => (
+                  <div key={lb}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>{lb}</label>
+                    <input type="date" value={val} onChange={e => set(e.target.value)} style={{ border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 13, borderRadius: 6, width: '100%', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ marginBottom: 16 }}>
+              {profile?.role === 'owner' && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', marginBottom: 8 }}>
+                  <input type="checkbox" checked={qbAllJobs} onChange={e => setQbAllJobs(e.target.checked)} />
+                  All jobs (tenant-wide)
+                </label>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" checked={qbMarkSynced} onChange={e => setQbMarkSynced(e.target.checked)} />
+                Mark as synced after export
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setQbModal(false)} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>
+              <button onClick={runQbExport} disabled={qbExporting || (qbRange === 'custom' && (!qbDateFrom || !qbDateTo))} className="btn btn-navy" style={{ flex: 2 }}>{qbExporting ? 'Exporting...' : 'Export CSV'}</button>
+            </div>
+          </div>
         </div>
       )}
 

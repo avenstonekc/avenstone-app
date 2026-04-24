@@ -648,6 +648,34 @@ export const sbLoadEstimateLineItems = async (jobId) => {
   return data || [];
 };
 
+// ─── QuickBooks export ────────────────────────────────────────────────────────
+export const sbLoadQbCategoryMap = async () => {
+  const { data } = await sb.from('qb_category_map').select('*').eq('tenant_id', AV_TENANT).order('tx_type');
+  return data || [];
+};
+export const sbUpsertQbCategoryMap = async (txType, qbAccount, qbClass) => {
+  const { error } = await sb.from('qb_category_map').upsert(
+    { tenant_id: AV_TENANT, tx_type: txType, qb_account: qbAccount, qb_class: qbClass, updated_at: new Date().toISOString() },
+    { onConflict: 'tenant_id,tx_type' }
+  );
+  return { error };
+};
+export const sbLoadTransactionsForExport = async ({ jobId, dateFrom, dateTo, allJobs = false }) => {
+  let q = sb.from('job_transactions').select('*,job:jobs(address)');
+  if (allJobs) q = q.eq('tenant_id', AV_TENANT);
+  else if (jobId) q = q.eq('job_id', jobId);
+  if (dateFrom) q = q.gte('date_incurred', dateFrom);
+  if (dateTo)   q = q.lte('date_incurred', dateTo);
+  q = q.order('date_incurred', { ascending: true });
+  const { data } = await q;
+  return data || [];
+};
+export const sbStampQbSynced = async (ids) => {
+  if (!ids?.length) return { error: null };
+  const { error } = await sb.from('job_transactions').update({ qb_synced_at: new Date().toISOString() }).in('id', ids);
+  return { error };
+};
+
 // ─── Team / User management ───────────────────────────────────────────────────
 export const STAFF_ROLES = ['owner','project_manager','sales_rep'];
 export const ROLE_LABELS = { owner: 'Owner', sales_rep: 'Sales Rep', project_manager: 'Project Manager', sub: 'Contractor', client: 'Client' };
