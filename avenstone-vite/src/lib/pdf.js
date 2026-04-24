@@ -539,47 +539,55 @@ const _drawScaleBar = (doc, x, y, scale) => {
   doc.text(`1" = ${(72 / scale).toFixed(1)} ft`, x, y + 12);
 };
 
-// Title block across the top of a floor-plan page.
-const _drawTitleBlock = (doc, W, job, floorName, floorNum, totalFloors, pageNum, totalPages) => {
+// Left-side vertical title column.
+const _drawTitleColumn = (doc, H, job, floorName, floorNum, totalFloors, pageNum, totalPages) => {
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [100, 100, 100];
-  const M = 36, TB_H = 52;
-  // Company name left
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...navy);
-  doc.text('AVENSTONE GROUP', M, M + 16);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...gray);
-  doc.text('FLOOR PLAN  ·  avenstonekc.com', M, M + 27);
-  // Job info right
+  const TC_W = 108, M = 30;
+  // Navy background strip
+  doc.setFillColor(...navy); doc.rect(0, 0, TC_W, H, 'F');
+  // Gold accent line on right edge
+  doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(TC_W, 0, TC_W, H);
+  // Company name (rotated — draw as stacked text since jsPDF doesn't rotate easily)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...gold);
+  doc.text('AVENSTONE', TC_W / 2, M + 10, { align: 'center' });
+  doc.text('GROUP', TC_W / 2, M + 22, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(180, 180, 180);
+  doc.text('FLOOR PLAN', TC_W / 2, M + 33, { align: 'center' });
+  doc.setDrawColor(...gold); doc.setLineWidth(0.5); doc.line(M, M + 40, TC_W - M, M + 40);
+  // Address
   const date = job.captured_at
     ? new Date(job.captured_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...navy);
-  const addrLines = doc.splitTextToSize(job.address || 'Property Address', 260);
-  doc.text(addrLines[0], W - M, M + 14, { align: 'right' });
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...gray);
-  let rY = M + 24;
-  if (job.client_name) { doc.text(job.client_name, W - M, rY, { align: 'right' }); rY += 9; }
-  doc.text(`Captured: ${date}`, W - M, rY, { align: 'right' }); rY += 9;
-  const floorLabel = totalFloors > 1 ? `FLOOR ${floorNum} OF ${totalFloors}  —  ${floorName.toUpperCase()}` : floorName.toUpperCase();
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(...navy);
-  doc.text(floorLabel, W - M, rY, { align: 'right' });
-  // Gold divider
-  doc.setDrawColor(...gold); doc.setLineWidth(0.75);
-  doc.line(M, M + TB_H, W - M, M + TB_H);
-  // Page N of M bottom-center (small)
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(...gray);
-  doc.text(`Page ${pageNum} of ${totalPages}`, W / 2, M + TB_H - 5, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
+  const addrLines = doc.splitTextToSize(job.address || 'Property Address', TC_W - M * 2);
+  let ty = M + 52;
+  addrLines.slice(0, 3).forEach(ln => { doc.text(ln, TC_W / 2, ty, { align: 'center' }); ty += 9; });
+  if (job.client_name) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(200, 200, 200);
+    doc.text(job.client_name, TC_W / 2, ty + 2, { align: 'center' }); ty += 11;
+  }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(160, 160, 160);
+  doc.text(date, TC_W / 2, ty + 2, { align: 'center' }); ty += 10;
+  doc.setDrawColor(...gold); doc.setLineWidth(0.4); doc.line(M, ty, TC_W - M, ty); ty += 10;
+  // Floor label
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(...gold);
+  const floorLabel = totalFloors > 1 ? `${floorName.toUpperCase()}` : floorName.toUpperCase();
+  const floorSub = totalFloors > 1 ? `${floorNum} OF ${totalFloors}` : '';
+  doc.text(floorLabel, TC_W / 2, ty, { align: 'center' }); ty += 9;
+  if (floorSub) { doc.setFontSize(6); doc.setTextColor(160, 160, 160); doc.text(floorSub, TC_W / 2, ty, { align: 'center' }); ty += 9; }
+  // Page number at bottom
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(140, 140, 140);
+  doc.text(`pg ${pageNum}/${totalPages}`, TC_W / 2, H - M, { align: 'center' });
 };
 
 // ─── Floor page renderer ──────────────────────────────────────────────────────
 const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, totalPages, W, H) => {
   const navy = [10, 31, 68];
-  const M = 36, TB_H = 52, DIM = 54;
 
-  _drawTitleBlock(doc, W, job, floor.floorName, floorNum, totalFloors, pageNum, totalPages);
+  _drawTitleColumn(doc, H, job, floor.floorName, floorNum, totalFloors, pageNum, totalPages);
 
-  // Drawing bounds (inside dim bands)
-  const DL = M + DIM, DR = W - M - DIM;
-  const DT = M + TB_H + DIM, DB = H - M - DIM;
+  // Drawing bounds: left column (TC_W=108) + dim bands (60pt each side)
+  const DL = 168, DR = 704, DT = 82, DB = 558;
   const availW = DR - DL, availH = DB - DT;
 
   const worldMode = floor.rooms.some(r => r.worldX !== undefined && r.worldX !== null);
@@ -829,8 +837,8 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     }
   }
 
-  // ── Scale bar ─────────────────────────────────────────────────────────────
-  _drawScaleBar(doc, DL, DB + 10, scale);
+  // ── Scale bar (bottom of drawing area) ───────────────────────────────────
+  _drawScaleBar(doc, DL, DB + 14, scale);
 };
 
 // ─── Summary page (room details table, grouped by floor) ─────────────────────
