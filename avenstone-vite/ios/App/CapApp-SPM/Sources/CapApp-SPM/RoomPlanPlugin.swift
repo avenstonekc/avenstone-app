@@ -799,16 +799,41 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
     // MARK: - StructureBuilder
 
-    // Match capturedRooms (scan order) to structure.rooms (spatial order) by wall centroid proximity.
-    // Returns [structureRoomIndex: name] so names survive StructureBuilder reordering.
+    // Build a polygon from all wall endpoints, sorted by angle from centroid.
+    private func wallPolygon(_ room: CapturedRoom) -> [(Float, Float)] {
+        var pts: [(Float, Float)] = []
+        for wall in room.walls {
+            let t = wall.transform
+            let cx = t.columns.3.x, cz = t.columns.3.z
+            let hw = wall.dimensions.x / 2.0
+            let dx = t.columns.0.x, dz = t.columns.0.z
+            pts.append((cx + dx * hw, cz + dz * hw))
+            pts.append((cx - dx * hw, cz - dz * hw))
+        }
+        guard pts.count >= 3 else { return pts }
+        let mcx = pts.reduce(0) { $0 + $1.0 } / Float(pts.count)
+        let mcz = pts.reduce(0) { $0 + $1.1 } / Float(pts.count)
+        return pts.sorted { atan2($0.1 - mcz, $0.0 - mcx) < atan2($1.1 - mcz, $1.0 - mcx) }
+    }
+
+    private func pointInPolygon(_ px: Float, _ pz: Float, _ poly: [(Float, Float)]) -> Bool {
+        guard poly.count >= 3 else { return false }
+        var inside = false
+        var j = poly.count - 1
+        for i in 0..<poly.count {
+            let xi = poly[i].0, zi = poly[i].1, xj = poly[j].0, zj = poly[j].1
+            if ((zi > pz) != (zj > pz)) && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi) {
+                inside = !inside
+            }
+            j = i
+        }
+        return inside
+    }
+
+    // Primary: polygon containment. Fallback: nearest-centroid with warning log.
     private func matchNamesToStructuredRooms(_ structure: CapturedStructure) -> [Int: String] {
         guard !roomNames.isEmpty, !structure.rooms.isEmpty else { return [:] }
-        let capCentroids: [(Float, Float)] = capturedRooms.map { room in
-            guard !room.walls.isEmpty else { return (0, 0) }
-            let cx = room.walls.map { $0.transform.columns.3.x }.reduce(0, +) / Float(room.walls.count)
-            let cz = room.walls.map { $0.transform.columns.3.z }.reduce(0, +) / Float(room.walls.count)
-            return (cx, cz)
-        }
+        let capPolygons = capturedRooms.map { wallPolygon($0) }
         let strCentroids: [(Float, Float)] = structure.rooms.map { room in
             guard !room.walls.isEmpty else { return (0, 0) }
             let cx = room.walls.map { $0.transform.columns.3.x }.reduce(0, +) / Float(room.walls.count)
@@ -818,13 +843,26 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         var nameMap = [Int: String]()
         var usedCap = Set<Int>()
         for (j, sc) in strCentroids.enumerated() {
+            for (i, poly) in capPolygons.enumerated() {
+                guard !usedCap.contains(i), i < roomNames.count else { continue }
+                if pointInPolygon(sc.0, sc.1, poly) { nameMap[j] = roomNames[i]; usedCap.insert(i); break }
+            }
+        }
+        let capCentroids: [(Float, Float)] = capturedRooms.map { room in
+            guard !room.walls.isEmpty else { return (0, 0) }
+            let cx = room.walls.map { $0.transform.columns.3.x }.reduce(0, +) / Float(room.walls.count)
+            let cz = room.walls.map { $0.transform.columns.3.z }.reduce(0, +) / Float(room.walls.count)
+            return (cx, cz)
+        }
+        for (j, sc) in strCentroids.enumerated() {
+            guard nameMap[j] == nil else { continue }
             var bestDist = Float.greatestFiniteMagnitude; var bestI = -1
             for (i, cc) in capCentroids.enumerated() {
                 guard !usedCap.contains(i), i < roomNames.count else { continue }
                 let d = (sc.0-cc.0)*(sc.0-cc.0) + (sc.1-cc.1)*(sc.1-cc.1)
                 if d < bestDist { bestDist = d; bestI = i }
             }
-            if bestI >= 0 { nameMap[j] = roomNames[bestI]; usedCap.insert(bestI) }
+            if bestI >= 0 { print("[LIDAR_WARN] room \(j) matched by centroid fallback (polygon miss)"); nameMap[j] = roomNames[bestI]; usedCap.insert(bestI) }
         }
         return nameMap
     }
