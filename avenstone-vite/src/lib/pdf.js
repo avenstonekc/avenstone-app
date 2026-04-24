@@ -666,12 +666,6 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       const dw = Math.hypot(p2x - p1x, p2y - p1y);
       if (dw < 4) continue;
       _eraseGap(doc, p1x, p1y, p2x, p2y, FEAT_WALL_T);
-      // Jamb marks
-      const ux = (p2x - p1x) / dw, uy = (p2y - p1y) / dw;
-      const jLen = 5;
-      doc.setDrawColor(...navy); doc.setLineWidth(1.5);
-      doc.line(p1x - (-uy) * jLen, p1y - ux * jLen, p1x + (-uy) * jLen, p1y + ux * jLen);
-      doc.line(p2x - (-uy) * jLen, p2y - ux * jLen, p2x + (-uy) * jLen, p2y + ux * jLen);
       // Door symbol: bi-fold (≥ 4 ft wide) or swing arc
       doc.setDrawColor(...navy); doc.setLineWidth(0.6);
       if ((door.width || 0) >= 4) {
