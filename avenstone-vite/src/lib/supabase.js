@@ -157,6 +157,7 @@ export const sbCO = async co => {
   } catch (e) { return null; }
 };
 export const sbUpdCO = async (id, ch) => { try { await sb.from('change_orders').update(ch).eq('id', id); } catch (e) {} };
+export const getJobCoTotal = (job) => Number(job?.co_total || 0);
 
 // ─── Phases ───────────────────────────────────────────────────────────────────
 export const DEFAULT_PHASES = ['Demo','Framing','Rough MEP','Insulation','Drywall','Paint','Flooring','Trim','Fixtures','Punch List'];

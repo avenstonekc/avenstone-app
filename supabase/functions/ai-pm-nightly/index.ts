@@ -91,7 +91,8 @@ Deno.serve(async (req) => {
         // Rule 2: payment_overdue
         const overdue = (payments || []).filter(
           (p: { status: string; due_date: string | null }) =>
-            (p.status === "pending" || p.status === "due") && p.due_date && p.due_date < today
+            p.status === "overdue" ||
+            (p.status === "pending" && p.due_date && p.due_date < today)
         );
         if (overdue.length > 0) {
           const p = overdue[0];

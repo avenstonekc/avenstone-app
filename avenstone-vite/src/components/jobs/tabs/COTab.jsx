@@ -12,7 +12,7 @@ export default function COTab({ job, upd, profile }) {
   const [savCO, setSavCO] = useState(false);
 
   const apCOs = (job.change_orders || []).filter(c => c.status === 'approved');
-  const coT = apCOs.reduce((a, c) => a + Number(c.amount || 0), 0);
+  const coT = Number(job.co_total || 0);
   const cv = Number(job.contract_value || 0);
   const rev = cv + coT;
 
