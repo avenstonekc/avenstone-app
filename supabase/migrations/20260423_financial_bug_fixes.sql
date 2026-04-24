@@ -1,9 +1,9 @@
 -- Bug 1: Add paid_at column to payments (stripe-webhook was writing to it but column didn't exist)
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
 
--- Backfill historical rows: any paid row with no paid_at gets updated_at or created_at as a proxy
+-- Backfill historical rows: any paid row with no paid_at gets created_at as a proxy
 UPDATE payments
-SET paid_at = COALESCE(updated_at, created_at)
+SET paid_at = created_at
 WHERE status = 'paid' AND paid_at IS NULL;
 
 -- Bug 3: SQL function — canonical co_total for a job

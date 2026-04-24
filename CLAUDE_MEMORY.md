@@ -201,3 +201,12 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision 6 (fixture icons): _drawFixture rewritten. Outer rect for all. Per-category details: toilet (tank rect + bowl ellipse), bathtub (inner oval + drain dot), sink (circle + drain dot), stove/oven (4 burner circles), dishwasher/washerDryer (drum circle), refrigerator (divider line), storage (X cross). All 0.5pt no-fill navy.
 - Open: Verify PDF output on device — items 3/5 depend on StructureBuilder returning shared walls in both adjacent rooms' segment lists. If edge cases arise iterate.
 - Next: Push to main → iOS build → verify on TestFlight
+
+[LOG — 2026-04-23]
+- Action: Fixed 3 production financial bugs — paid_at missing column, ai-pm-nightly wrong enum, co_total drift
+- Files: supabase/migrations/20260423_financial_bug_fixes.sql (new), supabase/functions/ai-pm-nightly/index.ts, avenstone-vite/src/components/jobs/tabs/COTab.jsx, avenstone-vite/src/lib/supabase.js (+getJobCoTotal helper)
+- Decision: Bug 1 — stripe-webhook was writing paid_at but column didn't exist → migration adds column + backfills historical paid rows from updated_at/created_at
+- Decision: Bug 2 — ai-pm-nightly Rule 2 checked status='due' (not a valid enum value); fixed to status='overdue' OR (status='pending' AND due_date < today). Overdue alerts now fire correctly.
+- Decision: Bug 3 — COTab computed co_total from change_orders array client-side; DB trigger (trg_sync_co_total) now auto-updates jobs.co_total on every CO change. COTab reads job.co_total only.
+- Decision: payments table has no updated_at column — backfill uses created_at only (migration file updated to match)
+- Next: All three bugs verified fixed in DB and code. No open items.
