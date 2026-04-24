@@ -187,3 +187,26 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 
 [LOG — 2026-04-25]
 - Action: Consolidated on request — financial rebuild (Phases 1-6) compressed into single block. Live backlog: Phase 7 receipt vision (deferred), IA cleanup, sub financial visibility, notifications audit.
+
+[LOG — 2026-04-24]
+- Action: Professional PDF renderer rewrite — full architectural floor plan, multi-floor support, poché walls, world-mode vs packing-mode layout, polygon centroid labels, graduated scale bar
+- Files: src/lib/pdf.js (full rewrite: added _groupByFloor, _dedupFeatures, _segsToPolyPoints, _polyCentroid, _pointInPoly, _interiorPoint, _drawPoché, _eraseGap, _dimLine, _drawScaleBar, _renderFloorPage, _renderSummaryPage; removed FIXTURE_LABELS/_drawFixture), src/lib/captureTypes.js (re-created: FLOOR_LABELS, floorLabel — was deleted 2026-04-22)
+- Decision: Fixture rendering deliberately removed. Single-room path requires rotation transform from _processWalls that doesn't exist yet. Deferred to next phase.
+- Decision: Landscape orientation (792×612pt) for floor plan pages; summary page stays portrait.
+- Decision: World-mode (has worldX/worldZ) → _processAllRooms + spatial layout. Single-room fallback → _processWalls packing layout.
+- Open: Fixture rendering pending — Swift already serializes room.objects; PDF needs _drawFixture reinstated with correct rotation transform.
+
+[LOG — 2026-04-24]
+- Action: Multi-floor scan flow wired end-to-end — captureTypes.js, floorIndex JS→Swift→rooms, floor picker screen in LidarScanner
+- Files: src/lib/captureTypes.js (FLOOR_LABELS, floorLabel), src/lib/lidar.js (scanMultipleRooms(floorIndex), simulation rooms tagged with floor field), RoomPlanPlugin.swift (floorIndex from JS call → vc.floorIndex → "floor" in room dicts), src/components/ai/LidarScanner.jsx (FloorPicker component, FLOOR_OPTIONS, computeNextFloor, pendingFloorIndex state), CLAUDE.md (+commit-and-push Working Preference bullet)
+- Decision: Floor picker skipped on first scan (rooms empty) — auto-uses floor 0. Shown before every subsequent scan. Auto-selects next unscanned floor.
+- Decision: FLOOR_LABELS: -1=Basement, 0=1st Floor, 1=2nd Floor, 2=3rd Floor, 3=4th Floor. Legacy rooms without floor field default to 0.
+
+[LOG — 2026-04-24]
+- Action: 13-bug PDF cleanup sweep (Bugs 1–13) — architectural floor plan renderer polish across pdf.js and RoomPlanPlugin.swift
+- Files: src/lib/pdf.js (13 commits), RoomPlanPlugin.swift (Bug 7 — polygon containment name matching)
+- Decision: Bug 2 — interior wall classification replaced: 3-condition test (midpoint ≤0.5ft + length ±15% + direction |dot|≥0.9) instead of midpoint-only quantized grid. Eliminates false bathroom interior dim.
+- Decision: Bug 7 — Swift name match: wall endpoints sorted by angle from centroid → polygon; pointInPolygon as primary; nearest-centroid fallback with [LIDAR_WARN] log.
+- Decision: Overall bounding dims (top + right) at off=62, lw=1.0 — heavier than per-wall dims (off=44, lw=0.75).
+- Decision: Title block moved to left-side vertical column (TC_W=108pt). Plan area now 536×476pt inside DL=168/DR=704/DT=82/DB=558.
+- Decision: Overall HEIGHT dim on RIGHT side — left side is blocked by title column.
