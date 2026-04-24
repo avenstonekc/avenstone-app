@@ -727,7 +727,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     for (const seg of allWallSegs) {
       if (seg.interior) continue;
       const len = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
-      if (len < 0.8) continue;
+      if (len < 1.5) continue;
       const mx = (seg.x1 + seg.x2) / 2, mz = (seg.z1 + seg.z2) / 2;
       const wdx = seg.x2 - seg.x1, wdz = seg.z2 - seg.z1, wl = len || 1;
       let nx = -wdz / wl, nz = wdx / wl;
@@ -785,7 +785,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       if (proc && segs) {
         const cxB = x + w / 2, czB = y + h / 2;
         for (const seg of segs) {
-          if (seg.len < 0.8) continue;
+          if (seg.len < 1.5) continue;
           const p1x = x + seg.x1 * scale, p1y = y + seg.z1 * scale;
           const p2x = x + seg.x2 * scale, p2y = y + seg.z2 * scale;
           const wdx = seg.x2 - seg.x1, wdz = seg.z2 - seg.z1, wl = seg.len || 1;
