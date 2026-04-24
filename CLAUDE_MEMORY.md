@@ -250,3 +250,13 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision: ai-pm-nightly Rule 8 (budget_overrun) fires when any phase actual > 110% of budget, uses lowercase-normalized key map. Targets PM/owner only.
 - Decision: Migrations applied via temp postgres.js edge function (run-migration) using SUPABASE_DB_URL — Management API PAT is scoped only for function deploys, not DB queries. SUPABASE_DB_URL IS auto-injected in hosted edge functions.
 - Open: Test data (5 estimate_line_items) exists on job f8b08860 (8617 Houston St, Lenexa) — can be used for UI testing or deleted from dashboard.
+
+[LOG — 2026-04-25]
+- Action: Phase 5 — QuickBooks CSV export shipped.
+- Files: supabase/migrations/20260425_qb_category_map.sql (new), avenstone-vite/src/lib/qbExport.js (new), avenstone-vite/src/lib/supabase.js (+sbLoadQbCategoryMap, +sbUpsertQbCategoryMap, +sbLoadTransactionsForExport, +sbStampQbSynced), avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx, avenstone-vite/src/components/modals/SettingsModal.jsx
+- Decision: qb_category_map table — tenant_id + tx_type UNIQUE. RLS: owner write, staff read. 12 seeded rows for Avenstone tenant with construction-industry defaults.
+- Decision: job_transactions.qb_synced_at TIMESTAMPTZ added — optional stamp written after export if "Mark as synced" checked.
+- Decision: CSV format — QB bank CSV: Date MM/DD/YYYY, Description, Amount (+in/-out), Account, Class, Customer (income only), Vendor (expense only), Memo, Job. RFC 4180 escaping. void+draft rows skipped.
+- Decision: Export modal in Ledger sub-tab — date range (This Month / Quarter / YTD / All / Custom), all-jobs scope (owner only), mark-synced checkbox. "Hide Synced" toggle in filter bar hides already-synced rows.
+- Decision: QB mapping editor lives in Settings → QuickBooks tab (owner only). Auto-saves on blur per row.
+- Decision: sbLoadTransactionsForExport select()s with `job:jobs(address)` join so multi-job exports include per-row address in the Job column.
