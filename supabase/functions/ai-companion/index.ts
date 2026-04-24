@@ -314,12 +314,14 @@ Deno.serve(async (req) => {
     const phaseBudgetMap: Record<string, number> = {};
     for (const li of (budgetItems || []) as any[]) {
       if (!li.phase) continue;
-      phaseBudgetMap[li.phase] = (phaseBudgetMap[li.phase] || 0) + Number(li.client_price ?? li.total_cost ?? 0);
+      const key = li.phase.trim().toLowerCase();
+      phaseBudgetMap[key] = (phaseBudgetMap[key] || 0) + Number(li.client_price ?? li.total_cost ?? 0);
     }
     const phaseActualMap: Record<string, number> = {};
     for (const t of paidOut as any[]) {
       if (!t.phase) continue;
-      phaseActualMap[t.phase] = (phaseActualMap[t.phase] || 0) + Number(t.amount || 0);
+      const key = t.phase.trim().toLowerCase();
+      phaseActualMap[key] = (phaseActualMap[key] || 0) + Number(t.amount || 0);
     }
     const phaseBreakdown = Object.entries(phaseBudgetMap).map(([phase, budget]) => {
       const actual = phaseActualMap[phase] || 0;

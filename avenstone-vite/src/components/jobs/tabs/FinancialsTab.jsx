@@ -62,7 +62,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
     const paidOut = txData.filter(t => t.direction === 'out' && t.status === 'paid');
     const withActuals = items.map(li => {
       const actual = paidOut
-        .filter(t => li.phase && t.phase === li.phase)
+        .filter(t => li.phase && t.phase && t.phase.trim().toLowerCase() === li.phase.trim().toLowerCase())
         .reduce((s, t) => s + Number(t.amount || 0), 0);
       return { ...li, actual };
     });

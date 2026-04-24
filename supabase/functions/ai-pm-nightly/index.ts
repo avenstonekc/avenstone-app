@@ -218,12 +218,14 @@ Deno.serve(async (req) => {
           const phaseBudget: Record<string, number> = {};
           for (const li of lineItems as { phase: string | null; client_price: number | null; total_cost: number | null }[]) {
             if (!li.phase) continue;
-            phaseBudget[li.phase] = (phaseBudget[li.phase] || 0) + Number(li.client_price ?? li.total_cost ?? 0);
+            const key = li.phase.trim().toLowerCase();
+            phaseBudget[key] = (phaseBudget[key] || 0) + Number(li.client_price ?? li.total_cost ?? 0);
           }
           const phaseActual: Record<string, number> = {};
           for (const t of paidOut as { phase?: string | null; amount: number }[]) {
             if (!t.phase) continue;
-            phaseActual[t.phase] = (phaseActual[t.phase] || 0) + Number(t.amount || 0);
+            const key = t.phase.trim().toLowerCase();
+            phaseActual[key] = (phaseActual[key] || 0) + Number(t.amount || 0);
           }
           const overBudgetPhases = Object.entries(phaseBudget).filter(([phase, budget]) => {
             const actual = phaseActual[phase] || 0;

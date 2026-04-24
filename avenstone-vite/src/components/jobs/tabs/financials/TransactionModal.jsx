@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbUploadLienWaiverTx } from '../../../../lib/supabase';
+import { useState, useEffect } from 'react';
+import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbUploadLienWaiverTx, sbLoadPhases } from '../../../../lib/supabase';
 import { f$ } from '../../../../lib/utils';
 
 const TX_TYPES_IN  = ['client_payment','client_deposit','client_refund','other_income'];
@@ -31,6 +31,8 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
     due_date:           tx.due_date            || '',
     status:             isNew ? 'paid'         : (tx.status || 'pending'),
     payer_or_payee_name: tx.payer_or_payee_name || '',
+    phase:              tx.phase               || '',
+    phase_id:           tx.phase_id            || null,
     notes:              tx.notes               || '',
   });
   const [saving,    setSaving]    = useState(false);
@@ -38,6 +40,11 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
   const [uploading, setUploading] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState(tx.receipt_url     || null);
   const [lienUrl,    setLienUrl]    = useState(tx.lien_waiver_url  || null);
+  const [phases,     setPhases]     = useState([]);
+
+  useEffect(() => {
+    sbLoadPhases(job.id).then(data => setPhases(data || []));
+  }, [job.id]);
 
   const isView   = mode === 'view';
   const set      = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -68,6 +75,8 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
       due_date:            form.due_date             || null,
       status:              form.status,
       payer_or_payee_name: form.payer_or_payee_name  || null,
+      phase:               form.phase                || null,
+      phase_id:            form.phase_id             || null,
       notes:               form.notes                || null,
     };
     const result = isNew
@@ -139,6 +148,7 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
               ['Amount',       f$(tx.amount)],
               ['Status',       tx.status],
               ['Date',         tx.date_incurred],
+              ['Phase',        tx.phase || '—'],
               ['Due Date',     tx.due_date || '—'],
               ['Payee / Payer', tx.payer_or_payee_name || '—'],
               ['Description',  tx.description || '—'],
@@ -227,6 +237,18 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
             <div style={fg}>
               <label style={lbl}>Payee / Payer Name</label>
               <input style={inp} placeholder="Company or person name" value={form.payer_or_payee_name} onChange={e => set('payer_or_payee_name', e.target.value)} />
+            </div>
+
+            {/* Phase */}
+            <div style={fg}>
+              <label style={lbl}>Phase</label>
+              <select style={inp} value={form.phase_id || ''} onChange={e => {
+                const selected = phases.find(p => p.id === e.target.value);
+                setForm(f => ({ ...f, phase_id: selected?.id || null, phase: selected?.name || '' }));
+              }}>
+                <option value="">— No phase —</option>
+                {phases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
             </div>
 
             {/* Description */}
