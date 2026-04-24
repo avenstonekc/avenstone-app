@@ -172,3 +172,18 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision: MaterialSelectionScr.jsx is WIP (client-facing tile/fixture picker), not dead code. No file imports it because it hasn't been wired yet. Added to Remaining so future reviews don't repeat the flag.
 - Decision: sbSubUpdatePhase gates update on assigned_sub_id = AV_USER_ID. If RLS on job_phases doesn't allow sub UPDATE, phase buttons will silently fail — one-line migration fix if needed on device.
 - Next: LiDAR Phase 4 wing editor, white-label onboarding wizard, lien waivers
+
+[LOG — 2026-04-23]
+- Action: Fixed Playwright Step 8 flaky test (Add note → notification in DB) — was failing consistently on iPad, flaky on Mobile
+- Files: tests/portals-e2e.spec.js (Step 8 — replaced page.fill() with reactFill() + scrollIntoViewIfNeeded, removed waitForTimeout before text check, added waitForTimeout(2500) after text visible to allow fire-and-forget sbNotify to write to DB before assertion)
+- Decision: Root cause was two-part: (1) page.fill() doesn't reliably trigger React onChange on controlled textarea — known gotcha in CLAUDE.md. (2) sbNotify is fire-and-forget; old test's pre-check delay masked it. Result: 6/6 passing all viewports, zero retries.
+- Action: Fixed ContractModal iOS "Load failed" bug — Send Contract modal showed red error on TestFlight, worked on web
+- Files: src/components/modals/ContractModal.jsx (line 18 — changed fetch(proposalDoc.file_url) to fetch(proposalDoc.signed_url || proposalDoc.file_url))
+- Decision: proposalDoc.file_url is the raw storage path (e.g. job-id/timestamp.pdf), not a full URL. Inside Capacitor webview that resolves to https://localhost/... → instant "Load failed". signed_url is the full Supabase signed HTTPS URL which CapacitorHttp routes correctly.
+- Action: Built ClientPortal contract banner — impossible-to-miss contract signing prompt above project list
+- Files: src/components/client/ClientPortal.jsx (added isMob import, bannerSignJob state, banner render derived from jobs.filter(!contract_signed), ClientSignContractModal mount for banner)
+- Decision: Banner is full-width navy (#0A1F44) bar, one per unsigned contract, stacked. Left: title + address. Right: gold "Review & Sign" button. Mobile = column layout (isMob()), desktop = row. Existing in-project callout left intact as secondary surface. Banners disappear on sign via jobs state update.
+- Action: Fixed codemagic.yaml — submit_to_testflight: true → false
+- Decision: submit_to_testflight: true with no beta_groups was triggering Beta App Review on every push. Internal testers only — no external review needed. Builds still upload to TestFlight, internal testers still get them automatically.
+- Open: Sub portal phase buttons (Mark Started / Mark Complete) may silently fail on device if RLS doesn't allow sub UPDATE on job_phases — one-line migration fix
+- Next: Push today's changes to main, then LiDAR Phase 4 wing editor
