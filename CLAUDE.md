@@ -50,6 +50,7 @@ Haiku → Sonnet → Opus. Default to Haiku for anything automatic or high-frequ
 - **Ask only when the decision affects real users or is irreversible** — e.g. sending emails, firing notifications, deleting data. One line check saves a rework.
 - **Best effort, keep moving** — ambiguous? pick the most logical path and implement it
 - **One task at a time** — finish it, then move on
+- **Commit and push when done** — every completed task ends with commits pushed to main. Commit logical chunks separately for bisectability. Never leave work uncommitted or unpushed unless explicitly told to wait.
 - **Prefer editing existing code** over adding new files when possible
 - **Screenshots > descriptions** — if there's a UI bug, look at the screenshot first
 - **Think before building** — when an idea is floated, reason honestly: (1) Does existing software already do this better? (2) What's the realistic failure rate? (3) Does it fit Avenstone's actual competitive advantage? Say so if the answer is no.
