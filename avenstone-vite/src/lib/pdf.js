@@ -828,12 +828,18 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       if (segs && segs.length >= 3) { const a = _polyAreaFromSegs(segs); if (a > 0) return Math.round(a); }
       return room.sqft || 0;
     })();
-    const fs = Math.max(7, Math.min(11, w / 8));
+    const aspect = w > 0 && h > 0 ? Math.max(w, h) / Math.min(w, h) : 1;
+    const narrow = aspect > 3;
+    const fs = Math.max(7, Math.min(11, (narrow ? h : w) / 8));
     doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(...navy);
-    doc.text(room.name || '—', labelX, labelY - 4, { align: 'center', baseline: 'middle' });
-    if (sqft > 0) {
-      doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
-      doc.text(`${sqft.toLocaleString()} sq ft`, labelX, labelY + 7, { align: 'center', baseline: 'middle' });
+    if (narrow) {
+      doc.text(room.name || '—', labelX, labelY, { align: 'center', baseline: 'middle', angle: 90 });
+    } else {
+      doc.text(room.name || '—', labelX, labelY - 4, { align: 'center', baseline: 'middle' });
+      if (sqft > 0) {
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
+        doc.text(`${sqft.toLocaleString()} sq ft`, labelX, labelY + 7, { align: 'center', baseline: 'middle' });
+      }
     }
   }
 
