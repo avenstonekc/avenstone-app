@@ -473,6 +473,8 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
     private var roomCaptureView: RoomCaptureView!
     private let sessionConfig = RoomCaptureSession.Configuration()
     private var capturedRooms: [CapturedRoom] = []
+    private var roomNames: [String] = []
+    private var pickerCompletion: ((String) -> Void)?
     private var isFinishing = false
     private var isTransitioning = false
     private var isCancelling = false
@@ -679,23 +681,150 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         isTransitioning = false
         DispatchQueue.main.async {
             guard !self.isCancelling else { return }
-            if self.isFinishing {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    guard !self.isCancelling else { return }
-                    self.processingOverlay.isHidden = false
-                    self.buildStructure()
-                }
-            } else {
-                // Brief delay lets ARKit settle before starting the next room scan
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    guard !self.isCancelling else { return }
-                    self.startNextScan()
+            // Always show picker — user names every room as they go, including the last one
+            let roomNum = self.capturedRooms.count
+            self.showRoomPicker(roomNumber: roomNum) { name in
+                self.roomNames.append(name)
+                if self.isFinishing {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        guard !self.isCancelling else { return }
+                        self.processingOverlay.isHidden = false
+                        self.buildStructure()
+                    }
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        guard !self.isCancelling else { return }
+                        self.startNextScan()
+                    }
                 }
             }
         }
     }
 
+    // MARK: - Room picker
+
+    private func showRoomPicker(roomNumber: Int, then completion: @escaping (String) -> Void) {
+        pickerCompletion = completion
+        let navy = UIColor(red: 10/255, green: 31/255, blue: 68/255, alpha: 0.97)
+        let gold = UIColor(red: 201/255, green: 168/255, blue: 76/255, alpha: 1)
+
+        let overlay = UIView()
+        overlay.tag = 9901
+        overlay.backgroundColor = navy
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(overlay)
+
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        let titleLabel = UILabel()
+        titleLabel.text = "Room \(roomNumber) — What did you scan?"
+        titleLabel.textColor = gold
+        titleLabel.font = .systemFont(ofSize: 22, weight: .bold)
+        titleLabel.textAlignment = .center
+        titleLabel.numberOfLines = 0
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(titleLabel)
+
+        let subtitleLabel = UILabel()
+        subtitleLabel.text = "Tap a type to continue"
+        subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.55)
+        subtitleLabel.font = .systemFont(ofSize: 14)
+        subtitleLabel.textAlignment = .center
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(subtitleLabel)
+
+        let roomTypes = [
+            "Bedroom", "Bathroom", "Kitchen", "Living Room",
+            "Hallway", "Dining Room", "Office", "Laundry Room",
+            "Basement", "Garage"
+        ]
+
+        let vStack = UIStackView()
+        vStack.axis = .vertical
+        vStack.spacing = 12
+        vStack.distribution = .fillEqually
+        vStack.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(vStack)
+
+        for row in 0..<5 {
+            let hStack = UIStackView()
+            hStack.axis = .horizontal
+            hStack.spacing = 12
+            hStack.distribution = .fillEqually
+            for col in 0..<2 {
+                let index = row * 2 + col
+                guard index < roomTypes.count else { continue }
+                let btn = UIButton(type: .system)
+                btn.setTitle(roomTypes[index], for: .normal)
+                btn.setTitleColor(.white, for: .normal)
+                btn.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+                btn.backgroundColor = UIColor.white.withAlphaComponent(0.1)
+                btn.layer.cornerRadius = 14
+                btn.layer.borderWidth = 1
+                btn.layer.borderColor = UIColor.white.withAlphaComponent(0.25).cgColor
+                btn.heightAnchor.constraint(equalToConstant: 54).isActive = true
+                btn.addTarget(self, action: #selector(roomTypeTapped(_:)), for: .touchUpInside)
+                hStack.addArrangedSubview(btn)
+            }
+            vStack.addArrangedSubview(hStack)
+        }
+
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 48),
+            titleLabel.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 24),
+            titleLabel.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -24),
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 10),
+            subtitleLabel.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            vStack.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 36),
+            vStack.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 24),
+            vStack.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -24),
+        ])
+    }
+
+    @objc private func roomTypeTapped(_ sender: UIButton) {
+        guard let name = sender.titleLabel?.text else { return }
+        view.viewWithTag(9901)?.removeFromSuperview()
+        let completion = pickerCompletion
+        pickerCompletion = nil
+        completion?(name)
+    }
+
     // MARK: - StructureBuilder
+
+    // Match capturedRooms (scan order) to structure.rooms (spatial order) by wall centroid proximity.
+    // Returns [structureRoomIndex: name] so names survive StructureBuilder reordering.
+    private func matchNamesToStructuredRooms(_ structure: CapturedStructure) -> [Int: String] {
+        guard !roomNames.isEmpty, !structure.rooms.isEmpty else { return [:] }
+        let capCentroids: [(Float, Float)] = capturedRooms.map { room in
+            guard !room.walls.isEmpty else { return (0, 0) }
+            let cx = room.walls.map { $0.transform.columns.3.x }.reduce(0, +) / Float(room.walls.count)
+            let cz = room.walls.map { $0.transform.columns.3.z }.reduce(0, +) / Float(room.walls.count)
+            return (cx, cz)
+        }
+        let strCentroids: [(Float, Float)] = structure.rooms.map { room in
+            guard !room.walls.isEmpty else { return (0, 0) }
+            let cx = room.walls.map { $0.transform.columns.3.x }.reduce(0, +) / Float(room.walls.count)
+            let cz = room.walls.map { $0.transform.columns.3.z }.reduce(0, +) / Float(room.walls.count)
+            return (cx, cz)
+        }
+        var nameMap = [Int: String]()
+        var usedCap = Set<Int>()
+        for (j, sc) in strCentroids.enumerated() {
+            var bestDist = Float.greatestFiniteMagnitude; var bestI = -1
+            for (i, cc) in capCentroids.enumerated() {
+                guard !usedCap.contains(i), i < roomNames.count else { continue }
+                let d = (sc.0-cc.0)*(sc.0-cc.0) + (sc.1-cc.1)*(sc.1-cc.1)
+                if d < bestDist { bestDist = d; bestI = i }
+            }
+            if bestI >= 0 { nameMap[j] = roomNames[bestI]; usedCap.insert(bestI) }
+        }
+        return nameMap
+    }
 
     private func buildStructure() {
         guard !capturedRooms.isEmpty else {
@@ -707,10 +836,10 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
             do {
                 let builder = StructureBuilder(options: [])
                 let structure = try await builder.capturedStructure(from: capturedRooms)
-                let rooms = self.structureToRooms(structure)
+                let nameMap = self.matchNamesToStructuredRooms(structure)
+                let rooms = self.structureToRooms(structure, nameMap: nameMap)
                 await MainActor.run { self.showNamingScreen(rooms) }
             } catch {
-                // StructureBuilder failed — fall back to individual room data (packing layout in PDF)
                 let rooms = self.fallbackRooms()
                 await MainActor.run { self.showNamingScreen(rooms) }
             }
@@ -750,7 +879,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         contentView.addSubview(titleLabel)
 
         let subtitleLabel = UILabel()
-        subtitleLabel.text = "\(rooms.count) room\(rooms.count == 1 ? "" : "s") scanned"
+        subtitleLabel.text = "Confirm names — tap to edit if needed"
         subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.65)
         subtitleLabel.font = .systemFont(ofSize: 14)
         subtitleLabel.textAlignment = .center
@@ -773,6 +902,9 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
             let field = UITextField()
             field.placeholder = hint
+            if let matched = structuredRooms[i]["name"] as? String, !matched.hasPrefix("Room ") {
+                field.text = matched
+            }
             field.backgroundColor = UIColor(red: 1, green: 1, blue: 1, alpha: 1)
             field.textColor = UIColor(red: 0, green: 0, blue: 0, alpha: 1)
             field.defaultTextAttributes = [
@@ -859,7 +991,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
     // MARK: - Data conversion
 
-    private func structureToRooms(_ structure: CapturedStructure) -> [[String: Any]] {
+    private func structureToRooms(_ structure: CapturedStructure, nameMap: [Int: String] = [:]) -> [[String: Any]] {
         let m2f: Float = 3.28084
         let fmt2 = { (v: Float) -> Double in Double(String(format: "%.2f", v)) ?? Double(v) }
 
@@ -980,7 +1112,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
             let wFt = (maxX - minX) * m2f
             let hFt = maxY * m2f
             return [
-                "name": "Room \(i + 1)",
+                "name": nameMap[i] ?? "Room \(i + 1)",
                 "length": fmt2(lFt), "width": fmt2(wFt), "height": fmt2(hFt),
                 "sqft": Int((lFt * wFt).rounded()),
                 "doors": room.doors.count, "windows": room.windows.count,
@@ -1043,7 +1175,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
             let wFt = (maxX - minX) * m2f
             let hFt = maxY * m2f
             return [
-                "name": "Room \(i+1)",
+                "name": i < roomNames.count ? roomNames[i] : "Room \(i+1)",
                 "length": fmt2(lFt), "width": fmt2(wFt), "height": fmt2(hFt),
                 "sqft": Int((lFt * wFt).rounded()),
                 "wallSegments": wallSegs,
