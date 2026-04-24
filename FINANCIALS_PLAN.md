@@ -9,13 +9,15 @@ Contents:
 
 # Avenstone Financial System — Rebuild Plan
 
-## Status as of 2026-04-23
+## Status as of 2026-04-25
 - Bug fixes: shipped (paid_at column, ai-pm-nightly enum, co_total drift)
 - Unified ledger migration: shipped (job_transactions live, compat views active)
 - Phase 3 Financials tab: shipped (Ledger/Estimate/CO/Costs sub-tabs, TransactionModal, lien waiver flagging, Scanner rename, 13→10 tabs, ai-companion + ai-pm-nightly updated)
 - Phase 3.5 UI polish: shipped (5-stat bar, segmented status toggle, quick-add defaults)
 - Phase 4 Budget vs Actual: shipped (estimate_line_items table + migration, Budget sub-tab in FinancialsTab, LineItemModal CRUD, ai-pm-nightly Rule 8 budget_overrun, ai-companion budget context, ClientPortal estimate view for cost_plus jobs)
-- All other phases: pending
+- Phase 5 QuickBooks CSV export: shipped (qb_category_map table, QB Export modal in Ledger, Settings → QuickBooks mapping tab, qb_synced_at stamp, Hide Synced filter)
+- Phase 6 Field tab consolidation: shipped (Notes/Photos + Daily Logs + Materials → FieldTab wrapper, 10→8 tabs, Consultation surfaced in tab bar)
+- Phase 7 (receipt vision extraction): unscheduled
 
 ## Core architectural decisions (locked)
 
@@ -65,10 +67,11 @@ Phase 5: QuickBooks CSV export
   - One button in Financials, exports job_transactions in
     QB-compatible CSV (Customer, Vendor, Item, Account, Date, Amount)
 
-Phase 6: Field + Documents consolidation
-  - Fold Notes/Photos + Daily Logs + Materials into one Field tab
-  - Keep Docs and Scanner separate
-  - Brings JobDet from 13 tabs down to 8
+Phase 6: Field + Documents consolidation ✓ SHIPPED
+  - FieldTab wrapper wraps Notes/Photos + Daily Logs + Materials as sub-tabs
+  - Consultation surfaced in main tab bar (was hidden, tab id='session')
+  - JobDet 10→8 tabs: Info, Financials, Schedule, Field, Messages, Documents, Scanner, Consultation
+  - No changes to underlying components (NotesPhotosTab, LogsTab, MaterialsTab)
 
 Phase 7 (future, not scoped): Haiku vision receipt extraction
   - Snap photo → auto-fill vendor, amount, date, line items

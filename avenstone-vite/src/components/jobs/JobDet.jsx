@@ -3,27 +3,23 @@ import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, AI_PM_URL, sbNotif
 import { Ic, sc, sl, f$, STATS } from '../../lib/utils';
 import InfoTab from './tabs/InfoTab';
 import ScheduleTab from './tabs/ScheduleTab';
-import { NotesTab, PhotosTab } from './tabs/NotesPhotosTab';
 import DocsTab from './tabs/DocsTab';
 import MessagesTab from './tabs/MessagesTab';
-import LogsTab from './tabs/LogsTab';
 import ConsultationTab from './tabs/ConsultationTab';
 import AiCompanionChat from '../shared/AiCompanionChat';
-import MaterialsTab from './tabs/MaterialsTab';
 import FloorPlanTab from './tabs/FloorPlanTab';
 import FinancialsTab from './tabs/FinancialsTab';
+import FieldTab from './tabs/FieldTab';
 
 const TABS = [
-  { id: 'info', lb: 'Info', ic: 'info' },
-  { id: 'financials', lb: 'Financials', ic: 'doc' },
-  { id: 'sched', lb: 'Schedule', ic: 'sched' },
-  { id: 'msgs', lb: 'Messages', ic: 'note' },
-  { id: 'notes', lb: 'Notes', ic: 'note' },
-  { id: 'photos', lb: 'Photos', ic: 'cam' },
-  { id: 'logs', lb: 'Daily Logs', ic: 'clip' },
-  { id: 'materials', lb: 'Materials', ic: 'box' },
-  { id: 'docs', lb: 'Documents', ic: 'folder' },
-  { id: 'floorplan', lb: 'Scanner', ic: 'doc' },
+  { id: 'info',       lb: 'Info',         ic: 'info' },
+  { id: 'financials', lb: 'Financials',   ic: 'doc' },
+  { id: 'sched',      lb: 'Schedule',     ic: 'sched' },
+  { id: 'field',      lb: 'Field',        ic: 'clip' },
+  { id: 'msgs',       lb: 'Messages',     ic: 'note' },
+  { id: 'docs',       lb: 'Documents',    ic: 'folder' },
+  { id: 'floorplan',  lb: 'Scanner',      ic: 'doc' },
+  { id: 'session',    lb: 'Consultation', ic: 'eye' },
 ];
 
 export default function JobDet({ job, upd, del, back, profile }) {
@@ -188,7 +184,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
               )}
               {!hasPackage && (
                 <button
-                  onClick={() => setTab('photos')}
+                  onClick={() => setTab('field')}
                   style={{ background: 'transparent', color: '#C9A84C', border: '1px solid #C9A84C55', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   Go to Photos →
                 </button>
@@ -205,10 +201,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
         {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
-        {tab === 'notes' && <NotesTab job={job} upd={upd} profile={profile} />}
-        {tab === 'photos' && <PhotosTab job={job} upd={upd} />}
-        {tab === 'logs' && <LogsTab job={job} />}
-        {tab === 'materials' && <MaterialsTab job={job} profile={profile} />}
+        {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} />}
         {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
         {tab === 'floorplan' && <FloorPlanTab job={job} profile={profile} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} />}

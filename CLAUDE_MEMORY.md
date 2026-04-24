@@ -262,6 +262,15 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision: sbLoadTransactionsForExport select()s with `job:jobs(address,client_name)` join so multi-job exports include per-row address and client name.
 
 [LOG — 2026-04-25]
+- Action: Phase 6 — Field tab consolidation shipped. JobDet 10→8 tabs.
+- Files: avenstone-vite/src/components/jobs/tabs/FieldTab.jsx (new), avenstone-vite/src/components/jobs/JobDet.jsx, FINANCIALS_PLAN.md
+- Decision: FieldTab is a thin wrapper — imports NotesTab+PhotosTab+LogsTab+MaterialsTab, renders sub-tab bar (Notes & Photos / Daily Logs / Materials). No changes to the three underlying components.
+- Decision: Notes & Photos combined into one sub-tab (both components rendered together). They were two separate tabs in JobDet before (notes + photos).
+- Decision: Consultation tab (id='session') was already rendered in JobDet but was not in the TABS array — surfaced it in the tab bar as part of this cleanup.
+- Decision: Completion banner "Go to Photos →" button updated from setTab('photos') → setTab('field') since 'photos' no longer exists as a top-level tab.
+- Decision: FINANCIALS_PLAN.md updated — Phases 3-6 marked shipped, Phase 7 noted as unscheduled.
+
+[LOG — 2026-04-25]
 - Action: Fixed QB CSV Customer/Vendor columns — both were reading from transaction.payer_or_payee_name (wrong for income rows)
 - Files: avenstone-vite/src/lib/qbExport.js, avenstone-vite/src/lib/supabase.js
 - Decision: Customer (direction='in'): now reads tx.job?.client_name (from job join). payer_or_payee_name is rarely filled on client payments — client name lives on the job record.
