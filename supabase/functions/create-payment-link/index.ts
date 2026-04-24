@@ -39,14 +39,20 @@ Deno.serve(async (req) => {
       metadata: { job_id, tenant_id, payment_type: payment_type || "custom" },
     });
 
-    // Save payment record
-    const { data: payment } = await sb.from("payments").insert({
-      tenant_id, job_id, amount: Number(amount), description,
-      payment_type: payment_type || "custom",
+    // Save to unified ledger
+    const { data: payment } = await sb.from("job_transactions").insert({
+      tenant_id,
+      job_id,
+      direction: "in",
+      type: "client_payment",
+      amount: Number(amount),
+      description,
+      payment_method: payment_type || "custom",
       status: "pending",
+      date_incurred: new Date().toISOString().slice(0, 10),
       stripe_session_id: session.id,
       stripe_checkout_url: session.url,
-      client_email, created_by: created_by || null,
+      created_by: created_by || tenant_id,
     }).select().single();
 
     // Email client

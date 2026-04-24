@@ -266,20 +266,44 @@ export const sbLoadCostInvoices = async jid => {
   }));
 };
 export const sbCreateCostInvoice = async (jid, invoice) => {
-  const { data, error } = await sb.from('job_cost_invoices').insert({ ...invoice, job_id: jid, tenant_id: AV_TENANT, created_at: new Date().toISOString() }).select().single();
+  // Write directly to job_transactions; job_cost_invoices is now a compat view
+  const { data, error } = await sb.from('job_transactions').insert({
+    job_id: jid,
+    tenant_id: AV_TENANT,
+    direction: 'out',
+    type: 'vendor_payment',
+    amount: invoice.amount,
+    date_incurred: invoice.date || new Date().toISOString().slice(0, 10),
+    date_paid: invoice.paid ? (invoice.date || new Date().toISOString().slice(0, 10)) : null,
+    status: invoice.paid ? 'paid' : 'pending',
+    cost_item_id: invoice.cost_item_id || null,
+    receipt_url: invoice.invoice_file_url || null,
+    lien_waiver_url: invoice.lien_waiver_file_url || null,
+    lien_waiver_signed_date: invoice.lien_waiver_signed_date || null,
+    created_by: AV_USER_ID,
+    created_at: new Date().toISOString(),
+  }).select().single();
   return { data, error };
 };
 export const sbUpdCostInvoice = async (id, ch) => {
-  const { data, error } = await sb.from('job_cost_invoices').update(ch).eq('id', id).select().single();
+  // Map compat field names to job_transactions columns
+  const mapped = { ...ch };
+  if ('invoice_file_url' in ch) { mapped.receipt_url = ch.invoice_file_url; delete mapped.invoice_file_url; }
+  if ('invoice_file_name' in ch) delete mapped.invoice_file_name;
+  if ('lien_waiver_file_url' in ch) { mapped.lien_waiver_url = ch.lien_waiver_file_url; delete mapped.lien_waiver_file_url; }
+  if ('lien_waiver_file_name' in ch) delete mapped.lien_waiver_file_name;
+  if ('date' in ch) { mapped.date_incurred = ch.date; delete mapped.date; }
+  if ('paid' in ch) { mapped.status = ch.paid ? 'paid' : 'pending'; delete mapped.paid; }
+  const { data, error } = await sb.from('job_transactions').update(mapped).eq('id', id).select().single();
   return { data, error };
 };
-export const sbDelCostInvoice = async id => sb.from('job_cost_invoices').delete().eq('id', id);
+export const sbDelCostInvoice = async id => sb.from('job_transactions').delete().eq('id', id);
 export const sbUploadInvoiceFile = async (jid, invId, file) => {
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
   const path = `${jid}/invoice-${invId}/${Date.now()}.${ext}`;
   const { error } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type });
   if (error) return { error };
-  await sb.from('job_cost_invoices').update({ invoice_file_url: path, invoice_file_name: file.name }).eq('id', invId);
+  await sb.from('job_transactions').update({ receipt_url: path }).eq('id', invId);
   return { path };
 };
 export const sbUploadLienWaiver = async (jid, invId, file) => {
@@ -287,7 +311,7 @@ export const sbUploadLienWaiver = async (jid, invId, file) => {
   const path = `${jid}/lien-${invId}/${Date.now()}.${ext}`;
   const { error } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type });
   if (error) return { error };
-  await sb.from('job_cost_invoices').update({ lien_waiver_file_url: path, lien_waiver_file_name: file.name, lien_waiver_signed_date: new Date().toISOString().slice(0, 10) }).eq('id', invId);
+  await sb.from('job_transactions').update({ lien_waiver_url: path, lien_waiver_signed_date: new Date().toISOString().slice(0, 10) }).eq('id', invId);
   return { path };
 };
 
@@ -530,12 +554,58 @@ export const sbSendEstimateEmail = async (job, pdfBlob) => {
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
 export const sbLoadPayments = async jid => {
-  const { data } = await sb.from('payments').select('*,created_by_profile:profiles!payments_created_by_fkey(full_name)').eq('job_id', jid).order('created_at', { ascending: false });
+  const { data } = await sb.from('payments').select('*').eq('job_id', jid).order('created_at', { ascending: false });
   return data || [];
 };
 export const sbCreatePaymentLink = async p => {
   const res = await fetch(PAYMENT_LINK_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify(p) });
   return res.json();
+};
+
+// ─── Unified financial ledger (job_transactions) ──────────────────────────────
+export const sbLoadJobTransactions = async (jobId, filters = {}) => {
+  let q = sb.from('job_transactions').select('*').eq('job_id', jobId);
+  if (filters.direction) q = q.eq('direction', filters.direction);
+  if (filters.type)      q = q.eq('type', filters.type);
+  if (filters.status)    q = q.eq('status', filters.status);
+  if (filters.phase_id)  q = q.eq('phase_id', filters.phase_id);
+  if (filters.date_from) q = q.gte('date_incurred', filters.date_from);
+  if (filters.date_to)   q = q.lte('date_incurred', filters.date_to);
+  q = q.order('date_incurred', { ascending: false });
+  const { data } = await q;
+  return data || [];
+};
+export const sbCreateTransaction = async tx => {
+  const { data, error } = await sb.from('job_transactions').insert({ ...tx, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();
+  return { data, error };
+};
+export const sbUpdateTransaction = async (id, updates) => {
+  const { data, error } = await sb.from('job_transactions').update(updates).eq('id', id).select().single();
+  return { data, error };
+};
+export const sbVoidTransaction = async id => {
+  const { data, error } = await sb.from('job_transactions').update({ status: 'void' }).eq('id', id).select().single();
+  return { data, error };
+};
+export const sbUploadReceipt = async (file, jobId) => {
+  try {
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+    const path = `${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await sb.storage.from('job-receipts').upload(path, file, { contentType: file.type, upsert: false });
+    if (error) return { error: error.message };
+    const { data } = await sb.storage.from('job-receipts').createSignedUrl(path, 3600);
+    return { path, signedUrl: data?.signedUrl || null };
+  } catch (e) { return { error: e.message || 'Upload failed' }; }
+};
+export const sbUploadLienWaiverTx = async (file, jobId) => {
+  try {
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+    const path = `${jobId}/lien-waivers/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type, upsert: false });
+    if (error) return { error: error.message };
+    const { data } = await sb.storage.from('job-documents').createSignedUrl(path, 3600);
+    return { path, signedUrl: data?.signedUrl || null };
+  } catch (e) { return { error: e.message || 'Upload failed' }; }
 };
 
 // ─── Team / User management ───────────────────────────────────────────────────

@@ -22,19 +22,21 @@ Deno.serve(async (req) => {
     return new Response(`Webhook Error: ${err}`, { status: 400 });
   }
 
+  const sb = createClient(SB_URL, SB_SERVICE);
+
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    const sb = createClient(SB_URL, SB_SERVICE);
 
-    await sb.from("payments")
+    await sb.from("job_transactions")
       .update({
         status: "paid",
-        paid_at: new Date().toISOString(),
+        date_paid: new Date().toISOString().slice(0, 10),
         stripe_payment_intent_id: typeof session.payment_intent === "string"
           ? session.payment_intent
           : session.payment_intent?.id || null,
       })
-      .eq("stripe_session_id", session.id);
+      .eq("stripe_session_id", session.id)
+      .eq("direction", "in");
 
     // Notify all tenant staff via in-app notifications
     const jobId = session.metadata?.job_id;
@@ -63,6 +65,17 @@ Deno.serve(async (req) => {
         );
       }
     }
+  }
+
+  if (
+    event.type === "checkout.session.expired" ||
+    event.type === "payment_intent.payment_failed"
+  ) {
+    const session = event.data.object as Stripe.Checkout.Session;
+    await sb.from("job_transactions")
+      .update({ status: "void" })
+      .eq("stripe_session_id", session.id)
+      .eq("direction", "in");
   }
 
   return new Response(JSON.stringify({ received: true }), {
