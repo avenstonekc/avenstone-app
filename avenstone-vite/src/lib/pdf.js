@@ -191,6 +191,14 @@ export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, marg
 const _r2 = n => parseFloat((+(n) || 0).toFixed(2));
 const _dim = n => _r2(n).toFixed(2);
 
+// Format feet (decimal) as architectural feet-inches: 5.5 → 5'-6"
+const _feetInches = (ft) => {
+  const totalIn = Math.round((+(ft) || 0) * 12);
+  const f = Math.floor(totalIn / 12);
+  const i = totalIn % 12;
+  return `${f}'-${i}"`;
+};
+
 // For multi-room world-space mode: rotate the entire plan so the longest wall is horizontal.
 // Returns { roomSegs: [[{x1,z1,x2,z2}]], trueW, trueH } or null.
 const _processAllRooms = (rooms) => {
@@ -392,29 +400,84 @@ const FIXTURE_LABELS = {
   washerDryer: 'W/D', storage: 'Storage',
 };
 
-// Draw one fixture as a rotated filled rectangle with a centered label.
+// Draw one fixture using category-specific architectural symbols (no fill, 0.5pt navy).
 // worldX/worldZ: room's global origin offset in feet (0 for single-room path).
 const _drawFixture = (doc, obj, worldOriginX, worldOriginY, scale, worldX, worldZ) => {
   const w = obj.width * scale, d = obj.depth * scale;
-  if (w < 2 || d < 2) return;
+  if (w < 3 || d < 3) return;
   const cx = worldOriginX + (worldX + obj.x) * scale;
   const cy = worldOriginY + (worldZ + obj.z) * scale;
-  const cos = Math.cos(obj.rotationY || 0), sin = Math.sin(obj.rotationY || 0);
+  const ca = Math.cos(obj.rotationY || 0), sa = Math.sin(obj.rotationY || 0);
   const hw = w / 2, hd = d / 2;
-  const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]
-    .map(([rx, rz]) => [cx + rx * cos - rz * sin, cy + rx * sin + rz * cos]);
-  doc.setFillColor(229, 229, 229);
-  doc.setDrawColor(10, 31, 68);
-  doc.setLineWidth(0.5);
+
+  // Transform local page-coord → actual page coord (rotation + translation)
+  const pt = (lx, lz) => [cx + lx*ca - lz*sa, cy + lx*sa + lz*ca];
+
+  doc.setDrawColor(10, 31, 68); doc.setLineWidth(0.5);
+
+  // Outer rectangle outline (all fixtures)
+  const rp = [pt(-hw,-hd), pt(hw,-hd), pt(hw,hd), pt(-hw,hd)];
   doc.lines(
-    [[corners[1][0]-corners[0][0], corners[1][1]-corners[0][1]],
-     [corners[2][0]-corners[1][0], corners[2][1]-corners[1][1]],
-     [corners[3][0]-corners[2][0], corners[3][1]-corners[2][1]]],
-    corners[0][0], corners[0][1], [1, 1], 'FD', true
+    [[rp[1][0]-rp[0][0],rp[1][1]-rp[0][1]],[rp[2][0]-rp[1][0],rp[2][1]-rp[1][1]],[rp[3][0]-rp[2][0],rp[3][1]-rp[2][1]]],
+    rp[0][0], rp[0][1], [1,1], 'S', true
   );
-  const label = FIXTURE_LABELS[obj.category] || 'Obj';
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(10, 31, 68);
-  doc.text(label, cx, cy + 2, { align: 'center' });
+
+  // Ellipse helper: N-segment approximation in local coords centered at (lx,lz), semi-axes (ra,rb)
+  const ellipse = (lx, lz, ra, rb, steps = 16) => {
+    let prev = pt(lx + ra, lz);
+    for (let i = 1; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const next = pt(lx + ra * Math.cos(a), lz + rb * Math.sin(a));
+      doc.line(prev[0], prev[1], next[0], next[1]); prev = next;
+    }
+  };
+
+  const cat = obj.category;
+  if (cat === 'toilet') {
+    // Tank: rect at back 35%
+    const tz = -hd + hd * 0.7;
+    const tp = [pt(-hw*0.85,-hd), pt(hw*0.85,-hd), pt(hw*0.85,tz), pt(-hw*0.85,tz)];
+    doc.lines([[tp[1][0]-tp[0][0],tp[1][1]-tp[0][1]],[tp[2][0]-tp[1][0],tp[2][1]-tp[1][1]],[tp[3][0]-tp[2][0],tp[3][1]-tp[2][1]]],
+      tp[0][0], tp[0][1], [1,1], 'S', true);
+    // Bowl: ellipse in front 65%
+    ellipse(0, hd * 0.22, hw * 0.68, hd * 0.52);
+
+  } else if (cat === 'bathtub') {
+    ellipse(0, 0, hw * 0.7, hd * 0.8);
+    ellipse(0, hd * 0.3, hw * 0.09, hd * 0.09, 8); // drain dot
+
+  } else if (cat === 'sink') {
+    const r = Math.min(hw, hd) * 0.72;
+    ellipse(0, 0, r, r);
+    ellipse(0, 0, Math.min(hw,hd) * 0.14, Math.min(hw,hd) * 0.14, 8); // drain
+
+  } else if (cat === 'stove' || cat === 'oven') {
+    const br = Math.min(hw, hd) * 0.21;
+    for (const [bx, bz] of [[-hw*.38,-hd*.34],[hw*.38,-hd*.34],[-hw*.38,hd*.34],[hw*.38,hd*.34]]) {
+      ellipse(bx, bz, br, br, 8);
+    }
+
+  } else if (cat === 'dishwasher' || cat === 'washerDryer') {
+    const r = Math.min(hw, hd) * 0.58;
+    ellipse(0, 0, r, r);
+
+  } else if (cat === 'refrigerator') {
+    // Fridge/freezer divider line ~28% from top
+    const [ax, ay] = pt(-hw, -hd * 0.28), [bx, by] = pt(hw, -hd * 0.28);
+    doc.line(ax, ay, bx, by);
+
+  } else if (cat === 'storage') {
+    // X cross
+    const [a1x,a1y] = pt(-hw,-hd), [a2x,a2y] = pt(hw,hd);
+    const [b1x,b1y] = pt(hw,-hd), [b2x,b2y] = pt(-hw,hd);
+    doc.line(a1x,a1y,a2x,a2y); doc.line(b1x,b1y,b2x,b2y);
+  }
+
+  const label = FIXTURE_LABELS[cat] || '';
+  if (label) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(5); doc.setTextColor(10, 31, 68);
+    doc.text(label, cx, cy + 1.5, { align: 'center' });
+  }
 };
 
 export const buildFloorPlanPDF = (scan, job) => {
@@ -546,20 +609,39 @@ export const buildFloorPlanPDF = (scan, job) => {
       }
     }
 
+    // ── Classify interior walls (shared between 2+ rooms) for 3-tier line weights ─
+    // Key: rounded midpoint in world-space feet; count > 1 = interior/shared wall
+    const _wKey = (seg) => `${Math.round((seg.x1+seg.x2)*4)},${Math.round((seg.z1+seg.z2)*4)}`;
+    const midCount = new Map();
+    if (worldMode) {
+      for (const { segs } of layout) {
+        if (!segs) continue;
+        const seen = new Set();
+        for (const seg of segs) {
+          const k = _wKey(seg);
+          if (!seen.has(k)) { seen.add(k); midCount.set(k, (midCount.get(k) || 0) + 1); }
+        }
+      }
+    }
+    const isInteriorWall = (seg) => (midCount.get(_wKey(seg)) || 1) > 1;
+
     // ── Draw walls ────────────────────────────────────────────────────────────
-    doc.setDrawColor(...navy); doc.setLineWidth(WALL_PT);
+    doc.setDrawColor(...navy);
     for (const { proc, segs: itemSegs, x, y: ry, w, h } of layout) {
       if (!worldMode) { doc.setFillColor(238, 241, 247); doc.rect(x, ry, w, h, 'F'); doc.setDrawColor(...navy); }
       if (worldMode && itemSegs && itemSegs.length > 0) {
         for (const seg of itemSegs) {
+          doc.setLineWidth(isInteriorWall(seg) ? 1.5 : 2.5);
           doc.line(worldOriginX + seg.x1 * scale, worldOriginY + seg.z1 * scale,
                    worldOriginX + seg.x2 * scale, worldOriginY + seg.z2 * scale);
         }
       } else if (proc) {
+        doc.setLineWidth(WALL_PT);
         for (const seg of proc.segs) {
           doc.line(x + seg.x1 * scale, ry + seg.z1 * scale, x + seg.x2 * scale, ry + seg.z2 * scale);
         }
       } else {
+        doc.setLineWidth(WALL_PT);
         doc.rect(x, ry, w, h, 'S');
       }
     }
@@ -588,7 +670,8 @@ export const buildFloorPlanPDF = (scan, job) => {
           // Door symbol: swing (<= 4 ft), single bi-fold (4-6 ft), double bi-fold (> 6 ft)
           doc.setDrawColor(...navy); doc.setLineWidth(0.75);
           if (door.width <= 4.0) {
-            const panelX = p1x + door.nx * dw, panelZ = p1z + door.nz * dw;
+            const radius = Math.min(dw, 3 * scale);
+            const panelX = p1x + door.nx * radius, panelZ = p1z + door.nz * radius;
             doc.line(p1x, p1z, panelX, panelZ);
             const arcStart = Math.atan2(door.nz, door.nx);
             const toJ2 = Math.atan2(p2z - p1z, p2x - p1x);
@@ -596,7 +679,7 @@ export const buildFloorPlanPDF = (scan, job) => {
             if (diff > Math.PI) diff -= Math.PI * 2;
             const sweep = diff >= 0 ? Math.PI / 2 : -Math.PI / 2;
             doc.setDrawColor(80, 80, 80); doc.setLineWidth(0.5);
-            _drawArc(doc, p1x, p1z, dw, arcStart, sweep);
+            _drawArc(doc, p1x, p1z, radius, arcStart, sweep);
           } else if (door.width <= 6.0) {
             // Single bi-fold: V symbol — two panel lines meeting at center apex
             const midX = (p1x + p2x) / 2, midZ = (p1z + p2z) / 2;
@@ -675,10 +758,8 @@ export const buildFloorPlanPDF = (scan, job) => {
       }
     }
 
-    // ── Wall dimension lines (architectural style) ────────────────────────────
+    // ── Wall dimension lines — exterior walls only, feet-inches format ────────
     if (worldMode) {
-      // Deduplicate shared walls between adjacent rooms
-      const allSegs = layout.flatMap(item => item.segs || []);
       const labeled = [];
       for (const item of layout) {
         if (!item.segs || !item.segs.length) continue;
@@ -686,6 +767,8 @@ export const buildFloorPlanPDF = (scan, job) => {
         for (const seg of item.segs) {
           const len = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
           if (len < 0.8) continue;
+          // Skip interior (shared) walls — label only the perimeter ring
+          if (isInteriorWall(seg)) continue;
           const mx = (seg.x1 + seg.x2) / 2, mz = (seg.z1 + seg.z2) / 2;
           const dup = labeled.some(ls => {
             if (Math.hypot(mx - (ls.x1 + ls.x2) / 2, mz - (ls.z1 + ls.z2) / 2) > 0.4) return false;
@@ -695,15 +778,13 @@ export const buildFloorPlanPDF = (scan, job) => {
           });
           if (dup) continue;
           labeled.push(seg);
-          // Outward normal: wall midpoint → room centroid is inward; perpendicular toward centroid is inward
           const smx = worldOriginX + mx * scale, smz = worldOriginY + mz * scale;
           const wdx = seg.x2 - seg.x1, wdz = seg.z2 - seg.z1, wl = len || 1;
           let nx = -wdz / wl, ny = wdx / wl;
-          // Choose the perpendicular pointing away from room centroid
           if ((smx - cxB) * nx + (smz - czB) * ny < 0) { nx = -nx; ny = -ny; }
           const p1x = worldOriginX + seg.x1 * scale, p1y = worldOriginY + seg.z1 * scale;
           const p2x = worldOriginX + seg.x2 * scale, p2y = worldOriginY + seg.z2 * scale;
-          _drawDimLine(doc, p1x, p1y, p2x, p2y, nx, ny, `${len.toFixed(1)}'`);
+          _drawDimLine(doc, p1x, p1y, p2x, p2y, nx, ny, _feetInches(len));
         }
       }
     } else {
@@ -718,7 +799,7 @@ export const buildFloorPlanPDF = (scan, job) => {
           const wdx = seg.x2 - seg.x1, wdz = seg.z2 - seg.z1, wl = seg.len || 1;
           let nx = -wdz / wl, ny = wdx / wl;
           if ((mx - cxB) * nx + (my - czB) * ny < 0) { nx = -nx; ny = -ny; }
-          _drawDimLine(doc, p1x, p1y, p2x, p2y, nx, ny, `${seg.len.toFixed(1)}'`);
+          _drawDimLine(doc, p1x, p1y, p2x, p2y, nx, ny, _feetInches(seg.len));
         }
       }
     }
@@ -733,13 +814,13 @@ export const buildFloorPlanPDF = (scan, job) => {
       doc.line(worldOriginX, bdy, worldOriginX + drawW, bdy);
       doc.line(worldOriginX, bdy - 4, worldOriginX, bdy + 4);
       doc.line(worldOriginX + drawW, bdy - 4, worldOriginX + drawW, bdy + 4);
-      doc.text(`${planTrueW.toFixed(1)} ft`, worldOriginX + drawW / 2, bdy + 9, { align: 'center' });
+      doc.text(_feetInches(planTrueW), worldOriginX + drawW / 2, bdy + 9, { align: 'center' });
       // Height dimension right of plan
       const rdx = worldOriginX + drawW + 16;
       doc.line(rdx, worldOriginY, rdx, worldOriginY + drawH);
       doc.line(rdx - 4, worldOriginY, rdx + 4, worldOriginY);
       doc.line(rdx - 4, worldOriginY + drawH, rdx + 4, worldOriginY + drawH);
-      doc.text(`${planTrueH.toFixed(1)} ft`, rdx + 7, worldOriginY + drawH / 2, { baseline: 'middle' });
+      doc.text(_feetInches(planTrueH), rdx + 7, worldOriginY + drawH / 2, { baseline: 'middle' });
     }
 
     // ── Room labels (name + sqft at centroid) ─────────────────────────────────

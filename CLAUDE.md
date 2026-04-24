@@ -594,10 +594,11 @@ If Sonnet (the default Claude Code model) is stuck on a hard architecture or API
 ### Session start (before touching any code)
 1. Read CLAUDE_MEMORY.md fully
 2. Count the number of [LOG] entries in the file
-3. If there are 15+ entries: consolidate automatically —
-   compress all but the most recent 10 into a single "## Consolidated history" block,
+3. If there are 30+ entries: ask the user if they want to consolidate before doing anything else.
+   If yes: compress all but the most recent 15 into a single "## Consolidated history" block,
    preserve all decisions/blockers/arch notes, rewrite the file in place,
-   then append a [LOG] entry: "Auto-consolidated — [date]"
+   then append a [LOG] entry: "Consolidated on request — [date]".
+   If no: proceed normally and ask again next session.
 4. Acknowledge what the last session left off on
 5. Ask if the goal today is to continue that or something new
 

@@ -187,3 +187,17 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision: submit_to_testflight: true with no beta_groups was triggering Beta App Review on every push. Internal testers only — no external review needed. Builds still upload to TestFlight, internal testers still get them automatically.
 - Open: Sub portal phase buttons (Mark Started / Mark Complete) may silently fail on device if RLS doesn't allow sub UPDATE on job_phases — one-line migration fix
 - Next: Push today's changes to main, then LiDAR Phase 4 wing editor
+
+[LOG — 2026-04-23]
+- Action: Fixed multi-room LiDAR label off-by-one bug (last room's name applied to 2nd-to-last room)
+- Files: ios/App/CapApp-SPM/Sources/CapApp-SPM/RoomPlanPlugin.swift
+- Decision: Root cause — ContinuousRoomScanViewController showed room picker between scans (storing roomNames by scan order), then pre-filled naming screen with roomNames[i] mapped to structuredRooms[i]. StructureBuilder returns rooms in spatial order (not scan order) so the mapping was consistently wrong. Fix: removed the between-scan picker entirely, removed roomNames array, all N room names now entered in the naming screen at the end with sqft hints for identification. One source of truth, no ordering assumption.
+- Action: Implemented 5 floor plan PDF renderer improvements (items 2-6 of 6-item prompt)
+- Files: src/lib/pdf.js
+- Decision 2 (feet-inches): Added _feetInches() helper. All dimension labels now show 5'-6" format instead of 5.5'. Applied to wall dim lines (world + single-room paths) and overall plan W×H labels.
+- Decision 3 (perimeter-only): Added midpoint-key classifier (midCount map, _wKey round*4). World mode dim lines now skip isInteriorWall() segments — only exterior ring gets labeled.
+- Decision 4 (door arc cap): Swing door radius capped at Math.min(dw, 3*scale) — Swift can return large door.width values that caused oversized arcs blowing past room boundaries.
+- Decision 5 (wall weights): 3-tier: exterior 2.5pt, interior/shared 1.5pt, door/window features 0.5pt. Uses same midCount map as item 3.
+- Decision 6 (fixture icons): _drawFixture rewritten. Outer rect for all. Per-category details: toilet (tank rect + bowl ellipse), bathtub (inner oval + drain dot), sink (circle + drain dot), stove/oven (4 burner circles), dishwasher/washerDryer (drum circle), refrigerator (divider line), storage (X cross). All 0.5pt no-fill navy.
+- Open: Verify PDF output on device — items 3/5 depend on StructureBuilder returning shared walls in both adjacent rooms' segment lists. If edge cases arise iterate.
+- Next: Push to main → iOS build → verify on TestFlight
