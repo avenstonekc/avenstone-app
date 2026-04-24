@@ -259,4 +259,11 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision: CSV format — QB bank CSV: Date MM/DD/YYYY, Description, Amount (+in/-out), Account, Class, Customer (income only), Vendor (expense only), Memo, Job. RFC 4180 escaping. void+draft rows skipped.
 - Decision: Export modal in Ledger sub-tab — date range (This Month / Quarter / YTD / All / Custom), all-jobs scope (owner only), mark-synced checkbox. "Hide Synced" toggle in filter bar hides already-synced rows.
 - Decision: QB mapping editor lives in Settings → QuickBooks tab (owner only). Auto-saves on blur per row.
-- Decision: sbLoadTransactionsForExport select()s with `job:jobs(address)` join so multi-job exports include per-row address in the Job column.
+- Decision: sbLoadTransactionsForExport select()s with `job:jobs(address,client_name)` join so multi-job exports include per-row address and client name.
+
+[LOG — 2026-04-25]
+- Action: Fixed QB CSV Customer/Vendor columns — both were reading from transaction.payer_or_payee_name (wrong for income rows)
+- Files: avenstone-vite/src/lib/qbExport.js, avenstone-vite/src/lib/supabase.js
+- Decision: Customer (direction='in'): now reads tx.job?.client_name (from job join). payer_or_payee_name is rarely filled on client payments — client name lives on the job record.
+- Decision: Vendor (direction='out'): reads tx.payer_or_payee_name; falls back to TX_LABELS[tx.type] + " - unnamed" (e.g. "Sub Payout - unnamed") when blank. Previously left blank.
+- Decision: Updated sbLoadTransactionsForExport join from `job:jobs(address)` to `job:jobs(address,client_name)` so client_name is available on every exported row.
