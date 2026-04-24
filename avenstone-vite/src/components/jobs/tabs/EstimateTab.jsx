@@ -1,6 +1,6 @@
 import { useState, Fragment } from 'react';
 import LidarScanner from '../../ai/LidarScanner';
-import { ANON_KEY, AI_ESTIMATOR_URL, NOTIFY_REALTOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadITBs, sbCreateITB, sbUpdateITB, sbSendBidInvite, sbUpdateBidStatus, sbLoadSubDirectory, AV_USER_ID, DOC_TYPES, docTypeColor, COMMON_TRADES } from '../../../lib/supabase';
+import { ANON_KEY, AI_ESTIMATOR_URL, NOTIFY_REALTOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadITBs, sbCreateITB, sbUpdateITB, sbSendBidInvite, sbUpdateBidStatus, sbLoadSubDirectory, AV_USER_ID, DOC_TYPES, docTypeColor, COMMON_TRADES, sbSaveEstimateLineItems } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
 
@@ -178,6 +178,19 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
         const file = new File([blob], `Proposal — ${job.address}.pdf`, { type: 'application/pdf' });
         const r = await sbUploadDoc(job.id, file, 'proposal');
         if (r.doc && setDocs) setDocs(p => [r.doc, ...p]);
+      }
+      // Persist line items for Budget vs Actual
+      if (propLineItems.length) {
+        const items = propLineItems.map(li => ({
+          phase:       li.trade  || null,
+          trade:       li.trade  || null,
+          category:    'materials',
+          description: li.description || li.trade || 'Line item',
+          quantity:    1,
+          unit_cost:   Number(li.amount || 0),
+          markup_pct:  Number(propMargin || 0),
+        }));
+        await sbSaveEstimateLineItems(job.id, null, items);
       }
     } catch (e) { console.error('Proposal PDF error:', e); }
     setPropGenerating(false);

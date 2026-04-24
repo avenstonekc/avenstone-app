@@ -59,12 +59,14 @@ Deno.serve(async (req) => {
           { data: cos },
           { data: logs },
           { data: recentNotifs },
+          { data: lineItems },
         ] = await Promise.all([
           sb.from("schedule_phases").select("*").eq("job_id", job.id).order("order_index"),
           sb.from("job_transactions").select("*").eq("job_id", job.id),
           sb.from("change_orders").select("*").eq("job_id", job.id),
           sb.from("daily_logs").select("*").eq("job_id", job.id).order("log_date", { ascending: false }).limit(5),
           sb.from("notifications").select("type").eq("job_id", job.id).gte("created_at", new Date(Date.now() - 86400000).toISOString()),
+          sb.from("estimate_line_items").select("phase,client_price,total_cost").eq("job_id", job.id),
         ]);
 
         const recentTypes = new Set((recentNotifs || []).map((n: { type: string }) => n.type));
@@ -207,6 +209,42 @@ Deno.serve(async (req) => {
             user_id: pmUsers?.[0]?.id || null,
             level: "medium",
           });
+        }
+
+        // Rule 8: budget_overrun (fires when any phase actual > 110% of budget)
+        if (lineItems && lineItems.length) {
+          const paidOut = allTxs.filter((t: { direction: string; status: string }) => t.direction === 'out' && t.status === 'paid');
+          // Group budget by phase
+          const phaseBudget: Record<string, number> = {};
+          for (const li of lineItems as { phase: string | null; client_price: number | null; total_cost: number | null }[]) {
+            if (!li.phase) continue;
+            phaseBudget[li.phase] = (phaseBudget[li.phase] || 0) + Number(li.client_price ?? li.total_cost ?? 0);
+          }
+          const phaseActual: Record<string, number> = {};
+          for (const t of paidOut as { phase?: string | null; amount: number }[]) {
+            if (!t.phase) continue;
+            phaseActual[t.phase] = (phaseActual[t.phase] || 0) + Number(t.amount || 0);
+          }
+          const overBudgetPhases = Object.entries(phaseBudget).filter(([phase, budget]) => {
+            const actual = phaseActual[phase] || 0;
+            return budget > 0 && actual > budget * 1.10;
+          });
+          if (overBudgetPhases.length) {
+            const { data: pmUsers2 } = await sb
+              .from("profiles")
+              .select("id")
+              .eq("tenant_id", job.tenant_id)
+              .in("role", ["project_manager", "owner"])
+              .limit(1);
+            const phaseList = overBudgetPhases.map(([p]) => p).join(', ');
+            alerts.push({
+              type: "budget_overrun",
+              title: `Budget overrun — ${overBudgetPhases.length} phase${overBudgetPhases.length > 1 ? 's' : ''}`,
+              body: `${job.address} — over budget: ${phaseList}`,
+              user_id: pmUsers2?.[0]?.id || null,
+              level: "high",
+            });
+          }
         }
 
         // Dedup: skip already-sent types and alerts with no target user

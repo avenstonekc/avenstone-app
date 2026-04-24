@@ -13,6 +13,8 @@ Contents:
 - Bug fixes: shipped (paid_at column, ai-pm-nightly enum, co_total drift)
 - Unified ledger migration: shipped (job_transactions live, compat views active)
 - Phase 3 Financials tab: shipped (Ledger/Estimate/CO/Costs sub-tabs, TransactionModal, lien waiver flagging, Scanner rename, 13→10 tabs, ai-companion + ai-pm-nightly updated)
+- Phase 3.5 UI polish: shipped (5-stat bar, segmented status toggle, quick-add defaults)
+- Phase 4 Budget vs Actual: shipped (estimate_line_items table + migration, Budget sub-tab in FinancialsTab, LineItemModal CRUD, ai-pm-nightly Rule 8 budget_overrun, ai-companion budget context, ClientPortal estimate view for cost_plus jobs)
 - All other phases: pending
 
 ## Core architectural decisions (locked)
@@ -115,6 +117,13 @@ section (or create a new "Future integrations" section if cleaner):
   category='materials' so budget-vs-actual picks it up automatically.
   Do NOT create a parallel materials_budget table. One ledger of
   budgeted costs — estimate_line_items is the source of truth.
+
+Sub financial visibility (future phase)
+
+Add "My Payments" section to SubJobView showing sub's own payouts on that job
+Notify sub when a payout transaction is logged for them
+Notify sub when a payout is missing its lien waiver (they need to send it)
+Data already protected by RLS on job_transactions, just needs UI + notification wiring
 
 After 2026-05-07 with no issues: DROP the _deprecated_ tables.
 

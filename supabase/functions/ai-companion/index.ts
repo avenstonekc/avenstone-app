@@ -289,6 +289,7 @@ Deno.serve(async (req) => {
       { data: materials },
       { data: knowledge },
       { data: subPerf },
+      { data: budgetItems },
     ] = await Promise.all([
       supabase.from("jobs").select("*").eq("id", job_id).single(),
       supabase.from("job_notes").select("*").eq("job_id", job_id).order("created_at", { ascending: false }).limit(10),
@@ -299,12 +300,32 @@ Deno.serve(async (req) => {
       supabase.from("job_materials").select("*").eq("job_id", job_id).order("created_at"),
       supabase.from("ai_knowledge").select("category, content").eq("tenant_id", tenant_id).eq("active", true).limit(20),
       supabase.from("sub_performance").select("sub_id, trade, score, jobs_completed, phases_late, cos_caused").eq("tenant_id", tenant_id),
+      supabase.from("estimate_line_items").select("phase,trade,description,client_price,total_cost").eq("job_id", job_id),
     ]);
 
     const coTotal = changeOrders?.reduce((s: number, co: any) => s + (co.amount ?? 0), 0) ?? 0;
     const totalIn = (payments || []).filter((t: any) => t.direction === 'in' && t.status === 'paid').reduce((s: number, t: any) => s + (t.amount ?? 0), 0);
     const totalOut = (payments || []).filter((t: any) => t.direction === 'out' && t.status === 'paid').reduce((s: number, t: any) => s + (t.amount ?? 0), 0);
     const outstanding = (payments || []).filter((t: any) => t.direction === 'in' && t.status === 'pending').reduce((s: number, t: any) => s + (t.amount ?? 0), 0);
+
+    // Budget vs actual summary
+    const totalBudget = (budgetItems || []).reduce((s: number, li: any) => s + Number(li.client_price ?? li.total_cost ?? 0), 0);
+    const paidOut = (payments || []).filter((t: any) => t.direction === 'out' && t.status === 'paid');
+    const phaseBudgetMap: Record<string, number> = {};
+    for (const li of (budgetItems || []) as any[]) {
+      if (!li.phase) continue;
+      phaseBudgetMap[li.phase] = (phaseBudgetMap[li.phase] || 0) + Number(li.client_price ?? li.total_cost ?? 0);
+    }
+    const phaseActualMap: Record<string, number> = {};
+    for (const t of paidOut as any[]) {
+      if (!t.phase) continue;
+      phaseActualMap[t.phase] = (phaseActualMap[t.phase] || 0) + Number(t.amount || 0);
+    }
+    const phaseBreakdown = Object.entries(phaseBudgetMap).map(([phase, budget]) => {
+      const actual = phaseActualMap[phase] || 0;
+      const pct = budget > 0 ? Math.round((actual / budget) * 100) : 0;
+      return `  ${phase}: budget $${budget.toLocaleString()} / actual $${actual.toLocaleString()} (${pct}%)`;
+    }).join('\n');
 
     const jobContext = `
 JOB DETAILS
@@ -318,6 +339,10 @@ Income Received (Paid): $${totalIn.toLocaleString()}
 Expenses Paid Out: $${totalOut.toLocaleString()}
 Outstanding (Unpaid Invoices): $${outstanding.toLocaleString()}
 Balance vs Contract: $${((job?.contract_value ?? 0) + coTotal - totalIn).toLocaleString()}
+${totalBudget > 0 ? `Total Budget (Estimate): $${totalBudget.toLocaleString()}
+Total Actual Spend: $${totalOut.toLocaleString()}
+Budget Variance: $${(totalBudget - totalOut).toLocaleString()}
+${phaseBreakdown ? `Phase Budget Breakdown:\n${phaseBreakdown}` : ''}` : ''}
 Start Date: ${job?.start_date ?? "N/A"}
 Target Completion: ${job?.target_completion ?? "N/A"}
 Description: ${job?.description ?? "N/A"}

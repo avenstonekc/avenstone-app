@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, PROCESS_TRANSCRIPT_URL, GENERATE_ESTIMATE_URL } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, PROCESS_TRANSCRIPT_URL, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems } from '../../../lib/supabase';
 import { Ic, f$, isMob } from '../../../lib/utils';
 
 const NAV = '#0A1F44';
@@ -562,7 +562,7 @@ export default function ConsultationTab({ job, profile }) {
       const tenantId = AV_TENANT || profile?.tenant_id;
       const included = result.oh_shit_moments?.filter((m, i) => ohShitToggled[m.id || i]) || [];
 
-      const { error } = await sb.from('job_estimates').insert({
+      const { data: estRow, error } = await sb.from('job_estimates').insert({
         job_id: job.id,
         session_id: sessionIdRef.current,
         tenant_id: tenantId,
@@ -572,8 +572,25 @@ export default function ConsultationTab({ job, profile }) {
         total: result.estimate?.total,
         source: 'ai_consultation',
         created_at: new Date().toISOString(),
-      });
+      }).select('id').single();
       if (error) throw error;
+
+      // Persist line items for Budget vs Actual
+      const trades = result.estimate?.trades || [];
+      const lineItems = trades.flatMap(trade =>
+        (trade.line_items || []).map(li => ({
+          phase:       trade.trade,
+          trade:       trade.trade,
+          category:    'labor',
+          description: li.description || trade.trade,
+          quantity:    Number(li.qty  ?? 1),
+          unit:        li.unit  || null,
+          unit_cost:   Number(li.unit_cost ?? li.total ?? 0),
+          markup_pct:  0,
+        }))
+      );
+      if (lineItems.length) await sbSaveEstimateLineItems(job.id, estRow?.id || null, lineItems);
+
       setEstimateSaved(true);
     } catch (e) {
       setErr(`Save failed: ${e.message}`);

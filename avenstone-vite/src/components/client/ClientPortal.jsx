@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices } from '../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
@@ -139,6 +139,7 @@ export default function ClientPortal({ profile, signOut }) {
   const [savingNote, setSavingNote] = useState(false);
   const [costItems, setCostItems] = useState([]);
   const [costInvoices, setCostInvoices] = useState([]);
+  const [budgetItems, setBudgetItems] = useState([]);
   const [staffOwnerId, setStaffOwnerId] = useState(null);
   const [jobReview, setJobReview] = useState(null);
   const [reviewForm, setReviewForm] = useState({ quality: 0, communication: 0, timeliness: 0, would_recommend: null, text: '' });
@@ -189,7 +190,8 @@ export default function ClientPortal({ profile, signOut }) {
 
   useEffect(() => {
     if (!job || tab !== 'financials' || !job.cost_plus) return;
-    Promise.all([sbLoadCostItems(job.id), sbLoadCostInvoices(job.id)]).then(([its, invs]) => { setCostItems(its); setCostInvoices(invs); });
+    Promise.all([sbLoadCostItems(job.id), sbLoadCostInvoices(job.id), sbLoadEstimateLineItems(job.id)])
+      .then(([its, invs, budget]) => { setCostItems(its); setCostInvoices(invs); setBudgetItems(budget); });
   }, [job?.id, tab]);
 
   useEffect(() => {
@@ -645,6 +647,29 @@ export default function ClientPortal({ profile, signOut }) {
           </div>}
 
           {tab === 'financials' && job?.cost_plus && <div>
+            {budgetItems.length > 0 && (() => {
+              const totalBudget = budgetItems.reduce((s, li) => s + Number(li.client_price ?? li.total_cost ?? 0), 0);
+              return (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Estimate</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {budgetItems.map(li => (
+                      <div key={li.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{li.description}</div>
+                          {li.phase && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{li.phase}{li.trade ? ` · ${li.trade}` : ''}</div>}
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44', fontFamily: "'DM Serif Display',serif" }}>{f$(Number(li.client_price ?? li.total_cost ?? 0))}</div>
+                      </div>
+                    ))}
+                    <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>Total Estimate</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0A1F44', fontFamily: "'DM Serif Display',serif" }}>{f$(totalBudget)}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Costs</div>
             {!costItems.filter(i => i.client_visible).length && <div className="empty">{Ic.doc}<div className="empty-t">No cost items yet</div><div>Your contractor will add cost details here</div></div>}
             {costItems.filter(i => i.client_visible).map(item => {
