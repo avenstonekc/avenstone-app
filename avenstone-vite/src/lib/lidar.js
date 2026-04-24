@@ -14,6 +14,7 @@
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { floorLabel } from './captureTypes.js';
 
 const RoomPlanPlugin = registerPlugin('RoomPlanPlugin', {
   web: () => ({
@@ -130,12 +131,13 @@ export async function scanRoom(roomName, onProgress) {
  *
  * @returns {Promise<Array<{name,length,width,height,sqft,doors,windows,worldX,worldZ,wallSegments,simulated}>>}
  */
-export async function scanMultipleRooms() {
+export async function scanMultipleRooms(floorIndex = 0) {
+  console.log(`[LIDAR_DEBUG] starting scan on floor ${floorIndex} (${floorLabel(floorIndex)})`);
   if (isNative) {
     try {
       const { supported } = await RoomPlanPlugin.isSupported();
       if (supported) {
-        const result = await RoomPlanPlugin.startMultiRoomScan({});
+        const result = await RoomPlanPlugin.startMultiRoomScan({ floorIndex });
         return (result.rooms || []).map(r => ({ ...r, simulated: false }));
       }
     } catch (err) {
@@ -146,9 +148,9 @@ export async function scanMultipleRooms() {
   // Web / non-LiDAR simulation — 3 connected rooms laid out spatially
   await new Promise(r => setTimeout(r, 1200));
   return [
-    { name: 'Living Room',    length: 18.5, width: 14.0, height: 9.0, sqft: 259, doors: 2, windows: 3, worldX: 0,    worldZ: 0,    objects: [], simulated: true },
-    { name: 'Kitchen',        length: 14.0, width: 12.0, height: 9.0, sqft: 168, doors: 1, windows: 2, worldX: 18.5, worldZ: 0,    objects: [], simulated: true },
-    { name: 'Master Bedroom', length: 15.0, width: 13.5, height: 9.0, sqft: 202, doors: 1, windows: 2, worldX: 0,    worldZ: 14.0, objects: [], simulated: true },
+    { name: 'Living Room',    length: 18.5, width: 14.0, height: 9.0, sqft: 259, doors: 2, windows: 3, worldX: 0,    worldZ: 0,    floor: floorIndex, objects: [], simulated: true },
+    { name: 'Kitchen',        length: 14.0, width: 12.0, height: 9.0, sqft: 168, doors: 1, windows: 2, worldX: 18.5, worldZ: 0,    floor: floorIndex, objects: [], simulated: true },
+    { name: 'Master Bedroom', length: 15.0, width: 13.5, height: 9.0, sqft: 202, doors: 1, windows: 2, worldX: 0,    worldZ: 14.0, floor: floorIndex, objects: [], simulated: true },
   ];
 }
 

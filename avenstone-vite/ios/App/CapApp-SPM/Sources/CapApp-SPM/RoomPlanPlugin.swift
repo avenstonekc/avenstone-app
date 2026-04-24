@@ -161,7 +161,9 @@ public class RoomPlanPlugin: CAPPlugin, CAPBridgedPlugin {
                     self.pendingCall = nil
                     return
                 }
+                let floorIndex = call.getInt("floorIndex") ?? 0
                 let vc = ContinuousRoomScanViewController()
+                vc.floorIndex = floorIndex
                 vc.onComplete = { [weak self] result in
                     guard let self = self else { return }
                     DispatchQueue.main.async {
@@ -469,6 +471,7 @@ class RoomPlanScanViewController: UIViewController, RoomCaptureViewDelegate, Roo
 @available(iOS 17.0, *)
 class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegate {
     var onComplete: ((Result<[[String: Any]], Error>) -> Void)?
+    var floorIndex: Int = 0
 
     private var roomCaptureView: RoomCaptureView!
     private let sessionConfig = RoomCaptureSession.Configuration()
@@ -1123,6 +1126,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 "objects": objectSegs,
                 "worldX": Double((minX - gMinX) * m2f),
                 "worldZ": Double((minZ - gMinZ) * m2f),
+                "floor": self.floorIndex,
                 "simulated": false,
             ] as [String: Any]
         }
@@ -1156,7 +1160,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 maxY = max(maxY, wall.dimensions.y)
             }
             guard minX != .greatestFiniteMagnitude else {
-                return ["name": "Room \(i+1)", "wallSegments": [] as [[String: Double]], "sqft": 0, "simulated": false] as [String: Any]
+                return ["name": "Room \(i+1)", "wallSegments": [] as [[String: Double]], "sqft": 0, "floor": self.floorIndex, "simulated": false] as [String: Any]
             }
             var wallSegs: [[String: Double]] = []
             for wall in room.walls {
@@ -1179,6 +1183,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 "length": fmt2(lFt), "width": fmt2(wFt), "height": fmt2(hFt),
                 "sqft": Int((lFt * wFt).rounded()),
                 "wallSegments": wallSegs,
+                "floor": self.floorIndex,
                 "simulated": false,
                 // No worldX/worldZ → packing layout in PDF
             ] as [String: Any]
