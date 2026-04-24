@@ -238,3 +238,15 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision: TransactionModal 3-button segmented toggle (Paid/Pending/Draft) replaces buried Status dropdown in create mode. Default = Paid (most common path). date_paid auto-set to today when Paid, null otherwise. Due Date field shown only when Pending.
 - Decision: Full Status dropdown preserved in edit mode only when existing status is void/overdue/refunded. Toggle handles everything else.
 - Decision: Create defaults tuned: direction=out, type=material_purchase, status=paid. Direction toggle resets type to direction-appropriate default (client_payment for in, material_purchase for out).
+
+[LOG — 2026-04-24]
+- Action: Phase 4 — Budget vs Actual shipped + schema fix applied.
+- Files: supabase/migrations/20260423_estimate_line_items.sql (new), supabase/migrations/20260424_add_phase_text_to_transactions.sql (new), avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx, avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx (phase field added), avenstone-vite/src/components/jobs/tabs/financials/LineItemModal.jsx (new), avenstone-vite/src/components/jobs/tabs/ConsultationTab.jsx, avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx, avenstone-vite/src/components/client/ClientPortal.jsx, avenstone-vite/src/lib/supabase.js, supabase/functions/ai-pm-nightly/index.ts, supabase/functions/ai-companion/index.ts
+- Decision: estimate_line_items table — GENERATED ALWAYS AS STORED columns for total_cost and client_price. RLS: staff full access, client SELECT only on cost_plus jobs, subs blocked.
+- Decision: sbSaveEstimateLineItems uses delete-then-insert (not upsert) for simplicity — full replacement per job on every save.
+- Decision: job_transactions.phase_id is UUID FK to job_phases; added parallel phase TEXT column for free-text budget matching. phase_id kept for precise linking. Matching normalizes to lowercase trim on both sides.
+- Decision: job_phases field is phase_name (not name) — important for any future queries joining to job_phases.
+- Decision: Budget vs Actual phase matching: t.phase.trim().toLowerCase() === li.phase.trim().toLowerCase()
+- Decision: ai-pm-nightly Rule 8 (budget_overrun) fires when any phase actual > 110% of budget, uses lowercase-normalized key map. Targets PM/owner only.
+- Decision: Migrations applied via temp postgres.js edge function (run-migration) using SUPABASE_DB_URL — Management API PAT is scoped only for function deploys, not DB queries. SUPABASE_DB_URL IS auto-injected in hosted edge functions.
+- Open: Test data (5 estimate_line_items) exists on job f8b08860 (8617 Houston St, Lenexa) — can be used for UI testing or deleted from dashboard.
