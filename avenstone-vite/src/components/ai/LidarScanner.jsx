@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { scanRoom, isLidarSupported, startExteriorScan, scanMultipleRooms } from '../../lib/lidar';
+import { floorLabel, FLOOR_LABELS } from '../../lib/captureTypes.js';
 import FloorPlanCanvas from './FloorPlanCanvas';
 
 const NAVY = '#0A1F44';
@@ -22,6 +23,19 @@ const COMMON_ROOMS = [
   'Garage',
   'Basement',
 ];
+
+// Floors available in the picker (sub-basement omitted — rare, still reachable via existing rooms)
+const FLOOR_OPTIONS = [-1, 0, 1, 2, 3].map(i => ({ index: i, label: floorLabel(i) }));
+
+// Return the lowest floor index not already present in the scanned rooms.
+// Falls back to 0 if all floors already exist (shouldn't happen in practice).
+function computeNextFloor(rooms) {
+  const scanned = new Set(rooms.map(r => r.floor ?? 0));
+  for (const { index } of FLOOR_OPTIONS) {
+    if (!scanned.has(index)) return index;
+  }
+  return 0;
+}
 
 const PULSE_KEYFRAMES = `
   @keyframes lidar-pulse {
@@ -139,6 +153,7 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
   const [mode, setMode] = useState('interior'); // 'interior' | 'exterior'
   const [exteriorScanning, setExteriorScanning] = useState(false);
   const [multiScanning, setMultiScanning] = useState(false);
+  const [pendingFloorIndex, setPendingFloorIndex] = useState(0);
   const inputRef = useRef(null);
 
   useKeyframes(PULSE_KEYFRAMES);
@@ -185,10 +200,27 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
     onRoomsChange(rooms.filter((_, i) => i !== index));
   }
 
-  async function handleStartMultiRoomScan() {
+  function handleOpenFloorPicker() {
+    setPendingFloorIndex(computeNextFloor(rooms));
+    setPhase('floorPicker');
+  }
+
+  async function handleFloorPicked(floorIndex) {
+    setPhase('list');
     setMultiScanning(true);
     try {
-      const newRooms = await scanMultipleRooms();
+      const newRooms = await scanMultipleRooms(floorIndex);
+      onRoomsChange([...rooms, ...newRooms]);
+    } catch (err) {
+      // cancelled — no-op
+    }
+    setMultiScanning(false);
+  }
+
+  async function handleStartMultiRoomScan(floorIndex = 0) {
+    setMultiScanning(true);
+    try {
+      const newRooms = await scanMultipleRooms(floorIndex);
       onRoomsChange([...rooms, ...newRooms]);
     } catch (err) {
       // cancelled — no-op
@@ -279,12 +311,26 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
           onModeChange={setMode}
           supported={supported}
           onAddRoom={() => { setRoomName(''); setPhase('naming'); }}
+          onOpenFloorPicker={handleOpenFloorPicker}
           onStartMultiRoomScan={handleStartMultiRoomScan}
           multiScanning={multiScanning}
           onRemoveRoom={handleRemoveRoom}
           onDone={onDone}
           onStartExteriorScan={handleStartExteriorScan}
           exteriorScanning={exteriorScanning}
+          headingStyle={headingStyle}
+          btnGold={btnGold}
+          btnNavy={btnNavy}
+        />
+      )}
+
+      {phase === 'floorPicker' && (
+        <FloorPicker
+          rooms={rooms}
+          selectedFloor={pendingFloorIndex}
+          onSelect={setPendingFloorIndex}
+          onConfirm={() => handleFloorPicked(pendingFloorIndex)}
+          onBack={() => setPhase('list')}
           headingStyle={headingStyle}
           btnGold={btnGold}
           btnNavy={btnNavy}
@@ -327,7 +373,7 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
   );
 }
 
-function ListPhase({ rooms, mode, onModeChange, supported, onAddRoom, onStartMultiRoomScan, multiScanning, onRemoveRoom, onDone, onStartExteriorScan, exteriorScanning, headingStyle, btnGold, btnNavy }) {
+function ListPhase({ rooms, mode, onModeChange, supported, onAddRoom, onOpenFloorPicker, onStartMultiRoomScan, multiScanning, onRemoveRoom, onDone, onStartExteriorScan, exteriorScanning, headingStyle, btnGold, btnNavy }) {
   return (
     <div>
       {/* Mode toggle */}
@@ -370,9 +416,13 @@ function ListPhase({ rooms, mode, onModeChange, supported, onAddRoom, onStartMul
                 <div style={{ fontSize: 13, color: NAVY, fontFamily: '"DM Sans", sans-serif', fontWeight: 600, padding: '11px 0' }}>
                   Launching scanner...
                 </div>
+              ) : rooms.length === 0 ? (
+                <button style={btnGold} onClick={() => onStartMultiRoomScan(0)}>
+                  Start Scan
+                </button>
               ) : (
-                <button style={btnGold} onClick={onStartMultiRoomScan}>
-                  {rooms.length > 0 ? '+ Scan More Rooms' : 'Start Scan'}
+                <button style={btnGold} onClick={onOpenFloorPicker}>
+                  + Add Another Floor
                 </button>
               )
             ) : (
@@ -400,6 +450,74 @@ function ListPhase({ rooms, mode, onModeChange, supported, onAddRoom, onStartMul
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function FloorPicker({ rooms, selectedFloor, onSelect, onConfirm, onBack, headingStyle, btnGold, btnNavy }) {
+  const scannedFloors = new Set(rooms.map(r => r.floor ?? 0));
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer', color: NAVY,
+          fontSize: 13, fontFamily: '"DM Sans", sans-serif', padding: '0 0 14px 0',
+          display: 'flex', alignItems: 'center', gap: 4,
+        }}
+      >
+        ← Back
+      </button>
+      <h2 style={{ ...headingStyle, fontSize: 20, marginBottom: 6 }}>Which floor are you scanning?</h2>
+      <p style={{ fontSize: 13, color: '#666', fontFamily: '"DM Sans", sans-serif', marginBottom: 20, lineHeight: 1.5 }}>
+        Each floor scans separately. Rooms are grouped by floor in the floor plan.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+        {FLOOR_OPTIONS.map(({ index, label }) => {
+          const alreadyScanned = scannedFloors.has(index);
+          const isSelected = selectedFloor === index;
+          return (
+            <button
+              key={index}
+              onClick={() => onSelect(index)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '13px 16px', border: `2px solid ${isSelected ? GOLD : BORDER}`,
+                borderRadius: 8, background: isSelected ? '#FDF8EC' : WHITE,
+                cursor: 'pointer', fontFamily: '"DM Sans", sans-serif',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <span style={{ fontWeight: isSelected ? 700 : 400, color: NAVY, fontSize: 15 }}>
+                {label}
+              </span>
+              {alreadyScanned && (
+                <span style={{
+                  fontSize: 11, color: '#888', background: '#F0F0F0',
+                  borderRadius: 10, padding: '2px 8px', fontWeight: 400,
+                }}>
+                  already scanned
+                </span>
+              )}
+              {isSelected && !alreadyScanned && (
+                <span style={{
+                  fontSize: 11, color: GOLD, fontWeight: 700,
+                }}>
+                  ✓ selected
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button style={btnGold} onClick={onConfirm}>
+          Start Scanning
+        </button>
+        <button style={{ ...btnNavy, background: '#ccc', color: '#555' }} onClick={onBack}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
