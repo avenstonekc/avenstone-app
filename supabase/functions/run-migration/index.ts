@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
     await sql`CREATE INDEX IF NOT EXISTS idx_job_transactions_phase ON job_transactions(phase)`;
     await sql`
       UPDATE job_transactions jt
-      SET phase = jp.name
+      SET phase = jp.phase_name
       FROM job_phases jp
       WHERE jt.phase_id = jp.id AND jt.phase IS NULL
     `;

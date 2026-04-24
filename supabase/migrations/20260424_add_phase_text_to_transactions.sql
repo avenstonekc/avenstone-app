@@ -10,7 +10,7 @@ CREATE INDEX IF NOT EXISTS idx_job_transactions_phase
 
 -- Backfill: populate phase from job_phases.name where phase_id is set
 UPDATE job_transactions jt
-SET phase = jp.name
+SET phase = jp.phase_name
 FROM job_phases jp
 WHERE jt.phase_id = jp.id
   AND jt.phase IS NULL;

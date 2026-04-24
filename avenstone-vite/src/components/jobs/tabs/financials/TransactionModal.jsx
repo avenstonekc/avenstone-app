@@ -244,10 +244,10 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
               <label style={lbl}>Phase</label>
               <select style={inp} value={form.phase_id || ''} onChange={e => {
                 const selected = phases.find(p => p.id === e.target.value);
-                setForm(f => ({ ...f, phase_id: selected?.id || null, phase: selected?.name || '' }));
+                setForm(f => ({ ...f, phase_id: selected?.id || null, phase: selected?.phase_name || '' }));
               }}>
                 <option value="">— No phase —</option>
-                {phases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {phases.map(p => <option key={p.id} value={p.id}>{p.phase_name}</option>)}
               </select>
             </div>
 
