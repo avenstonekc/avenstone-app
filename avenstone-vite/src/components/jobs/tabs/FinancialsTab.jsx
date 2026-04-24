@@ -39,7 +39,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
     setLoading(true);
     const [data, sum] = await Promise.all([
       sbLoadJobTransactions(job.id),
-      sbLoadJobFinancialSummary(job.id),
+      sbLoadJobFinancialSummary(job.id, { contractValue: job.contract_value, coTotal: job.co_total }),
     ]);
     setTxs(data);
     setSummary(sum);
@@ -78,21 +78,27 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
 
       {sub === 'ledger' && (
         <div>
-          {/* Stat bar */}
-          {summary && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-              {[
-                { lb: 'Received', v: summary.total_in, c: '#22c55e' },
-                { lb: 'Paid Out', v: summary.total_out, c: '#ef4444' },
-                { lb: 'Outstanding', v: summary.outstanding, c: '#C9A84C' },
-              ].map(({ lb, v, c }) => (
-                <div key={lb} style={{ flex: 1, minWidth: 100, background: '#fff', border: '1px solid #E8E4DC', padding: '10px 14px', borderRadius: 6 }}>
-                  <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{lb}</div>
-                  <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: c }}>{f$(v)}</div>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Stat bar — 5 stats, wraps to 3+2 on mobile */}
+          {summary && (() => {
+            const owes = summary.client_owes;
+            const stats = [
+              { lb: 'Contract',    v: f$(summary.contract_total),                                    c: '#0A1F44',  bold: true },
+              { lb: 'Received',    v: f$(summary.total_in),                                          c: summary.total_in > 0 ? '#22c55e' : '#9CA3AF' },
+              { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),       c: owes < 0 ? '#22c55e' : owes > 0 ? '#C9A84C' : '#9CA3AF' },
+              { lb: 'Paid Out',    v: f$(summary.total_out),                                         c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
+              { lb: 'Outstanding', v: f$(summary.outstanding),                                       c: summary.outstanding > 0 ? '#C9A84C' : '#9CA3AF' },
+            ];
+            return (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                {stats.map(({ lb, v, c, bold }) => (
+                  <div key={lb} style={{ flex: 1, minWidth: 90, background: '#fff', border: '1px solid #E8E4DC', padding: '10px 14px', borderRadius: 6 }}>
+                    <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{lb}</div>
+                    <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: c, fontWeight: bold ? 700 : 400 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Filters + Add */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
