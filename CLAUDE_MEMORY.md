@@ -210,3 +210,14 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - Decision: Bug 3 — COTab computed co_total from change_orders array client-side; DB trigger (trg_sync_co_total) now auto-updates jobs.co_total on every CO change. COTab reads job.co_total only.
 - Decision: payments table has no updated_at column — backfill uses created_at only (migration file updated to match)
 - Next: All three bugs verified fixed in DB and code. No open items.
+
+[LOG — 2026-04-23]
+- Action: Unified financial ledger — Phase 1 shipped. payments + job_cost_invoices migrated into job_transactions.
+- Files: supabase/migrations/20260423_unified_financial_ledger.sql (new), supabase/functions/stripe-webhook/index.ts, supabase/functions/create-payment-link/index.ts, avenstone-vite/src/lib/supabase.js
+- Decision: Schema has client_email field (needed for compat view), change_order_id as TEXT (change_orders.id is TEXT not UUID), set_updated_at() trigger instead of moddatetime extension, hardcoded owner UUID for cost_invoice backfill created_by
+- Decision: Two compat views (payments, job_cost_invoices) keep all existing UI working without touching tab components. Views are automatically updatable via Postgres SECURITY INVOKER — RLS on job_transactions enforces through the view.
+- Decision: Cost invoice write helpers (sbCreateCostInvoice, sbUpdCostInvoice, sbDelCostInvoice, sbUploadInvoiceFile, sbUploadLienWaiver) redirected to write job_transactions directly — views can't handle inserts with missing NOT NULL columns.
+- Decision: sbLoadPayments FK join removed (views don't carry FK constraint names, PostgREST join would fail).
+- New helpers: sbLoadJobTransactions (with filter params), sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt (job-receipts bucket), sbUploadLienWaiverTx (job-documents/lien-waivers/)
+- Rollback path: DROP VIEW payments; DROP VIEW job_cost_invoices; ALTER TABLE _deprecated_payments_20260423 RENAME TO payments; ALTER TABLE _deprecated_job_cost_invoices_20260423 RENAME TO job_cost_invoices. Keep _deprecated_ tables until 2026-05-07 minimum.
+- Next: Phase 2 = Financials tab UI (unified view of all transactions by direction/type), receipt entry form, lien waiver flagging UI — separate prompt
