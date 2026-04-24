@@ -498,7 +498,7 @@ const _dimLine = (doc, p1x, p1y, p2x, p2y, nx, ny, label, { off = 44, lw = 0.75 
   const ex1 = p1x + nx * off, ey1 = p1y + ny * off;
   const ex2 = p2x + nx * off, ey2 = p2y + ny * off;
   // Extension lines (thin gray)
-  doc.setDrawColor(140, 140, 140); doc.setLineWidth(0.25);
+  doc.setDrawColor(100, 100, 100); doc.setLineWidth(0.5);
   doc.line(p1x + nx * 6, p1y + ny * 6, ex1, ey1);
   doc.line(p2x + nx * 6, p2y + ny * 6, ex2, ey2);
   // Dim line (black)
@@ -507,7 +507,7 @@ const _dimLine = (doc, p1x, p1y, p2x, p2y, nx, ny, label, { off = 44, lw = 0.75 
   // Tick marks — architectural 45° diagonal slashes
   const dl = Math.hypot(ex2 - ex1, ey2 - ey1) || 1;
   const tx = (ex2 - ex1) / dl, ty = (ey2 - ey1) / dl;
-  const T = 4;
+  const T = 5;
   doc.line(ex1 - tx * T + (-ty) * T, ey1 - ty * T + tx * T, ex1 + tx * T - (-ty) * T, ey1 + ty * T - tx * T);
   doc.line(ex2 - tx * T + (-ty) * T, ey2 - ty * T + tx * T, ex2 + tx * T - (-ty) * T, ey2 + ty * T - tx * T);
   // Label with white background
