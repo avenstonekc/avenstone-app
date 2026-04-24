@@ -489,6 +489,9 @@ export const buildFloorPlanPDF = (scan, job) => {
   const DIM_OFF = 24;      // space outside drawing for dimension lines
   const WALL_PT = 3.5;     // wall stroke thickness
   const rooms = scan.rooms || [];
+  console.log('[LIDAR_DEBUG] Full rooms payload:', JSON.stringify(rooms, null, 2));
+  console.log('[LIDAR_DEBUG] Names array:', rooms.map(r => r.name));
+  console.log('[LIDAR_DEBUG] worldX/worldZ per room:', rooms.map(r => ({ name: r.name, worldX: r.worldX, worldZ: r.worldZ, objects: (r.objects || []).length, walls: (r.wallSegments || []).length })));
   const date = new Date(scan.created_at || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   const totalSqft = rooms.reduce((s, r) => {
     const poly = _polyAreaFromSegs(r.wallSegments || []);
