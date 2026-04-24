@@ -672,20 +672,30 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       doc.setDrawColor(...navy); doc.setLineWidth(1.5);
       doc.line(p1x - (-uy) * jLen, p1y - ux * jLen, p1x + (-uy) * jLen, p1y + ux * jLen);
       doc.line(p2x - (-uy) * jLen, p2y - ux * jLen, p2x + (-uy) * jLen, p2y + ux * jLen);
-      // Swing arc — quarter circle from p1 toward nx/nz direction
+      // Door symbol: bi-fold (≥ 4 ft wide) or swing arc
       doc.setDrawColor(...navy); doc.setLineWidth(0.6);
-      const radius = Math.min(dw, 3 * scale);
-      const arcNx = door.nx * scale > 0 ? door.nx : -door.nx;
-      const arcNz = door.nz * scale > 0 ? door.nz : -door.nz;
-      const panelEndX = p1x + door.nx * radius, panelEndY = p1y + door.nz * radius;
-      doc.line(p1x, p1y, panelEndX, panelEndY);
-      const arcStart = Math.atan2(door.nz, door.nx);
-      const toEnd = Math.atan2(p2y - p1y, p2x - p1x);
-      let diff = ((toEnd - arcStart) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-      if (diff > Math.PI) diff -= Math.PI * 2;
-      const sweep = diff >= 0 ? Math.PI / 2 : -Math.PI / 2;
-      doc.setDrawColor(80, 80, 80); doc.setLineWidth(0.4);
-      _drawArc(doc, p1x, p1y, radius, arcStart, sweep);
+      if ((door.width || 0) >= 4) {
+        // Two V-chevrons side by side
+        const midX = (p1x + p2x) / 2, midY = (p1y + p2y) / 2;
+        const cheH = dw * 0.3;
+        const q1x = (p1x + midX) / 2, q1y = (p1y + midY) / 2;
+        const apex1x = q1x + door.nx * cheH, apex1y = q1y + door.nz * cheH;
+        doc.line(p1x, p1y, apex1x, apex1y); doc.line(apex1x, apex1y, midX, midY);
+        const q2x = (midX + p2x) / 2, q2y = (midY + p2y) / 2;
+        const apex2x = q2x + door.nx * cheH, apex2y = q2y + door.nz * cheH;
+        doc.line(midX, midY, apex2x, apex2y); doc.line(apex2x, apex2y, p2x, p2y);
+      } else {
+        const radius = Math.min(dw, 3 * scale);
+        const panelEndX = p1x + door.nx * radius, panelEndY = p1y + door.nz * radius;
+        doc.line(p1x, p1y, panelEndX, panelEndY);
+        const arcStart = Math.atan2(door.nz, door.nx);
+        const toEnd = Math.atan2(p2y - p1y, p2x - p1x);
+        let diff = ((toEnd - arcStart) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+        if (diff > Math.PI) diff -= Math.PI * 2;
+        const sweep = diff >= 0 ? Math.PI / 2 : -Math.PI / 2;
+        doc.setDrawColor(80, 80, 80); doc.setLineWidth(0.4);
+        _drawArc(doc, p1x, p1y, radius, arcStart, sweep);
+      }
     }
 
     for (const win of allWindows) {
