@@ -221,3 +221,20 @@ _Read this file at the start of every session. Append a new entry at the end of 
 - New helpers: sbLoadJobTransactions (with filter params), sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt (job-receipts bucket), sbUploadLienWaiverTx (job-documents/lien-waivers/)
 - Rollback path: DROP VIEW payments; DROP VIEW job_cost_invoices; ALTER TABLE _deprecated_payments_20260423 RENAME TO payments; ALTER TABLE _deprecated_job_cost_invoices_20260423 RENAME TO job_cost_invoices. Keep _deprecated_ tables until 2026-05-07 minimum.
 - Next: Phase 2 = Financials tab UI (unified view of all transactions by direction/type), receipt entry form, lien waiver flagging UI — separate prompt
+
+[LOG — 2026-04-23]
+- Action: Phase 3 — Financials tab shipped. 13 JobDet tabs → 10 tabs.
+- Files: avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx (new), avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx (new), avenstone-vite/src/components/jobs/JobDet.jsx, avenstone-vite/src/lib/supabase.js, supabase/functions/ai-companion/index.ts, supabase/functions/ai-pm-nightly/index.ts
+- Decision: Replaced co/bids/payments/costs tabs (4) with single Financials tab with 4 sub-tabs (Ledger, Estimate, Change Orders, Costs). Renamed Floor Plan → Scanner.
+- Decision: TransactionModal create/edit/view modes. Receipt → job-receipts bucket. Lien waiver → job-documents/lien-waivers/. Lien waiver badge on row when lien_waiver_required=true and url is null.
+- Decision: ai-pm-nightly Rule 7 added — lien_waiver_missing: fires when sub_payout/vendor_payment rows have lien_waiver_required=true and lien_waiver_url is null. Targets PM/owner.
+- Decision: ai-companion now reads job_transactions instead of payments. Financial context restructured: total_in / total_out / outstanding instead of single paidTotal.
+- Next: Phase 3 smoke tests needed (see conversation). If pass → Phase 4 Budget vs Actual.
+
+[LOG — 2026-04-23]
+- Action: Phase 3.5 — Financials UI polish shipped.
+- Files: avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx, avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx, avenstone-vite/src/lib/supabase.js
+- Decision: Stat bar expanded from 3 to 5 stats (Contract, Received, Client Owes, Paid Out, Outstanding). sbLoadJobFinancialSummary now accepts { contractValue, coTotal } to compute contract_total and client_owes. Client Owes: amber if positive, green "Overpaid $X" if negative.
+- Decision: TransactionModal 3-button segmented toggle (Paid/Pending/Draft) replaces buried Status dropdown in create mode. Default = Paid (most common path). date_paid auto-set to today when Paid, null otherwise. Due Date field shown only when Pending.
+- Decision: Full Status dropdown preserved in edit mode only when existing status is void/overdue/refunded. Toggle handles everything else.
+- Decision: Create defaults tuned: direction=out, type=material_purchase, status=paid. Direction toggle resets type to direction-appropriate default (client_payment for in, material_purchase for out).

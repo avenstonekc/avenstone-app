@@ -11,7 +11,8 @@ Contents:
 
 ## Status as of 2026-04-23
 - Bug fixes: shipped (paid_at column, ai-pm-nightly enum, co_total drift)
-- Unified ledger migration: in progress
+- Unified ledger migration: shipped (job_transactions live, compat views active)
+- Phase 3 Financials tab: shipped (Ledger/Estimate/CO/Costs sub-tabs, TransactionModal, lien waiver flagging, Scanner rename, 13→10 tabs, ai-companion + ai-pm-nightly updated)
 - All other phases: pending
 
 ## Core architectural decisions (locked)
@@ -103,6 +104,17 @@ If the ledger migration causes issues within the first 2 weeks:
 4. ALTER TABLE _deprecated_job_cost_invoices_20260423 RENAME TO job_cost_invoices;
 5. Revert stripe-webhook and create-payment-link edge functions to
    their previous commits (git log --follow supabase/functions/stripe-webhook/)
+
+Append to FINANCIALS_PLAN.md under the "Plumbed but not wired"
+section (or create a new "Future integrations" section if cleaner):
+
+## Future integrations
+
+- AI material list generator (NOT YET BUILT): when this feature is
+  built, its output must write to estimate_line_items with
+  category='materials' so budget-vs-actual picks it up automatically.
+  Do NOT create a parallel materials_budget table. One ledger of
+  budgeted costs — estimate_line_items is the source of truth.
 
 After 2026-05-07 with no issues: DROP the _deprecated_ tables.
 
