@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import COTab from './COTab';
-import CostsTab from './CostsTab';
 import TransactionModal from './financials/TransactionModal';
 import LineItemModal from './financials/LineItemModal';
 import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced } from '../../../lib/supabase';
@@ -11,7 +10,6 @@ const SUB_TABS = [
   { id: 'ledger',   lb: 'Ledger' },
   { id: 'budget',   lb: 'Budget' },
   { id: 'co',       lb: 'Change Orders' },
-  { id: 'costs',    lb: 'Costs' },
 ];
 
 const TYPE_LABELS = {
@@ -136,7 +134,6 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
       </div>
 
       {sub === 'co' && <COTab job={job} upd={upd} profile={profile} />}
-      {sub === 'costs' && <CostsTab job={job} />}
 
       {sub === 'budget' && (
         <div>
