@@ -830,6 +830,15 @@ export const sbLoadPricingApprovals = (tenant_id) =>
 export const sbLoadOwnerEscalations = (tenant_id) =>
   sb.from('owner_escalations').select('*, jobs(address)').eq('tenant_id', tenant_id).eq('status', 'pending').order('created_at', { ascending: false }).then(r => r.data || []);
 
+// ─── Oh Shit Moments ─────────────────────────────────────────────────────────
+export const sbLoadOhShitMoments = async (jobId) => {
+  const { data } = await sb.from('oh_shit_moments').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
+  return data || [];
+};
+export const sbToggleOhShitProposal = async (id, included) => {
+  await sb.from('oh_shit_moments').update({ included_in_proposal: included }).eq('id', id);
+};
+
 // ─── Daily Tasks ──────────────────────────────────────────────────────────────
 export const sbLoadDailyTasks = (userId) => {
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);

@@ -97,7 +97,9 @@ export const buildEstimatePDF = (job, messages) => {
 };
 
 // ─── Proposal PDF ─────────────────────────────────────────────────────────────
-export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, margin = 25, proposalNum = '001', schedule = [] } = {}) => {
+const LIKELIHOOD_ORDER = { high: 3, medium: 2, low: 1 };
+
+export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, margin = 25, proposalNum = '001', schedule = [], ohShitMoments = [] } = {}) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
   const W = 612, M = 48;
@@ -147,6 +149,50 @@ export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, marg
       y += 12;
     });
     y += 8;
+  }
+
+  const includedMoments = (ohShitMoments || [])
+    .filter(m => m.included_in_proposal)
+    .sort((a, b) => (LIKELIHOOD_ORDER[b.likelihood] || 0) - (LIKELIHOOD_ORDER[a.likelihood] || 0) || (b.estimated_cost_high || 0) - (a.estimated_cost_high || 0));
+
+  if (includedMoments.length) {
+    if (y > 640) { doc.addPage(); y = 48; }
+    doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 16;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
+    doc.text('POSSIBLE ADDITIONAL WORK — DISCLOSED UP FRONT', M, y); y += 14;
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
+    const subhead = 'Construction sometimes uncovers conditions we can\'t see until demo begins. We disclose these now so there are no surprises later. If any of these conditions are encountered, a change order will be issued at the disclosed range.';
+    const subLines = doc.splitTextToSize(subhead, W - M * 2);
+    doc.text(subLines, M, y); y += subLines.length * 10 + 10;
+
+    includedMoments.forEach((m, i) => {
+      const rowHeight = 14 + 10 + (m.how_to_present ? 10 + Math.ceil(doc.splitTextToSize(m.how_to_present, W - M * 2 - 100).length * 10) : 0) + 14;
+      if (y + rowHeight > 730) { doc.addPage(); y = 48; }
+      if (i > 0) { doc.setDrawColor(232, 228, 220); doc.setLineWidth(0.5); doc.line(M, y - 4, W - M, y - 4); }
+
+      const likelihoodLabel = (m.likelihood || 'medium').charAt(0).toUpperCase() + (m.likelihood || 'medium').slice(1);
+      const likelihoodColor = m.likelihood === 'high' ? [185, 28, 28] : m.likelihood === 'low' ? [21, 128, 61] : [146, 64, 14];
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
+      doc.text(m.condition || '', M, y, { maxWidth: W - M * 2 - 100 });
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...likelihoodColor);
+      doc.text(`${likelihoodLabel} likelihood`, W - M, y, { align: 'right' });
+      y += 12;
+
+      const lo = Number(m.estimated_cost_low || 0), hi = Number(m.estimated_cost_high || 0);
+      if (lo || hi) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(55, 65, 81);
+        doc.text(`Estimated cost if encountered: $${lo.toLocaleString()} – $${hi.toLocaleString()}`, M, y); y += 11;
+      }
+
+      if (m.how_to_present) {
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
+        const lines = doc.splitTextToSize(m.how_to_present, W - M * 2);
+        doc.text(lines, M, y); y += lines.length * 10;
+      }
+      y += 10;
+    });
   }
 
   if (schedule.length) {

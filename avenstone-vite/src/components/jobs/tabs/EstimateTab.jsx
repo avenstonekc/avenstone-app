@@ -1,6 +1,6 @@
 import { useState, Fragment } from 'react';
 import LidarScanner from '../../ai/LidarScanner';
-import { ANON_KEY, AI_ESTIMATOR_URL, NOTIFY_REALTOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadITBs, sbCreateITB, sbUpdateITB, sbSendBidInvite, sbUpdateBidStatus, sbLoadSubDirectory, AV_USER_ID, DOC_TYPES, docTypeColor, COMMON_TRADES, sbSaveEstimateLineItems } from '../../../lib/supabase';
+import { ANON_KEY, AI_ESTIMATOR_URL, NOTIFY_REALTOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadITBs, sbCreateITB, sbUpdateITB, sbSendBidInvite, sbUpdateBidStatus, sbLoadSubDirectory, AV_USER_ID, DOC_TYPES, docTypeColor, COMMON_TRADES, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
 
@@ -30,6 +30,8 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
   const [propSchedule, setPropSchedule] = useState([]);
   const [propErr, setPropErr] = useState('');
   const [propGenerating, setPropGenerating] = useState(false);
+  const [propOhShit, setPropOhShit] = useState([]);
+  const [propOhShitExpanded, setPropOhShitExpanded] = useState(false);
 
   // ── ITB state ─────────────────────────────────────────────────────────────────
   const [itbs, setItbs] = useState([]);
@@ -163,6 +165,9 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
       const bal = sub - dep - mid;
       setPropSchedule([{ milestone: 'Deposit — Contract Signing', timing: 'Due at signing', amount: dep }, { milestone: 'Draw 1 — Rough-In Complete', timing: 'Upon rough-in approval', amount: mid }, { milestone: 'Final Payment — Project Complete', timing: 'Upon completion', amount: bal > 0 ? bal : 0 }]);
       setPropNum(`${new Date().getFullYear()}-${String(Math.floor(Math.random() * 900) + 100)}`);
+      const moments = await sbLoadOhShitMoments(job.id);
+      setPropOhShit(moments);
+      if (moments.length) setPropOhShitExpanded(true);
     } catch (e) { setPropErr(e.message || 'Failed to extract proposal data'); }
     setPropLoading(false);
   };
@@ -170,7 +175,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
   const generateProposalPDF = async (download = true) => {
     setPropGenerating(true);
     try {
-      const doc = buildProposalPDF(job, propLineItems, [], { pmFee: Number(propPmFee || 0), margin: Number(propMargin || 25), proposalNum: propNum, schedule: propSchedule });
+      const doc = buildProposalPDF(job, propLineItems, [], { pmFee: Number(propPmFee || 0), margin: Number(propMargin || 25), proposalNum: propNum, schedule: propSchedule, ohShitMoments: propOhShit });
       if (download) {
         doc.save(`Proposal — ${job.address}.pdf`);
       } else {
@@ -508,6 +513,36 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
                   })}
                 </div>
                 <button onClick={() => setPropLineItems([...propLineItems, { trade: 'GENERAL', description: '', qty_label: '1 LS', amount: 0 }])} style={{ fontSize: 11, color: '#C9A84C', background: 'transparent', border: 'none', cursor: 'pointer', marginTop: 6, padding: 0 }}>+ Add line item</button>
+              </div>}
+              {propOhShit.length > 0 && <div style={{ marginBottom: 20, border: '1px solid #E8E4DC', borderRadius: 6, overflow: 'hidden' }}>
+                <button onClick={() => setPropOhShitExpanded(x => !x)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#F7F5F0', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#0A1F44', textTransform: 'uppercase', letterSpacing: 1 }}>Disclosed unknowns ({propOhShit.filter(m => m.included_in_proposal).length} of {propOhShit.length} included)</span>
+                  <span style={{ fontSize: 12, color: '#6B7280' }}>{propOhShitExpanded ? '▲' : '▼'}</span>
+                </button>
+                {propOhShitExpanded && <div>
+                  {propOhShit.map((m, i) => (
+                    <div key={m.id || i} style={{ padding: '10px 12px', borderTop: '1px solid #E8E4DC', background: m.included_in_proposal ? '#FFFBEB' : '#fff', transition: 'background 0.15s' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#0A1F44', marginBottom: 2 }}>{m.condition}</div>
+                          <div style={{ fontSize: 11, color: '#6B7280' }}>
+                            {m.likelihood && <span style={{ marginRight: 8, fontWeight: 600, color: m.likelihood === 'high' ? '#B91C1C' : m.likelihood === 'low' ? '#15803D' : '#92400E' }}>{m.likelihood.charAt(0).toUpperCase() + m.likelihood.slice(1)} likelihood</span>}
+                            {(m.estimated_cost_low || m.estimated_cost_high) && <span>${Number(m.estimated_cost_low || 0).toLocaleString()} – ${Number(m.estimated_cost_high || 0).toLocaleString()}</span>}
+                          </div>
+                          {m.how_to_present && <div style={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic', marginTop: 2 }}>{m.how_to_present}</div>}
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flexShrink: 0 }}>
+                          <input type="checkbox" checked={!!m.included_in_proposal} onChange={async () => {
+                            const next = !m.included_in_proposal;
+                            setPropOhShit(prev => prev.map(x => x.id === m.id ? { ...x, included_in_proposal: next } : x));
+                            await sbToggleOhShitProposal(m.id, next);
+                          }} style={{ width: 14, height: 14, accentColor: '#C9A84C', cursor: 'pointer' }} />
+                          <span style={{ fontSize: 11, color: '#6B7280', whiteSpace: 'nowrap' }}>Include in proposal</span>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>}
               </div>}
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: '#0A1F44', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Payment Schedule</div>
