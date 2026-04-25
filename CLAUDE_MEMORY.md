@@ -233,3 +233,48 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - RoomPlan misclassification of walk-through openings as doors (Bug 10 — sensor-side, not render-side)
 - Fixture/object rendering still pending rotation transform (_drawFixture not yet reinstated)
 - Single-room (non-world-mode) path: chain dims not applied (still uses old per-seg _dimLine calls)
+
+[LOG — 2026-04-24]
+- Action: Read-only audit — Material Takeoff Wizard design. Covered 6 areas: scan data shape, pdf.js takeoff math, AI estimate flow, ai_knowledge pricing, estimate_line_items schema, MaterialSelectionScr.
+- Files: None changed (read-only audit)
+- Decision: MaterialSelectionScr (950 lines) is not a foundation — it writes to jobs.intake_answers only, uses hardcoded formulas, not connected to scan data or estimate_line_items. Start fresh.
+- Decision: `generate-estimate-from-session` IS reachable from UI — ConsultationTab calls it from the "Generate Estimate" button. It does NOT write estimate_line_items; caller (ConsultationTab.saveEstimate) handles persistence. [Corrected: prior claim of "orphaned" was wrong.]
+- Decision: estimate_line_items schema is well-designed (quantity + unit + unit_cost → generated total_cost + client_price). Zero rows in production — ready to receive takeoff output.
+- Decision: ai_knowledge has 21 total entries — 15 pricing/rule, 6 narrative. All active. Content is structured prose with $ ranges, regex-extractable but not machine-readable JSON. [Corrected: prior claim of "8 entries" was wrong.]
+- Decision: Recommended build path — (1) extract computeTakeoff(rooms) from pdf.js, (2) generateLineItems(takeoff, selections) → estimate_line_items rows, (3) wizard UI room-by-room material selection, (4) summary + estimate PDF.
+- Next: Build Material Takeoff Wizard starting with Phase 1 (data extraction layer)
+
+[LOG — 2026-04-24]
+- Action: Read-only audit — Scope-and-allowance engine design. Second audit expanding on first. Covered: consultation_sessions/extractions/measurements schema, session write flow, consultation↔scan join, generate-estimate-from-session full code, ai-estimator full code, their difference, callEstimator existence check, estimate_line_items extension surface, MaterialSelectionScr deep read, ai_knowledge full dump + machine-readability, change_orders schema, upgrade-CO column gap analysis.
+- Files: None changed (read-only audit)
+- Decision: consultation_sessions + job_lidar_scans share only job_id — NO structural join. Two parallel data pools.
+- Decision: generate-estimate-from-session IS reachable from UI (ConsultationTab). Previous session's audit was wrong about it being orphaned. It's called from "Generate Estimate" button.
+- Decision: ai-estimator (EstimateTab chat) and generate-estimate-from-session (ConsultationTab measure flow) serve different stages — not redundant.
+- Decision: estimate_line_items has NO allowance column, NO scan_id, NO template_id. notes (TEXT) is the only free extension field. Full replace-all write pattern via sbSaveEstimateLineItems.
+- Decision: MaterialSelectionScr is hardcoded bathroom-only with picsum photos. APPROX_QTY is static (tile=200sf regardless of scan). buildEstimate() uses fixed per-sqft ratios. Writes to jobs.intake_answers only. Dead code — not imported anywhere.
+- Decision: ai_knowledge pricing entries are machine-parseable prose ranges (regex extractable), not JSON. 15 pricing/rule entries, 6 narrative entries. All active. Mid-range formula: (low+high)/2.
+- Decision: change_orders has no FK to estimate_line_items. No allowance_original, no estimate_line_item_id, no auto_generated, no client_approved_at, no source_type. All 6 would be needed for auto-CO from client upgrade selection.
+- Open: ai_knowledge pricing entries need a parsing pass or a new structured pricing_lookup table before they can be used as machine-readable unit costs in a takeoff engine.
+- Next: Design scope-and-allowance engine schema (new tables: scan_takeoff, allowance_line_items or estimate_line_items extension, upgrade_selections) before writing any code.
+
+[LOG — 2026-04-25]
+- Action: Read-only audit delivered — scope-and-allowance engine (second audit, full briefing). All 6 areas covered and reported to user.
+- Files: None changed (read-only audit)
+- Decision: Briefing confirmed — consultation↔scan join is job_id only (no structural link). generate-estimate-from-session IS reachable from UI. estimate_line_items has no allowance/scan/template columns. MaterialSelectionScr writes to jobs.intake_answers only, not imported anywhere. ai_knowledge has 15 pricing entries (regex-parseable prose ranges) + 6 narrative. change_orders needs 6 new columns for auto-CO flow: estimate_line_item_id, allowance_original, allowance_override, source_type, auto_generated, client_approved_at.
+
+[LOG — 2026-04-24]
+- Action: PDF generation bug fixed — silent crash on tap "Generate PDF" across commits 4f46f29–f517802
+- Files: avenstone-vite/src/lib/pdf.js
+- Decision: Root cause — `_renderChainDims` line 551 returned `undefined` instead of `[]` when `kept` (post-dedup segment array) was empty. Callers spread the return value (`..._renderChainDims(...)`); spreading `undefined` threw a TypeError that silently killed the render with no user-visible error. Fix: `return;` → `return [];`.
+- Decision: Added try/catch wrapping all of `buildFloorPlanPDF` — `console.error('[LIDAR_PDF_ERROR]', e)` + `alert()` with message on failure. User now sees an error instead of silence.
+- Decision: Added `[LIDAR_PDF_STAGE]` breadcrumbs at: start, groupByFloor, doc created, per-floor page (with floor name), snapToOrtho, processAllRooms, chain dims, room labels, summary page, complete. Use Safari Web Inspector / Xcode console to read these on device.
+- Open: Awaiting `[LIDAR_PDF_ERROR]` / `[LIDAR_PDF_STAGE]` output from next user scan to confirm fix held or identify any secondary crash path.
+- Next: If PDF renders cleanly — proceed to scope-and-allowance engine schema design.
+
+[LOG — 2026-04-25]
+- Action: AVENSTONE_VISION.md updated — 11 targeted edits adding multi-owner model, AI-seeded inspection checklists, expanded moat section, and cost guardrail rule.
+- Files: AVENSTONE_VISION.md
+- Decision: (a) Multi-owner model — all owners equivalent, first-to-approve wins on CO/knowledge/contract actions. No second signature. Each owner gets their own morning brief.
+- Decision: (b) Per-user briefings are not consolidated — each user sees a brief based on their own job touches, not a shared owner dashboard.
+- Decision: (c) Inspection checklists — AI-seeded baseline (one Sonnet call, 60-80 entries, owner approves before activation). v2 ai_knowledge_learner edge function suggests new entries from completed job patterns; owner approves each addition. inspection_checklist open question closed — decision made.
+- Decision: (d) Moat section expanded with three durable advantages: runs the software it builds (uncopyable feedback loop), every job teaches the system (private dataset compounds), single-builder velocity (idea Mon → ship Fri).
