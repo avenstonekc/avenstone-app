@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
       sb.from("consultation_sessions").select("*").eq("id", session_id).single(),
       sb.from("consultation_measurements").select("*").eq("session_id", session_id),
       sb.from("consultation_extractions").select("*").eq("session_id", session_id).maybeSingle(),
-      sb.from("jobs").select("address, description, sqft, client_name").eq("id", job_id).single(),
+      sb.from("jobs").select("address, scope, sqft, client_name").eq("id", job_id).single(),
     ]);
 
     const session = sessionRes.data;
@@ -34,16 +34,18 @@ Deno.serve(async (req) => {
     const extraction = extractionRes.data;
     const job = jobRes.data;
 
-    if (!session || !measurements.length) {
-      return new Response(JSON.stringify({ error: "No measurements found for this session" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
+    if (!session) {
+      return new Response(JSON.stringify({ error: "Session not found" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
     }
 
     // Build measurement summary
-    const measureSummary = measurements.map((m: Record<string, unknown>) => {
-      const fields = m.fields as Record<string, unknown>;
-      const fieldLines = Object.entries(fields).map(([k, v]) => `  ${k}: ${v}`).join("\n");
-      return `${m.trade}:\n${fieldLines}`;
-    }).join("\n\n");
+    const measureSummary = measurements.length
+      ? measurements.map((m: Record<string, unknown>) => {
+          const fields = m.fields as Record<string, unknown>;
+          const fieldLines = Object.entries(fields).map(([k, v]) => `  ${k}: ${v}`).join("\n");
+          return `${m.trade}:\n${fieldLines}`;
+        }).join("\n\n")
+      : "No measurements recorded — estimate based on ambient conversation and job details.";
 
     const ambientContext = extraction
       ? [
@@ -60,7 +62,7 @@ Deno.serve(async (req) => {
 Job: ${job?.address || "Unknown address"}
 Client: ${job?.client_name || "Unknown"}
 ${job?.sqft ? `Square footage: ${job.sqft} sqft` : ""}
-${job?.description ? `Description: ${job.description}` : ""}
+${job?.scope ? `Scope: ${job.scope}` : ""}
 
 ${ambientContext ? `Consultation context:\n${ambientContext}\n` : ""}
 
