@@ -548,7 +548,7 @@ const _renderChainDims = (doc, segs, dimLinePt, overallPt, normalSign, isHoriz, 
     const mx = (seg.x1 + seg.x2) / 2, mz = (seg.z1 + seg.z2) / 2;
     if (!kept.some(d => Math.hypot((d.x1+d.x2)/2 - mx, (d.z1+d.z2)/2 - mz) < 0.3)) kept.push(seg);
   }
-  if (!kept.length) return;
+  if (!kept.length) return [];
 
   // Sort along the chain direction
   kept.sort((a, b) => isHoriz
@@ -785,7 +785,9 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
   let roomLayouts = []; // [{room, segs, x, y, w, h}]
 
   if (worldMode) {
+    console.log(`[LIDAR_PDF_STAGE] snapping to ortho (${drawableRooms.length} rooms)`);
     const snappedRooms = _snapToOrtho(drawableRooms);
+    console.log('[LIDAR_PDF_STAGE] processing all rooms');
     const processed = _processAllRooms(snappedRooms);
     if (!processed) return;
     const { roomSegs, roomDoors, roomWindows, roomOpenings, trueW, trueH } = processed;
@@ -941,6 +943,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     }
 
     // ── Chain dimension lines — top / bottom / right edges (left omitted: title column) ───
+    console.log('[LIDAR_PDF_STAGE] computing chain dims');
     const planCentX = trueW / 2, planCentZ = trueH / 2;
     const CHAIN_OFF = 20, OVERALL_OFF = 38;
     const topSegs = [], bottomSegs = [], rightSegs = [];
@@ -1009,6 +1012,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
   }
 
   // ── Room labels (name + sqft) — interior point, collision-checked vs dim labels ──
+  console.log(`[LIDAR_PDF_STAGE] rendering room labels (${roomLayouts.length} rooms)`);
   // existingBoxes tracks all placed labels for inter-room collision avoidance too
   const existingBoxes = worldMode ? [...dimBoxes] : [];
   const _boxesOverlap = (ax, ay, aw, ah, bx, by, bw, bh) =>
@@ -1189,30 +1193,40 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
 export const buildFloorPlanPDF = (scan, job) => {
-  const rooms = scan.rooms || [];
-  console.log('[LIDAR_DEBUG] Full rooms payload:', JSON.stringify(rooms, null, 2));
-  console.log('[LIDAR_DEBUG] Names array:', rooms.map(r => r.name));
-  console.log('[LIDAR_DEBUG] worldX/worldZ per room:', rooms.map(r => ({ name: r.name, worldX: r.worldX, worldZ: r.worldZ, objects: (r.objects || []).length, walls: (r.wallSegments || []).length })));
+  try {
+    console.log('[LIDAR_PDF_STAGE] buildFloorPlanPDF start');
+    const rooms = scan.rooms || [];
+    console.log('[LIDAR_DEBUG] Full rooms payload:', JSON.stringify(rooms, null, 2));
+    console.log('[LIDAR_DEBUG] Names array:', rooms.map(r => r.name));
+    console.log('[LIDAR_DEBUG] worldX/worldZ per room:', rooms.map(r => ({ name: r.name, worldX: r.worldX, worldZ: r.worldZ, objects: (r.objects || []).length, walls: (r.wallSegments || []).length })));
 
-  const floors = _groupByFloor(rooms);
-  const totalFloors = floors.length;
-  const totalPages = totalFloors + 1; // floor pages + summary page
+    console.log('[LIDAR_PDF_STAGE] grouping rooms by floor');
+    const floors = _groupByFloor(rooms);
+    const totalFloors = floors.length;
+    const totalPages = totalFloors + 1;
+    console.log(`[LIDAR_PDF_STAGE] ${totalFloors} floor(s), ${rooms.length} room(s)`);
 
-  // Floor plan pages are always landscape letter (plan content is normalized to trueW ≥ trueH).
-  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+    const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+    console.log('[LIDAR_PDF_STAGE] jsPDF doc created');
 
-  floors.forEach((floor, fi) => {
-    const W = 792, H = 612;
-    console.log(`[LIDAR_DEBUG] page ${fi + 1} orientation: W=${W} H=${H}`);
-    if (fi > 0) doc.addPage('letter', 'landscape');
-    _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H);
-  });
+    floors.forEach((floor, fi) => {
+      const W = 792, H = 612;
+      console.log(`[LIDAR_PDF_STAGE] rendering floor page ${fi + 1}/${totalFloors} — ${floor.floorName}`);
+      console.log(`[LIDAR_DEBUG] page ${fi + 1} orientation: W=${W} H=${H}`);
+      if (fi > 0) doc.addPage('letter', 'landscape');
+      _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H);
+    });
 
-  // Summary page (always portrait letter)
-  doc.addPage('letter');
-  _renderSummaryPage(doc, floors, job, totalPages, totalPages);
+    console.log('[LIDAR_PDF_STAGE] rendering summary page');
+    doc.addPage('letter');
+    _renderSummaryPage(doc, floors, job, totalPages, totalPages);
 
-  return doc;
+    console.log('[LIDAR_PDF_STAGE] buildFloorPlanPDF complete');
+    return doc;
+  } catch (e) {
+    console.error('[LIDAR_PDF_ERROR]', e);
+    alert('PDF generation failed. Please try again.\n\nIf this keeps happening, contact support.\n\nError: ' + e.message);
+  }
 };
 
 // ─── Default contract text ────────────────────────────────────────────────────
