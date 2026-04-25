@@ -1038,11 +1038,12 @@ export const buildFloorPlanPDF = (scan, job) => {
   const totalPages = totalFloors + 1; // floor pages + summary page
 
   // Floor plan pages are always landscape letter (plan content is normalized to trueW ≥ trueH).
-  const doc = new jsPDF({ unit: 'pt', format: [792, 612] });
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
 
   floors.forEach((floor, fi) => {
     const W = 792, H = 612;
-    if (fi > 0) doc.addPage([792, 612]);
+    console.log(`[LIDAR_DEBUG] page ${fi + 1} orientation: W=${W} H=${H}`);
+    if (fi > 0) doc.addPage('letter', 'landscape');
     _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H);
   });
 
