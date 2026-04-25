@@ -530,6 +530,119 @@ const _interiorPoint = (poly, segs) => {
   return best || { x: (mnX + mxX) / 2, z: (mnZ + mxZ) / 2 };
 };
 
+// ─── Chain dimension renderer ─────────────────────────────────────────────────
+// Renders MagicPlan-style chain dims for one edge.
+// segs: exterior segments on this edge (plan-space feet)
+// dimLinePt: page-space coordinate of the chain dim line (x if !isHoriz, y if isHoriz)
+// overallPt: page-space coordinate of the outer overall dim line
+// normalSign: +1 or -1 (page-space direction labels are pushed toward)
+// isHoriz: true → top/bottom edge (chain runs horizontally, segs sorted by x)
+// oX, oY, scale: plan origin and scale factor
+const _renderChainDims = (doc, segs, dimLinePt, overallPt, normalSign, isHoriz, oX, oY, scale) => {
+  if (!segs.length) return;
+
+  // Dedup: drop segs whose midpoint is within 0.3 ft of an already-kept seg
+  const kept = [];
+  for (const seg of segs) {
+    const mx = (seg.x1 + seg.x2) / 2, mz = (seg.z1 + seg.z2) / 2;
+    if (!kept.some(d => Math.hypot((d.x1+d.x2)/2 - mx, (d.z1+d.z2)/2 - mz) < 0.3)) kept.push(seg);
+  }
+  if (!kept.length) return;
+
+  // Sort along the chain direction
+  kept.sort((a, b) => isHoriz
+    ? Math.min(a.x1, a.x2) - Math.min(b.x1, b.x2)
+    : Math.min(a.z1, a.z2) - Math.min(b.z1, b.z2));
+
+  // Unique tick positions in feet → page coords
+  const tickSet = new Set();
+  for (const seg of kept) {
+    tickSet.add(isHoriz ? Math.min(seg.x1, seg.x2) : Math.min(seg.z1, seg.z2));
+    tickSet.add(isHoriz ? Math.max(seg.x1, seg.x2) : Math.max(seg.z1, seg.z2));
+  }
+  const ticks = [...tickSet].sort((a, b) => a - b);
+  const ticksPage = ticks.map(t => (isHoriz ? oX : oY) + t * scale);
+  const chainStartPg = ticksPage[0], chainEndPg = ticksPage[ticksPage.length - 1];
+  const chainLenFt = ticks[ticks.length - 1] - ticks[0];
+
+  // Extension lines from wall face to overall dim line
+  doc.setDrawColor(100, 100, 100); doc.setLineWidth(0.5);
+  for (const tp of ticksPage) {
+    // Wall face is at the bounding box edge — the perpendicular coord of the wall itself
+    // We run extension lines from just outside the wall to the overall dim line
+    const wallFacePg = dimLinePt - normalSign * 20; // wall face = chain dim line minus offset
+    if (isHoriz) doc.line(tp, wallFacePg + normalSign * 5, tp, overallPt);
+    else         doc.line(wallFacePg + normalSign * 5, tp, overallPt, tp);
+  }
+
+  // Chain dim line
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.75);
+  if (isHoriz) doc.line(chainStartPg, dimLinePt, chainEndPg, dimLinePt);
+  else         doc.line(dimLinePt, chainStartPg, dimLinePt, chainEndPg);
+
+  // Tick marks at each boundary (45° slash)
+  const T = 4;
+  for (const tp of ticksPage) {
+    if (isHoriz) doc.line(tp - T, dimLinePt - T, tp + T, dimLinePt + T);
+    else         doc.line(dimLinePt - T, tp - T, dimLinePt + T, tp + T);
+  }
+
+  // Segment labels
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+  for (const seg of kept) {
+    const s = isHoriz ? Math.min(seg.x1, seg.x2) : Math.min(seg.z1, seg.z2);
+    const e = isHoriz ? Math.max(seg.x1, seg.x2) : Math.max(seg.z1, seg.z2);
+    const midFt = (s + e) / 2;
+    const midPg = (isHoriz ? oX : oY) + midFt * scale;
+    const lx = isHoriz ? midPg : dimLinePt + normalSign * 8;
+    const ly = isHoriz ? dimLinePt + normalSign * 8 : midPg;
+    const label = _feetInches(seg.len);
+    const tw = label.length * 3.8;
+    doc.setFillColor(255, 255, 255);
+    doc.rect(lx - tw / 2 - 1, ly - 4, tw + 2, 7, 'F');
+    doc.setTextColor(0, 0, 0);
+    doc.text(label, lx, ly, { align: 'center', baseline: 'middle' });
+  }
+
+  // Overall dim line (heavier, outer tier) — only drawn when chain has multiple segments
+  if (kept.length > 1) {
+    doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.0);
+    if (isHoriz) doc.line(chainStartPg, overallPt, chainEndPg, overallPt);
+    else         doc.line(overallPt, chainStartPg, overallPt, chainEndPg);
+    // Overall ticks
+    if (isHoriz) {
+      doc.line(chainStartPg - T, overallPt - T, chainStartPg + T, overallPt + T);
+      doc.line(chainEndPg   - T, overallPt - T, chainEndPg   + T, overallPt + T);
+    } else {
+      doc.line(overallPt - T, chainStartPg - T, overallPt + T, chainStartPg + T);
+      doc.line(overallPt - T, chainEndPg   - T, overallPt + T, chainEndPg   + T);
+    }
+    // Overall label
+    const midPg = (chainStartPg + chainEndPg) / 2;
+    const lx = isHoriz ? midPg : overallPt + normalSign * 8;
+    const ly = isHoriz ? overallPt + normalSign * 8 : midPg;
+    const label = _feetInches(chainLenFt);
+    const tw = label.length * 3.8;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(lx - tw / 2 - 1, ly - 4, tw + 2, 7, 'F');
+    doc.setTextColor(0, 0, 0);
+    doc.text(label, lx, ly, { align: 'center', baseline: 'middle' });
+  } else if (kept.length === 1) {
+    // Single segment: just label the chain dim line (no separate overall)
+    const midPg = (chainStartPg + chainEndPg) / 2;
+    const lx = isHoriz ? midPg : dimLinePt + normalSign * 8;
+    const ly = isHoriz ? dimLinePt + normalSign * 8 : midPg;
+    const label = _feetInches(chainLenFt);
+    const tw = label.length * 3.8;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(lx - tw / 2 - 1, ly - 4, tw + 2, 7, 'F');
+    doc.setTextColor(0, 0, 0);
+    doc.text(label, lx, ly, { align: 'center', baseline: 'middle' });
+  }
+};
+
 // ─── Draw helpers ─────────────────────────────────────────────────────────────
 
 // Filled poché rectangle for a wall segment (true double-line effect with black fill).
@@ -803,9 +916,10 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       _eraseGap(doc, p1x, p1y, p2x, p2y, FEAT_WALL_T);
     }
 
-    // ── Dimension lines — exterior walls only ─────────────────────────────────
+    // ── Chain dimension lines — top / bottom / right edges (left omitted: title column) ───
     const planCentX = trueW / 2, planCentZ = trueH / 2;
-    const placedDims = []; // {nx, nz, dist, tMin, tMax, off}
+    const CHAIN_OFF = 20, OVERALL_OFF = 38;
+    const topSegs = [], bottomSegs = [], rightSegs = [];
     for (const seg of allWallSegs) {
       if (seg.interior) continue;
       const len = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
@@ -814,26 +928,17 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       const wdx = seg.x2 - seg.x1, wdz = seg.z2 - seg.z1, wl = len || 1;
       let nx = -wdz / wl, nz = wdx / wl;
       if ((mx - planCentX) * nx + (mz - planCentZ) * nz < 0) { nx = -nx; nz = -nz; }
-      const dist = nx * mx + nz * mz;
-      const t1 = -nz * seg.x1 + nx * seg.z1, t2 = -nz * seg.x2 + nx * seg.z2;
-      const tMin = Math.min(t1, t2), tMax = Math.max(t1, t2);
-      let isDup = false, off = 44;
-      for (const pd of placedDims) {
-        if (pd.nx * nx + pd.nz * nz < 0.93) continue;
-        if (Math.abs(pd.dist - dist) > 0.5) continue;
-        const overlap = Math.min(pd.tMax, tMax) - Math.max(pd.tMin, tMin);
-        if (overlap / len > 0.5) { isDup = true; break; }
-        if (overlap > -3.0) off = Math.max(off, pd.off + 18);
-      }
-      if (isDup) continue;
-      placedDims.push({ nx, nz, dist, tMin, tMax, off });
-      const p1px = oX + seg.x1 * scale, p1py = oY + seg.z1 * scale;
-      const p2px = oX + seg.x2 * scale, p2py = oY + seg.z2 * scale;
-      _dimLine(doc, p1px, p1py, p2px, p2py, nx, nz, _feetInches(len), { off });
+      if (nz < -0.85)      topSegs.push({ ...seg, len });     // outward-normal points up
+      else if (nz >  0.85) bottomSegs.push({ ...seg, len });  // outward-normal points down
+      else if (nx >  0.85) rightSegs.push({ ...seg, len });   // outward-normal points right
+      // left (nx < -0.85) skipped — title column is there
     }
-    // Overall building dimensions (heavier, farther offset)
-    _dimLine(doc, oX, oY, oX + trueW * scale, oY, 0, -1, _feetInches(trueW), { off: 62, lw: 1.0 });
-    _dimLine(doc, oX + trueW * scale, oY, oX + trueW * scale, oY + trueH * scale, 1, 0, _feetInches(trueH), { off: 62, lw: 1.0 });
+    // Top chain: dim line above oY
+    _renderChainDims(doc, topSegs,    oY - CHAIN_OFF,                   oY - OVERALL_OFF,                  -1, true,  oX, oY, scale);
+    // Bottom chain: dim line below oY + trueH*scale
+    _renderChainDims(doc, bottomSegs, oY + trueH * scale + CHAIN_OFF,   oY + trueH * scale + OVERALL_OFF,  +1, true,  oX, oY, scale);
+    // Right chain: dim line to the right of oX + trueW*scale
+    _renderChainDims(doc, rightSegs,  oX + trueW * scale + CHAIN_OFF,   oX + trueW * scale + OVERALL_OFF,  +1, false, oX, oY, scale);
 
   } else {
     // Non-world mode: packing layout (single-room fallback)
