@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, PROCESS_TRANSCRIPT_URL, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, PROCESS_TRANSCRIPT_URL, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis } from '../../../lib/supabase';
 import { Ic, f$, isMob } from '../../../lib/utils';
 
 const NAV = '#0A1F44';
@@ -100,6 +100,12 @@ export default function ConsultationTab({ job, profile }) {
   const [estimateSaved, setEstimateSaved] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
   const [measureListening, setMeasureListening] = useState(false);
+  const [gapRunning, setGapRunning] = useState(false);
+  const [gapAnalysis, setGapAnalysis] = useState(null);
+  const [showGapModal, setShowGapModal] = useState(false);
+  const [gapResolutions, setGapResolutions] = useState({});
+  const [gapNotes, setGapNotes] = useState({});
+  const [gapNotesOpen, setGapNotesOpen] = useState({});
 
   const recognitionRef = useRef(null);
   const measureRecogRef = useRef(null);
@@ -488,15 +494,41 @@ export default function ConsultationTab({ job, profile }) {
     }
   };
 
-  // ─── Done Measuring → Generate ────────────────────────────────────────────
+  // ─── Run Gap Analyzer ─────────────────────────────────────────────────────
+
+  const runGapAnalyzer = async () => {
+    setErr('');
+    setGapRunning(true);
+    setPhase('complete');
+    try {
+      const sid = sessionIdRef.current;
+      const res = await sbRunGapAnalysis(sid, job.id);
+      if (res.error) throw new Error(res.error);
+      if (res.gaps?.length) {
+        setGapAnalysis(res);
+        setGapResolutions({});
+        setGapNotes({});
+        setGapNotesOpen({});
+        setShowGapModal(true);
+      } else {
+        generateEstimate([]);
+      }
+    } catch (e) {
+      console.error('Gap analyzer failed, proceeding to estimate:', e);
+      generateEstimate([]);
+    } finally {
+      setGapRunning(false);
+    }
+  };
+
+  // ─── Done Measuring → Gap Analyze → Generate ──────────────────────────────
 
   const doneMeasuring = async () => {
     setErr('');
     try {
       const sid = sessionIdRef.current;
       if (sid) await sb.from('consultation_sessions').update({ status: 'complete' }).eq('id', sid);
-      setPhase('complete');
-      generateEstimate();
+      runGapAnalyzer();
     } catch (e) {
       setErr(`Failed to finish measuring: ${e.message}`);
     }
@@ -514,8 +546,7 @@ export default function ConsultationTab({ job, profile }) {
     try {
       const sid2 = sessionIdRef.current;
       if (sid2) await sb.from('consultation_sessions').update({ status: 'complete' }).eq('id', sid2);
-      setPhase('complete');
-      generateEstimate();
+      runGapAnalyzer();
     } catch (e) {
       setErr(`Failed to end session: ${e.message}`);
     }
@@ -523,7 +554,8 @@ export default function ConsultationTab({ job, profile }) {
 
   // ─── Generate Estimate ─────────────────────────────────────────────────────
 
-  const generateEstimate = async () => {
+  const generateEstimate = async (unresolvedGaps = []) => {
+    setShowGapModal(false);
     setGenerating(true);
     setErr('');
     try {
@@ -531,7 +563,7 @@ export default function ConsultationTab({ job, profile }) {
       const res = await fetch(GENERATE_ESTIMATE_URL, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ session_id: sessionIdRef.current, job_id: job.id }),
+        body: JSON.stringify({ session_id: sessionIdRef.current, job_id: job.id, unresolved_gaps: unresolvedGaps }),
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
@@ -907,6 +939,27 @@ export default function ConsultationTab({ job, profile }) {
   // ─── Complete / Result Phase ───────────────────────────────────────────────
 
   const renderComplete = () => {
+    if (gapRunning) {
+      return (
+        <div style={{ textAlign: 'center', padding: '48px 0' }}>
+          <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 22, color: NAV, marginBottom: 12 }}>
+            Analyzing Consultation Gaps…
+          </div>
+          <div style={{ color: '#6B7280', fontSize: 14 }}>
+            Reviewing what was asked and flagging anything that could cause a change order.
+          </div>
+          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: '50%',
+              border: `4px solid ${BORDER}`,
+              borderTopColor: GOLD,
+              animation: 'spin 0.8s linear infinite',
+            }} />
+          </div>
+        </div>
+      );
+    }
+
     if (generating) {
       return (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
@@ -1113,6 +1166,11 @@ export default function ConsultationTab({ job, profile }) {
               setTranscript('');
               setTradeMessages([]);
               setEstimateSaved(false);
+              setGapAnalysis(null);
+              setShowGapModal(false);
+              setGapResolutions({});
+              setGapNotes({});
+              setGapNotesOpen({});
             }}
           >
             New Session
@@ -1163,7 +1221,14 @@ export default function ConsultationTab({ job, profile }) {
               {job?.name || job?.title || 'Job'} — Ambient · Measure · Generate
             </div>
           </div>
-          <StatusBadge status={phase} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {gapAnalysis && (
+              <span style={{ padding: '2px 10px', borderRadius: 20, background: '#D1FAE5', color: '#065F46', fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>
+                Gaps reviewed
+              </span>
+            )}
+            <StatusBadge status={phase} />
+          </div>
         </div>
 
         {/* Error banner */}
@@ -1196,6 +1261,163 @@ export default function ConsultationTab({ job, profile }) {
         {phase === 'measure' && renderMeasure()}
         {phase === 'complete' && renderComplete()}
       </div>
+
+      {/* Gap Resolution Modal */}
+      {showGapModal && gapAnalysis?.gaps?.length > 0 && (() => {
+        const gaps = gapAnalysis.gaps;
+        const SEV_COLORS = {
+          blocker:      { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5', label: 'BLOCKER' },
+          strong:       { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D', label: 'STRONG' },
+          nice_to_have: { bg: '#F3F4F6', text: '#374151', border: '#D1D5DB', label: 'NICE TO HAVE' },
+        };
+        const hasBlockerPending = gaps.some(
+          (g, i) => g.severity === 'blocker' && !gapResolutions[i]
+        );
+        const handleGenerate = () => {
+          const unresolved = gaps.filter((_, i) => !['resolved', 'skip'].includes(gapResolutions[i]));
+          generateEstimate(unresolved);
+        };
+        return (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(10,31,68,0.65)', zIndex: 2000,
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          }}>
+            <div style={{
+              background: '#fff', borderRadius: '16px 16px 0 0',
+              width: '100%', maxWidth: 680,
+              maxHeight: '92vh', display: 'flex', flexDirection: 'column',
+              boxShadow: '0 -8px 40px rgba(10,31,68,0.25)',
+            }}>
+              {/* Header */}
+              <div style={{ padding: mob ? '16px 16px 12px' : '20px 24px 14px', borderBottom: `1px solid ${BORDER}` }}>
+                <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: mob ? 18 : 20, color: NAV }}>
+                  Review Consultation Gaps
+                </div>
+                <div style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+                  {gaps.length} item{gaps.length !== 1 ? 's' : ''} flagged — resolve blockers before generating the estimate.
+                </div>
+              </div>
+
+              {/* Gap list */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: mob ? '12px 16px' : '16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {gaps.map((g, i) => {
+                  const sev = SEV_COLORS[g.severity] || SEV_COLORS.nice_to_have;
+                  const res = gapResolutions[i];
+                  const noteOpen = gapNotesOpen[i];
+                  return (
+                    <div key={i} style={{
+                      border: `1px solid ${res ? '#D1FAE5' : BORDER}`,
+                      borderRadius: 10,
+                      padding: mob ? '12px 14px' : '14px 18px',
+                      background: res === 'resolved' ? '#F0FDF4' : res === 'skip' ? '#F9FAFB' : '#fff',
+                      opacity: res === 'skip' ? 0.7 : 1,
+                      transition: 'all 0.15s',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700,
+                          letterSpacing: 0.5, whiteSpace: 'nowrap', flexShrink: 0,
+                          background: sev.bg, color: sev.text, border: `1px solid ${sev.border}`,
+                        }}>
+                          {sev.label}
+                        </span>
+                        <span style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, color: NAV, fontSize: 14, lineHeight: 1.3 }}>
+                          {g.title}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 13, color: '#4B5563', lineHeight: 1.5, marginBottom: 6 }}>
+                        {g.description}
+                      </div>
+                      {g.suggested_action && (
+                        <div style={{ fontSize: 12, color: '#6B7280', fontStyle: 'italic', marginBottom: 10 }}>
+                          <span style={{ fontWeight: 600, fontStyle: 'normal', color: NAV }}>Ask: </span>
+                          {g.suggested_action}
+                        </div>
+                      )}
+
+                      {/* Note textarea */}
+                      {noteOpen && (
+                        <textarea
+                          placeholder="Add a note…"
+                          value={gapNotes[i] || ''}
+                          onChange={e => setGapNotes(prev => ({ ...prev, [i]: e.target.value }))}
+                          rows={2}
+                          className="finp"
+                          style={{ width: '100%', marginBottom: 8, fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+                        />
+                      )}
+
+                      {/* Action buttons */}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => setGapResolutions(prev => ({ ...prev, [i]: 'resolved' }))}
+                          style={{
+                            padding: '4px 12px', borderRadius: 6, border: `1px solid ${res === 'resolved' ? '#22c55e' : BORDER}`,
+                            background: res === 'resolved' ? '#D1FAE5' : '#fff',
+                            color: res === 'resolved' ? '#065F46' : '#374151',
+                            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                          }}
+                        >
+                          {res === 'resolved' ? '✓ Resolved' : 'Resolved'}
+                        </button>
+                        <button
+                          onClick={() => setGapResolutions(prev => ({ ...prev, [i]: 'skip' }))}
+                          style={{
+                            padding: '4px 12px', borderRadius: 6, border: `1px solid ${res === 'skip' ? '#9CA3AF' : BORDER}`,
+                            background: res === 'skip' ? '#F3F4F6' : '#fff',
+                            color: '#6B7280', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                          }}
+                        >
+                          Skip
+                        </button>
+                        <button
+                          onClick={() => {
+                            setGapNotesOpen(prev => ({ ...prev, [i]: !noteOpen }));
+                            if (!noteOpen) setGapResolutions(prev => ({ ...prev, [i]: 'noted' }));
+                          }}
+                          style={{
+                            padding: '4px 12px', borderRadius: 6, border: `1px solid ${res === 'noted' ? GOLD : BORDER}`,
+                            background: res === 'noted' ? '#FFFBEB' : '#fff',
+                            color: res === 'noted' ? '#92400E' : '#6B7280',
+                            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                          }}
+                        >
+                          Add note
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: mob ? '12px 16px' : '14px 24px', borderTop: `1px solid ${BORDER}`, display: 'flex', gap: 10, flexDirection: mob ? 'column' : 'row' }}>
+                {hasBlockerPending && (
+                  <div style={{ fontSize: 12, color: '#991B1B', alignSelf: 'center', flex: 1 }}>
+                    Resolve all blockers before generating.
+                  </div>
+                )}
+                <button
+                  className="btn btn-ghost"
+                  style={{ flex: mob ? 1 : 'none' }}
+                  onClick={() => { setShowGapModal(false); generateEstimate([]); }}
+                >
+                  Skip all & generate
+                </button>
+                <button
+                  className="btn btn-gold"
+                  style={{ flex: mob ? 1 : 'none', minWidth: 160 }}
+                  disabled={hasBlockerPending}
+                  onClick={handleGenerate}
+                >
+                  Generate estimate
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
