@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { session_id, job_id } = await req.json();
+    const { session_id, job_id, unresolved_gaps = [] } = await req.json();
     if (!session_id || !job_id) {
       return new Response(JSON.stringify({ error: "Missing session_id or job_id" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
     }
@@ -157,6 +157,24 @@ Return only valid JSON array. No explanation.`;
       ohShitMoments = JSON.parse(clean);
     } catch {
       ohShitMoments = [];
+    }
+
+    // Append unresolved gaps from gap analyzer as oh_shit_moments
+    const gapSeverityToLikelihood: Record<string, string> = {
+      blocker: "high",
+      strong: "medium",
+      nice_to_have: "low",
+    };
+    if (Array.isArray(unresolved_gaps) && unresolved_gaps.length) {
+      for (const g of unresolved_gaps as Record<string, unknown>[]) {
+        ohShitMoments.push({
+          condition: g.title || g.description || "Unresolved gap",
+          likelihood: gapSeverityToLikelihood[g.severity as string] || "medium",
+          estimated_cost_low: null,
+          estimated_cost_high: null,
+          how_to_present: g.suggested_action || g.description || "",
+        });
+      }
     }
 
     // Save OH SHIT moments to DB

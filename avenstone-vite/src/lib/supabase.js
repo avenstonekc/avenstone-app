@@ -839,6 +839,23 @@ export const sbToggleOhShitProposal = async (id, included) => {
   await sb.from('oh_shit_moments').update({ included_in_proposal: included }).eq('id', id);
 };
 
+// ─── Gap Analyzer ─────────────────────────────────────────────────────────────
+export const GAP_ANALYZER_URL = `${FN}/ai-consultation-gap-analyzer`;
+export const sbRunGapAnalysis = async (sessionId, jobId) => {
+  try {
+    const res = await fetch(GAP_ANALYZER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
+      body: JSON.stringify({ session_id: sessionId, job_id: jobId }),
+    });
+    return await res.json();
+  } catch (e) { return { error: String(e) }; }
+};
+export const sbLoadLatestGapAnalysis = async (sessionId) => {
+  const { data } = await sb.from('consultation_gap_analyses').select('*').eq('session_id', sessionId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  return data || null;
+};
+
 // ─── Daily Tasks ──────────────────────────────────────────────────────────────
 export const sbLoadDailyTasks = (userId) => {
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
