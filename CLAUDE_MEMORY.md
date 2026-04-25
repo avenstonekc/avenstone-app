@@ -278,3 +278,10 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: (b) Per-user briefings are not consolidated — each user sees a brief based on their own job touches, not a shared owner dashboard.
 - Decision: (c) Inspection checklists — AI-seeded baseline (one Sonnet call, 60-80 entries, owner approves before activation). v2 ai_knowledge_learner edge function suggests new entries from completed job patterns; owner approves each addition. inspection_checklist open question closed — decision made.
 - Decision: (d) Moat section expanded with three durable advantages: runs the software it builds (uncopyable feedback loop), every job teaches the system (private dataset compounds), single-builder velocity (idea Mon → ship Fri).
+
+[LOG — 2026-04-25]
+- Action: AVENSTONE_VISION.md updated — white-label / multi-trade model added (Multi-trade section, v4+ section, fourth durable advantage in moat).
+- Files: AVENSTONE_VISION.md
+- Decision: Platform is multi-tenant from day one. v1 data model is trade-aware: ai_knowledge gets a trade tag, takeoff_templates include tenant_id + trade, phase definitions are per-tenant config, module visibility is a per-tenant feature flag set (manages_subs, uses_lidar, tracks_permits). Avenstone runs as a GC tenant with everything on — no trade-specific UIs needed in v1.
+- Decision: v4+ expansion to other trades (painters, tile, roofers, etc.) is configuration and sales work, not engineering — if v1 data model is right, no rewrite needed.
+- Decision: White-label-ready-from-day-one added as durable advantage #4 in moat section.

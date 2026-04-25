@@ -121,6 +121,58 @@ permissions, same access. No primary/secondary tiers.
   CLAUDE.md) need to generalize to "never send to any user
   with role=owner" once additional owners are active.
 
+## Multi-trade / white-label model
+
+Avenstone is the first tenant on a multi-tenant platform.
+The platform is white-label by design — each tenant
+configures which modules are on, which trades they manage,
+which phases apply to their work, and which categories of
+ai_knowledge are scoped to them.
+
+The Avenstone tenant runs the full GC config. Other tenants
+(painting contractors, tile contractors, roofers, plumbers,
+electricians, single-trade specialists) run leaner configs
+with the same platform underneath. Same codebase, different
+data and feature flags.
+
+Pieces that travel across all trades:
+- Auth, multi-tenancy, RLS, payments, CRM
+- AI knowledge framework (entries are tenant-scoped and
+  trade-scoped)
+- AI companion, gap analyzer, briefings, voice agent
+- Inspection checklist machinery
+- Scope-and-allowance engine
+- oh_shit_moments / disclosed CO infrastructure
+- Material catalog framework
+- Document generation, contracts, signatures
+
+Pieces that vary by trade (data, not code):
+- Specific ai_knowledge entries (pricing, checklists,
+  scope guidance)
+- Takeoff templates (a GC's bathroom template ≠ a tile
+  contractor's bathroom template)
+- Phase definitions (a painter's 3 phases ≠ a GC's 8)
+- Module visibility (sub management on/off, LiDAR on/off,
+  permit tracking on/off)
+- Material catalog contents
+
+Implications for v1:
+- ai_knowledge gets a trade tag in addition to tenant_id —
+  queries filter by both
+- Inspection checklist entries are trade-tagged at creation
+- takeoff_templates table includes tenant_id + trade fields
+- Phase definitions become a per-tenant config with sensible
+  defaults per trade (Avenstone gets the existing 8-phase
+  GC default)
+- Module visibility is a per-tenant feature flag set
+  (manages_subs, uses_lidar, tracks_permits, etc.)
+
+None of this requires building trade-specific UIs in v1.
+Avenstone runs as a GC tenant with everything on. The data
+model just doesn't lock us into GC-only assumptions, so
+white-label expansion in v4+ is a configuration job, not a
+rewrite.
+
 ## Why this is the moat
 
 Anyone can build construction CRM. Anyone can build estimating
@@ -145,6 +197,11 @@ The durable advantages:
 3. **Single-builder velocity.** Idea on Monday, shipped by
    Friday. No competing software product in this space has
    that loop.
+4. **White-label-ready from day one.** The data model is
+   trade-aware and tenant-configurable from v1, so expansion
+   to other trades in v4+ is a configuration and sales job,
+   not a rewrite. Competitors who hardcode GC assumptions
+   can't follow this path without starting over.
 
 That's the positioning line: **Avenstone software prevents
 construction surprises.** Not "AI for contractors." Not
@@ -345,6 +402,32 @@ is a layer on top of text briefs.
 
 If any phase causes confusion, hide its UI behind a feature
 flag and ship without it. The data layers stay regardless.
+
+## v4+ — White-label expansion
+
+Once Avenstone is running smoothly on the GC config (post-v3),
+the next phase is opening the platform to other trades. This
+is sales and configuration work, not engineering work — if
+v1 gets the data model right, v4 is mostly:
+
+- Onboarding flow per trade (what phases? what modules?
+  seed which ai_knowledge entries?)
+- Trade-specific takeoff templates (paint, tile, roofing,
+  plumbing, electrical)
+- Trade-specific catalog seeding
+- Pricing/billing model for tenants
+- Sales motion to acquire other contractors
+
+What does NOT happen in v4 (and shouldn't):
+- No trade-specific code forks
+- No re-architecting for multi-trade — that work happened
+  in v1
+- No platform abstractions invented now to handle hypothetical
+  future trades
+
+The anti-surprise philosophy is the through-line. Every trade
+has its own surprises. The platform's job is to surface them
+earlier, regardless of which trade is using it.
 
 ---
 
