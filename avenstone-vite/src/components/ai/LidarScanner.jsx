@@ -28,11 +28,11 @@ const COMMON_ROOMS = [
 const FLOOR_OPTIONS = [-1, 0, 1, 2, 3].map(i => ({ index: i, label: floorLabel(i) }));
 
 // Return the lowest floor index not already present in the scanned rooms.
-// Falls back to 0 if all floors already exist (shouldn't happen in practice).
+// Prefers 1st Floor (0) as the natural starting default; Basement is last.
 function computeNextFloor(rooms) {
   const scanned = new Set(rooms.map(r => r.floor ?? 0));
-  for (const { index } of FLOOR_OPTIONS) {
-    if (!scanned.has(index)) return index;
+  for (const idx of [0, 1, 2, 3, -1]) {
+    if (!scanned.has(idx)) return idx;
   }
   return 0;
 }
@@ -201,7 +201,9 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
   }
 
   function handleOpenFloorPicker() {
-    setPendingFloorIndex(computeNextFloor(rooms));
+    const next = computeNextFloor(rooms);
+    console.log(`[LIDAR_DEBUG] floor picker shown, defaulted to floorIndex=${next}`);
+    setPendingFloorIndex(next);
     setPhase('floorPicker');
   }
 
@@ -416,13 +418,9 @@ function ListPhase({ rooms, mode, onModeChange, supported, onAddRoom, onOpenFloo
                 <div style={{ fontSize: 13, color: NAVY, fontFamily: '"DM Sans", sans-serif', fontWeight: 600, padding: '11px 0' }}>
                   Launching scanner...
                 </div>
-              ) : rooms.length === 0 ? (
-                <button style={btnGold} onClick={() => onStartMultiRoomScan(0)}>
-                  Start Scan
-                </button>
               ) : (
                 <button style={btnGold} onClick={onOpenFloorPicker}>
-                  + Add Another Floor
+                  {rooms.length === 0 ? 'Start Scan' : '+ Add Another Floor'}
                 </button>
               )
             ) : (
