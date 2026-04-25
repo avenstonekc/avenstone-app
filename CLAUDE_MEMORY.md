@@ -210,3 +210,26 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: Overall bounding dims (top + right) at off=62, lw=1.0 — heavier than per-wall dims (off=44, lw=0.75).
 - Decision: Title block moved to left-side vertical column (TC_W=108pt). Plan area now 536×476pt inside DL=168/DR=704/DT=82/DB=558.
 - Decision: Overall HEIGHT dim on RIGHT side — left side is blocked by title column.
+
+[LOG — 2026-04-24]
+- Action: Second PDF + scanner cleanup sweep — Bugs 1–10 (commits 4f46f29 through f517802)
+- Files: src/components/ai/LidarScanner.jsx (Bug 1), src/lib/pdf.js (Bugs 2–10)
+
+**Audit findings:**
+- Bug 1 (floor picker not firing): ListPhase was calling onStartMultiRoomScan(0) directly when rooms.length===0, bypassing FloorPicker. Also computeNextFloor iterated [-1,0,1,2,3] so empty rooms defaulted to Basement. Fix: always route through onOpenFloorPicker; reordered preference to [0,1,2,3,-1].
+- Bug 3 (landscape): jsPDF({ format: [792,612] }) without explicit orientation was being interpreted inconsistently. Fix: orientation:'landscape' + format:'letter'.
+- Bug 7 (duplicate dims): Two exterior segs from different rooms with slightly different outward-normal normalizations gave different `dist` values, causing the placedDims dedup to miss them. Resolved by chain-dim rewrite — per-edge grouping dedupes by midpoint proximity (0.3 ft) before rendering.
+- Bug 8 (TOTAL row): gTotPerim and gTotWallArea were never declared at global scope (only floor-level fTotPerim/fTotWallArea existed). TOTAL row hardcoded '—' for all three. Fix: added global accumulators, wired roll-up, ceiling total = floor area total.
+- Bug 10 (openings): Openings loop already correct — erase only, no swing arc. Walk-through rendered with swing arc = RoomPlan sensor tagged it as CapturedRoom.Door, not Opening. Render-side fix not applicable. Flagged as known limitation; user-editable override deferred.
+
+**Key decisions:**
+- Chain dims (Bug 5): MagicPlan style — one dim line per edge (top/bottom/right), single label per segment centered on span, tick marks at each boundary, overall outer tier at +38pt. Left edge skipped (title column).
+- Bug 4 (left-edge overlap into title column): Resolved by omitting left chain entirely.
+- Bug 2 (orthogonal snap): _snapToOrtho runs on a deep clone before _processAllRooms. Angle snap (5° tolerance) + endpoint merge (2-inch tolerance). Raw data preserved.
+- Bug 6 (label collision): _renderChainDims returns label bounding boxes; room labels check dimBoxes + previously placed room label boxes before rendering. Falls back to interior point, then font reduction 10%, then [LIDAR_WARN].
+- Bug 9 (garage door): ri preserved on door objects via byRoom() to look up room name. Width ≥6ft + /garage/i room name → overhead-door symbol (two parallel lines + inward arrow). Width 4–6ft non-garage → bi-fold unchanged. <4ft → swing arc unchanged.
+
+**Known remaining limitations:**
+- RoomPlan misclassification of walk-through openings as doors (Bug 10 — sensor-side, not render-side)
+- Fixture/object rendering still pending rotation transform (_drawFixture not yet reinstated)
+- Single-room (non-world-mode) path: chain dims not applied (still uses old per-seg _dimLine calls)

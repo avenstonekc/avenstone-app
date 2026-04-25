@@ -332,16 +332,20 @@ This is Avenstone's core competitive advantage. Every piece connects:
 CLIENT / REP GOES ON-SITE
   └── AI Intake Wizard (components/ai/AiIntakeWizard.jsx)
       LiDAR scanner flow (LidarScanner.jsx):
-        → floor picker (first scan auto-uses 1st Floor; each subsequent scan
-            shows FloorPicker to select Basement/1st/2nd/3rd Floor —
-            floorIndex passed JS → Swift → stamped on every room dict)
+        → floor picker (ALL scans show FloorPicker — first scan defaults to
+            1st Floor, subsequent scans auto-select next unscanned floor;
+            computeNextFloor prefers [0,1,2,3,-1]; floorIndex passed JS → Swift
+            → stamped on every room dict)
         → scan rooms (ContinuousRoomScanViewController, iOS RoomPlan, worldX/worldZ)
         → height capture (HeightCaptureStep — auto from mesh or tap-raycast)
         → quality report (CaptureQualityReport — score, deductions, Re-scan/Accept)
         → save to job (job_lidar_scans) or contact (contact_lidar_scans)
         → PDF: buildFloorPlanPDF → _groupByFloor → one landscape page per floor
-            (poché walls, exterior-only dims, overall bounding dims, room fill
-            tint, left-side title column) + portrait summary page.
+            (_snapToOrtho clone: angle-snap walls within 5° + merge endpoints
+            within 2in → _processAllRooms → chain dims top/bottom/right edges
+            (MagicPlan style, left edge omitted for title column) + room fill
+            tint + left-side title column + collision-checked room labels)
+            + portrait summary page.
       Supports interior multi-room and exterior outline (ARKit corner-placement).
   (The original 3-step "AI chat → measurements → review" flow is retired.
   ai-intake edge function still exists but is no longer called from the app.)
