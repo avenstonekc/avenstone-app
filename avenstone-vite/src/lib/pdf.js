@@ -1076,7 +1076,7 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
   const cols = [M, M + 115, M + 180, M + 245, M + 318, M + 386, M + 425];
   const HEADERS = ['Room', 'Floor Area', 'Perimeter', 'Wall Area', 'Ceiling', 'Doors', 'Win.'];
 
-  let gTotFloor = 0, gTotDoors = 0, gTotWin = 0;
+  let gTotFloor = 0, gTotPerim = 0, gTotWallArea = 0, gTotDoors = 0, gTotWin = 0;
 
   for (const floor of floors) {
     if (floors.length > 1) {
@@ -1135,7 +1135,7 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
       doc.text(`${fTotDoors}`, cols[5], y); doc.text(`${fTotWin}`, cols[6], y);
       y += 14;
     }
-    gTotFloor += fTotFloor; gTotDoors += fTotDoors; gTotWin += fTotWin;
+    gTotFloor += fTotFloor; gTotPerim += fTotPerim; gTotWallArea += fTotWallArea; gTotDoors += fTotDoors; gTotWin += fTotWin;
   }
 
   if (floors.length > 0) {
@@ -1143,8 +1143,11 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...navy);
     doc.text('TOTAL', cols[0], y);
     doc.text(`${gTotFloor.toLocaleString()} sf`, cols[1], y);
-    doc.text('—', cols[2], y); doc.text('—', cols[3], y); doc.text('—', cols[4], y);
+    doc.text(`${gTotPerim.toFixed(1)} ft`, cols[2], y);
+    doc.text(`${gTotWallArea.toLocaleString()} sf`, cols[3], y);
+    doc.text(`${gTotFloor.toLocaleString()} sf`, cols[4], y); // ceiling ≈ floor area
     doc.text(`${gTotDoors}`, cols[5], y); doc.text(`${gTotWin}`, cols[6], y);
+    console.log(`[LIDAR_DEBUG] summary totals: floorArea=${gTotFloor} perimeter=${gTotPerim.toFixed(1)} wallArea=${gTotWallArea} ceiling=${gTotFloor} doors=${gTotDoors} windows=${gTotWin}`);
   }
 
   // Footer
