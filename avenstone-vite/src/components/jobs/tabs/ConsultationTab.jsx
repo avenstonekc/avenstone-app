@@ -382,6 +382,20 @@ export default function ConsultationTab({ job, profile }) {
   const startMeasuring = async () => {
     setErr('');
     stopMic();
+    // Flush accumulated transcript before clearing interval — ambient sessions
+    // shorter than 60s never fire the interval, leaving no extraction row.
+    if (transcriptRef.current && transcriptRef.current.trim().length >= 20) {
+      fetch(PROCESS_TRANSCRIPT_URL, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          session_id: sessionIdRef.current,
+          job_id: job.id,
+          transcript_chunk: transcriptRef.current,
+          mode: 'ambient',
+        }),
+      }).catch(() => {});
+    }
     if (ambientIntervalRef.current) {
       clearInterval(ambientIntervalRef.current);
       ambientIntervalRef.current = null;
