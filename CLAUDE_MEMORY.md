@@ -308,3 +308,8 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: Two intentional curation surfaces: ConsultationTab (in-session, as unknowns surface during consultation) and EstimateTab (pre-send, when building the proposal PDF). Both write to oh_shit_moments.included_in_proposal. State is synchronized because both tabs read/write the same DB column.
 - Decision: After generate-estimate-from-session returns, ConsultationTab now fetches the DB rows (with IDs) filtered by session_id, matches to API response rows by condition text, and keys ohShitToggled by DB UUID instead of array index. Toggle onChange does optimistic local update + sbToggleOhShitProposal call.
 - Decision: Also fixed ConsultationTab display to use m.condition || m.title || m.issue (DB field name is `condition`, not `title`/`issue`) and m.estimated_cost_low/high (not m.cost_low/high).
+
+[LOG — 2026-04-25]
+- Action: Stripped prompt wrapper from AVENSTONE_VISION.md — file now starts with "# Avenstone Vision — The Anti-Surprise Engine" instead of "SCOPE: create a new file...". All prior edits were correctly embedded inside the wrapper and are preserved in the clean file.
+- Files: AVENSTONE_VISION.md
+- Decision: Also updated "What's already shipped" bullet to reflect that disclosed unknowns in proposals has shipped (was still marked as a gap).
