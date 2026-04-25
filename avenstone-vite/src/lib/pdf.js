@@ -539,7 +539,8 @@ const _interiorPoint = (poly, segs) => {
 // isHoriz: true → top/bottom edge (chain runs horizontally, segs sorted by x)
 // oX, oY, scale: plan origin and scale factor
 const _renderChainDims = (doc, segs, dimLinePt, overallPt, normalSign, isHoriz, oX, oY, scale) => {
-  if (!segs.length) return;
+  if (!segs.length) return [];
+  const labelBoxes = [];
 
   // Dedup: drop segs whose midpoint is within 0.3 ft of an already-kept seg
   const kept = [];
@@ -587,6 +588,17 @@ const _renderChainDims = (doc, segs, dimLinePt, overallPt, normalSign, isHoriz, 
     else         doc.line(dimLinePt - T, tp - T, dimLinePt + T, tp + T);
   }
 
+  // Helper: render a dim label and track its bounding box
+  const _drawDimLabel = (lx, ly, label) => {
+    const tw = label.length * 3.8;
+    const rx = lx - tw / 2 - 1, ry = ly - 4, rw = tw + 2, rh = 7;
+    doc.setFillColor(255, 255, 255);
+    doc.rect(rx, ry, rw, rh, 'F');
+    doc.setTextColor(0, 0, 0);
+    doc.text(label, lx, ly, { align: 'center', baseline: 'middle' });
+    labelBoxes.push({ x: rx, y: ry, w: rw, h: rh });
+  };
+
   // Segment labels
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
   for (const seg of kept) {
@@ -596,12 +608,7 @@ const _renderChainDims = (doc, segs, dimLinePt, overallPt, normalSign, isHoriz, 
     const midPg = (isHoriz ? oX : oY) + midFt * scale;
     const lx = isHoriz ? midPg : dimLinePt + normalSign * 8;
     const ly = isHoriz ? dimLinePt + normalSign * 8 : midPg;
-    const label = _feetInches(seg.len);
-    const tw = label.length * 3.8;
-    doc.setFillColor(255, 255, 255);
-    doc.rect(lx - tw / 2 - 1, ly - 4, tw + 2, 7, 'F');
-    doc.setTextColor(0, 0, 0);
-    doc.text(label, lx, ly, { align: 'center', baseline: 'middle' });
+    _drawDimLabel(lx, ly, _feetInches(seg.len));
   }
 
   // Overall dim line (heavier, outer tier) — only drawn when chain has multiple segments
@@ -621,26 +628,18 @@ const _renderChainDims = (doc, segs, dimLinePt, overallPt, normalSign, isHoriz, 
     const midPg = (chainStartPg + chainEndPg) / 2;
     const lx = isHoriz ? midPg : overallPt + normalSign * 8;
     const ly = isHoriz ? overallPt + normalSign * 8 : midPg;
-    const label = _feetInches(chainLenFt);
-    const tw = label.length * 3.8;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
-    doc.setFillColor(255, 255, 255);
-    doc.rect(lx - tw / 2 - 1, ly - 4, tw + 2, 7, 'F');
-    doc.setTextColor(0, 0, 0);
-    doc.text(label, lx, ly, { align: 'center', baseline: 'middle' });
+    _drawDimLabel(lx, ly, _feetInches(chainLenFt));
   } else if (kept.length === 1) {
     // Single segment: just label the chain dim line (no separate overall)
     const midPg = (chainStartPg + chainEndPg) / 2;
     const lx = isHoriz ? midPg : dimLinePt + normalSign * 8;
     const ly = isHoriz ? dimLinePt + normalSign * 8 : midPg;
-    const label = _feetInches(chainLenFt);
-    const tw = label.length * 3.8;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
-    doc.setFillColor(255, 255, 255);
-    doc.rect(lx - tw / 2 - 1, ly - 4, tw + 2, 7, 'F');
-    doc.setTextColor(0, 0, 0);
-    doc.text(label, lx, ly, { align: 'center', baseline: 'middle' });
+    _drawDimLabel(lx, ly, _feetInches(chainLenFt));
   }
+
+  return labelBoxes;
 };
 
 // ─── Draw helpers ─────────────────────────────────────────────────────────────
@@ -934,11 +933,11 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       // left (nx < -0.85) skipped — title column is there
     }
     // Top chain: dim line above oY
-    _renderChainDims(doc, topSegs,    oY - CHAIN_OFF,                   oY - OVERALL_OFF,                  -1, true,  oX, oY, scale);
-    // Bottom chain: dim line below oY + trueH*scale
-    _renderChainDims(doc, bottomSegs, oY + trueH * scale + CHAIN_OFF,   oY + trueH * scale + OVERALL_OFF,  +1, true,  oX, oY, scale);
-    // Right chain: dim line to the right of oX + trueW*scale
-    _renderChainDims(doc, rightSegs,  oX + trueW * scale + CHAIN_OFF,   oX + trueW * scale + OVERALL_OFF,  +1, false, oX, oY, scale);
+    const dimBoxes = [
+      ..._renderChainDims(doc, topSegs,    oY - CHAIN_OFF,                   oY - OVERALL_OFF,                  -1, true,  oX, oY, scale),
+      ..._renderChainDims(doc, bottomSegs, oY + trueH * scale + CHAIN_OFF,   oY + trueH * scale + OVERALL_OFF,  +1, true,  oX, oY, scale),
+      ..._renderChainDims(doc, rightSegs,  oX + trueW * scale + CHAIN_OFF,   oX + trueW * scale + OVERALL_OFF,  +1, false, oX, oY, scale),
+    ];
 
   } else {
     // Non-world mode: packing layout (single-room fallback)
@@ -984,7 +983,14 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     }
   }
 
-  // ── Room labels (name + sqft) — true centroid with interior-point fallback ──
+  // ── Room labels (name + sqft) — interior point, collision-checked vs dim labels ──
+  // existingBoxes tracks all placed labels for inter-room collision avoidance too
+  const existingBoxes = worldMode ? [...dimBoxes] : [];
+  const _boxesOverlap = (ax, ay, aw, ah, bx, by, bw, bh) =>
+    ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  const _labelCollides = (lx, ly, lw, lh) =>
+    existingBoxes.some(b => _boxesOverlap(lx - lw/2, ly - lh/2, lw, lh, b.x, b.y, b.w, b.h));
+
   for (const { room, segs, x, y, w, h } of roomLayouts) {
     let labelX, labelY;
     if (segs && segs.length >= 3) {
@@ -1005,12 +1011,34 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     })();
     const aspect = w > 0 && h > 0 ? Math.max(w, h) / Math.min(w, h) : 1;
     const narrow = aspect > 3;
-    const fs = Math.max(7, Math.min(11, (narrow ? h : w) / 8));
+    let fs = Math.max(7, Math.min(11, (narrow ? h : w) / 8));
+
+    // Collision check: try original position, then shift toward centroid, then reduce font
+    const nameTxt = room.name || '—';
+    const nameW = nameTxt.length * fs * 0.55, nameH = fs + 2;
+    if (!narrow && _labelCollides(labelX, labelY - 4, nameW, nameH)) {
+      // Try shifting toward interior point
+      if (segs && segs.length >= 3) {
+        const ip = _interiorPoint(_segsToPolyPoints(segs), segs);
+        const altX = oX + ip.x * scale, altY = oY + ip.z * scale;
+        if (!_labelCollides(altX, altY - 4, nameW, nameH)) { labelX = altX; labelY = altY; }
+        else {
+          // Try font reduction 10%
+          fs = Math.max(6, fs * 0.9);
+          if (_labelCollides(labelX, labelY - 4, nameTxt.length * fs * 0.55, fs + 2)) {
+            console.warn(`[LIDAR_WARN] room label collision unresolved for ${nameTxt}`);
+          }
+        }
+      }
+    }
+
     doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(...navy);
     if (narrow) {
-      doc.text(room.name || '—', labelX, labelY, { align: 'center', baseline: 'middle', angle: 90 });
+      doc.text(nameTxt, labelX, labelY, { align: 'center', baseline: 'middle', angle: 90 });
     } else {
-      doc.text(room.name || '—', labelX, labelY - 4, { align: 'center', baseline: 'middle' });
+      doc.text(nameTxt, labelX, labelY - 4, { align: 'center', baseline: 'middle' });
+      // Register the placed name label box so subsequent rooms avoid it
+      existingBoxes.push({ x: labelX - nameW/2, y: labelY - 4 - nameH/2, w: nameW, h: nameH });
       if (sqft > 0) {
         doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
         doc.text(`${sqft.toLocaleString()} sq ft`, labelX, labelY + 7, { align: 'center', baseline: 'middle' });
