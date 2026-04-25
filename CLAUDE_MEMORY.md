@@ -322,3 +322,12 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: GapResolutionModal is full-screen overlay. Each gap has Resolved/Skip/Add note buttons. Generate estimate button disabled if any blocker is unresolved (no action taken). Unresolved gaps (not Resolved or Skip) passed to generate-estimate-from-session as unresolved_gaps.
 - Decision: Unresolved gaps → oh_shit_moments: title→condition, description→how_to_present, severity (blocker→high, strong→medium, nice_to_have→low)→likelihood.
 - Open: consultation_gap_analyses table must be applied to live DB via Supabase dashboard SQL editor (run 20260425_consultation_gap_analyses.sql). Edge fn auto-deployed via GitHub Actions.
+
+[LOG — 2026-04-25]
+- Action: Fixed three bugs surfaced during gap analyzer testing.
+- Files: generate-estimate-from-session/index.ts, ai-consultation-gap-analyzer/index.ts, ConsultationTab.jsx
+- Decision Bug 1: Removed `!measurements.length` hard guard from generate-estimate. Sessions where Haiku stays in "scoping" trade throughout (common in short sessions) produce zero consultation_measurements rows. Estimate now proceeds with whatever context is available; measureSummary notes when no measurements were recorded.
+- Decision Bug 1 (also): Fixed `jobs.description` → `jobs.scope` in generate-estimate jobs query. `description` column does not exist on jobs table — PostgREST returned null for the entire row, making job=null → "Unknown" everywhere.
+- Decision Bug 2: Added fire-and-forget ambient transcript flush at start of `startMeasuring()`. The 60-second interval is cleared immediately on mode transition; if ambient ran < 60 seconds, no extraction row was ever written. Now flushes transcript if ≥ 20 chars before clearing the interval.
+- Decision Bug 3: Fixed same `description` → `scope` bug in gap analyzer jobs query and prompt.
+- Note: PAT still expired — GitHub Actions edge fn deploys may be broken. User needs to regenerate PAT at supabase.com/dashboard/account/tokens (No expiry) and run `gh secret set SUPABASE_ACCESS_TOKEN`.
