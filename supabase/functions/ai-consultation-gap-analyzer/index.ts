@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
         sb.from("consultation_sessions").select("*").eq("id", session_id).single(),
         sb.from("consultation_measurements").select("*").eq("session_id", session_id),
         sb.from("consultation_extractions").select("*").eq("session_id", session_id).maybeSingle(),
-        sb.from("jobs").select("address, description, sqft, client_name").eq("id", job_id).single(),
+        sb.from("jobs").select("address, scope, sqft, client_name").eq("id", job_id).single(),
         sb.from("ai_knowledge").select("category, content").eq("active", true),
         sb.from("job_lidar_scans")
           .select("rooms, total_sqft, capture_mode, quality_grade")
@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
 Job: ${job?.address || "Unknown"}
 Client: ${job?.client_name || "Unknown"}
 ${job?.sqft ? `Approx sqft: ${job.sqft}` : ""}
-${job?.description ? `Description: ${job.description}` : ""}
+${job?.scope ? `Scope: ${job.scope}` : ""}
 
 Scan: ${scanContext}
 
