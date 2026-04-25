@@ -301,3 +301,10 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: ConsultationTab's "Include in proposal" checkbox was in-memory only — it never wrote included_in_proposal=true to the DB. EstimateTab now provides the persistent toggle path.
 - Open: change_orders ↔ oh_shit_moments linkage (disclosed_in_oh_shit_moment_id) deferred to v2 — when a real CO fires that matches a disclosed item, surface "as disclosed" to client.
 - Next: use on next bid Avenstone sends. Observe client response. Decide v2 priorities from real use.
+
+[LOG — 2026-04-25]
+- Action: Fixed ConsultationTab oh_shit_moments toggle — now persists to DB via sbToggleOhShitProposal (was in-memory only).
+- Files: avenstone-vite/src/components/jobs/tabs/ConsultationTab.jsx
+- Decision: Two intentional curation surfaces: ConsultationTab (in-session, as unknowns surface during consultation) and EstimateTab (pre-send, when building the proposal PDF). Both write to oh_shit_moments.included_in_proposal. State is synchronized because both tabs read/write the same DB column.
+- Decision: After generate-estimate-from-session returns, ConsultationTab now fetches the DB rows (with IDs) filtered by session_id, matches to API response rows by condition text, and keys ohShitToggled by DB UUID instead of array index. Toggle onChange does optimistic local update + sbToggleOhShitProposal call.
+- Decision: Also fixed ConsultationTab display to use m.condition || m.title || m.issue (DB field name is `condition`, not `title`/`issue`) and m.estimated_cost_low/high (not m.cost_low/high).
