@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, PROCESS_TRANSCRIPT_URL, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, PROCESS_TRANSCRIPT_URL, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal } from '../../../lib/supabase';
 import { Ic, f$, isMob } from '../../../lib/utils';
 
 const NAV = '#0A1F44';
@@ -92,6 +92,7 @@ export default function ConsultationTab({ job, profile }) {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState(null);
   const [ohShitToggled, setOhShitToggled] = useState({});
+  const [ohShitDbRows, setOhShitDbRows] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [viewSession, setViewSession] = useState(null);
   const [err, setErr] = useState('');
@@ -536,10 +537,17 @@ export default function ConsultationTab({ job, profile }) {
       const json = await res.json();
       setResult(json);
 
-      // Default all oh_shit toggles to true
       if (json.oh_shit_moments?.length) {
+        // Fetch DB rows (with IDs) so toggles can persist
+        const dbRows = await sbLoadOhShitMoments(job.id);
+        const sessionRows = dbRows.filter(r => r.session_id === sessionIdRef.current);
+        setOhShitDbRows(sessionRows);
         const defaults = {};
-        json.oh_shit_moments.forEach((m, i) => { defaults[m.id || i] = true; });
+        json.oh_shit_moments.forEach((m, i) => {
+          const dbRow = sessionRows.find(r => r.condition === (m.condition || m.issue || m.title)) || sessionRows[i];
+          const key = dbRow?.id ?? i;
+          defaults[key] = dbRow ? dbRow.included_in_proposal : true;
+        });
         setOhShitToggled(defaults);
       }
 
@@ -560,7 +568,11 @@ export default function ConsultationTab({ job, profile }) {
     try {
       const userId = AV_USER_ID || profile?.id;
       const tenantId = AV_TENANT || profile?.tenant_id;
-      const included = result.oh_shit_moments?.filter((m, i) => ohShitToggled[m.id || i]) || [];
+      const included = result.oh_shit_moments?.filter((m, i) => {
+        const dbRow = ohShitDbRows.find(r => r.condition === (m.condition || m.issue || m.title)) || ohShitDbRows[i];
+        const key = dbRow?.id ?? i;
+        return !!ohShitToggled[key];
+      }) || [];
 
       const { data: estRow, error } = await sb.from('job_estimates').insert({
         job_id: job.id,
@@ -1017,7 +1029,8 @@ export default function ConsultationTab({ job, profile }) {
             </div>
             <div>
               {ohShitMoments.map((m, i) => {
-                const key = m.id || i;
+                const dbRow = ohShitDbRows.find(r => r.condition === (m.condition || m.issue || m.title)) || ohShitDbRows[i];
+                const key = dbRow?.id ?? i;
                 const included = !!ohShitToggled[key];
                 return (
                   <div
@@ -1034,7 +1047,7 @@ export default function ConsultationTab({ job, profile }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                           <LikelihoodBadge likelihood={m.likelihood || 'medium'} />
                           <span style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, color: NAV, fontSize: 14 }}>
-                            {m.title || m.issue}
+                            {m.condition || m.title || m.issue}
                           </span>
                         </div>
                         {m.description && (
@@ -1048,12 +1061,12 @@ export default function ConsultationTab({ job, profile }) {
                             {m.how_to_present}
                           </div>
                         )}
-                        {(m.cost_low || m.cost_high || m.cost_range) && (
+                        {(m.estimated_cost_low || m.estimated_cost_high || m.cost_low || m.cost_high || m.cost_range) && (
                           <div style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>
                             Potential cost:{' '}
                             {m.cost_range
                               ? m.cost_range
-                              : `${f$(m.cost_low || 0)} – ${f$(m.cost_high || 0)}`}
+                              : `${f$(m.estimated_cost_low || m.cost_low || 0)} – ${f$(m.estimated_cost_high || m.cost_high || 0)}`}
                           </div>
                         )}
                       </div>
@@ -1061,9 +1074,11 @@ export default function ConsultationTab({ job, profile }) {
                         <input
                           type="checkbox"
                           checked={included}
-                          onChange={() =>
-                            setOhShitToggled((prev) => ({ ...prev, [key]: !prev[key] }))
-                          }
+                          onChange={() => {
+                            const next = !included;
+                            setOhShitToggled(prev => ({ ...prev, [key]: next }));
+                            if (dbRow?.id) sbToggleOhShitProposal(dbRow.id, next);
+                          }}
                           style={{ width: 16, height: 16, accentColor: GOLD, cursor: 'pointer' }}
                         />
                         <span style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Include in proposal</span>
