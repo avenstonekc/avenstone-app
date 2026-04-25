@@ -295,7 +295,7 @@ const _processAllRooms = (rooms) => {
   const byRoom = (type) => rooms.map((_, ri) =>
     normalized.filter(s => s.ri === ri && s.t === type).map(s => {
       const b = { x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2 };
-      return type === 'door' ? { ...b, nx: s.nx, nz: s.nz, width: s.width } : b;
+      return type === 'door' ? { ...b, nx: s.nx, nz: s.nz, width: s.width, ri: s.ri } : b;
     })
   );
 
@@ -866,10 +866,30 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       const dw = Math.hypot(p2x - p1x, p2y - p1y);
       if (dw < 4) continue;
       _eraseGap(doc, p1x, p1y, p2x, p2y, FEAT_WALL_T);
-      // Door symbol: bi-fold (≥ 4 ft wide) or swing arc
+      // Door symbol: garage/overhead (≥6ft in garage room), bi-fold (4–6ft), or swing arc (<4ft)
+      const roomName = snappedRooms[door.ri]?.name || '';
+      const isGarageDoor = (door.width || 0) >= 6 && /garage/i.test(roomName);
       doc.setDrawColor(...navy); doc.setLineWidth(0.6);
-      if ((door.width || 0) >= 4) {
-        // Two V-chevrons side by side
+      if (isGarageDoor) {
+        // Two parallel horizontal lines spanning the opening (overhead panel symbol)
+        const ux = (p2x - p1x) / dw, uy = (p2y - p1y) / dw;
+        const panelInset = 2.5;
+        doc.line(p1x, p1y, p2x, p2y);
+        doc.line(p1x + door.nx * panelInset, p1y + door.nz * panelInset,
+                 p2x + door.nx * panelInset, p2y + door.nz * panelInset);
+        // Short inward arrow at midpoint
+        const midX = (p1x + p2x) / 2, midY = (p1y + p2y) / 2;
+        const arrLen = dw * 0.12;
+        doc.setLineWidth(0.4);
+        doc.line(midX, midY, midX + door.nx * arrLen, midY + door.nz * arrLen);
+        doc.line(midX + door.nx * arrLen, midY + door.nz * arrLen,
+                 midX + door.nx * arrLen * 0.6 + ux * arrLen * 0.4,
+                 midY + door.nz * arrLen * 0.6 + uy * arrLen * 0.4);
+        doc.line(midX + door.nx * arrLen, midY + door.nz * arrLen,
+                 midX + door.nx * arrLen * 0.6 - ux * arrLen * 0.4,
+                 midY + door.nz * arrLen * 0.6 - uy * arrLen * 0.4);
+      } else if ((door.width || 0) >= 4) {
+        // Bi-fold: two V-chevrons side by side
         const midX = (p1x + p2x) / 2, midY = (p1y + p2y) / 2;
         const cheH = dw * 0.3;
         const q1x = (p1x + midX) / 2, q1y = (p1y + midY) / 2;
@@ -908,6 +928,11 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       }
     }
 
+    // Openings = cased pass-throughs, no door symbol. If a walk-through renders with a swing arc
+    // it means RoomPlan tagged it as a door — that is a sensor-side misclassification, not a
+    // render bug. User-editable override deferred to future release.
+    // [LIDAR_WARN] RoomPlan misclassified opening as door — user-editable override deferred to future release
+    if (allOpenings.length > 0) console.log(`[LIDAR_DEBUG] rendering ${allOpenings.length} opening(s) as clean gaps (no swing arc)`);
     for (const op of allOpenings) {
       const p1x = oX + op.x1 * scale, p1y = oY + op.z1 * scale;
       const p2x = oX + op.x2 * scale, p2y = oY + op.z2 * scale;
