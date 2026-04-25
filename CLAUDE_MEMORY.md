@@ -313,3 +313,12 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Action: Stripped prompt wrapper from AVENSTONE_VISION.md — file now starts with "# Avenstone Vision — The Anti-Surprise Engine" instead of "SCOPE: create a new file...". All prior edits were correctly embedded inside the wrapper and are preserved in the clean file.
 - Files: AVENSTONE_VISION.md
 - Decision: Also updated "What's already shipped" bullet to reflect that disclosed unknowns in proposals has shipped (was still marked as a gap).
+
+[LOG — 2026-04-25]
+- Action: Consultation gap analyzer shipped — full pipeline from session end to gap review modal to estimate generation.
+- Files: supabase/functions/ai-consultation-gap-analyzer/index.ts (new edge fn), supabase/migrations/20260425_consultation_gap_analyses.sql (new table), supabase.js (+GAP_ANALYZER_URL, +sbRunGapAnalysis, +sbLoadLatestGapAnalysis), generate-estimate-from-session/index.ts (+unresolved_gaps param), ConsultationTab.jsx (runGapAnalyzer, GapResolutionModal, gapRunning spinner, gaps reviewed badge)
+- Decision: Haiku single shot, max_tokens 2048. Reads session + measurements + extraction + job + latest lidar scan + all active ai_knowledge. Returns up to 8 gaps (category, severity, title, description, suggested_action).
+- Decision: After doneMeasuring or endSessionFromAmbient, runs gap analyzer before generateEstimate. If ≥1 gap returned → show GapResolutionModal. If 0 gaps → call generateEstimate([]) directly. If gap analyzer errors → fall through silently to generateEstimate([]).
+- Decision: GapResolutionModal is full-screen overlay. Each gap has Resolved/Skip/Add note buttons. Generate estimate button disabled if any blocker is unresolved (no action taken). Unresolved gaps (not Resolved or Skip) passed to generate-estimate-from-session as unresolved_gaps.
+- Decision: Unresolved gaps → oh_shit_moments: title→condition, description→how_to_present, severity (blocker→high, strong→medium, nice_to_have→low)→likelihood.
+- Open: consultation_gap_analyses table must be applied to live DB via Supabase dashboard SQL editor (run 20260425_consultation_gap_analyses.sql). Edge fn auto-deployed via GitHub Actions.
