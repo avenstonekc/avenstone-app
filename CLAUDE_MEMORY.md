@@ -292,3 +292,12 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: CLAUDE.md, CLAUDE_MEMORY.md, OPUS_PROMPT_RULES.md, FINANCIALS_PLAN.md
 - Open: confirm new client onboarding wizard (recently shipped per user) is tenant-aware and trade-aware — audit pending.
 - Next: audit new client onboarding wizard, then resume scope-and-allowance v1 spec.
+
+[LOG — 2026-04-25]
+- Action: Shipped disclosed change orders in client proposal PDF (first anti-surprise feature from AVENSTONE_VISION.md v1).
+- Files: avenstone-vite/src/lib/pdf.js, avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx
+- Decision: Section renders only when ≥1 oh_shit_moments row has included_in_proposal=true. Owner curates via "Disclosed unknowns" collapsible section in EstimateTab proposal modal — instant toggle, optimistic UI, persists to DB via sbToggleOhShitProposal. No schema changes — uses existing oh_shit_moments table as-is.
+- Decision: Query by job_id (not session_id), include rows from all sessions. Owner curation is the filter. No deduplication by condition text (v2 concern).
+- Decision: ConsultationTab's "Include in proposal" checkbox was in-memory only — it never wrote included_in_proposal=true to the DB. EstimateTab now provides the persistent toggle path.
+- Open: change_orders ↔ oh_shit_moments linkage (disclosed_in_oh_shit_moment_id) deferred to v2 — when a real CO fires that matches a disclosed item, surface "as disclosed" to client.
+- Next: use on next bid Avenstone sends. Observe client response. Decide v2 priorities from real use.
