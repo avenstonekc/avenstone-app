@@ -40,6 +40,8 @@ writes must follow these.
    creep and prevents Claude Code from opportunistically fixing
    things the user didn't ask for.
 
+9. **Trade-aware check (when relevant)** — if the prompt touches schema, AI prompts, or features that vary by trade, explicitly require Claude Code to confirm the change is tenant-scoped + trade-aware (or call out that it's intentionally Avenstone-only with reason). No hardcoded GC assumptions sneaking into platform code.
+
 ## Rules Opus follows when writing
 
 - Ground every fix in evidence. If the user sent a screenshot or
@@ -72,5 +74,6 @@ writes must follow these.
 - "Use your judgment" for decisions the user should make — Opus asks
   the user, Claude Code executes.
 - Vague success criteria. Every bug has a concrete outcome.
+- Hardcoded Avenstone-only values (specific tenant UUIDs, Kalin's email, the 8-phase GC pipeline) treated as global constants. These belong in env config or `ai_knowledge`, never in shared code paths.
 
 ## Default closing section for every prompt

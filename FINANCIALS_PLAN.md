@@ -48,6 +48,8 @@ Contents:
    one.** Nullable. Populated when QB integration is built. CSV export
    ships before API integration. Kalin has no QB account yet.
 
+7. **Multi-tenant from day one.** All financial tables (`job_transactions`, `estimate_line_items`, `qb_category_map`) already include `tenant_id` with RLS scoping by `get_my_tenant_id()`. The financial system is platform-grade — no rework needed for white-label expansion. Trade-specific behavior (e.g. a painter's simpler categories vs a GC's full set) lives in `qb_category_map` rows, not in code.
+
 ## Roadmap (remaining phases, in order)
 
 Phase 3: Financials tab consolidation + receipt entry + lien waiver flagging

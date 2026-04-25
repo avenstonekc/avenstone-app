@@ -10,6 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Competitive advantage:** AI embedded at every step of field operations. Not a CRM. Not a marketing tool. The thing that makes crews smarter, faster, and more profitable on every job.
 
+**Product philosophy:** see AVENSTONE_VISION.md — the anti-surprise engine.
+
+**Business model:** white-label multi-tenant platform. Avenstone is the first tenant (GC config). Other tenants — painting, tile, roofing, plumbing, electrical, single-trade specialists — run leaner configs on the same codebase.
+
 - Local path: `C:\Users\Kalin\OneDrive\Documents\GitHub\avenstone-app`
 - Live app: `https://avenstone-app.vercel.app`
 - GitHub: `avenstonekc/avenstone-app`
@@ -40,6 +44,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Model cost order (cheapest to most expensive):**
 Haiku → Sonnet → Opus. Default to Haiku for anything automatic or high-frequency.
+
+---
+
+## Multi-Tenant Architecture Rules (ALWAYS follow)
+
+Avenstone is a multi-tenant, multi-trade, white-label platform. Every schema decision and feature decision must honor this from day one — retrofitting later is expensive and breaks tenant isolation.
+
+**Hard rules:**
+- Every new table includes `tenant_id UUID NOT NULL` with an index. RLS policy filters by `get_my_tenant_id()`.
+- Every new query is filtered by `tenant_id` (or via RLS). Never write a `.from('table').select()` without scoping.
+- Trade-specific data (pricing, checklists, templates, catalog) gets a `trade TEXT` column or tag in addition to `tenant_id`. Queries filter by both.
+- Phase definitions, module visibility, and trade are per-tenant config — never hardcoded in components. Avenstone's 8-phase GC pipeline is the default for the Avenstone tenant; other tenants override.
+- Edge functions read `tenant_id` from the calling user's profile, never accept it as untrusted input from the client.
+- Hardcoded references to specific Avenstone-only values (Kalin's email, Avenstone tenant UUID, KC-specific pricing assumptions) belong in env config or `ai_knowledge` entries, not in component code.
+
+**Soft rules (judgment calls):**
+- When adding a feature, ask: is this *platform* (works for any trade) or *trade-specific* (data only)? Build platform features as code, trade-specific features as data.
+- Avoid premature platform abstractions. Don't invent configurability we don't need yet — but don't lock ourselves into GC-only assumptions either.
+- Module visibility flags (`uses_lidar`, `manages_subs`, `tracks_permits`) live on the tenant config row. Components check the flag and gracefully hide if off.
+
+**Why this matters:** white-label expansion (v4+ in AVENSTONE_VISION.md) becomes a configuration-and-sales job instead of an engineering rewrite — but only if v1, v2, and v3 hold this line. One hardcoded GC assumption today = weeks of refactoring later.
 
 ---
 
@@ -129,6 +154,7 @@ avenstone-vite/src/
 - New icons: add to `Ic` object in `src/lib/utils.jsx` — never inline SVGs in components
 - New top-level screens: (1) add to `NAV` array, (2) add render in `pg-wrap`, (3) add to `bot-nav` if needed
 - Complex multi-step flows: full-screen overlay, not a modal. Modals are for single-action confirmations only.
+- **Multi-tenant + trade scoping is non-negotiable.** Every new table gets `tenant_id` + RLS. Every new query filters by it. Trade-specific data also gets a `trade` column. See "Multi-Tenant Architecture Rules" above.
 
 ---
 
@@ -136,6 +162,8 @@ avenstone-vite/src/
 
 ### Tables
 **Core:** `jobs`, `profiles`, `photos`, `job_notes`, `job_documents`, `change_orders`, `contract_signatures`, `job_messages`, `job_subs`, `invitations_to_bid`, `bid_responses`, `payments`, `notifications`, `schedule_phases`, `daily_logs`, `job_phases`, `job_estimates`, `contacts`, `sequences`, `sequence_enrollments`, `job_reviews`, `sub_ratings`
+
+All tables must include `tenant_id UUID NOT NULL` with an index and an RLS policy filtering by `get_my_tenant_id()`. Trade-specific tables (pricing, checklists, templates, catalog) also include a `trade TEXT` column.
 
 **AI tables:**
 - `job_ai_companions` — one record per (user_id, job_id, role). Stores full `conversation_history` (JSONB array of `{role, content}` messages). The AI companion's persistent memory.
