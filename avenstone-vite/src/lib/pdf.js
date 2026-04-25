@@ -344,6 +344,75 @@ const _drawArc = (doc, cx, cy, r, startAngle, sweepAngle, steps = 10) => {
   }
 };
 
+// ─── Render-time orthogonal snap ─────────────────────────────────────────────
+// v1 snap-at-render. Consider moving upstream to Swift/DB once editor features ship.
+// See VOICE_AGENT.md + FINANCIALS_PLAN.md pattern for how long-term data shape should live.
+const _snapToOrtho = (rooms) => {
+  const ANGLE_TOL = 5 * Math.PI / 180; // 5 degrees
+  const MERGE_TOL = 0.167;             // 2 inches in feet
+  let snapCount = 0, mergeCount = 0;
+
+  // Deep clone rooms + segments to avoid mutating caller's data
+  const cloned = rooms.map(r => ({
+    ...r,
+    wallSegments:    (r.wallSegments    || []).map(s => ({ ...s })),
+    doorSegments:    (r.doorSegments    || []).map(s => ({ ...s })),
+    windowSegments:  (r.windowSegments  || []).map(s => ({ ...s })),
+    openingSegments: (r.openingSegments || []).map(s => ({ ...s })),
+  }));
+
+  // Angle snap pass — walls only
+  for (const room of cloned) {
+    for (const seg of room.wallSegments) {
+      const dx = seg.x2 - seg.x1, dz = seg.z2 - seg.z1;
+      const len = Math.hypot(dx, dz);
+      if (len < 0.01) continue;
+      const angle = Math.atan2(dz, dx);
+      const cardinals = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+      let best = null, bestDiff = Infinity;
+      for (const c of cardinals) {
+        let diff = Math.abs(angle - c);
+        if (diff > Math.PI) diff = Math.PI * 2 - diff;
+        if (diff < bestDiff) { bestDiff = diff; best = c; }
+      }
+      if (bestDiff <= ANGLE_TOL) {
+        const mx = (seg.x1 + seg.x2) / 2, mz = (seg.z1 + seg.z2) / 2;
+        const half = len / 2;
+        seg.x1 = mx - Math.cos(best) * half; seg.z1 = mz - Math.sin(best) * half;
+        seg.x2 = mx + Math.cos(best) * half; seg.z2 = mz + Math.sin(best) * half;
+        snapCount++;
+      }
+    }
+  }
+
+  // Endpoint merge pass — all wall endpoints across all rooms on this floor
+  const endpoints = [];
+  for (const room of cloned) {
+    for (const seg of room.wallSegments) {
+      endpoints.push({ seg, e: 1 });
+      endpoints.push({ seg, e: 2 });
+    }
+  }
+  for (let i = 0; i < endpoints.length; i++) {
+    const a = endpoints[i];
+    const ax = a.e === 1 ? a.seg.x1 : a.seg.x2, az = a.e === 1 ? a.seg.z1 : a.seg.z2;
+    for (let j = i + 1; j < endpoints.length; j++) {
+      const b = endpoints[j];
+      if (a.seg === b.seg) continue;
+      const bx = b.e === 1 ? b.seg.x1 : b.seg.x2, bz = b.e === 1 ? b.seg.z1 : b.seg.z2;
+      if (Math.hypot(ax - bx, az - bz) < MERGE_TOL) {
+        const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+        if (a.e === 1) { a.seg.x1 = mx; a.seg.z1 = mz; } else { a.seg.x2 = mx; a.seg.z2 = mz; }
+        if (b.e === 1) { b.seg.x1 = mx; b.seg.z1 = mz; } else { b.seg.x2 = mx; b.seg.z2 = mz; }
+        mergeCount++;
+      }
+    }
+  }
+
+  console.log(`[LIDAR_DEBUG] snapped ${snapCount} walls to axis, merged ${mergeCount} endpoints`);
+  return cloned;
+};
+
 // ─── Floor grouping ───────────────────────────────────────────────────────────
 // No `floor` field in current Swift output — all rooms land on floor 0.
 // When Swift adds a `floor` integer, this grouping will work automatically.
@@ -604,7 +673,8 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
   let roomLayouts = []; // [{room, segs, x, y, w, h}]
 
   if (worldMode) {
-    const processed = _processAllRooms(drawableRooms);
+    const snappedRooms = _snapToOrtho(drawableRooms);
+    const processed = _processAllRooms(snappedRooms);
     if (!processed) return;
     const { roomSegs, roomDoors, roomWindows, roomOpenings, trueW, trueH } = processed;
 
@@ -642,13 +712,13 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     const isInterior = (seg) => !!seg._interior;
 
     // Collect all wall segs for dim labels
-    drawableRooms.forEach((room, ri) => {
+    snappedRooms.forEach((room, ri) => {
       const segs = roomSegs[ri] || [];
       segs.forEach(s => allWallSegs.push({ ...s, interior: isInterior(s) }));
     });
 
     // Build room layouts for label positioning
-    roomLayouts = drawableRooms.map((room, ri) => {
+    roomLayouts = snappedRooms.map((room, ri) => {
       const segs = roomSegs[ri] || [];
       if (!segs.length) return null;
       const rxs = segs.flatMap(s => [s.x1, s.x2]), rzs = segs.flatMap(s => [s.z1, s.z2]);
