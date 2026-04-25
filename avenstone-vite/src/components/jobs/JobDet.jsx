@@ -10,9 +10,11 @@ import AiCompanionChat from '../shared/AiCompanionChat';
 import FloorPlanTab from './tabs/FloorPlanTab';
 import FinancialsTab from './tabs/FinancialsTab';
 import FieldTab from './tabs/FieldTab';
+import EstimateTab from './tabs/EstimateTab';
 
 const TABS = [
   { id: 'info',       lb: 'Info',         ic: 'info' },
+  { id: 'estimate',   lb: 'Estimate',     ic: 'doc' },
   { id: 'financials', lb: 'Financials',   ic: 'doc' },
   { id: 'sched',      lb: 'Schedule',     ic: 'sched' },
   { id: 'field',      lb: 'Field',        ic: 'clip' },
@@ -198,13 +200,14 @@ export default function JobDet({ job, upd, del, back, profile }) {
           </div>
         )}
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} />}
+        {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
         {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} />}
         {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
         {tab === 'floorplan' && <FloorPlanTab job={job} profile={profile} />}
-        {tab === 'session' && <ConsultationTab job={job} profile={profile} />}
+        {tab === 'session' && <ConsultationTab job={job} profile={profile} setTab={setTab} />}
       </div>
 
       <AiCompanionChat job={job} profile={profile} />

@@ -78,7 +78,7 @@ function LikelihoodBadge({ likelihood }) {
   );
 }
 
-export default function ConsultationTab({ job, profile }) {
+export default function ConsultationTab({ job, profile, setTab }) {
   const mob = isMob();
   const [sessionId, setSessionId] = useState(null);
   const [phase, setPhase] = useState('idle');
@@ -650,6 +650,7 @@ export default function ConsultationTab({ job, profile }) {
       if (lineItems.length) await sbSaveEstimateLineItems(job.id, estRow?.id || null, lineItems);
 
       setEstimateSaved(true);
+      setTab?.('estimate');
     } catch (e) {
       setErr(`Save failed: ${e.message}`);
     } finally {
@@ -1166,7 +1167,7 @@ export default function ConsultationTab({ job, profile }) {
             onClick={saveEstimate}
             disabled={savingEstimate || estimateSaved}
           >
-            {estimateSaved ? '✓ Saved to Estimate Tab' : savingEstimate ? 'Saving…' : 'Save to Estimate Tab'}
+            {estimateSaved ? '✓ Saved — opening Estimate tab…' : savingEstimate ? 'Saving…' : 'Save estimate'}
           </button>
           <button
             className="btn btn-ghost"

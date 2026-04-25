@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import EstimateTab from './EstimateTab';
 import COTab from './COTab';
 import CostsTab from './CostsTab';
 import TransactionModal from './financials/TransactionModal';
@@ -10,7 +9,6 @@ import { f$ } from '../../../lib/utils';
 
 const SUB_TABS = [
   { id: 'ledger',   lb: 'Ledger' },
-  { id: 'estimate', lb: 'Estimate' },
   { id: 'budget',   lb: 'Budget' },
   { id: 'co',       lb: 'Change Orders' },
   { id: 'costs',    lb: 'Costs' },
@@ -137,7 +135,6 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
         ))}
       </div>
 
-      {sub === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
       {sub === 'co' && <COTab job={job} upd={upd} profile={profile} />}
       {sub === 'costs' && <CostsTab job={job} />}
 
