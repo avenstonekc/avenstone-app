@@ -934,6 +934,10 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
             let sqft = room["sqft"] as? Int ?? 0
             let hint = sqft > 0 ? "~\(sqft) sf — e.g. Bedroom, Kitchen..." : "e.g. Hallway, Bathroom..."
 
+            let segs = room["wallSegments"] as? [[String: Double]] ?? []
+            let thumb = makeRoomThumbnail(wallSegments: segs)
+            contentView.addSubview(thumb)
+
             let rowLabel = UILabel()
             rowLabel.text = "ROOM \(i + 1)"
             rowLabel.textColor = UIColor.white.withAlphaComponent(0.5)
@@ -966,11 +970,19 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
             contentView.addSubview(field)
             nameFields.append(field)
 
+            let spacing: CGFloat = i == 0 ? 28 : 18
             NSLayoutConstraint.activate([
-                rowLabel.topAnchor.constraint(equalTo: prevView.bottomAnchor, constant: i == 0 ? 28 : 18),
-                rowLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 28),
+                thumb.topAnchor.constraint(equalTo: prevView.bottomAnchor, constant: spacing),
+                thumb.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 28),
+                thumb.widthAnchor.constraint(equalToConstant: 52),
+                thumb.heightAnchor.constraint(equalToConstant: 52),
+
+                rowLabel.topAnchor.constraint(equalTo: thumb.topAnchor),
+                rowLabel.leadingAnchor.constraint(equalTo: thumb.trailingAnchor, constant: 12),
+                rowLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -28),
+
                 field.topAnchor.constraint(equalTo: rowLabel.bottomAnchor, constant: 6),
-                field.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 28),
+                field.leadingAnchor.constraint(equalTo: thumb.trailingAnchor, constant: 12),
                 field.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -28),
                 field.heightAnchor.constraint(equalToConstant: 50),
             ])
@@ -1028,6 +1040,69 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
             }
         }
         onComplete?(.success(rooms))
+    }
+
+    private func makeRoomThumbnail(wallSegments: [[String: Double]], size: CGFloat = 52) -> UIView {
+        let navy = UIColor(red: 10/255, green: 31/255, blue: 68/255, alpha: 1)
+
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.backgroundColor = .white
+        container.layer.cornerRadius = 6
+        container.clipsToBounds = true
+
+        guard !wallSegments.isEmpty else {
+            let dash = UILabel()
+            dash.text = "—"
+            dash.textColor = UIColor(white: 0.75, alpha: 1)
+            dash.font = .systemFont(ofSize: 18)
+            dash.textAlignment = .center
+            dash.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(dash)
+            NSLayoutConstraint.activate([
+                dash.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                dash.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            ])
+            return container
+        }
+
+        var minX = Double.greatestFiniteMagnitude, maxX = -Double.greatestFiniteMagnitude
+        var minZ = Double.greatestFiniteMagnitude, maxZ = -Double.greatestFiniteMagnitude
+        for seg in wallSegments {
+            let x1 = seg["x1"] ?? 0, z1 = seg["z1"] ?? 0
+            let x2 = seg["x2"] ?? 0, z2 = seg["z2"] ?? 0
+            minX = min(minX, min(x1, x2)); maxX = max(maxX, max(x1, x2))
+            minZ = min(minZ, min(z1, z2)); maxZ = max(maxZ, max(z1, z2))
+        }
+
+        let pad: CGFloat = 4
+        let rangeX = maxX - minX
+        let rangeZ = maxZ - minZ
+        let drawSize = size - pad * 2
+        let maxRange = max(rangeX, rangeZ)
+        let scale: CGFloat = maxRange > 0 ? drawSize / CGFloat(maxRange) : 1
+        let offsetX = pad + (drawSize - CGFloat(rangeX) * scale) / 2
+        let offsetZ = pad + (drawSize - CGFloat(rangeZ) * scale) / 2
+
+        for seg in wallSegments {
+            let x1 = seg["x1"] ?? 0, z1 = seg["z1"] ?? 0
+            let x2 = seg["x2"] ?? 0, z2 = seg["z2"] ?? 0
+            let p1 = CGPoint(x: offsetX + CGFloat(x1 - minX) * scale,
+                             y: offsetZ + CGFloat(z1 - minZ) * scale)
+            let p2 = CGPoint(x: offsetX + CGFloat(x2 - minX) * scale,
+                             y: offsetZ + CGFloat(z2 - minZ) * scale)
+            let path = UIBezierPath()
+            path.move(to: p1)
+            path.addLine(to: p2)
+            let shapeLayer = CAShapeLayer()
+            shapeLayer.path = path.cgPath
+            shapeLayer.strokeColor = navy.cgColor
+            shapeLayer.lineWidth = 1.5
+            shapeLayer.fillColor = UIColor.clear.cgColor
+            container.layer.addSublayer(shapeLayer)
+        }
+
+        return container
     }
 
     // MARK: - Data conversion
