@@ -136,7 +136,7 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const submitCO = async () => {
     if (!coForm.title.trim()) return;
     setCoSaving(true);
-    const co = await sbSubSubmitCO({ job_id: job.id, tenant_id: profile.tenant_id, title: coForm.title.trim(), description: coForm.description.trim() || null, amount: coForm.amount });
+    const co = await sbSubSubmitCO({ job_id: job.id, tenant_id: profile.tenant_id, description: coForm.title.trim(), amount: coForm.amount });
     if (co) {
       setCos(p => [co, ...p]);
       sbNotify('co_submitted', `Change order request — ${job.address}`, coForm.title.trim(), job.id, AV_USER_ID);
@@ -312,7 +312,7 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
           {cos.map(co => (
             <div key={co.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '14px 16px', marginBottom: 8, borderRadius: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{co.title}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{co.co_number ? `${co.co_number} — ` : ''}{co.description || co.title}</div>
                 <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: co.status === 'approved' ? '#D1FAE5' : co.status === 'rejected' ? '#FEE2E2' : '#FEF3C7', color: co.status === 'approved' ? '#065F46' : co.status === 'rejected' ? '#991B1B' : '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
                   {co.status ? t(co.status.charAt(0).toUpperCase() + co.status.slice(1), lang) : t('Pending', lang)}
                 </span>

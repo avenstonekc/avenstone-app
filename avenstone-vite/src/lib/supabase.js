@@ -469,13 +469,16 @@ export const sbSubUpdatePhase = async (id, status) => {
     return error ? null : data;
   } catch (e) { console.error('sbSubUpdatePhase', e); return null; }
 };
-export const sbSubSubmitCO = async ({ job_id, tenant_id, title, description, amount }) => {
+export const sbSubSubmitCO = async ({ job_id, tenant_id, description, amount }) => {
   try {
+    const { count } = await sb.from('change_orders').select('*', { count: 'exact', head: true }).eq('job_id', job_id);
+    const co_number = `CO-${String((count || 0) + 1).padStart(3, '0')}`;
     const { data, error } = await sb.from('change_orders').insert({
       id: crypto.randomUUID(), job_id, tenant_id,
-      title, description: description || null,
+      co_number, description,
       amount: amount ? Number(amount) : 0,
       status: 'pending', created_at: new Date().toISOString(),
+      submitted_by_id: AV_USER_ID, submitted_by_role: 'sub',
     }).select().single();
     return error ? null : data;
   } catch (e) { console.error('sbSubSubmitCO', e); return null; }

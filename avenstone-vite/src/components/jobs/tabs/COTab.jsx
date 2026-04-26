@@ -20,7 +20,7 @@ export default function COTab({ job, upd, profile }) {
     if (!cod.trim() || !coa) return;
     setSavCO(true);
     const num = `CO-${String((job.change_orders || []).length + 1).padStart(3, '0')}`;
-    const co = { job_id: job.id, co_number: num, description: cod.trim(), reason: cor.trim(), amount: Number(coa), status: 'pending', created_at: new Date().toISOString() };
+    const co = { job_id: job.id, co_number: num, description: cod.trim(), reason: cor.trim(), amount: Number(coa), status: 'pending', created_at: new Date().toISOString(), submitted_by_id: AV_USER_ID, submitted_by_role: profile?.role || 'project_manager' };
     const s = await sbCO(co);
     if (s) {
       upd({ change_orders: [s, ...(job.change_orders || [])] });
@@ -63,6 +63,11 @@ export default function COTab({ job, upd, profile }) {
       {(job.change_orders || []).map((co, i) => (
         <div key={co.id || i} className="co-item" style={{ borderLeftColor: co.status === 'approved' ? '#22c55e' : co.status === 'rejected' ? '#ef4444' : '#f59e0b' }}>
           <div className="co-num">{co.co_number}</div>
+          {co.submitted_by_role && (
+            <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 600, color: '#0A1F44', background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 20, padding: '2px 8px', marginBottom: 4 }}>
+              Submitted by {co.submitted_by_role.toUpperCase().replace(/_/g, ' ')}
+            </span>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
             <div style={{ flex: 1 }}><div className="co-desc">{co.description}</div>{co.reason && <div className="co-reason">{co.reason}</div>}</div>
             <div style={{ textAlign: 'right', marginLeft: 16 }}>
