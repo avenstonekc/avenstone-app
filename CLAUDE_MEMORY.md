@@ -344,4 +344,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: CLAUDE.md (Diagnosis workflow section replaced with "Cost-aware delegation"; Priority Order #1 expanded with sub-bullets — fixtures, room-name-backwards bug, single-room parity)
 - Decision: Triage rule — Opus for diagnosis/architecture/multi-system; Sonnet for scoped fixes/refactors/boilerplate. Prompt template documented in CLAUDE.md.
 - Decision: LiDAR/PDF outranks website work in priority — if Kalin shows up with a LiDAR screenshot, drop everything. Website work continues in parallel, just behind it.
+
+[LOG — 2026-04-26]
+- Action: Trimmed CLAUDE.md from 696 lines to 514 lines.
+- Files: CLAUDE.md
+- Decision: Compressed 7 sections — folder tree (→ one paragraph), Core tables list (→ pointer to supabase.js + migrations/), edge function tables (→ 3 bullet lines), AI system ASCII diagram (→ 6 bullets with file paths), Opus/Sonnet dispatch template (→ pointer to OPUS_PROMPT_RULES.md), Done list (→ kept last 14 days, older items → pointer to CLAUDE_MEMORY.md), memory system (→ ~7 lines). Cross-references: AVENSTONE_VISION.md, OPUS_PROMPT_RULES.md, CLAUDE_MEMORY.md, FINANCIALS_PLAN.md confirmed as canonical homes for excised content.
 - Open: Room-name-backwards bug (StructureBuilder returns rooms in spatial order, naming modal doesn't show which room is which). Fix proposed: thumbnail/centroid mini-map per room in naming list. Awaiting user OK to implement.
