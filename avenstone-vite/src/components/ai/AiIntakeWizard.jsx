@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import LidarScanner from './LidarScanner';
 import HeightCaptureStep from './HeightCaptureStep';
 import CaptureQualityReport from './CaptureQualityReport';
-import FloorPlanEditor from './FloorPlanEditor';
 import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan } from '../../lib/supabase';
 import { stampGPS } from '../../lib/gps';
 import { metersToFeet } from '../../lib/captureHeight';
@@ -15,7 +14,7 @@ const BORDER = '#E8E4DC';
 
 export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }) {
   const [rooms, setRooms] = useState([]);
-  const [step, setStep] = useState('scan'); // 'scan' | 'height' | 'report' | 'editor' | 'save'
+  const [step, setStep] = useState('scan'); // 'scan' | 'height' | 'report' | 'save'
   const [contacts, setContacts] = useState([]);
   const [contactSearch, setContactSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -24,7 +23,6 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
   const [exteriorResult, setExteriorResult] = useState(null);
   const [heightData, setHeightData] = useState(null); // { heightMeters, heightSource, heightPoints }
   const [qualityData, setQualityData] = useState(null); // { score, grade, deductions, rooms }
-  const [editOverrides, setEditOverrides] = useState(null); // { rotation, mirror, room_names }
 
   useEffect(() => {
     sb.from('contacts')
@@ -83,7 +81,11 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
         setStep('save');
       }
     } else {
-      setStep('editor');
+      if (jobId) {
+        await saveInterior({ ...hd, qualityScore: qd?.score, qualityGrade: qd?.grade, qualityDeductions: qd?.deductions });
+      } else {
+        setStep('save');
+      }
     }
   }
 
@@ -196,10 +198,10 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       }}>
         <div>
           <h2 style={{ fontFamily: '"DM Serif Display", serif', fontSize: 20, margin: 0, lineHeight: 1.1 }}>
-            {step === 'save' ? 'Save Floor Plan' : step === 'height' ? 'Capture Height' : step === 'report' ? 'Scan Quality' : step === 'editor' ? 'Edit Floor Plan' : 'Room Scanner'}
+            {step === 'save' ? 'Save Floor Plan' : step === 'height' ? 'Capture Height' : step === 'report' ? 'Scan Quality' : 'Room Scanner'}
           </h2>
           <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
-            {step === 'save' ? 'Attach scan to a contact' : step === 'height' ? 'Required for paint, drywall, and siding estimates' : step === 'report' ? 'Review before saving' : step === 'editor' ? 'Name rooms and set orientation' : 'Scan rooms with LiDAR to capture real dimensions'}
+            {step === 'save' ? 'Attach scan to a contact' : step === 'height' ? 'Required for paint, drywall, and siding estimates' : step === 'report' ? 'Review before saving' : 'Scan rooms with LiDAR to capture real dimensions'}
           </div>
         </div>
         <button
@@ -237,31 +239,6 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
             qualityData={qualityData}
             onAccept={handleReportAccept}
             onRescan={handleReportRescan}
-          />
-        )}
-
-        {step === 'editor' && (
-          <FloorPlanEditor
-            rooms={rooms}
-            initialOverrides={editOverrides}
-            busy={saving}
-            onSave={async (ov) => {
-              setEditOverrides(ov);
-              const hd = heightData; const qd = qualityData;
-              if (jobId) {
-                await saveInterior({ ...hd, qualityScore: qd?.score, qualityGrade: qd?.grade, qualityDeductions: qd?.deductions, editOverrides: ov });
-              } else {
-                setStep('save');
-              }
-            }}
-            onCancel={async () => {
-              const hd = heightData; const qd = qualityData;
-              if (jobId) {
-                await saveInterior({ ...hd, qualityScore: qd?.score, qualityGrade: qd?.grade, qualityDeductions: qd?.deductions });
-              } else {
-                setStep('save');
-              }
-            }}
           />
         )}
 

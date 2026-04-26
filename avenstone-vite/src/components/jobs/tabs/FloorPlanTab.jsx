@@ -3,7 +3,6 @@ import { sbGetJobLidarScans, sbUploadDoc, sbUpdateScanOverrides } from '../../..
 import { buildFloorPlanPDF } from '../../../lib/pdf';
 import AiIntakeWizard from '../../ai/AiIntakeWizard';
 import FloorPlanCanvas from '../../ai/FloorPlanCanvas';
-import FloorPlanEditor from '../../ai/FloorPlanEditor';
 
 export default function FloorPlanTab({ job, profile }) {
   const [scans, setScans] = useState([]);
@@ -11,7 +10,6 @@ export default function FloorPlanTab({ job, profile }) {
   const [showScanner, setShowScanner] = useState(false);
   const [exportingId, setExportingId] = useState(null);
   const [exportedIds, setExportedIds] = useState(new Set());
-  const [editingScan, setEditingScan] = useState(null);
 
   const loadScans = async () => {
     setLoading(true);
@@ -119,13 +117,6 @@ export default function FloorPlanTab({ job, profile }) {
                   <>
                     <FloorPlanCanvas rooms={rooms} compact={rooms.length < 3} />
                     <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ fontSize: '12px', padding: '4px 12px', height: '28px' }}
-                        onClick={() => setEditingScan(scan)}
-                      >
-                        Edit
-                      </button>
                       {exportedIds.has(scan.id) ? (
                         <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: '600', display: 'flex', alignItems: 'center' }}>
                           ✓ Saved to Documents
@@ -157,18 +148,6 @@ export default function FloorPlanTab({ job, profile }) {
         />
       )}
 
-      {editingScan && (
-        <FloorPlanEditor
-          rooms={editingScan.rooms || []}
-          initialOverrides={editingScan.edit_overrides || null}
-          onCancel={() => setEditingScan(null)}
-          onSave={async (ov) => {
-            await sbUpdateScanOverrides(editingScan.id, true, ov);
-            setEditingScan(null);
-            loadScans();
-          }}
-        />
-      )}
     </div>
   );
 }
