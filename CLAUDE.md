@@ -110,41 +110,8 @@ Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
 **Legacy:** Root-level `index.html` = original single-file app. No longer deployed. Frozen. All new features go in the Vite app.
 
 ### Folder structure
-```
-avenstone-vite/src/
-├── components/
-│   ├── ai/           — AiKnowledgeScr, AiSetupWizard, AiIntakeWizard, AiFieldAgent,
-│   │                   AiHomeScr, LidarScanner, MaterialSelectionScr
-│   ├── auth/         — LoginScr, SetPasswordScr, SignaturePad
-│   ├── client/       — ClientPortal
-│   ├── common/       — UserMgmt, ContactsScr, SequencesScr, TkOf, Pipeline, StatusPage
-│   ├── dashboard/    — DashScr, CalScr, Reports
-│   ├── forms/        — FormScr
-│   ├── jobs/         — JobsScr, JobDet, MeasureScr + tabs/
-│   ├── leads/        — LeadsScr
-│   ├── modals/       — SettingsModal, ContractModal, ClientSignContractModal,
-│   │                   CompletionSignoffModal
-│   ├── owner/        — OwnerPortal
-│   ├── public/       — CompletionPage, PublicProfile, ReviewPage
-│   ├── shared/       — AiCompanionChat, MasterAgent, NotifPanel, StarRating,
-│   │                   PhotoLightbox, PushEnableButton
-│   └── sub/          — SubPortal, SubDir, SubJobView, SubOnboardingModal,
-│                       SubOnboardingWizard, SubRateModal
-├── lib/
-│   ├── supabase.js   — Supabase client, ALL edge function URLs, ALL sb* helpers
-│   ├── utils.jsx     — Icons (Ic), formatters (f$, fD, fDT), isMob(), status helpers
-│   ├── utils.js      — localStorage helpers (ls, ll)
-│   ├── formData.js   — Intake & bid form structure
-│   ├── pdf.js        — PDF generation
-│   ├── ai.js         — callEstimator, extractProposalData
-│   └── lidar.js      — Capacitor LiDAR bridge (real RoomPlan on native iOS, simulation on web)
-├── styles/
-│   ├── global.css    — Global overrides
-│   └── tokens.css    — CSS design tokens
-├── App.jsx           — Main layout, routing, session, NAV array
-├── main.jsx          — Entry point
-└── index.css         — Global styles, utility classes
-```
+
+`avenstone-vite/src/` contains: `components/` (subdirs: ai, auth, client, common, dashboard, forms, jobs, leads, modals, owner, public, shared, sub — run `ls` for current contents), `lib/` (supabase.js — Supabase client + ALL edge function URLs + ALL sb* helpers; utils.jsx — Ic icons, f$/fD/fDT formatters, isMob(); utils.js — ls/ll localStorage; pdf.js — PDF generation; lidar.js — Capacitor LiDAR bridge), `styles/` (global.css, tokens.css), `App.jsx` (main layout, routing, NAV array), `main.jsx`, `index.css`.
 
 ### Adding new code
 - New components: `src/components/<feature>/ComponentName.jsx`
@@ -161,9 +128,7 @@ avenstone-vite/src/
 ## Supabase
 
 ### Tables
-**Core:** `jobs`, `profiles`, `photos`, `job_notes`, `job_documents`, `change_orders`, `contract_signatures`, `job_messages`, `job_subs`, `invitations_to_bid`, `bid_responses`, `payments`, `notifications`, `schedule_phases`, `daily_logs`, `job_phases`, `job_estimates`, `contacts`, `sequences`, `sequence_enrollments`, `job_reviews`, `sub_ratings`
-
-All tables must include `tenant_id UUID NOT NULL` with an index and an RLS policy filtering by `get_my_tenant_id()`. Trade-specific tables (pricing, checklists, templates, catalog) also include a `trade TEXT` column.
+**Core tables:** see `src/lib/supabase.js` + `supabase/migrations/` for canonical list. All tables must include `tenant_id UUID NOT NULL` with an index and an RLS policy filtering by `get_my_tenant_id()`. Trade-specific tables also include a `trade TEXT` column.
 
 **AI tables:**
 - `job_ai_companions` — one record per (user_id, job_id, role). Stores full `conversation_history` (JSONB array of `{role, content}` messages). The AI companion's persistent memory.
@@ -178,53 +143,11 @@ All tables must include `tenant_id UUID NOT NULL` with an index and an RLS polic
 **RLS helpers:** `get_my_role()`, `get_my_tenant_id()`, `can_access_job(job_id)`
 
 ### Edge Functions
-All URLs exported from `src/lib/supabase.js`:
+All URLs exported from `src/lib/supabase.js`. Function names are self-documenting.
 
-**AI functions:**
-| Function | Purpose |
-|----------|---------|
-| `ai-companion` | Per-person per-job AI with full job context + memory |
-| `ai-intake` | 3-step project intake wizard — chat → measurements → submit lead |
-| `ai-pm-nightly` | Daily job analysis — 6 rule checks, targeted notifications |
-| `ai-field-agent` | Field AI agent |
-| `ai-home-companion` | Home screen AI companion |
-| `ai-master-agent` | Master orchestration agent |
-| `ai-project-manager` | Project manager AI |
-| `ai-estimator` | Estimate chat |
-| `ai-generate-sequence` | AI-generated contact sequences |
-| `ai-sub-onboard` | AI sub onboarding flow |
-| `ai-sub-pricing` | AI sub pricing analysis |
-| `ai-error-logger` | Silent black box error recorder |
-| `process-transcript` | AI consultation — ambient extraction + measure mode |
-| `measure-guide` | Guided measurement assistant |
-| `generate-estimate-from-session` | Estimate generation from consultation session |
-
-**Email / SMS / Push:**
-| Function | Purpose |
-|----------|---------|
-| `send-contract-email` | Contract email with PDF |
-| `send-invite` | Staff/sub invitation |
-| `send-client-link` | Client magic link |
-| `send-bid-invite` | Sub bid invitation |
-| `send-estimate-email` | Estimate email |
-| `send-contact-sms` | SMS to contact |
-| `notify-email` | General email notification |
-| `notify-sms` | General SMS notification |
-| `notify-realtor` | Realtor referral notification |
-| `send-push` | Push notification |
-| `missed-call-textback` | Auto text back on missed call |
-
-**Integrations / Payments / Data:**
-| Function | Purpose |
-|----------|---------|
-| `create-payment-link` | Stripe payment link |
-| `stripe-webhook` | Stripe event handler |
-| `ghl-webhook` | GHL lead handoff receiver |
-| `twilio-inbound` | Inbound Twilio SMS handler |
-| `address-autocomplete` | Address search autocomplete |
-| `get-contractor-profile` | Public contractor profile data |
-| `get-job-status` | Public job status for client |
-| `sequence-runner` | Contact sequence execution |
+- **AI:** `ai-companion`, `ai-intake`, `ai-pm-nightly`, `ai-field-agent`, `ai-home-companion`, `ai-master-agent`, `ai-project-manager`, `ai-estimator`, `ai-generate-sequence`, `ai-sub-onboard`, `ai-sub-pricing`, `ai-error-logger`, `process-transcript`, `measure-guide`, `generate-estimate-from-session`
+- **Email / SMS / Push:** `send-contract-email`, `send-invite`, `send-client-link`, `send-bid-invite`, `send-estimate-email`, `send-contact-sms`, `notify-email`, `notify-sms`, `notify-realtor`, `send-push`, `missed-call-textback`
+- **Integrations / Payments / Data:** `create-payment-link`, `stripe-webhook`, `ghl-webhook`, `twilio-inbound`, `address-autocomplete`, `get-contractor-profile`, `get-job-status`, `sequence-runner`
 
 ### Edge Function Deploy
 **Functions auto-deploy via GitHub Actions on every push to `supabase/functions/**`.** Workflow uses the multipart `POST /v1/projects/{ref}/functions/deploy` Management API endpoint and reports per-function status.
@@ -354,77 +277,14 @@ curl -X POST -H "x-auth-token: $CODEMAGIC_PAT" \
 
 ## The AI System — How It All Connects
 
-This is Avenstone's core competitive advantage. Every piece connects:
+This is Avenstone's core competitive advantage. Six surfaces:
 
-```
-CLIENT / REP GOES ON-SITE
-  └── AI Intake Wizard (components/ai/AiIntakeWizard.jsx)
-      LiDAR scanner flow (LidarScanner.jsx):
-        → floor picker (ALL scans show FloorPicker — first scan defaults to
-            1st Floor, subsequent scans auto-select next unscanned floor;
-            computeNextFloor prefers [0,1,2,3,-1]; floorIndex passed JS → Swift
-            → stamped on every room dict)
-        → scan rooms (ContinuousRoomScanViewController, iOS RoomPlan, worldX/worldZ)
-        → height capture (HeightCaptureStep — auto from mesh or tap-raycast)
-        → quality report (CaptureQualityReport — score, deductions, Re-scan/Accept)
-        → save to job (job_lidar_scans) or contact (contact_lidar_scans)
-        → PDF: buildFloorPlanPDF → _groupByFloor → one landscape page per floor
-            (_snapToOrtho clone: angle-snap walls within 5° + merge endpoints
-            within 2in → _processAllRooms → chain dims top/bottom/right edges
-            (MagicPlan style, left edge omitted for title column) + room fill
-            tint + left-side title column + collision-checked room labels)
-            + portrait summary page.
-      Supports interior multi-room and exterior outline (ARKit corner-placement).
-  (The original 3-step "AI chat → measurements → review" flow is retired.
-  ai-intake edge function still exists but is no longer called from the app.)
-
-NEW TENANT ONBOARDS
-  └── AiSetupWizard fires (0 knowledge entries detected)
-      └── 7 questions → ai_knowledge table populated
-          └── AI now knows: labor rate, markup, draw structure,
-              lead time, client comms, CO policy, specialties
-
-SALES REP GOES ON-SITE
-  └── AI Consultation tab (process-transcript edge function)
-      ├── AMBIENT MODE — listens to client conversation
-      │   └── Extracts: concerns, scope hints, budget signals,
-      │       decision makers, timeline, risk flags, action items
-      │       → saved to consultation_extractions
-      └── MEASURE MODE — guides rep trade-by-trade
-          └── Multi-turn conversation with full memory (40 msg window)
-              → measurements saved to consultation_measurements
-
-JOB BECOMES ACTIVE
-  └── AI Companion available on every job (ai-companion edge function)
-      ├── Per person, per job — Sales Rep, PM, Sub, Client each get their own
-      ├── Loads full job context on every call:
-      │   job details, notes, change orders, payments, phases, subs
-      ├── Injects company knowledge from ai_knowledge (active entries only)
-      ├── Persistent memory — conversation_history stored in job_ai_companions
-      │   Resumable — reopening the companion loads last 10 messages
-      └── Sliding window — last 20 messages sent to API (token safety)
-
-DAILY — ON FIRST LOGIN
-  └── ai-pm-nightly fires once per calendar day (localStorage date check)
-      ├── 6 deterministic rule checks per active job:
-      │   contract_unsigned, payment_overdue, phase_starting_soon,
-      │   no_daily_log, co_pending_approval, job_stale
-      ├── 24h deduplication — same alert never fires twice in a day
-      ├── Right person notified: client alerts → client, ops alerts → PM/owner
-      └── Jobs with 2+ alerts → Opus narrative (fire-and-forget)
-          → all alerts land in notification bell on login
-
-ERRORS ANYWHERE
-  └── ai-error-logger edge function (fire-and-forget, never blocks)
-      └── Captures: function name, error type, raw AI response, user input
-          → ai_error_logs table — query to see what broke and why
-
-COMPANY LEARNS OVER TIME
-  └── AI Knowledge screen (owner only, sidebar)
-      ├── Add/edit/toggle entries by category
-      ├── Active entries injected into every companion + intake conversation
-      └── "Retake Setup" button re-runs the AiSetupWizard
-```
+- **LiDAR intake** (`AiIntakeWizard.jsx` + `LidarScanner.jsx`) — floor picker → scan rooms (ContinuousRoomScanViewController, worldX/worldZ) → height capture → quality report → save to job_lidar_scans / contact_lidar_scans → buildFloorPlanPDF. Supports interior multi-room and exterior ARKit outline. Original ai-intake chat flow retired.
+- **Tenant setup** (`AiSetupWizard.jsx`) — fires on first login (0 ai_knowledge entries). 7 questions → populates ai_knowledge with labor rate, markup, draw structure, CO policy, specialties.
+- **AI Consultation** (`process-transcript` edge fn) — ambient mode extracts concerns/budget/scope → consultation_extractions; measure mode guides rep trade-by-trade → consultation_measurements.
+- **AI Companion** (`AiCompanionChat.jsx`, `ai-companion` edge fn) — per person per job, full job context, ai_knowledge injected, conversation_history in job_ai_companions, sliding 20-message window.
+- **Daily PM brief** (`ai-pm-nightly`) — fires once/day on login, 6 rule checks per active job, 24h dedup, right person notified, 2+ alerts → Opus narrative. DISABLED — do not re-enable without approval.
+- **Black box** (`ai-error-logger`) — fire-and-forget on every AI error → ai_error_logs.
 
 ### AI Component Map
 | Component | File | Purpose |
@@ -588,23 +448,9 @@ That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the c
 - "save the tokens" / "this is mechanical"
 - "just write the prompt" → write a paste-ready prompt instead of dispatching (Kalin runs it in another window)
 
-**Parallel tracks — two things at once.** When two tasks don't conflict (different files, no shared state, neither blocks the other), run them in parallel: Opus stays on the harder track, Kalin pastes a paste-ready prompt to CMD/Sonnet for the other. Tell him: "Hey Kalin, paste this to CMD — I'll work on X here in parallel." Don't parallel when files overlap, when track B depends on track A's output, or when handoff overhead exceeds savings.
+**Parallel tracks — two things at once.** When two tasks don't conflict, run them in parallel: Opus stays on the harder track, Kalin pastes a paste-ready prompt to CMD/Sonnet for the other. Don't parallel when files overlap or track B depends on track A's output.
 
-**How to dispatch:** use the Agent tool with `model: "sonnet"` and a self-contained prompt:
-
-```
-TASK: <one-line summary>
-CONTEXT: <why, current state, what's already done>
-FILES: <absolute paths>
-DO:
-1. <numbered steps with exact strings/lines>
-DO NOT:
-- <constraints, gotchas, do-not-touch>
-DONE WHEN: <observable success criteria>
-THEN: commit + push to main with message "<type>: <subject>"
-```
-
-Sub-agent has no memory of this conversation — prompt must stand alone. Include exact paths, line numbers, strings to find. Never "based on the analysis, fix the bug" — write *which lines* to change to *what*.
+**How to dispatch:** use the Agent tool with `model: "sonnet"`. Prompt must be self-contained — include exact paths, line numbers, strings to find. See OPUS_PROMPT_RULES.md for the full dispatch template.
 
 ---
 
@@ -627,26 +473,14 @@ Sub-agent has no memory of this conversation — prompt must stand alone. Includ
 
 6. **Test AI estimator with live data** — ai_knowledge seeded with KC pricing. Open a job, ask AI Companion for a rough estimate, verify real dollar figures come back.
 
-**Done:**
-- Client portal progress stepper + realtime
-- Notification bell
-- ai-pm-nightly smart alerts
-- GitHub Actions auto-deploy (Supabase edge functions)
-- ai_knowledge seeded with KC mid-tier GC pricing (21 entries — all trades, labor rates, markup, draw schedule, CO policy, estimating guidelines)
-- **Capacitor iOS native app shipped to TestFlight** (bundle id `com.avenstonekc.avenstone`, Codemagic build pipeline, zero MacInCloud)
-- **RoomPlanPlugin.swift + Phase 1 single-room scan** — real length/width/height/sqft/doors/windows in feet on iPhone 12 Pro+ / iPad Pro 2020+ hardware, confirmed on iPhone 17 Pro
-- **AiIntakeWizard rewritten as pure LiDAR scanner** — no AI chat, no manual grid; flow is scan → height capture → quality report → save to job or contact
-- **Capture v2 — GPS stamping, CaptureMode, expanded data model** — `job_lidar_scans` + `contact_lidar_scans` gain 10 nullable columns: capture_mode, height_meters, height_source, height_points[], gps_latitude, gps_longitude, gps_accuracy, quality_score, quality_grade, quality_deductions
-- **Capture v2 — Exterior Mode AR capture** — `ExteriorScanViewController.swift` (ARKit tap-to-place corners, shoelace area, long-press drag, undo/reset), full scan-to-save flow, stored as outline_data JSONB with capture_mode='exterior'
-- **Capture v2 — Mandatory height capture** — `HeightCaptureStep.jsx` shared step, interior auto-derives from LiDAR mesh max, exterior via tap-raycast; both modes require confirmation before save; legacy records get amber badge
-- **Capture v2 — Quality meter (0–100)** — `CaptureQualityTracker.swift` shared scoring, live progress bar in Swift VCs, `CaptureQualityReport.jsx` post-capture report with deductions, grade, and Re-scan/Accept
-- **LiDAR scan persistence** — `FloorPlanTab.jsx` on JobDet, contact floor plans card in ContactsScr; both `contact_lidar_scans` and `job_lidar_scans` tables use TEXT FK
-- **Continuous multi-room ARSession** — `ContinuousRoomScanViewController` (iOS 17+), `pauseARSession: false` between rooms preserving ARKit world origin, room-naming modal at end with sqft hints, StructureBuilder merge, polygon-containment name matching
-- **Multi-floor scan flow + floor picker** — `captureTypes.js` (FLOOR_LABELS/floorLabel), `floorIndex` wired JS→Swift→room dicts, `FloorPicker` component in `LidarScanner.jsx` (auto-selects next unscanned floor, shown before each scan after the first)
-- **Floor plan PDF renderer** (`src/lib/pdf.js`) — full architectural renderer: landscape 792×612pt per floor + portrait summary page, `_groupByFloor` → one page per floor, poché walls (6pt exterior / 3pt interior), exterior-only dim lines (3-condition interior detection, collinear tiering, 1.5ft min length), overall bounding dims at off=62, bi-fold symbol for doors ≥4ft, room fill tint RGB(248,245,240), left-side title column (TC_W=108pt), narrow-room label rotation, polygon centroid + polylabel interior-point fallback for labels, graduated scale bar; fixture rendering pending rotation transform
-- **Floor plan PDF dimension language** — architectural wall-to-wall dimension lines with extension lines, tick marks, outward-normal offset replacing bounding-box W×D text
-- **AI PM Dashboard** — owner-only screen (`AiPmDashboard.jsx`), 30-day nightly alert history, stat cards by alert type
-- **Floor plan PDF crash fixed (2026-04-26)** — `dimBoxes` was declared `const` inside the worldMode branch but referenced outside it; PDF render threw "Can't find variable: dimBoxes" on the device alert dialog. Hoisted to `let dimBoxes = []` at outer scope.
+**Done** (pre-2026-04-19 history in CLAUDE_MEMORY.md project snapshot):
+- **Capacitor iOS native app + Codemagic pipeline** shipped to TestFlight (bundle id `com.avenstonekc.avenstone`)
+- **Full LiDAR capture stack** — single-room, multi-room (ContinuousRoomScanViewController, pauseARSession:false), exterior AR outline, height capture, quality meter (0–100), GPS stamping, floor picker, room-naming modal with polygon thumbnails
+- **Floor plan PDF renderer** (`src/lib/pdf.js`) — landscape per-floor + summary page, poché walls, chain dims with collision-tiered labels, room fill tint, left title column, polylabel, scale bar
+- **AI PM Dashboard** — owner-only, 30-day nightly alert history (`AiPmDashboard.jsx`)
+- **Floor plan PDF crash fixed (2026-04-26)** — `dimBoxes` const hoisted to let at outer scope
+- **Sub CO workflow** — sbSubSubmitCO generates co_number, stamps submitted_by_id/role; COTab shows submitter badge + inline edit for pending COs; PM approve/reject triggers targeted sub notification (sbNotifyUser)
+- **Phase audit columns** — started_at/started_by_id/completed_at/completed_by_id stamped on status change; ScheduleTab + SubJobView render audit lines
 
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 
@@ -666,31 +500,15 @@ Sub-agent has no memory of this conversation — prompt must stand alone. Includ
 
 ## Memory system
 
-### Session start (before touching any code)
-1. Read CLAUDE_MEMORY.md fully
-2. Count the number of [LOG] entries in the file
-3. If there are 30+ entries: ask the user if they want to consolidate before doing anything else.
-   If yes: compress all but the most recent 15 into a single "## Consolidated history" block,
-   preserve all decisions/blockers/arch notes, rewrite the file in place,
-   then append a [LOG] entry: "Consolidated on request — [date]".
-   If no: proceed normally and ask again next session.
-4. Acknowledge what the last session left off on
-5. Ask if the goal today is to continue that or something new
+At session start: read CLAUDE_MEMORY.md fully; if 30+ [LOG] entries, ask Kalin to consolidate (compress oldest to a block, keep recent 15). Acknowledge last session's state and ask if continuing or pivoting.
 
-### Automatic logging (no prompt needed — fire immediately when triggered)
-Append a [LOG] entry to CLAUDE_MEMORY.md the moment any of these happen:
-- A feature is built or completed
-- A bug is fixed
-- A file is created or significantly changed
-- An architecture or approach decision is made
-- A to-do item is added or marked done
-- A blocker is identified
+Auto-append a [LOG] entry to CLAUDE_MEMORY.md immediately when: a feature ships, a bug is fixed, a file is significantly changed, an architecture decision is made, a blocker is identified.
 
-Use this format:
-
+Log format:
+```
 [LOG — YYYY-MM-DD]
-- Action: one line describing what happened
-- Files: list any files changed
-- Decision: any choice made and why (omit if none)
-- Open: any blocker or follow-up created (omit if none)
-- Next: what logically comes next (omit if obvious)
+- Action: one line
+- Files: changed files
+- Decision: choice + why (omit if none)
+- Open: blocker or follow-up (omit if none)
+```
