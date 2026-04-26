@@ -588,6 +588,8 @@ That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the c
 - "save the tokens" / "this is mechanical"
 - "just write the prompt" → write a paste-ready prompt instead of dispatching (Kalin runs it in another window)
 
+**Parallel tracks — two things at once.** When two tasks don't conflict (different files, no shared state, neither blocks the other), run them in parallel: Opus stays on the harder track, Kalin pastes a paste-ready prompt to CMD/Sonnet for the other. Tell him: "Hey Kalin, paste this to CMD — I'll work on X here in parallel." Don't parallel when files overlap, when track B depends on track A's output, or when handoff overhead exceeds savings.
+
 **How to dispatch:** use the Agent tool with `model: "sonnet"` and a self-contained prompt:
 
 ```
