@@ -83,11 +83,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
         setStep('save');
       }
     } else {
-      if (jobId) {
-        await saveInterior({ ...hd, qualityScore: qd?.score, qualityGrade: qd?.grade, qualityDeductions: qd?.deductions });
-      } else {
-        setStep('save');
-      }
+      setStep('editor');
     }
   }
 
@@ -99,7 +95,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
     setStep('scan');
   }
 
-  async function saveInterior({ heightMeters, heightSource, heightPoints, qualityScore, qualityGrade, qualityDeductions }) {
+  async function saveInterior({ heightMeters, heightSource, heightPoints, qualityScore, qualityGrade, qualityDeductions, editOverrides: ov }) {
     setSaving(true);
     setSaveError(null);
     const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
@@ -111,6 +107,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       qualityGrade: qualityGrade ?? qualityData?.grade ?? null,
       qualityDeductions: qualityDeductions ?? qualityData?.deductions ?? null,
       gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
+      editOverrides: ov ?? null,
     });
     setSaving(false);
     if (error) { setSaveError(error.message || JSON.stringify(error)); return; }
@@ -165,6 +162,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
         heightMeters: hm, heightSource: hs, heightPoints: hp,
         qualityScore: qs, qualityGrade: qg, qualityDeductions: qd,
         gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
+        editOverrides: editOverrides ?? null,
       }));
     }
     setSaving(false);
@@ -198,10 +196,10 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       }}>
         <div>
           <h2 style={{ fontFamily: '"DM Serif Display", serif', fontSize: 20, margin: 0, lineHeight: 1.1 }}>
-            {step === 'save' ? 'Save Floor Plan' : step === 'height' ? 'Capture Height' : step === 'report' ? 'Scan Quality' : 'Room Scanner'}
+            {step === 'save' ? 'Save Floor Plan' : step === 'height' ? 'Capture Height' : step === 'report' ? 'Scan Quality' : step === 'editor' ? 'Edit Floor Plan' : 'Room Scanner'}
           </h2>
           <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
-            {step === 'save' ? 'Attach scan to a contact' : step === 'height' ? 'Required for paint, drywall, and siding estimates' : step === 'report' ? 'Review before saving' : 'Scan rooms with LiDAR to capture real dimensions'}
+            {step === 'save' ? 'Attach scan to a contact' : step === 'height' ? 'Required for paint, drywall, and siding estimates' : step === 'report' ? 'Review before saving' : step === 'editor' ? 'Name rooms and set orientation' : 'Scan rooms with LiDAR to capture real dimensions'}
           </div>
         </div>
         <button
@@ -239,6 +237,31 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
             qualityData={qualityData}
             onAccept={handleReportAccept}
             onRescan={handleReportRescan}
+          />
+        )}
+
+        {step === 'editor' && (
+          <FloorPlanEditor
+            rooms={rooms}
+            initialOverrides={editOverrides}
+            busy={saving}
+            onSave={async (ov) => {
+              setEditOverrides(ov);
+              const hd = heightData; const qd = qualityData;
+              if (jobId) {
+                await saveInterior({ ...hd, qualityScore: qd?.score, qualityGrade: qd?.grade, qualityDeductions: qd?.deductions, editOverrides: ov });
+              } else {
+                setStep('save');
+              }
+            }}
+            onCancel={async () => {
+              const hd = heightData; const qd = qualityData;
+              if (jobId) {
+                await saveInterior({ ...hd, qualityScore: qd?.score, qualityGrade: qd?.grade, qualityDeductions: qd?.deductions });
+              } else {
+                setStep('save');
+              }
+            }}
           />
         )}
 
