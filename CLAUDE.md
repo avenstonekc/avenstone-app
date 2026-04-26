@@ -572,17 +572,52 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 ---
 
-## Diagnosis workflow — when going in circles
+## Cost-aware delegation (Opus ↔ Sonnet)
 
-If Sonnet (the default Claude Code model) is stuck on a hard architecture or API problem, use `/opus` to generate a targeted diagnostic prompt. Type `/opus <description of the problem>` and Sonnet will write a structured prompt you can paste directly into Opus. Opus diagnoses and writes a fix prompt back. Paste that back to Sonnet to implement. This keeps costs low (Sonnet builds, Opus thinks) and prevents the same wrong approach being retried repeatedly.
+**Kalin runs Opus directly inside Claude Code.** No more `/opus` prompt-relay dance — that workflow is retired.
+
+**When Opus is the right tool (use directly):**
+- Diagnosing crashes, "going in circles" bugs, multi-file root-cause hunts
+- Architecture / schema design, multi-tenant decisions, new feature scoping
+- Cross-system coordination (Swift + JS + Supabase + edge fn at once)
+- API cost decisions, anything where being wrong costs real money or rework
+
+**When the task is easy (drop to Sonnet):**
+- Scoped bug fix where cause is already identified
+- Mechanical refactor / rename / dead code removal
+- Adding a component from a clear spec
+- Boilerplate (new `sb*` helper, new edge fn URL export, new screen scaffold)
+- Following a recipe (apply migration, deploy fn, run test-fix loop)
+
+**The handoff format — Opus writes this, Kalin pastes into a fresh Sonnet Claude Code session:**
+
+```
+TASK: <one-line summary>
+CONTEXT: <why this matters, current state, what's already done>
+FILES: <absolute paths to touch>
+DO:
+1. <numbered steps>
+2. ...
+DO NOT:
+- <constraints, gotchas, things to leave alone>
+DONE WHEN: <observable success criteria>
+THEN: commit + push to main with message "<type>: <subject>"
+```
+
+The prompt must be self-contained — Sonnet has no memory of the Opus conversation. Include file paths, line numbers, exact strings to find, expected output. Don't write "based on the analysis, fix the bug" — write *which* lines to change to *what*.
 
 ---
 
 ## Priority Order (what we're building)
 
-1. **Floor plan PDF — fixture/object rendering** — Swift already serializes `room.objects` (toilet, bathtub, sink, stove, oven, refrigerator, dishwasher, washerDryer, storage). PDF renderer needs `_drawFixture` reinstated with correct world-space rotation transform (the rotation angle is now returned from `_processAllRooms` so the plumbing exists). Single-room path deferred until multi-room path confirmed working on device.
+**LiDAR & floor plan PDF take precedence over website work.** Both tracks ship in parallel — but if Kalin shows up with a LiDAR/PDF screenshot, drop everything.
 
-2. **LiDAR Phase 4 — wing editor + large-space stitching**. Spaces over ~1,500 sqft scan in wings. Editor tab lets you position and connect wings into one plan. GPS anchoring helps align sessions spatially. Window/door type editing lives here.
+1. **Floor plan PDF — match MagicPlan output, pull dimensions cleanly.** This is the visible field deliverable. Sub-tasks:
+   - **Fixture/object rendering** — Swift serializes `room.objects` (toilet, bathtub, sink, stove, oven, refrigerator, dishwasher, washerDryer, storage). PDF needs `_drawFixture` reinstated with rotation transform from `_processAllRooms`.
+   - **Room-name-backwards UX bug** — StructureBuilder returns rooms in spatial order, not scan order. Naming modal shows them in the rebuilt order so what Kalin types ends up on the wrong room. Fix: render a thumbnail/centroid mini-map per room in the naming list so the rep can see which room they're labeling.
+   - **Single-room PDF parity** — chain dims and label collision logic only run in worldMode. Single-room scans use the older per-seg path. Bring to parity once multi-room is solid.
+
+2. **LiDAR Phase 4 — wing editor + large-space stitching.** Spaces over ~1,500 sqft scan in wings. Editor tab lets you position and connect wings into one plan. GPS anchoring helps align sessions spatially. Window/door type editing lives here.
 
 3. **Sub portal upgrades** — PM-Sub direct chat thread (separate from general job messages, spec'd April 15 but not yet built), phase start/complete confirmation, CO submission by sub.
 
@@ -611,6 +646,7 @@ If Sonnet (the default Claude Code model) is stuck on a hard architecture or API
 - **Floor plan PDF renderer** (`src/lib/pdf.js`) — full architectural renderer: landscape 792×612pt per floor + portrait summary page, `_groupByFloor` → one page per floor, poché walls (6pt exterior / 3pt interior), exterior-only dim lines (3-condition interior detection, collinear tiering, 1.5ft min length), overall bounding dims at off=62, bi-fold symbol for doors ≥4ft, room fill tint RGB(248,245,240), left-side title column (TC_W=108pt), narrow-room label rotation, polygon centroid + polylabel interior-point fallback for labels, graduated scale bar; fixture rendering pending rotation transform
 - **Floor plan PDF dimension language** — architectural wall-to-wall dimension lines with extension lines, tick marks, outward-normal offset replacing bounding-box W×D text
 - **AI PM Dashboard** — owner-only screen (`AiPmDashboard.jsx`), 30-day nightly alert history, stat cards by alert type
+- **Floor plan PDF crash fixed (2026-04-26)** — `dimBoxes` was declared `const` inside the worldMode branch but referenced outside it; PDF render threw "Can't find variable: dimBoxes" on the device alert dialog. Hoisted to `let dimBoxes = []` at outer scope.
 
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 

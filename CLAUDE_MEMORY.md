@@ -331,3 +331,17 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision Bug 2: Added fire-and-forget ambient transcript flush at start of `startMeasuring()`. The 60-second interval is cleared immediately on mode transition; if ambient ran < 60 seconds, no extraction row was ever written. Now flushes transcript if ≥ 20 chars before clearing the interval.
 - Decision Bug 3: Fixed same `description` → `scope` bug in gap analyzer jobs query and prompt.
 - Note: PAT still expired — GitHub Actions edge fn deploys may be broken. User needs to regenerate PAT at supabase.com/dashboard/account/tokens (No expiry) and run `gh secret set SUPABASE_ACCESS_TOKEN`.
+
+[LOG — 2026-04-26]
+- Action: Floor plan PDF crash fixed — "Can't find variable: dimBoxes" alert on device.
+- Files: avenstone-vite/src/lib/pdf.js
+- Decision: ROOT — dimBoxes was declared `const` inside the `if (worldMode)` block at line 1010 but referenced at line 1063 outside it. Hoisted to `let dimBoxes = []` at outer scope before the if/else; assignment inside worldMode branch unchanged.
+- Open: Verify on iPhone after Vercel + Codemagic deploys. Single-room PDF path still doesn't get chain dims (pre-existing limitation, not regression).
+- Next: Multi-room PDF on real scan → confirm fixtures still pending → tackle room-name-backwards UX bug.
+
+[LOG — 2026-04-26]
+- Action: Working model + priority order updated. Opus delegates easy tasks to Sonnet via copy-pasteable prompt; user runs Opus directly inside Claude Code (no more `/opus` relay).
+- Files: CLAUDE.md (Diagnosis workflow section replaced with "Cost-aware delegation"; Priority Order #1 expanded with sub-bullets — fixtures, room-name-backwards bug, single-room parity)
+- Decision: Triage rule — Opus for diagnosis/architecture/multi-system; Sonnet for scoped fixes/refactors/boilerplate. Prompt template documented in CLAUDE.md.
+- Decision: LiDAR/PDF outranks website work in priority — if Kalin shows up with a LiDAR screenshot, drop everything. Website work continues in parallel, just behind it.
+- Open: Room-name-backwards bug (StructureBuilder returns rooms in spatial order, naming modal doesn't show which room is which). Fix proposed: thumbnail/centroid mini-map per room in naming list. Awaiting user OK to implement.
