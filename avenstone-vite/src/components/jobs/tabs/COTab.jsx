@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AV_USER_ID, sbCO, sbUpdCO, sbNotify, sbSendContractEmail } from '../../../lib/supabase';
+import { AV_USER_ID, sbCO, sbUpdCO, sbNotify, sbNotifyUser, sbSendContractEmail } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildGenericPDF } from '../../../lib/pdf';
 
@@ -36,14 +36,20 @@ export default function COTab({ job, upd, profile }) {
     const nct = u.filter(c => c.status === 'approved').reduce((a, c) => a + Number(c.amount || 0), 0);
     upd({ change_orders: u, co_total: nct });
     const co = (job.change_orders || []).find(c => c.id === id);
-    if (co) sbNotify('co_approved', `CO approved on ${job.address}`, `${co.co_number} (${f$(co.amount)}) has been approved`, job.id, AV_USER_ID);
+    if (co) {
+      sbNotify('co_approved', `CO approved on ${job.address}`, `${co.co_number} (${f$(co.amount)}) has been approved`, job.id, AV_USER_ID);
+      if (co.submitted_by_id && co.submitted_by_id !== AV_USER_ID) sbNotifyUser(co.submitted_by_id, 'co_approved', 'Your change order was approved', `${co.co_number} (${f$(co.amount)}) on ${job.address}`, job.id);
+    }
   };
 
   const rjCO = async id => {
     await sbUpdCO(id, { status: 'rejected' });
     upd({ change_orders: (job.change_orders || []).map(c => c.id === id ? { ...c, status: 'rejected' } : c) });
     const co = (job.change_orders || []).find(c => c.id === id);
-    if (co) sbNotify('co_rejected', `CO rejected on ${job.address}`, `${co.co_number} has been rejected`, job.id, AV_USER_ID);
+    if (co) {
+      sbNotify('co_rejected', `CO rejected on ${job.address}`, `${co.co_number} has been rejected`, job.id, AV_USER_ID);
+      if (co.submitted_by_id && co.submitted_by_id !== AV_USER_ID) sbNotifyUser(co.submitted_by_id, 'co_rejected', 'Your change order was rejected', `${co.co_number} (${f$(co.amount)}) on ${job.address}`, job.id);
+    }
   };
 
   return (

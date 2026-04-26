@@ -338,6 +338,12 @@ export const sbNotify = async (type, title, body, jobId, excludeId) => {
     );
   } catch (e) { console.error('sbNotify error:', e); }
 };
+export const sbNotifyUser = async (userId, type, title, body, jobId) => {
+  if (!userId) return;
+  try {
+    await sb.from('notifications').insert({ tenant_id: AV_TENANT, user_id: userId, job_id: jobId, type, title, body, read: false, email_sent: false, sms_sent: false });
+  } catch (e) { console.error('sbNotifyUser error:', e); }
+};
 
 // ─── Subs ─────────────────────────────────────────────────────────────────────
 export const COMMON_TRADES = ['Electrical','Plumbing','HVAC','Framing','Drywall','Roofing','Flooring','Painting','Concrete','Masonry','Insulation','Cabinets','Tile','Landscaping','General Labor','Other'];
