@@ -572,39 +572,37 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 ---
 
-## Cost-aware delegation (Opus ↔ Sonnet)
+## Opus finds solutions. Sonnet does coding.
 
-**Kalin runs Opus directly inside Claude Code.** No more `/opus` prompt-relay dance — that workflow is retired.
+That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the cost of Sonnet. The retired `/opus` relay is dead — don't reference it.
 
-**When Opus is the right tool (use directly):**
-- Diagnosing crashes, "going in circles" bugs, multi-file root-cause hunts
-- Architecture / schema design, multi-tenant decisions, new feature scoping
-- Cross-system coordination (Swift + JS + Supabase + edge fn at once)
-- API cost decisions, anything where being wrong costs real money or rework
+**Solutions (Opus stays):** diagnose crashes, design schema/architecture, decide tradeoffs, plan multi-step features, write specs, multi-tenant / cost / real-money calls.
 
-**When the task is easy (drop to Sonnet):**
-- Scoped bug fix where cause is already identified
-- Mechanical refactor / rename / dead code removal
-- Adding a component from a clear spec
-- Boilerplate (new `sb*` helper, new edge fn URL export, new screen scaffold)
-- Following a recipe (apply migration, deploy fn, run test-fix loop)
+**Coding (dispatch to Sonnet):** file edits, component scaffolding, wire-ups, mechanical refactors, boilerplate (`sb*` helper, edge fn URL export, screen scaffold), running commands, applying migrations, deploys, test-fix loops, doc updates.
 
-**The handoff format — Opus writes this, Kalin pastes into a fresh Sonnet Claude Code session:**
+**When in doubt → dispatch.** The cost ratio is ~5×. Erring toward Sonnet is the cheaper mistake.
+
+**Trigger words from Kalin — dispatch immediately, no debate:**
+- "easy" / "easy task" / "easy fix"
+- "do it on sonnet" / "use sonnet"
+- "save the tokens" / "this is mechanical"
+- "just write the prompt" → write a paste-ready prompt instead of dispatching (Kalin runs it in another window)
+
+**How to dispatch:** use the Agent tool with `model: "sonnet"` and a self-contained prompt:
 
 ```
 TASK: <one-line summary>
-CONTEXT: <why this matters, current state, what's already done>
-FILES: <absolute paths to touch>
+CONTEXT: <why, current state, what's already done>
+FILES: <absolute paths>
 DO:
-1. <numbered steps>
-2. ...
+1. <numbered steps with exact strings/lines>
 DO NOT:
-- <constraints, gotchas, things to leave alone>
+- <constraints, gotchas, do-not-touch>
 DONE WHEN: <observable success criteria>
 THEN: commit + push to main with message "<type>: <subject>"
 ```
 
-The prompt must be self-contained — Sonnet has no memory of the Opus conversation. Include file paths, line numbers, exact strings to find, expected output. Don't write "based on the analysis, fix the bug" — write *which* lines to change to *what*.
+Sub-agent has no memory of this conversation — prompt must stand alone. Include exact paths, line numbers, strings to find. Never "based on the analysis, fix the bug" — write *which lines* to change to *what*.
 
 ---
 
