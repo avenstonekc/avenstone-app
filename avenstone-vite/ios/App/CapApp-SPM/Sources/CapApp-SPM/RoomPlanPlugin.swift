@@ -879,7 +879,37 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 let structure = try await builder.capturedStructure(from: capturedRooms)
                 let nameMap = self.matchNamesToStructuredRooms(structure)
                 let rooms = self.structureToRooms(structure, nameMap: nameMap)
-                await MainActor.run { self.showNamingScreen(rooms) }
+
+                // Re-sort rooms into scan order so row 1 = first room scanned.
+                // Match each rebuilt room (structure.rooms[j]) to the closest captured room
+                // by wall-centroid distance, then stamp scanIndex and sort.
+                let capCentroids: [(Float, Float)] = self.capturedRooms.map { room in
+                    guard !room.walls.isEmpty else { return (0, 0) }
+                    let cx = room.walls.map { $0.transform.columns.3.x }.reduce(0, +) / Float(room.walls.count)
+                    let cz = room.walls.map { $0.transform.columns.3.z }.reduce(0, +) / Float(room.walls.count)
+                    return (cx, cz)
+                }
+                let strCentroids: [(Float, Float)] = structure.rooms.map { room in
+                    guard !room.walls.isEmpty else { return (0, 0) }
+                    let cx = room.walls.map { $0.transform.columns.3.x }.reduce(0, +) / Float(room.walls.count)
+                    let cz = room.walls.map { $0.transform.columns.3.z }.reduce(0, +) / Float(room.walls.count)
+                    return (cx, cz)
+                }
+                var roomsWithScanIdx = rooms
+                var usedCap = Set<Int>()
+                for j in rooms.indices {
+                    let sc = j < strCentroids.count ? strCentroids[j] : (0, 0)
+                    var bestDist = Float.greatestFiniteMagnitude; var bestI = 0
+                    for (i, cc) in capCentroids.enumerated() {
+                        guard !usedCap.contains(i) else { continue }
+                        let d = (sc.0 - cc.0) * (sc.0 - cc.0) + (sc.1 - cc.1) * (sc.1 - cc.1)
+                        if d < bestDist { bestDist = d; bestI = i }
+                    }
+                    roomsWithScanIdx[j]["scanIndex"] = bestI
+                    usedCap.insert(bestI)
+                }
+                let sortedRooms = roomsWithScanIdx.sorted { ($0["scanIndex"] as? Int ?? Int.max) < ($1["scanIndex"] as? Int ?? Int.max) }
+                await MainActor.run { self.showNamingScreen(sortedRooms) }
             } catch {
                 let rooms = self.fallbackRooms()
                 await MainActor.run { self.showNamingScreen(rooms) }
