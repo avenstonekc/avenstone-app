@@ -829,6 +829,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
   let scale = 1, oX = DL, oY = DT;
   let allWallSegs = [], allDoors = [], allWindows = [], allOpenings = [];
   let roomLayouts = []; // [{room, segs, x, y, w, h}]
+  let dimBoxes = [];
 
   if (worldMode) {
     console.log(`[LIDAR_PDF_STAGE] snapping to ortho (${drawableRooms.length} rooms)`);
@@ -1007,7 +1008,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       // left (nx < -0.85) skipped — title column is there
     }
     // Top chain: dim line above oY
-    const dimBoxes = [
+    dimBoxes = [
       ..._renderChainDims(doc, topSegs,    oY - CHAIN_OFF,                   oY - OVERALL_OFF,                  -1, true,  oX, oY, scale),
       ..._renderChainDims(doc, bottomSegs, oY + trueH * scale + CHAIN_OFF,   oY + trueH * scale + OVERALL_OFF,  +1, true,  oX, oY, scale),
       ..._renderChainDims(doc, rightSegs,  oX + trueW * scale + CHAIN_OFF,   oX + trueW * scale + OVERALL_OFF,  +1, false, oX, oY, scale),
