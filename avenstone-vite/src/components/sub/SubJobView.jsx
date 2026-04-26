@@ -228,6 +228,12 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
                   {p.start_date && <span>{t('Start', lang)}: <strong style={{ color: '#374151' }}>{fD(p.start_date)}</strong></span>}
                   {p.end_date && <span>{t('Due', lang)}: <strong style={{ color: isOverdue ? '#ef4444' : '#374151' }}>{fD(p.end_date)}</strong></span>}
                 </div>
+                {(p.started_at || p.completed_at) && (
+                  <div style={{ marginTop: 4, fontSize: 11, color: '#9CA3AF', lineHeight: 1.5 }}>
+                    {p.started_at && <div>Started {fD(p.started_at)}</div>}
+                    {p.completed_at && <div>Completed {fD(p.completed_at)}</div>}
+                  </div>
+                )}
                 {p.status !== 'complete' && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     {p.status !== 'in_progress' && (

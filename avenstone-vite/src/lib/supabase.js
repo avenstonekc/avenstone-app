@@ -471,7 +471,10 @@ export const sbLoadSubCOs = async (jobId) => {
 };
 export const sbSubUpdatePhase = async (id, status) => {
   try {
-    const { data, error } = await sb.from('job_phases').update({ status }).eq('id', id).eq('assigned_sub_id', AV_USER_ID).select().single();
+    const audit = {};
+    if (status === 'in_progress') { audit.started_at = new Date().toISOString(); audit.started_by_id = AV_USER_ID; }
+    else if (status === 'complete') { audit.completed_at = new Date().toISOString(); audit.completed_by_id = AV_USER_ID; }
+    const { data, error } = await sb.from('job_phases').update({ status, ...audit }).eq('id', id).eq('assigned_sub_id', AV_USER_ID).select().single();
     return error ? null : data;
   } catch (e) { console.error('sbSubUpdatePhase', e); return null; }
 };

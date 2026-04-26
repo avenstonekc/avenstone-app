@@ -8,6 +8,7 @@ export default function ScheduleTab({ job }) {
   const [phaseEdit, setPhaseEdit] = useState(null);
   const [phaseEdits, setPhaseEdits] = useState({});
   const [schedView, setSchedView] = useState('list');
+  const [auditProfiles, setAuditProfiles] = useState({});
 
   useEffect(() => {
     if (phasesLoaded) return;
@@ -27,6 +28,13 @@ export default function ScheduleTab({ job }) {
           data = await sbLoadPhases(job.id);
         }
         setPhases(data);
+        const auditIds = [...new Set(data.flatMap(p => [p.started_by_id, p.completed_by_id]).filter(Boolean))];
+        if (auditIds.length) {
+          const { data: profs } = await sb.from('profiles').select('id,full_name').in('id', auditIds);
+          const map = {};
+          (profs || []).forEach(p => { map[p.id] = p.full_name; });
+          setAuditProfiles(map);
+        }
       } catch (e) { console.error('Schedule load error:', e); }
       finally { setPhasesLoaded(true); }
     })();
@@ -111,6 +119,12 @@ export default function ScheduleTab({ job }) {
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 2 }}>{ph.phase_name}</div>
                 {!isEd && (ph.start_date || ph.end_date) && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{ph.start_date ? fD(ph.start_date) : 'TBD'} &rarr; {ph.end_date ? fD(ph.end_date) : 'TBD'}</div>}
                 {!isEd && !ph.start_date && !ph.end_date && <div style={{ fontSize: 11, color: '#D1C9B8', fontStyle: 'italic' }}>No dates set</div>}
+                {!isEd && (ph.started_at || ph.completed_at) && (
+                  <div style={{ marginTop: 3, fontSize: 11, color: '#9CA3AF', lineHeight: 1.5 }}>
+                    {ph.started_at && <div>Started {fD(ph.started_at)}{auditProfiles[ph.started_by_id] ? ` by ${auditProfiles[ph.started_by_id]}` : ''}</div>}
+                    {ph.completed_at && <div>Completed {fD(ph.completed_at)}{auditProfiles[ph.completed_by_id] ? ` by ${auditProfiles[ph.completed_by_id]}` : ''}</div>}
+                  </div>
+                )}
               </div>
               {!isEd && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -134,7 +148,16 @@ export default function ScheduleTab({ job }) {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12 }} onClick={() => setPhaseEdit(null)}>Cancel</button>
                   <button className="btn btn-navy" style={{ flex: 1, fontSize: 12 }} onClick={async () => {
-                    const updated = { ...ph, ...ed };
+                    const auditFields = {};
+                    if (ed.status === 'in_progress' && ph.status !== 'in_progress' && !ph.started_at) {
+                      auditFields.started_at = new Date().toISOString();
+                      auditFields.started_by_id = AV_USER_ID;
+                    }
+                    if (ed.status === 'complete' && ph.status !== 'complete' && !ph.completed_at) {
+                      auditFields.completed_at = new Date().toISOString();
+                      auditFields.completed_by_id = AV_USER_ID;
+                    }
+                    const updated = { ...ph, ...ed, ...auditFields };
                     const saved = await sbSavePhase(updated);
                     setPhases(p => p.map(x => x.id === ph.id ? (saved || updated) : x));
                     if (ed.status === 'complete' && ph.status !== 'complete') {
