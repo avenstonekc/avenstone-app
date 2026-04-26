@@ -10,6 +10,8 @@ export default function COTab({ job, upd, profile }) {
   const [cor, setCor] = useState('');
   const [coa, setCoa] = useState('');
   const [savCO, setSavCO] = useState(false);
+  const [editingCOId, setEditingCOId] = useState(null);
+  const [editForm, setEditForm] = useState({ description: '', amount: '' });
 
   const apCOs = (job.change_orders || []).filter(c => c.status === 'approved');
   const coT = Number(job.co_total || 0);
@@ -74,17 +76,34 @@ export default function COTab({ job, upd, profile }) {
               Submitted by {co.submitted_by_role.toUpperCase().replace(/_/g, ' ')}
             </span>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-            <div style={{ flex: 1 }}><div className="co-desc">{co.description}</div>{co.reason && <div className="co-reason">{co.reason}</div>}</div>
-            <div style={{ textAlign: 'right', marginLeft: 16 }}>
-              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: '#22c55e' }}>{f$(co.amount)}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: co.status === 'approved' ? '#22c55e' : co.status === 'rejected' ? '#ef4444' : '#f59e0b' }}>{co.status}</div>
+          {editingCOId === co.id ? (
+            <div style={{ marginBottom: 8 }}>
+              <textarea className="finp" rows={2} style={{ marginBottom: 8, resize: 'vertical' }} value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+              <input className="finp" type="number" style={{ marginBottom: 8 }} value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} placeholder="Amount ($)" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" style={{ flex: 1, fontSize: 11 }} onClick={() => setEditingCOId(null)}>Cancel</button>
+                <button className="btn btn-navy" style={{ flex: 1, fontSize: 11 }} onClick={async () => {
+                  const patch = { description: editForm.description.trim(), amount: Number(editForm.amount) };
+                  await sbUpdCO(co.id, patch);
+                  upd({ change_orders: (job.change_orders || []).map(c => c.id === co.id ? { ...c, ...patch } : c) });
+                  setEditingCOId(null);
+                }}>Save</button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+              <div style={{ flex: 1 }}><div className="co-desc">{co.description}</div>{co.reason && <div className="co-reason">{co.reason}</div>}</div>
+              <div style={{ textAlign: 'right', marginLeft: 16 }}>
+                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: '#22c55e' }}>{f$(co.amount)}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: co.status === 'approved' ? '#22c55e' : co.status === 'rejected' ? '#ef4444' : '#f59e0b' }}>{co.status}</div>
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
             <span style={{ fontSize: 11, color: '#9CA3AF' }}>{fD(co.created_at)}</span>
             {co.status === 'pending' && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn" style={{ background: '#fff', border: '1px solid #0A1F44', color: '#0A1F44', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={() => { setEditingCOId(co.id); setEditForm({ description: co.description || '', amount: co.amount ?? '' }); }}>Edit</button>
                 {['owner', 'project_manager'].includes(profile?.role) && job.client_email && (
                   <button className="btn" style={{ background: '#0A1F44', border: '1px solid #0A1F44', color: '#C9A84C', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={async () => {
                     const coText = `CHANGE ORDER: ${co.co_number || ''}\n\nProject: ${job.address}\nClient: ${job.client_name || ''}\n\nDescription:\n${co.description || ''}\n\nReason: ${co.reason || ''}\n\nAmount: ${f$(co.amount || 0)}\n\nThis Change Order must be approved by the client before work proceeds.`;
