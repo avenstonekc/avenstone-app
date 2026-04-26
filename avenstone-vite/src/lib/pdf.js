@@ -680,6 +680,10 @@ const _renderChainDims = (doc, segs, dimLinePt, overallPt, normalSign, isHoriz, 
   const chainStartPg = ticksPage[0], chainEndPg = ticksPage[ticksPage.length - 1];
   const chainLenFt = ticks[ticks.length - 1] - ticks[0];
 
+  if (!isHoriz) {
+    console.log('[LIDAR_PDF_RIGHT_EDGE]', { ticks, segLengths: kept.map(s => s.len) });
+  }
+
   // Extension lines from wall face to overall dim line
   doc.setDrawColor(100, 100, 100); doc.setLineWidth(0.5);
   for (const tp of ticksPage) {
@@ -713,16 +717,46 @@ const _renderChainDims = (doc, segs, dimLinePt, overallPt, normalSign, isHoriz, 
     labelBoxes.push({ x: rx, y: ry, w: rw, h: rh });
   };
 
-  // Segment labels
+  // Segment labels — greedy tier assignment to prevent overlap
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+  const placedByTier = []; // placedByTier[tier] = [{midPg, halfW}]
+  const segRenders = [];
+
   for (const seg of kept) {
     const s = isHoriz ? Math.min(seg.x1, seg.x2) : Math.min(seg.z1, seg.z2);
     const e = isHoriz ? Math.max(seg.x1, seg.x2) : Math.max(seg.z1, seg.z2);
     const midFt = (s + e) / 2;
     const midPg = (isHoriz ? oX : oY) + midFt * scale;
-    const lx = isHoriz ? midPg : dimLinePt + normalSign * 8;
-    const ly = isHoriz ? dimLinePt + normalSign * 8 : midPg;
-    _drawDimLabel(lx, ly, _feetInches(seg.len));
+    const label = _feetInches(seg.len);
+    // Primary-axis half-extent of the label box
+    const halfW = isHoriz ? (label.length * 3.8 / 2 + 1) : 3.5;
+
+    let tier = 0;
+    while (true) {
+      const placed = placedByTier[tier] || [];
+      const overlaps = placed.some(p => midPg - halfW < p.midPg + p.halfW && p.midPg - p.halfW < midPg + halfW);
+      if (!overlaps) break;
+      tier++;
+    }
+    if (!placedByTier[tier]) placedByTier[tier] = [];
+    placedByTier[tier].push({ midPg, halfW });
+    segRenders.push({ midPg, label, tier });
+  }
+
+  for (const { midPg, label, tier } of segRenders) {
+    const tierOff = 8 + tier * 8;
+    const lx = isHoriz ? midPg : dimLinePt + normalSign * tierOff;
+    const ly = isHoriz ? dimLinePt + normalSign * tierOff : midPg;
+
+    if (tier > 0) {
+      // Extension stub from the chain dim line out to the tiered label position
+      doc.setDrawColor(120, 120, 120); doc.setLineWidth(0.4);
+      if (isHoriz) doc.line(midPg, dimLinePt + normalSign * 8, midPg, dimLinePt + normalSign * tierOff);
+      else         doc.line(dimLinePt + normalSign * 8, midPg, dimLinePt + normalSign * tierOff, midPg);
+      doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.75);
+    }
+
+    _drawDimLabel(lx, ly, label);
   }
 
   // Overall dim line (heavier, outer tier) — only drawn when chain has multiple segments
