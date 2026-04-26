@@ -1,6 +1,74 @@
 import jsPDF from 'jspdf';
 import { floorLabel as _floorLabel } from './captureTypes.js';
 
+// ─── Floor plan edit overrides ─────────────────────────────────────────────
+// Applied to a scan dict before any other processing. Returns a new scan with:
+//   - room names replaced from overrides.room_names[idx]
+//   - all coordinates rotated by overrides.rotation (0/90/180/270)
+//   - then mirrored if overrides.mirror is 'horizontal' or 'vertical'
+// Editor and PDF call this with the same overrides → they render identically.
+export const applyEditOverrides = (scan) => {
+  if (!scan || !scan.edit_overrides) return scan;
+  const ov = scan.edit_overrides || {};
+  const rot = ((ov.rotation || 0) % 360 + 360) % 360;
+  const mh = ov.mirror === 'horizontal';
+  const mv = ov.mirror === 'vertical';
+  const names = ov.room_names || {};
+
+  // 90° increments only — exact integer math, no trig drift.
+  const rotXZ = (x, z) => {
+    if (rot === 0)   return [x, z];
+    if (rot === 90)  return [-z, x];
+    if (rot === 180) return [-x, -z];
+    if (rot === 270) return [z, -x];
+    return [x, z];
+  };
+  const tx = (x, z) => {
+    let [nx, nz] = rotXZ(x, z);
+    if (mh) nx = -nx;
+    if (mv) nz = -nz;
+    return [nx, nz];
+  };
+  const txSeg = (s) => {
+    const [x1, z1] = tx(s.x1, s.z1);
+    const [x2, z2] = tx(s.x2, s.z2);
+    const out = { ...s, x1, z1, x2, z2 };
+    if (typeof s.nx === 'number' && typeof s.nz === 'number') {
+      const [nx, nz] = tx(s.nx, s.nz);
+      out.nx = nx; out.nz = nz;
+    }
+    return out;
+  };
+
+  const newRooms = (scan.rooms || []).map((r, i) => {
+    const nr = { ...r };
+    if (names[String(i)]) nr.name = names[String(i)];
+    if (typeof r.worldX === 'number' && typeof r.worldZ === 'number') {
+      const [nwx, nwz] = tx(r.worldX, r.worldZ);
+      nr.worldX = nwx; nr.worldZ = nwz;
+    }
+    if (Array.isArray(r.wallSegments))    nr.wallSegments    = r.wallSegments.map(txSeg);
+    if (Array.isArray(r.doorSegments))    nr.doorSegments    = r.doorSegments.map(txSeg);
+    if (Array.isArray(r.windowSegments))  nr.windowSegments  = r.windowSegments.map(txSeg);
+    if (Array.isArray(r.openingSegments)) nr.openingSegments = r.openingSegments.map(txSeg);
+    if (Array.isArray(r.objects)) {
+      nr.objects = r.objects.map((o) => {
+        const [ox, oz] = tx(o.x, o.z);
+        const out = { ...o, x: ox, z: oz };
+        if (typeof o.rotationY === 'number') {
+          out.rotationY = o.rotationY + (rot * Math.PI / 180);
+          if (mh) out.rotationY = -out.rotationY;
+          if (mv) out.rotationY = Math.PI - out.rotationY;
+        }
+        return out;
+      });
+    }
+    return nr;
+  });
+
+  return { ...scan, rooms: newRooms };
+};
+
 // ─── Generic PDF (contract, signoff, etc.) ────────────────────────────────────
 export const buildGenericPDF = ({ docType, job, bodyText, signaturePng }) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
@@ -1239,9 +1307,10 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
 };
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
-export const buildFloorPlanPDF = (scan, job) => {
+export const buildFloorPlanPDF = (rawScan, job) => {
   try {
     console.log('[LIDAR_PDF_STAGE] buildFloorPlanPDF start');
+    const scan = applyEditOverrides(rawScan);
     const rooms = scan.rooms || [];
     console.log('[LIDAR_DEBUG] Full rooms payload:', JSON.stringify(rooms, null, 2));
     console.log('[LIDAR_DEBUG] Names array:', rooms.map(r => r.name));

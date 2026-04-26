@@ -714,7 +714,7 @@ export const sbLoadContactMessages = async contactId => {
 };
 
 // ─── LiDAR Scans ─────────────────────────────────────────────────────────────
-export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode, heightMeters, heightSource, heightPoints, gpsLatitude, gpsLongitude, gpsAccuracy, qualityScore, qualityGrade, qualityDeductions, outlineData }) => {
+export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode, heightMeters, heightSource, heightPoints, gpsLatitude, gpsLongitude, gpsAccuracy, qualityScore, qualityGrade, qualityDeductions, outlineData, editOverrides }) => {
   const { data, error } = await sb.from('job_lidar_scans').insert({
     tenant_id: AV_TENANT,
     job_id: jobId,
@@ -733,6 +733,7 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode,
     quality_grade: qualityGrade ?? null,
     quality_deductions: qualityDeductions ?? null,
     outline_data: outlineData ?? null,
+    edit_overrides: editOverrides ?? null,
   }).select().single();
   return { data, error };
 };
@@ -740,7 +741,7 @@ export const sbGetJobLidarScans = async jobId => {
   const { data } = await sb.from('job_lidar_scans').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
   return data || [];
 };
-export const sbSaveLidarScan = async ({ contactId, rooms, totalSqft, captureMode, heightMeters, heightSource, heightPoints, gpsLatitude, gpsLongitude, gpsAccuracy, qualityScore, qualityGrade, qualityDeductions, outlineData }) => {
+export const sbSaveLidarScan = async ({ contactId, rooms, totalSqft, captureMode, heightMeters, heightSource, heightPoints, gpsLatitude, gpsLongitude, gpsAccuracy, qualityScore, qualityGrade, qualityDeductions, outlineData, editOverrides }) => {
   const { data, error } = await sb.from('contact_lidar_scans').insert({
     tenant_id: AV_TENANT,
     contact_id: contactId,
@@ -759,12 +760,19 @@ export const sbSaveLidarScan = async ({ contactId, rooms, totalSqft, captureMode
     quality_grade: qualityGrade ?? null,
     quality_deductions: qualityDeductions ?? null,
     outline_data: outlineData ?? null,
+    edit_overrides: editOverrides ?? null,
   }).select().single();
   return { data, error };
 };
 export const sbGetContactLidarScans = async contactId => {
   const { data } = await sb.from('contact_lidar_scans').select('*').eq('contact_id', contactId).order('created_at', { ascending: false });
   return data || [];
+};
+// Edit an existing scan's overrides (rotation, mirror, room name overrides). isJob=true → job_lidar_scans.
+export const sbUpdateScanOverrides = async (scanId, isJob, editOverrides) => {
+  const table = isJob ? 'job_lidar_scans' : 'contact_lidar_scans';
+  const { error } = await sb.from(table).update({ edit_overrides: editOverrides }).eq('id', scanId);
+  return { error };
 };
 
 // ─── Sequences (follow-up automation) ────────────────────────────────────────

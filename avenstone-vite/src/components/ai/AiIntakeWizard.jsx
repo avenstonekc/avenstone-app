@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import LidarScanner from './LidarScanner';
 import HeightCaptureStep from './HeightCaptureStep';
 import CaptureQualityReport from './CaptureQualityReport';
+import FloorPlanEditor from './FloorPlanEditor';
 import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan } from '../../lib/supabase';
 import { stampGPS } from '../../lib/gps';
 import { metersToFeet } from '../../lib/captureHeight';
@@ -14,7 +15,7 @@ const BORDER = '#E8E4DC';
 
 export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }) {
   const [rooms, setRooms] = useState([]);
-  const [step, setStep] = useState('scan'); // 'scan' | 'height' | 'report' | 'save'
+  const [step, setStep] = useState('scan'); // 'scan' | 'height' | 'report' | 'editor' | 'save'
   const [contacts, setContacts] = useState([]);
   const [contactSearch, setContactSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -23,6 +24,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
   const [exteriorResult, setExteriorResult] = useState(null);
   const [heightData, setHeightData] = useState(null); // { heightMeters, heightSource, heightPoints }
   const [qualityData, setQualityData] = useState(null); // { score, grade, deductions, rooms }
+  const [editOverrides, setEditOverrides] = useState(null); // { rotation, mirror, room_names }
 
   useEffect(() => {
     sb.from('contacts')
