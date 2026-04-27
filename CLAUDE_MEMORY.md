@@ -514,3 +514,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: avenstone-vite/src/components/common/SequencesScr.jsx
 - Decision: Expanded TRIGGERS constant to include bid_sent, sub_invited, payment_made, sub_inactive_60d with '(auto)' suffix labels. No grouping added — existing flat pattern retained. PMs can now create sequences for all wired trigger types from UI. No SQL required.
 - Open: Sequences track complete pending real-world testing.
+
+[LOG — 2026-04-28]
+- Action: Audited bid invitation system end-to-end
+- Files: none changed (audit only)
+- Decision: System is real and functional but thin — lump-sum only, scope is free-text typed by PM from scratch; no estimate_line_items, no consultation, no takeoff linkage. shared_doc_ids/shared_photo_ids are a stub (saved, never rendered for sub). The `bids` table is a ghost (no reads or writes in live code). bid_analytics exists but nothing in the ITB flow writes to it.
+- Open: Before takeoff wizard can feed bids cleanly, need to decide: (1) will ITBs stay lump-sum or become per-line? (2) should awarding a bid write to estimate_line_items? (3) is the ghost `bids` table worth wiring or should it be dropped?
