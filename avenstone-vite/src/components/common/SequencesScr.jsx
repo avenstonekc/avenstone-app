@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_TENANT, AV_USER_ID, ANON_KEY } from '../../lib/supabase';
+import { sb, AV_TENANT, AV_USER_ID, ANON_KEY, sbLoadActiveSubs } from '../../lib/supabase';
 import { Ic, isMob } from '../../lib/utils';
 
 const FN = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1';
 const hdr = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` });
-const TRIGGERS = { manual: 'Manual', new_contact: 'New Contact', missed_call: 'Missed Call' };
+const TRIGGERS = { manual: 'Manual', new_contact: 'New Contact', missed_call: 'Missed Call', manual_sub: 'Manual (Sub)' };
 const STATUS_C = { draft: '#9CA3AF', active: '#22c55e', paused: '#f59e0b' };
 
 function StatusBadge({ status, label }) {
@@ -54,6 +54,7 @@ export default function SequencesScr({ profile }) {
   const [selected, setSelected] = useState(null);
   const [enrollments, setEnrollments] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [subs, setSubs] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -64,7 +65,9 @@ export default function SequencesScr({ profile }) {
   const [editingSteps, setEditingSteps] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showEnroll, setShowEnroll] = useState(false);
+  const [enrollType, setEnrollType] = useState('contact');
   const [enrollContactId, setEnrollContactId] = useState('');
+  const [enrollSubId, setEnrollSubId] = useState('');
   const [enrolling, setEnrolling] = useState(false);
 
   async function loadSequences() {
@@ -81,7 +84,7 @@ export default function SequencesScr({ profile }) {
   async function loadEnrollments(seqId) {
     const { data, error } = await sb
       .from('sequence_enrollments')
-      .select('*, contact:contacts(first_name, last_name, phone, email)')
+      .select('*, contact:contacts(first_name, last_name, phone, email), sub:profiles!sub_id(full_name, phone)')
       .eq('sequence_id', seqId)
       .order('enrolled_at', { ascending: false });
     if (!error) setEnrollments(data || []);
@@ -96,12 +99,18 @@ export default function SequencesScr({ profile }) {
     if (!error) setContacts(data || []);
   }
 
+  async function loadSubs() {
+    const data = await sbLoadActiveSubs();
+    setSubs(data);
+  }
+
   useEffect(() => { loadSequences(); }, []);
 
   useEffect(() => {
     if (selected) {
       loadEnrollments(selected.id);
       loadContacts();
+      loadSubs();
     }
   }, [selected]);
 
@@ -165,9 +174,9 @@ export default function SequencesScr({ profile }) {
   }
 
   async function enrollContact() {
-    if (!enrollContactId) return;
+    const recipientId = enrollType === 'sub' ? enrollSubId : enrollContactId;
+    if (!recipientId) return;
     setEnrolling(true);
-    const contact = contacts.find(c => c.id === enrollContactId);
     const steps = selected?.steps || [];
     let nextSendAt;
     if (steps[0]?.day === 0) {
@@ -177,18 +186,24 @@ export default function SequencesScr({ profile }) {
       d.setDate(d.getDate() + (steps[0]?.day || 0));
       nextSendAt = d.toISOString();
     }
-    await sb.from('sequence_enrollments').insert({
+    const row = {
       tenant_id: AV_TENANT,
       sequence_id: selected.id,
-      contact_id: enrollContactId,
       status: 'active',
       current_step: 0,
       next_send_at: nextSendAt,
       enrolled_at: new Date().toISOString()
-    });
+    };
+    if (enrollType === 'sub') {
+      row.sub_id = enrollSubId;
+    } else {
+      row.contact_id = enrollContactId;
+    }
+    await sb.from('sequence_enrollments').insert(row);
     await loadEnrollments(selected.id);
     setShowEnroll(false);
     setEnrollContactId('');
+    setEnrollSubId('');
     setEnrolling(false);
   }
 
@@ -325,9 +340,9 @@ export default function SequencesScr({ profile }) {
                 <button
                   className="btn btn-navy"
                   style={{ fontSize: 13, padding: '6px 14px' }}
-                  onClick={() => { setShowEnroll(true); setEnrollContactId(''); }}
+                  onClick={() => { setShowEnroll(true); setEnrollContactId(''); setEnrollSubId(''); setEnrollType('contact'); }}
                 >
-                  + Enroll Contact
+                  + Enroll
                 </button>
               </div>
             </div>
@@ -387,7 +402,7 @@ export default function SequencesScr({ profile }) {
               <div className="card" style={{ padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontWeight: 600, color: '#0A1F44', fontSize: 15 }}>Enrolled Contacts</span>
+                    <span style={{ fontWeight: 600, color: '#0A1F44', fontSize: 15 }}>Enrolled</span>
                     <span style={{
                       background: '#0A1F4414', color: '#0A1F44', borderRadius: 20,
                       padding: '2px 8px', fontSize: 12, fontWeight: 600
@@ -399,13 +414,18 @@ export default function SequencesScr({ profile }) {
 
                 {enrollments.length === 0 ? (
                   <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 14, padding: '16px 0' }}>
-                    No contacts enrolled yet
+                    No one enrolled yet
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {enrollments.map(enr => {
+                      const isSubRow = !!enr.sub_id;
                       const c = enr.contact || {};
-                      const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown';
+                      const s = enr.sub || {};
+                      const name = isSubRow
+                        ? (s.full_name || 'Unknown Sub')
+                        : ([c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown');
+                      const phone = isSubRow ? s.phone : c.phone;
                       const totalSteps = Array.isArray(selected.steps) ? selected.steps.length : 0;
                       const isStopped = enr.status === 'stopped';
                       const isComplete = enr.status === 'complete';
@@ -416,8 +436,13 @@ export default function SequencesScr({ profile }) {
                           border: '1px solid #E8E4DC', flexWrap: 'wrap', gap: 8
                         }}>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: 14, color: '#0A1F44' }}>{name}</div>
-                            {c.phone && <div style={{ fontSize: 12, color: '#6B7280' }}>{c.phone}</div>}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontWeight: 600, fontSize: 14, color: '#0A1F44' }}>{name}</span>
+                              {isSubRow && (
+                                <span style={{ fontSize: 10, fontWeight: 600, color: '#C9A84C', background: '#C9A84C18', padding: '1px 6px', borderRadius: 10 }}>SUB</span>
+                              )}
+                            </div>
+                            {phone && <div style={{ fontSize: 12, color: '#6B7280' }}>{phone}</div>}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <EnrollStatusBadge status={enr.status} />
@@ -448,9 +473,9 @@ export default function SequencesScr({ profile }) {
                   <button
                     className="btn btn-ghost"
                     style={{ marginTop: 12, fontSize: 13 }}
-                    onClick={() => { setShowEnroll(true); setEnrollContactId(''); }}
+                    onClick={() => { setShowEnroll(true); setEnrollContactId(''); setEnrollSubId(''); setEnrollType('contact'); }}
                   >
-                    + Enroll Contact
+                    + Enroll
                   </button>
                 )}
               </div>
@@ -626,23 +651,69 @@ export default function SequencesScr({ profile }) {
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, width: '100%' }}>
             <div className="modal-title" style={{ marginBottom: 16 }}>Enroll in Sequence</div>
 
+            {/* Recipient type toggle */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 16, border: '1px solid #E8E4DC', borderRadius: 8, overflow: 'hidden' }}>
+              {['contact', 'sub'].map(t => (
+                <button
+                  key={t}
+                  onClick={() => setEnrollType(t)}
+                  style={{
+                    flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+                    background: enrollType === t ? '#0A1F44' : '#fff',
+                    color: enrollType === t ? '#fff' : '#6B7280',
+                    transition: 'background 0.15s'
+                  }}
+                >
+                  {t === 'contact' ? 'Contact' : 'Sub-contractor'}
+                </button>
+              ))}
+            </div>
+
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
-                Select Contact
-              </label>
-              <select
-                className="finp"
-                value={enrollContactId}
-                onChange={e => setEnrollContactId(e.target.value)}
-                style={{ width: '100%' }}
-              >
-                <option value="">— Choose a contact —</option>
-                {contacts.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {[c.first_name, c.last_name].filter(Boolean).join(' ')}{c.phone ? ` — ${c.phone}` : ''}
-                  </option>
-                ))}
-              </select>
+              {enrollType === 'contact' ? (
+                <>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                    Select Contact
+                  </label>
+                  <select
+                    className="finp"
+                    value={enrollContactId}
+                    onChange={e => setEnrollContactId(e.target.value)}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">— Choose a contact —</option>
+                    {contacts.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {[c.first_name, c.last_name].filter(Boolean).join(' ')}{c.phone ? ` — ${c.phone}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                    Select Sub-contractor
+                  </label>
+                  <select
+                    className="finp"
+                    value={enrollSubId}
+                    onChange={e => setEnrollSubId(e.target.value)}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">— Choose a sub —</option>
+                    {subs.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.full_name}{s.phone ? ` — ${s.phone}` : ' — no phone'}
+                      </option>
+                    ))}
+                  </select>
+                  {enrollSubId && !subs.find(s => s.id === enrollSubId)?.phone && (
+                    <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 6 }}>
+                      This sub has no phone number — SMS steps will be skipped.
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -650,7 +721,7 @@ export default function SequencesScr({ profile }) {
               <button
                 className="btn btn-navy"
                 onClick={enrollContact}
-                disabled={enrolling || !enrollContactId}
+                disabled={enrolling || (enrollType === 'contact' ? !enrollContactId : !enrollSubId)}
               >
                 {enrolling ? 'Enrolling...' : 'Enroll'}
               </button>

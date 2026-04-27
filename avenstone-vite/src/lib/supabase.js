@@ -351,6 +351,10 @@ export const sbLoadSubDirectory = async () => {
   const { data } = await sb.from('profiles').select('*').eq('tenant_id', AV_TENANT).eq('role', 'sub').order('full_name');
   return data || [];
 };
+export const sbLoadActiveSubs = async () => {
+  const { data } = await sb.from('profiles').select('id, full_name, phone, email').eq('tenant_id', AV_TENANT).eq('role', 'sub').order('full_name');
+  return data || [];
+};
 export const sbInviteSub = async (name, email, trade, phone) => {
   const res = await fetch(INVITE_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, full_name: name, role: 'sub', trade, phone, tenant_id: AV_TENANT }) });
   return res.json();
