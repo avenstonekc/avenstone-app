@@ -413,3 +413,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Action: Verified consultation_gap_analyses table state in live Supabase DB.
 - Decision: Table exists. All 6 columns (id, session_id, job_id, tenant_id, gaps, created_at) confirmed present via REST API column projection. Migration 20260425_consultation_gap_analyses.sql was already applied.
 - Open: none
+
+[LOG — 2026-04-26]
+- Action: Audited built-but-not-wired surfaces across codebase.
+- Files: none changed (audit only)
+- Decision: 4 confirmed DEAD surfaces (MaterialSelectionScr, FloorPlanEditor, SequencesScr, commission type='commission' UI), 2 PARTIAL (retainage columns exist in schema only — no UI reads/writes them; daily_tasks table + sbLoadDailyTasks exist but AiHomeScr queries the table inline without using the helper), 1 bonus dead (SubOnboardingModal listed in CLAUDE.md but the file doesn't exist — was never created). MasterAgent is WIRED (owner-only floating button, invokes ai-master-agent which does real DB writes: insert jobs/contacts/notes/phases/COs/payments/subs, update jobs/phases). AiFieldAgent is WIRED (voice orb UI, field-agent edge fn) but overlaps heavily with MasterAgent — field-agent has 5 tools vs master-agent's ~12; field-agent is voice-first for field use, master-agent is text-panel for owner. AiHomeScr is WIRED. QB columns (qb_account, qb_class) are populated via SettingsModal and exported via qbExport.js — WIRED for CSV; qb_customer/qb_vendor remain schema-only placeholders. inspection_checklist in ai_knowledge: zero rows confirmed via live REST query (returns []). FloorPlanEditor intentionally hidden (fa3582f) — code retained, no import anywhere.
+- Open: User decisions needed: (1) Kill or eventually wire MaterialSelectionScr? (2) Kill SequencesScr or add to NAV? (3) FloorPlanEditor — decide UX before rewiring. (4) Retainage UI — scope and build when needed. (5) SubOnboardingModal stale reference in CLAUDE.md — should be removed.
