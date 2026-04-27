@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { scanRoom, isLidarSupported, startExteriorScan, scanMultipleRooms } from '../../lib/lidar';
+import { scanRoom, isLidarSupported, scanMultipleRooms } from '../../lib/lidar';
 import { floorLabel, FLOOR_LABELS } from '../../lib/captureTypes.js';
 import FloorPlanCanvas from './FloorPlanCanvas';
 
@@ -144,14 +144,12 @@ function RoomCard({ room, onRemove }) {
   );
 }
 
-export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorCapture }) {
+export default function LidarScanner({ rooms, onRoomsChange, onDone }) {
   const [phase, setPhase] = useState('list');
   const [roomName, setRoomName] = useState('');
   const [scanProgress, setScanProgress] = useState(0);
   const [lastScanned, setLastScanned] = useState(null);
   const [supported, setSupported] = useState(false);
-  const [mode, setMode] = useState('interior'); // 'interior' | 'exterior'
-  const [exteriorScanning, setExteriorScanning] = useState(false);
   const [multiScanning, setMultiScanning] = useState(false);
   const [pendingFloorIndex, setPendingFloorIndex] = useState(0);
   const inputRef = useRef(null);
@@ -230,17 +228,6 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
     setMultiScanning(false);
   }
 
-  async function handleStartExteriorScan() {
-    setExteriorScanning(true);
-    try {
-      const result = await startExteriorScan();
-      if (onExteriorCapture) onExteriorCapture(result);
-    } catch (err) {
-      // cancelled — no-op
-    }
-    setExteriorScanning(false);
-  }
-
   const containerStyle = {
     fontFamily: '"DM Sans", sans-serif',
     background: CREAM,
@@ -309,8 +296,6 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
       {phase === 'list' && (
         <ListPhase
           rooms={rooms}
-          mode={mode}
-          onModeChange={setMode}
           supported={supported}
           onAddRoom={() => { setRoomName(''); setPhase('naming'); }}
           onOpenFloorPicker={handleOpenFloorPicker}
@@ -318,8 +303,6 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
           multiScanning={multiScanning}
           onRemoveRoom={handleRemoveRoom}
           onDone={onDone}
-          onStartExteriorScan={handleStartExteriorScan}
-          exteriorScanning={exteriorScanning}
           headingStyle={headingStyle}
           btnGold={btnGold}
           btnNavy={btnNavy}
@@ -375,79 +358,40 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone, onExteriorC
   );
 }
 
-function ListPhase({ rooms, mode, onModeChange, supported, onAddRoom, onOpenFloorPicker, onStartMultiRoomScan, multiScanning, onRemoveRoom, onDone, onStartExteriorScan, exteriorScanning, headingStyle, btnGold, btnNavy }) {
+function ListPhase({ rooms, supported, onAddRoom, onOpenFloorPicker, onStartMultiRoomScan, multiScanning, onRemoveRoom, onDone, headingStyle, btnGold, btnNavy }) {
   return (
     <div>
-      {/* Mode toggle */}
-      <div style={{ display: 'flex', background: '#E8E4DC', borderRadius: 8, padding: 3, marginBottom: 20 }}>
-        {['interior', 'exterior'].map(m => (
-          <button
-            key={m}
-            onClick={() => onModeChange(m)}
-            style={{
-              flex: 1, padding: '8px 0', border: 'none', cursor: 'pointer', borderRadius: 6,
-              fontFamily: '"DM Sans", sans-serif', fontWeight: 600, fontSize: 14,
-              background: mode === m ? NAVY : 'transparent',
-              color: mode === m ? '#fff' : '#555',
-              transition: 'background 0.15s, color 0.15s',
-            }}
-          >
-            {m === 'interior' ? 'Interior Rooms' : 'Exterior Outline'}
-          </button>
-        ))}
-      </div>
-
-      {mode === 'interior' ? (
-        <>
-          <h2 style={{ ...headingStyle, fontSize: 22, marginBottom: 18 }}>Room Measurements</h2>
-          {rooms.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '32px 0', color: '#888', fontSize: 14, fontFamily: '"DM Sans", sans-serif' }}>
-              No rooms scanned yet. Add your first room to begin.
-            </div>
-          ) : (
-            <>
-              {rooms.map((room, i) => (
-                <RoomCard key={room.name + i} room={room} onRemove={() => onRemoveRoom(i)} />
-              ))}
-              <FloorPlanCanvas rooms={rooms} />
-            </>
-          )}
-          <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
-            {supported ? (
-              multiScanning ? (
-                <div style={{ fontSize: 13, color: NAVY, fontFamily: '"DM Sans", sans-serif', fontWeight: 600, padding: '11px 0' }}>
-                  Launching scanner...
-                </div>
-              ) : (
-                <button style={btnGold} onClick={onOpenFloorPicker}>
-                  {rooms.length === 0 ? 'Start Scan' : '+ Add Another Floor'}
-                </button>
-              )
-            ) : (
-              <button style={btnGold} onClick={onAddRoom}>+ Add Room</button>
-            )}
-            {rooms.length > 0 && !multiScanning && (
-              <button style={btnNavy} onClick={onDone}>Done / Use These Measurements</button>
-            )}
-          </div>
-        </>
+      <h2 style={{ ...headingStyle, fontSize: 22, marginBottom: 18 }}>Room Measurements</h2>
+      {rooms.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '32px 0', color: '#888', fontSize: 14, fontFamily: '"DM Sans", sans-serif' }}>
+          No rooms scanned yet. Add your first room to begin.
+        </div>
       ) : (
         <>
-          <h2 style={{ ...headingStyle, fontSize: 22, marginBottom: 10 }}>Exterior Outline</h2>
-          <p style={{ fontSize: 13, color: '#666', fontFamily: '"DM Sans", sans-serif', marginBottom: 28, lineHeight: 1.5 }}>
-            Walk the perimeter of the building. Tap each corner to place a marker. The app calculates square footage automatically using AR.
-          </p>
-          {exteriorScanning ? (
-            <div style={{ textAlign: 'center', padding: '16px 0', color: NAVY, fontFamily: '"DM Sans", sans-serif', fontSize: 14, fontWeight: 600 }}>
-              Launching AR scanner...
-            </div>
-          ) : (
-            <button style={{ ...btnGold, width: '100%' }} onClick={onStartExteriorScan}>
-              Start Exterior Scan
-            </button>
-          )}
+          {rooms.map((room, i) => (
+            <RoomCard key={room.name + i} room={room} onRemove={() => onRemoveRoom(i)} />
+          ))}
+          <FloorPlanCanvas rooms={rooms} />
         </>
       )}
+      <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
+        {supported ? (
+          multiScanning ? (
+            <div style={{ fontSize: 13, color: NAVY, fontFamily: '"DM Sans", sans-serif', fontWeight: 600, padding: '11px 0' }}>
+              Launching scanner...
+            </div>
+          ) : (
+            <button style={btnGold} onClick={onOpenFloorPicker}>
+              {rooms.length === 0 ? 'Start Scan' : '+ Add Another Floor'}
+            </button>
+          )
+        ) : (
+          <button style={btnGold} onClick={onAddRoom}>+ Add Room</button>
+        )}
+        {rooms.length > 0 && !multiScanning && (
+          <button style={btnNavy} onClick={onDone}>Done / Use These Measurements</button>
+        )}
+      </div>
     </div>
   );
 }

@@ -74,10 +74,21 @@ export default function FloorPlanTab({ job, profile }) {
           {scans.map((scan, i) => {
             const isExterior = scan.capture_mode === 'exterior';
             const rooms = scan.rooms || [];
-            const outline = scan.outline_data || {};
-            const totalSqft = isExterior
-              ? (outline.areaSqft || scan.total_sqft || 0)
-              : rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
+            const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0) || scan.total_sqft || 0;
+
+            if (isExterior) {
+              return (
+                <div key={scan.id || i} className="card" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '16px', color: '#0A1F44' }}>
+                      {formatDate(scan.created_at || scan.scanned_at)}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#888' }}>Legacy scan · {formatSqft(totalSqft)} sf</span>
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div key={scan.id || i} className="card" style={{ padding: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
@@ -85,11 +96,6 @@ export default function FloorPlanTab({ job, profile }) {
                     <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '16px', color: '#0A1F44' }}>
                       {formatDate(scan.created_at || scan.scanned_at)}
                     </span>
-                    {isExterior && (
-                      <span style={{ marginLeft: '8px', fontSize: '11px', fontWeight: '600', color: '#C9A84C', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Exterior
-                      </span>
-                    )}
                     {scan.height_meters == null && (
                       <span style={{ marginLeft: '8px', fontSize: '11px', fontWeight: '600', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         Height missing
@@ -100,20 +106,7 @@ export default function FloorPlanTab({ job, profile }) {
                     {formatSqft(totalSqft)} sf
                   </span>
                 </div>
-                {isExterior ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
-                    {outline.perimeterFt && (
-                      <span style={{ backgroundColor: '#0A1F44', color: '#fff', fontSize: '12px', fontWeight: '500', borderRadius: '20px', padding: '4px 10px' }}>
-                        {outline.perimeterFt} ft perimeter
-                      </span>
-                    )}
-                    {outline.corners && (
-                      <span style={{ backgroundColor: '#E8E4DC', color: '#555', fontSize: '12px', fontWeight: '500', borderRadius: '20px', padding: '4px 10px' }}>
-                        {outline.corners.length} corners
-                      </span>
-                    )}
-                  </div>
-                ) : rooms.length > 0 && (
+                {rooms.length > 0 && (
                   <>
                     <FloorPlanCanvas rooms={rooms} compact={rooms.length < 3} />
                     <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
