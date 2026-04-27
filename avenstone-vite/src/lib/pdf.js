@@ -904,25 +904,26 @@ const _drawTitleColumn = (doc, H, job, floorName, floorNum, totalFloors, pageNum
   // Gold accent line on right edge
   doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(TC_W, 0, TC_W, H);
   // Logo or fallback text
-  const logoW = TC_W - M * 2;
-  const logoH = Math.round(logoW / 3);
+  const logoSize = 88;
+  const logoX = (TC_W - logoSize) / 2;
+  const logoY = 12;
   if (logoDataUrl) {
-    doc.addImage(logoDataUrl, 'PNG', M, M + 4, logoW, logoH);
+    doc.addImage(logoDataUrl, 'JPEG', logoX, logoY, logoSize, logoSize);
   } else {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...gold);
-    doc.text('AVENSTONE', TC_W / 2, M + 10, { align: 'center' });
-    doc.text('GROUP', TC_W / 2, M + 22, { align: 'center' });
+    doc.text('AVENSTONE', TC_W / 2, logoY + 30, { align: 'center' });
+    doc.text('GROUP', TC_W / 2, logoY + 42, { align: 'center' });
   }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(180, 180, 180);
-  doc.text('FLOOR PLAN', TC_W / 2, M + logoH + 12, { align: 'center' });
-  doc.setDrawColor(...gold); doc.setLineWidth(0.5); doc.line(M, M + logoH + 18, TC_W - M, M + logoH + 18);
+  doc.text('FLOOR PLAN', TC_W / 2, logoY + logoSize + 8, { align: 'center' });
+  doc.setDrawColor(...gold); doc.setLineWidth(0.5); doc.line(M, logoY + logoSize + 14, TC_W - M, logoY + logoSize + 14);
   // Address
   const date = job.captured_at
     ? new Date(job.captured_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
   const addrLines = doc.splitTextToSize(job.address || 'Property Address', TC_W - M * 2);
-  let ty = M + logoH + 28;
+  let ty = logoY + logoSize + 24;
   addrLines.slice(0, 3).forEach(ln => { doc.text(ln, TC_W / 2, ty, { align: 'center' }); ty += 9; });
   if (job.client_name) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(200, 200, 200);
@@ -1325,15 +1326,14 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl) 
   doc.setFillColor(...navy); doc.rect(0, 0, W, 52, 'F');
   doc.setFillColor(...gold); doc.rect(0, 52, W, 3, 'F');
   if (logoDataUrl) {
-    const logoH = 28;
-    const logoW = Math.round(logoH * 3);
-    doc.addImage(logoDataUrl, 'PNG', M, 12, logoW, logoH);
+    const logoSize = 40;
+    doc.addImage(logoDataUrl, 'JPEG', M, 6, logoSize, logoSize);
   } else {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...gold);
     doc.text('AVENSTONE GROUP', M, 22);
   }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(200, 200, 200);
-  doc.text('ROOM DETAILS', M, 44);
+  doc.text('ROOM DETAILS', M, 50);
   doc.setFontSize(8); doc.setTextColor(180, 180, 180);
   doc.text(job.address || '', W - M, 22, { align: 'right' });
 
