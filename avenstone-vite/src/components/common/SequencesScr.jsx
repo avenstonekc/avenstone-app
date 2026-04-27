@@ -4,7 +4,16 @@ import { Ic, isMob } from '../../lib/utils';
 
 const FN = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1';
 const hdr = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` });
-const TRIGGERS = { manual: 'Manual', new_contact: 'New Contact', missed_call: 'Missed Call', manual_sub: 'Manual (Sub)' };
+const TRIGGERS = {
+  manual:           'Manual',
+  manual_sub:       'Manual — sub-contractor',
+  new_contact:      'New Contact',
+  missed_call:      'Missed Call',
+  bid_sent:         'Bid sent (auto)',
+  sub_invited:      'Sub invited (auto)',
+  payment_made:     'Sub paid (auto)',
+  sub_inactive_60d: 'Sub inactive 60+ days (auto)',
+};
 const STATUS_C = { draft: '#9CA3AF', active: '#22c55e', paused: '#f59e0b' };
 
 function StatusBadge({ status, label }) {
