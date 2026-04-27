@@ -35,7 +35,7 @@ export default function FloorPlanTab({ job, profile }) {
   const handleExportPDF = async (scan) => {
     setExportingId(scan.id);
     try {
-      const doc = buildFloorPlanPDF(scan, job);
+      const doc = await buildFloorPlanPDF(scan, job);
       const blob = doc.output('blob');
       const date = new Date(scan.created_at || scan.scanned_at).toISOString().slice(0, 10);
       const filename = `floor-plan-${date}.pdf`;

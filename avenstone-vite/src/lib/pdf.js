@@ -1,5 +1,18 @@
 import jsPDF from 'jspdf';
 import { floorLabel as _floorLabel } from './captureTypes.js';
+import logoUrl from '../assets/logo.png';
+
+const _loadLogo = () => new Promise(resolve => {
+  fetch(logoUrl)
+    .then(r => r.blob())
+    .then(blob => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    })
+    .catch(() => resolve(null));
+});
 
 // ─── Floor plan edit overrides ─────────────────────────────────────────────
 // Applied to a scan dict before any other processing. Returns a new scan with:
@@ -869,27 +882,33 @@ const _drawScaleBar = (doc, x, y, scale) => {
 };
 
 // Left-side vertical title column.
-const _drawTitleColumn = (doc, H, job, floorName, floorNum, totalFloors, pageNum, totalPages) => {
+const _drawTitleColumn = (doc, H, job, floorName, floorNum, totalFloors, pageNum, totalPages, logoDataUrl) => {
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [100, 100, 100];
   const TC_W = 108, M = 30;
   // Navy background strip
   doc.setFillColor(...navy); doc.rect(0, 0, TC_W, H, 'F');
   // Gold accent line on right edge
   doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(TC_W, 0, TC_W, H);
-  // Company name (rotated — draw as stacked text since jsPDF doesn't rotate easily)
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...gold);
-  doc.text('AVENSTONE', TC_W / 2, M + 10, { align: 'center' });
-  doc.text('GROUP', TC_W / 2, M + 22, { align: 'center' });
+  // Logo or fallback text
+  const logoW = TC_W - M * 2;
+  const logoH = Math.round(logoW / 3);
+  if (logoDataUrl) {
+    doc.addImage(logoDataUrl, 'PNG', M, M + 4, logoW, logoH);
+  } else {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...gold);
+    doc.text('AVENSTONE', TC_W / 2, M + 10, { align: 'center' });
+    doc.text('GROUP', TC_W / 2, M + 22, { align: 'center' });
+  }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(180, 180, 180);
-  doc.text('FLOOR PLAN', TC_W / 2, M + 33, { align: 'center' });
-  doc.setDrawColor(...gold); doc.setLineWidth(0.5); doc.line(M, M + 40, TC_W - M, M + 40);
+  doc.text('FLOOR PLAN', TC_W / 2, M + logoH + 12, { align: 'center' });
+  doc.setDrawColor(...gold); doc.setLineWidth(0.5); doc.line(M, M + logoH + 18, TC_W - M, M + logoH + 18);
   // Address
   const date = job.captured_at
     ? new Date(job.captured_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
   const addrLines = doc.splitTextToSize(job.address || 'Property Address', TC_W - M * 2);
-  let ty = M + 52;
+  let ty = M + logoH + 28;
   addrLines.slice(0, 3).forEach(ln => { doc.text(ln, TC_W / 2, ty, { align: 'center' }); ty += 9; });
   if (job.client_name) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(200, 200, 200);
@@ -910,10 +929,10 @@ const _drawTitleColumn = (doc, H, job, floorName, floorNum, totalFloors, pageNum
 };
 
 // ─── Floor page renderer ──────────────────────────────────────────────────────
-const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, totalPages, W, H) => {
+const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, totalPages, W, H, logoDataUrl) => {
   const navy = [10, 31, 68];
 
-  _drawTitleColumn(doc, H, job, floor.floorName, floorNum, totalFloors, pageNum, totalPages);
+  _drawTitleColumn(doc, H, job, floor.floorName, floorNum, totalFloors, pageNum, totalPages, logoDataUrl);
 
   // Drawing bounds: left column (TC_W=108) + dim bands (60pt each side)
   const DL = 168, DR = 704, DT = 82, DB = 558;
@@ -1228,18 +1247,24 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
   _drawScaleBar(doc, DL, DB + 14, scale);
 };
 
-// ─── Summary page (room details table, grouped by floor) ─────────────────────
-const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
+// ─── Summary page (room details table, grouped by floor) — portrait letter 612×792 ──
+const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl) => {
   const W = 612;
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
   const M = 48;
 
   doc.setFillColor(...navy); doc.rect(0, 0, W, 52, 'F');
   doc.setFillColor(...gold); doc.rect(0, 52, W, 3, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...gold);
-  doc.text('AVENSTONE GROUP', M, 22);
+  if (logoDataUrl) {
+    const logoH = 28;
+    const logoW = Math.round(logoH * 3);
+    doc.addImage(logoDataUrl, 'PNG', M, 12, logoW, logoH);
+  } else {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...gold);
+    doc.text('AVENSTONE GROUP', M, 22);
+  }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(200, 200, 200);
-  doc.text('ROOM DETAILS', M, 36);
+  doc.text('ROOM DETAILS', M, 44);
   doc.setFontSize(8); doc.setTextColor(180, 180, 180);
   doc.text(job.address || '', W - M, 22, { align: 'right' });
 
@@ -1341,9 +1366,10 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages) => {
 };
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
-export const buildFloorPlanPDF = (rawScan, job) => {
+export const buildFloorPlanPDF = async (rawScan, job) => {
   try {
     console.log('[LIDAR_PDF_STAGE] buildFloorPlanPDF start');
+    const logoDataUrl = await _loadLogo();
     const scan = applyEditOverrides(rawScan);
     const rooms = scan.rooms || [];
     console.log('[LIDAR_DEBUG] Full rooms payload:', JSON.stringify(rooms, null, 2));
@@ -1364,12 +1390,12 @@ export const buildFloorPlanPDF = (rawScan, job) => {
       console.log(`[LIDAR_PDF_STAGE] rendering floor page ${fi + 1}/${totalFloors} — ${floor.floorName}`);
       console.log(`[LIDAR_DEBUG] page ${fi + 1} orientation: W=${W} H=${H}`);
       if (fi > 0) doc.addPage('letter', 'landscape');
-      _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H);
+      _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H, logoDataUrl);
     });
 
     console.log('[LIDAR_PDF_STAGE] rendering summary page');
-    doc.addPage('letter');
-    _renderSummaryPage(doc, floors, job, totalPages, totalPages);
+    doc.addPage('letter', 'portrait');
+    _renderSummaryPage(doc, floors, job, totalPages, totalPages, logoDataUrl);
 
     console.log('[LIDAR_PDF_STAGE] buildFloorPlanPDF complete');
     return doc;
