@@ -481,3 +481,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: supabase/functions/sequence-runner/index.ts
 - Decision: Email delivery routes through existing notify-email edge fn (Resend) for sub recipients (subs are profiles, so user_id lookup works + opt-out applies). Contact recipients call Resend directly — contacts are not profiles so notify-email's user_id lookup can't resolve them. step.action_type defaults to 'sms' for existing steps without the field, preserving all prior behavior.
 - Open: Re-run the sub email test prompt — should now deliver. Auto-trigger wiring (bid_sent, sub_invited, payment_made) + time-based triggers still pending.
+
+[LOG — 2026-04-26]
+- Action: Aggressive wall squaring + label render order fix
+- Files: avenstone-vite/src/lib/pdf.js
+- Decision: Snap tolerance widened 5°→10° so near-ortho walls force exactly 0°/90°; genuinely angled walls (>10° off square) stay as-is. Endpoint merge tolerance widened 2 in→6 in so near-touching corners collapse cleanly. Both constants are in _snapToOrtho. Label z-order was already correct (labels after poché); root cause was narrow rooms (hallways, aspect > 3) skipping the wall-margin check — centroid could land on a wall. Fix: narrow rooms now also run _labelFitsInRoom with rotated dims and fall back to _interiorPoint when centroid clips a wall.
+- Open: If hallways are still very narrow (< ~2 ft rendered), font may still clip — could add font-size reduction loop as a follow-up.
