@@ -502,3 +502,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: send-bid-invite auto-enrolls userId in bid_sent sequences only when Resend call succeeds (res.ok gate). send-invite auto-enrolls in sub_invited sequences after inviteUserByEmail succeeds.
 - Decision: TransactionModal shows a sub picker dropdown (sbLoadActiveSubs) when type=sub_payout. Selecting a sub sets payer_or_payee_id (uuid) + auto-fills payer_or_payee_name. payer_or_payee_id now included in save payload — sbCreateTransaction uses it for payment_made enrollment.
 - Open: Time-based triggers (bid_overdue, invoice_overdue) still deferred — require cron wrapper.
+
+[LOG — 2026-04-28]
+- Action: Time-based trigger sub_inactive_60d wired
+- Files: supabase/migrations/20260428_sequences_inactive_sub_trigger.sql (new), supabase/functions/sequence-runner/index.ts (inactive-sub scan block)
+- Decision: Option A — extended sequence-runner (already pg_cron'd `*/15 * * * *`) rather than creating a new edge function. Inactive-sub scan is gated to `getUTCHours() === 4` so it runs at most 4 times per day (4:00/4:15/4:30/4:45 UTC); idempotency means 2nd–4th runs are no-ops. Activity signal is `bid_responses.submitted_at` (most recent per sub); no bids ever + profile created >60 days ago also qualifies. 60-day window hardcoded. Other time-based triggers (bid_overdue, invoice_overdue) deferred.
+- Open: SequencesScr UI trigger dropdown does not yet list sub_inactive_60d — PM creating a re-engagement sequence would need to insert `trigger='sub_inactive_60d'` manually via SQL until dropdown is updated.
