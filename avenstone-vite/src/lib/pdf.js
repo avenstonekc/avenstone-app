@@ -1281,14 +1281,23 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     const nameW = nameTxt.length * fs * 0.55, nameH = fs + 2;
 
     // Wall-margin test: if horizontal label box clips a wall, try rotated; log if neither fits.
-    if (!narrow && segs && segs.length >= 3) {
+    if (segs && segs.length >= 3) {
       const poly = _segsToPolyPoints(segs);
       const lw = nameW + 8, lh = 18;
-      if (!_labelFitsInRoom(labelX, labelY, lw, lh, poly, segs)) {
-        if (_labelFitsInRoom(labelX, labelY, lh, lw, poly, segs)) {
-          narrow = true; // rotated placement clears walls
-        } else {
-          console.log(`[LIDAR_PDF_LABEL] room "${nameTxt}" no clean placement`);
+      if (!narrow) {
+        if (!_labelFitsInRoom(labelX, labelY, lw, lh, poly, segs)) {
+          if (_labelFitsInRoom(labelX, labelY, lh, lw, poly, segs)) {
+            narrow = true; // rotated placement clears walls
+          } else {
+            console.log(`[LIDAR_PDF_LABEL] room "${nameTxt}" no clean placement`);
+          }
+        }
+      } else {
+        // Narrow (rotated) label — swap dims for the margin check.
+        // If centroid clips a wall, fall back to the max-clearance interior point.
+        if (!_labelFitsInRoom(labelX, labelY, lh, lw, poly, segs)) {
+          const ip = _interiorPoint(poly, segs);
+          labelX = oX + ip.x * scale; labelY = oY + ip.z * scale;
         }
       }
     }
