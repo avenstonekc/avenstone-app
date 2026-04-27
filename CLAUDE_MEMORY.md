@@ -431,3 +431,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: avenstone-vite/src/lib/supabase.js
 - Decision: SequencesScr retained for sub-ops automation pivot (see separate audit). sbLoadDailyTasks superseded by inline query in AiHomeScr; only caller reference was in CLAUDE_MEMORY.md logs, not live code.
 - Open: SequencesScr scope-change audit pending; MaterialSelectionScr still unwired pending decision on landing surface.
+
+[LOG — 2026-04-26]
+- Action: Removed "Brief me" auto-fire from AI Home screen
+- Files: avenstone-vite/src/components/ai/AiHomeScr.jsx
+- Decision: Asking the app what to do on open is dead weight — if the app has to tell you, it failed. Removed the useEffect auto-trigger (sendMessage('brief me', [])) and hasOpened ref. Empty state now shows neutral "Ask me anything about your projects" + "Daily to-do list coming soon" placeholder card when no tasks. ai-pm-nightly rule checks and edge function untouched.
+- Open: To-do tab design + build (separate prompt).
