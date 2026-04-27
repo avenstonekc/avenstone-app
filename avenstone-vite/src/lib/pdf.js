@@ -1223,6 +1223,29 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
   const _labelCollides = (lx, ly, lw, lh) =>
     existingBoxes.some(b => _boxesOverlap(lx - lw/2, ly - lh/2, lw, lh, b.x, b.y, b.w, b.h));
 
+  // Wall-margin helpers — test that all four corners of a label box (page coords)
+  // are inside the room polygon AND at least WALL_MARGIN_PT away from every wall seg.
+  const WALL_MARGIN_PT = 6;
+  const _ptSegDistFt = (px, pz, s) => {
+    const dx = s.x2 - s.x1, dz = s.z2 - s.z1, len2 = dx*dx + dz*dz;
+    if (len2 < 0.0001) return Math.hypot(px - s.x1, pz - s.z1);
+    const t = Math.max(0, Math.min(1, ((px-s.x1)*dx + (pz-s.z1)*dz) / len2));
+    return Math.hypot(px - s.x1 - t*dx, pz - s.z1 - t*dz);
+  };
+  const _labelFitsInRoom = (cx, cy, lw, lh, poly, roomSegs) => {
+    const marginFt = WALL_MARGIN_PT / scale;
+    const corners = [
+      [(cx - lw/2 - oX) / scale, (cy - lh/2 - oY) / scale],
+      [(cx + lw/2 - oX) / scale, (cy - lh/2 - oY) / scale],
+      [(cx + lw/2 - oX) / scale, (cy + lh/2 - oY) / scale],
+      [(cx - lw/2 - oX) / scale, (cy + lh/2 - oY) / scale],
+    ];
+    return corners.every(([px, pz]) =>
+      _pointInPoly(px, pz, poly) &&
+      (!roomSegs || roomSegs.every(s => _ptSegDistFt(px, pz, s) >= marginFt))
+    );
+  };
+
   for (const { room, segs, x, y, w, h } of roomLayouts) {
     let labelX, labelY;
     if (segs && segs.length >= 3) {
@@ -1242,20 +1265,32 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       return room.sqft || 0;
     })();
     const aspect = w > 0 && h > 0 ? Math.max(w, h) / Math.min(w, h) : 1;
-    const narrow = aspect > 3;
+    let narrow = aspect > 3;
     let fs = Math.max(7, Math.min(11, (narrow ? h : w) / 8));
 
-    // Collision check: try original position, then shift toward centroid, then reduce font
     const nameTxt = room.name || '—';
     const nameW = nameTxt.length * fs * 0.55, nameH = fs + 2;
+
+    // Wall-margin test: if horizontal label box clips a wall, try rotated; log if neither fits.
+    if (!narrow && segs && segs.length >= 3) {
+      const poly = _segsToPolyPoints(segs);
+      const lw = nameW + 8, lh = 18;
+      if (!_labelFitsInRoom(labelX, labelY, lw, lh, poly, segs)) {
+        if (_labelFitsInRoom(labelX, labelY, lh, lw, poly, segs)) {
+          narrow = true; // rotated placement clears walls
+        } else {
+          console.log(`[LIDAR_PDF_LABEL] room "${nameTxt}" no clean placement`);
+        }
+      }
+    }
+
+    // Collision check against dim labels (only when not already rotating)
     if (!narrow && _labelCollides(labelX, labelY - 4, nameW, nameH)) {
-      // Try shifting toward interior point
       if (segs && segs.length >= 3) {
         const ip = _interiorPoint(_segsToPolyPoints(segs), segs);
         const altX = oX + ip.x * scale, altY = oY + ip.z * scale;
         if (!_labelCollides(altX, altY - 4, nameW, nameH)) { labelX = altX; labelY = altY; }
         else {
-          // Try font reduction 10%
           fs = Math.max(6, fs * 0.9);
           if (_labelCollides(labelX, labelY - 4, nameTxt.length * fs * 0.55, fs + 2)) {
             console.warn(`[LIDAR_WARN] room label collision unresolved for ${nameTxt}`);
@@ -1269,7 +1304,6 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       doc.text(nameTxt, labelX, labelY, { align: 'center', baseline: 'middle', angle: 90 });
     } else {
       doc.text(nameTxt, labelX, labelY - 4, { align: 'center', baseline: 'middle' });
-      // Register the placed name label box so subsequent rooms avoid it
       existingBoxes.push({ x: labelX - nameW/2, y: labelY - 4 - nameH/2, w: nameW, h: nameH });
       if (sqft > 0) {
         doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
