@@ -36,16 +36,9 @@ export default function AiHomeScr({ profile, jobs, nav, onOpenJob }) {
   const [tasks, setTasks] = useState([]);
   const [tasksExpanded, setTasksExpanded] = useState(true);
 
-  const hasOpened = useRef(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const recognitionRef = useRef(null);
-
-  useEffect(() => {
-    if (!profile?.id || hasOpened.current) return;
-    hasOpened.current = true;
-    sendMessage('brief me', []);
-  }, [profile?.id]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -288,15 +281,30 @@ export default function AiHomeScr({ profile, jobs, nav, onOpenJob }) {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 12,
-            color: '#C9A84C',
-            opacity: 0.5,
-            paddingTop: 60
+            gap: 16,
+            paddingTop: 40,
+            paddingBottom: 40,
           }}>
-            <div style={{ width: 40, height: 40 }}>
+            <div style={{ width: 36, height: 36, color: '#C9A84C', opacity: 0.5 }}>
               <IcSparkle />
             </div>
-            <div style={{ fontSize: 14, color: '#9CA3AF' }}>Preparing your briefing…</div>
+            <div style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center' }}>
+              Ask me anything about your projects
+            </div>
+            {tasks.length === 0 && (
+              <div style={{
+                marginTop: 8,
+                background: '#fff',
+                border: '1px solid #E8E4DC',
+                borderRadius: 10,
+                padding: '14px 20px',
+                textAlign: 'center',
+                maxWidth: 280,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 4 }}>Daily to-do list</div>
+                <div style={{ fontSize: 12, color: '#9CA3AF' }}>Coming soon</div>
+              </div>
+            )}
           </div>
         )}
 
