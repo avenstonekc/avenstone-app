@@ -468,3 +468,10 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: avenstone-vite/src/components/ai/AiIntakeWizard.jsx, avenstone-vite/ios/App/CapApp-SPM/Sources/CapApp-SPM/RoomPlanPlugin.swift, avenstone-vite/ios/App/CapApp-SPM/Sources/CapApp-SPM/ExteriorScanViewController.swift
 - Decision: Score was noise once scans stabilized. Removed live bar overlay from RoomPlanScanViewController and ExteriorScanViewController; removed 'report' step from AiIntakeWizard (flow is now scan → height → save). CaptureQualityTracker class retained. DB columns retained nullable; qualityScore/Grade/Deductions saved as null going forward.
 - Open: none
+
+[LOG — 2026-04-26]
+- Action: Soft rip exterior AR scan UI
+- Files: avenstone-vite/src/components/ai/LidarScanner.jsx, avenstone-vite/src/components/ai/AiIntakeWizard.jsx, avenstone-vite/src/components/jobs/tabs/FloorPlanTab.jsx
+- Decision: Dot-on-corners ARKit method doesn't get accurate measurements outdoors — removed mode toggle from LidarScanner (interior-only now). Removed exteriorResult state, handleExteriorCapture(), saveExterior(), and all exterior branches from AiIntakeWizard. Legacy exterior records in FloorPlanTab render as a minimal "Legacy scan · N sf" row with date — no crash on null outline_data.
+- Decision: ExteriorScanViewController.swift and startExteriorScan() in RoomPlanPlugin.swift left untouched (dead code, retained for potential revisit). DB capture_mode column unchanged.
+- Open: none
