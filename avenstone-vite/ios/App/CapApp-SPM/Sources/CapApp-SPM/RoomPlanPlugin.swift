@@ -481,14 +481,14 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
     private var isFinishing = false
     private var isTransitioning = false
     private var isCancelling = false
-    private var structuredRooms: [[String: Any]] = []
+    private var structuredRooms: [[String: Any]] = [] // DEAD CODE: showNamingScreen only
 
     // Scan HUD
     private var roomCountLabel: UILabel!
     private var nextRoomButton: UIButton!
     private var doneButton: UIButton!
     private var processingOverlay: UIView!
-    private var nameFields: [UITextField] = []
+    private var nameFields: [UITextField] = [] // DEAD CODE: showNamingScreen only
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -867,18 +867,95 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         return nameMap
     }
 
+    private func matchNamesByArea(_ structure: CapturedStructure) -> [Int: (String, Int)] {
+        guard !roomNames.isEmpty, !structure.rooms.isEmpty else { return [:] }
+        let m2ft2: Float = 10.764
+
+        let capturedAreas: [Float] = capturedRooms.map { room in
+            var minX: Float = .greatestFiniteMagnitude, maxX: Float = -.greatestFiniteMagnitude
+            var minZ: Float = .greatestFiniteMagnitude, maxZ: Float = -.greatestFiniteMagnitude
+            for wall in room.walls {
+                let t = wall.transform
+                let cx = t.columns.3.x, cz = t.columns.3.z
+                let hw = wall.dimensions.x / 2.0
+                let dx = t.columns.0.x, dz = t.columns.0.z
+                minX = min(minX, cx + dx*hw, cx - dx*hw)
+                maxX = max(maxX, cx + dx*hw, cx - dx*hw)
+                minZ = min(minZ, cz + dz*hw, cz - dz*hw)
+                maxZ = max(maxZ, cz + dz*hw, cz - dz*hw)
+            }
+            if minX == .greatestFiniteMagnitude { return 0 }
+            return (maxX - minX) * (maxZ - minZ) * m2ft2
+        }
+
+        let rebuiltAreas: [Float] = structure.rooms.map { room in
+            var minX: Float = .greatestFiniteMagnitude, maxX: Float = -.greatestFiniteMagnitude
+            var minZ: Float = .greatestFiniteMagnitude, maxZ: Float = -.greatestFiniteMagnitude
+            for wall in room.walls {
+                let t = wall.transform
+                let cx = t.columns.3.x, cz = t.columns.3.z
+                let hw = wall.dimensions.x / 2.0
+                let dx = t.columns.0.x, dz = t.columns.0.z
+                minX = min(minX, cx + dx*hw, cx - dx*hw)
+                maxX = max(maxX, cx + dx*hw, cx - dx*hw)
+                minZ = min(minZ, cz + dz*hw, cz - dz*hw)
+                maxZ = max(maxZ, cz + dz*hw, cz - dz*hw)
+            }
+            if minX == .greatestFiniteMagnitude { return 0 }
+            return (maxX - minX) * (maxZ - minZ) * m2ft2
+        }
+
+        var nameMap: [Int: (String, Int)] = [:]
+        var usedCap = Set<Int>()
+
+        for (j, rebArea) in rebuiltAreas.enumerated() {
+            var bestI = -1
+            var bestDelta: Float = .greatestFiniteMagnitude
+            for (i, capArea) in capturedAreas.enumerated() {
+                guard !usedCap.contains(i), i < roomNames.count else { continue }
+                let delta = abs(capArea - rebArea)
+                if delta < bestDelta { bestDelta = delta; bestI = i }
+            }
+            if bestI >= 0 {
+                nameMap[j] = (roomNames[bestI], bestI)
+                usedCap.insert(bestI)
+                print("[LIDAR_NAME] rebuilt[\(j)] (area \(Int(rebArea))sf) → captured[\(bestI)] '\(roomNames[bestI])' (area \(Int(capturedAreas[bestI]))sf, delta \(Int(bestDelta))sf)")
+            }
+        }
+        return nameMap
+    }
+
     private func buildStructure() {
+        print("[LIDAR_NAME] buildStructure starting — \(capturedRooms.count) captured rooms, names: \(roomNames)")
         guard !capturedRooms.isEmpty else {
             onComplete?(.failure(NSError(domain: "RoomPlan", code: -2,
                 userInfo: [NSLocalizedDescriptionKey: "No rooms scanned"])))
             return
         }
-        // capturedRooms is in scan order. roomNames[i] was filled by showRoomPicker per-room.
-        // Skip StructureBuilder reordering + confirmation modal — names are already correct
-        // because they were attached at scan time. Trust the user.
-        let rooms = self.fallbackRooms()
-        processingOverlay.isHidden = true
-        onComplete?(.success(rooms))
+        Task {
+            do {
+                let builder = StructureBuilder(options: [])
+                let structure = try await builder.capturedStructure(from: capturedRooms)
+                let nameMap = self.matchNamesByArea(structure)
+                var rooms = self.structureToRooms(structure, nameMap: nameMap)
+                rooms.sort { (a, b) -> Bool in
+                    let aIdx = (a["scanIndex"] as? Int) ?? Int.max
+                    let bIdx = (b["scanIndex"] as? Int) ?? Int.max
+                    return aIdx < bIdx
+                }
+                await MainActor.run {
+                    self.processingOverlay.isHidden = true
+                    self.onComplete?(.success(rooms))
+                }
+            } catch {
+                print("[LIDAR_NAME] StructureBuilder failed (\(error.localizedDescription)), using fallbackRooms")
+                let rooms = self.fallbackRooms()
+                await MainActor.run {
+                    self.processingOverlay.isHidden = true
+                    self.onComplete?(.success(rooms))
+                }
+            }
+        }
     }
 
     // MARK: - Naming screen (DEAD CODE: kept for reference. Naming now happens inline at scan time via showRoomPicker.)
@@ -1101,8 +1178,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
     // MARK: - Data conversion
 
-    // DEAD CODE: kept for reference. Naming now happens inline at scan time via showRoomPicker.
-    private func structureToRooms(_ structure: CapturedStructure, nameMap: [Int: String] = [:]) -> [[String: Any]] {
+    private func structureToRooms(_ structure: CapturedStructure, nameMap: [Int: (String, Int)] = [:]) -> [[String: Any]] {
         let m2f: Float = 3.28084
         let fmt2 = { (v: Float) -> Double in Double(String(format: "%.2f", v)) ?? Double(v) }
 
@@ -1223,7 +1299,8 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
             let wFt = (maxX - minX) * m2f
             let hFt = maxY * m2f
             return [
-                "name": nameMap[i] ?? "Room \(i + 1)",
+                "name": nameMap[i]?.0 ?? "Room \(i + 1)",
+                "scanIndex": nameMap[i]?.1 ?? i,
                 "length": fmt2(lFt), "width": fmt2(wFt), "height": fmt2(hFt),
                 "sqft": Int((lFt * wFt).rounded()),
                 "doors": room.doors.count, "windows": room.windows.count,
