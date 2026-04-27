@@ -19,7 +19,9 @@ Deno.serve(async (req) => {
     const sb = createClient(SB_URL, SB_SERVICE);
     const now = new Date().toISOString();
 
-    // Find all active enrollments due to send
+    // Find all active enrollments due to send.
+    // contact join is for contact-path enrollments; sub_id on the row itself
+    // identifies sub-path enrollments (fetched separately in the loop).
     const { data: due, error } = await sb
       .from("sequence_enrollments")
       .select("*, sequence:sequences(*), contact:contacts(*)")
@@ -37,7 +39,6 @@ Deno.serve(async (req) => {
     const results = [];
 
     for (const enrollment of due) {
-      const contact = enrollment.contact;
       const sequence = enrollment.sequence;
       const steps: Array<{ day: number; label: string; message: string }> = sequence?.steps || [];
       const stepIndex = enrollment.current_step;
@@ -52,11 +53,32 @@ Deno.serve(async (req) => {
       }
 
       const step = steps[stepIndex];
-      const phone = contact?.phone;
+      const isSubEnrollment = !!enrollment.sub_id;
 
-      if (!phone) {
-        results.push({ id: enrollment.id, action: "skipped", reason: "no phone" });
-        continue;
+      // Resolve phone and contact/sub id for this enrollment
+      let phone: string | null = null;
+      let contactId: string | null = null;
+
+      if (isSubEnrollment) {
+        const { data: subProfile } = await sb
+          .from("profiles")
+          .select("id, phone")
+          .eq("id", enrollment.sub_id)
+          .single();
+        if (!subProfile?.phone) {
+          console.log(`[sequence-runner] sub ${enrollment.sub_id} has no phone — skipping step`);
+          results.push({ id: enrollment.id, action: "skipped", reason: "sub has no phone" });
+          continue;
+        }
+        phone = subProfile.phone;
+      } else {
+        const contact = enrollment.contact;
+        if (!contact?.phone) {
+          results.push({ id: enrollment.id, action: "skipped", reason: "no phone" });
+          continue;
+        }
+        phone = contact.phone;
+        contactId = contact.id;
       }
 
       // Normalize to E.164
@@ -84,29 +106,29 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Save to contact_messages
-      await sb.from("contact_messages").insert({
-        tenant_id: enrollment.tenant_id,
-        contact_id: contact.id,
-        direction: "outbound",
-        body: step.message,
-        from_number: TWILIO_FROM,
-        to_number: toE164,
-        twilio_sid: twilioData.sid,
-        status: "sent",
-        created_at: now,
-      });
+      // Save outbound message log (contact path only — sub_messages table not yet created)
+      if (!isSubEnrollment && contactId) {
+        await sb.from("contact_messages").insert({
+          tenant_id: enrollment.tenant_id,
+          contact_id: contactId,
+          direction: "outbound",
+          body: step.message,
+          from_number: TWILIO_FROM,
+          to_number: toE164,
+          twilio_sid: twilioData.sid,
+          status: "sent",
+          created_at: now,
+        });
+      }
 
       // Advance enrollment to next step
       const nextIndex = stepIndex + 1;
       if (nextIndex >= steps.length) {
-        // Last step just sent — mark complete
         await sb.from("sequence_enrollments")
           .update({ current_step: nextIndex, status: "complete", completed_at: now, next_send_at: null })
           .eq("id", enrollment.id);
         results.push({ id: enrollment.id, action: "completed_last_step" });
       } else {
-        // Schedule next step
         const nextStep = steps[nextIndex];
         const daysUntilNext = nextStep.day - step.day;
         const nextSendAt = new Date(Date.now() + daysUntilNext * 24 * 60 * 60 * 1000).toISOString();
@@ -116,8 +138,10 @@ Deno.serve(async (req) => {
         results.push({ id: enrollment.id, action: "advanced", next_step: nextIndex, next_send_at: nextSendAt });
       }
 
-      // Update contact last_contacted_at
-      await sb.from("contacts").update({ last_contacted_at: now }).eq("id", contact.id);
+      // Update last_contacted_at (contact path only)
+      if (!isSubEnrollment && contactId) {
+        await sb.from("contacts").update({ last_contacted_at: now }).eq("id", contactId);
+      }
 
       sent++;
     }
