@@ -462,3 +462,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: avenstone-vite/src/lib/pdf.js
 - Decision: Root cause — _drawPoché rendered each wall as a rectangle exactly the segment's length, so adjacent perpendicular rectangles shared an endpoint but didn't overlap, leaving a visible gap at every junction. Fix: extend each rectangle by thick/2 past both endpoints along the segment axis; perpendicular rectangles now overlap at corners, filling the gap. Single 5-line change inside _drawPoché.
 - Open: T-junctions (three walls meeting at one point) will still show a small exposed area on the non-overlapping side of the intersecting wall — the extension only helps the two endpoint walls. Not visually critical but notable.
+
+[LOG — 2026-04-26]
+- Action: Removed user-facing capture quality meter
+- Files: avenstone-vite/src/components/ai/AiIntakeWizard.jsx, avenstone-vite/ios/App/CapApp-SPM/Sources/CapApp-SPM/RoomPlanPlugin.swift, avenstone-vite/ios/App/CapApp-SPM/Sources/CapApp-SPM/ExteriorScanViewController.swift
+- Decision: Score was noise once scans stabilized. Removed live bar overlay from RoomPlanScanViewController and ExteriorScanViewController; removed 'report' step from AiIntakeWizard (flow is now scan → height → save). CaptureQualityTracker class retained. DB columns retained nullable; qualityScore/Grade/Deductions saved as null going forward.
+- Open: none
