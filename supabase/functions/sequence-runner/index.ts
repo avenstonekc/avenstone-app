@@ -6,6 +6,7 @@ const TWILIO_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN")!;
 const TWILIO_FROM  = Deno.env.get("TWILIO_FROM")!;
 const SB_URL       = Deno.env.get("SUPABASE_URL")!;
 const SB_SERVICE   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const RESEND_KEY   = Deno.env.get("RESEND_API_KEY")!;
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -52,8 +53,86 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const step = steps[stepIndex];
+      const step = steps[stepIndex] as any;
       const isSubEnrollment = !!enrollment.sub_id;
+      const actionType: string = step.action_type ?? "sms";
+
+      // ── Email delivery branch ──────────────────────────────────────────────
+      if (actionType === "email") {
+        if (isSubEnrollment) {
+          // Sub is a profile — invoke notify-email (handles opt-out check)
+          const { data: subProfile } = await sb
+            .from("profiles")
+            .select("id, email")
+            .eq("id", enrollment.sub_id)
+            .single();
+          if (!subProfile?.email) {
+            console.log(`[sequence-runner] sub ${enrollment.sub_id} has no email — skipping step`);
+            results.push({ id: enrollment.id, action: "skipped", reason: "sub has no email" });
+            continue;
+          }
+          const notifyRes = await fetch(`${SB_URL}/functions/v1/notify-email`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${SB_SERVICE}` },
+            body: JSON.stringify({ record: {
+              user_id: subProfile.id,
+              title: step.subject ?? step.label,
+              body: step.body ?? step.message,
+              job_id: null,
+              type: "sequence_email",
+            }}),
+          });
+          if (!notifyRes.ok) {
+            const errText = await notifyRes.text();
+            console.error(`notify-email error for enrollment ${enrollment.id}:`, errText);
+            results.push({ id: enrollment.id, action: "error", reason: errText });
+            continue;
+          }
+        } else {
+          // Contact — email is in the join result; call Resend directly
+          const contact = enrollment.contact;
+          if (!contact?.email) {
+            results.push({ id: enrollment.id, action: "skipped", reason: "contact has no email" });
+            continue;
+          }
+          const resendRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: "Avenstone Group <notifications@avenstonekc.com>",
+              to: contact.email,
+              subject: step.subject ?? "Avenstone message",
+              html: `<p style="font-family:sans-serif;font-size:14px;line-height:1.65;color:#6B7280;">${step.body ?? step.message}</p>`,
+            }),
+          });
+          if (!resendRes.ok) {
+            const errText = await resendRes.text();
+            console.error(`Resend error for enrollment ${enrollment.id}:`, errText);
+            results.push({ id: enrollment.id, action: "error", reason: errText });
+            continue;
+          }
+        }
+
+        // Advance enrollment — same logic as SMS path
+        const nextIdxEmail = stepIndex + 1;
+        if (nextIdxEmail >= steps.length) {
+          await sb.from("sequence_enrollments")
+            .update({ current_step: nextIdxEmail, status: "complete", completed_at: now, next_send_at: null })
+            .eq("id", enrollment.id);
+          results.push({ id: enrollment.id, action: "completed_last_step" });
+        } else {
+          const nextStepEmail = steps[nextIdxEmail] as any;
+          const daysUntilNextEmail = nextStepEmail.day - step.day;
+          const nextSendAtEmail = new Date(Date.now() + daysUntilNextEmail * 24 * 60 * 60 * 1000).toISOString();
+          await sb.from("sequence_enrollments")
+            .update({ current_step: nextIdxEmail, next_send_at: nextSendAtEmail })
+            .eq("id", enrollment.id);
+          results.push({ id: enrollment.id, action: "advanced", next_step: nextIdxEmail, next_send_at: nextSendAtEmail });
+        }
+        sent++;
+        continue;
+      }
+      // ── End email branch ───────────────────────────────────────────────────
 
       // Resolve phone and contact/sub id for this enrollment
       let phone: string | null = null;
