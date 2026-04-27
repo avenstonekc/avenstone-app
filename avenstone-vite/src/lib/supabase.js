@@ -605,6 +605,9 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
 };
 export const sbCreateTransaction = async tx => {
   const { data, error } = await sb.from('job_transactions').insert({ ...tx, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();
+  if (!error && data?.type === 'sub_payout' && data?.payer_or_payee_id) {
+    sbAutoEnrollSubInSequences(data.payer_or_payee_id, 'payment_made', AV_TENANT).catch(console.error);
+  }
   return { data, error };
 };
 export const sbUpdateTransaction = async (id, updates) => {
@@ -810,6 +813,18 @@ export const sbEnrollContact = async (seqId, contactId, nextSendAt) => {
   return { data, error };
 };
 export const sbStopEnrollment = async id => sb.from('sequence_enrollments').update({ status: 'stopped' }).eq('id', id);
+export const sbAutoEnrollSubInSequences = async (subId, triggerType, tenantId) => {
+  try {
+    const { data: seqs } = await sb.from('sequences').select('id, steps').eq('tenant_id', tenantId).eq('trigger', triggerType).eq('status', 'active');
+    for (const seq of (seqs || [])) {
+      const { data: ex } = await sb.from('sequence_enrollments').select('id').eq('sequence_id', seq.id).eq('sub_id', subId).in('status', ['active', 'complete']).maybeSingle();
+      if (ex) continue;
+      const steps = seq.steps || [];
+      const nextSendAt = new Date(Date.now() + (steps[0]?.day ?? 0) * 86400000).toISOString();
+      await sb.from('sequence_enrollments').insert({ tenant_id: tenantId, sequence_id: seq.id, sub_id: subId, status: 'active', current_step: 0, next_send_at: nextSendAt, enrolled_at: new Date().toISOString() });
+    }
+  } catch (e) { console.error('[sbAutoEnrollSubInSequences] error:', e); }
+};
 
 // ─── Address autocomplete ─────────────────────────────────────────────────────
 export const fetchAddressSuggestions = async input => {
