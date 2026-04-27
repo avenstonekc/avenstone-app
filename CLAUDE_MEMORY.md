@@ -346,6 +346,12 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: LiDAR/PDF outranks website work in priority — if Kalin shows up with a LiDAR screenshot, drop everything. Website work continues in parallel, just behind it.
 
 [LOG — 2026-04-26]
+- Action: Notification system audit (read-only)
+- Files: none changed (audit only)
+- Decision: Staff bell is solid; client experience is nearly silent on financial events — no payment receipt email, no client bell anywhere in ClientPortal, ai-pm-nightly client alerts land in DB but client has no UI to see them, sub assignment notifies nobody.
+- Open: Follow-up prompt generated for 6 fixes (stripe-webhook receipt email, sub assignment bell, contract_signed/completion_signed type fixes, notify-email SUBJECTS map, NotifPanel + SettingsModal new types). Client bell (ClientPortal.jsx) deferred as a larger task.
+
+[LOG — 2026-04-26]
 - Action: Trimmed CLAUDE.md from 696 lines to 514 lines.
 - Files: CLAUDE.md
 - Decision: Compressed 7 sections — folder tree (→ one paragraph), Core tables list (→ pointer to supabase.js + migrations/), edge function tables (→ 3 bullet lines), AI system ASCII diagram (→ 6 bullets with file paths), Opus/Sonnet dispatch template (→ pointer to OPUS_PROMPT_RULES.md), Done list (→ kept last 14 days, older items → pointer to CLAUDE_MEMORY.md), memory system (→ ~7 lines). Cross-references: AVENSTONE_VISION.md, OPUS_PROMPT_RULES.md, CLAUDE_MEMORY.md, FINANCIALS_PLAN.md confirmed as canonical homes for excised content.
@@ -385,3 +391,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: Label rotation — _ptSegDistFt + _labelFitsInRoom helpers test all four corners of label box are inside polygon AND ≥6pt from every wall segment. After interior point chosen, horizontal box tested first; on fail, retry rotated; if rotated fits, narrow=true triggers existing angle:90 render path. [LIDAR_PDF_LABEL] log only fires when neither orientation fits.
 - Decision: Swing arc cap — swingCountByRoom tracks arcs per room index. Skip arc when room has 4 already (panel line still drawn). Stroke lightened from (80,80,80)/0.4lw to (140,140,140)/0.3lw. Stops dense rooms from drowning in arcs.
 - Open: All changes are in pdf.js worldMode path; single-room (non-world) path still doesn't get chain dims, label rotation, or arc cap. Pre-existing limitation tracked in priority order #1 sub-bullets.
+
+[LOG — 2026-04-26]
+- Action: Naming bug killed at root by removing post-scan matching layer.
+- Files: RoomPlanPlugin.swift, pdf.js
+- Decision: Trust scan-time names — skip StructureBuilder + showNamingScreen + matchNamesToStructuredRooms. buildStructure() now calls fallbackRooms() directly and fires onComplete(.success). fallbackRooms() expanded to full dict parity with structureToRooms: doors/windows counts, doorSegments (with nx/nz/width), windowSegments, openingSegments, objects (category/dims/position/rotation/confidence), worldX/worldZ from global gMinX/gMinZ across all capturedRooms. Dead helpers left in file with DEAD CODE comments. Door swing arc cap reverted per Kalin's request — all swings drawn, original (80,80,80)/0.4pt stroke.
+- Open: Without StructureBuilder, shared walls between rooms won't merge to a midline — adjacent rooms may render as parallel wall pairs separated by wall thickness. Chain dim dedup compensates on dimensions. If thick double-walls are visually unacceptable, re-introduce StructureBuilder behind a flag (but keep inline naming — the matching layer was the bug).
