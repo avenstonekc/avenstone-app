@@ -36,6 +36,63 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── Time-based: sub_inactive_60d ──────────────────────────────────────────
+    // Runs once per day during the 4 AM UTC hour (sequence-runner fires every 15 min).
+    // Enrolls subs with no bid activity in 60+ days into re-engagement sequences.
+    if (new Date().getUTCHours() === 4) {
+      const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: allSubs } = await sb
+        .from("profiles")
+        .select("id, tenant_id, created_at")
+        .eq("role", "sub");
+
+      for (const sub of (allSubs || [])) {
+        const { data: latestBid } = await sb
+          .from("bid_responses")
+          .select("submitted_at")
+          .eq("sub_id", sub.id)
+          .order("submitted_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const inactive = latestBid
+          ? latestBid.submitted_at < sixtyDaysAgo
+          : sub.created_at < sixtyDaysAgo;
+
+        if (!inactive) continue;
+
+        const { data: inactiveSeqs } = await sb
+          .from("sequences")
+          .select("id, steps")
+          .eq("tenant_id", sub.tenant_id)
+          .eq("trigger", "sub_inactive_60d")
+          .eq("status", "active");
+
+        for (const seq of (inactiveSeqs || [])) {
+          const { data: ex } = await sb
+            .from("sequence_enrollments")
+            .select("id")
+            .eq("sequence_id", seq.id)
+            .eq("sub_id", sub.id)
+            .in("status", ["active", "complete"])
+            .maybeSingle();
+          if (ex) continue;
+          const steps: Array<{ day: number }> = seq.steps || [];
+          const nextSendAt = new Date(Date.now() + (steps[0]?.day ?? 0) * 86400000).toISOString();
+          await sb.from("sequence_enrollments").insert({
+            tenant_id: sub.tenant_id,
+            sequence_id: seq.id,
+            sub_id: sub.id,
+            status: "active",
+            current_step: 0,
+            next_send_at: nextSendAt,
+            enrolled_at: now,
+          });
+        }
+      }
+    }
+    // ── End time-based scan ────────────────────────────────────────────────────
+
     let sent = 0;
     const results = [];
 
