@@ -875,9 +875,3 @@ export const sbLoadLatestGapAnalysis = async (sessionId) => {
   const { data } = await sb.from('consultation_gap_analyses').select('*').eq('session_id', sessionId).order('created_at', { ascending: false }).limit(1).maybeSingle();
   return data || null;
 };
-
-// ─── Daily Tasks ──────────────────────────────────────────────────────────────
-export const sbLoadDailyTasks = (userId) => {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-  return sb.from('daily_tasks').select('*').eq('user_id', userId).eq('completed', false).gte('task_date', sevenDaysAgo).order('task_date', { ascending: false }).then(r => r.data || []);
-};
