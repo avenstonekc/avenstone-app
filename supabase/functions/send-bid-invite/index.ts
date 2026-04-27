@@ -77,6 +77,22 @@ Deno.serve(async (req) => {
     });
 
     const data = await res.json();
+
+    if (res.ok) {
+      try {
+        const { data: bidSeqs } = await sb.from("sequences").select("id, steps").eq("tenant_id", tenant_id).eq("trigger", "bid_sent").eq("status", "active");
+        for (const seq of (bidSeqs || [])) {
+          const { data: ex } = await sb.from("sequence_enrollments").select("id").eq("sequence_id", seq.id).eq("sub_id", userId).in("status", ["active", "complete"]).maybeSingle();
+          if (ex) continue;
+          const steps: any[] = seq.steps || [];
+          const nextSendAt = new Date(Date.now() + (steps[0]?.day ?? 0) * 86400000).toISOString();
+          await sb.from("sequence_enrollments").insert({ tenant_id, sequence_id: seq.id, sub_id: userId, status: "active", current_step: 0, next_send_at: nextSendAt, enrolled_at: new Date().toISOString() });
+        }
+      } catch (enrollErr) {
+        console.error("[send-bid-invite] auto-enroll error:", enrollErr);
+      }
+    }
+
     return new Response(JSON.stringify({ ...data, user_id: userId }), {
       status: res.status,
       headers: { "Content-Type": "application/json" },
