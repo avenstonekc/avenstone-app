@@ -475,8 +475,8 @@ const _drawArc = (doc, cx, cy, r, startAngle, sweepAngle, steps = 10) => {
 // v1 snap-at-render. Consider moving upstream to Swift/DB once editor features ship.
 // See VOICE_AGENT.md + FINANCIALS_PLAN.md pattern for how long-term data shape should live.
 const _snapToOrtho = (rooms) => {
-  const ANGLE_TOL = 5 * Math.PI / 180; // 5 degrees
-  const MERGE_TOL = 0.167;             // 2 inches in feet
+  const ANGLE_TOL = 10 * Math.PI / 180; // 10 degrees — aggressively square near-ortho walls
+  const MERGE_TOL = 0.5;               // 6 inches in feet
   let snapCount = 0, mergeCount = 0;
 
   // Deep clone rooms + segments to avoid mutating caller's data
