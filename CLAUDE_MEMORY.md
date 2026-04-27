@@ -508,3 +508,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: supabase/migrations/20260428_sequences_inactive_sub_trigger.sql (new), supabase/functions/sequence-runner/index.ts (inactive-sub scan block)
 - Decision: Option A — extended sequence-runner (already pg_cron'd `*/15 * * * *`) rather than creating a new edge function. Inactive-sub scan is gated to `getUTCHours() === 4` so it runs at most 4 times per day (4:00/4:15/4:30/4:45 UTC); idempotency means 2nd–4th runs are no-ops. Activity signal is `bid_responses.submitted_at` (most recent per sub); no bids ever + profile created >60 days ago also qualifies. 60-day window hardcoded. Other time-based triggers (bid_overdue, invoice_overdue) deferred.
 - Open: SequencesScr UI trigger dropdown does not yet list sub_inactive_60d — PM creating a re-engagement sequence would need to insert `trigger='sub_inactive_60d'` manually via SQL until dropdown is updated.
+
+[LOG — 2026-04-28]
+- Action: Surfaced new sequence trigger types in SequencesScr dropdown
+- Files: avenstone-vite/src/components/common/SequencesScr.jsx
+- Decision: Expanded TRIGGERS constant to include bid_sent, sub_invited, payment_made, sub_inactive_60d with '(auto)' suffix labels. No grouping added — existing flat pattern retained. PMs can now create sequences for all wired trigger types from UI. No SQL required.
+- Open: Sequences track complete pending real-world testing.
