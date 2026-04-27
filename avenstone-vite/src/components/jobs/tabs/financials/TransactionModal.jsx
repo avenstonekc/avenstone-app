@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbUploadLienWaiverTx, sbLoadPhases } from '../../../../lib/supabase';
+import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbUploadLienWaiverTx, sbLoadPhases, sbLoadActiveSubs } from '../../../../lib/supabase';
 import { f$ } from '../../../../lib/utils';
 
 const TX_TYPES_IN  = ['client_payment','client_deposit','client_refund','other_income'];
@@ -31,6 +31,7 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
     due_date:           tx.due_date            || '',
     status:             isNew ? 'paid'         : (tx.status || 'pending'),
     payer_or_payee_name: tx.payer_or_payee_name || '',
+    payer_or_payee_id:   tx.payer_or_payee_id   || null,
     phase:              tx.phase               || '',
     phase_id:           tx.phase_id            || null,
     notes:              tx.notes               || '',
@@ -41,10 +42,15 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
   const [receiptUrl, setReceiptUrl] = useState(tx.receipt_url     || null);
   const [lienUrl,    setLienUrl]    = useState(tx.lien_waiver_url  || null);
   const [phases,     setPhases]     = useState([]);
+  const [subs,       setSubs]       = useState([]);
 
   useEffect(() => {
     sbLoadPhases(job.id).then(data => setPhases(data || []));
   }, [job.id]);
+
+  useEffect(() => {
+    if (form.type === 'sub_payout') sbLoadActiveSubs().then(setSubs);
+  }, [form.type]);
 
   const isView   = mode === 'view';
   const set      = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -75,6 +81,7 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
       due_date:            form.due_date             || null,
       status:              form.status,
       payer_or_payee_name: form.payer_or_payee_name  || null,
+      payer_or_payee_id:   form.payer_or_payee_id    || null,
       phase:               form.phase                || null,
       phase_id:            form.phase_id             || null,
       notes:               form.notes                || null,
@@ -230,6 +237,20 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
               <div style={fg}>
                 <label style={lbl}>Due Date</label>
                 <input style={inp} type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+              </div>
+            )}
+
+            {/* Sub picker — only for sub_payout */}
+            {form.type === 'sub_payout' && subs.length > 0 && (
+              <div style={fg}>
+                <label style={lbl}>Sub</label>
+                <select style={inp} value={form.payer_or_payee_id || ''} onChange={e => {
+                  const sub = subs.find(s => s.id === e.target.value);
+                  setForm(f => ({ ...f, payer_or_payee_id: sub?.id || null, payer_or_payee_name: sub?.full_name || f.payer_or_payee_name }));
+                }}>
+                  <option value="">— Select sub —</option>
+                  {subs.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                </select>
               </div>
             )}
 
