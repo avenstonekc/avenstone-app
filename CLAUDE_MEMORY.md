@@ -456,3 +456,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: Sub message delivery skips contact_messages write — no sub_messages table yet. Enrollment advances normally; delivery is fire-and-forget SMS only.
 - Decision: Enroll modal warns inline when selected sub has no phone (SMS will skip). PM sees this before committing the enrollment.
 - Open: Auto-trigger wiring (bid_sent, sub_invited, payment_made) and time-based triggers (bid_overdue, invoice_overdue) deferred to follow-up prompts. Bulk enrollment UI deferred. sub_messages table deferred.
+
+[LOG — 2026-04-26]
+- Action: Closed wall corner gaps in floor plan PDF
+- Files: avenstone-vite/src/lib/pdf.js
+- Decision: Root cause — _drawPoché rendered each wall as a rectangle exactly the segment's length, so adjacent perpendicular rectangles shared an endpoint but didn't overlap, leaving a visible gap at every junction. Fix: extend each rectangle by thick/2 past both endpoints along the segment axis; perpendicular rectangles now overlap at corners, filling the gap. Single 5-line change inside _drawPoché.
+- Open: T-junctions (three walls meeting at one point) will still show a small exposed area on the non-overlapping side of the intersecting wall — the extension only helps the two endpoint walls. Not visually critical but notable.
