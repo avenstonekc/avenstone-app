@@ -1044,7 +1044,6 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     // (features sit on shared walls so typically 3; err toward 6 for visual clarity)
     const FEAT_WALL_T = 7;
 
-    const swingCountByRoom = new Map();
     for (const door of allDoors) {
       const p1x = oX + door.x1 * scale, p1y = oY + door.z1 * scale;
       const p2x = oX + door.x2 * scale, p2y = oY + door.z2 * scale;
@@ -1087,17 +1086,13 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
         const radius = Math.min(dw, 3 * scale);
         const panelEndX = p1x + door.nx * radius, panelEndY = p1y + door.nz * radius;
         doc.line(p1x, p1y, panelEndX, panelEndY);
-        const swings = swingCountByRoom.get(door.ri) || 0;
-        if (swings < 4) {
-          const arcStart = Math.atan2(door.nz, door.nx);
-          const toEnd = Math.atan2(p2y - p1y, p2x - p1x);
-          let diff = ((toEnd - arcStart) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-          if (diff > Math.PI) diff -= Math.PI * 2;
-          const sweep = diff >= 0 ? Math.PI / 2 : -Math.PI / 2;
-          doc.setDrawColor(140, 140, 140); doc.setLineWidth(0.3);
-          _drawArc(doc, p1x, p1y, radius, arcStart, sweep);
-          swingCountByRoom.set(door.ri, swings + 1);
-        }
+        const arcStart = Math.atan2(door.nz, door.nx);
+        const toEnd = Math.atan2(p2y - p1y, p2x - p1x);
+        let diff = ((toEnd - arcStart) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+        if (diff > Math.PI) diff -= Math.PI * 2;
+        const sweep = diff >= 0 ? Math.PI / 2 : -Math.PI / 2;
+        doc.setDrawColor(80, 80, 80); doc.setLineWidth(0.4);
+        _drawArc(doc, p1x, p1y, radius, arcStart, sweep);
       }
     }
 

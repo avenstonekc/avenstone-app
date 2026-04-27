@@ -830,7 +830,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         return inside
     }
 
-    // Primary: polygon containment. Fallback: nearest-centroid with warning log.
+    // DEAD CODE: kept for reference. Naming now happens inline at scan time via showRoomPicker.
     private func matchNamesToStructuredRooms(_ structure: CapturedStructure) -> [Int: String] {
         guard !roomNames.isEmpty, !structure.rooms.isEmpty else { return [:] }
         let capPolygons = capturedRooms.map { wallPolygon($0) }
@@ -873,51 +873,15 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 userInfo: [NSLocalizedDescriptionKey: "No rooms scanned"])))
             return
         }
-        Task {
-            do {
-                let builder = StructureBuilder(options: [])
-                let structure = try await builder.capturedStructure(from: capturedRooms)
-                let nameMap = self.matchNamesToStructuredRooms(structure)
-                let rooms = self.structureToRooms(structure, nameMap: nameMap)
-
-                // Re-sort rooms into scan order so row 1 = first room scanned.
-                // Match each rebuilt room (structure.rooms[j]) to the closest captured room
-                // by wall-centroid distance, then stamp scanIndex and sort.
-                let capCentroids: [(Float, Float)] = self.capturedRooms.map { room in
-                    guard !room.walls.isEmpty else { return (0, 0) }
-                    let cx = room.walls.map { $0.transform.columns.3.x }.reduce(0, +) / Float(room.walls.count)
-                    let cz = room.walls.map { $0.transform.columns.3.z }.reduce(0, +) / Float(room.walls.count)
-                    return (cx, cz)
-                }
-                let strCentroids: [(Float, Float)] = structure.rooms.map { room in
-                    guard !room.walls.isEmpty else { return (0, 0) }
-                    let cx = room.walls.map { $0.transform.columns.3.x }.reduce(0, +) / Float(room.walls.count)
-                    let cz = room.walls.map { $0.transform.columns.3.z }.reduce(0, +) / Float(room.walls.count)
-                    return (cx, cz)
-                }
-                var roomsWithScanIdx = rooms
-                var usedCap = Set<Int>()
-                for j in rooms.indices {
-                    let sc = j < strCentroids.count ? strCentroids[j] : (0, 0)
-                    var bestDist = Float.greatestFiniteMagnitude; var bestI = 0
-                    for (i, cc) in capCentroids.enumerated() {
-                        guard !usedCap.contains(i) else { continue }
-                        let d = (sc.0 - cc.0) * (sc.0 - cc.0) + (sc.1 - cc.1) * (sc.1 - cc.1)
-                        if d < bestDist { bestDist = d; bestI = i }
-                    }
-                    roomsWithScanIdx[j]["scanIndex"] = bestI
-                    usedCap.insert(bestI)
-                }
-                let sortedRooms = roomsWithScanIdx.sorted { ($0["scanIndex"] as? Int ?? Int.max) < ($1["scanIndex"] as? Int ?? Int.max) }
-                await MainActor.run { self.showNamingScreen(sortedRooms) }
-            } catch {
-                let rooms = self.fallbackRooms()
-                await MainActor.run { self.showNamingScreen(rooms) }
-            }
-        }
+        // capturedRooms is in scan order. roomNames[i] was filled by showRoomPicker per-room.
+        // Skip StructureBuilder reordering + confirmation modal — names are already correct
+        // because they were attached at scan time. Trust the user.
+        let rooms = self.fallbackRooms()
+        processingOverlay.isHidden = true
+        onComplete?(.success(rooms))
     }
 
-    // MARK: - Naming screen
+    // MARK: - Naming screen (DEAD CODE: kept for reference. Naming now happens inline at scan time via showRoomPicker.)
 
     private func showNamingScreen(_ rooms: [[String: Any]]) {
         structuredRooms = rooms
@@ -1137,6 +1101,7 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
 
     // MARK: - Data conversion
 
+    // DEAD CODE: kept for reference. Naming now happens inline at scan time via showRoomPicker.
     private func structureToRooms(_ structure: CapturedStructure, nameMap: [Int: String] = [:]) -> [[String: Any]] {
         let m2f: Float = 3.28084
         let fmt2 = { (v: Float) -> Double in Double(String(format: "%.2f", v)) ?? Double(v) }
@@ -1287,6 +1252,23 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
     private func fallbackRooms() -> [[String: Any]] {
         let m2f: Float = 3.28084
         let fmt2 = { (v: Float) -> Double in Double(String(format: "%.2f", v)) ?? Double(v) }
+
+        // Global bbox across all captured rooms for worldX/worldZ (spatial positioning in PDF)
+        var gMinX: Float = .greatestFiniteMagnitude
+        var gMinZ: Float = .greatestFiniteMagnitude
+        for room in capturedRooms {
+            for wall in room.walls {
+                let t = wall.transform
+                let cx = t.columns.3.x, cz = t.columns.3.z
+                let hw = wall.dimensions.x / 2.0
+                let dx = t.columns.0.x, dz = t.columns.0.z
+                gMinX = min(gMinX, min(cx + dx * hw, cx - dx * hw))
+                gMinZ = min(gMinZ, min(cz + dz * hw, cz - dz * hw))
+            }
+        }
+        if gMinX == .greatestFiniteMagnitude { gMinX = 0 }
+        if gMinZ == .greatestFiniteMagnitude { gMinZ = 0 }
+
         return capturedRooms.enumerated().map { (i, room) in
             var minX: Float = .greatestFiniteMagnitude, maxX: Float = -.greatestFiniteMagnitude
             var minZ: Float = .greatestFiniteMagnitude, maxZ: Float = -.greatestFiniteMagnitude
@@ -1303,8 +1285,14 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 maxY = max(maxY, wall.dimensions.y)
             }
             guard minX != .greatestFiniteMagnitude else {
-                return ["name": "Room \(i+1)", "wallSegments": [] as [[String: Double]], "sqft": 0, "floor": self.floorIndex, "simulated": false] as [String: Any]
+                return ["name": i < roomNames.count ? roomNames[i] : "Room \(i+1)",
+                        "wallSegments": [] as [[String: Double]], "doorSegments": [] as [[String: Any]],
+                        "windowSegments": [] as [[String: Double]], "openingSegments": [] as [[String: Double]],
+                        "objects": [] as [[String: Any]],
+                        "doors": 0, "windows": 0, "sqft": 0,
+                        "floor": self.floorIndex, "simulated": false] as [String: Any]
             }
+
             var wallSegs: [[String: Double]] = []
             for wall in room.walls {
                 let t = wall.transform
@@ -1318,6 +1306,71 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                     "z2": Double((cz - dz * hw - minZ) * m2f),
                 ])
             }
+
+            var doorSegs: [[String: Any]] = []
+            for door in room.doors {
+                let t = door.transform
+                let cx = t.columns.3.x, cz = t.columns.3.z
+                let hw = door.dimensions.x / 2.0
+                let dx = t.columns.0.x, dz = t.columns.0.z
+                let nx = t.columns.2.x, nz = t.columns.2.z
+                doorSegs.append([
+                    "x1": Double((cx + dx * hw - minX) * m2f),
+                    "z1": Double((cz + dz * hw - minZ) * m2f),
+                    "x2": Double((cx - dx * hw - minX) * m2f),
+                    "z2": Double((cz - dz * hw - minZ) * m2f),
+                    "nx": Double(nx), "nz": Double(nz),
+                    "width": Double(door.dimensions.x * m2f),
+                ])
+            }
+
+            var windowSegs: [[String: Double]] = []
+            for window in room.windows {
+                let t = window.transform
+                let cx = t.columns.3.x, cz = t.columns.3.z
+                let hw = window.dimensions.x / 2.0
+                let dx = t.columns.0.x, dz = t.columns.0.z
+                windowSegs.append([
+                    "x1": Double((cx + dx * hw - minX) * m2f),
+                    "z1": Double((cz + dz * hw - minZ) * m2f),
+                    "x2": Double((cx - dx * hw - minX) * m2f),
+                    "z2": Double((cz - dz * hw - minZ) * m2f),
+                ])
+            }
+
+            var openingSegs: [[String: Double]] = []
+            for opening in room.openings {
+                let t = opening.transform
+                let cx = t.columns.3.x, cz = t.columns.3.z
+                let hw = opening.dimensions.x / 2.0
+                let dx = t.columns.0.x, dz = t.columns.0.z
+                openingSegs.append([
+                    "x1": Double((cx + dx * hw - minX) * m2f),
+                    "z1": Double((cz + dz * hw - minZ) * m2f),
+                    "x2": Double((cx - dx * hw - minX) * m2f),
+                    "z2": Double((cz - dz * hw - minZ) * m2f),
+                ])
+            }
+
+            var objectSegs: [[String: Any]] = []
+            for obj in room.objects {
+                guard obj.confidence != .low else { continue }
+                guard let categoryStr = fixtureCategoryString(obj.category) else { continue }
+                let ot = obj.transform
+                let oW = Double(obj.dimensions.x * m2f)
+                let oH = Double(obj.dimensions.y * m2f)
+                let oD = Double(obj.dimensions.z * m2f)
+                guard oW >= 0.3 && oD >= 0.3 else { continue }
+                objectSegs.append([
+                    "category": categoryStr,
+                    "width": oW, "height": oH, "depth": oD,
+                    "x": Double((ot.columns.3.x - minX) * m2f),
+                    "z": Double((ot.columns.3.z - minZ) * m2f),
+                    "rotationY": Double(atan2(ot.columns.2.x, ot.columns.2.z)),
+                    "confidence": obj.confidence == .high ? "high" : "medium",
+                ])
+            }
+
             let lFt = (maxZ - minZ) * m2f
             let wFt = (maxX - minX) * m2f
             let hFt = maxY * m2f
@@ -1325,10 +1378,16 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 "name": i < roomNames.count ? roomNames[i] : "Room \(i+1)",
                 "length": fmt2(lFt), "width": fmt2(wFt), "height": fmt2(hFt),
                 "sqft": Int((lFt * wFt).rounded()),
+                "doors": room.doors.count, "windows": room.windows.count,
                 "wallSegments": wallSegs,
+                "doorSegments": doorSegs,
+                "windowSegments": windowSegs,
+                "openingSegments": openingSegs,
+                "objects": objectSegs,
+                "worldX": Double((minX - gMinX) * m2f),
+                "worldZ": Double((minZ - gMinZ) * m2f),
                 "floor": self.floorIndex,
                 "simulated": false,
-                // No worldX/worldZ → packing layout in PDF
             ] as [String: Any]
         }
     }
