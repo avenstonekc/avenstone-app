@@ -425,3 +425,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: none changed (audit only)
 - Decision: System is staff-complete but client-silent at financial events — Stripe payment fires no client confirmation, ai-pm-nightly client-targeted alerts write to a notifications table ClientPortal never reads, manual TransactionModal fires nothing. SMS is a dead stub. Per-event preference matrix stored but never consulted at delivery. Follow-up prompt generated for three fixes.
 - Open: Follow-up prompt generated (paste into separate window) — covers Stripe payment confirmation email, nightly alert → email for client, CO submitted → immediate client email.
+
+[LOG — 2026-04-26]
+- Action: Cleanup pass — removed sbLoadDailyTasks helper. CLAUDE.md SubOnboardingModal typo not found (already resolved in a prior session — grep confirms zero matches).
+- Files: avenstone-vite/src/lib/supabase.js
+- Decision: SequencesScr retained for sub-ops automation pivot (see separate audit). sbLoadDailyTasks superseded by inline query in AiHomeScr; only caller reference was in CLAUDE_MEMORY.md logs, not live code.
+- Open: SequencesScr scope-change audit pending; MaterialSelectionScr still unwired pending decision on landing surface.
