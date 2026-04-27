@@ -437,3 +437,12 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: avenstone-vite/src/components/ai/AiHomeScr.jsx
 - Decision: Asking the app what to do on open is dead weight — if the app has to tell you, it failed. Removed the useEffect auto-trigger (sendMessage('brief me', [])) and hasOpened ref. Empty state now shows neutral "Ask me anything about your projects" + "Daily to-do list coming soon" placeholder card when no tasks. ai-pm-nightly rule checks and edge function untouched.
 - Open: To-do tab design + build (separate prompt).
+
+[LOG — 2026-04-26]
+- Action: Read-only audit — sequences engine repurpose for sub-ops (contact_id → sub_id).
+- Files: none changed (audit only)
+- Decision: Sequences engine is contact/SMS-only throughout — sequence_enrollments.contact_id hardcoded, sequence-runner joins contacts directly, delivery writes to contact_messages, TRIGGERS constant has only manual/new_contact/missed_call, enroll modal queries contacts table.
+- Decision: Minimum viable sub sequences (manual enrollment only) = 5 commits: 2 migrations (enrollments schema + sub_messages table), 1 runner branch (join subs on recipient_type='sub'), 2 UI commits (enroll modal + enrollment list display). Full build with auto-triggers + cron = 8 commits.
+- Decision: Blocker — verify subs table has a phone column before building runner branch. No phone = SMS dead on arrival. Must check before writing a line of runner code.
+- Decision: New sub-ops trigger keys needed: sub_onboarded, bid_sent, co_sent, bid_overdue, invoice_overdue. Time-based triggers (bid_overdue, invoice_overdue) require a cron wrapper — current runner is HTTP POST only, no scheduler.
+- Open: Decision needed — (1) add phone column to subs if missing, (2) confirm scope (manual-only MVP vs auto-triggers vs time-based triggers), then build.
