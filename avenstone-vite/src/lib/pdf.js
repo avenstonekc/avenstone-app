@@ -669,12 +669,26 @@ const _renderChainDims = (doc, segs, dimLinePt, overallPt, normalSign, isHoriz, 
   if (!segs.length) return [];
   const labelBoxes = [];
 
-  // Dedup: drop segs whose midpoint is within 0.3 ft of an already-kept seg
+  // Dedup: drop segs whose range overlaps ≥80% with an already-kept seg (handles wall-thickness twins)
+  const startOf = s => isHoriz ? Math.min(s.x1, s.x2) : Math.min(s.z1, s.z2);
+  const endOf   = s => isHoriz ? Math.max(s.x1, s.x2) : Math.max(s.z1, s.z2);
+  const sorted = [...segs].sort((a, b) => {
+    const sa = startOf(a), sb = startOf(b);
+    if (sa !== sb) return sa - sb;
+    return (endOf(b) - sb) - (endOf(a) - sa); // longer first on tie
+  });
   const kept = [];
-  for (const seg of segs) {
-    const mx = (seg.x1 + seg.x2) / 2, mz = (seg.z1 + seg.z2) / 2;
-    if (!kept.some(d => Math.hypot((d.x1+d.x2)/2 - mx, (d.z1+d.z2)/2 - mz) < 0.3)) kept.push(seg);
+  for (const seg of sorted) {
+    const s1 = startOf(seg), e1 = endOf(seg);
+    const dupOrContained = kept.some(d => {
+      const s2 = startOf(d), e2 = endOf(d);
+      const overlap = Math.max(0, Math.min(e1, e2) - Math.max(s1, s2));
+      const shorter = Math.min(e1 - s1, e2 - s2);
+      return shorter > 0 && overlap / shorter >= 0.8;
+    });
+    if (!dupOrContained) kept.push(seg);
   }
+  if (segs.length !== kept.length) console.log(`[LIDAR_PDF_DEDUP] ${isHoriz ? 'horiz' : 'vert'} chain: ${segs.length} → ${kept.length} segs`);
   if (!kept.length) return [];
 
   // Sort along the chain direction
@@ -1114,6 +1128,17 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     console.log('[LIDAR_PDF_STAGE] computing chain dims');
     const planCentX = trueW / 2, planCentZ = trueH / 2;
     const CHAIN_OFF = 20, OVERALL_OFF = 38;
+
+    // Global bounding box of all wall segs — used to snap edge segs to a common plane
+    let gMinX = Infinity, gMaxX = -Infinity, gMinZ = Infinity, gMaxZ = -Infinity;
+    for (const seg of allWallSegs) {
+      gMinX = Math.min(gMinX, seg.x1, seg.x2);
+      gMaxX = Math.max(gMaxX, seg.x1, seg.x2);
+      gMinZ = Math.min(gMinZ, seg.z1, seg.z2);
+      gMaxZ = Math.max(gMaxZ, seg.z1, seg.z2);
+    }
+    const SNAP_TOL = 1.0; // ft — captures wall-thickness drift between adjacent rooms
+
     const topSegs = [], bottomSegs = [], rightSegs = [];
     for (const seg of allWallSegs) {
       if (seg.interior) continue;
@@ -1123,9 +1148,19 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       const wdx = seg.x2 - seg.x1, wdz = seg.z2 - seg.z1, wl = len || 1;
       let nx = -wdz / wl, nz = wdx / wl;
       if ((mx - planCentX) * nx + (mz - planCentZ) * nz < 0) { nx = -nx; nz = -nz; }
-      if (nz < -0.85)      topSegs.push({ ...seg, len });     // outward-normal points up
-      else if (nz >  0.85) bottomSegs.push({ ...seg, len });  // outward-normal points down
-      else if (nx >  0.85) rightSegs.push({ ...seg, len });   // outward-normal points right
+      if (nz < -0.85) {
+        // Top edge — snap z to gMinZ if both endpoints are within SNAP_TOL
+        const snapped = Math.abs(seg.z1 - gMinZ) < SNAP_TOL && Math.abs(seg.z2 - gMinZ) < SNAP_TOL;
+        topSegs.push(snapped ? { ...seg, z1: gMinZ, z2: gMinZ, len } : { ...seg, len });
+      } else if (nz > 0.85) {
+        // Bottom edge — snap z to gMaxZ
+        const snapped = Math.abs(seg.z1 - gMaxZ) < SNAP_TOL && Math.abs(seg.z2 - gMaxZ) < SNAP_TOL;
+        bottomSegs.push(snapped ? { ...seg, z1: gMaxZ, z2: gMaxZ, len } : { ...seg, len });
+      } else if (nx > 0.85) {
+        // Right edge — snap x to gMaxX
+        const snapped = Math.abs(seg.x1 - gMaxX) < SNAP_TOL && Math.abs(seg.x2 - gMaxX) < SNAP_TOL;
+        rightSegs.push(snapped ? { ...seg, x1: gMaxX, x2: gMaxX, len } : { ...seg, len });
+      }
       // left (nx < -0.85) skipped — title column is there
     }
     // Top chain: dim line above oY
