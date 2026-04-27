@@ -487,3 +487,8 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: avenstone-vite/src/lib/pdf.js
 - Decision: Snap tolerance widened 5°→10° so near-ortho walls force exactly 0°/90°; genuinely angled walls (>10° off square) stay as-is. Endpoint merge tolerance widened 2 in→6 in so near-touching corners collapse cleanly. Both constants are in _snapToOrtho. Label z-order was already correct (labels after poché); root cause was narrow rooms (hallways, aspect > 3) skipping the wall-margin check — centroid could land on a wall. Fix: narrow rooms now also run _labelFitsInRoom with rotated dims and fall back to _interiorPoint when centroid clips a wall.
 - Open: If hallways are still very narrow (< ~2 ft rendered), font may still clip — could add font-size reduction loop as a follow-up.
+
+[LOG — 2026-04-27]
+- Action: Diagnosed missing sequence_enrollments row in sub email test; ran full delivery test end-to-end
+- Decision: Root cause was every DO block in the SQL editor rolled back silently on any error (duplicate key, carriage return in JSON, NOT NULL violation), leaving no rows committed. Final SELECT-based INSERT inserted 0 rows because sub profile and sequence never existed — SQL editor showed "Success" for 0 rows inserted. Fix: ran each INSERT separately via Management API (bypasses SQL editor copy-paste issues). Also discovered sequence_enrollments.contact_id had NOT NULL constraint blocking sub-only rows — dropped it. Runner returned sent:1 / completed_last_step — delivery confirmed pending inbox check.
+- Open: Awaiting inbox confirmation of test email. contact_id NOT NULL drop should be committed as a proper migration file. Auto-trigger wiring still pending.
