@@ -28,13 +28,6 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
     private var capturedHeightPoints: [Double] = []
     private var heightSource: String = "auto"
 
-    // MARK: - Quality state
-
-    private var hadLimitedTracking = false
-    private var qualityTimer: Timer?
-    private var qualityProgressView: UIProgressView!
-    private var qualityLabel: UILabel!
-
     // MARK: - Polygon UI
 
     private var cancelButton: UIButton!
@@ -65,7 +58,6 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
         setupUI()
         setupHeightPanel()
         setupGestures()
-        setupQualityBar()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -73,12 +65,10 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = [.horizontal, .vertical]
         sceneView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
-        startQualityTimer()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        stopQualityTimer()
         sceneView.session.pause()
     }
 
@@ -600,15 +590,12 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
 
     private func transitionToHeightPhase() {
         phase = .height
-        stopQualityTimer()
         groundY = sphereNodes.reduce(0) { $0 + $1.simdWorldPosition.y } / Float(sphereNodes.count)
 
-        // Hide polygon controls + quality bar
+        // Hide polygon controls
         undoButton.isHidden = true
         resetButton.isHidden = true
         doneButton.isHidden = true
-        qualityLabel.isHidden = true
-        qualityProgressView.isHidden = true
 
         // Update tracking label
         trackingLabel.text = "Height mode — aim at top of wall"
@@ -658,62 +645,11 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
     }
 
     @objc private func cancelTapped() {
-        stopQualityTimer()
         sceneView.session.pause()
         onComplete?(.failure(NSError(
             domain: "ExteriorScan", code: -1,
             userInfo: [NSLocalizedDescriptionKey: "Scan cancelled"]
         )))
-    }
-
-    private func setupQualityBar() {
-        qualityLabel = UILabel()
-        qualityLabel.translatesAutoresizingMaskIntoConstraints = false
-        qualityLabel.text = "Quality 0"
-        qualityLabel.textColor = UIColor.white.withAlphaComponent(0.75)
-        qualityLabel.font = UIFont.systemFont(ofSize: 11, weight: .medium)
-        qualityLabel.textAlignment = .center
-        view.addSubview(qualityLabel)
-
-        qualityProgressView = UIProgressView(progressViewStyle: .bar)
-        qualityProgressView.translatesAutoresizingMaskIntoConstraints = false
-        qualityProgressView.progress = 0
-        qualityProgressView.trackTintColor = UIColor.white.withAlphaComponent(0.2)
-        qualityProgressView.progressTintColor = CaptureQualityTracker.colorForScore(0)
-        qualityProgressView.layer.cornerRadius = 3
-        qualityProgressView.clipsToBounds = true
-        view.addSubview(qualityProgressView)
-
-        NSLayoutConstraint.activate([
-            qualityLabel.bottomAnchor.constraint(equalTo: doneButton.topAnchor, constant: -10),
-            qualityLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            qualityProgressView.bottomAnchor.constraint(equalTo: qualityLabel.topAnchor, constant: -4),
-            qualityProgressView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            qualityProgressView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            qualityProgressView.heightAnchor.constraint(equalToConstant: 6),
-        ])
-    }
-
-    private func startQualityTimer() {
-        qualityTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            guard let self = self, self.phase == .polygon else { return }
-            let score = CaptureQualityTracker.liveExteriorScore(
-                cornerCount: self.sphereNodes.count,
-                hadLimitedTracking: self.hadLimitedTracking
-            )
-            DispatchQueue.main.async { self.updateQualityBar(score: score) }
-        }
-    }
-
-    private func stopQualityTimer() {
-        qualityTimer?.invalidate()
-        qualityTimer = nil
-    }
-
-    private func updateQualityBar(score: Int) {
-        qualityProgressView.setProgress(Float(score) / 100.0, animated: true)
-        qualityProgressView.progressTintColor = CaptureQualityTracker.colorForScore(score)
-        qualityLabel.text = "Quality \(score)"
     }
 
     // MARK: - Height Capture
@@ -758,12 +694,6 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
             ["x": Double(node.simdWorldPosition.x), "z": Double(node.simdWorldPosition.z)]
         }
 
-        let quality = CaptureQualityTracker.scoreFromExteriorResult(
-            cornerCount: sphereNodes.count,
-            perimeterFt: perimFt,
-            hadLimitedTracking: hadLimitedTracking
-        )
-
         let result: [String: Any] = [
             "corners": corners,
             "perimeterFt": (perimFt * 10).rounded() / 10,
@@ -771,9 +701,6 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
             "heightMeters": (heightM * 100).rounded() / 100,
             "heightSource": source,
             "heightPoints": capturedHeightPoints.isEmpty ? [heightM] : capturedHeightPoints,
-            "qualityScore": quality.score,
-            "qualityGrade": quality.grade,
-            "qualityDeductions": quality.deductions,
             "simulated": false,
         ]
 
@@ -816,26 +743,21 @@ class ExteriorScanViewController: UIViewController, ARSCNViewDelegate {
             case .notAvailable:
                 self.trackingLabel.text = "AR unavailable"
                 self.trackingLabel.backgroundColor = UIColor(red: 0.8, green: 0.2, blue: 0.2, alpha: 0.9)
-                self.hadLimitedTracking = true
             case .limited(.initializing):
                 self.trackingLabel.text = "Initializing..."
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
             case .limited(.excessiveMotion):
                 self.trackingLabel.text = "Too much motion — slow down"
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
-                self.hadLimitedTracking = true
             case .limited(.insufficientFeatures):
                 self.trackingLabel.text = "Point at a textured surface"
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
-                self.hadLimitedTracking = true
             case .limited(.relocalizing):
                 self.trackingLabel.text = "Recovering tracking..."
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
-                self.hadLimitedTracking = true
             @unknown default:
                 self.trackingLabel.text = "Limited tracking"
                 self.trackingLabel.backgroundColor = UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 0.9)
-                self.hadLimitedTracking = true
             }
         }
     }

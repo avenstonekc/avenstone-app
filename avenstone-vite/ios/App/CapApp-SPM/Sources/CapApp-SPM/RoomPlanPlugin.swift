@@ -53,20 +53,13 @@ public class RoomPlanPlugin: CAPPlugin, CAPBridgedPlugin {
                 }
                 let scanVC = RoomPlanScanViewController()
                 scanVC.roomName = roomName
-                var capturedQuality: QualityResult? = nil
-                scanVC.onQuality = { q in capturedQuality = q }
                 scanVC.onComplete = { [weak self] result in
                     guard let self = self else { return }
                     DispatchQueue.main.async {
                         viewController.dismiss(animated: true) {
                             switch result {
                             case .success(let room):
-                                var dict = self.roomToDict(room: room, name: self.currentRoomName)
-                                if let q = capturedQuality {
-                                    dict["qualityScore"] = q.score
-                                    dict["qualityGrade"] = q.grade
-                                    dict["qualityDeductions"] = q.deductions
-                                }
+                                let dict = self.roomToDict(room: room, name: self.currentRoomName)
                                 self.pendingCall?.resolve(dict)
                             case .failure(let error):
                                 self.pendingCall?.reject(error.localizedDescription)
@@ -313,10 +306,6 @@ class RoomPlanScanViewController: UIViewController, RoomCaptureViewDelegate, Roo
     private let sessionConfig = RoomCaptureSession.Configuration()
     private var didFinish = false
     private var scanStartDate: Date?
-    private var qualityTimer: Timer?
-    private var qualityProgressView: UIProgressView!
-    private var qualityLabel: UILabel!
-    var onQuality: ((QualityResult) -> Void)?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -374,9 +363,7 @@ class RoomPlanScanViewController: UIViewController, RoomCaptureViewDelegate, Roo
             cancelButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             cancelButton.heightAnchor.constraint(equalToConstant: 36)
         ])
-        setupQualityBar()
         scanStartDate = Date()
-        startQualityTimer()
     }
 
     @objc private func doneTapped() {
@@ -386,61 +373,12 @@ class RoomPlanScanViewController: UIViewController, RoomCaptureViewDelegate, Roo
     @objc private func cancelTapped() {
         guard !didFinish else { return }
         didFinish = true
-        stopQualityTimer()
         roomCaptureView.captureSession.stop()
         onComplete?(.failure(NSError(
             domain: "RoomPlan",
             code: -1,
             userInfo: [NSLocalizedDescriptionKey: "Scan cancelled"]
         )))
-    }
-
-    private func setupQualityBar() {
-        qualityLabel = UILabel()
-        qualityLabel.translatesAutoresizingMaskIntoConstraints = false
-        qualityLabel.text = "Quality 20"
-        qualityLabel.textColor = UIColor.white.withAlphaComponent(0.75)
-        qualityLabel.font = UIFont.systemFont(ofSize: 11, weight: .medium)
-        qualityLabel.textAlignment = .center
-        view.addSubview(qualityLabel)
-
-        qualityProgressView = UIProgressView(progressViewStyle: .bar)
-        qualityProgressView.translatesAutoresizingMaskIntoConstraints = false
-        qualityProgressView.progress = 0.2
-        qualityProgressView.trackTintColor = UIColor.white.withAlphaComponent(0.2)
-        qualityProgressView.progressTintColor = CaptureQualityTracker.colorForScore(20)
-        qualityProgressView.layer.cornerRadius = 3
-        qualityProgressView.clipsToBounds = true
-        view.addSubview(qualityProgressView)
-
-        NSLayoutConstraint.activate([
-            qualityLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -82),
-            qualityLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            qualityProgressView.bottomAnchor.constraint(equalTo: qualityLabel.topAnchor, constant: -4),
-            qualityProgressView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            qualityProgressView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            qualityProgressView.heightAnchor.constraint(equalToConstant: 6),
-        ])
-    }
-
-    private func startQualityTimer() {
-        qualityTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            let elapsed = self.scanStartDate.map { Date().timeIntervalSince($0) } ?? 0
-            let score = CaptureQualityTracker.liveInteriorScore(scanDurationSeconds: elapsed)
-            DispatchQueue.main.async { self.updateQualityBar(score: score) }
-        }
-    }
-
-    private func stopQualityTimer() {
-        qualityTimer?.invalidate()
-        qualityTimer = nil
-    }
-
-    private func updateQualityBar(score: Int) {
-        qualityProgressView.setProgress(Float(score) / 100.0, animated: true)
-        qualityProgressView.progressTintColor = CaptureQualityTracker.colorForScore(score)
-        qualityLabel.text = "Quality \(score)"
     }
 
     func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
@@ -450,13 +388,9 @@ class RoomPlanScanViewController: UIViewController, RoomCaptureViewDelegate, Roo
     func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
         guard !didFinish else { return }
         didFinish = true
-        stopQualityTimer()
         if let error = error {
             onComplete?(.failure(error))
         } else {
-            let elapsed = scanStartDate.map { Date().timeIntervalSince($0) } ?? 0
-            let quality = CaptureQualityTracker.scoreFromCapturedRoom(processedResult, scanDurationSeconds: elapsed)
-            onQuality?(quality)
             onComplete?(.success(processedResult))
         }
     }
