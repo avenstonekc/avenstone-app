@@ -446,3 +446,13 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: Blocker — verify subs table has a phone column before building runner branch. No phone = SMS dead on arrival. Must check before writing a line of runner code.
 - Decision: New sub-ops trigger keys needed: sub_onboarded, bid_sent, co_sent, bid_overdue, invoice_overdue. Time-based triggers (bid_overdue, invoice_overdue) require a cron wrapper — current runner is HTTP POST only, no scheduler.
 - Open: Decision needed — (1) add phone column to subs if missing, (2) confirm scope (manual-only MVP vs auto-triggers vs time-based triggers), then build.
+
+[LOG — 2026-04-26]
+- Action: Sub-ops sequences MVP — manual enrollment shipped
+- Files: supabase/migrations/20260426_sequence_sub_enrollment.sql (sub_id FK → profiles, CHECK one-recipient, index, RLS), supabase/migrations/20260426_sequence_trigger_constraint.sql (CHECK constraint on trigger values), supabase/functions/sequence-runner/index.ts (sub branch — fetch profile phone, skip contact_messages write), avenstone-vite/src/lib/supabase.js (+sbLoadActiveSubs), avenstone-vite/src/components/common/SequencesScr.jsx (recipient toggle, sub picker, SUB badge on enrollment list, loadSubs, manual_sub trigger)
+- Decision: Subs are profiles with role='sub' — no separate subs table. sub_id in sequence_enrollments references profiles(id). Phone and email come from profiles.
+- Decision: Manual enrollment shipped first to validate runner can deliver to subs at all. Contact path fully unchanged and must keep working.
+- Decision: trigger column was free text — added CHECK constraint now to document valid values: manual, new_contact, missed_call, manual_sub.
+- Decision: Sub message delivery skips contact_messages write — no sub_messages table yet. Enrollment advances normally; delivery is fire-and-forget SMS only.
+- Decision: Enroll modal warns inline when selected sub has no phone (SMS will skip). PM sees this before committing the enrollment.
+- Open: Auto-trigger wiring (bid_sent, sub_invited, payment_made) and time-based triggers (bid_overdue, invoice_overdue) deferred to follow-up prompts. Bulk enrollment UI deferred. sub_messages table deferred.
