@@ -492,3 +492,13 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Action: Diagnosed missing sequence_enrollments row in sub email test; ran full delivery test end-to-end
 - Decision: Root cause was every DO block in the SQL editor rolled back silently on any error (duplicate key, carriage return in JSON, NOT NULL violation), leaving no rows committed. Final SELECT-based INSERT inserted 0 rows because sub profile and sequence never existed — SQL editor showed "Success" for 0 rows inserted. Fix: ran each INSERT separately via Management API (bypasses SQL editor copy-paste issues). Also discovered sequence_enrollments.contact_id had NOT NULL constraint blocking sub-only rows — dropped it. Runner returned sent:1 / completed_last_step — delivery confirmed pending inbox check.
 - Open: Awaiting inbox confirmation of test email. contact_id NOT NULL drop should be committed as a proper migration file. Auto-trigger wiring still pending.
+
+[LOG — 2026-04-28]
+- Action: Auto-trigger wiring shipped — bid_sent, sub_invited, payment_made sequences fire automatically
+- Files: supabase/migrations/20260428_sequences_trigger_widen.sql (new), avenstone-vite/src/lib/supabase.js (+sbAutoEnrollSubInSequences, wired to sbCreateTransaction), supabase/functions/send-bid-invite/index.ts (auto-enroll after email ok), supabase/functions/send-invite/index.ts (auto-enroll after invite), avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx (sub picker + payer_or_payee_id)
+- Commits: be0ef64 (migration), f21669a (supabase.js helper + sbCreateTransaction wire), 89ec700 (edge fn wires), c4e69be (TransactionModal)
+- Decision: sequences_trigger_check constraint widened (DROP + ADD) to include bid_sent, sub_invited, payment_made. Applied live via Management API.
+- Decision: sbAutoEnrollSubInSequences(subId, triggerType, tenantId) — finds active sequences with matching trigger, skips if sub already active/complete enrolled, inserts with next_send_at computed from step[0].day. Fire-and-forget from sbCreateTransaction.
+- Decision: send-bid-invite auto-enrolls userId in bid_sent sequences only when Resend call succeeds (res.ok gate). send-invite auto-enrolls in sub_invited sequences after inviteUserByEmail succeeds.
+- Decision: TransactionModal shows a sub picker dropdown (sbLoadActiveSubs) when type=sub_payout. Selecting a sub sets payer_or_payee_id (uuid) + auto-fills payer_or_payee_name. payer_or_payee_id now included in save payload — sbCreateTransaction uses it for payment_made enrollment.
+- Open: Time-based triggers (bid_overdue, invoice_overdue) still deferred — require cron wrapper.
