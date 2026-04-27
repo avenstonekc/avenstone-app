@@ -825,7 +825,15 @@ const _drawPoché = (doc, x1, y1, x2, y2, thick) => {
   if (len < 0.5) return;
   const ux = (x2 - x1) / len, uy = (y2 - y1) / len;
   const px = -uy * thick / 2, py = ux * thick / 2;
-  const c = [[x1 + px, y1 + py], [x2 + px, y2 + py], [x2 - px, y2 - py], [x1 - px, y1 - py]];
+  // Extend each end by thick/2 so adjacent perpendicular rectangles overlap at corners,
+  // filling the gap that would otherwise appear at every wall junction.
+  const ext = thick / 2;
+  const c = [
+    [x1 - ux * ext + px, y1 - uy * ext + py],
+    [x2 + ux * ext + px, y2 + uy * ext + py],
+    [x2 + ux * ext - px, y2 + uy * ext - py],
+    [x1 - ux * ext - px, y1 - uy * ext - py],
+  ];
   doc.setFillColor(0, 0, 0);
   doc.lines([[c[1][0]-c[0][0], c[1][1]-c[0][1]], [c[2][0]-c[1][0], c[2][1]-c[1][1]], [c[3][0]-c[2][0], c[3][1]-c[2][1]]], c[0][0], c[0][1], [1, 1], 'F', true);
 };
