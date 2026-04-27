@@ -397,3 +397,19 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: RoomPlanPlugin.swift, pdf.js
 - Decision: Trust scan-time names — skip StructureBuilder + showNamingScreen + matchNamesToStructuredRooms. buildStructure() now calls fallbackRooms() directly and fires onComplete(.success). fallbackRooms() expanded to full dict parity with structureToRooms: doors/windows counts, doorSegments (with nx/nz/width), windowSegments, openingSegments, objects (category/dims/position/rotation/confidence), worldX/worldZ from global gMinX/gMinZ across all capturedRooms. Dead helpers left in file with DEAD CODE comments. Door swing arc cap reverted per Kalin's request — all swings drawn, original (80,80,80)/0.4pt stroke.
 - Open: Without StructureBuilder, shared walls between rooms won't merge to a midline — adjacent rooms may render as parallel wall pairs separated by wall thickness. Chain dim dedup compensates on dimensions. If thick double-walls are visually unacceptable, re-introduce StructureBuilder behind a flag (but keep inline naming — the matching layer was the bug).
+
+[LOG — 2026-04-26]
+- Action: Fixed floor plan PDF logo rendering — correct 1:1 aspect ratio and JPEG format flag.
+- Files: avenstone-vite/src/lib/pdf.js
+- Decision: Logo asset (logo.png) is a 1024×1024 JPEG despite the .png extension. Previous implementation assumed 3:1 ratio and used 'PNG' format flag, producing a squished 48×16pt stamp. Fixed: title column uses 88×88pt square centered in the 108pt column (logoX=(TC_W-88)/2, logoY=12); summary page header uses 40×40pt at (M, 6). Both addImage calls now use 'JPEG' format. Downstream divider and ty positions adjusted to follow new logo bottom.
+
+[LOG — 2026-04-26]
+- Action: Restored StructureBuilder after the skip-it experiment broke geometry. Switched name matching from centroid to area signature.
+- Files: RoomPlanPlugin.swift
+- Decision: StructureBuilder is load-bearing for wall merging — never skip it again. Without it, adjacent rooms render with parallel un-merged walls, hallway geometry extends into empty space, door swings float, and chain dim Z-line math fails. Centroid matching (matchNamesToStructuredRooms) failed every iteration; bounding-box area is more robust because StructureBuilder doesn't change room area meaningfully. New matchNamesByArea: compute bbox ft² for each captured + rebuilt room, greedy closest-area match, each captured used at most once. structureToRooms now takes [Int: (String, Int)] (name, scanIndex) and emits scanIndex in the room dict; buildStructure sorts output by scanIndex so PDF renders in scan order. StructureBuilder failure falls back to fallbackRooms (unmerged capturedRooms with inline names). showNamingScreen / nameFields / structuredRooms marked DEAD CODE.
+- Open: If two rooms have very similar area (e.g. two bedrooms ~140sf each), area match may mis-pair. Watch the [LIDAR_NAME] console log — it prints rebuilt area, captured area, and delta for every match. If mis-pairing is detected, add centroid distance as a tiebreaker when delta < 5% of the smaller area.
+
+[LOG — 2026-04-26]
+- Action: Verified consultation_gap_analyses table state in live Supabase DB.
+- Decision: Table exists. All 6 columns (id, session_id, job_id, tenant_id, gaps, created_at) confirmed present via REST API column projection. Migration 20260425_consultation_gap_analyses.sql was already applied.
+- Open: none
