@@ -81,6 +81,8 @@ Deno.serve(async (req) => {
           body: string;
           user_id: string | null;
           level: "high" | "medium" | "low";
+          source_table?: string;
+          source_id?: string;
         }[] = [];
 
         // Rule 1: contract_unsigned
@@ -91,6 +93,8 @@ Deno.serve(async (req) => {
             body: `${job.address} — tap to review and sign your contract`,
             user_id: job.client_user_id,
             level: "high",
+            source_table: "jobs",
+            source_id: job.id,
           });
         }
 
@@ -108,6 +112,8 @@ Deno.serve(async (req) => {
             body: `${job.address} — payment was due ${p.due_date}. Tap to pay now.`,
             user_id: job.client_user_id,
             level: "high",
+            source_table: "job_transactions",
+            source_id: p.id,
           });
         }
 
@@ -131,6 +137,8 @@ Deno.serve(async (req) => {
             body: `${job.address} — confirm crew and materials are ready`,
             user_id: pmUsers?.[0]?.id || null,
             level: "medium",
+            source_table: "jobs",
+            source_id: job.id,
           });
         }
 
@@ -151,6 +159,8 @@ Deno.serve(async (req) => {
               body: `${job.address} — is the crew on site? Log today's progress`,
               user_id: pmUsers?.[0]?.id || null,
               level: "medium",
+              source_table: "jobs",
+              source_id: job.id,
             });
           }
         }
@@ -168,6 +178,8 @@ Deno.serve(async (req) => {
             body: `${job.address} — ${co.description?.slice(0, 80) || "change order"} has been waiting ${daysSince(co.created_at)} days`,
             user_id: job.client_user_id,
             level: "medium",
+            source_table: "change_orders",
+            source_id: co.id,
           });
         }
 
@@ -185,6 +197,8 @@ Deno.serve(async (req) => {
             body: `${job.address} — no updates in over 2 weeks. Needs attention.`,
             user_id: ownerUsers?.[0]?.id || null,
             level: "low",
+            source_table: "jobs",
+            source_id: job.id,
           });
         }
 
@@ -208,6 +222,8 @@ Deno.serve(async (req) => {
             body: `${job.address} — ${lienMissing.length} sub/vendor payment${lienMissing.length > 1 ? 's' : ''} need lien waivers`,
             user_id: pmUsers?.[0]?.id || null,
             level: "medium",
+            source_table: "job_transactions",
+            source_id: lienMissing[0].id,
           });
         }
 
@@ -245,6 +261,8 @@ Deno.serve(async (req) => {
               body: `${job.address} — over budget: ${phaseList}`,
               user_id: pmUsers2?.[0]?.id || null,
               level: "high",
+              source_table: "jobs",
+              source_id: job.id,
             });
           }
         }
@@ -262,6 +280,21 @@ Deno.serve(async (req) => {
               body: a.body,
               user_id: a.user_id,
               created_at: new Date().toISOString(),
+            }))
+          );
+
+          // Also write todos (additive alongside notifications for v1)
+          await sb.from("todos").insert(
+            newAlerts.map((a) => ({
+              tenant_id: job.tenant_id,
+              target_user_id: a.user_id,
+              job_id: job.id,
+              type: a.type,
+              title: a.title,
+              body: a.body,
+              severity: a.level,
+              source_table: a.source_table || null,
+              source_id: a.source_id || null,
             }))
           );
         }
