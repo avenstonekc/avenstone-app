@@ -91,7 +91,10 @@ export default function SubPortal({ profile, signOut }) {
       const json = await res.json();
       const msg = json.message || "Hi! I can help you review and update your pricing. What would you like to look at?";
       setBotMsgs([{ role: 'ai', text: msg }]);
-      setBotHistory([{ role: 'assistant', content: msg }]);
+      // Seed history with the synthetic user greeting the edge fn used, so subsequent
+      // turns build a valid alternating sequence starting with role=user.
+      const introMsg = `Hi, I'm ${profile.full_name || 'there'}. I do ${profile.trade || 'general construction'} work.`;
+      setBotHistory([{ role: 'user', content: introMsg }, { role: 'assistant', content: msg }]);
     } catch {
       setBotMsgs([{ role: 'ai', text: "Something went wrong. Please try again." }]);
     }
@@ -105,8 +108,6 @@ export default function SubPortal({ profile, signOut }) {
     setBotSending(true);
     const newMsgs = [...botMsgs, { role: 'user', text }];
     setBotMsgs(newMsgs);
-    const newHistory = [...botHistory, { role: 'user', content: text }];
-    setBotHistory(newHistory);
     try {
       const res = await fetch(AI_SUB_PRICING_URL, {
         method: 'POST',
@@ -114,13 +115,15 @@ export default function SubPortal({ profile, signOut }) {
         body: JSON.stringify({
           sub_id: profile.id, tenant_id: profile.tenant_id,
           full_name: profile.full_name, trade: profile.trade,
-          message: text, conversation_history: newHistory,
+          message: text, conversation_history: botHistory,
         }),
       });
       const json = await res.json();
       const aiMsg = json.message || "Something went wrong. Try again.";
       setBotMsgs(p => [...p, { role: 'ai', text: aiMsg }]);
-      setBotHistory(p => [...p, { role: 'assistant', content: aiMsg }]);
+      // Add both user message and assistant response together so history stays
+      // in valid alternating order without duplicating the user turn.
+      setBotHistory(p => [...p, { role: 'user', content: text }, { role: 'assistant', content: aiMsg }]);
       // If a price change was approved, refresh pricing
       if (json.price_change?.decision === 'approved') {
         sbLoadSubPricing(profile.id).then(setPricing);
