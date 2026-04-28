@@ -60,6 +60,9 @@ Deno.serve(async (req) => {
           { data: logs },
           { data: recentNotifs },
           { data: lineItems },
+          { data: quoteRequests },
+          { data: contractDocs },
+          { data: pmUsers },
         ] = await Promise.all([
           sb.from("schedule_phases").select("*").eq("job_id", job.id).order("order_index"),
           sb.from("job_transactions").select("*").eq("job_id", job.id),
@@ -67,7 +70,12 @@ Deno.serve(async (req) => {
           sb.from("daily_logs").select("*").eq("job_id", job.id).order("log_date", { ascending: false }).limit(5),
           sb.from("notifications").select("type").eq("job_id", job.id).gte("created_at", new Date(Date.now() - 86400000).toISOString()),
           sb.from("estimate_line_items").select("phase,client_price,total_cost").eq("job_id", job.id),
+          sb.from("quote_requests").select("*,responses:bid_responses(*)").eq("job_id", job.id),
+          sb.from("job_documents").select("id,file_type").eq("job_id", job.id).eq("file_type", "contract"),
+          sb.from("profiles").select("id").eq("tenant_id", job.tenant_id).in("role", ["project_manager", "owner"]).limit(1),
         ]);
+
+        const pmUserId = pmUsers?.[0]?.id || null;
 
         const recentTypes = new Set((recentNotifs || []).map((n: { type: string }) => n.type));
 
@@ -125,17 +133,11 @@ Deno.serve(async (req) => {
         });
         if (upcoming.length > 0) {
           const ph = upcoming[0];
-          const { data: pmUsers } = await sb
-            .from("profiles")
-            .select("id")
-            .eq("tenant_id", job.tenant_id)
-            .in("role", ["project_manager", "owner"])
-            .limit(1);
           alerts.push({
             type: "phase_starting_soon",
             title: `${ph.phase_name} starts ${ph.start_date === today ? "today" : "soon"}`,
             body: `${job.address} — confirm crew and materials are ready`,
-            user_id: pmUsers?.[0]?.id || null,
+            user_id: pmUserId,
             level: "medium",
             source_table: "jobs",
             source_id: job.id,
@@ -147,17 +149,11 @@ Deno.serve(async (req) => {
           const lastLog = logs?.[0];
           const daysSinceLog = lastLog ? daysSince(lastLog.log_date) : 999;
           if (daysSinceLog >= 2) {
-            const { data: pmUsers } = await sb
-              .from("profiles")
-              .select("id")
-              .eq("tenant_id", job.tenant_id)
-              .in("role", ["project_manager", "owner"])
-              .limit(1);
             alerts.push({
               type: "no_daily_log",
               title: "No daily log in 2 days",
               body: `${job.address} — is the crew on site? Log today's progress`,
-              user_id: pmUsers?.[0]?.id || null,
+              user_id: pmUserId,
               level: "medium",
               source_table: "jobs",
               source_id: job.id,
@@ -165,7 +161,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Rule 5: co_pending_approval
+        // Rule 5: co_pending_approval — targets PM/owner (not client)
         const pendingCOs = (cos || []).filter(
           (c: { status: string; created_at: string }) =>
             c.status === "pending" && daysSince(c.created_at) >= 3
@@ -176,7 +172,7 @@ Deno.serve(async (req) => {
             type: "co_pending_approval",
             title: `Change order needs approval — $${Number(co.amount || 0).toLocaleString()}`,
             body: `${job.address} — ${co.description?.slice(0, 80) || "change order"} has been waiting ${daysSince(co.created_at)} days`,
-            user_id: job.client_user_id,
+            user_id: pmUserId,
             level: "medium",
             source_table: "change_orders",
             source_id: co.id,
@@ -185,17 +181,11 @@ Deno.serve(async (req) => {
 
         // Rule 6: job_stale
         if (daysSince(job.updated_at || job.created_at) >= 14) {
-          const { data: ownerUsers } = await sb
-            .from("profiles")
-            .select("id")
-            .eq("tenant_id", job.tenant_id)
-            .eq("role", "owner")
-            .limit(1);
           alerts.push({
             type: "job_stale",
             title: `Job stuck in ${job.status} for 14+ days`,
             body: `${job.address} — no updates in over 2 weeks. Needs attention.`,
-            user_id: ownerUsers?.[0]?.id || null,
+            user_id: pmUserId,
             level: "low",
             source_table: "jobs",
             source_id: job.id,
@@ -210,17 +200,11 @@ Deno.serve(async (req) => {
           !t.lien_waiver_url
         );
         if (lienMissing.length > 0) {
-          const { data: pmUsers } = await sb
-            .from("profiles")
-            .select("id")
-            .eq("tenant_id", job.tenant_id)
-            .in("role", ["project_manager", "owner"])
-            .limit(1);
           alerts.push({
             type: "lien_waiver_missing",
             title: `${lienMissing.length} lien waiver${lienMissing.length > 1 ? 's' : ''} missing`,
             body: `${job.address} — ${lienMissing.length} sub/vendor payment${lienMissing.length > 1 ? 's' : ''} need lien waivers`,
-            user_id: pmUsers?.[0]?.id || null,
+            user_id: pmUserId,
             level: "medium",
             source_table: "job_transactions",
             source_id: lienMissing[0].id,
@@ -230,7 +214,6 @@ Deno.serve(async (req) => {
         // Rule 8: budget_overrun (fires when any phase actual > 110% of budget)
         if (lineItems && lineItems.length) {
           const paidOut = allTxs.filter((t: { direction: string; status: string }) => t.direction === 'out' && t.status === 'paid');
-          // Group budget by phase
           const phaseBudget: Record<string, number> = {};
           for (const li of lineItems as { phase: string | null; client_price: number | null; total_cost: number | null }[]) {
             if (!li.phase) continue;
@@ -248,23 +231,78 @@ Deno.serve(async (req) => {
             return budget > 0 && actual > budget * 1.10;
           });
           if (overBudgetPhases.length) {
-            const { data: pmUsers2 } = await sb
-              .from("profiles")
-              .select("id")
-              .eq("tenant_id", job.tenant_id)
-              .in("role", ["project_manager", "owner"])
-              .limit(1);
             const phaseList = overBudgetPhases.map(([p]) => p).join(', ');
             alerts.push({
               type: "budget_overrun",
               title: `Budget overrun — ${overBudgetPhases.length} phase${overBudgetPhases.length > 1 ? 's' : ''}`,
               body: `${job.address} — over budget: ${phaseList}`,
-              user_id: pmUsers2?.[0]?.id || null,
+              user_id: pmUserId,
               level: "high",
               source_table: "jobs",
               source_id: job.id,
             });
           }
+        }
+
+        // Rule 9: bid_award_no_contract — awarded QR but no contract doc
+        const hasAwardedQR = (quoteRequests || []).some(
+          (qr: { responses?: { status: string }[] }) =>
+            (qr.responses || []).some((r) => r.status === "awarded")
+        );
+        if (hasAwardedQR && !(contractDocs && contractDocs.length)) {
+          alerts.push({
+            type: "bid_award_no_contract",
+            title: "Bid awarded — sub contract needed",
+            body: `${job.address} — a bid has been awarded but no sub contract is on file`,
+            user_id: pmUserId,
+            level: "medium",
+            source_table: "jobs",
+            source_id: job.id,
+          });
+        }
+
+        // Rule 10: itb_no_responses_due_soon — sent QR, due within 3 days, 0 responses
+        const qrDueSoon = (quoteRequests || []).find(
+          (qr: { status: string; due_date: string | null; responses?: unknown[] }) => {
+            if (qr.status !== "sent" || !qr.due_date) return false;
+            const daysUntil = Math.floor((new Date(qr.due_date).getTime() - Date.now()) / 86400000);
+            return daysUntil >= 0 && daysUntil <= 3 && !(qr.responses || []).length;
+          }
+        );
+        if (qrDueSoon) {
+          alerts.push({
+            type: "itb_no_responses_due_soon",
+            title: "Quote request due soon — no bids yet",
+            body: `${job.address} — ${(qrDueSoon as { trade?: string }).trade || "quote request"} due ${(qrDueSoon as { due_date: string }).due_date} with no responses`,
+            user_id: pmUserId,
+            level: "medium",
+            source_table: "quote_requests",
+            source_id: (qrDueSoon as { id: string }).id,
+          });
+        }
+
+        // Rule 11: itb_award_pending — submitted bids waiting 5+ days for decision
+        const qrAwardPending = (quoteRequests || []).find(
+          (qr: { status: string; responses?: { status: string; submitted_at?: string | null }[] }) => {
+            if (!["sent", "draft"].includes(qr.status)) return false;
+            const submitted = (qr.responses || []).filter((r) => r.status === "submitted");
+            if (!submitted.length) return false;
+            const oldest = submitted.reduce((a: { submitted_at?: string | null }, b: { submitted_at?: string | null }) =>
+              (a.submitted_at || "") < (b.submitted_at || "") ? a : b
+            );
+            return oldest.submitted_at && daysSince(oldest.submitted_at) >= 5;
+          }
+        );
+        if (qrAwardPending) {
+          alerts.push({
+            type: "itb_award_pending",
+            title: "Bid awaiting award decision",
+            body: `${job.address} — ${(qrAwardPending as { trade?: string }).trade || "quote request"} has bids submitted for 5+ days`,
+            user_id: pmUserId,
+            level: "medium",
+            source_table: "quote_requests",
+            source_id: (qrAwardPending as { id: string }).id,
+          });
         }
 
         // Dedup: skip already-sent types and alerts with no target user
