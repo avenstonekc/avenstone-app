@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, sbCountPendingTodos, AI_PM_NIGHTLY_URL, ANON_KEY } from './lib/supabase';
 import { Ic, STATS, sc, sl, f$, ls, ll } from './lib/utils';
 import { IQ, IR, BQ, BR } from './lib/formData';
@@ -53,6 +53,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [pendingJobId, setPendingJobId] = useState(null);
   const [pendingNew, setPendingNew] = useState(false);
+  const landingChecked = useRef(false);
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session: s } }) => {
@@ -83,6 +84,13 @@ export default function App() {
   };
 
   useEffect(() => { setGlobalJobs(jobs); }, [jobs]);
+
+  // Cold-start landing: redirect to Today if user has pending todos (runs once per session)
+  useEffect(() => {
+    if (!profile?.id || landingChecked.current) return;
+    landingChecked.current = true;
+    sbCountPendingTodos().then(count => { if (count > 0) setPg('today'); });
+  }, [profile?.id]);
 
   const saveJob = j => { const u = [j, ...jobs]; setJobs(u); ls('av_j', u); sbSave(j); };
   const signOut = async () => { await sb.auth.signOut(); ls('av_j', []); setJobs([]); setNotifs([]); };
