@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbUploadLienWaiverTx, sbLoadPhases, sbLoadActiveSubs } from '../../../../lib/supabase';
+import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbUploadLienWaiverTx, sbLoadPhases, sbLoadActiveSubs, sbResolveTodosBySource } from '../../../../lib/supabase';
 import { f$ } from '../../../../lib/utils';
 
 const TX_TYPES_IN  = ['client_payment','client_deposit','client_refund','other_income'];
@@ -113,7 +113,10 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
     setUploading(true);
     const res = await sbUploadLienWaiverTx(file, job.id);
     if (!res.error && res.path) {
-      if (!isNew && tx.id) await sbUpdateTransaction(tx.id, { lien_waiver_url: res.path, lien_waiver_signed_date: TODAY });
+      if (!isNew && tx.id) {
+        await sbUpdateTransaction(tx.id, { lien_waiver_url: res.path, lien_waiver_signed_date: TODAY });
+        sbResolveTodosBySource('job_transactions', tx.id).catch(() => {});
+      }
       setLienUrl(res.path);
     }
     setUploading(false);
