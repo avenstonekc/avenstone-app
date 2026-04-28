@@ -927,6 +927,79 @@ export const sbToggleOhShitProposal = async (id, included) => {
   await sb.from('oh_shit_moments').update({ included_in_proposal: included }).eq('id', id);
 };
 
+// ─── Pricing Lookup ───────────────────────────────────────────────────────────
+export const sbLoadPricingLookup = async (trade = 'general') => {
+  const { data, error } = await sb.from('pricing_lookup')
+    .select('*')
+    .eq('tenant_id', AV_TENANT)
+    .eq('trade', trade)
+    .eq('active', true)
+    .order('category');
+  if (error) console.error('sbLoadPricingLookup', error);
+  return data || [];
+};
+
+// ─── Takeoff Templates ────────────────────────────────────────────────────────
+export const sbLoadTakeoffTemplates = async (roomType = null) => {
+  let q = sb.from('takeoff_templates')
+    .select('*')
+    .eq('tenant_id', AV_TENANT)
+    .eq('active', true);
+  if (roomType) q = q.eq('room_type', roomType);
+  const { data, error } = await q.order('name');
+  if (error) console.error('sbLoadTakeoffTemplates', error);
+  return data || [];
+};
+
+// ─── Takeoff Drafts ───────────────────────────────────────────────────────────
+export const sbSaveTakeoffDraft = async (jobId, draftType, snapshot) => {
+  const { data, error } = await sb.from('takeoff_drafts').insert({
+    tenant_id: AV_TENANT,
+    job_id: jobId,
+    draft_type: draftType,
+    snapshot,
+    created_by: AV_USER_ID,
+  }).select().single();
+  if (error) console.error('sbSaveTakeoffDraft', error);
+  return data;
+};
+export const sbLoadTakeoffDrafts = async (jobId) => {
+  const { data, error } = await sb.from('takeoff_drafts')
+    .select('*')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false });
+  if (error) console.error('sbLoadTakeoffDrafts', error);
+  return data || [];
+};
+
+// ─── Material Orders ──────────────────────────────────────────────────────────
+export const sbLoadMaterialOrders = async (jobId) => {
+  const { data, error } = await sb.from('material_orders')
+    .select('*, estimate_line_item:estimate_line_items(*)')
+    .eq('job_id', jobId)
+    .order('expected_at', { nullsFirst: false });
+  if (error) console.error('sbLoadMaterialOrders', error);
+  return data || [];
+};
+export const sbCreateMaterialOrder = async (order) => {
+  const { data, error } = await sb.from('material_orders').insert({
+    tenant_id: AV_TENANT,
+    created_by: AV_USER_ID,
+    ...order,
+  }).select().single();
+  if (error) console.error('sbCreateMaterialOrder', error);
+  return data;
+};
+export const sbUpdateMaterialOrder = async (id, updates) => {
+  const { data, error } = await sb.from('material_orders')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) console.error('sbUpdateMaterialOrder', error);
+  return data;
+};
+
 // ─── Gap Analyzer ─────────────────────────────────────────────────────────────
 export const GAP_ANALYZER_URL = `${FN}/ai-consultation-gap-analyzer`;
 export const sbRunGapAnalysis = async (sessionId, jobId) => {
