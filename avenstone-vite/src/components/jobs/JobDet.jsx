@@ -11,10 +11,12 @@ import FloorPlanTab from './tabs/FloorPlanTab';
 import FinancialsTab from './tabs/FinancialsTab';
 import FieldTab from './tabs/FieldTab';
 import EstimateTab from './tabs/EstimateTab';
+import SubsTab from './tabs/SubsTab';
 
 const TABS = [
   { id: 'info',       lb: 'Info',         ic: 'info' },
   { id: 'estimate',   lb: 'Estimate',     ic: 'doc' },
+  { id: 'subs',       lb: 'Subs',         ic: 'clip' },
   { id: 'financials', lb: 'Financials',   ic: 'doc' },
   { id: 'sched',      lb: 'Schedule',     ic: 'sched' },
   { id: 'field',      lb: 'Field',        ic: 'clip' },
@@ -199,8 +201,9 @@ export default function JobDet({ job, upd, del, back, profile }) {
             {aiBanner.msg}
           </div>
         )}
-        {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} />}
+        {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} setTab={setTab} />}
         {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
+        {tab === 'subs' && <SubsTab job={job} profile={profile} setTab={setTab} />}
         {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
