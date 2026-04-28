@@ -1,6 +1,6 @@
 import { useState, Fragment } from 'react';
 import LidarScanner from '../../ai/LidarScanner';
-import { ANON_KEY, AI_ESTIMATOR_URL, NOTIFY_REALTOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadITBs, sbCreateITB, sbUpdateITB, sbSendBidInvite, sbUpdateBidStatus, sbLoadSubDirectory, AV_USER_ID, DOC_TYPES, docTypeColor, COMMON_TRADES, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal } from '../../../lib/supabase';
+import { ANON_KEY, AI_ESTIMATOR_URL, NOTIFY_REALTOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, AV_USER_ID, DOC_TYPES, docTypeColor, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
 
@@ -33,29 +33,6 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
   const [propOhShit, setPropOhShit] = useState([]);
   const [propOhShitExpanded, setPropOhShitExpanded] = useState(false);
 
-  // ── ITB state ─────────────────────────────────────────────────────────────────
-  const [itbs, setItbs] = useState([]);
-  const [itbsLoaded, setItbsLoaded] = useState(false);
-  const [showNewITB, setShowNewITB] = useState(false);
-  const [itbForm, setItbForm] = useState({ trade: '', description: '', budget_range: '', due_date: '' });
-  const [itbInviteEmail, setItbInviteEmail] = useState('');
-  const [itbInviteName, setItbInviteName] = useState('');
-  const [itbSaving, setItbSaving] = useState(false);
-  const [itbSendingTo, setItbSendingTo] = useState(null);
-  const [itbErr, setItbErr] = useState('');
-  const [expandedITB, setExpandedITB] = useState(null);
-  const [selectedDocs, setSelectedDocs] = useState([]);
-  const [selectedPhotos, setSelectedPhotos] = useState([]);
-  const [allSubs, setAllSubs] = useState([]);
-
-  const loadITBs = () => {
-    if (itbsLoaded) return;
-    sbLoadITBs(job.id).then(d => { setItbs(d); setItbsLoaded(true); });
-    sbLoadSubDirectory().then(d => setAllSubs(d));
-  };
-
-  // Auto-load ITBs when component mounts
-  useState(() => { loadITBs(); }, []);
 
   const readFileAsBase64 = file => new Promise((res, rej) => {
     const r = new FileReader();
@@ -201,37 +178,6 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
     setPropGenerating(false);
   };
 
-  const createITB = async () => {
-    if (!itbForm.trade) return;
-    setItbSaving(true); setItbErr('');
-    const d = await sbCreateITB({ job_id: job.id, title: `${itbForm.trade} — ${job.address}`, description: itbForm.description, trade: itbForm.trade, budget_range: itbForm.budget_range, due_date: itbForm.due_date || null, shared_doc_ids: selectedDocs, shared_photo_ids: selectedPhotos, status: 'draft' });
-    if (d) { setItbs(p => [d, ...p]); setShowNewITB(false); setItbForm({ trade: '', description: '', budget_range: '', due_date: '' }); setSelectedDocs([]); setSelectedPhotos([]); setExpandedITB(d.id); }
-    setItbSaving(false);
-  };
-
-  const sendInvite = async itb => {
-    if (!itbInviteEmail.trim()) return;
-    setItbSendingTo(itb.id); setItbErr('');
-    const res = await sbSendBidInvite({ ...itb, _jobAddress: job.address }, itbInviteEmail.trim(), itbInviteName.trim());
-    if (res.error) { setItbErr(res.error); } else {
-      await sbUpdateITB(itb.id, { status: 'sent' });
-      setItbs(p => p.map(x => x.id === itb.id ? { ...x, status: 'sent', invitees: [...(x.invitees || []), { email: itbInviteEmail.trim(), profile: { full_name: itbInviteName.trim() } }] } : x));
-      setItbInviteEmail(''); setItbInviteName('');
-    }
-    setItbSendingTo(null);
-  };
-
-  const awardBid = async (bidId, itbId) => {
-    await sbUpdateBidStatus(bidId, 'awarded');
-    await sbUpdateITB(itbId, { status: 'awarded' });
-    setItbs(p => p.map(itb => itb.id === itbId ? { ...itb, status: 'awarded', responses: (itb.responses || []).map(r => r.id === bidId ? { ...r, status: 'awarded' } : r) } : itb));
-  };
-
-  const rejectBid = async (bidId, itbId) => {
-    await sbUpdateBidStatus(bidId, 'rejected');
-    setItbs(p => p.map(itb => itb.id === itbId ? { ...itb, responses: (itb.responses || []).map(r => r.id === bidId ? { ...r, status: 'rejected' } : r) } : itb));
-  };
-
   const ssty = { appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 };
 
   return (
@@ -262,133 +208,6 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
           {scannedRooms.length > 0 ? 'Re-scan' : 'Scan Rooms'}
         </button>
       </div>
-
-      {/* ITB section */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Invitations to Bid</div>
-        <button className="btn btn-navy" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setShowNewITB(true)}><span style={{ width: 14, height: 14 }}>{Ic.plus}</span>New ITB</button>
-      </div>
-      {!itbsLoaded && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading...</div>}
-      {itbsLoaded && !itbs.length && <div className="empty">{Ic.doc}<div className="empty-t">No bids yet</div><div>Create an ITB to invite subs to quote this project</div></div>}
-      {itbs.map(itb => {
-        const isOpen = expandedITB === itb.id;
-        const statusColor = { draft: '#9CA3AF', sent: '#f59e0b', closed: '#6B7280', awarded: '#22c55e' }[itb.status] || '#9CA3AF';
-        const responses = itb.responses || [];
-        const invitees = itb.invitees || [];
-        return (
-          <div key={itb.id} style={{ background: '#fff', border: '1px solid #E8E4DC', marginBottom: 10 }}>
-            <div style={{ padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }} onClick={() => setExpandedITB(isOpen ? null : itb.id)}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>{itb.trade || 'General'}</span>
-                  <span style={{ fontSize: 9, background: statusColor + '18', color: statusColor, padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{itb.status}</span>
-                </div>
-                {itb.description && <div style={{ fontSize: 12, color: '#9CA3AF', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{itb.description}</div>}
-                <div style={{ fontSize: 11, color: '#D1C9B8', marginTop: 2 }}>{invitees.length} invited · {responses.length} {responses.length === 1 ? 'response' : 'responses'}{itb.due_date && ` · Due ${fD(itb.due_date)}`}</div>
-              </div>
-              <span style={{ width: 14, height: 14, color: '#9CA3AF', transform: isOpen ? 'rotate(180deg)' : 'none', transition: '0.15s', display: 'flex' }}>{Ic.chev}</span>
-            </div>
-            {isOpen && <div style={{ borderTop: '1px solid #F3F0E8', padding: 16 }}>
-              <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', padding: 14, marginBottom: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Send Invite</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                  <div className="fg" style={{ marginBottom: 0 }}><label className="flbl">Name (optional)</label><input className="finp" value={itbInviteName} onChange={e => setItbInviteName(e.target.value)} placeholder="John Smith" /></div>
-                  <div className="fg" style={{ marginBottom: 0 }}><label className="flbl">Email</label><input className="finp" type="email" value={itbInviteEmail} onChange={e => setItbInviteEmail(e.target.value)} placeholder="john@smithelectric.com" /></div>
-                </div>
-                {allSubs.length > 0 && <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 6 }}>Quick pick from directory:</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {allSubs.filter(s => !invitees.find(i => i.email === s.email)).map(s => (
-                      <button key={s.id} onClick={() => { setItbInviteEmail(s.email || ''); setItbInviteName(s.full_name || ''); }} style={{ background: itbInviteEmail === s.email ? '#0A1F44' : '#fff', color: itbInviteEmail === s.email ? '#C9A84C' : '#374151', border: `1px solid ${itbInviteEmail === s.email ? '#0A1F44' : '#E8E4DC'}`, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>{s.full_name || s.email}{s.trade && ` · ${s.trade}`}</button>
-                    ))}
-                  </div>
-                </div>}
-                {itbErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '6px 10px', fontSize: 12, marginBottom: 8 }}>{itbErr}</div>}
-                <button className={`btn ${itbInviteEmail.trim() ? 'btn-gold' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={() => sendInvite(itb)} disabled={itbSendingTo === itb.id || !itbInviteEmail.trim()}>{itbSendingTo === itb.id ? 'Sending invite...' : 'Send Bid Invite'}</button>
-              </div>
-              {invitees.length > 0 && <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Invited ({invitees.length})</div>
-                {invitees.map((inv, i) => {
-                  const resp = responses.find(r => r.sub_id === inv.sub_id);
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #F3F0E8' }}>
-                      <div style={{ width: 28, height: 28, background: '#0A1F4418', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#0A1F44', flexShrink: 0 }}>{(inv.profile?.full_name || inv.email || '?')[0].toUpperCase()}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>{inv.profile?.full_name || inv.email}</div>
-                        {inv.profile?.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{inv.profile.trade}</div>}
-                      </div>
-                      {resp ? <span style={{ fontSize: 10, background: resp.status === 'awarded' ? '#F0FDF4' : resp.status === 'rejected' ? '#FEF2F2' : 'rgba(201,168,76,0.1)', color: resp.status === 'awarded' ? '#16a34a' : resp.status === 'rejected' ? '#ef4444' : '#C9A84C', padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, border: `1px solid ${resp.status === 'awarded' ? '#BBF7D0' : resp.status === 'rejected' ? '#FECACA' : 'rgba(201,168,76,0.3)'}` }}>{resp.status === 'submitted' ? 'Bid in' : resp.status}</span> : <span style={{ fontSize: 10, color: '#D1C9B8', fontStyle: 'italic' }}>Awaiting</span>}
-                    </div>
-                  );
-                })}
-              </div>}
-              {responses.length > 0 && <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Bids Received ({responses.length})</div>
-                {responses.map(r => {
-                  const sub = invitees.find(i => i.sub_id === r.sub_id);
-                  return (
-                    <div key={r.id} style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderLeft: `3px solid ${r.status === 'awarded' ? '#22c55e' : r.status === 'rejected' ? '#ef4444' : '#C9A84C'}`, padding: 14, marginBottom: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>{sub?.profile?.full_name || r.sub_id}</div>
-                          {sub?.profile?.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{sub.profile.trade}</div>}
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          {r.amount && <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: '#0A1F44' }}>{f$(r.amount)}</div>}
-                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: r.status === 'awarded' ? '#22c55e' : r.status === 'rejected' ? '#ef4444' : '#C9A84C' }}>{r.status}</div>
-                        </div>
-                      </div>
-                      {r.notes && <div style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.6, marginBottom: 8 }}>{r.notes}</div>}
-                      {r.quote_file_url && <a href={r.quote_file_url} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#0A1F44', background: '#fff', border: '1px solid #E8E4DC', padding: '5px 10px', textDecoration: 'none', marginBottom: 8 }}><span style={{ width: 12, height: 12, display: 'flex' }}>{Ic.dl}</span>{r.quote_file_name || 'Download Quote'}</a>}
-                      {r.status === 'submitted' && <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="btn" style={{ flex: 1, background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#16a34a', fontSize: 11, fontWeight: 600 }} onClick={() => awardBid(r.id, itb.id)}>✓ Award This Sub</button>
-                        <button className="btn" style={{ flex: 1, background: '#FEF2F2', border: '1px solid #FECACA', color: '#ef4444', fontSize: 11, fontWeight: 600 }} onClick={() => rejectBid(r.id, itb.id)}>✕ Reject</button>
-                      </div>}
-                    </div>
-                  );
-                })}
-              </div>}
-            </div>}
-          </div>
-        );
-      })}
-
-      {/* New ITB modal */}
-      {showNewITB && <div className="overlay" onClick={() => setShowNewITB(false)}><div className="modal" style={{ maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-title">New Invitation to Bid</div>
-        <div className="fg"><label className="flbl"><span className="freq">*</span>Trade</label>
-          <select className="finp" value={itbForm.trade} onChange={e => setItbForm(p => ({ ...p, trade: e.target.value }))} style={ssty}>
-            <option value="">Select trade...</option>
-            {COMMON_TRADES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div className="fg"><label className="flbl">Scope Description</label><textarea className="finp fta" value={itbForm.description} onChange={e => setItbForm(p => ({ ...p, description: e.target.value }))} placeholder="Describe the work scope, specs, requirements..." rows={3} /></div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div className="fg" style={{ marginBottom: 0 }}><label className="flbl">Budget Range</label><input className="finp" value={itbForm.budget_range} onChange={e => setItbForm(p => ({ ...p, budget_range: e.target.value }))} placeholder="e.g. $8,000–$12,000" /></div>
-          <div className="fg" style={{ marginBottom: 0 }}><label className="flbl">Bid Due Date</label><input className="finp" type="date" value={itbForm.due_date} onChange={e => setItbForm(p => ({ ...p, due_date: e.target.value }))} /></div>
-        </div>
-        {docs && docs.length > 0 && <div style={{ marginTop: 12 }}><div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Share Documents</div>
-          {docs.map(d => <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer', fontSize: 12, color: '#374151' }}>
-            <input type="checkbox" checked={selectedDocs.includes(d.id)} onChange={e => setSelectedDocs(p => e.target.checked ? [...p, d.id] : p.filter(x => x !== d.id))} />
-            <span className="doc-type" style={{ background: docTypeColor(d.file_type) + '18', color: docTypeColor(d.file_type), fontSize: 9 }}>{d.file_type}</span>
-            {d.name}
-          </label>)}
-        </div>}
-        {photos && photos.length > 0 && <div style={{ marginTop: 12 }}><div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Share Photos</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {photos.map(p => (
-              <div key={p.id} onClick={() => setSelectedPhotos(x => x.includes(p.id) ? x.filter(i => i !== p.id) : [...x, p.id])} style={{ width: 60, height: 60, position: 'relative', cursor: 'pointer', border: `2px solid ${selectedPhotos.includes(p.id) ? '#C9A84C' : 'transparent'}` }}>
-                <img src={p.url || p.data} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                {selectedPhotos.includes(p.id) && <div style={{ position: 'absolute', inset: 0, background: 'rgba(201,168,76,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, fontWeight: 700 }}>✓</div>}
-              </div>
-            ))}
-          </div>
-        </div>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowNewITB(false)}>Cancel</button>
-          <button className={`btn ${itbForm.trade ? 'btn-gold' : 'btn-ghost'}`} style={{ flex: 1 }} onClick={createITB} disabled={itbSaving || !itbForm.trade}>{itbSaving ? 'Creating...' : 'Create ITB'}</button>
-        </div>
-      </div></div>}
 
       {/* AI Estimator modal */}
       {showEstimator && <div className="overlay" onClick={() => { if (!estStarted && estForm.scope.trim()) return; setShowEstimator(false); }}><div className="modal" style={{ maxWidth: 660, height: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
