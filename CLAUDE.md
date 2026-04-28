@@ -345,7 +345,9 @@ Also: `on_hold`
 
 ### Information Architecture
 - **Top nav** — daily-use screens only. Job-specific features belong in `JobDet` tabs.
-- **JobDet tabs** — Info, Schedule, Notes/Photos, Documents, Change Orders, Messages, Estimate, Daily Logs, Payments, Consultation, Materials, AI Session
+- **JobDet tabs** — Info, Estimate, Subs, Financials, Schedule, Field, Messages, Documents, Scanner, Consultation. Tab IDs in TABS array: `info`, `estimate`, `subs`, `financials`, `sched`, `field`, `msgs`, `docs`, `floorplan`, `session`.
+- **Subs tab** (`SubsTab.jsx`) — assigned sub list with status badges + payment summary, quote requests (renamed from invitations_to_bid), bid award workflow. Invite from directory via SubPicker. ITB code fully removed from EstimateTab as of 2026-04-29.
+- **Procurement substrate** — `quote_requests` table (renamed from `invitations_to_bid`) has `kind` column (sub_bid | material_rfq), `lead_time_days`, `needed_by_date`. Compat view `invitations_to_bid` still exists for SubPortal until next cleanup migration.
 - **Floating elements** — `AiCompanionChat` floats over job detail. One floating button max per screen.
 - **Modals** — single-action confirmations or short forms only.
 - **Full-screen overlays** — complex multi-step flows (e.g. AiIntakeWizard). Never cram these into a modal.
