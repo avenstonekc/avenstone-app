@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbLoadJobSubs, sbLoadSubDirectory, sbAssignSub, sbUnassignSub, sbSendClientLink, sbLoadDocs } from '../../../lib/supabase';
+import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbLoadJobSubs, sbSendClientLink, sbLoadDocs } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildGenericPDF } from '../../../lib/pdf';
 import ContractModal from '../../modals/ContractModal';
@@ -55,11 +55,9 @@ function StatusLinkButton({ token }) {
   );
 }
 
-export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, setEditInf }) {
+export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, setEditInf, setTab }) {
   const [jobSubs, setJobSubs] = useState([]);
   const [jobSubsLoaded, setJobSubsLoaded] = useState(false);
-  const [allSubs, setAllSubs] = useState([]);
-  const [showSubPicker, setShowSubPicker] = useState(false);
   const [showContract, setShowContract] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
   const [contractSentBanner, setContractSentBanner] = useState('');
@@ -68,7 +66,6 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
   useEffect(() => {
     if (jobSubsLoaded) return;
     sbLoadJobSubs(job.id).then(d => setJobSubs(d));
-    sbLoadSubDirectory().then(d => setAllSubs(d));
     sbLoadDocs(job.id).then(docs => {
       const p = docs.find(d => d.file_type === 'proposal');
       if (p) setProposalDoc(p);
@@ -77,18 +74,6 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
   }, [jobSubsLoaded]);
 
   const saveInf = () => { upd({ ...inf }); setEditInf(false); };
-
-  const assignSub = async sub => {
-    const row = await sbAssignSub(job.id, sub.id);
-    if (row) setJobSubs(p => [...p, { ...row, profile: sub }]);
-    sbNotify('assigned_to_job', `Assigned to ${job.address}`, `You've been added to this project`, job.id, sub.id);
-    setShowSubPicker(false);
-  };
-
-  const unassignSub = async sub => {
-    await sbUnassignSub(job.id, sub.id);
-    setJobSubs(p => p.filter(js => js.sub_id !== sub.id));
-  };
 
   return (
     <div>
@@ -183,7 +168,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
       <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Assigned Subs</div>
-          <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => setShowSubPicker(true)}><span style={{ width: 12, height: 12, display: 'flex' }}>{Ic.plus}</span>Add Sub</button>
+          <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11 }} onClick={() => setTab && setTab('subs')}>Manage in Subs tab →</button>
         </div>
         {!jobSubs.length && <div style={{ textAlign: 'center', padding: '16px 0', color: '#9CA3AF', fontSize: 13 }}>No subs assigned yet</div>}
         {jobSubs.map(js => { const p = js.profile || {}; return (
@@ -193,23 +178,11 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
               <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{p.full_name || p.email}</div>
               {p.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{p.trade}</div>}
             </div>
-            <button onClick={() => unassignSub(p)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4, fontSize: 16, lineHeight: 1 }} title="Remove">✕</button>
           </div>
         ); })}
       </div>
 
       <button className="btn btn-danger" style={{ width: '100%', marginTop: 8, padding: 11 }} onClick={del}>Delete Job</button>
-
-      {showSubPicker && <div className="overlay" onClick={() => setShowSubPicker(false)}><div className="modal" onClick={e => e.stopPropagation()}><div className="modal-title">Assign Sub</div>
-        {!allSubs.length && <div style={{ textAlign: 'center', padding: 20, color: '#9CA3AF', fontSize: 13 }}>No subs in directory yet.</div>}
-        {allSubs.filter(s => !jobSubs.find(js => js.sub_id === s.id)).map(s => (
-          <button key={s.id} onClick={() => assignSub(s)} style={{ width: '100%', background: '#fff', border: '1px solid #E8E4DC', padding: '12px 14px', cursor: 'pointer', textAlign: 'left', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }} onMouseEnter={e => e.currentTarget.style.borderColor = '#C9A84C'} onMouseLeave={e => e.currentTarget.style.borderColor = '#E8E4DC'}>
-            <div style={{ width: 32, height: 32, background: '#0A1F4422', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#0A1F44' }}>{(s.full_name || s.email || '?')[0].toUpperCase()}</div>
-            <div><div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{s.full_name || s.email}</div>{s.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{s.trade}</div>}</div>
-          </button>
-        ))}
-        <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={() => setShowSubPicker(false)}>Cancel</button>
-      </div></div>}
       {showContract && <ContractModal job={job} onClose={() => setShowContract(false)} onSent={(email, name) => { upd({ client_email: email, client_name: name }); setShowContract(false); setContractSentBanner(email); setTimeout(() => setContractSentBanner(''), 4000); }} proposalDoc={proposalDoc} />}
       {showCompletion && <CompletionSignoffModal job={job} onClose={() => setShowCompletion(false)} onSigned={() => setShowCompletion(false)} />}
     </div>
