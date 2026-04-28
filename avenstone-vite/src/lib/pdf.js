@@ -240,7 +240,7 @@ export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, marg
     if (y > 640) { doc.addPage(); y = 48; }
     doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 16;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
-    doc.text('POSSIBLE ADDITIONAL WORK — DISCLOSED UP FRONT', M, y); y += 14;
+    doc.text('POSSIBLE CHANGE ORDERS — DISCLOSED UP FRONT', M, y); y += 14;
     doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
     const subhead = 'Construction sometimes uncovers conditions we can\'t see until demo begins. We disclose these now so there are no surprises later. If any of these conditions are encountered, a change order will be issued at the disclosed range.';
     const subLines = doc.splitTextToSize(subhead, W - M * 2);
