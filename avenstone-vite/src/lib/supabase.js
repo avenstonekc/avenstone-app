@@ -363,8 +363,9 @@ export const sbLoadJobSubs = async jid => {
   const { data } = await sb.from('job_subs').select('*,profile:profiles(id,full_name,email,trade,phone)').eq('job_id', jid);
   return data || [];
 };
-export const sbAssignSub = async (jid, subId) => {
+export const sbAssignSub = async (jid, subId, jobAddress = '') => {
   const { data } = await sb.from('job_subs').insert({ tenant_id: AV_TENANT, job_id: jid, sub_id: subId }).select().single();
+  if (data) sbNotify('assigned_to_job', 'Sub Assigned', `A sub was assigned to ${jobAddress || 'a job'}`, jid, subId).catch(() => {});
   return data;
 };
 export const sbUnassignSub = async (jid, subId) => sb.from('job_subs').delete().eq('job_id', jid).eq('sub_id', subId);
@@ -391,16 +392,20 @@ export const sbPostStaffMessage = async (jid, content) => {
   return data;
 };
 
-// ─── Invitations to Bid ───────────────────────────────────────────────────────
-export const sbLoadITBs = async jid => {
-  const { data } = await sb.from('invitations_to_bid').select('*,invitees:itb_invitees(id,email,sub_id,profile:profiles(full_name,trade)),responses:bid_responses(*)').eq('job_id', jid).order('created_at', { ascending: false });
+// ─── Quote Requests ───────────────────────────────────────────────────────────
+export const sbLoadQuoteRequests = async jid => {
+  const { data } = await sb.from('quote_requests').select('*,invitees:itb_invitees(id,email,sub_id,profile:profiles(full_name,trade)),responses:bid_responses(*)').eq('job_id', jid).order('created_at', { ascending: false });
   return data || [];
 };
-export const sbCreateITB = async itb => {
-  const { data } = await sb.from('invitations_to_bid').insert({ ...itb, tenant_id: AV_TENANT, created_by: AV_USER_ID }).select().single();
+export const sbCreateQuoteRequest = async itb => {
+  const { data } = await sb.from('quote_requests').insert({ ...itb, tenant_id: AV_TENANT, created_by: AV_USER_ID }).select().single();
   return data;
 };
-export const sbUpdateITB = async (id, ch) => sb.from('invitations_to_bid').update(ch).eq('id', id);
+export const sbUpdateQuoteRequest = async (id, ch) => sb.from('quote_requests').update(ch).eq('id', id);
+// Backward-compat aliases
+export const sbLoadITBs = sbLoadQuoteRequests;
+export const sbCreateITB = sbCreateQuoteRequest;
+export const sbUpdateITB = sbUpdateQuoteRequest;
 export const sbSendBidInvite = async (itb, email, name) => {
   const res = await fetch(BID_INVITE_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, sub_name: name || '', job_address: itb._jobAddress || '', trade: itb.trade || '', description: itb.description || '', budget_range: itb.budget_range || '', due_date: itb.due_date || '', itb_id: itb.id, tenant_id: AV_TENANT }) });
   return res.json();
@@ -411,7 +416,7 @@ const bidQuotePath = url => {
   return url;
 };
 export const sbLoadSubITBs = async subId => {
-  const { data } = await sb.from('itb_invitees').select('itb:invitations_to_bid(*,responses:bid_responses(*),job:jobs(id,address,status))').eq('sub_id', subId);
+  const { data } = await sb.from('itb_invitees').select('itb:quote_requests(*,responses:bid_responses(*),job:jobs(id,address,status))').eq('sub_id', subId);
   const itbs = (data || []).map(d => d.itb).filter(Boolean);
   await Promise.all(itbs.flatMap(itb => (itb.responses || []).map(async r => {
     if (r.quote_file_url) {
@@ -439,6 +444,17 @@ export const sbSubmitBid = async (itbId, amount, notes, quoteFile) => {
   return data;
 };
 export const sbUpdateBidStatus = async (id, status) => sb.from('bid_responses').update({ status }).eq('id', id);
+
+export const sbLoadSubsTabData = async (jobId) => {
+  const [jobSubsRes, quoteReqRes] = await Promise.all([
+    sb.from('job_subs').select('*,profile:profiles(id,full_name,email,trade,phone)').eq('job_id', jobId),
+    sb.from('quote_requests').select('*,invitees:itb_invitees(id,email,sub_id,profile:profiles(full_name,trade)),responses:bid_responses(*)').eq('job_id', jobId).order('created_at', { ascending: false }),
+  ]);
+  return {
+    jobSubs: jobSubsRes.data || [],
+    quoteRequests: quoteReqRes.data || [],
+  };
+};
 
 // ─── Client link ──────────────────────────────────────────────────────────────
 export const sbSendClientLink = async (email, clientName, jobAddress, jobId) => {
