@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Avenstone** — an AI-powered construction field operations platform for Avenstone Contracting (Kansas City, MO). Manages the full job lifecycle: leads → AI consultation → estimate → proposal → contract → field ops → client portal → payments.
 
+**Today screen** is the morning brief replacement and the unifying interface across roles. On cold-start, the app lands here if the user has pending todos. Features (EstimateTab restructure, Subs tab, Materials tab, Takeoff wizard) emit todos as they ship — Today is the substrate.
+
 **Competitive advantage:** AI embedded at every step of field operations. Not a CRM. Not a marketing tool. The thing that makes crews smarter, faster, and more profitable on every job.
 
 **Product philosophy:** see AVENSTONE_VISION.md — the anti-surprise engine.
