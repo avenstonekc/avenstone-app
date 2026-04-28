@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, AI_PM_NIGHTLY_URL, ANON_KEY } from './lib/supabase';
+import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, sbCountPendingTodos, AI_PM_NIGHTLY_URL, ANON_KEY } from './lib/supabase';
 import { Ic, STATS, sc, sl, f$, ls, ll } from './lib/utils';
 import { IQ, IR, BQ, BR } from './lib/formData';
 import logo from './assets/logo.png';
@@ -31,6 +31,7 @@ import AiFieldAgent from './components/ai/AiFieldAgent';
 import MeasureScr from './components/jobs/MeasureScr';
 import MasterAgent from './components/shared/MasterAgent';
 import AiPmDashboard from './components/dashboard/AiPmDashboard';
+import TodayScr from './components/dashboard/TodayScr';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -134,6 +135,7 @@ export default function App() {
   const roleLabel = { owner: 'Owner', sales_rep: 'Sales Rep', project_manager: 'Project Manager', sub: 'Contractor' }[profile?.role] || 'User';
 
   const NAV = [
+    { id: 'today', lb: 'Today', ic: 'check', sec: 'Main' },
     { id: 'dashboard', lb: 'AI Home', ic: 'grid', sec: 'Main' },
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
@@ -221,6 +223,7 @@ export default function App() {
           </div>
 
           <div className="pg-wrap">
+            {pg === 'today' && <TodayScr profile={profile} />}
             {pg === 'dashboard' && <AiHomeScr profile={profile} jobs={jobs} nav={setPg} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
             {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('dashboard')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} />}
@@ -258,6 +261,7 @@ export default function App() {
 
           <div className="bot-nav">
             {[
+              { id: 'today', ic: 'check', lb: 'Today' },
               { id: 'dashboard', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
               ...(isStaff ? [{ id: 'field-agent', ic: 'grid', lb: '⚡ Agent' }] : []),
