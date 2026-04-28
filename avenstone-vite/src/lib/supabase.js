@@ -826,6 +826,55 @@ export const sbAutoEnrollSubInSequences = async (subId, triggerType, tenantId) =
   } catch (e) { console.error('[sbAutoEnrollSubInSequences] error:', e); }
 };
 
+// ─── Todos ────────────────────────────────────────────────────────────────────
+export const sbLoadMyTodos = async () => {
+  const { data, error } = await sb.from('todos')
+    .select('*, job:jobs(id, address, client_name)')
+    .eq('target_user_id', AV_USER_ID)
+    .in('status', ['pending', 'snoozed'])
+    .order('severity', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) console.error('sbLoadMyTodos', error);
+  return data || [];
+};
+export const sbCountPendingTodos = async () => {
+  const { count, error } = await sb.from('todos')
+    .select('id', { count: 'exact', head: true })
+    .eq('target_user_id', AV_USER_ID)
+    .eq('status', 'pending')
+    .or('snoozed_until.is.null,snoozed_until.lt.' + new Date().toISOString());
+  if (error) console.error('sbCountPendingTodos', error);
+  return count || 0;
+};
+export const sbCreateTodo = async ({ targetUserId, title, body, type, severity = 'medium', jobId = null, sourceTable = null, sourceId = null, dueAt = null }) => {
+  const { data, error } = await sb.from('todos').insert({
+    tenant_id: AV_TENANT, target_user_id: targetUserId,
+    title, body, type, severity, job_id: jobId,
+    source_table: sourceTable, source_id: sourceId, due_at: dueAt,
+  }).select().single();
+  if (error) console.error('sbCreateTodo', error);
+  return data;
+};
+export const sbSnoozeTodo = async (id, snoozeHours) => {
+  const snoozedUntil = new Date(Date.now() + snoozeHours * 60 * 60 * 1000).toISOString();
+  const { error } = await sb.from('todos').update({ status: 'snoozed', snoozed_until: snoozedUntil }).eq('id', id);
+  if (error) console.error('sbSnoozeTodo', error);
+};
+export const sbDismissTodo = async (id) => {
+  const { error } = await sb.from('todos').update({ status: 'dismissed', dismissed_at: new Date().toISOString() }).eq('id', id);
+  if (error) console.error('sbDismissTodo', error);
+};
+export const sbCompleteTodo = async (id) => {
+  const { error } = await sb.from('todos').update({ status: 'done', completed_at: new Date().toISOString(), completed_by: AV_USER_ID }).eq('id', id);
+  if (error) console.error('sbCompleteTodo', error);
+};
+export const sbResolveTodosBySource = async (sourceTable, sourceId) => {
+  const { error } = await sb.from('todos')
+    .update({ status: 'done', completed_at: new Date().toISOString() })
+    .eq('source_table', sourceTable).eq('source_id', sourceId).eq('status', 'pending');
+  if (error) console.error('sbResolveTodosBySource', error);
+};
+
 // ─── Address autocomplete ─────────────────────────────────────────────────────
 export const fetchAddressSuggestions = async input => {
   if (!input || input.length < 3) return [];
