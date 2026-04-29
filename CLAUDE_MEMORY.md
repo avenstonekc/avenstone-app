@@ -583,3 +583,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: EstimateTab — Build sub-view: AI Estimator chat inline (was modal). Line items sub-view: CRUD table via LineItemModal, defaults here if job has ≥1 row. Proposal sub-view: proposal builder inline (was modal), propReady guard prevents duplicate AI extractions. No LiDAR scanner card (Scanner tab owns LiDAR). No modal overlays.
 - Decision: ai-pm-nightly Rules 12/13/14 — consultation_stale (no session after 14 days, or session >30 days old); estimate_no_proposal_24h (has job_estimate, no proposal doc after 24h); proposal_not_sent_48h (has proposal doc >48h old). All target pmUserId, all participate in 24h recentTypes dedup.
 - Open: Financial deprecated table drop (after 2026-05-07). ai-sub-onboard prices.length undefined ref. invitations_to_bid compat view drop. ConsultationTab tab retirement (Prompt F, not yet). SubPortal.jsx still has invitations_to_bid join selector.
+
+[LOG — 2026-04-28]
+- Action: read-only audit — 4 checks for next-priority decision (stale ai-sub-onboard refs, ce98c6d batched commit contents, AmbientPanel cleanup, trade-string fragmentation)
+- Files: none changed (audit only)
+- Decision: (omit — Opus decides from this audit)
+- Open: results pasted back to Opus for priority lock-in
