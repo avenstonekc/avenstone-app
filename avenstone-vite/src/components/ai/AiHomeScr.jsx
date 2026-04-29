@@ -33,36 +33,9 @@ export default function AiHomeScr({ profile, jobs, nav, onOpenJob }) {
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [tasksExpanded, setTasksExpanded] = useState(true);
-
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const recognitionRef = useRef(null);
-
-  useEffect(() => {
-    if (!profile?.id) return;
-    loadTasks();
-  }, [profile?.id]);
-
-  const loadTasks = async () => {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    const { data } = await sb
-      .from('daily_tasks')
-      .select('*')
-      .eq('user_id', profile.id)
-      .eq('completed', false)
-      .gte('task_date', sevenDaysAgo)
-      .order('task_date', { ascending: false })
-      .order('created_at', { ascending: true });
-    const today = new Date().toISOString().slice(0, 10);
-    setTasks((data || []).map(t => ({ ...t, carried_over: t.task_date < today })));
-  };
-
-  const completeTask = async (taskId) => {
-    setTasks(prev => prev.filter(t => t.id !== taskId));
-    await sb.from('daily_tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', taskId);
-  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -191,79 +164,6 @@ export default function AiHomeScr({ profile, jobs, nav, onOpenJob }) {
         </button>
       </div>
 
-      {/* Daily Tasks */}
-      {tasks.length > 0 && (
-        <div style={{
-          background: '#fff',
-          borderBottom: '1px solid #E8E4DC',
-          flexShrink: 0,
-        }}>
-          <div
-            onClick={() => setTasksExpanded(p => !p)}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: mob ? '10px 16px' : '10px 24px',
-              cursor: 'pointer',
-              userSelect: 'none',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>Today's Tasks</span>
-              <span style={{
-                background: '#0A1F44', color: '#C9A84C',
-                borderRadius: 10, fontSize: 11, fontWeight: 700,
-                padding: '1px 7px', lineHeight: '18px'
-              }}>{tasks.length}</span>
-            </div>
-            <span style={{ fontSize: 12, color: '#9CA3AF' }}>{tasksExpanded ? '▲' : '▼'}</span>
-          </div>
-          {tasksExpanded && (
-            <div style={{ padding: mob ? '0 16px 12px' : '0 24px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {tasks.map(task => (
-                <div key={task.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 0',
-                  borderTop: '1px solid #F3F4F6',
-                }}>
-                  <button
-                    onClick={() => completeTask(task.id)}
-                    style={{
-                      width: 20, height: 20, borderRadius: '50%',
-                      border: '2px solid #C9A84C',
-                      background: 'transparent',
-                      cursor: 'pointer', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#FEF9EC'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                    title="Mark complete"
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: '#1F2937', lineHeight: 1.4 }}>{task.title}</div>
-                    {task.carried_over && (
-                      <div style={{ fontSize: 11, color: '#F59E0B', marginTop: 1 }}>↩ from yesterday</div>
-                    )}
-                  </div>
-                  {task.job_id && onOpenJob && (
-                    <button
-                      onClick={() => onOpenJob(task.job_id)}
-                      style={{
-                        fontSize: 11, color: '#0A1F44', background: 'transparent',
-                        border: '1px solid #E8E4DC', borderRadius: 12,
-                        padding: '2px 8px', cursor: 'pointer', flexShrink: 0,
-                        fontFamily: "'DM Sans', sans-serif",
-                      }}
-                    >
-                      View →
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Messages area */}
       <div style={{
@@ -291,20 +191,15 @@ export default function AiHomeScr({ profile, jobs, nav, onOpenJob }) {
             <div style={{ fontSize: 14, color: '#9CA3AF', textAlign: 'center' }}>
               Ask me anything about your projects
             </div>
-            {tasks.length === 0 && (
-              <div style={{
-                marginTop: 8,
-                background: '#fff',
-                border: '1px solid #E8E4DC',
-                borderRadius: 10,
-                padding: '14px 20px',
-                textAlign: 'center',
-                maxWidth: 280,
-              }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 4 }}>Daily to-do list</div>
-                <div style={{ fontSize: 12, color: '#9CA3AF' }}>Coming soon</div>
-              </div>
-            )}
+            <button onClick={() => nav('today')} style={{
+              marginTop: 8,
+              background: 'transparent', border: '1px solid #E8E4DC',
+              padding: '10px 16px', fontSize: 13, color: '#0A1F44',
+              cursor: 'pointer', fontWeight: 600, borderRadius: 8,
+              fontFamily: "'DM Sans', sans-serif",
+            }}>
+              View your todos →
+            </button>
           </div>
         )}
 

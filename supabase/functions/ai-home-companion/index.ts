@@ -106,23 +106,23 @@ async function executeTool(
     }
 
     if (name === "create_task") {
-      const today = new Date().toISOString().slice(0, 10);
       const { data: existing } = await sb
-        .from("daily_tasks")
+        .from("todos")
         .select("id")
-        .eq("user_id", user_id)
+        .eq("target_user_id", user_id)
         .eq("title", input.title)
-        .eq("task_date", today)
+        .eq("status", "pending")
         .maybeSingle();
       if (existing) return `Task already exists: "${input.title}"`;
 
-      const { error } = await sb.from("daily_tasks").insert({
+      const { error } = await sb.from("todos").insert({
         tenant_id,
-        user_id,
+        target_user_id: user_id,
         job_id: input.job_id || null,
         title: input.title,
-        task_date: today,
-        source: "ai",
+        type: "ai_suggestion",
+        severity: "low",
+        source_table: "ai_home_companion",
       });
       if (error) return `Error creating task: ${error.message}`;
       return `Task created: "${input.title}"`;
