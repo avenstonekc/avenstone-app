@@ -591,6 +591,12 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Open: results pasted back to Opus for priority lock-in
 
 [LOG — 2026-04-29]
+- Action: takeoff_templates platform-default infrastructure shipped. (1) tenant_id made nullable + RLS updated to expose tenant_id IS NULL rows to all tenants while blocking tenant sessions from inserting platform rows. (2) Seeded 6 room-type templates (bathroom, kitchen, basement, refresh, addition, exterior) — one row per trade per room type, 81 rows total.
+- Files: supabase/migrations/20260429_takeoff_templates_platform_defaults.sql, supabase/migrations/20260429_seed_takeoff_templates.sql
+- Decision: Path A from schema audit — true platform defaults via nullable tenant_id + RLS `OR tenant_id IS NULL`. Matches CLAUDE.md multi-tenant architecture rules. Seed shape forced by schema: one row per (trade, room_type) pair, scope details in scope_definition JSONB. Optional/alternate trades flagged in JSONB (optional, conditional fields).
+- Open: Owner edit UI for templates deferred. Takeoff wizard consumes these as starting scaffolds — that prompt comes next.
+
+[LOG — 2026-04-29]
 - Action: Trade taxonomy migration shipped (retroactive log — was missed in original session)
 - Files: supabase/migrations/20260429_trade_taxonomy.sql, avenstone-vite/src/lib/supabase.js (+sbLoadTradeTaxonomy, sbLoadActiveTradeStrings), avenstone-vite/src/components/sub/SubOnboardingWizard.jsx (TRADES const removed, DB-driven), avenstone-vite/src/components/sub/SubPortal.jsx (ALL_TRADES const removed, DB-driven)
 - Decision: Single source of truth for trade vocabulary — DB taxonomy table queried at runtime. Eliminates the "Paint" vs "Painting" mismatch risk that would have broken auto-bid joins. Audit on 2026-04-29 (commit df8cb95) confirmed zero hardcoded trade list constants remain in src/.
