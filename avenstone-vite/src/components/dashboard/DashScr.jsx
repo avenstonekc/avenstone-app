@@ -61,9 +61,6 @@ export default function DashScr({ nav, jobs, profile }) {
         <div className="sec-hd"><h2>Quick Start</h2></div>
         <div className="act-grid" style={{ display: 'grid', gap: 16, marginBottom: 28 }}>
           <ACard ic="home" title="Projects" sub={`${jobs.length} total`} page="jobs" badge={active} />
-          {['owner', 'sales_rep'].includes(profile?.role) && <ACard ic="clip" title="New Intake" sub="Capture property scope" page="intake" />}
-          {['owner', 'sales_rep'].includes(profile?.role) && <ACard ic="doc" title="New Bid" sub="Build a bid document" page="bid" />}
-          {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && <ACard ic="box" title="Takeoff" sub="Generate material list" page="takeoff" />}
         </div>
 
         {jobs.length > 0 && (

@@ -145,7 +145,7 @@ export default function App() {
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
     ...(isOwnerOrRep ? [{ id: 'leads', lb: 'Leads', ic: 'doc', sec: 'Sales' }, { id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }, { id: 'stats', lb: 'Stats', ic: 'box', sec: 'Sales' }] : []),
-    ...(isStaff ? [{ id: 'field-agent', lb: 'Field Agent', ic: 'grid', sec: 'AI' }, { id: 'measure', lb: 'Field Measure', ic: 'clip', sec: 'AI' }] : []),
+    ...(isStaff ? [{ id: 'field-agent', lb: 'Field Agent', ic: 'grid', sec: 'AI' }] : []),
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc', sec: 'Settings' }] : []),
@@ -232,16 +232,12 @@ export default function App() {
             {pg === 'dashboard' && <AiHomeScr profile={profile} jobs={jobs} nav={setPg} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
             {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('dashboard')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} />}
-            {pg === 'intake' && isOwnerOrRep && <FormScr title="Project Intake" secs={IQ} rules={IR} ftype="intake" onBack={() => setPg('dashboard')} onSave={saveJob} />}
-            {pg === 'bid' && isOwnerOrRep && <FormScr title="Bid and Proposal" secs={BQ} rules={BR} ftype="bid" onBack={() => setPg('dashboard')} />}
-            {pg === 'takeoff' && isStaff && <TkOf onBack={() => setPg('dashboard')} />}
             {pg === 'subs' && isStaff && <SubDir profile={profile} />}
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
             {pg === 'calendar' && isOwnerOrRep && <CalScr jobs={jobs} profile={profile} onSelectJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'leads' && isOwnerOrRep && <LeadsScr profile={profile} onConvertToJob={c => { setPg('jobs'); setPendingNew(true); }} />}
             {pg === 'field-agent' && isStaff && <AiFieldAgent profile={profile} currentJob={jobs.find(j => j.id === pendingJobId) || null} />}
-            {pg === 'measure' && isStaff && <MeasureScr jobs={jobs} onBack={() => setPg('dashboard')} />}
             {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}
             {pg === 'ai-pm' && profile?.role === 'owner' && <AiPmDashboard profile={profile} />}
             {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
