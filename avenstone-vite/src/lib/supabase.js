@@ -1083,3 +1083,9 @@ export const sbLoadLatestGapAnalysis = async (sessionId) => {
   const { data } = await sb.from('consultation_gap_analyses').select('*').eq('session_id', sessionId).order('created_at', { ascending: false }).limit(1).maybeSingle();
   return data || null;
 };
+
+// ─── Takeoff wizard data layer ─────────────────────────────────────────────────
+export const sbBuildTakeoffDraft = async ({ jobId, roomType, roomIds }) => {
+  const { buildTakeoffDraft } = await import('./takeoff');
+  return buildTakeoffDraft({ jobId, roomType, roomIds });
+};
