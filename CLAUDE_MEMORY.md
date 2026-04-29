@@ -631,3 +631,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
   E) AI_SUB_ONBOARD_URL / AI_SUB_PRICING_URL exports: REMOVED from supabase.js ✓
   F) sbDeleteSubPricing helper: PRESENT at supabase.js:517 ✓
 - Open: 20260429_sub_onboarding_rebuild.sql should be treated as a spec doc, not an applied migration. If ever applying via CLI (supabase db push), skip it — its operations are covered by the individual migrations that were actually applied.
+
+[LOG — 2026-04-29]
+- Action: Seeded takeoff_unit_costs with 59 platform-default rows. Applied via Management API. Verified: 59 total, basement 18, bathroom 14, exterior 4, kitchen 16, refresh 7, 6 NULL base_rate rows, 0 MISSING vs takeoff_templates.
+- Files: supabase/migrations/20260429_seed_takeoff_unit_costs.sql
+- Decision: AI never invents rates without ai_knowledge citation. 53 rows have cited base_rates. 6 rows are base_rate=NULL by design (bathroom/basement/exterior/kitchen/refresh Cleanup + kitchen Appliances) — wizard surfaces "REP MUST ENTER" and the human is accountable. Flooring - Laminate has a rate but notes flag it as interpolated with no direct citation — verify against real jobs before relying on it. Rep-entered values become per-tenant overrides on takeoff_unit_costs so the same rep doesn't re-enter on the next job.
+- Open: Wizard data layer (Prompt A) is next. Wizard must render NULL base_rate rows as yellow-flagged "REP MUST ENTER" lines and save rep-entered values back as tenant overrides.
