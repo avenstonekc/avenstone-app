@@ -613,3 +613,21 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: supabase/migrations/20260429_profiles_onboarding_completed.sql, avenstone-vite/src/components/sub/SubPortal.jsx, avenstone-vite/src/components/sub/SubOnboardingWizard.jsx
 - Decision: Backfilled existing subs with sub_pricing rows as onboarding_completed=true so they aren't re-prompted. Magic-link invite flow unchanged — password step happens post-auth inside wizard. !jobs.length gate removed entirely (was a footgun, no legitimate use case).
 - Open: Existing subs onboarded before this fix have no password. Separate "set your password" retrofit prompt needed — fire on first login if profile.onboarding_completed=true but auth provider has no password. Deferred until a sub hits an expired session.
+
+[LOG — 2026-04-29]
+- Action: sub_pricing reschema applied (was claimed shipped in 20260429_sub_onboarding_rebuild.sql commit but was never executed against live DB). Old schema had item_key/item_label/price NOT NULL — caused every sbSaveSubPricing upsert to silently fail with 0 rows written. Also dropped sub_pricing_changes (AI-era audit log) which still existed in live DB despite CLAUDE_MEMORY claiming it was dropped.
+- Files: supabase/migrations/20260429_sub_pricing_reschema.sql (committed 7bbddf9)
+- Decision: Schema matches 20260429_sub_onboarding_rebuild.sql spec exactly: UNIQUE(sub_id,trade), pricing_mode CHECK IN ('rate','self_bid'), unit CHECK IN ('sf','lf','hour','each'), sp_self FOR ALL + sp_staff_read FOR SELECT (owner/PM). Column order corrected (tenant_id before sub_id per rebuild spec).
+- Open: Wizard smoke test pending — test-sub should see wizard, set password in step 2, pick a trade in step 3, price it in step 4, verify sub_pricing row written.
+
+[LOG — 2026-04-29 — AUDIT: 20260429_sub_onboarding_rebuild.sql claims vs live DB]
+- Action: Read-only audit of every claim in the 2026-04-29 sub onboarding rebuild. Six items checked.
+- Files: none changed (audit only)
+- Decision: Findings:
+  A) ai-sub-onboard/ edge function directory: DELETED ✓ (directory not found)
+  B) ai-sub-pricing/ edge function directory: DELETED ✓ (directory not found)
+  C) sub_pricing_changes table: STILL EXISTED in live DB ✗ — DROP never executed. Fixed in sub_pricing_reschema migration (this session).
+  D) 20260429_sub_onboarding_rebuild.sql: FILE EXISTS in repo but was NEVER applied to live DB. It contained DROP sub_pricing_changes + DROP/CREATE sub_pricing + ALTER TABLE profiles ADD COLUMN IF NOT EXISTS onboarding_completed. All three operations were still needed on live DB (confirmed by pre-flight SELECTs). The three separate migrations applied this session (onboarding_completed, reschema) cover its intent.
+  E) AI_SUB_ONBOARD_URL / AI_SUB_PRICING_URL exports: REMOVED from supabase.js ✓
+  F) sbDeleteSubPricing helper: PRESENT at supabase.js:517 ✓
+- Open: 20260429_sub_onboarding_rebuild.sql should be treated as a spec doc, not an applied migration. If ever applying via CLI (supabase db push), skip it — its operations are covered by the individual migrations that were actually applied.
