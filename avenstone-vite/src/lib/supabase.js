@@ -464,8 +464,23 @@ export const sbSendClientLink = async (email, clientName, jobAddress, jobId) => 
 
 // ─── Sub pricing ──────────────────────────────────────────────────────────────
 export const sbLoadSubPricing = async (subId) => {
-  const { data } = await sb.from('sub_pricing').select('*').eq('sub_id', subId).order('trade').order('item_label');
+  const { data } = await sb.from('sub_pricing').select('*').eq('sub_id', subId).order('trade');
   return data || [];
+};
+export const sbSaveSubPricing = async ({ subId, tenantId, trade, pricingMode, unit, rate, notes }) => {
+  const { data, error } = await sb.from('sub_pricing').upsert({
+    sub_id: subId, tenant_id: tenantId, trade,
+    pricing_mode: pricingMode,
+    unit: unit || null,
+    rate: rate != null ? Number(rate) : null,
+    notes: notes || null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'sub_id,trade' }).select().single();
+  return { data, error };
+};
+export const sbDeleteSubPricing = async (subId, trade) => {
+  const { error } = await sb.from('sub_pricing').delete().eq('sub_id', subId).eq('trade', trade);
+  return { error };
 };
 export const sbLoadSubRating = async (subId) => {
   const { data } = await sb.from('sub_ratings').select('*').eq('sub_id', subId).order('created_at', { ascending: false });
