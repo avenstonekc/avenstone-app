@@ -563,3 +563,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Lesson: Migration prompts must include hard verification step (SELECT count on the new table) before declaring shipped — committing the SQL file is not the same as applying it. Update OPUS_PROMPT_RULES.md if pattern repeats.
 - Open: measure-guide + ai-consultation-gap-analyzer system prompts not updated with canonical list (acceptable — they don't write trade strings, validation happens upstream at process-transcript). ai-estimator hardcoded list of 17 client-facing trade sections intentionally left alone (different vocabulary layer). CostsTab + LineItemModal still free-text trade input — low priority.
 - Open: invitations_to_bid compat view + sbLoadITBs alias still alive per Subs tab rollout plan. Drop in cleanup commit ~one release after Subs tab confirmed.
+
+[LOG — 2026-04-29]
+- Action: Cleanup sweep Part A — 7 frontend deletions, 2 edge fn deletions, NAV cleanup, DashScr Quick Start prune, SequencesScr wired (owner-only), CLAUDE.md drift fixed.
+- Files: see commit list 1-5. Also Commit 0: CaptureQualityReport.jsx (orphaned since 4/26 Swift deletion). App.jsx import removals folded into Commit 1 (build sequencing requirement). forms/ dir deleted (was empty after FormScr removal). NOTIFY_SMS_URL not present in supabase.js (already gone).
+- Decision: Pure subtraction + SequencesScr wire-in. Codebase ready for Part B (ai-project-manager rate limit + AiHomeScr migration + LineItemModal taxonomy picker + ai-estimator taxonomy constraint). Financial deprecated table drop deferred until 2026-05-07 (grace window not expired).
+- Open: Part B prompt pending. EstimateTab restructure (Prompt 1) needs Opus planning before build prompt is written.
