@@ -283,9 +283,9 @@ This is Avenstone's core competitive advantage. Six surfaces:
 
 - **LiDAR intake** (`AiIntakeWizard.jsx` + `LidarScanner.jsx`) — floor picker → scan rooms (ContinuousRoomScanViewController, worldX/worldZ) → height capture → quality report → save to job_lidar_scans / contact_lidar_scans → buildFloorPlanPDF. Supports interior multi-room and exterior ARKit outline. Original ai-intake chat flow retired.
 - **Tenant setup** (`AiSetupWizard.jsx`) — opens via manual button on AiKnowledgeScr; no auto-fire. 7 questions → populates ai_knowledge with labor rate, markup, draw structure, CO policy, specialties.
-- **AI Consultation** (`process-transcript` edge fn) — ambient mode extracts concerns/budget/scope → consultation_extractions; measure mode guides rep trade-by-trade → consultation_measurements.
+- **AI Consultation** (`process-transcript` edge fn) — ambient mode extracts concerns/budget/scope → consultation_extractions; measure mode guides rep trade-by-trade → consultation_measurements. UI is `ConsultationTab.jsx` (thin composer) + 3 atoms in `components/jobs/consultation/`: `AmbientPanel` (owns mic + transcript + 60s flush interval), `MeasurePanel` (owns chat + TTS + mic), `GapResolutionModal` (gap review before estimate). State: parent-owned, prop callbacks, no Context. sessionIdRef closure pattern: ref set synchronously in `startSession()`, passed as `getSessionId()` callback to atoms. AmbientPanel unmount cleanup is non-negotiable (mic-stuck-on bug). OhShitCurator stays inline in ConsultationTab (no 4th atom).
 - **AI Companion** (`AiCompanionChat.jsx`, `ai-companion` edge fn) — per person per job, full job context, ai_knowledge injected, conversation_history in job_ai_companions, sliding 20-message window.
-- **Daily PM brief** (`ai-pm-nightly`) — fires once/day on login, 6 rule checks per active job, 24h dedup, right person notified, 2+ alerts → Opus narrative. DISABLED — do not re-enable without approval.
+- **Daily PM brief** (`ai-pm-nightly`) — fires once/day on login, 11 rule checks (+ 3 added 2026-04-28: consultation_stale, estimate_no_proposal_24h, proposal_not_sent_48h) per active job, 24h dedup, right person notified. DISABLED — do not re-enable without approval.
 - **Black box** (`ai-error-logger`) — fire-and-forget on every AI error → ai_error_logs.
 
 ### AI Component Map
@@ -346,6 +346,7 @@ Also: `on_hold`
 - **Top nav** — daily-use screens only. Job-specific features belong in `JobDet` tabs.
 - **JobDet tabs** — Info, Estimate, Subs, Financials, Schedule, Field, Messages, Documents, Scanner, Consultation. Tab IDs in TABS array: `info`, `estimate`, `subs`, `financials`, `sched`, `field`, `msgs`, `docs`, `floorplan`, `session`.
 - **Subs tab** (`SubsTab.jsx`) — assigned sub list with status badges + payment summary, quote requests (renamed from invitations_to_bid), bid award workflow. Invite from directory via SubPicker. ITB code fully removed from EstimateTab as of 2026-04-29.
+- **Estimate tab** (`EstimateTab.jsx`) — 3 sub-tabs: **Build** (AI Estimator chat inline; defaults here when no line items), **Line items** (CRUD table of estimate_line_items via LineItemModal; default landing if job has ≥1 row), **Proposal** (proposal builder inline; populates when user clicks "Proposal →" from Build). No LiDAR scanner card — Scanner tab owns capture. No modal overlays — all content is inline in its sub-tab.
 - **Procurement substrate** — `quote_requests` table (renamed from `invitations_to_bid`) has `kind` column (sub_bid | material_rfq), `lead_time_days`, `needed_by_date`. Compat view `invitations_to_bid` still exists for SubPortal until next cleanup migration.
 - **Floating elements** — `AiCompanionChat` floats over job detail. One floating button max per screen.
 - **Modals** — single-action confirmations or short forms only.
