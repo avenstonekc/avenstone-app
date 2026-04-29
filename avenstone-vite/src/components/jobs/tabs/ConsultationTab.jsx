@@ -83,7 +83,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const [gapAnalysis, setGapAnalysis] = useState(null);
   const [showGapModal, setShowGapModal] = useState(false);
 
-  const recognitionRef = useRef(null);
   const sessionIdRef = useRef(null);
 
   // Keep sessionIdRef in sync
@@ -662,7 +661,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
               setExtraction(null);
               setMeasurements([]);
               setTranscript('');
-              setTradeMessages([]);
               setEstimateSaved(false);
               setGapAnalysis(null);
               setShowGapModal(false);
