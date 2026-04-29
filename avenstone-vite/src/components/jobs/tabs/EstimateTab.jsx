@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
-import { ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal } from '../../../lib/supabase';
+import { ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbBuildTakeoffDraft } from '../../../lib/supabase';
 import { Ic, f$ } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
@@ -493,6 +493,26 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
           </button>
         ))}
       </div>
+
+      {/* TEMP - takeoff data layer debug button. Remove when Prompt B (wizard UI) ships. */}
+      <button
+        className="btn btn-ghost"
+        style={{ marginBottom: 12 }}
+        onClick={async () => {
+          const types = ['bathroom', 'kitchen', 'basement', 'refresh', 'exterior'];
+          for (const t of types) {
+            try {
+              const draft = await sbBuildTakeoffDraft({ jobId: job.id, roomType: t });
+              console.log(`[TAKEOFF DRAFT — ${t}]`, draft);
+            } catch (e) {
+              console.error(`[TAKEOFF DRAFT — ${t}] ERROR`, e);
+            }
+          }
+          alert('Takeoff drafts logged to console for all 5 room types — open dev tools.');
+        }}
+      >
+        🔍 Debug: dump takeoff drafts to console
+      </button>
 
       {sub === 'build' && renderBuild()}
       {sub === 'items' && renderItems()}
