@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbLoadSubRating, AV_USER_ID, ANON_KEY, AI_SUB_PRICING_URL } from '../../lib/supabase';
+import { useState, useEffect, useRef } from 'react'; // useRef kept for bidFileRef
+import { sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, AV_USER_ID } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 import SubJobView from './SubJobView';
@@ -40,13 +40,13 @@ export default function SubPortal({ profile, signOut }) {
     localStorage.setItem('av_sub_lang', next);
   };
 
-  // Pricing AI bot state
-  const [botMsgs, setBotMsgs] = useState([]);
-  const [botHistory, setBotHistory] = useState([]);
-  const [botInput, setBotInput] = useState('');
-  const [botSending, setBotSending] = useState(false);
-  const [botStarted, setBotStarted] = useState(false);
-  const botBottomRef = useRef();
+  // Trade rate editing state
+  const [editingTrade, setEditingTrade] = useState(null); // trade string being edited
+  const [editForm, setEditForm] = useState({ pricing_mode: 'rate', unit: 'sf', rate: '', notes: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editErr, setEditErr] = useState('');
+  const [showAddTrade, setShowAddTrade] = useState(false);
+  const [addTrades, setAddTrades] = useState([]);
   const bidFileRef = useRef();
 
   useEffect(() => {
@@ -68,9 +68,6 @@ export default function SubPortal({ profile, signOut }) {
     sbLoadSubITBs(profile.id).then(d => { setItbs(d); setItbsLoading(false); });
   }, [view, profile?.id]);
 
-  // Auto-scroll pricing bot
-  useEffect(() => { botBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [botMsgs]);
-
   const submitBid = async () => {
     if (!bidITB) return;
     setBidSaving(true);
@@ -79,59 +76,35 @@ export default function SubPortal({ profile, signOut }) {
     setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null); setBidSaving(false);
   };
 
-  const startPricingBot = async () => {
-    setBotStarted(true);
-    setBotSending(true);
-    try {
-      const res = await fetch(AI_SUB_PRICING_URL, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sub_id: profile.id, tenant_id: profile.tenant_id, full_name: profile.full_name, trade: profile.trade }),
-      });
-      const json = await res.json();
-      const msg = json.message || "Hi! I can help you review and update your pricing. What would you like to look at?";
-      setBotMsgs([{ role: 'ai', text: msg }]);
-      // Seed history with the synthetic user greeting the edge fn used, so subsequent
-      // turns build a valid alternating sequence starting with role=user.
-      const introMsg = `Hi, I'm ${profile.full_name || 'there'}. I do ${profile.trade || 'general construction'} work.`;
-      setBotHistory([{ role: 'user', content: introMsg }, { role: 'assistant', content: msg }]);
-    } catch {
-      setBotMsgs([{ role: 'ai', text: "Something went wrong. Please try again." }]);
-    }
-    setBotSending(false);
+  const ALL_TRADES = ['Tile','Plumbing','Electrical','HVAC','Drywall','Paint','Flooring','Trim','Concrete','Demo','Framing','Roofing','Insulation','Garage Door','Appliances'];
+  const existingTrades = pricing.map(p => p.trade);
+  const availableToAdd = ALL_TRADES.filter(tr => !existingTrades.includes(tr));
+
+  const openEdit = (row) => {
+    setEditingTrade(row.trade);
+    setEditForm({ pricing_mode: row.pricing_mode || 'rate', unit: row.unit || 'sf', rate: row.rate ?? '', notes: row.notes || '' });
+    setEditErr('');
   };
 
-  const sendBotMessage = async () => {
-    const text = botInput.trim();
-    if (!text || botSending) return;
-    setBotInput('');
-    setBotSending(true);
-    const newMsgs = [...botMsgs, { role: 'user', text }];
-    setBotMsgs(newMsgs);
-    try {
-      const res = await fetch(AI_SUB_PRICING_URL, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sub_id: profile.id, tenant_id: profile.tenant_id,
-          full_name: profile.full_name, trade: profile.trade,
-          message: text, conversation_history: botHistory,
-        }),
-      });
-      const json = await res.json();
-      const aiMsg = json.message || "Something went wrong. Try again.";
-      setBotMsgs(p => [...p, { role: 'ai', text: aiMsg }]);
-      // Add both user message and assistant response together so history stays
-      // in valid alternating order without duplicating the user turn.
-      setBotHistory(p => [...p, { role: 'user', content: text }, { role: 'assistant', content: aiMsg }]);
-      // If a price change was approved, refresh pricing
-      if (json.price_change?.decision === 'approved') {
-        sbLoadSubPricing(profile.id).then(setPricing);
-      }
-    } catch {
-      setBotMsgs(p => [...p, { role: 'ai', text: "Network error. Please try again." }]);
-    }
-    setBotSending(false);
+  const saveEdit = async () => {
+    setEditSaving(true); setEditErr('');
+    const { error } = await sbSaveSubPricing({ subId: profile.id, tenantId: profile.tenant_id, trade: editingTrade, pricingMode: editForm.pricing_mode, unit: editForm.pricing_mode === 'rate' ? editForm.unit : null, rate: editForm.pricing_mode === 'rate' ? parseFloat(editForm.rate) : null, notes: editForm.notes || null });
+    if (error) { setEditErr('Save failed. Try again.'); }
+    else { setPricing(await sbLoadSubPricing(profile.id)); setEditingTrade(null); }
+    setEditSaving(false);
+  };
+
+  const deleteTrade = async (trade) => {
+    await sbDeleteSubPricing(profile.id, trade);
+    setPricing(await sbLoadSubPricing(profile.id));
+  };
+
+  const addNewTrade = async (trade) => {
+    await sbSaveSubPricing({ subId: profile.id, tenantId: profile.tenant_id, trade, pricingMode: 'self_bid', unit: null, rate: null, notes: null });
+    setPricing(await sbLoadSubPricing(profile.id));
+    setAddTrades(p => p.filter(t => t !== trade));
+    setShowAddTrade(false);
+    openEdit({ trade, pricing_mode: 'self_bid', unit: 'sf', rate: '', notes: '' });
   };
 
   if (sel) return <SubJobView job={sel} back={() => setSel(null)} profile={profile} lang={lang} />;
@@ -146,13 +119,6 @@ export default function SubPortal({ profile, signOut }) {
   );
 
   const unreadBids = itbs.filter(x => !(x.responses || []).find(r => r.sub_id === AV_USER_ID)).length;
-
-  // Group pricing by trade
-  const pricingByTrade = pricing.reduce((acc, item) => {
-    if (!acc[item.trade]) acc[item.trade] = [];
-    acc[item.trade].push(item);
-    return acc;
-  }, {});
 
   const TABS = [
     { id: 'jobs', lb: t('My Projects', lang), ic: 'home' },
@@ -237,14 +203,13 @@ export default function SubPortal({ profile, signOut }) {
                 {/* Your pricing reference */}
                 {tradePricing.length > 0 && !myBid && (
                   <div style={{ background: '#F7F5F0', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{t('Your Pricing on File', lang)}</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {tradePricing.slice(0, 6).map(p => (
-                        <span key={p.id} style={{ fontSize: 12, color: NAV, background: '#fff', border: `1px solid ${BORDER}`, padding: '2px 8px', borderRadius: 20 }}>
-                          {p.item_label}: <strong>{f$(p.price)}</strong> / {p.unit}
-                        </span>
-                      ))}
-                    </div>
+                    <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{t('Your Rate on File', lang)}</div>
+                    {tradePricing.map(p => (
+                      <div key={p.id} style={{ fontSize: 13, color: NAV, fontWeight: 600 }}>
+                        {p.pricing_mode === 'self_bid' ? t('Bidding each job myself', lang) : `${f$(p.rate)} / ${p.unit}`}
+                        {p.notes && <div style={{ fontSize: 11, color: '#6B7280', fontWeight: 400, marginTop: 2 }}>{p.notes}</div>}
+                      </div>
+                    ))}
                   </div>
                 )}
                 {myBid ? (
@@ -263,89 +228,90 @@ export default function SubPortal({ profile, signOut }) {
           })}
         </>}
 
-        {/* Pricing tab */}
+        {/* Pricing tab — Trade Rates */}
         {view === 'pricing' && (
           <div>
-            {/* AI pricing bot */}
-            <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 12, marginBottom: 20, overflow: 'hidden' }}>
-              <div style={{ background: NAV, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 18 }}>✦</span>
-                <div>
-                  <div style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>{t('Pricing Assistant', lang)}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>{t('Discuss your rates, request changes, see market context', lang)}</div>
-                </div>
-              </div>
-              <div style={{ padding: 16 }}>
-                {!botStarted ? (
-                  <button className="btn btn-gold" style={{ width: '100%' }} onClick={startPricingBot}>
-                    {t('Open Pricing Chat', lang)}
-                  </button>
-                ) : (
-                  <>
-                    <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
-                      {botMsgs.map((m, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                          <div style={{ maxWidth: '80%', padding: '10px 14px', borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', background: m.role === 'user' ? NAV : '#F7F5F0', color: m.role === 'user' ? '#fff' : '#374151', fontSize: 13, lineHeight: 1.55, border: m.role === 'user' ? 'none' : `1px solid ${BORDER}` }}>
-                            {m.text}
-                          </div>
-                        </div>
-                      ))}
-                      {botSending && (
-                        <div style={{ display: 'flex', gap: 4, padding: '10px 14px' }}>
-                          {[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#9CA3AF', animation: `bounce 1.2s ${i * 0.2}s infinite` }} />)}
-                        </div>
-                      )}
-                      <div ref={botBottomRef} />
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        className="finp"
-                        style={{ flex: 1, marginBottom: 0 }}
-                        value={botInput}
-                        onChange={e => setBotInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBotMessage(); } }}
-                        placeholder="Ask about your pricing..."
-                        disabled={botSending}
-                      />
-                      <button className="btn btn-navy" onClick={sendBotMessage} disabled={botSending || !botInput.trim()}>Send</button>
-                    </div>
-                  </>
-                )}
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: NAV }}>{t('Trade Rates', lang)}</div>
+              {availableToAdd.length > 0 && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 14px' }} onClick={() => setShowAddTrade(true)}>{t('+ Add Trade', lang)}</button>}
             </div>
 
-            {/* Stored pricing */}
-            <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: NAV, marginBottom: 12 }}>{t('Your Pricing on File', lang)}</div>
             {!pricing.length ? (
-              <div className="empty">{Ic.box}<div className="empty-t">{t('No pricing on file', lang)}</div><button className="btn btn-gold" style={{ marginTop: 12 }} onClick={() => setShowOnboarding(true)}>{t('Set Up My Pricing', lang)}</button></div>
+              <div className="empty">{Ic.box}<div className="empty-t">{t('No rates on file', lang)}</div><button className="btn btn-gold" style={{ marginTop: 12 }} onClick={() => setShowOnboarding(true)}>{t('Set Up My Pricing', lang)}</button></div>
             ) : (
-              Object.entries(pricingByTrade).map(([trade, items]) => (
-                <div key={trade} style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
-                  <div style={{ background: '#F7F5F0', padding: '10px 16px', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: NAV, textTransform: 'capitalize' }}>{trade}</span>
-                    <span style={{ fontSize: 12, color: '#9CA3AF' }}>{items.length} item{items.length !== 1 ? 's' : ''}</span>
-                  </div>
-                  {items.map((item, i) => (
-                    <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: i < items.length - 1 ? `1px solid ${BORDER}` : 'none', background: i % 2 === 0 ? '#fff' : '#FAFAF8' }}>
-                      <div>
-                        <span style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>{item.item_label}</span>
-                        {item.is_custom && <span style={{ fontSize: 10, color: GOLD, fontWeight: 700, marginLeft: 6, background: 'rgba(201,168,76,0.1)', padding: '1px 6px', borderRadius: 10 }}>custom</span>}
-                        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>{item.unit}</div>
+              pricing.map(row => (
+                <div key={row.id} style={{ background: '#fff', border: `1px solid ${editingTrade === row.trade ? GOLD : BORDER}`, borderRadius: 10, marginBottom: 12, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: NAV, textTransform: 'capitalize' }}>{row.trade}</div>
+                      <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>
+                        {row.pricing_mode === 'self_bid' ? t('Bidding each job myself', lang) : `${f$(row.rate)} / ${row.unit}`}
                       </div>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: NAV }}>{f$(item.price)}</span>
+                      {row.notes && <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{row.notes}</div>}
                     </div>
-                  ))}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => editingTrade === row.trade ? setEditingTrade(null) : openEdit(row)}>{editingTrade === row.trade ? t('Cancel', lang) : t('Edit', lang)}</button>
+                    </div>
+                  </div>
+
+                  {editingTrade === row.trade && (
+                    <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 16px', background: '#FAFAF8' }}>
+                      <div className="fg" style={{ marginBottom: 10 }}>
+                        <label className="flbl">{t('Pricing mode', lang)}</label>
+                        <select className="finp" style={{ appearance: 'none' }} value={editForm.pricing_mode} onChange={e => setEditForm(p => ({ ...p, pricing_mode: e.target.value }))}>
+                          <option value="rate">{t('Give a rate', lang)}</option>
+                          <option value="self_bid">{t("I'll bid each job myself", lang)}</option>
+                        </select>
+                      </div>
+                      {editForm.pricing_mode === 'rate' && <>
+                        <div className="fg" style={{ marginBottom: 10 }}>
+                          <label className="flbl">{t('Unit', lang)}</label>
+                          <select className="finp" style={{ appearance: 'none' }} value={editForm.unit} onChange={e => setEditForm(p => ({ ...p, unit: e.target.value }))}>
+                            <option value="sf">{t('per sq ft', lang)}</option>
+                            <option value="lf">{t('per linear ft', lang)}</option>
+                            <option value="hour">{t('per hour', lang)}</option>
+                            <option value="each">{t('per item', lang)}</option>
+                          </select>
+                        </div>
+                        <div className="fg" style={{ marginBottom: 10 }}>
+                          <label className="flbl">{t('Rate ($)', lang)}</label>
+                          <input className="finp" type="number" min="0" step="0.01" value={editForm.rate} onChange={e => setEditForm(p => ({ ...p, rate: e.target.value }))} placeholder="e.g. 4.50" />
+                        </div>
+                      </>}
+                      <div className="fg" style={{ marginBottom: 12 }}>
+                        <label className="flbl">{t('Notes', lang)}</label>
+                        <textarea className="finp fta" rows={2} value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))} placeholder={t('Minimums, exclusions, complexity tiers...', lang)} />
+                      </div>
+                      {editErr && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>{editErr}</div>}
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button className="btn btn-danger" style={{ fontSize: 12, padding: '7px 14px' }} onClick={() => { if (window.confirm(`Remove ${row.trade}?`)) deleteTrade(row.trade); }}>{t('Remove', lang)}</button>
+                        <button className="btn btn-gold" style={{ flex: 1 }} onClick={saveEdit} disabled={editSaving || (editForm.pricing_mode === 'rate' && !editForm.rate)}>{editSaving ? t('Saving...', lang) : t('Save', lang)}</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))
             )}
-            {pricing.length > 0 && (
-              <button className="btn btn-ghost" style={{ width: '100%', marginTop: 8 }} onClick={() => setShowOnboarding(true)}>
-                {t('Re-run Pricing Onboarding', lang)}
-              </button>
+
+            {pricing.length > 0 && availableToAdd.length > 0 && (
+              <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={() => setShowAddTrade(true)}>{t('+ Add another trade', lang)}</button>
             )}
           </div>
         )}
       </div>
+
+      {/* Add trade modal */}
+      {showAddTrade && <div className="overlay" onClick={() => setShowAddTrade(false)}>
+        <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal-title">{t('Add a Trade', lang)}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+            {availableToAdd.map(tr => (
+              <button key={tr} className="btn btn-ghost" style={{ textAlign: 'center', padding: '10px 8px', fontSize: 13 }} onClick={() => addNewTrade(tr)}>{tr}</button>
+            ))}
+          </div>
+          <button className="btn btn-ghost" style={{ width: '100%' }} onClick={() => setShowAddTrade(false)}>{t('Cancel', lang)}</button>
+        </div>
+      </div>}
 
       {/* Bid submit modal */}
       {bidITB && <div className="overlay" onClick={() => setBidITB(null)}>
@@ -368,12 +334,6 @@ export default function SubPortal({ profile, signOut }) {
         </div>
       </div>}
 
-      <style>{`
-        @keyframes bounce {
-          0%, 60%, 100% { transform: translateY(0); }
-          30% { transform: translateY(-6px); }
-        }
-      `}</style>
     </div>
   );
 }
