@@ -63,6 +63,9 @@ Deno.serve(async (req) => {
           { data: quoteRequests },
           { data: contractDocs },
           { data: pmUsers },
+          { data: consultSessions },
+          { data: jobEstimates },
+          { data: proposalDocs },
         ] = await Promise.all([
           sb.from("schedule_phases").select("*").eq("job_id", job.id).order("order_index"),
           sb.from("job_transactions").select("*").eq("job_id", job.id),
@@ -73,6 +76,9 @@ Deno.serve(async (req) => {
           sb.from("quote_requests").select("*,responses:bid_responses(*)").eq("job_id", job.id),
           sb.from("job_documents").select("id,file_type").eq("job_id", job.id).eq("file_type", "contract"),
           sb.from("profiles").select("id").eq("tenant_id", job.tenant_id).in("role", ["project_manager", "owner"]).limit(1),
+          sb.from("consultation_sessions").select("id,created_at").eq("job_id", job.id).order("created_at", { ascending: false }).limit(1),
+          sb.from("job_estimates").select("id,created_at").eq("job_id", job.id).order("created_at", { ascending: false }).limit(1),
+          sb.from("job_documents").select("id,created_at").eq("job_id", job.id).eq("file_type", "proposal").order("created_at", { ascending: false }).limit(1),
         ]);
 
         const pmUserId = pmUsers?.[0]?.id || null;
@@ -302,6 +308,60 @@ Deno.serve(async (req) => {
             level: "medium",
             source_table: "quote_requests",
             source_id: (qrAwardPending as { id: string }).id,
+          });
+        }
+
+        // Rule 12: consultation_stale — no consultation session after 14+ days on active job
+        const lastSession = (consultSessions || [])[0];
+        const daysSinceSession = lastSession ? daysSince(lastSession.created_at) : daysSince(job.created_at);
+        if (!lastSession && daysSince(job.created_at) >= 14) {
+          alerts.push({
+            type: "consultation_stale",
+            title: "No consultation session on record",
+            body: `${job.address} — job is ${daysSince(job.created_at)} days old with no AI consultation session`,
+            user_id: pmUserId,
+            level: "low",
+            source_table: "jobs",
+            source_id: job.id,
+          });
+        } else if (lastSession && daysSinceSession >= 30) {
+          alerts.push({
+            type: "consultation_stale",
+            title: "Consultation data is 30+ days old",
+            body: `${job.address} — last consultation was ${daysSinceSession} days ago. Consider a re-measure before the estimate.`,
+            user_id: pmUserId,
+            level: "low",
+            source_table: "consultation_sessions",
+            source_id: lastSession.id,
+          });
+        }
+
+        // Rule 13: estimate_no_proposal_24h — has estimate but no proposal doc after 24h
+        const latestEstimate = (jobEstimates || [])[0];
+        const hasProposalDoc = proposalDocs && proposalDocs.length > 0;
+        if (latestEstimate && !hasProposalDoc && daysSince(latestEstimate.created_at) >= 1) {
+          alerts.push({
+            type: "estimate_no_proposal_24h",
+            title: "Estimate ready — proposal not generated",
+            body: `${job.address} — estimate is ${daysSince(latestEstimate.created_at)} day${daysSince(latestEstimate.created_at) !== 1 ? 's' : ''} old with no proposal on file`,
+            user_id: pmUserId,
+            level: "medium",
+            source_table: "job_estimates",
+            source_id: latestEstimate.id,
+          });
+        }
+
+        // Rule 14: proposal_not_sent_48h — proposal doc exists but hasn't been sent (still active job after 48h)
+        const latestProposal = (proposalDocs || [])[0];
+        if (latestProposal && daysSince(latestProposal.created_at) >= 2) {
+          alerts.push({
+            type: "proposal_not_sent_48h",
+            title: "Proposal not sent to client",
+            body: `${job.address} — proposal has been ready for ${daysSince(latestProposal.created_at)} days. Send it to the client.`,
+            user_id: pmUserId,
+            level: "medium",
+            source_table: "job_documents",
+            source_id: latestProposal.id,
           });
         }
 
