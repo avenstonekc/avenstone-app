@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'; // useRef kept for bidFileRef
-import { sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, AV_USER_ID } from '../../lib/supabase';
+import { sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, sbLoadActiveTradeStrings, AV_USER_ID } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 import SubJobView from './SubJobView';
@@ -47,7 +47,12 @@ export default function SubPortal({ profile, signOut }) {
   const [editErr, setEditErr] = useState('');
   const [showAddTrade, setShowAddTrade] = useState(false);
   const [addTrades, setAddTrades] = useState([]);
+  const [allTradeStrings, setAllTradeStrings] = useState([]);
   const bidFileRef = useRef();
+
+  useEffect(() => {
+    sbLoadActiveTradeStrings().then(setAllTradeStrings);
+  }, []);
 
   useEffect(() => {
     if (profile?.id) {
@@ -76,9 +81,8 @@ export default function SubPortal({ profile, signOut }) {
     setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null); setBidSaving(false);
   };
 
-  const ALL_TRADES = ['Tile','Plumbing','Electrical','HVAC','Drywall','Paint','Flooring','Trim','Concrete','Demo','Framing','Roofing','Insulation','Garage Door','Appliances'];
   const existingTrades = pricing.map(p => p.trade);
-  const availableToAdd = ALL_TRADES.filter(tr => !existingTrades.includes(tr));
+  const availableToAdd = allTradeStrings.filter(tr => !existingTrades.includes(tr));
 
   const openEdit = (row) => {
     setEditingTrade(row.trade);

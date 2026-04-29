@@ -1,11 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbSaveSubPricing, sbUploadDoc } from '../../lib/supabase';
-
-const TRADES = [
-  'Tile', 'Plumbing', 'Electrical', 'HVAC', 'Drywall', 'Paint',
-  'Flooring', 'Trim', 'Concrete', 'Demo', 'Framing', 'Roofing',
-  'Insulation', 'Garage Door', 'Appliances',
-];
+import { sbSaveSubPricing, sbUploadDoc, sbLoadTradeTaxonomy } from '../../lib/supabase';
 
 const UNIT_OPTIONS = [
   { label: 'per sq ft', value: 'sf' },
@@ -40,6 +34,7 @@ function clearProgress() {
 export default function SubOnboardingWizard({ profile, onComplete }) {
   const saved = loadProgress();
 
+  const [taxonomy, setTaxonomy] = useState([]);
   const [step, setStep] = useState(saved?.step || 1);
   const [selectedTrades, setSelectedTrades] = useState(saved?.selectedTrades || []);
   const [tradeIndex, setTradeIndex] = useState(saved?.tradeIndex || 0);
@@ -64,6 +59,8 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
     saveProgress({ step, selectedTrades, tradeIndex });
   }, [step, selectedTrades, tradeIndex]);
 
+  useEffect(() => { sbLoadTradeTaxonomy().then(setTaxonomy); }, []);
+
   // Focus other input when shown
   useEffect(() => {
     if (showOtherInput) {
@@ -73,6 +70,25 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
 
   const currentTrade = selectedTrades[tradeIndex];
   const totalTrades = selectedTrades.length;
+
+  // Build flat set of canonical trade strings for "custom" detection
+  const canonicalStrings = new Set(taxonomy.flatMap(g =>
+    g.subTrades.length ? g.subTrades.map(s => `${g.parent} - ${s.sub_trade}`) : [g.parent]
+  ));
+
+  // Look up default_unit for the current trade string
+  function defaultUnitFor(tradeStr) {
+    for (const g of taxonomy) {
+      if (g.subTrades.length) {
+        for (const s of g.subTrades) {
+          if (`${g.parent} - ${s.sub_trade}` === tradeStr) return s.default_unit || '';
+        }
+      } else if (g.parent === tradeStr) {
+        return '';
+      }
+    }
+    return '';
+  }
 
   // ── Step navigation ────────────────────────────────────────────────────────
 
@@ -286,55 +302,67 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
             <h1 style={{ ...heading, fontSize: 22 }}>What trades do you work in?</h1>
             <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: '#6B7280', margin: '0 0 20px 0' }}>Select all that apply</p>
 
-            {/* Trade grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
-              {TRADES.map(trade => {
-                const selected = selectedTrades.includes(trade);
+            {/* Trade grid — grouped by parent */}
+            <div style={{ marginBottom: 16 }}>
+              {taxonomy.map(({ parent, subTrades }) => {
+                const items = subTrades.length
+                  ? subTrades.map(s => `${parent} - ${s.sub_trade}`)
+                  : [parent];
                 return (
-                  <button
-                    key={trade}
-                    onClick={() => toggleTrade(trade)}
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: 8,
-                      fontSize: 14,
-                      fontWeight: 600,
-                      fontFamily: 'DM Sans, sans-serif',
-                      cursor: 'pointer',
-                      border: `1px solid ${selected ? '#0A1F44' : '#E8E4DC'}`,
-                      background: selected ? '#0A1F44' : '#FFFFFF',
-                      color: selected ? '#FFFFFF' : '#374151',
-                      textAlign: 'left',
-                    }}
-                  >
-                    {trade}
-                  </button>
+                  <div key={parent} style={{ marginBottom: 12 }}>
+                    {subTrades.length > 0 && (
+                      <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 11, fontWeight: 700, color: '#9B8E7A', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px 0' }}>{parent}</p>
+                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {items.map(tradeStr => {
+                        const selected = selectedTrades.includes(tradeStr);
+                        return (
+                          <button
+                            key={tradeStr}
+                            onClick={() => toggleTrade(tradeStr)}
+                            style={{
+                              padding: '10px 14px',
+                              borderRadius: 8,
+                              fontSize: 13,
+                              fontWeight: 600,
+                              fontFamily: 'DM Sans, sans-serif',
+                              cursor: 'pointer',
+                              border: `1px solid ${selected ? '#0A1F44' : '#E8E4DC'}`,
+                              background: selected ? '#0A1F44' : '#FFFFFF',
+                              color: selected ? '#FFFFFF' : '#374151',
+                              textAlign: 'left',
+                            }}
+                          >
+                            {subTrades.length ? tradeStr.split(' - ')[1] : tradeStr}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
 
-              {/* Custom added trades */}
-              {selectedTrades
-                .filter(t => !TRADES.includes(t))
-                .map(trade => (
-                  <button
-                    key={trade}
-                    onClick={() => toggleTrade(trade)}
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: 8,
-                      fontSize: 14,
-                      fontWeight: 600,
-                      fontFamily: 'DM Sans, sans-serif',
-                      cursor: 'pointer',
-                      border: '1px solid #0A1F44',
-                      background: '#0A1F44',
-                      color: '#FFFFFF',
-                      textAlign: 'left',
-                    }}
-                  >
-                    {trade}
-                  </button>
-                ))}
+              {/* Custom added trades not in taxonomy */}
+              {selectedTrades.filter(t => !canonicalStrings.has(t)).length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 11, fontWeight: 700, color: '#9B8E7A', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px 0' }}>Other</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {selectedTrades.filter(t => !canonicalStrings.has(t)).map(trade => (
+                      <button
+                        key={trade}
+                        onClick={() => toggleTrade(trade)}
+                        style={{
+                          padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                          fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
+                          border: '1px solid #0A1F44', background: '#0A1F44', color: '#FFFFFF', textAlign: 'left',
+                        }}
+                      >
+                        {trade}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Other trade */}
@@ -422,7 +450,11 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
                 <button
                   style={{ ...btnGold, fontSize: 15, marginBottom: 12 }}
                   disabled={saving}
-                  onClick={() => setTradeMode('rate')}
+                  onClick={() => {
+                    const defUnit = defaultUnitFor(currentTrade);
+                    setRateForm(f => ({ ...f, unit: defUnit || f.unit }));
+                    setTradeMode('rate');
+                  }}
                 >
                   Give me a rate
                 </button>
