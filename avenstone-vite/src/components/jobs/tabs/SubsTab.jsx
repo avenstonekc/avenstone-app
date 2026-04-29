@@ -3,7 +3,7 @@ import {
   sbLoadSubsTabData, sbLoadSubDirectory, sbLoadJobTransactions,
   sbLoadQuoteRequests, sbCreateQuoteRequest, sbUpdateQuoteRequest,
   sbSendBidInvite, sbUpdateBidStatus, sbAssignSub, sbResolveTodosBySource,
-  COMMON_TRADES,
+  sbLoadActiveTradeStrings,
 } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import SubPicker from '../../sub/SubPicker';
@@ -68,6 +68,7 @@ export default function SubsTab({ job, profile, setTab }) {
   const [allSubs, setAllSubs] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tradeStrings, setTradeStrings] = useState([]);
 
   // QR state
   const [showNewQR, setShowNewQR] = useState(false);
@@ -98,6 +99,7 @@ export default function SubsTab({ job, profile, setTab }) {
   };
 
   useEffect(() => { reload(); }, [job.id]);
+  useEffect(() => { sbLoadActiveTradeStrings().then(setTradeStrings); }, []);
 
   const createQR = async () => {
     if (!qrForm.trade) return;
@@ -350,7 +352,7 @@ export default function SubsTab({ job, profile, setTab }) {
               <label className="flbl"><span className="freq">*</span>Trade</label>
               <select className="finp" value={qrForm.trade} onChange={e => setQrForm(p => ({ ...p, trade: e.target.value }))} style={ssty}>
                 <option value="">Select trade...</option>
-                {COMMON_TRADES.map(t => <option key={t} value={t}>{t}</option>)}
+                {tradeStrings.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div className="fg"><label className="flbl">Scope Description</label><textarea className="finp fta" value={qrForm.description} onChange={e => setQrForm(p => ({ ...p, description: e.target.value }))} placeholder="Describe the work scope, specs, requirements..." rows={3} /></div>

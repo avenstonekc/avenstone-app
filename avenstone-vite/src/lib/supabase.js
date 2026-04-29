@@ -344,7 +344,46 @@ export const sbNotifyUser = async (userId, type, title, body, jobId) => {
 };
 
 // ─── Subs ─────────────────────────────────────────────────────────────────────
-export const COMMON_TRADES = ['Electrical','Plumbing','HVAC','Framing','Drywall','Roofing','Flooring','Painting','Concrete','Masonry','Insulation','Cabinets','Tile','Landscaping','General Labor','Other'];
+export const sbLoadTradeTaxonomy = async () => {
+  const { data, error } = await sb
+    .from('trade_taxonomy')
+    .select(`id, parent_trade, sub_trade, display_order, default_unit, default_waste_pct,
+             tenant_trade_visibility!inner(active)`)
+    .eq('tenant_trade_visibility.tenant_id', AV_TENANT)
+    .eq('tenant_trade_visibility.active', true)
+    .order('display_order')
+    .order('sub_trade');
+  if (error) return [];
+  const grouped = {};
+  for (const row of data || []) {
+    if (!grouped[row.parent_trade]) grouped[row.parent_trade] = { parent: row.parent_trade, subTrades: [] };
+    if (row.sub_trade) {
+      grouped[row.parent_trade].subTrades.push({
+        id: row.id, sub_trade: row.sub_trade,
+        default_unit: row.default_unit, default_waste_pct: row.default_waste_pct,
+      });
+    }
+  }
+  return Object.values(grouped);
+};
+
+export const sbLoadActiveTradeStrings = async () => {
+  const taxonomy = await sbLoadTradeTaxonomy();
+  const strings = [];
+  for (const { parent, subTrades } of taxonomy) {
+    if (subTrades.length === 0) strings.push(parent);
+    else for (const { sub_trade } of subTrades) strings.push(`${parent} - ${sub_trade}`);
+  }
+  return strings;
+};
+
+export const sbGetTradeMeta = async (parentTrade, subTrade = null) => {
+  let q = sb.from('trade_taxonomy').select('*').eq('parent_trade', parentTrade);
+  q = subTrade ? q.eq('sub_trade', subTrade) : q.is('sub_trade', null);
+  const { data } = await q.maybeSingle();
+  return data || null;
+};
+
 export const sbLoadSubDirectory = async () => {
   const { data } = await sb.from('profiles').select('*').eq('tenant_id', AV_TENANT).eq('role', 'sub').order('full_name');
   return data || [];
