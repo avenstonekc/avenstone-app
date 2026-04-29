@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'; // useRef kept for bidFileRef
-import { sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, sbLoadActiveTradeStrings, AV_USER_ID } from '../../lib/supabase';
+import { sb, sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, sbLoadActiveTradeStrings, AV_USER_ID } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 import SubJobView from './SubJobView';
@@ -58,11 +58,10 @@ export default function SubPortal({ profile, signOut }) {
     if (profile?.id) {
       sbLoadSubJobs(profile.id).then(d => { setJobs(d); setLoading(false); });
       sbLoadSubRating(profile.id).then(d => setRating(d));
-      // Check if pricing exists — show onboarding if not
       sbLoadSubPricing(profile.id).then(d => {
         setPricing(d);
         setPricingLoaded(true);
-        if (!d.length) setShowOnboarding(true);
+        if (!profile.onboarding_completed) setShowOnboarding(true);
       });
     }
   }, [profile?.id]);
@@ -112,10 +111,11 @@ export default function SubPortal({ profile, signOut }) {
   };
 
   if (sel) return <SubJobView job={sel} back={() => setSel(null)} profile={profile} lang={lang} />;
-  if (showOnboarding && pricingLoaded && !loading && !jobs.length) return (
+  if (showOnboarding && pricingLoaded && !loading) return (
     <SubOnboardingWizard
       profile={profile}
-      onComplete={() => {
+      onComplete={async () => {
+        await sb.from('profiles').update({ onboarding_completed: true }).eq('id', profile.id);
         setShowOnboarding(false);
         sbLoadSubPricing(profile.id).then(setPricing);
       }}
