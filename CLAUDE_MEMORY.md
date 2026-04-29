@@ -589,3 +589,9 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Files: none changed (audit only)
 - Decision: (omit — Opus decides from this audit)
 - Open: results pasted back to Opus for priority lock-in
+
+[LOG — 2026-04-29]
+- Action: Trade taxonomy migration shipped (retroactive log — was missed in original session)
+- Files: supabase/migrations/20260429_trade_taxonomy.sql, avenstone-vite/src/lib/supabase.js (+sbLoadTradeTaxonomy, sbLoadActiveTradeStrings), avenstone-vite/src/components/sub/SubOnboardingWizard.jsx (TRADES const removed, DB-driven), avenstone-vite/src/components/sub/SubPortal.jsx (ALL_TRADES const removed, DB-driven)
+- Decision: Single source of truth for trade vocabulary — DB taxonomy table queried at runtime. Eliminates the "Paint" vs "Painting" mismatch risk that would have broken auto-bid joins. Audit on 2026-04-29 (commit df8cb95) confirmed zero hardcoded trade list constants remain in src/.
+- Open: none
