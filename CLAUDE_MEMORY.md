@@ -597,6 +597,12 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Open: Owner edit UI for templates deferred. Takeoff wizard consumes these as starting scaffolds — that prompt comes next.
 
 [LOG — 2026-04-29]
+- Action: Two migrations shipped — (1) dropped 22 addition rows from takeoff_templates (cut from v1, can't scan something that doesn't exist yet; plan parsing is v2 work), (2) created takeoff_unit_costs table with unit column ('sf' | 'lf' | 'each' | 'lump') + per-trade multipliers JSONB.
+- Files: supabase/migrations/20260429_drop_addition_template_rows.sql, supabase/migrations/20260429_takeoff_unit_costs.sql
+- Decision: Lump-cost approach replaced with unit-cost approach (per-sf/lf/each rate × multiplier). Schema pre-fills from scan area when unit='sf', prompts rep for lf/each, uses base_rate as flat amount when unit='lump'. Multi-tenant pattern matches takeoff_templates: platform defaults (tenant_id IS NULL) visible to all tenants via RLS, tenant rows override platform defaults at wizard query time.
+- Open: Seed rows (Prompt 0b — mine ai_knowledge for grounded starter rates with citations). Then wizard data layer (Prompt A).
+
+[LOG — 2026-04-29]
 - Action: Trade taxonomy migration shipped (retroactive log — was missed in original session)
 - Files: supabase/migrations/20260429_trade_taxonomy.sql, avenstone-vite/src/lib/supabase.js (+sbLoadTradeTaxonomy, sbLoadActiveTradeStrings), avenstone-vite/src/components/sub/SubOnboardingWizard.jsx (TRADES const removed, DB-driven), avenstone-vite/src/components/sub/SubPortal.jsx (ALL_TRADES const removed, DB-driven)
 - Decision: Single source of truth for trade vocabulary — DB taxonomy table queried at runtime. Eliminates the "Paint" vs "Painting" mismatch risk that would have broken auto-bid joins. Audit on 2026-04-29 (commit df8cb95) confirmed zero hardcoded trade list constants remain in src/.
