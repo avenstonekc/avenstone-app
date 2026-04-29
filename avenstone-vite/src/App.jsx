@@ -27,6 +27,7 @@ import CompletionPage from './components/public/CompletionPage';
 import LeadsScr from './components/leads/LeadsScr';
 import AiFieldAgent from './components/ai/AiFieldAgent';
 import MasterAgent from './components/shared/MasterAgent';
+import SequencesScr from './components/common/SequencesScr';
 import AiPmDashboard from './components/dashboard/AiPmDashboard';
 import TodayScr from './components/dashboard/TodayScr';
 
@@ -150,6 +151,7 @@ export default function App() {
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc', sec: 'Settings' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'ai-pm', lb: 'PM Dashboard', ic: 'bell', sec: 'Settings' }] : []),
+    ...(profile?.role === 'owner' ? [{ id: 'sequences', lb: 'Sequences', ic: 'bell', sec: 'Tools' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'owner-portal', lb: 'Owner Portal', ic: 'box', sec: 'Settings' }] : []),
   ];
 
@@ -241,6 +243,7 @@ export default function App() {
             {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}
             {pg === 'ai-pm' && profile?.role === 'owner' && <AiPmDashboard profile={profile} />}
             {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
+            {pg === 'sequences' && profile?.role === 'owner' && <SequencesScr profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ marginBottom: 16 }}>
