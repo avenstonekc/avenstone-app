@@ -32,6 +32,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
   const [editInf, setEditInf] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiBanner, setAiBanner] = useState(null); // { type: 'success'|'error', msg: string }
+  const [showAiPmConfirm, setShowAiPmConfirm] = useState(false);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [completionCopied, setCompletionCopied] = useState(false);
 
@@ -102,6 +103,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
   const rev = cv + coT;
 
   return (
+    <>
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F7F5F0' }}>
       {/* Header */}
       <div style={{ background: '#0A1F44', padding: '16px 20px', flexShrink: 0 }}>
@@ -119,7 +121,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
             <button
               title="Run AI Analysis"
               disabled={analyzing}
-              onClick={runAiAnalysis}
+              onClick={() => setShowAiPmConfirm(true)}
               style={{ width: 36, height: 36, borderRadius: 8, background: analyzing ? '#0d2a5e' : '#0A1F44', border: '1px solid #C9A84C55', cursor: analyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: analyzing ? 0.7 : 1 }}
             >
               {analyzing
@@ -236,5 +238,23 @@ export default function JobDet({ job, upd, del, back, profile }) {
         ))}
       </div></div>}
     </div>
+
+    {showAiPmConfirm && (
+      <div className="overlay" onClick={() => setShowAiPmConfirm(false)}>
+        <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal-title">Run deep AI analysis?</div>
+          <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.5, marginBottom: 16 }}>
+            This runs Opus-level AI analysis on this job. Costs approximately $0.30.
+            Limited to once per job per 24 hours — repeat clicks within 24h return
+            the previous analysis.
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowAiPmConfirm(false)}>Cancel</button>
+            <button className="btn btn-navy" style={{ flex: 1 }} onClick={() => { setShowAiPmConfirm(false); runAiAnalysis(); }}>Run Analysis</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
