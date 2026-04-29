@@ -4,6 +4,13 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SB_URL        = Deno.env.get("SUPABASE_URL")!;
 const SB_SERVICE    = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SB_ANON       = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 const SYSTEM_PROMPT = `You are the Avenstone AI Project Manager — an intelligent construction project oversight agent for Avenstone Group LLC, Kansas City, MO.
 
@@ -50,11 +57,21 @@ async function askClaude(messages: object[]) {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
   try {
     const { job_id, request_type = "analyze" } = await req.json();
     if (!job_id) return new Response("missing job_id", { status: 400 });
 
     const sb = createClient(SB_URL, SB_SERVICE);
+
+    // Extract calling user from JWT
+    const authHeader = req.headers.get("authorization") || "";
+    const userSb = createClient(SB_URL, SB_ANON, {
+      global: { headers: { authorization: authHeader } },
+    });
+    const { data: { user } } = await userSb.auth.getUser();
+    const user_id = user?.id || null;
 
     // Load full job context
     const [
@@ -78,6 +95,24 @@ Deno.serve(async (req) => {
     ]);
 
     if (!job) return new Response("job not found", { status: 404 });
+
+    // Rate-limit: 1 invocation per job per 24h
+    const { data: recentRun } = await sb
+      .from("ai_pm_runs")
+      .select("output_summary, invoked_at")
+      .eq("job_id", job_id)
+      .gte("invoked_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .order("invoked_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recentRun) {
+      return new Response(JSON.stringify({
+        rate_limited: true,
+        cached_output: recentRun.output_summary,
+        invoked_at: recentRun.invoked_at,
+      }), { status: 200, headers: { ...CORS, "Content-Type": "application/json" } });
+    }
 
     // Build context for AI
     const coTotal = (cos || []).filter(c => c.status === "approved").reduce((a, c) => a + Number(c.amount || 0), 0);
@@ -133,6 +168,14 @@ DOCUMENTS: ${(docs || []).map(d => d.name).join(", ") || "None"}
       analysis = { summary: raw };
     }
 
+    // Record this run for rate limiting
+    await sb.from("ai_pm_runs").insert({
+      tenant_id: job.tenant_id,
+      job_id,
+      invoked_by: user_id,
+      output_summary: JSON.stringify(analysis).slice(0, 4000),
+    });
+
     // Save analysis as a job note so it shows in the app
     const summaryNote = analysis.summary || "AI analysis complete.";
     const alerts = (analysis.alerts || []).map((a: any) => `[${a.level?.toUpperCase()}] ${a.message}`).join("\n");
@@ -158,7 +201,7 @@ DOCUMENTS: ${(docs || []).map(d => d.name).join(", ") || "None"}
 
     return new Response(JSON.stringify({ analysis, note_saved: true }), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...CORS, "Content-Type": "application/json" },
     });
 
   } catch (err) {
