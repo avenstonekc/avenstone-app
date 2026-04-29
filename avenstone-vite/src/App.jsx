@@ -56,8 +56,19 @@ export default function App() {
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session: s } }) => {
       setSessionState(s);
-      if (s) loadProfile(s.user.id);
-      else setAuthLoading(false);
+      if (s) { loadProfile(s.user.id); return; }
+      // DEV-ONLY auto-login — never runs on production unless ?devlogin=1 is explicit
+      const wantsDevLogin = import.meta.env.DEV || _params.has('devlogin');
+      const isProd = import.meta.env.PROD && window.location.hostname === 'avenstone-app.vercel.app';
+      if (wantsDevLogin && !isProd) {
+        sb.auth.signInWithPassword({ email: 'kalinspratling@gmail.com', password: 'TestClient2026!' })
+          .then(({ error }) => {
+            if (error) { console.error('[devlogin] failed:', error.message); setAuthLoading(false); }
+            else console.log('[devlogin] auto-logged-in as kalinspratling@gmail.com');
+          });
+      } else {
+        setAuthLoading(false);
+      }
     });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_, s) => {
       setSessionState(s);
