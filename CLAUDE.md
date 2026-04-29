@@ -282,7 +282,7 @@ curl -X POST -H "x-auth-token: $CODEMAGIC_PAT" \
 This is Avenstone's core competitive advantage. Six surfaces:
 
 - **LiDAR intake** (`AiIntakeWizard.jsx` + `LidarScanner.jsx`) — floor picker → scan rooms (ContinuousRoomScanViewController, worldX/worldZ) → height capture → quality report → save to job_lidar_scans / contact_lidar_scans → buildFloorPlanPDF. Supports interior multi-room and exterior ARKit outline. Original ai-intake chat flow retired.
-- **Tenant setup** (`AiSetupWizard.jsx`) — fires on first login (0 ai_knowledge entries). 7 questions → populates ai_knowledge with labor rate, markup, draw structure, CO policy, specialties.
+- **Tenant setup** (`AiSetupWizard.jsx`) — opens via manual button on AiKnowledgeScr; no auto-fire. 7 questions → populates ai_knowledge with labor rate, markup, draw structure, CO policy, specialties.
 - **AI Consultation** (`process-transcript` edge fn) — ambient mode extracts concerns/budget/scope → consultation_extractions; measure mode guides rep trade-by-trade → consultation_measurements.
 - **AI Companion** (`AiCompanionChat.jsx`, `ai-companion` edge fn) — per person per job, full job context, ai_knowledge injected, conversation_history in job_ai_companions, sliding 20-message window.
 - **Daily PM brief** (`ai-pm-nightly`) — fires once/day on login, 6 rule checks per active job, 24h dedup, right person notified, 2+ alerts → Opus narrative. DISABLED — do not re-enable without approval.
@@ -294,10 +294,9 @@ This is Avenstone's core competitive advantage. Six surfaces:
 | `AiCompanionChat` | `components/shared/AiCompanionChat.jsx` | Floating sparkle button on job detail. Loads history on open. |
 | `AiIntakeWizard` | `components/ai/AiIntakeWizard.jsx` | LiDAR capture flow: scan → height → quality report → save to job or contact. |
 | `AiKnowledgeScr` | `components/ai/AiKnowledgeScr.jsx` | CRUD for ai_knowledge entries. Owner only. |
-| `AiSetupWizard` | `components/ai/AiSetupWizard.jsx` | 7-question onboarding wizard. Fires on first login if 0 entries. |
+| `AiSetupWizard` | `components/ai/AiSetupWizard.jsx` | 7-question onboarding wizard. Opens via manual button on AiKnowledgeScr. |
 | `AiFieldAgent` | `components/ai/AiFieldAgent.jsx` | Field-facing AI agent. |
 | `AiHomeScr` | `components/ai/AiHomeScr.jsx` | AI home screen / dashboard. |
-| `MaterialSelectionScr` | `components/ai/MaterialSelectionScr.jsx` | Material visualization / selection screen. |
 | `MasterAgent` | `components/shared/MasterAgent.jsx` | Master AI orchestration UI component. |
 
 ---
