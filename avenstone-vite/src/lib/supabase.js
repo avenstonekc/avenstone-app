@@ -27,7 +27,6 @@ export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
 export const NOTIFY_REALTOR_URL = `${FN}/notify-realtor`;
 export const NOTIFY_EMAIL_URL   = `${FN}/notify-email`;
 export const authHeader = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` });
-export const AI_INTAKE_URL              = `${FN}/ai-intake`;
 export const AI_PM_NIGHTLY_URL          = `${FN}/ai-pm-nightly`;
 export const AI_PM_URL                  = `${FN}/ai-project-manager`;
 export const AI_COMPANION_URL           = `${FN}/ai-companion`;
