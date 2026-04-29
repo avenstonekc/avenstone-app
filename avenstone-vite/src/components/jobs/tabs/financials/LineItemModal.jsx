@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { sbSaveEstimateLineItems, sbLoadEstimateLineItems, AV_USER_ID, AV_TENANT } from '../../../../lib/supabase';
+import { useState, useEffect } from 'react';
+import { sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadActiveTradeStrings, AV_USER_ID, AV_TENANT } from '../../../../lib/supabase';
 import { f$ } from '../../../../lib/utils';
 
 const lbl = { display: 'block', fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' };
@@ -18,6 +18,9 @@ export default function LineItemModal({ mode: initialMode, item = {}, job, onClo
   const [notes, setNotes] = useState(item.notes ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [tradeStrings, setTradeStrings] = useState([]);
+
+  useEffect(() => { sbLoadActiveTradeStrings().then(setTradeStrings); }, []);
 
   const subtotal = parseFloat(quantity || 0) * parseFloat(unitCost || 0) * (1 + parseFloat(markupPct || 0) / 100);
 
@@ -95,7 +98,10 @@ export default function LineItemModal({ mode: initialMode, item = {}, job, onClo
           </div>
           <div>
             <label style={lbl}>Trade</label>
-            <input style={inp} placeholder="e.g. Electrical, Plumbing" value={trade} onChange={e => setTrade(e.target.value)} />
+            <select style={inp} value={trade} onChange={e => setTrade(e.target.value)}>
+              <option value="">— Select trade —</option>
+              {tradeStrings.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
         </div>
 
