@@ -90,7 +90,9 @@ Return a JSON object with:
   "confidence_scores": { "trade_name": 95 }
 }
 
-Use Avenstone's cost-plus model: show material + labor per trade, then add PM fee ($800-$2000) and 20-35% margin on top. Return only valid JSON.`;
+Use Avenstone's cost-plus model: show material + labor per trade, then add PM fee ($800-$2000) and 20-35% margin on top.
+IMPORTANT: Use trade names exactly as they appear in "Measurements collected on-site" above — do not rename, abbreviate, or merge trades.
+Return only valid JSON.`;
 
     const estimateRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",

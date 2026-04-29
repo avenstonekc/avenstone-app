@@ -83,6 +83,24 @@ Return JSON:
 
 Return only valid JSON. No markdown. No explanation.`;
 
+// Load canonical trade strings for this tenant from trade_taxonomy + tenant_trade_visibility
+async function loadCanonicalTradeStrings(sb: ReturnType<typeof createClient>, tenantId: string): Promise<string[]> {
+  try {
+    const { data } = await sb
+      .from("trade_taxonomy")
+      .select("parent_trade, sub_trade, tenant_trade_visibility!inner(active)")
+      .eq("tenant_trade_visibility.tenant_id", tenantId)
+      .eq("tenant_trade_visibility.active", true)
+      .order("display_order");
+    if (!data) return [];
+    return data.map((r: Record<string, unknown>) =>
+      r.sub_trade ? `${r.parent_trade} - ${r.sub_trade}` : String(r.parent_trade)
+    );
+  } catch {
+    return [];
+  }
+}
+
 // Load tenant-specific learnings to inject into the AI prompt
 async function loadTenantKnowledge(sb: ReturnType<typeof createClient>, tenantId: string): Promise<string> {
   try {
@@ -269,9 +287,15 @@ Deno.serve(async (req) => {
     }
 
     if (mode === "measure") {
-      // Load company-specific learnings
-      const knowledge = await loadTenantKnowledge(sb, session.tenant_id);
-      const systemPrompt = MEASURE_SYSTEM + knowledge;
+      // Load company-specific learnings + canonical trade strings
+      const [knowledge, canonicalTrades] = await Promise.all([
+        loadTenantKnowledge(sb, session.tenant_id),
+        loadCanonicalTradeStrings(sb, session.tenant_id),
+      ]);
+      const tradeConstraint = canonicalTrades.length
+        ? `\n\nCANONICAL TRADE LIST — you MUST use ONLY these exact strings for the "trade" field:\n${canonicalTrades.join(", ")}\nIf the trade doesn't match, use "scoping".`
+        : "";
+      const systemPrompt = MEASURE_SYSTEM + tradeConstraint + knowledge;
 
       // Build multi-turn message history
       let messages;
@@ -340,7 +364,22 @@ Deno.serve(async (req) => {
         all_trades_complete: boolean;
       };
 
-      const tradeName = extractedTrade || trade || "general";
+      // Validate trade string against canonical list; non-canonical → null (don't write)
+      const rawTradeName = extractedTrade || trade || "general";
+      const canonicalSet = new Set(canonicalTrades);
+      const tradeName = (canonicalTrades.length && rawTradeName !== "scoping" && !canonicalSet.has(rawTradeName))
+        ? null
+        : rawTradeName;
+      if (canonicalTrades.length && rawTradeName !== "scoping" && !canonicalSet.has(rawTradeName) && rawTradeName !== "general") {
+        // Log unknown trade string for review
+        sb.from("ai_error_logs").insert({
+          function_name: "process-transcript",
+          error_type: "unknown_trade",
+          error_message: `AI returned non-canonical trade: "${rawTradeName}"`,
+          tenant_id: session.tenant_id,
+          session_id,
+        }).then(() => {});
+      }
 
       if (tradeName && tradeName !== "scoping") {
         const { data: existingM } = await sb
