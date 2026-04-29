@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbSaveSubPricing, sbUploadDoc, sbLoadTradeTaxonomy } from '../../lib/supabase';
+import { sb, sbSaveSubPricing, sbUploadDoc, sbLoadTradeTaxonomy } from '../../lib/supabase';
 
 const UNIT_OPTIONS = [
   { label: 'per sq ft', value: 'sf' },
@@ -35,13 +35,22 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
   const saved = loadProgress();
 
   const [taxonomy, setTaxonomy] = useState([]);
-  const [step, setStep] = useState(saved?.step || 1);
+  // If passwordSet already in localStorage, start on step 3 (trade select) when
+  // saved step was 2 — avoids re-prompting for password after a refresh.
+  const savedStep = saved?.step || 1;
+  const [step, setStep] = useState(saved?.passwordSet && savedStep === 2 ? 3 : savedStep);
   const [selectedTrades, setSelectedTrades] = useState(saved?.selectedTrades || []);
   const [tradeIndex, setTradeIndex] = useState(saved?.tradeIndex || 0);
   const [tradeMode, setTradeMode] = useState(null);
   const [rateForm, setRateForm] = useState({ unit: '', rate: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [tradeError, setTradeError] = useState(null);
+
+  // Step 2 — password
+  const [pwd, setPwd] = useState('');
+  const [pwdConfirm, setPwdConfirm] = useState('');
+  const [pwdError, setPwdError] = useState(null);
+  const [pwdSaving, setPwdSaving] = useState(false);
 
   // Other trade input
   const [showOtherInput, setShowOtherInput] = useState(false);
@@ -54,9 +63,9 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
   const [w9Status, setW9Status] = useState(null); // null | 'uploading' | 'done' | 'error'
   const [insStatus, setInsStatus] = useState(null);
 
-  // Persist progress
+  // Persist progress (passwordSet boolean only — never persist the password value)
   useEffect(() => {
-    saveProgress({ step, selectedTrades, tradeIndex });
+    saveProgress({ step, selectedTrades, tradeIndex, passwordSet: saved?.passwordSet || step > 2 });
   }, [step, selectedTrades, tradeIndex]);
 
   useEffect(() => { sbLoadTradeTaxonomy().then(setTaxonomy); }, []);
@@ -94,7 +103,7 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
 
   function goBack() {
     if (step === 1) return;
-    if (step === 3 && tradeIndex > 0) {
+    if (step === 4 && tradeIndex > 0) {
       setTradeIndex(t => t - 1);
       setTradeMode(null);
       setRateForm({ unit: '', rate: '', notes: '' });
@@ -102,7 +111,7 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
       return;
     }
     setStep(s => s - 1);
-    if (step === 3) {
+    if (step === 4) {
       setTradeIndex(0);
       setTradeMode(null);
       setRateForm({ unit: '', rate: '', notes: '' });
@@ -132,7 +141,7 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
   function advanceTrade() {
     const next = tradeIndex + 1;
     if (next >= totalTrades) {
-      setStep(4);
+      setStep(5);
     } else {
       setTradeIndex(next);
       setTradeMode(null);
@@ -290,14 +299,93 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
     );
   }
 
-  // ── Step 2 — Pick trades ───────────────────────────────────────────────────
+  // ── Step 2 — Set password ─────────────────────────────────────────────────
 
   if (step === 2) {
+    const pwdValid = pwd.length >= 8 && pwd === pwdConfirm;
+
+    async function handleSetPassword() {
+      setPwdError(null);
+      if (pwd.length < 8) { setPwdError('Password must be at least 8 characters.'); return; }
+      if (pwd !== pwdConfirm) { setPwdError('Passwords do not match.'); return; }
+      setPwdSaving(true);
+      const { error } = await sb.auth.updateUser({ password: pwd });
+      setPwdSaving(false);
+      if (error) { setPwdError(error.message || 'Failed to set password. Try again.'); return; }
+      setStep(3);
+    }
+
     return (
       <div style={{ minHeight: '100dvh', background: '#F7F5F0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '24px 16px' }}>
         <div style={{ width: '100%', maxWidth: 480 }}>
           <button style={backLink} onClick={goBack}>← Back</button>
-          <p style={progressLabel}>Step 2 of 5</p>
+          <p style={progressLabel}>Step 2 of 6</p>
+          <div style={card}>
+            <h1 style={{ ...heading, fontSize: 22 }}>Create your password</h1>
+            <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: '#6B7280', margin: '0 0 24px 0', lineHeight: 1.6 }}>
+              Set a password so you can log back in any time.
+            </p>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                Password
+              </label>
+              <input
+                className="finp"
+                type="password"
+                placeholder="Minimum 8 characters"
+                value={pwd}
+                onChange={e => setPwd(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                Confirm password
+              </label>
+              <input
+                className="finp"
+                type="password"
+                placeholder="Re-enter password"
+                value={pwdConfirm}
+                onChange={e => setPwdConfirm(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && pwdValid) handleSetPassword(); }}
+                style={{ width: '100%', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {pwdError && (
+              <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: '#EF4444', margin: '0 0 14px 0' }}>
+                {pwdError}
+              </p>
+            )}
+
+            <button
+              style={{
+                ...btnGold,
+                opacity: (!pwdValid || pwdSaving) ? 0.45 : 1,
+                cursor: (!pwdValid || pwdSaving) ? 'not-allowed' : 'pointer',
+              }}
+              disabled={!pwdValid || pwdSaving}
+              onClick={handleSetPassword}
+            >
+              {pwdSaving ? 'Saving...' : 'Continue →'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 3 — Pick trades ───────────────────────────────────────────────────
+
+  if (step === 3) {
+    return (
+      <div style={{ minHeight: '100dvh', background: '#F7F5F0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '24px 16px' }}>
+        <div style={{ width: '100%', maxWidth: 480 }}>
+          <button style={backLink} onClick={goBack}>← Back</button>
+          <p style={progressLabel}>Step 3 of 6</p>
           <div style={card}>
             <h1 style={{ ...heading, fontSize: 22 }}>What trades do you work in?</h1>
             <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: '#6B7280', margin: '0 0 20px 0' }}>Select all that apply</p>
@@ -408,7 +496,7 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
                 marginTop: 8,
               }}
               disabled={selectedTrades.length === 0}
-              onClick={() => { setTradeIndex(0); setTradeMode(null); setRateForm({ unit: '', rate: '', notes: '' }); setStep(3); }}
+              onClick={() => { setTradeIndex(0); setTradeMode(null); setRateForm({ unit: '', rate: '', notes: '' }); setStep(4); }}
             >
               Continue →
             </button>
@@ -418,16 +506,16 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
     );
   }
 
-  // ── Step 3 — Per-trade pricing ─────────────────────────────────────────────
+  // ── Step 4 — Per-trade pricing ─────────────────────────────────────────────
 
-  if (step === 3) {
+  if (step === 4) {
     const rateValid = rateForm.unit && rateForm.rate && !isNaN(parseFloat(rateForm.rate));
 
     return (
       <div style={{ minHeight: '100dvh', background: '#F7F5F0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '24px 16px' }}>
         <div style={{ width: '100%', maxWidth: 480 }}>
           <button style={backLink} onClick={goBack}>← Back</button>
-          <p style={progressLabel}>Step 3 of 5</p>
+          <p style={progressLabel}>Step 4 of 6</p>
           <div style={card}>
             <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: '#9B8E7A', margin: '0 0 6px 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Trade {tradeIndex + 1} of {totalTrades}
@@ -551,9 +639,9 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
     );
   }
 
-  // ── Step 4 — Documents ─────────────────────────────────────────────────────
+  // ── Step 5 — Documents ─────────────────────────────────────────────────────
 
-  if (step === 4) {
+  if (step === 5) {
     function UploadRow({ label, accept, file, setFile, status, setStatus, docType }) {
       return (
         <div style={{ marginBottom: 20, padding: 16, border: '1px solid #E8E4DC', borderRadius: 8 }}>
@@ -609,7 +697,7 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
       <div style={{ minHeight: '100dvh', background: '#F7F5F0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '24px 16px' }}>
         <div style={{ width: '100%', maxWidth: 480 }}>
           <button style={backLink} onClick={goBack}>← Back</button>
-          <p style={progressLabel}>Step 4 of 5</p>
+          <p style={progressLabel}>Step 5 of 6</p>
           <div style={card}>
             <h1 style={{ ...heading, fontSize: 22 }}>Almost done</h1>
             <p style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: '#6B7280', margin: '0 0 24px 0', lineHeight: 1.6 }}>
@@ -638,13 +726,13 @@ export default function SubOnboardingWizard({ profile, onComplete }) {
             <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
               <button
                 style={{ ...btnGhost, flex: 1, padding: '14px 12px', fontSize: 14 }}
-                onClick={() => setStep(5)}
+                onClick={() => setStep(6)}
               >
                 Skip for now →
               </button>
               <button
                 style={{ ...btnGold, flex: 1, padding: '14px 12px', fontSize: 14 }}
-                onClick={() => setStep(5)}
+                onClick={() => setStep(6)}
               >
                 Continue →
               </button>
