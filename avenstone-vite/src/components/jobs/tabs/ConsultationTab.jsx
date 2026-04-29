@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, PROCESS_TRANSCRIPT_URL, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis } from '../../../lib/supabase';
+import { useState, useEffect, useRef } from 'react';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis } from '../../../lib/supabase';
 import { Ic, f$, isMob } from '../../../lib/utils';
 import GapResolutionModal from '../consultation/GapResolutionModal';
 import MeasurePanel from '../consultation/MeasurePanel';
+import AmbientPanel from '../consultation/AmbientPanel';
 
 const NAV = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -14,24 +15,6 @@ const LIKELIHOOD_COLORS = {
   medium: { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D' },
   high: { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5' },
 };
-
-function PulseRecording() {
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        width: 12,
-        height: 12,
-        borderRadius: '50%',
-        background: '#EF4444',
-        boxShadow: '0 0 0 0 rgba(239,68,68,0.7)',
-        animation: 'pulse-rec 1.4s infinite',
-        marginRight: 8,
-        verticalAlign: 'middle',
-      }}
-    />
-  );
-}
 
 function StatusBadge({ status }) {
   const map = {
@@ -84,7 +67,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const mob = isMob();
   const [sessionId, setSessionId] = useState(null);
   const [phase, setPhase] = useState('idle');
-  const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [extraction, setExtraction] = useState(null);
   const [measurements, setMeasurements] = useState([]);
@@ -102,8 +84,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const [showGapModal, setShowGapModal] = useState(false);
 
   const recognitionRef = useRef(null);
-  const transcriptRef = useRef('');
-  const ambientIntervalRef = useRef(null);
   const sessionIdRef = useRef(null);
 
   // Keep sessionIdRef in sync
@@ -111,25 +91,11 @@ export default function ConsultationTab({ job, profile, setTab }) {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  // Keep transcriptRef in sync
-  useEffect(() => {
-    transcriptRef.current = transcript;
-  }, [transcript]);
-
   // Load past sessions on mount
   useEffect(() => {
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopMicCleanup();
-      if (ambientIntervalRef.current) clearInterval(ambientIntervalRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const loadSessions = async () => {
     if (!job?.id) return;
@@ -150,110 +116,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
     Authorization: `Bearer ${ANON_KEY}`,
     'Content-Type': 'application/json',
   });
-
-  // ─── Mic / Speech Recognition ─────────────────────────────────────────────
-
-  const startMic = async () => {
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        setErr('Speech recognition is not supported in this browser. Use Chrome for full functionality.');
-        return false;
-      }
-      const accumulatedRef = { current: transcriptRef.current };
-      const stillRecording = { current: true };
-
-      const startRecog = () => {
-        if (!stillRecording.current) return;
-        const recog = new SpeechRecognition();
-        recog.continuous = true;
-        recog.interimResults = true;
-        recog.lang = 'en-US';
-
-        recog.onresult = (e) => {
-          // Append only newly finalized results to avoid duplication
-          let newText = '';
-          for (let i = e.resultIndex; i < e.results.length; i++) {
-            if (e.results[i].isFinal) {
-              newText += e.results[i][0].transcript + ' ';
-            }
-          }
-          if (newText) {
-            accumulatedRef.current = (accumulatedRef.current + ' ' + newText).trim();
-            setTranscript(accumulatedRef.current);
-          }
-        };
-
-        recog.onerror = (e) => {
-          if (e.error === 'not-allowed') {
-            setErr('Microphone access denied. Allow mic in browser settings.');
-            stillRecording.current = false;
-          }
-          // aborted / no-speech / network: just restart
-        };
-
-        recog.onend = () => {
-          if (stillRecording.current) {
-            setTimeout(startRecog, 300);
-          }
-        };
-
-        recog.start();
-        recognitionRef.current = recog;
-      };
-
-      startRecog();
-      recognitionRef.current = { stop: () => { stillRecording.current = false; recognitionRef.current?.abort?.(); } };
-      setIsRecording(true);
-      return true;
-    } catch (e) {
-      setErr(`Microphone access denied: ${e.message}`);
-      return false;
-    }
-  };
-
-  const stopMicCleanup = () => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (_) {}
-      recognitionRef.current = null;
-    }
-    setIsRecording(false);
-  };
-
-  const stopMic = () => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setIsRecording(false);
-  };
-
-  // ─── Ambient interval (every 60s) ─────────────────────────────────────────
-
-  const startAmbientInterval = (sid) => {
-    if (ambientIntervalRef.current) clearInterval(ambientIntervalRef.current);
-    ambientIntervalRef.current = setInterval(async () => {
-      const chunk = transcriptRef.current;
-      if (!chunk || chunk.trim().length < 20) return;
-      try {
-        const headers = getHeaders();
-        const res = await fetch(PROCESS_TRANSCRIPT_URL, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            session_id: sessionIdRef.current || sid,
-            job_id: job.id,
-            transcript_chunk: chunk,
-            mode: 'ambient',
-          }),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const json = await res.json();
-        if (json.extraction) setExtraction(json.extraction);
-      } catch (e) {
-        console.error('Ambient processing error:', e);
-      }
-    }, 60000);
-  };
 
   // ─── Start Session ─────────────────────────────────────────────────────────
 
@@ -277,17 +139,14 @@ export default function ConsultationTab({ job, profile, setTab }) {
       if (error) throw error;
 
       setSessionId(data.id);
+      sessionIdRef.current = data.id;
       setPhase('ambient');
       setTranscript('');
       setExtraction(null);
       setMeasurements([]);
       setResult(null);
       setEstimateSaved(false);
-
-      const micOk = await startMic();
-      if (micOk) {
-        startAmbientInterval(data.id);
-      }
+      // AmbientPanel auto-starts mic on mount
     } catch (e) {
       setErr(`Failed to start session: ${e.message}`);
     }
@@ -318,28 +177,9 @@ export default function ConsultationTab({ job, profile, setTab }) {
 
   // ─── Transition to Measure ─────────────────────────────────────────────────
 
-  const startMeasuring = async () => {
+  const startMeasuring = () => {
     setErr('');
-    stopMic();
-    // Flush accumulated transcript before clearing interval — ambient sessions
-    // shorter than 60s never fire the interval, leaving no extraction row.
-    if (transcriptRef.current && transcriptRef.current.trim().length >= 20) {
-      fetch(PROCESS_TRANSCRIPT_URL, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
-          session_id: sessionIdRef.current,
-          job_id: job.id,
-          transcript_chunk: transcriptRef.current,
-          mode: 'ambient',
-        }),
-      }).catch(() => {});
-    }
-    if (ambientIntervalRef.current) {
-      clearInterval(ambientIntervalRef.current);
-      ambientIntervalRef.current = null;
-    }
-    // MeasurePanel handles session creation and opening API call on mount
+    // Flush + mic stop handled by AmbientPanel before calling this callback
     setPhase('measure');
   };
 
@@ -384,11 +224,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
 
   const endSessionFromAmbient = async () => {
     setErr('');
-    stopMic();
-    if (ambientIntervalRef.current) {
-      clearInterval(ambientIntervalRef.current);
-      ambientIntervalRef.current = null;
-    }
+    // Flush + mic stop handled by AmbientPanel before calling this callback
     try {
       const sid2 = sessionIdRef.current;
       if (sid2) await sb.from('consultation_sessions').update({ status: 'complete' }).eq('id', sid2);
@@ -401,7 +237,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
   // ─── Generate Estimate ─────────────────────────────────────────────────────
 
   const generateEstimate = async (unresolvedGaps = []) => {
-    setShowGapModal(false);
     setGenerating(true);
     setErr('');
     try {
@@ -596,68 +431,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
           </div>
         </div>
       )}
-    </div>
-  );
-
-  // ─── Ambient Phase ─────────────────────────────────────────────────────────
-
-  const renderAmbient = () => (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12 }}>
-        {isRecording && <PulseRecording />}
-        <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 20, color: NAV }}>
-          {isRecording ? 'Ambient Recording Active' : 'Session Paused'}
-        </span>
-        <button
-          className="btn btn-ghost"
-          style={{ marginLeft: 'auto', fontSize: 13 }}
-          onClick={isRecording ? stopMic : startMic}
-        >
-          {isRecording ? 'Pause Mic' : 'Resume Mic'}
-        </button>
-      </div>
-
-      {/* Live transcript */}
-      <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
-        <div style={{ fontSize: 11, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 700 }}>
-          Live Transcript
-        </div>
-        <div
-          style={{
-            fontFamily: 'DM Sans, sans-serif',
-            fontSize: 13,
-            color: '#374151',
-            lineHeight: 1.6,
-            minHeight: 64,
-            maxHeight: 140,
-            overflowY: 'auto',
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {transcript
-            ? transcript.slice(-500)
-            : <span style={{ color: '#D1D5DB', fontStyle: 'italic' }}>Listening for conversation…</span>}
-        </div>
-      </div>
-
-      {/* Extraction insights */}
-      {extraction && (
-        <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 700 }}>
-            AI Insights Extracted
-          </div>
-          <ExtractionPills ext={extraction} />
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10 }}>
-        <button className="btn btn-navy" style={{ flex: 1 }} onClick={startMeasuring}>
-          Start Measuring
-        </button>
-        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={endSessionFromAmbient}>
-          End Session
-        </button>
-      </div>
     </div>
   );
 
@@ -907,11 +680,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
   return (
     <>
       <style>{`
-        @keyframes pulse-rec {
-          0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.7); }
-          70% { box-shadow: 0 0 0 10px rgba(239,68,68,0); }
-          100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
-        }
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
@@ -979,7 +747,17 @@ export default function ConsultationTab({ job, profile, setTab }) {
 
         {/* Phase content */}
         {phase === 'idle' && renderIdle()}
-        {phase === 'ambient' && renderAmbient()}
+        {phase === 'ambient' && (
+          <AmbientPanel
+            jobId={job.id}
+            sessionId={sessionId}
+            getSessionId={() => sessionIdRef.current}
+            onTranscriptUpdate={setTranscript}
+            onExtractionUpdate={setExtraction}
+            onStartMeasuring={startMeasuring}
+            onEnd={endSessionFromAmbient}
+          />
+        )}
         {phase === 'measure' && (
           <MeasurePanel
             jobId={job.id}
