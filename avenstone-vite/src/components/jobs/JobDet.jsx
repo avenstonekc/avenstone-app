@@ -108,7 +108,10 @@ export default function JobDet({ job, upd, del, back, profile }) {
       {/* Header */}
       <div style={{ background: '#0A1F44', padding: '16px 20px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: rev > 0 ? 10 : 0 }}>
-          <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', width: 24, height: 24, display: 'flex', alignItems: 'center' }} onClick={back}>{Ic.back}</button>
+          <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0', flexShrink: 0 }} onClick={back}>
+            <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center' }}>{Ic.back}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>Projects</span>
+          </button>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>Project</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>{job.address}</div>
