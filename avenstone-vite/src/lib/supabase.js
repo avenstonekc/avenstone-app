@@ -1090,6 +1090,53 @@ export const sbBuildTakeoffDraft = async ({ jobId, roomType, roomIds }) => {
   return buildTakeoffDraft({ jobId, roomType, roomIds });
 };
 
+// ─── Room scope tagging ────────────────────────────────────────────────────────
+
+export const sbLoadJobRoomScopes = async (jobId) => {
+  const { data } = await sb.from('job_room_scopes').select('*').eq('job_id', jobId);
+  return data || [];
+};
+
+export const sbSaveJobRoomScope = async ({
+  jobId, roomId, roomLabel, roomType, scopeTag, customTrades, notes, tenantId, userId,
+}) => {
+  const { data, error } = await sb.from('job_room_scopes').upsert({
+    tenant_id:    tenantId,
+    job_id:       jobId,
+    room_id:      roomId,
+    room_label:   roomLabel ?? null,
+    room_type:    roomType,
+    scope_tag:    scopeTag,
+    custom_trades: customTrades ?? null,
+    notes:        notes ?? null,
+    created_by:   userId,
+    updated_at:   new Date().toISOString(),
+  }, { onConflict: 'tenant_id,job_id,room_id' }).select().single();
+  return { data, error };
+};
+
+export const sbDeleteJobRoomScope = async (id) => {
+  const { error } = await sb.from('job_room_scopes').delete().eq('id', id);
+  return { error };
+};
+
+export const sbLoadScopeSubsets = async (roomType) => {
+  const { data } = await sb.from('template_scope_subsets')
+    .select('*')
+    .eq('room_type', roomType)
+    .order('sort_order');
+  if (!data?.length) return [];
+  // Tenant override beats platform default for same scope_tag (same de-dup pattern).
+  const map = {};
+  for (const row of data) {
+    const prev = map[row.scope_tag];
+    if (!prev || (row.tenant_id !== null && prev.tenant_id === null)) {
+      map[row.scope_tag] = row;
+    }
+  }
+  return Object.values(map).sort((a, b) => a.sort_order - b.sort_order);
+};
+
 /**
  * Save a rep-edited rate back to takeoff_unit_costs as a tenant override row.
  * Platform-default rows (tenant_id NULL) are never touched — only tenant rows
