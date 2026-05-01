@@ -226,7 +226,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   //    subsetByTag   — keyed by scope_tag, value is the template_scope_subsets row.
   const [scopeRows, scopeSubsets] = await Promise.all([
     sbLoadJobRoomScopes(jobId),
-    sbLoadScopeSubsets(roomType),
+    sbLoadScopeSubsets(null), // load all room types so cross-type tags (e.g. tile_only on refresh pill) resolve correctly
   ]);
 
   const scopeByRoomId = {};
@@ -246,6 +246,10 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       scope_missing: !scopeRow,
     };
   });
+
+  // Exclude not_in_scope rooms from the draft entirely — they contribute no lines and
+  // should not appear in TakeoffWizard. Rooms with no scope row (untagged) are kept.
+  const activeRooms = rooms.filter(r => r.scope_tag !== 'not_in_scope');
 
   // 4. Templates for this room_type (platform defaults + tenant overrides)
   const templateFilter = tenantId
@@ -326,15 +330,13 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
 
   // 6. Build lines: one per (room × trade), filtered by saved scope tag.
   const lines = [];
-  for (const room of rooms) {
+  for (const room of activeRooms) {
     // Resolve allowed trades for this room from its saved scope row.
     // null allowedTrades = no filter (all trades emitted — default when unscoped).
     let allowedTrades = null;
     const scopeRow = scopeByRoomId[room.roomId];
     if (scopeRow) {
-      if (scopeRow.scope_tag === 'not_in_scope') {
-        continue; // exclude this room from takeoff entirely
-      } else if (scopeRow.scope_tag === 'custom') {
+      if (scopeRow.scope_tag === 'custom') {
         allowedTrades = new Set(scopeRow.custom_trades ?? []);
       } else {
         const subset = subsetByTag[scopeRow.scope_tag];
@@ -456,15 +458,15 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   const laborSubtotal    = Math.round(laborLinesList.reduce((s, l) => s + (l.lineCost ?? 0), 0) * 100) / 100;
   const materialSubtotal = Math.round(materialLinesList.reduce((s, l) => s + (l.lineCost ?? 0), 0) * 100) / 100;
   const subtotal         = Math.round((laborSubtotal + materialSubtotal) * 100) / 100;
-  const roomsMissingScope = rooms.filter(r => r.scope_missing).length;
+  const roomsMissingScope = activeRooms.filter(r => r.scope_missing).length;
 
   const draft = {
     jobId,
     roomType,
-    rooms,
+    rooms: activeRooms,
     lines,
     summary: {
-      totalRooms:    rooms.length,
+      totalRooms:    activeRooms.length,
       totalLines:    lines.length,
       laborLines:    laborLinesList.length,
       materialLines: materialLinesList.length,

@@ -1121,10 +1121,9 @@ export const sbDeleteJobRoomScope = async (id) => {
 };
 
 export const sbLoadScopeSubsets = async (roomType) => {
-  const { data } = await sb.from('template_scope_subsets')
-    .select('*')
-    .eq('room_type', roomType)
-    .order('sort_order');
+  let q = sb.from('template_scope_subsets').select('*').order('sort_order');
+  if (roomType) q = q.eq('room_type', roomType);
+  const { data } = await q;
   if (!data?.length) return [];
   // Tenant override beats platform default for same scope_tag (same de-dup pattern).
   const map = {};
