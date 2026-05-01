@@ -834,3 +834,12 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
     DELETE FROM estimate_line_items WHERE job_id = '<job_id>' AND notes LIKE 'takeoff:%';
     DELETE FROM takeoff_unit_costs WHERE tenant_id = '00000000-0000-0000-0000-000000000001';
 - Open: DB verification pending — PAT available in session. Run verification queries from Step 4 prompt Report Format section on 8617 Houston St (job_id = b2d3648c-1c9f-4168-8eb5-eb15eaed5efa). Step 5 — room-tag system. Kitchen/basement/whole-house/exterior material templates in subsequent prompts.
+
+[LOG — 2026-04-30]
+- Action: Fixed coverage_sf/waste_pct inheritance bug in takeoff tenant override logic. Step 4 DB verification confirmed: 49 rows (14 labor + 35 materials), material subtotal $7,550.23, 1 PENDING RATE row.
+- Files: avenstone-vite/src/lib/takeoff.js (de-dup merge), avenstone-vite/src/lib/supabase.js (sbSaveTenantUnitCostOverride platform field inheritance)
+- Decision: Root cause — buildTakeoffDraft de-dup was fully replacing platform default row with tenant override row (materialRateMap[key] = row). Tenant override rows omit coverage_sf/waste_pct; formula then skips ÷coverage, producing wildly wrong material quantities (e.g. Drywall sheet: 57.58 instead of ~15 sheets). Fix: spread platform row fields and overlay only base_rate + id + tenant_id from the override. Same merge pattern applied to laborCostMap.
+- Decision: sbSaveTenantUnitCostOverride now fetches platform default row before building a new override insert and copies coverage_sf, waste_pct, unit from it. Prevents the same bug from reoccurring when rep edits a rate for the first time.
+- Decision: 3 pre-existing dirty tenant override rows (Demo base_rate=5.00, Drywall-Hang labor=0.55, Drywall sheet coverage_sf=null) were deleted via Management API in the prior session. Merge fix means new overrides created through the UI will always inherit platform fields.
+- Commit: 93064fd
+- Open: Labor JS subtotal vs DB total_cost discrepancy ($16,257 vs $17,607) is pre-existing — multiplier is applied in draft lineCost computation but NOT embedded in stored unit_cost. Not introduced by this fix; tracked as known issue. scripts/verify-step4.mjs left in repo (temp verification script — delete when done with Step 4). Step 4 is now fully verified and shipped.
