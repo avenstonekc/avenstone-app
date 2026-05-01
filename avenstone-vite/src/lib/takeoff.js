@@ -426,15 +426,6 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     },
   };
 
-  console.log(`[TAKEOFF DRAFT V2 — ${roomType}]`, {
-    rooms:           draft.summary.totalRooms,
-    laborLines:      draft.summary.laborLines,
-    materialLines:   draft.summary.materialLines,
-    laborSubtotal:   draft.summary.laborSubtotal,
-    materialSubtotal: draft.summary.materialSubtotal,
-    sample_material_line: draft.lines.find(l => l.category === 'materials') || null,
-  });
-
   return draft;
 }
 

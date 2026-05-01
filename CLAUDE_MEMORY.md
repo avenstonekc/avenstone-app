@@ -721,8 +721,12 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: costMap split into laborCostMap (keyed by trade) and materialRateMap (keyed by trade::material_name). Both from same fetch. Tenant override beats platform default per key in both.
 - Decision: allRooms.push now threads through height (ceilingFt), doors, windows from raw scan JSONB — needed by roomMetrics helper for door_count and window_count formula bases.
 - Decision: summary expanded: laborLines, materialLines, laborSubtotal, materialSubtotal; subtotal = labor + materials.
-- Open: Step 2 unverified until Kalin runs debug button on 8617 Houston St and pastes [TAKEOFF DRAFT V2 — bathroom] console output. Verification expectations: ~14 labor + ~20 material lines, materialSubtotal > 0, sample_material_line.lineCost is a number.
-- Open: TakeoffWizard renders material lines in same flat list as labor lines for now (Step 3 splits UI into Labor and Materials sections per room). Persistence to estimate_line_items pending Step 4. Debug log [TAKEOFF DRAFT V2 — *] to be removed after Step 3.
+- Open: Step 3 — TakeoffWizard UI splits Labor and Materials into separate sections per room with split subtotals.
+
+[LOG — 2026-04-30]
+- Action: Step 2 of estimate+procurement arc verified live
+- Verification: bathroom subtotal on 8617 Houston St = $23,419.83 (labor + materials combined). Sample material line: Drywall sheet 1/2 4x8, qty 15.01, baseRate $14, lineCost $210.14 — math correct.
+- Open: Step 3 — TakeoffWizard UI splits Labor and Materials into separate sections per room with split subtotals.
 
 [LOG — 2026-04-29 — END OF DAY SUMMARY]
 
