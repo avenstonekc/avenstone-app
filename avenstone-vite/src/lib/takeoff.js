@@ -785,40 +785,44 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
  * Saves any rate edits the rep made back to takeoff_unit_costs as tenant overrides.
  * Resolves estimate-related todos tied to this job.
  *
- * @param {{ draft, edits, tenantId, userId }} args
+ * @param {{ draft, edits, excluded, customLines, tenantId, userId }} args
  *   edits — map keyed by lineKey (`${roomId}__${trade}__${materialName||''}`)
  *            each value is { quantity?, baseRate? } with the rep's overrides
+ *   customLines — array of one-off lines added by the rep (not in templates)
  * @returns {{ jobEstimateId, lineItemCount, overrideCount, errors[] }}
  */
-export async function acceptTakeoffDraft({ draft, edits, excluded, tenantId, userId }) {
+export async function acceptTakeoffDraft({ draft, edits, excluded, customLines, tenantId, userId }) {
   const errors = [];
 
   // 1. Upsert a job_estimates row so we have an estimate_id for line items
   //    and a source_id to resolve estimate_no_proposal_24h todos.
-  //    sbSaveEstimate upserts on job_id — safe to call even if row exists.
   const jobEstimateRow = await sbSaveEstimate(draft.jobId, []);
   const jobEstimateId  = jobEstimateRow?.id ?? null;
 
-  // 2. Resolve final qty + rate per line, detect rep edits, mark excluded
-  const lineKey = (line) =>
-    `${line.roomId}__${line.trade}__${line.materialName || ''}`;
+  // 2. Resolve final qty + rate per line, detect rep edits, mark excluded.
+  //    Custom lines use their stable lineKey field; formula lines derive it.
+  const resolveKey = (line) =>
+    line.lineKey ?? `${line.roomId}__${line.trade}__${line.materialName || ''}`;
   const excludedSet = excluded instanceof Set ? excluded : new Set(excluded ?? []);
 
-  const resolvedLines = draft.lines.map(line => {
-    const k = lineKey(line);
+  const resolveOneLine = (line) => {
+    const k = resolveKey(line);
     const e = edits[k] || {};
-    const qty  = e.quantity  !== undefined ? e.quantity  : line.quantity;
-    const rate = e.baseRate  !== undefined ? e.baseRate  : line.baseRate;
+    const qty  = e.quantity !== undefined ? e.quantity : line.quantity;
+    const rate = e.baseRate !== undefined ? e.baseRate : line.baseRate;
     const rateEdited = e.baseRate !== undefined && e.baseRate !== line.baseRate;
     return { ...line, resolvedQty: qty, resolvedRate: rate, rateEdited, isExcluded: excludedSet.has(k) };
-  });
+  };
 
-  // 3. Save rate overrides — deduplicated by (roomType, trade, materialName, category)
-  //    so editing the same material across multiple rooms writes a single override row.
+  const resolvedFormula = draft.lines.map(resolveOneLine);
+  const resolvedCustom  = (customLines ?? []).map(resolveOneLine);
+  const resolvedLines   = [...resolvedFormula, ...resolvedCustom];
+
+  // 3. Save rate overrides for formula lines only (custom lines aren't in the catalog).
   const overridesSeen = new Set();
   let overrideCount = 0;
 
-  for (const line of resolvedLines) {
+  for (const line of resolvedFormula) {
     if (line.isExcluded) continue;
     if (!line.rateEdited || line.resolvedRate == null || line.resolvedRate <= 0) continue;
     const dedupeKey = `${line.trade}::${line.materialName || ''}::${line.category}`;
@@ -851,13 +855,20 @@ export async function acceptTakeoffDraft({ draft, edits, excluded, tenantId, use
 
   // 5. Build row payloads — excluded lines are omitted
   const rows = resolvedLines.filter(l => !l.isExcluded).map((line, i) => {
-    const qty      = line.resolvedQty  ?? 1;
-    const rate     = line.resolvedRate ?? 0;
-    const noRate   = line.resolvedRate == null;
-    const noteBase = line.category === 'materials'
-      ? `takeoff:${draft.roomType}:${line.roomId}:${line.trade}`
-      : `takeoff:${draft.roomType}:${line.roomId}`;
-    const notes    = noRate ? `${noteBase} PENDING RATE` : noteBase;
+    const qty    = line.resolvedQty  ?? 1;
+    const rate   = line.resolvedRate ?? 0;
+    const noRate = line.resolvedRate == null;
+
+    let noteBase;
+    if (line.isCustom) {
+      noteBase = `takeoff:custom:${draft.roomType}:${line.roomId}`;
+      if (line.notes) noteBase = `${noteBase} — ${line.notes.replace(/^custom:\s*/i, '')}`;
+    } else {
+      noteBase = line.category === 'materials'
+        ? `takeoff:${draft.roomType}:${line.roomId}:${line.trade}`
+        : `takeoff:${draft.roomType}:${line.roomId}`;
+    }
+    const notes = noRate ? `${noteBase} PENDING RATE` : noteBase;
 
     return {
       tenant_id:    tenantId,
@@ -866,9 +877,11 @@ export async function acceptTakeoffDraft({ draft, edits, excluded, tenantId, use
       phase:        line.trade,
       category:     line.category,
       trade:        line.trade,
-      description:  line.category === 'materials'
-        ? (line.materialName ?? line.trade)
-        : (line.templateNotes ?? line.trade),
+      description:  line.isCustom
+        ? (line.description ?? line.templateNotes ?? line.trade)
+        : (line.category === 'materials'
+          ? (line.materialName ?? line.trade)
+          : (line.templateNotes ?? line.trade)),
       quantity:     qty,
       unit:         line.unit ?? null,
       unit_cost:    rate,
