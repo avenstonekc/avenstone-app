@@ -406,7 +406,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   const materialSubtotal = Math.round(materialLinesList.reduce((s, l) => s + (l.lineCost ?? 0), 0) * 100) / 100;
   const subtotal         = Math.round((laborSubtotal + materialSubtotal) * 100) / 100;
 
-  return {
+  const draft = {
     jobId,
     roomType,
     rooms,
@@ -425,6 +425,17 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       subtotalIncomplete: lines.some(l => l.lineCost == null),
     },
   };
+
+  console.log(`[TAKEOFF DRAFT V2 — ${roomType}]`, {
+    rooms:           draft.summary.totalRooms,
+    laborLines:      draft.summary.laborLines,
+    materialLines:   draft.summary.materialLines,
+    laborSubtotal:   draft.summary.laborSubtotal,
+    materialSubtotal: draft.summary.materialSubtotal,
+    sample_material_line: draft.lines.find(l => l.category === 'materials') || null,
+  });
+
+  return draft;
 }
 
 function emptyDraft(jobId, roomType) {
