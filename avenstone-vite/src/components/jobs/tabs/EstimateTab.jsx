@@ -1,9 +1,10 @@
 import { useState, useEffect, Fragment } from 'react';
-import { ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal } from '../../../lib/supabase';
+import { ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes } from '../../../lib/supabase';
 import { Ic, f$ } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
 import TakeoffWizard from './TakeoffWizard';
+import ScopeTab from './ScopeTab';
 
 const NAV = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -12,6 +13,7 @@ const BORDER = '#E8E4DC';
 
 const SUB_TABS = [
   { id: 'build',    lb: 'Build' },
+  { id: 'scope',    lb: 'Scope' },
   { id: 'takeoff',  lb: 'Takeoff' },
   { id: 'items',    lb: 'Line items' },
   { id: 'proposal', lb: 'Proposal' },
@@ -51,13 +53,20 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
   const [propOhShitExpanded, setPropOhShitExpanded] = useState(false);
   const [propReady, setPropReady] = useState(false);
 
-  // Default to 'items' if job already has line items
+  // Default tab: items (if line items exist) → scope (if scope rows exist) → build
   useEffect(() => {
-    sbLoadEstimateLineItems(job.id).then(items => {
+    Promise.all([
+      sbLoadEstimateLineItems(job.id),
+      sbLoadJobRoomScopes(job.id),
+    ]).then(([items, scopes]) => {
       if (items?.length) {
         setLineItems(items);
         setLineItemsLoaded(true);
         setSub('items');
+      } else if (scopes?.length) {
+        setSub('scope');
+      } else {
+        setSub('build');
       }
     });
   }, [job.id]);
@@ -497,6 +506,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
       </div>
 
       {sub === 'build'    && renderBuild()}
+      {sub === 'scope'    && <ScopeTab job={job} setSub={setSub} />}
       {sub === 'takeoff'  && <TakeoffWizard job={job} setSub={setSub} />}
       {sub === 'items'    && renderItems()}
       {sub === 'proposal' && renderProposal()}
