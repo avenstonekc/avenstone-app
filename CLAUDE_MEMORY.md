@@ -1076,3 +1076,19 @@ Open items:
 - Step 8 — procurement view from estimate_line_items.
 - claude.ai/design exploration for navigation/morning-brief/sub-portal.
 - Layer 2 — "Save rate to tenant catalog" checkbox on custom modal.
+
+[LOG — 2026-05-01]
+- Action: jobs INSERT was failing RLS for all authenticated users.
+  Manual job creation broken. Agent path worked (service role
+  bypasses RLS).
+- Root cause: sbSave used .upsert() which generates INSERT ON
+  CONFLICT DO UPDATE. Postgres/PostgREST evaluated BOTH the INSERT
+  and UPDATE RLS policies even for genuinely new rows. INSERT policy
+  passed; UPDATE policy rejected.
+- Fix: switched sbSave from .upsert() to .insert() since it's only
+  ever called for new jobs. Commit a70c8ca.
+- Decision: when a helper writes new rows only, use .insert(). Use
+  .upsert() only when both insert AND update paths are intentional.
+  Avoid .upsert() shortcuts that pretend to be insert-only.
+- Open: other sb* helpers using .upsert() may have the same latent
+  bug. Sweep when convenient.

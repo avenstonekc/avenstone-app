@@ -67,6 +67,23 @@ writes must follow these.
   Code go in quintuple-backtick fences (`````) so any triple-backtick
   inside renders correctly and the copy button grabs everything.
 
+## Response brevity
+
+- Default to shortest useful response. One question, one paragraph.
+- No recap of prior session unless asked.
+- No "what shipped today" summaries unless asked.
+- No bullet lists of context the user already has.
+- No verification checklists longer than 3 items unless the user
+  asks for one.
+- Greenlight prompts: one short message, not a section header
+  followed by bullets.
+- When user is frustrated or moving fast, cut response to 1-3
+  sentences. Don't explain unless asked.
+- Expand only when:
+  a) Architecture decision needs tradeoff explanation
+  b) User explicitly asks for elaboration
+  c) Diagnosis requires showing reasoning
+
 ## Never in a prompt
 
 - "Clean up while you're in there" — opportunistic refactors. Claude
