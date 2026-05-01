@@ -263,13 +263,19 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     if (row.category === 'materials') {
       const key = `${row.trade}::${row.material_name}`;
       const prev = materialRateMap[key];
-      if (!prev || (row.tenant_id !== null && prev.tenant_id === null)) {
+      if (!prev) {
         materialRateMap[key] = row;
+      } else if (row.tenant_id !== null && prev.tenant_id === null) {
+        // Merge: keep platform fields (coverage_sf, waste_pct), overlay the tenant rate.
+        // Full replacement loses coverage_sf/waste_pct when the override row omits them.
+        materialRateMap[key] = { ...prev, base_rate: row.base_rate, tenant_id: row.tenant_id, id: row.id };
       }
     } else {
       const prev = laborCostMap[row.trade];
-      if (!prev || (row.tenant_id !== null && prev.tenant_id === null)) {
+      if (!prev) {
         laborCostMap[row.trade] = row;
+      } else if (row.tenant_id !== null && prev.tenant_id === null) {
+        laborCostMap[row.trade] = { ...prev, base_rate: row.base_rate, tenant_id: row.tenant_id, id: row.id };
       }
     }
   }

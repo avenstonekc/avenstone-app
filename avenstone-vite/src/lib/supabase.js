@@ -1135,17 +1135,33 @@ export const sbSaveTenantUnitCostOverride = async ({
     return { error, id: existing.id };
   }
 
+  // Fetch platform default to inherit coverage_sf and waste_pct.
+  // Without this, a new override row gets coverage_sf=null which breaks
+  // the ÷coverage formula and produces wildly wrong material quantities.
+  let pq = sb.from('takeoff_unit_costs')
+    .select('coverage_sf, waste_pct, unit')
+    .is('tenant_id', null)
+    .eq('room_type', roomType)
+    .eq('trade', trade)
+    .eq('category', category)
+    .eq('active', true);
+  if (materialName == null) pq = pq.is('material_name', null);
+  else pq = pq.eq('material_name', materialName);
+  const { data: platform } = await pq.maybeSingle();
+
   const row = {
     tenant_id:    tenantId,
     room_type:    roomType,
     trade,
     category,
     material_name: materialName ?? null,
-    unit,
-    base_rate:    Number(baseRate),
-    multipliers:  {},
-    active:       true,
-    notes:        sourceUnitCostId ? `override of platform row ${sourceUnitCostId}` : null,
+    unit:          unit ?? platform?.unit ?? null,
+    base_rate:     Number(baseRate),
+    coverage_sf:   platform?.coverage_sf ?? null,
+    waste_pct:     platform?.waste_pct ?? null,
+    multipliers:   {},
+    active:        true,
+    notes:         sourceUnitCostId ? `override of platform row ${sourceUnitCostId}` : null,
   };
   const { data, error } = await sb.from('takeoff_unit_costs').insert(row).select('id').single();
   return { error, id: data?.id };
