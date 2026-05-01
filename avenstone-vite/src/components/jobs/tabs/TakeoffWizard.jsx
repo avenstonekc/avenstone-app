@@ -23,11 +23,13 @@ export default function TakeoffWizard({ job }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [edits, setEdits] = useState({});
+  const [collapsed, setCollapsed] = useState(() => new Set());
 
   const loadDraft = useCallback(async (roomType) => {
     setSelectedType(roomType);
     setDraft(null);
     setEdits({});
+    setCollapsed(new Set());
     setError(null);
     setLoading(true);
     try {
@@ -39,7 +41,8 @@ export default function TakeoffWizard({ job }) {
     setLoading(false);
   }, [job.id]);
 
-  const lineKey = (line) => `${line.roomId}__${line.trade}`;
+  // material lines share the same trade — include materialName in key to prevent collision
+  const lineKey = (line) => `${line.roomId}__${line.trade}__${line.materialName || ''}`;
 
   const effectiveLine = (line) => {
     const k = lineKey(line);
@@ -58,15 +61,34 @@ export default function TakeoffWizard({ job }) {
     setEdits(prev => ({ ...prev, [k]: { ...(prev[k] || {}), [field]: val } }));
   };
 
-  const effectiveLines = draft ? draft.lines.map(effectiveLine) : [];
-  const subtotal = effectiveLines.reduce((s, l) => s + (l.lineCost || 0), 0);
-  const pendingRateCount = effectiveLines.filter(l => l.baseRate == null).length;
+  const effectiveLines    = draft ? draft.lines.map(effectiveLine) : [];
+  const laborLines        = effectiveLines.filter(l => l.category !== 'materials');
+  const materialLines     = effectiveLines.filter(l => l.category === 'materials');
+  const laborSubtotal     = Math.round(laborLines.reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
+  const materialSubtotal  = Math.round(materialLines.reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
+  const subtotal          = Math.round((laborSubtotal + materialSubtotal) * 100) / 100;
+  const pendingRateCount  = effectiveLines.filter(l => l.baseRate == null).length;
 
-  const linesByRoom = {};
+  const laborByRoom = {};
+  const materialsByRoom = {};
   for (const line of effectiveLines) {
-    if (!linesByRoom[line.roomId]) linesByRoom[line.roomId] = [];
-    linesByRoom[line.roomId].push(line);
+    if (line.category === 'materials') {
+      if (!materialsByRoom[line.roomId]) materialsByRoom[line.roomId] = [];
+      materialsByRoom[line.roomId].push(line);
+    } else {
+      if (!laborByRoom[line.roomId]) laborByRoom[line.roomId] = [];
+      laborByRoom[line.roomId].push(line);
+    }
   }
+
+  const toggleMats = (roomId) => {
+    const k = `${roomId}__materials`;
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  };
 
   return (
     <div>
@@ -124,13 +146,13 @@ export default function TakeoffWizard({ job }) {
           {/* Summary bar */}
           <div style={{ display: 'flex', gap: 0, background: NAV, borderRadius: 8, padding: '12px 0', marginBottom: 16 }}>
             {[
-              { label: 'Rooms',    value: draft.summary.totalRooms,              color: '#fff' },
-              { label: 'Lines',    value: draft.summary.totalLines,              color: '#fff' },
-              pendingRateCount > 0
-                ? { label: 'Need Rate', value: pendingRateCount,                 color: WARN_BORDER }
-                : null,
-              { label: 'Subtotal', value: f$(subtotal),                          color: GOLD },
-            ].filter(Boolean).map((item, i, arr) => (
+              { label: 'Rooms',     value: draft.summary.totalRooms, color: '#fff' },
+              { label: 'Lines',     value: draft.summary.totalLines, color: '#fff' },
+              pendingRateCount > 0 ? { label: 'Need Rate', value: pendingRateCount, color: WARN_BORDER } : null,
+              { label: 'Labor',     value: f$(laborSubtotal),        color: '#fff' },
+              { label: 'Materials', value: f$(materialSubtotal),     color: '#fff' },
+              { label: 'Total',     value: f$(subtotal),             color: GOLD },
+            ].filter(Boolean).map((item, i) => (
               <div key={item.label} style={{ flex: 1, textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.1)' : 'none', padding: '0 8px' }}>
                 <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>{item.label}</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: item.color }}>{item.value}</div>
@@ -140,7 +162,11 @@ export default function TakeoffWizard({ job }) {
 
           {/* Lines by room */}
           {draft.rooms.map(room => {
-            const roomLines = linesByRoom[room.roomId] || [];
+            const roomLaborLines = laborByRoom[room.roomId] || [];
+            const roomMatLines   = materialsByRoom[room.roomId] || [];
+            const matsCollapsed  = collapsed.has(`${room.roomId}__materials`);
+            const roomLaborCost  = Math.round(roomLaborLines.reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
+            const roomMatCost    = Math.round(roomMatLines.reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
             return (
               <div key={room.roomId} style={{ marginBottom: 16, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden' }}>
                 {/* Room header */}
@@ -155,25 +181,30 @@ export default function TakeoffWizard({ job }) {
                     {room.perimeterLf > 0 && <span>{room.perimeterLf.toFixed(0)} lf</span>}
                   </div>
                 </div>
-                {/* Column headers */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 60px 80px 80px 80px', padding: '5px 14px', gap: 8, background: '#F8F7F5', borderBottom: `1px solid ${BORDER}` }}>
-                  {['Trade', 'Unit', 'Qty', '$/unit', 'Total'].map(h => (
+
+                {/* Labor section header */}
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 60px 80px 80px 80px', padding: '5px 14px', gap: 8, background: '#F8F7F5', borderBottom: `1px solid ${BORDER}`, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Labor</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: NAV }}>{f$(roomLaborCost)}</span>
+                  </div>
+                  {['Unit', 'Qty', '$/unit', 'Total'].map(h => (
                     <div key={h} style={{ fontSize: 10, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
                   ))}
                 </div>
-                {/* Trade lines */}
-                {roomLines.map((line, i) => {
+
+                {/* Labor rows */}
+                {roomLaborLines.map((line, i) => {
                   const needsRate = line.baseRate == null;
                   const rowBg = needsRate ? WARN_BG : (i % 2 === 0 ? '#fff' : CREAM);
                   return (
-                    <div key={line.trade} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 80px 80px 80px', padding: '8px 14px', gap: 8, background: rowBg, borderTop: `1px solid ${BORDER}`, alignItems: 'center' }}>
+                    <div key={lineKey(line)} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 80px 80px 80px', padding: '8px 14px', gap: 8, background: rowBg, borderTop: `1px solid ${BORDER}`, alignItems: 'center' }}>
                       <div>
                         <div style={{ fontSize: 12, color: NAV, fontWeight: 500 }}>{line.trade}</div>
                         {line.optional && <span style={{ fontSize: 10, color: '#9CA3AF', fontStyle: 'italic' }}>optional</span>}
                         {needsRate && <span style={{ fontSize: 10, fontWeight: 700, color: '#D97706', display: 'block', marginTop: 1 }}>REP MUST ENTER RATE</span>}
                       </div>
                       <div style={{ fontSize: 12, color: '#6B7280' }}>{line.unit}</div>
-                      {/* Qty */}
                       <input
                         type="number"
                         value={line.quantity ?? ''}
@@ -181,7 +212,6 @@ export default function TakeoffWizard({ job }) {
                         style={{ fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: NAV, background: line.quantityPreFilled ? '#fff' : '#FFF9EB' }}
                         placeholder="—"
                       />
-                      {/* Rate */}
                       <input
                         type="number"
                         value={line.baseRate ?? ''}
@@ -189,13 +219,68 @@ export default function TakeoffWizard({ job }) {
                         style={{ fontSize: 12, border: `1.5px solid ${needsRate ? WARN_BORDER : BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: needsRate ? '#D97706' : NAV, background: needsRate ? WARN_BG : '#fff', fontWeight: needsRate ? 700 : 400 }}
                         placeholder="Enter"
                       />
-                      {/* Total */}
                       <div style={{ fontSize: 12, fontWeight: 700, color: line.lineCost != null ? NAV : '#9CA3AF' }}>
                         {line.lineCost != null ? f$(line.lineCost) : '—'}
                       </div>
                     </div>
                   );
                 })}
+
+                {/* Materials section — hidden if no material lines for this room */}
+                {roomMatLines.length > 0 && (
+                  <>
+                    {/* Materials toggle header */}
+                    <div
+                      onClick={() => toggleMats(room.roomId)}
+                      style={{ padding: '7px 14px', background: '#EDE9E2', borderTop: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Materials</span>
+                        <span style={{ fontSize: 10, color: '#9CA3AF' }}>({roomMatLines.length} item{roomMatLines.length !== 1 ? 's' : ''})</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: NAV }}>{f$(roomMatCost)}</span>
+                        <span style={{ fontSize: 10, color: '#9CA3AF' }}>{matsCollapsed ? '▶' : '▼'}</span>
+                      </div>
+                    </div>
+
+                    {/* Material rows */}
+                    {!matsCollapsed && roomMatLines.map((line, i) => {
+                      const rowBg = i % 2 === 0 ? '#fff' : '#FAF8F5';
+                      return (
+                        <div key={lineKey(line)} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 80px 80px 80px', padding: '7px 14px', gap: 8, background: rowBg, borderTop: `1px solid ${BORDER}`, alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: 12, color: NAV, fontWeight: 500 }}>{line.materialName}</div>
+                            <div style={{ fontSize: 10, color: '#9CA3AF' }}>{line.trade}</div>
+                            {line.wastePct > 0 && (
+                              <span style={{ fontSize: 9, background: '#E5E7EB', color: '#6B7280', borderRadius: 4, padding: '1px 5px', display: 'inline-block', marginTop: 2 }}>
+                                +{line.wastePct}% waste
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#6B7280' }}>{line.unit}</div>
+                          <input
+                            type="number"
+                            value={line.quantity ?? ''}
+                            onChange={e => setEdit(line, 'quantity', e.target.value)}
+                            style={{ fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: NAV, background: '#fff' }}
+                            placeholder="—"
+                          />
+                          <input
+                            type="number"
+                            value={line.baseRate ?? ''}
+                            onChange={e => setEdit(line, 'baseRate', e.target.value)}
+                            style={{ fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: NAV, background: '#fff' }}
+                            placeholder="—"
+                          />
+                          <div style={{ fontSize: 12, fontWeight: 700, color: line.lineCost != null ? NAV : '#9CA3AF' }}>
+                            {line.lineCost != null ? f$(line.lineCost) : '—'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             );
           })}
@@ -203,7 +288,11 @@ export default function TakeoffWizard({ job }) {
           {/* Footer */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `2px solid ${BORDER}`, marginTop: 4 }}>
             <div style={{ fontSize: 13, color: '#6B7280' }}>
-              Subtotal: <strong style={{ color: NAV }}>{f$(subtotal)}</strong>
+              Labor <strong style={{ color: NAV }}>{f$(laborSubtotal)}</strong>
+              <span style={{ margin: '0 6px', color: BORDER }}>|</span>
+              Materials <strong style={{ color: NAV }}>{f$(materialSubtotal)}</strong>
+              <span style={{ margin: '0 6px', color: BORDER }}>|</span>
+              Total <strong style={{ color: NAV, fontSize: 14 }}>{f$(subtotal)}</strong>
               {pendingRateCount > 0 && (
                 <span style={{ color: '#D97706', marginLeft: 8 }}>({pendingRateCount} rate{pendingRateCount !== 1 ? 's' : ''} missing)</span>
               )}
