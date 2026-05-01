@@ -217,6 +217,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     summary: t.scope_definition?.summary ?? null,
     optional: t.scope_definition?.optional ?? false,
     conditional: t.scope_definition?.conditional ?? null,
+    materialsFormula: t.scope_definition?.materials_formula ?? null,
   }));
 
   // 4. Unit costs — fetch all matching rows, resolve tenant override in JS
@@ -231,11 +232,23 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     .eq('active', true)
     .or(costFilter);
 
-  const costMap = {};
+  // Split into labor and material maps. Both loaded from the same fetch — no second query.
+  // Tenant row beats platform default (same de-dup logic as before, per key).
+  const laborCostMap = {};
+  const materialRateMap = {};
+
   for (const row of (costRows || [])) {
-    const prev = costMap[row.trade];
-    if (!prev || (row.tenant_id !== null && prev.tenant_id === null)) {
-      costMap[row.trade] = row;
+    if (row.category === 'materials') {
+      const key = `${row.trade}::${row.material_name}`;
+      const prev = materialRateMap[key];
+      if (!prev || (row.tenant_id !== null && prev.tenant_id === null)) {
+        materialRateMap[key] = row;
+      }
+    } else {
+      const prev = laborCostMap[row.trade];
+      if (!prev || (row.tenant_id !== null && prev.tenant_id === null)) {
+        laborCostMap[row.trade] = row;
+      }
     }
   }
 
@@ -263,7 +276,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   const lines = [];
   for (const room of rooms) {
     for (const def of tradeDefs) {
-      const costRow = costMap[def.trade];
+      const costRow = laborCostMap[def.trade];
       const baseRate = costRow?.base_rate != null ? Number(costRow.base_rate) : null;
       const unit = costRow?.unit ?? 'lump';
       const multiplier = resolveMultiplier(room.floor, costRow?.multipliers ?? {});
