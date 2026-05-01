@@ -816,3 +816,21 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
 - Action: Pill label rename Full Refresh → Whole House in TakeoffWizard.jsx
 - Decision: Label-only change, underlying roomType key stays 'refresh'. Avoids migration churn. If/when key is renamed, single migration + grep across takeoff.js + scope_definition rows.
 - Open: Whole House template still has no materials_formula — bedrooms and hallways currently show no Materials section. By design for now. Kitchen, basement, whole-house, exterior templates get materials added in subsequent prompts (post-Step 4).
+
+[LOG — 2026-04-30]
+- Action: Step 4 of estimate+procurement arc — Accept & Save persists takeoff draft to estimate_line_items + saves rate overrides
+- Files: avenstone-vite/src/lib/takeoff.js (+acceptTakeoffDraft), avenstone-vite/src/lib/supabase.js (+sbSaveTenantUnitCostOverride), avenstone-vite/src/components/jobs/tabs/TakeoffWizard.jsx (wired button + setSub), avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx (passes setSub to TakeoffWizard), CLAUDE.md
+- Commits: cb3bae5 (Commit 1 — sbSaveTenantUnitCostOverride), c806e85 (Commit 2 — acceptTakeoffDraft), 80c2bc9 (Commit 3 — wire button + setSub), [this commit — docs]
+- Decision: sbSaveEstimateLineItems is replace-all (wipes all job rows) — cannot reuse. acceptTakeoffDraft does scoped delete WHERE notes LIKE 'takeoff:%' so AI estimator and consultation rows coexist with takeoff rows. Notes prefix 'takeoff:roomType:roomId' identifies every row written by this path.
+- Decision: One job_estimates parent row upserted per accept (sbSaveEstimate(jobId,[])) — gives estimate_id for line items + source_id for todo resolution. sbSaveEstimate upserts on job_id, safe to call multiple times.
+- Decision: Rep rate edits UPSERT into takeoff_unit_costs with tenant_id set. Uses SELECT + conditional INSERT/UPDATE (not Supabase .upsert()) because partial unique indexes use coalesce() expressions that onConflict can't target. Platform-default rows (tenant_id NULL) are immutable.
+- Decision: Rate override deduped by (trade, materialName, category) — editing the same material across N rooms writes exactly 1 override row (last-write wins within the same accept).
+- Decision: Lines with no rate write with unit_cost=0 + ' PENDING RATE' suffix in notes. Visible in Budget tab; not silently dropped. Rep can fix via LineItemModal.
+- Decision: markup_pct=0 on all takeoff rows — markup applied at proposal stage.
+- Decision: Todo resolution: sbResolveTodosBySource('job_estimates', jobEstimateId) catches estimate_no_proposal_24h; sbResolveTodosBySource('jobs', draft.jobId) catches any job-level estimate todos. Both called after successful insert.
+- Decision: After save, TakeoffWizard switches to Line items sub-tab after 1.2s (so success banner is readable). setSub prop passed from EstimateTab.
+- Decision: No migration needed — existing partial indexes + JS SELECT pattern handle upsert without new constraints.
+- Rollback queries (if verification reveals bad writes):
+    DELETE FROM estimate_line_items WHERE job_id = '<job_id>' AND notes LIKE 'takeoff:%';
+    DELETE FROM takeoff_unit_costs WHERE tenant_id = '00000000-0000-0000-0000-000000000001';
+- Open: DB verification pending — PAT available in session. Run verification queries from Step 4 prompt Report Format section on 8617 Houston St (job_id = b2d3648c-1c9f-4168-8eb5-eb15eaed5efa). Step 5 — room-tag system. Kitchen/basement/whole-house/exterior material templates in subsequent prompts.
