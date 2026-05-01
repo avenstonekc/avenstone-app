@@ -886,3 +886,17 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
 - Decision: ScopeTab rooms deduped by primaryType — each room assigned to first matching specific type; refresh catches remaining rooms not matched by any specific type. Orphan banner detects scope rows for rooms no longer in current scans.
 - Decision: EstimateTab default tab order: items (has line items) → scope (has scope rows) → build. Both checks run in parallel.
 - Open: 4.5b — wizard UI for per-line toggle/delete/alternate-picker. Kitchen/basement scope variant seeds in subsequent prompts. scripts/verify-step4.mjs and scripts/seed-scope-subsets.mjs can be deleted after this session.
+
+[LOG — 2026-05-01]
+- Action: Step 4.6 + 4.5d — unified architecture: COMPUTE_FNS registry, schema-driven resolveDetails, labor_formula, per-line exclude toggle
+- Files: avenstone-vite/src/lib/computeFns.js (new), avenstone-vite/src/lib/takeoff.js, avenstone-vite/src/components/jobs/tabs/ScopeDetailForm.jsx, avenstone-vite/src/components/jobs/tabs/TakeoffWizard.jsx, supabase/migrations/20260501_bathroom_computed_fields.sql, supabase/migrations/20260501_strip_stale_shower_sf.sql, supabase/migrations/20260501_bathroom_labor_formulas.sql
+- Commits: ed59962 (computeFns + takeoff.js refactor), b3c5cf4 (migrations), 4b15ad7 (ScopeDetailForm), f411972 (TakeoffWizard + acceptTakeoffDraft)
+- Decision: computeFns.js has shower_wall_sf_from_dims + shower_floor_sf_from_dims + runCompute. Shared between takeoff.js (server resolution) and ScopeDetailForm (live preview).
+- Decision: resolveDetails is now a 3-pass generic resolver — defaults → computed fields (runCompute + override_key) → subtract. resolveShowerSf and LABOR_SCOPE_DETAIL_OVERRIDE both removed.
+- Decision: 'computed' field type in schema: compute_fn, override_key, overridable. ScopeDetailForm renders computed value read-only + inline override input. ShowerSfDisplay and computeShowerSfLocal removed.
+- Decision: labor_formula in scope_definition: Tile-Wall/shower → scope_detail shower_wall_sf, Tile-Floor → scope_detail floor_tile_sf, Cleanup → metric floor_sf. Other trades fall back to quantitySource. Applied + verified live (3 rows).
+- Decision: scope_detail_schemas bathroom schemas migrated — shower_wall_sf_override/shower_floor_sf_override standalone fields replaced with shower_wall_sf/shower_floor_sf computed fields. Applied + verified live (full_remodel=14, tile_only=10).
+- Decision: Data migration stripped stale shower_wall_sf/shower_floor_sf direct-entry keys from job_room_scopes. Applied + verified: live row clean.
+- Decision: TakeoffWizard excluded Set + toggleExclude + checkbox column (24px leftmost). Excluded rows: opacity 0.4, inputs disabled, not counted in subtotals. acceptTakeoffDraft skips excluded lines for override saves + insert.
+- Verification: shower_wall_sf=128, shower_floor_sf=16, floor_tile_sf=133 confirmed via local simulation against live data (48×48×96in shower).
+- Open: Supabase PAT stored at C:/Users/Kalin/supabase-token.txt. Financial deprecated table drop (grace window expired 2026-05-07). invitations_to_bid compat view drop. Kitchen/basement material templates.
