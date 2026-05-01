@@ -304,6 +304,7 @@ async function executeTool(
 
       case "create_job": {
         const { data, error } = await sb.from("jobs").insert({
+          id: crypto.randomUUID(),
           tenant_id: tenantId,
           address: input.address,
           client_name: input.client_name || null,
