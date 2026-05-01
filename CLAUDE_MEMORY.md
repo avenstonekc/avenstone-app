@@ -947,8 +947,34 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
   still on legacy buildQuantity path. Will get their own
   labor_formula entries when scope detail forms ship for those room
   types (Step 5+).
-- Open: Layer 1 — "Add custom line" button on TakeoffWizard for
-  one-off line items not in any template. Next prompt.
 - Open: Layer 2 — "Save this rate for future jobs" checkbox on
   custom line modal. Adds to tenant catalog. Deferred until Layer 1
   is in field use and patterns emerge.
+
+[LOG — 2026-05-01]
+- Action: Layer 1 — custom line capability shipped on TakeoffWizard.
+  Plus labor row label fix.
+- Files: TakeoffWizard.jsx, new AddCustomLineModal.jsx, takeoff.js
+  acceptTakeoffDraft
+- Decision: Custom lines live in TakeoffWizard state (customLines
+  array), per-job. Not written to takeoff_unit_costs catalog. Layer 2
+  (save as tenant override) deferred until usage patterns emerge.
+- Decision: Trade dropdown shows existing trades for the room + an
+  "Other" option for fully custom trades. "Other" reveals a custom
+  trade text field.
+- Decision: Custom lines participate in all wizard features —
+  exclude, edit, subtotals, accept. Indistinguishable from
+  formula-emitted lines except for the "custom" pill badge.
+- Decision: Custom lines write to estimate_line_items with
+  notes prefix "takeoff:custom:" for findability.
+- Decision: Labor rows now display "Trade — Material name" when both
+  fields present. Unblocks niche/bench labor rendering, also future
+  multi-line labor for any trade.
+- Decision: materialName field added to labor extras push in takeoff.js
+  (was missing — caused lineKey collision across all labor rows of same
+  trade, breaking exclude/edit state for niche and bench rows).
+- Open: Layer 2 — when a custom line gets reused, prompt rep to save
+  to tenant catalog. Deferred.
+- Open: Custom line edit (after adding) — only qty and rate editable
+  via inline cell click (same as formula lines). Description/trade
+  not editable post-creation. Worth revisiting if reps complain.
