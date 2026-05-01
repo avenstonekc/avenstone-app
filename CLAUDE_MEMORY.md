@@ -811,3 +811,8 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
 - Decision: Material rows use same 5-col grid (2fr 60px 80px 80px 80px). First column shows materialName as primary with trade name as subtitle + waste% pill badge. Qty and rate inputs both editable (pre-filled from formula + unit cost row).
 - Decision: Footer shows "Labor $X | Materials $Y | Total $Z" breakdown.
 - Open: Step 4 — Accept & Save persists labor + material lines to estimate_line_items (currently fires alert placeholder).
+
+[LOG — 2026-04-30]
+- Action: Pill label rename Full Refresh → Whole House in TakeoffWizard.jsx
+- Decision: Label-only change, underlying roomType key stays 'refresh'. Avoids migration churn. If/when key is renamed, single migration + grep across takeoff.js + scope_definition rows.
+- Open: Whole House template still has no materials_formula — bedrooms and hallways currently show no Materials section. By design for now. Kitchen, basement, whole-house, exterior templates get materials added in subsequent prompts (post-Step 4).

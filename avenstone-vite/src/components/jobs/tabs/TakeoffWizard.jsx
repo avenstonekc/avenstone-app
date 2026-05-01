@@ -13,7 +13,7 @@ const ROOM_TYPES = [
   { id: 'bathroom', lb: 'Bathroom' },
   { id: 'kitchen',  lb: 'Kitchen' },
   { id: 'basement', lb: 'Basement' },
-  { id: 'refresh',  lb: 'Full Refresh' },
+  { id: 'refresh',  lb: 'Whole House' },
   { id: 'exterior', lb: 'Exterior' },
 ];
 
