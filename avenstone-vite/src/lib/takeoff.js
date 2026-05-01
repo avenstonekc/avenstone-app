@@ -111,6 +111,28 @@ function resolveLineCostStatus(baseRate, quantity) {
   return 'ok';
 }
 
+// ── Room metrics for material formula evaluation ───────────────────────────────
+// Takes a processed room object (already in allRooms — has areaSf, wallAreaSf,
+// perimeterLf, height, doors, windows threaded through from raw scan JSONB).
+// Every metric defaults to 0 — never throws.
+
+function roomMetrics(room) {
+  const floorSf    = Number(room.areaSf    || 0);
+  const wallHeight = Number(room.height    || 8);
+  const perimLf    = Number(room.perimeterLf || 0);
+  const wallSf     = Number(room.wallAreaSf || (perimLf * wallHeight));
+  return {
+    floor_sf:     floorSf,
+    ceiling_sf:   floorSf,
+    wall_sf:      wallSf,
+    perimeter_lf: perimLf,
+    wall_height:  wallHeight,
+    door_count:   Number(room.doors   || 0),
+    window_count: Number(room.windows || 0),
+    room_count:   1,
+  };
+}
+
 // ── Main export ────────────────────────────────────────────────────────────────
 
 /**
@@ -160,8 +182,11 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
         floorLabel: floorLabel(0),
         captureMode: scan.capture_mode ?? null,
         areaSf,
-        wallAreaSf: Math.round(perimeterLf * ceilingFt * 100) / 100,
+        wallAreaSf:  Math.round(perimeterLf * ceilingFt * 100) / 100,
         perimeterLf: Math.round(perimeterLf * 100) / 100,
+        height:  ceilingFt,
+        doors:   room.doors   ?? 0,
+        windows: room.windows ?? 0,
       });
     });
   }
