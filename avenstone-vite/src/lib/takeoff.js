@@ -484,6 +484,8 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       // Material lines from template formula — pass resolvedDets for scope_detail basis
       if (def.materialsFormula?.length) {
         const metrics = roomMetrics(room);
+        const pendingMatLines = [];
+
         for (const formula of def.materialsFormula) {
           const matKey  = `${def.trade}::${formula.material_name}`;
           const matRow  = materialRateMap[matKey];
@@ -518,7 +520,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
             ? Math.round(matRate * matQty * 100) / 100
             : null;
 
-          lines.push({
+          pendingMatLines.push({
             roomId:    room.roomId,
             trade:     def.trade,
             category:  'materials',
@@ -542,6 +544,30 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
             lineCostStatus: resolveLineCostStatus(matRate, matQty),
           });
         }
+
+        // Merge lines with the same material_name within this trade+room.
+        // e.g. "Floor tile field" appears twice (bathroom floor + shower floor) — sum qty.
+        const matByName = new Map();
+        for (const ml of pendingMatLines) {
+          if (!matByName.has(ml.materialName)) {
+            matByName.set(ml.materialName, { ...ml });
+          } else {
+            const existing = matByName.get(ml.materialName);
+            const newQty   = Math.round(((existing.quantity || 0) + (ml.quantity || 0)) * 100) / 100;
+            const newCost  = existing.baseRate != null
+              ? Math.round(existing.baseRate * newQty * 100) / 100
+              : null;
+            matByName.set(ml.materialName, {
+              ...existing,
+              quantity:          newQty,
+              quantityPreFilled: true,
+              quantityNotes:     `${existing.quantityNotes} + ${ml.quantityNotes}`,
+              lineCost:          newCost,
+              lineCostStatus:    resolveLineCostStatus(existing.baseRate, newQty),
+            });
+          }
+        }
+        for (const ml of matByName.values()) lines.push(ml);
       }
     }
 
