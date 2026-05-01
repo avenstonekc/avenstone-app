@@ -711,6 +711,19 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: Material rows seeded: labor=59, materials=35. Spec said ~38; actual is 35 from exact row count.
 - Open: Step 2 — extend buildTakeoffDraft to emit material lines using these formulas. Step 3 — render material section in TakeoffWizard. Step 4 — persist to estimate_line_items.
 
+[LOG — 2026-04-30]
+- Action: Step 2 of estimate+procurement arc — buildTakeoffDraft now emits material lines alongside labor lines
+- Files: avenstone-vite/src/lib/takeoff.js
+- Decision: Material lines share the same draft.lines array as labor, distinguished by category field ('labor'|'materials'). Same line shape with additive fields: materialName, no floor multiplier (multiplier=1 always on materials).
+- Decision: Formula evaluator: fixed → fixed_qty; all others → basisVal × multiplier × wasteFactor [ ÷ coverage_sf ]. Waste is on the unit cost row (waste_pct column), not in the formula object.
+- Decision: Materials with no matching rate row push with baseRate=null, quantityNotes='no rate row found for material — rep must enter'. Not silently skipped — visible to rep.
+- Decision: Material lines do NOT apply the floor multiplier. Labor only.
+- Decision: costMap split into laborCostMap (keyed by trade) and materialRateMap (keyed by trade::material_name). Both from same fetch. Tenant override beats platform default per key in both.
+- Decision: allRooms.push now threads through height (ceilingFt), doors, windows from raw scan JSONB — needed by roomMetrics helper for door_count and window_count formula bases.
+- Decision: summary expanded: laborLines, materialLines, laborSubtotal, materialSubtotal; subtotal = labor + materials.
+- Open: Step 2 unverified until Kalin runs debug button on 8617 Houston St and pastes [TAKEOFF DRAFT V2 — bathroom] console output. Verification expectations: ~14 labor + ~20 material lines, materialSubtotal > 0, sample_material_line.lineCost is a number.
+- Open: TakeoffWizard renders material lines in same flat list as labor lines for now (Step 3 splits UI into Labor and Materials sections per room). Persistence to estimate_line_items pending Step 4. Debug log [TAKEOFF DRAFT V2 — *] to be removed after Step 3.
+
 [LOG — 2026-04-29 — END OF DAY SUMMARY]
 
 ## What shipped today (in order)
