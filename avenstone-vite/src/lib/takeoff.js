@@ -347,6 +347,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     conditional: t.scope_definition?.conditional ?? null,
     materialsFormula: t.scope_definition?.materials_formula ?? null,
     laborFormula: t.scope_definition?.labor_formula ?? null,
+    laborExtras: t.scope_definition?.labor_extras ?? null,
   }));
 
   // 4. Unit costs — fetch all matching rows, resolve tenant override in JS
@@ -361,9 +362,11 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     .eq('active', true)
     .or(costFilter);
 
-  // Split into labor and material maps. Both loaded from the same fetch — no second query.
-  // Tenant row beats platform default (same de-dup logic as before, per key).
+  // Split into labor, labor-extras, and material maps. Both loaded from the same fetch.
+  // Tenant row beats platform default (same de-dup logic, per key).
+  // Labor extras: labor rows with material_name set — keyed by trade::material_name.
   const laborCostMap = {};
+  const laborExtrasCostMap = {};
   const materialRateMap = {};
 
   for (const row of (costRows || [])) {
@@ -373,9 +376,16 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       if (!prev) {
         materialRateMap[key] = row;
       } else if (row.tenant_id !== null && prev.tenant_id === null) {
-        // Merge: keep platform fields (coverage_sf, waste_pct), overlay the tenant rate.
-        // Full replacement loses coverage_sf/waste_pct when the override row omits them.
         materialRateMap[key] = { ...prev, base_rate: row.base_rate, tenant_id: row.tenant_id, id: row.id };
+      }
+    } else if (row.material_name) {
+      // Labor row with material_name = boolean-gated extra (e.g. Niche install, Bench framing)
+      const key = `${row.trade}::${row.material_name}`;
+      const prev = laborExtrasCostMap[key];
+      if (!prev) {
+        laborExtrasCostMap[key] = row;
+      } else if (row.tenant_id !== null && prev.tenant_id === null) {
+        laborExtrasCostMap[key] = { ...prev, base_rate: row.base_rate, tenant_id: row.tenant_id, id: row.id };
       }
     } else {
       const prev = laborCostMap[row.trade];
@@ -508,6 +518,45 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
         lineCost,
         lineCostStatus: resolveLineCostStatus(baseRate, quantity),
       });
+
+      // Labor extras — boolean-gated fixed-qty lines (e.g. niche install, bench framing)
+      if (def.laborExtras?.length) {
+        for (const extra of def.laborExtras) {
+          const gateVal = resolvedDets[extra.scope_detail_key];
+          if (!gateVal) continue; // falsy = skip
+          const extraKey = `${def.trade}::${extra.material_name}`;
+          const extraRow = laborExtrasCostMap[extraKey];
+          const extraRate = extraRow?.base_rate != null ? Number(extraRow.base_rate) : null;
+          const extraUnit = extraRow?.unit ?? 'each';
+          const extraQty = Number(extra.fixed_qty) || 1;
+          const extraCost = extraRate != null
+            ? Math.round(extraRate * extraQty * 100) / 100
+            : null;
+          lines.push({
+            roomId: room.roomId,
+            trade: def.trade,
+            category: 'labor',
+            description: extra.material_name,
+            templateNotes: extra.material_name,
+            optional: false,
+            conditional: null,
+            unit: extraUnit,
+            unitCostId: extraRow?.id ?? null,
+            unitCostSource: extraRow
+              ? (extraRow.tenant_id !== null ? 'tenant_override' : 'platform_default')
+              : null,
+            baseRate: extraRate,
+            baseRateMissing: extraRate == null,
+            multiplier: 1,
+            wastePct: 0,
+            quantity: extraQty,
+            quantityPreFilled: true,
+            quantityNotes: `scope: ${extra.scope_detail_key}`,
+            lineCost: extraCost,
+            lineCostStatus: resolveLineCostStatus(extraRate, extraQty),
+          });
+        }
+      }
 
       // Material lines from template formula — pass resolvedDets for scope_detail basis
       if (def.materialsFormula?.length) {
