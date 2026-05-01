@@ -74,6 +74,27 @@ function buildQuantity({ trade, unit, areaSf, wallAreaSf, perimeterLf, wastePct 
   return { quantity: null, quantityPreFilled: false, quantityNotes: null };
 }
 
+// ── Room-type filter ──────────────────────────────────────────────────────────
+// capture_mode is passed through from the scan row so exterior scans are detectable.
+
+function roomMatchesType(room, roomType) {
+  const label = (room.roomLabel || '').toLowerCase();
+  switch (roomType) {
+    case 'bathroom':
+      return label.includes('bath');
+    case 'kitchen':
+      return label.includes('kitchen');
+    case 'basement':
+      return label.includes('basement') || room.floor === -1;
+    case 'exterior':
+      return room.captureMode === 'exterior';
+    case 'refresh':
+      return true; // whole-job refresh — all rooms included by design
+    default:
+      return false;
+  }
+}
+
 // ── Multiplier resolution ──────────────────────────────────────────────────────
 
 function resolveMultiplier(floor, multipliers) {
@@ -118,7 +139,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   // 2. Scans → flatten rooms (most recent 5 scans, newest first)
   const { data: scans } = await sb
     .from('job_lidar_scans')
-    .select('id, rooms, height_meters')
+    .select('id, rooms, height_meters, capture_mode')
     .eq('job_id', jobId)
     .order('created_at', { ascending: false })
     .limit(5);
@@ -137,6 +158,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
         // Scan data has no floor field — default 0 (first floor). Wizard UI (Prompt B) lets rep override.
         floor: 0,
         floorLabel: floorLabel(0),
+        captureMode: scan.capture_mode ?? null,
         areaSf,
         wallAreaSf: Math.round(perimeterLf * ceilingFt * 100) / 100,
         perimeterLf: Math.round(perimeterLf * 100) / 100,
@@ -144,9 +166,12 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     });
   }
 
-  const rooms = roomIds
+  const matchedRooms = roomIds
     ? allRooms.filter(r => roomIds.includes(r.roomId))
-    : allRooms;
+    : allRooms.filter(r => roomMatchesType(r, roomType));
+
+  console.log(`[TAKEOFF FILTER] ${roomType}: ${allRooms.length} scanned → ${matchedRooms.length} matched`);
+  const rooms = matchedRooms;
 
   if (!rooms.length) {
     return emptyDraft(jobId, roomType);
