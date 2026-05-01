@@ -740,7 +740,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
  *            each value is { quantity?, baseRate? } with the rep's overrides
  * @returns {{ jobEstimateId, lineItemCount, overrideCount, errors[] }}
  */
-export async function acceptTakeoffDraft({ draft, edits, tenantId, userId }) {
+export async function acceptTakeoffDraft({ draft, edits, excluded, tenantId, userId }) {
   const errors = [];
 
   // 1. Upsert a job_estimates row so we have an estimate_id for line items
@@ -749,9 +749,10 @@ export async function acceptTakeoffDraft({ draft, edits, tenantId, userId }) {
   const jobEstimateRow = await sbSaveEstimate(draft.jobId, []);
   const jobEstimateId  = jobEstimateRow?.id ?? null;
 
-  // 2. Resolve final qty + rate per line, detect rep edits
+  // 2. Resolve final qty + rate per line, detect rep edits, mark excluded
   const lineKey = (line) =>
     `${line.roomId}__${line.trade}__${line.materialName || ''}`;
+  const excludedSet = excluded instanceof Set ? excluded : new Set(excluded ?? []);
 
   const resolvedLines = draft.lines.map(line => {
     const k = lineKey(line);
@@ -759,7 +760,7 @@ export async function acceptTakeoffDraft({ draft, edits, tenantId, userId }) {
     const qty  = e.quantity  !== undefined ? e.quantity  : line.quantity;
     const rate = e.baseRate  !== undefined ? e.baseRate  : line.baseRate;
     const rateEdited = e.baseRate !== undefined && e.baseRate !== line.baseRate;
-    return { ...line, resolvedQty: qty, resolvedRate: rate, rateEdited };
+    return { ...line, resolvedQty: qty, resolvedRate: rate, rateEdited, isExcluded: excludedSet.has(k) };
   });
 
   // 3. Save rate overrides — deduplicated by (roomType, trade, materialName, category)
@@ -768,6 +769,7 @@ export async function acceptTakeoffDraft({ draft, edits, tenantId, userId }) {
   let overrideCount = 0;
 
   for (const line of resolvedLines) {
+    if (line.isExcluded) continue;
     if (!line.rateEdited || line.resolvedRate == null || line.resolvedRate <= 0) continue;
     const dedupeKey = `${line.trade}::${line.materialName || ''}::${line.category}`;
     if (overridesSeen.has(dedupeKey)) continue;
@@ -797,8 +799,8 @@ export async function acceptTakeoffDraft({ draft, edits, tenantId, userId }) {
     .eq('job_id', draft.jobId)
     .like('notes', 'takeoff:%');
 
-  // 5. Build row payloads
-  const rows = resolvedLines.map((line, i) => {
+  // 5. Build row payloads — excluded lines are omitted
+  const rows = resolvedLines.filter(l => !l.isExcluded).map((line, i) => {
     const qty      = line.resolvedQty  ?? 1;
     const rate     = line.resolvedRate ?? 0;
     const noRate   = line.resolvedRate == null;

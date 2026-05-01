@@ -24,15 +24,26 @@ export default function TakeoffWizard({ job, setSub }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [edits, setEdits] = useState({});
+  const [excluded, setExcluded] = useState(() => new Set());
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState(null); // { lineItemCount, overrideCount, errors[] }
   const [saveError, setSaveError] = useState(null);
 
+  const toggleExclude = (line) => {
+    const k = lineKey(line);
+    setExcluded(prev => {
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  };
+
   const loadDraft = useCallback(async (roomType) => {
     setSelectedType(roomType);
     setDraft(null);
     setEdits({});
+    setExcluded(new Set());
     setCollapsed(new Set());
     setError(null);
     setLoading(true);
@@ -65,13 +76,13 @@ export default function TakeoffWizard({ job, setSub }) {
     setEdits(prev => ({ ...prev, [k]: { ...(prev[k] || {}), [field]: val } }));
   };
 
-  const effectiveLines    = draft ? draft.lines.map(effectiveLine) : [];
+  const effectiveLines    = draft ? draft.lines.map(l => ({ ...effectiveLine(l), isExcluded: excluded.has(lineKey(l)) })) : [];
   const laborLines        = effectiveLines.filter(l => l.category !== 'materials');
   const materialLines     = effectiveLines.filter(l => l.category === 'materials');
-  const laborSubtotal     = Math.round(laborLines.reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
-  const materialSubtotal  = Math.round(materialLines.reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
+  const laborSubtotal     = Math.round(laborLines.filter(l => !l.isExcluded).reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
+  const materialSubtotal  = Math.round(materialLines.filter(l => !l.isExcluded).reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
   const subtotal          = Math.round((laborSubtotal + materialSubtotal) * 100) / 100;
-  const pendingRateCount  = effectiveLines.filter(l => l.baseRate == null).length;
+  const pendingRateCount  = effectiveLines.filter(l => !l.isExcluded && l.baseRate == null).length;
 
   const laborByRoom = {};
   const materialsByRoom = {};
@@ -169,8 +180,8 @@ export default function TakeoffWizard({ job, setSub }) {
             const roomLaborLines = laborByRoom[room.roomId] || [];
             const roomMatLines   = materialsByRoom[room.roomId] || [];
             const matsCollapsed  = collapsed.has(`${room.roomId}__materials`);
-            const roomLaborCost  = Math.round(roomLaborLines.reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
-            const roomMatCost    = Math.round(roomMatLines.reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
+            const roomLaborCost  = Math.round(roomLaborLines.filter(l => !l.isExcluded).reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
+            const roomMatCost    = Math.round(roomMatLines.filter(l => !l.isExcluded).reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
             return (
               <div key={room.roomId} style={{ marginBottom: 16, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden' }}>
                 {/* Room header */}
@@ -187,7 +198,8 @@ export default function TakeoffWizard({ job, setSub }) {
                 </div>
 
                 {/* Labor section header */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 60px 80px 80px 80px', padding: '5px 14px', gap: 8, background: '#F8F7F5', borderBottom: `1px solid ${BORDER}`, alignItems: 'center' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '24px 2fr 60px 80px 80px 80px', padding: '5px 14px', gap: 8, background: '#F8F7F5', borderBottom: `1px solid ${BORDER}`, alignItems: 'center' }}>
+                  <div />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Labor</span>
                     <span style={{ fontSize: 10, fontWeight: 700, color: NAV }}>{f$(roomLaborCost)}</span>
@@ -200,19 +212,27 @@ export default function TakeoffWizard({ job, setSub }) {
                 {/* Labor rows */}
                 {roomLaborLines.map((line, i) => {
                   const needsRate = line.baseRate == null;
-                  const rowBg = needsRate ? WARN_BG : (i % 2 === 0 ? '#fff' : CREAM);
+                  const rowBg = line.isExcluded ? '#F9F9F9' : (needsRate ? WARN_BG : (i % 2 === 0 ? '#fff' : CREAM));
                   return (
-                    <div key={lineKey(line)} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 80px 80px 80px', padding: '8px 14px', gap: 8, background: rowBg, borderTop: `1px solid ${BORDER}`, alignItems: 'center' }}>
+                    <div key={lineKey(line)} style={{ display: 'grid', gridTemplateColumns: '24px 2fr 60px 80px 80px 80px', padding: '8px 14px', gap: 8, background: rowBg, borderTop: `1px solid ${BORDER}`, alignItems: 'center', opacity: line.isExcluded ? 0.4 : 1 }}>
+                      <input
+                        type="checkbox"
+                        checked={!line.isExcluded}
+                        onChange={() => toggleExclude(line)}
+                        title={line.isExcluded ? 'Include line' : 'Exclude line'}
+                        style={{ width: 14, height: 14, accentColor: NAV, cursor: 'pointer' }}
+                      />
                       <div>
                         <div style={{ fontSize: 12, color: NAV, fontWeight: 500 }}>{line.trade}</div>
                         {line.optional && <span style={{ fontSize: 10, color: '#9CA3AF', fontStyle: 'italic' }}>optional</span>}
-                        {needsRate && <span style={{ fontSize: 10, fontWeight: 700, color: '#D97706', display: 'block', marginTop: 1 }}>REP MUST ENTER RATE</span>}
+                        {needsRate && !line.isExcluded && <span style={{ fontSize: 10, fontWeight: 700, color: '#D97706', display: 'block', marginTop: 1 }}>REP MUST ENTER RATE</span>}
                       </div>
                       <div style={{ fontSize: 12, color: '#6B7280' }}>{line.unit}</div>
                       <input
                         type="number"
                         value={line.quantity ?? ''}
                         onChange={e => setEdit(line, 'quantity', e.target.value)}
+                        disabled={line.isExcluded}
                         style={{ fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: NAV, background: line.quantityPreFilled ? '#fff' : '#FFF9EB' }}
                         placeholder="—"
                       />
@@ -220,11 +240,12 @@ export default function TakeoffWizard({ job, setSub }) {
                         type="number"
                         value={line.baseRate ?? ''}
                         onChange={e => setEdit(line, 'baseRate', e.target.value)}
-                        style={{ fontSize: 12, border: `1.5px solid ${needsRate ? WARN_BORDER : BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: needsRate ? '#D97706' : NAV, background: needsRate ? WARN_BG : '#fff', fontWeight: needsRate ? 700 : 400 }}
+                        disabled={line.isExcluded}
+                        style={{ fontSize: 12, border: `1.5px solid ${needsRate && !line.isExcluded ? WARN_BORDER : BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: needsRate ? '#D97706' : NAV, background: needsRate && !line.isExcluded ? WARN_BG : '#fff', fontWeight: needsRate ? 700 : 400 }}
                         placeholder="Enter"
                       />
                       <div style={{ fontSize: 12, fontWeight: 700, color: line.lineCost != null ? NAV : '#9CA3AF' }}>
-                        {line.lineCost != null ? f$(line.lineCost) : '—'}
+                        {!line.isExcluded && line.lineCost != null ? f$(line.lineCost) : '—'}
                       </div>
                     </div>
                   );
@@ -250,9 +271,16 @@ export default function TakeoffWizard({ job, setSub }) {
 
                     {/* Material rows */}
                     {!matsCollapsed && roomMatLines.map((line, i) => {
-                      const rowBg = i % 2 === 0 ? '#fff' : '#FAF8F5';
+                      const rowBg = line.isExcluded ? '#F9F9F9' : (i % 2 === 0 ? '#fff' : '#FAF8F5');
                       return (
-                        <div key={lineKey(line)} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 80px 80px 80px', padding: '7px 14px', gap: 8, background: rowBg, borderTop: `1px solid ${BORDER}`, alignItems: 'center' }}>
+                        <div key={lineKey(line)} style={{ display: 'grid', gridTemplateColumns: '24px 2fr 60px 80px 80px 80px', padding: '7px 14px', gap: 8, background: rowBg, borderTop: `1px solid ${BORDER}`, alignItems: 'center', opacity: line.isExcluded ? 0.4 : 1 }}>
+                          <input
+                            type="checkbox"
+                            checked={!line.isExcluded}
+                            onChange={() => toggleExclude(line)}
+                            title={line.isExcluded ? 'Include line' : 'Exclude line'}
+                            style={{ width: 14, height: 14, accentColor: NAV, cursor: 'pointer' }}
+                          />
                           <div>
                             <div style={{ fontSize: 12, color: NAV, fontWeight: 500 }}>{line.materialName}</div>
                             <div style={{ fontSize: 10, color: '#9CA3AF' }}>{line.trade}</div>
@@ -267,6 +295,7 @@ export default function TakeoffWizard({ job, setSub }) {
                             type="number"
                             value={line.quantity ?? ''}
                             onChange={e => setEdit(line, 'quantity', e.target.value)}
+                            disabled={line.isExcluded}
                             style={{ fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: NAV, background: '#fff' }}
                             placeholder="—"
                           />
@@ -274,11 +303,12 @@ export default function TakeoffWizard({ job, setSub }) {
                             type="number"
                             value={line.baseRate ?? ''}
                             onChange={e => setEdit(line, 'baseRate', e.target.value)}
+                            disabled={line.isExcluded}
                             style={{ fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: NAV, background: '#fff' }}
                             placeholder="—"
                           />
                           <div style={{ fontSize: 12, fontWeight: 700, color: line.lineCost != null ? NAV : '#9CA3AF' }}>
-                            {line.lineCost != null ? f$(line.lineCost) : '—'}
+                            {!line.isExcluded && line.lineCost != null ? f$(line.lineCost) : '—'}
                           </div>
                         </div>
                       );
@@ -331,6 +361,7 @@ export default function TakeoffWizard({ job, setSub }) {
                   const result = await acceptTakeoffDraft({
                     draft,
                     edits,
+                    excluded,
                     tenantId: AV_TENANT,
                     userId:   AV_USER_ID,
                   });
