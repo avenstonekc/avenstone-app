@@ -1,4 +1,4 @@
-import { sb, AV_TENANT, sbSaveEstimate, sbSaveTenantUnitCostOverride, sbResolveTodosBySource } from './supabase';
+import { sb, AV_TENANT, sbSaveEstimate, sbSaveTenantUnitCostOverride, sbResolveTodosBySource, sbLoadJobRoomScopes, sbLoadScopeSubsets } from './supabase';
 import { floorLabel } from './captureTypes';
 
 // ── Geometry helpers ───────────────────────────────────────────────────────────
@@ -217,13 +217,37 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     ? allRooms.filter(r => roomIds.includes(r.roomId))
     : allRooms.filter(r => roomMatchesType(r, roomType));
 
-  const rooms = matchedRooms;
-
-  if (!rooms.length) {
+  if (!matchedRooms.length) {
     return emptyDraft(jobId, roomType);
   }
 
-  // 3. Templates for this room_type (platform defaults + tenant overrides)
+  // 3. Fetch scope rows + subsets in parallel with template/cost queries below.
+  //    scopeByRoomId — keyed by room_id, value is the saved scope row (may be absent).
+  //    subsetByTag   — keyed by scope_tag, value is the template_scope_subsets row.
+  const [scopeRows, scopeSubsets] = await Promise.all([
+    sbLoadJobRoomScopes(jobId),
+    sbLoadScopeSubsets(roomType),
+  ]);
+
+  const scopeByRoomId = {};
+  for (const row of scopeRows) scopeByRoomId[row.room_id] = row;
+
+  const subsetByTag = {};
+  for (const sub of scopeSubsets) subsetByTag[sub.scope_tag] = sub;
+
+  // Annotate each matched room with its saved scope metadata.
+  const rooms = matchedRooms.map(room => {
+    const scopeRow = scopeByRoomId[room.roomId];
+    const subset   = scopeRow ? subsetByTag[scopeRow.scope_tag] : null;
+    return {
+      ...room,
+      scope_tag:     scopeRow?.scope_tag  ?? null,
+      scope_label:   subset?.label        ?? null,
+      scope_missing: !scopeRow,
+    };
+  });
+
+  // 4. Templates for this room_type (platform defaults + tenant overrides)
   const templateFilter = tenantId
     ? `tenant_id.is.null,tenant_id.eq.${tenantId}`
     : 'tenant_id.is.null';
@@ -300,10 +324,31 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     return hit ? wasteMap[hit] : 0;
   }
 
-  // 6. Build lines: one per (room × trade)
+  // 6. Build lines: one per (room × trade), filtered by saved scope tag.
   const lines = [];
   for (const room of rooms) {
+    // Resolve allowed trades for this room from its saved scope row.
+    // null allowedTrades = no filter (all trades emitted — default when unscoped).
+    let allowedTrades = null;
+    const scopeRow = scopeByRoomId[room.roomId];
+    if (scopeRow) {
+      if (scopeRow.scope_tag === 'not_in_scope') {
+        continue; // exclude this room from takeoff entirely
+      } else if (scopeRow.scope_tag === 'custom') {
+        allowedTrades = new Set(scopeRow.custom_trades ?? []);
+      } else {
+        const subset = subsetByTag[scopeRow.scope_tag];
+        if (subset) {
+          const trades = subset.trades ?? [];
+          if (!trades.includes('__all__')) {
+            allowedTrades = new Set(trades);
+          }
+        }
+      }
+    }
+
     for (const def of tradeDefs) {
+      if (allowedTrades !== null && !allowedTrades.has(def.trade)) continue;
       const costRow = laborCostMap[def.trade];
       const baseRate = costRow?.base_rate != null ? Number(costRow.base_rate) : null;
       const unit = costRow?.unit ?? 'lump';
@@ -411,6 +456,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   const laborSubtotal    = Math.round(laborLinesList.reduce((s, l) => s + (l.lineCost ?? 0), 0) * 100) / 100;
   const materialSubtotal = Math.round(materialLinesList.reduce((s, l) => s + (l.lineCost ?? 0), 0) * 100) / 100;
   const subtotal         = Math.round((laborSubtotal + materialSubtotal) * 100) / 100;
+  const roomsMissingScope = rooms.filter(r => r.scope_missing).length;
 
   const draft = {
     jobId,
@@ -429,6 +475,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       materialSubtotal,
       subtotal,
       subtotalIncomplete: lines.some(l => l.lineCost == null),
+      roomsMissingScope,
     },
   };
 
