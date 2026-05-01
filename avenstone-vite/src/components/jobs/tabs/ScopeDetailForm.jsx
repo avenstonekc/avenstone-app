@@ -35,6 +35,32 @@ function resolveFixtureOptions(field, values) {
   }));
 }
 
+// Parse contractor-style dimension strings into total inches.
+// Accepts: 5'6"  5' 6"  5'6  5'  66"  66  5.5'  (bare number = inches)
+function parseDimension(input) {
+  if (input == null || input === '') return null;
+  const s = String(input).trim();
+  const ftIn = s.match(/^(\d+(?:\.\d+)?)'\s*(\d+(?:\.\d+)?)"?$/);
+  if (ftIn) return Math.round(parseFloat(ftIn[1]) * 12 + parseFloat(ftIn[2]));
+  const ftOnly = s.match(/^(\d+(?:\.\d+)?)'$/);
+  if (ftOnly) return Math.round(parseFloat(ftOnly[1]) * 12);
+  const inOnly = s.match(/^(\d+(?:\.\d+)?)"$/);
+  if (inOnly) return Math.round(parseFloat(inOnly[1]));
+  const bareNum = s.match(/^(\d+(?:\.\d+)?)$/);
+  if (bareNum) return Math.round(parseFloat(bareNum[1]));
+  return NaN;
+}
+
+// Format total inches back to contractor notation (5'6", 5', 6")
+function formatDimension(inches) {
+  if (inches == null) return '';
+  const ft   = Math.floor(inches / 12);
+  const inch = inches % 12;
+  if (ft === 0)   return `${inch}"`;
+  if (inch === 0) return `${ft}'`;
+  return `${ft}'${inch}"`;
+}
+
 // Compute shower wall sf and floor sf from dimension inputs (stored as total inches).
 // Mirrors resolveShowerSf in takeoff.js so the UI preview matches the draft.
 function computeShowerSfLocal(values) {
@@ -156,44 +182,67 @@ function FieldInput({ field, value, values, onChange }) {
     );
   }
 
-  // Feet + inches pair — value stored as total inches
+  // Single text input accepting contractor-style dimension strings (5'6", 66", 5.5', 66)
+  // Value stored as total inches. Formats back to feet-and-inches on blur.
   if (field.type === 'feet_inches') {
-    const totalIn = Number(value ?? field.default ?? 0);
-    const ft      = Math.floor(totalIn / 12);
-    const inches  = totalIn % 12;
+    const [rawText, setRawText] = useState(() => formatDimension(value ?? field.default ?? null));
+    const [error, setError]     = useState(null);
+
+    // Keep display in sync when value changes externally (e.g. schema seed)
+    useEffect(() => {
+      const formatted = formatDimension(value ?? field.default ?? null);
+      setRawText(formatted);
+      setError(null);
+    }, [value]);
+
+    const handleBlur = () => {
+      const parsed = parseDimension(rawText);
+      if (rawText === '' || rawText == null) {
+        setError(null);
+        onChange(null);
+        return;
+      }
+      if (isNaN(parsed)) {
+        setError('Format: 5\'6" or 66"');
+        return;
+      }
+      const min = field.min ?? 0;
+      const max = field.max ?? Infinity;
+      if (parsed < min || parsed > max) {
+        const minFt = Math.floor(min / 12), minIn = min % 12;
+        const maxFt = Math.floor(max / 12), maxIn = max % 12;
+        const fmtMin = minIn ? `${minFt}'${minIn}"` : `${minFt}'`;
+        const fmtMax = maxIn ? `${maxFt}'${maxIn}"` : `${maxFt}'`;
+        setError(`Must be between ${fmtMin} and ${fmtMax}`);
+        return;
+      }
+      setError(null);
+      setRawText(formatDimension(parsed));
+      onChange(parsed);
+    };
+
+    const parsedPreview = parseDimension(rawText);
+    const showPreview   = rawText && !isNaN(parsedPreview) && !error;
+
     return (
       <div style={{ marginBottom: 12 }}>
         {label}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-          <div style={{ flex: 1 }}>
-            <input
-              type="number"
-              min={0}
-              max={12}
-              value={ft}
-              onChange={e => onChange(Number(e.target.value) * 12 + inches)}
-              className="finp"
-              style={{ width: '100%', fontSize: 13, textAlign: 'center' }}
-            />
-            <div style={{ fontSize: 11, color: '#888', textAlign: 'center', marginTop: 2 }}>ft</div>
-          </div>
-          <div style={{ flex: 1 }}>
-            <input
-              type="number"
-              min={0}
-              max={11}
-              value={inches}
-              onChange={e => onChange(ft * 12 + Number(e.target.value))}
-              className="finp"
-              style={{ width: '100%', fontSize: 13, textAlign: 'center' }}
-            />
-            <div style={{ fontSize: 11, color: '#888', textAlign: 'center', marginTop: 2 }}>in</div>
-          </div>
-          <div style={{ fontSize: 13, color: '#555', paddingBottom: 6, whiteSpace: 'nowrap', minWidth: 44 }}>
-            = {ft}'{inches > 0 ? `${inches}"` : ''}
-          </div>
-        </div>
-        {field.help && (
+        <input
+          type="text"
+          value={rawText}
+          onChange={e => { setRawText(e.target.value); setError(null); }}
+          onBlur={handleBlur}
+          className="finp"
+          placeholder={`e.g. 5'6" or 66"`}
+          style={{ width: '100%', fontSize: 13, ...(error ? { borderColor: '#EF4444' } : {}) }}
+        />
+        {error && (
+          <div style={{ fontSize: 11, color: '#EF4444', marginTop: 3 }}>{error}</div>
+        )}
+        {showPreview && (
+          <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>= {parsedPreview}"</div>
+        )}
+        {field.help && !error && (
           <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{field.help}</div>
         )}
       </div>
