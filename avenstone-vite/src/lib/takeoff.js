@@ -1,5 +1,6 @@
 import { sb, AV_TENANT, sbSaveEstimate, sbSaveTenantUnitCostOverride, sbResolveTodosBySource, sbLoadJobRoomScopes, sbLoadScopeSubsets } from './supabase';
 import { floorLabel } from './captureTypes';
+import { runCompute } from './computeFns';
 
 // ── Geometry helpers ───────────────────────────────────────────────────────────
 
@@ -14,16 +15,6 @@ function computePerimeter(room) {
   return 2 * ((room.width || 0) + (room.length || 0));
 }
 
-// ── Labor scope-detail override map ──────────────────────────────────────────
-// For trades where the labor qty scales with a shower/fixture area rather than
-// the full room metric, map trade → scope_details key.
-// Used in buildTakeoffDraft when resolved scope_details has a non-zero value.
-// Falls back to room metric when key is missing or zero.
-
-const LABOR_SCOPE_DETAIL_OVERRIDE = {
-  'Tile - Wall / shower': 'shower_wall_sf',
-  'Tile - Floor':         'floor_tile_sf',
-};
 
 // ── Quantity source mapping ────────────────────────────────────────────────────
 
@@ -164,61 +155,18 @@ function evaluateFormula(formula, metrics, materialRow, scopeDetails) {
   return qty;
 }
 
-// ── Shower sf resolver ────────────────────────────────────────────────────────
-// Computes shower_wall_sf and shower_floor_sf from dimension inputs
-// (shower_width_in × shower_length_in × shower_wall_height_in, all in inches).
-// Override fields win when set. Returns {wall, floor} in sf.
-// Returns {wall:0, floor:0} when dimension fields are absent (old direct-entry
-// data or tub_only — formula evaluator falls back to existing scope_detail values).
-
-function resolveShowerSf(scopeDetails) {
-  if (!scopeDetails) return { wall: 0, floor: 0 };
-
-  const w = Number(scopeDetails.shower_width_in)       || 0;
-  const l = Number(scopeDetails.shower_length_in)      || 0;
-  const h = Number(scopeDetails.shower_wall_height_in) || 96;
-
-  if (!w || !l) return { wall: 0, floor: 0 };
-
-  const showerType = scopeDetails.shower_type || 'shower_only';
-  let wallSf = 0;
-
-  if (showerType === 'tub_only') {
-    // 3-wall tub surround: two long walls + back wall
-    wallSf = ((2 * w + l) / 12) * (h / 12);
-  } else {
-    // shower_only or tub_plus_shower: 4-wall shower stall
-    wallSf = (2 * (w + l) / 12) * (h / 12);
-  }
-
-  const floorSf = (w / 12) * (l / 12);
-
-  // Per-field override wins when explicitly set
-  return {
-    wall:  scopeDetails.shower_wall_sf_override  != null ? Number(scopeDetails.shower_wall_sf_override)  : wallSf,
-    floor: scopeDetails.shower_floor_sf_override != null ? Number(scopeDetails.shower_floor_sf_override) : floorSf,
-  };
-}
-
 // ── Scope details resolver ────────────────────────────────────────────────────
-// Merges rep-saved scope_details with schema field defaults for any missing key.
-// Injects computed shower_wall_sf / shower_floor_sf from dimensions before the
-// subtract pass so floor_tile_sf can net out the shower area correctly.
-// Returns a flat object safe to pass into evaluateFormula.
+// Three-pass resolver: defaults → computed fields → subtract.
+// 'computed' field type runs a named COMPUTE_FNS function (from computeFns.js).
+// Override wins when the field's override_key is set in scope_details.
 
 function resolveDetails(schema, scopeDetails, room) {
   if (!schema?.fields) return scopeDetails ?? {};
   const resolved = { ...(scopeDetails ?? {}) };
 
-  // Inject dimension-computed shower sf before defaults + subtract pass.
-  // When dimension fields exist → computed values overwrite any stale direct-entry.
-  // When dimensions are absent (old format / tub_only) → returns 0,0 → no injection,
-  // existing shower_wall_sf / shower_floor_sf in resolved (if present) are kept.
-  const showerSf = resolveShowerSf(resolved);
-  if (showerSf.wall  > 0) resolved.shower_wall_sf  = showerSf.wall;
-  if (showerSf.floor > 0) resolved.shower_floor_sf = showerSf.floor;
-
+  // Pass 1: defaults for non-computed fields
   for (const field of schema.fields) {
+    if (field.type === 'computed') continue;
     if (resolved[field.key] !== undefined) continue;
     if (field.default_from === 'room.floorSf') {
       resolved[field.key] = room.areaSf || 0;
@@ -226,14 +174,27 @@ function resolveDetails(schema, scopeDetails, room) {
       resolved[field.key] = field.default;
     }
   }
-  // Apply subtract: floor_tile_sf → floor_tile_sf - shower_floor_sf (net bathroom floor)
+
+  // Pass 2: computed fields — override_key wins when explicitly set
   for (const field of schema.fields) {
-    if (field.subtract?.length) {
-      const base = Number(resolved[field.key] ?? 0);
-      const net  = field.subtract.reduce((acc, k) => acc - Number(resolved[k] ?? 0), base);
-      resolved[field.key] = Math.max(0, net);
+    if (field.type !== 'computed') continue;
+    const overrideVal = field.override_key != null ? resolved[field.override_key] : undefined;
+    if (overrideVal != null) {
+      resolved[field.key] = Number(overrideVal);
+    } else {
+      const computed = runCompute(field.compute_fn, resolved);
+      if (computed != null) resolved[field.key] = computed;
     }
   }
+
+  // Pass 3: subtract (e.g. floor_tile_sf nets out shower_floor_sf)
+  for (const field of schema.fields) {
+    if (!field.subtract?.length) continue;
+    const base = Number(resolved[field.key] ?? 0);
+    const net  = field.subtract.reduce((acc, k) => acc - Number(resolved[k] ?? 0), base);
+    resolved[field.key] = Math.max(0, net);
+  }
+
   return resolved;
 }
 
@@ -385,6 +346,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     optional: t.scope_definition?.optional ?? false,
     conditional: t.scope_definition?.conditional ?? null,
     materialsFormula: t.scope_definition?.materials_formula ?? null,
+    laborFormula: t.scope_definition?.labor_formula ?? null,
   }));
 
   // 4. Unit costs — fetch all matching rows, resolve tenant override in JS
@@ -482,23 +444,43 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       const multiplier = resolveMultiplier(room.floor, costRow?.multipliers ?? {});
       const wastePct = getWastePct(def.trade);
 
-      // Check if this trade has a labor scope-detail override (e.g. shower area instead
-      // of full room walls). Only applies when scope_details has a non-zero value.
-      const laborOverrideKey = LABOR_SCOPE_DETAIL_OVERRIDE[def.trade];
-      const laborOverrideVal = laborOverrideKey ? Number(resolvedDets[laborOverrideKey] ?? 0) : 0;
-      const effectiveAreaSf   = (laborOverrideKey === 'floor_tile_sf' && laborOverrideVal > 0)
-        ? laborOverrideVal : room.areaSf;
-      const effectiveWallSf   = (laborOverrideKey === 'shower_wall_sf' && laborOverrideVal > 0)
-        ? laborOverrideVal : room.wallAreaSf;
+      // Resolve labor quantity: schema labor_formula wins, falls back to buildQuantity.
+      // labor_formula qty_basis 'scope_detail' → use resolved scope_details value directly.
+      // labor_formula qty_basis 'metric'       → use named room metric directly.
+      // No formula → quantitySource regex mapping in buildQuantity.
+      // Labor never applies waste — waste_pct is materials-only.
+      let quantity, quantityPreFilled, quantityNotes;
 
-      // Labor quantity never applies waste — waste_pct is materials-only.
-      const { quantity, quantityPreFilled, quantityNotes } = buildQuantity({
-        trade: def.trade, unit,
-        areaSf: effectiveAreaSf,
-        wallAreaSf: effectiveWallSf,
-        perimeterLf: room.perimeterLf,
-        wastePct: 0,
-      });
+      if (def.laborFormula) {
+        const lf = def.laborFormula;
+        if (lf.qty_basis === 'scope_detail') {
+          const val = Number(resolvedDets[lf.scope_detail_key] ?? 0);
+          if (val > 0) {
+            quantity          = Math.round(val * 100) / 100;
+            quantityPreFilled = true;
+            quantityNotes     = `scope: ${lf.scope_detail_key} = ${val.toFixed(1)}`;
+          }
+        } else if (lf.qty_basis === 'metric') {
+          const metricMap = { floor_sf: room.areaSf, wall_sf: room.wallAreaSf, perimeter_lf: room.perimeterLf };
+          const val = metricMap[lf.metric_key];
+          if (val != null && val > 0) {
+            quantity          = Math.round(val * 100) / 100;
+            quantityPreFilled = true;
+            quantityNotes     = `metric: ${lf.metric_key} = ${val.toFixed(1)}`;
+          }
+        }
+      }
+
+      // Fall back to buildQuantity (quantitySource regex) when labor_formula didn't resolve
+      if (quantity === undefined) {
+        ({ quantity, quantityPreFilled, quantityNotes } = buildQuantity({
+          trade: def.trade, unit,
+          areaSf: room.areaSf,
+          wallAreaSf: room.wallAreaSf,
+          perimeterLf: room.perimeterLf,
+          wastePct: 0,
+        }));
+      }
 
       const lineCost = (baseRate != null && quantity != null)
         ? Math.round(baseRate * quantity * multiplier * 100) / 100
