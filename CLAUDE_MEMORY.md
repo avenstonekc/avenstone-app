@@ -696,7 +696,7 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Action: Fixed takeoff data layer bug — buildTakeoffDraft was returning all scanned rooms for every roomType instead of filtering to matched rooms.
 - Files: avenstone-vite/src/lib/takeoff.js
 - Decision: Added roomMatchesType(room, roomType) helper. Matching rules: bathroom → roomLabel includes 'bath', kitchen → includes 'kitchen', basement → includes 'basement' OR floor===-1, exterior → captureMode==='exterior', refresh → all rooms (whole-job by design). Rooms with no label excluded from all types except refresh. captureMode threaded from scan row into room object to support exterior detection. Temporary console.log [TAKEOFF FILTER] added for browser verification — remove after Kalin confirms filter works.
-- Open: Confirm with Kalin that refresh including exterior scans is intended UX. Console.log must be removed in follow-up commit after verification passes.
+- Open: Confirm with Kalin that refresh including exterior scans is intended UX. ~~Console.log removed~~ — filter verified: exterior=0 (no exterior-mode scans on test job), kitchen=1 ("Living Room And Kitchen"), refresh=all. Filter shipped and clean. Ready for Prompt B (wizard UI).
 
 ---
 

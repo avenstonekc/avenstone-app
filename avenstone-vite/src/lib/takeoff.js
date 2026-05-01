@@ -170,7 +170,6 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     ? allRooms.filter(r => roomIds.includes(r.roomId))
     : allRooms.filter(r => roomMatchesType(r, roomType));
 
-  console.log(`[TAKEOFF FILTER] ${roomType}: ${allRooms.length} scanned → ${matchedRooms.length} matched`);
   const rooms = matchedRooms;
 
   if (!rooms.length) {
