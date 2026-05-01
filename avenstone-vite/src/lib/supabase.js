@@ -44,7 +44,7 @@ export const GET_JOB_STATUS_URL         = `${FN}/get-job-status`;
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 export const sbSave = async j => {
   try {
-    const { error } = await sb.from('jobs').upsert({
+    const { error } = await sb.from('jobs').insert({
       id: j.id, tenant_id: AV_TENANT, address: j.address, status: j.status,
       scope: j.scope || '', sqft: j.sqft || '', created_at: j.created,
       intake_answers: j.ans || {}, client_name: j.client_name || '',
