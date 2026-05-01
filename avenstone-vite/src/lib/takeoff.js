@@ -14,6 +14,17 @@ function computePerimeter(room) {
   return 2 * ((room.width || 0) + (room.length || 0));
 }
 
+// ── Labor scope-detail override map ──────────────────────────────────────────
+// For trades where the labor qty scales with a shower/fixture area rather than
+// the full room metric, map trade → scope_details key.
+// Used in buildTakeoffDraft when resolved scope_details has a non-zero value.
+// Falls back to room metric when key is missing or zero.
+
+const LABOR_SCOPE_DETAIL_OVERRIDE = {
+  'Tile - Wall / shower': 'shower_wall_sf',
+  'Tile - Floor':         'floor_tile_sf',
+};
+
 // ── Quantity source mapping ────────────────────────────────────────────────────
 
 function quantitySource(trade, unit) {
@@ -425,10 +436,19 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       const multiplier = resolveMultiplier(room.floor, costRow?.multipliers ?? {});
       const wastePct = getWastePct(def.trade);
 
+      // Check if this trade has a labor scope-detail override (e.g. shower area instead
+      // of full room walls). Only applies when scope_details has a non-zero value.
+      const laborOverrideKey = LABOR_SCOPE_DETAIL_OVERRIDE[def.trade];
+      const laborOverrideVal = laborOverrideKey ? Number(resolvedDets[laborOverrideKey] ?? 0) : 0;
+      const effectiveAreaSf   = (laborOverrideKey === 'floor_tile_sf' && laborOverrideVal > 0)
+        ? laborOverrideVal : room.areaSf;
+      const effectiveWallSf   = (laborOverrideKey === 'shower_wall_sf' && laborOverrideVal > 0)
+        ? laborOverrideVal : room.wallAreaSf;
+
       const { quantity, quantityPreFilled, quantityNotes } = buildQuantity({
         trade: def.trade, unit,
-        areaSf: room.areaSf,
-        wallAreaSf: room.wallAreaSf,
+        areaSf: effectiveAreaSf,
+        wallAreaSf: effectiveWallSf,
         perimeterLf: room.perimeterLf,
         wastePct,
       });
