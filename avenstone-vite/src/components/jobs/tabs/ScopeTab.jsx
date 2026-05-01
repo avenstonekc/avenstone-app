@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   sbLoadJobRoomScopes, sbSaveJobRoomScope, sbDeleteJobRoomScope,
-  sbLoadScopeSubsets, sbLoadActiveTradeStrings, AV_TENANT, AV_USER_ID,
+  sbLoadScopeSubsets, sbLoadActiveTradeStrings, sbLoadJobScanRooms,
+  AV_TENANT, AV_USER_ID,
 } from '../../../lib/supabase';
-import { sbBuildTakeoffDraft } from '../../../lib/supabase';
 
 const NAV    = '#0A1F44';
 const GOLD   = '#C9A84C';
@@ -19,17 +19,6 @@ const ROOM_TYPES = [
   { id: 'exterior', lb: 'Exterior' },
 ];
 
-function roomMatchesType(room, roomType) {
-  const label = (room.roomLabel || '').toLowerCase();
-  switch (roomType) {
-    case 'bathroom': return label.includes('bath');
-    case 'kitchen':  return label.includes('kitchen');
-    case 'basement': return label.includes('basement') || room.floor === -1;
-    case 'exterior': return room.captureMode === 'exterior';
-    case 'refresh':  return true;
-    default: return false;
-  }
-}
 
 export default function ScopeTab({ job, setSub }) {
   const [allRooms, setAllRooms]         = useState([]);  // flat annotated rooms from drafts
@@ -45,54 +34,25 @@ export default function ScopeTab({ job, setSub }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch scope rows + trade strings in parallel
-      const [saved, trades] = await Promise.all([
+      // Fetch scan rooms, scope rows, trade strings, and subsets in parallel.
+      // sbLoadJobScanRooms returns ALL rooms without scope filter — orphan detector
+      // needs to see not_in_scope rooms or it flags them as orphans (false positive).
+      const [scanRooms, saved, trades, ...subsetResults] = await Promise.all([
+        sbLoadJobScanRooms(job.id),
         sbLoadJobRoomScopes(job.id),
         sbLoadActiveTradeStrings(),
+        ...ROOM_TYPES.map(rt => sbLoadScopeSubsets(rt.id).then(s => [rt.id, s])),
       ]);
       setScopeRows(saved);
       setTradeStrings(trades);
 
-      // Load subsets for all room types in parallel
-      const subsetResults = await Promise.all(
-        ROOM_TYPES.map(rt => sbLoadScopeSubsets(rt.id).then(s => [rt.id, s]))
-      );
       const subsetMap = {};
       for (const [rt, s] of subsetResults) subsetMap[rt] = s;
       setSubsets(subsetMap);
 
-      // Build flat room list from all 5 drafts (read-only, no writes)
-      const draftResults = await Promise.all(
-        ROOM_TYPES.map(rt =>
-          sbBuildTakeoffDraft({ jobId: job.id, roomType: rt.id })
-            .then(d => ({ roomType: rt.id, rooms: d.rooms || [] }))
-            .catch(() => ({ roomType: rt.id, rooms: [] }))
-        )
-      );
-      // Deduplicate rooms — a room can match multiple types (e.g. refresh includes all).
-      // Use per-type room sets: only include a room in the first type it matches,
-      // except 'refresh' which intentionally includes everything.
-      const seenIds = new Set();
-      const flat = [];
-      for (const { roomType, rooms } of draftResults) {
-        if (roomType === 'refresh') continue; // add refresh rooms in a second pass
-        for (const room of rooms) {
-          if (!seenIds.has(room.roomId)) {
-            seenIds.add(room.roomId);
-            flat.push({ ...room, primaryType: roomType });
-          }
-        }
-      }
-      // Add rooms not yet assigned to a specific type under 'refresh'
-      const refreshDraft = draftResults.find(d => d.roomType === 'refresh');
-      if (refreshDraft) {
-        for (const room of refreshDraft.rooms) {
-          if (!seenIds.has(room.roomId)) {
-            seenIds.add(room.roomId);
-            flat.push({ ...room, primaryType: 'refresh' });
-          }
-        }
-      }
+      // scanRooms already has roomType assigned by label match (see sbLoadJobScanRooms).
+      // primaryType = roomType for display grouping.
+      const flat = scanRooms.map(r => ({ ...r, primaryType: r.roomType }));
       setAllRooms(flat);
 
       // Init localEdits from saved rows

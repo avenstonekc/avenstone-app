@@ -1120,6 +1120,49 @@ export const sbDeleteJobRoomScope = async (id) => {
   return { error };
 };
 
+/**
+ * Load all scanned rooms for a job, flattened from job_lidar_scans.rooms JSONB.
+ * Returns rooms WITHOUT any scope filter — used by ScopeTab for room discovery
+ * so that not_in_scope rooms are visible in the UI (not filtered as orphans).
+ * TakeoffWizard uses buildTakeoffDraft which applies scope filters.
+ */
+export const sbLoadJobScanRooms = async (jobId) => {
+  const { data: scans } = await sb
+    .from('job_lidar_scans')
+    .select('id, rooms, capture_mode')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const result = [];
+  for (const scan of (scans || [])) {
+    (scan.rooms || []).forEach((room, idx) => {
+      const roomId = `${scan.id}_${idx}`;
+      const label = room.name || `Room ${idx + 1}`;
+      // Assign room type by label — see roomMatchesType in takeoff.js (duplicated here
+      // for ScopeTab room discovery without importing the full takeoff module).
+      const l = label.toLowerCase();
+      let roomType = 'refresh';
+      if (l.includes('bath'))     roomType = 'bathroom';
+      else if (l.includes('kitchen'))  roomType = 'kitchen';
+      else if (l.includes('basement')) roomType = 'basement';
+      else if (scan.capture_mode === 'exterior') roomType = 'exterior';
+
+      result.push({
+        roomId,
+        roomLabel: label,
+        scanId:    scan.id,
+        idx,
+        areaSf:    room.sqft ?? 0,
+        floor:     0,
+        roomType,
+        captureMode: scan.capture_mode ?? null,
+      });
+    });
+  }
+  return result;
+};
+
 export const sbLoadScopeSubsets = async (roomType) => {
   let q = sb.from('template_scope_subsets').select('*').order('sort_order');
   if (roomType) q = q.eq('room_type', roomType);
