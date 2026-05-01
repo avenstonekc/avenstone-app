@@ -1098,19 +1098,21 @@ export const sbLoadJobRoomScopes = async (jobId) => {
 };
 
 export const sbSaveJobRoomScope = async ({
-  jobId, roomId, roomLabel, roomType, scopeTag, customTrades, notes, tenantId, userId,
+  jobId, roomId, roomLabel, roomType, scopeTag, customTrades, notes,
+  scopeDetails, tenantId, userId,
 }) => {
   const { data, error } = await sb.from('job_room_scopes').upsert({
-    tenant_id:    tenantId,
-    job_id:       jobId,
-    room_id:      roomId,
-    room_label:   roomLabel ?? null,
-    room_type:    roomType,
-    scope_tag:    scopeTag,
+    tenant_id:     tenantId,
+    job_id:        jobId,
+    room_id:       roomId,
+    room_label:    roomLabel ?? null,
+    room_type:     roomType,
+    scope_tag:     scopeTag,
     custom_trades: customTrades ?? null,
-    notes:        notes ?? null,
-    created_by:   userId,
-    updated_at:   new Date().toISOString(),
+    notes:         notes ?? null,
+    scope_details: scopeDetails ?? {},
+    created_by:    userId,
+    updated_at:    new Date().toISOString(),
   }, { onConflict: 'tenant_id,job_id,room_id' }).select().single();
   return { data, error };
 };
@@ -1177,6 +1179,26 @@ export const sbLoadScopeSubsets = async (roomType) => {
     }
   }
   return Object.values(map).sort((a, b) => a.sort_order - b.sort_order);
+};
+
+/**
+ * Load the scope detail schema for a (room_type, scope_tag) pair.
+ * Returns the schema JSONB or null if no schema exists.
+ * Tenant override beats platform default (same de-dup pattern).
+ */
+export const sbLoadScopeDetailSchema = async (roomType, scopeTag, tenantId) => {
+  const { data } = await sb
+    .from('scope_detail_schemas')
+    .select('schema, tenant_id')
+    .eq('room_type', roomType)
+    .eq('scope_tag', scopeTag)
+    .eq('active', true)
+    .order('tenant_id', { nullsFirst: true }); // platform first, tenant override last
+  if (!data?.length) return null;
+  // Prefer tenant row if one exists and tenantId matches
+  const tenantRow = tenantId ? data.find(r => r.tenant_id === tenantId) : null;
+  const row = tenantRow ?? data.find(r => r.tenant_id === null) ?? data[0];
+  return row?.schema ?? null;
 };
 
 /**
