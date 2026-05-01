@@ -772,6 +772,17 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx (temp debug button)
 - avenstone-vite/src/App.jsx (dev auto-login)
 
+[LOG — 2026-04-30]
+- Action: Step 4.5b — bathroom scope detail forms shipped with adjacent fixes (orphan-detector, wall tile math, fixture catalog)
+- Files: supabase/migrations/20260430_scope_detail_schemas.sql, supabase/migrations/20260430_seed_bathroom_fixtures.sql, supabase/migrations/20260430_seed_bathroom_detail_schemas.sql, supabase/migrations/20260430_fix_bathroom_wall_tile_formulas.sql, avenstone-vite/src/lib/takeoff.js, avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/ScopeTab.jsx, avenstone-vite/src/components/jobs/tabs/ScopeDetailForm.jsx (new)
+- Decision: scope_detail_schemas table holds JSON schemas keyed by (room_type, scope_tag). Per-tenant override pattern via tenant_id NULL vs set, same as template_scope_subsets.
+- Decision: scope_details JSONB column on job_room_scopes holds the rep's filled-in form values.
+- Decision: fixture_select field type emits fixed line items at takeoff time.
+- Decision: Tile-Wall and Tile-Floor formulas use scope_detail keys instead of wall_sf / floor_sf.
+- Decision: ScopeTab loads scan rooms directly via sbLoadJobScanRooms to avoid orphan false positives (prior fix excluded not_in_scope rooms from draft.rooms, causing ScopeTab's orphan detector to flag all 19 not_in_scope rows).
+- Decision: Other room types have no detail forms yet — scope_tag dropdown only.
+- Open: TakeoffWizard per-line toggle/delete (4.5c). Other room type detail forms. Custom scope tag still has no detail form. Financial deprecated table drop (grace window expires 2026-05-07).
+
 ## Open items (deferred, not bleeding)
 - Financial deprecated table drop (grace window expires 2026-05-07)
 - invitations_to_bid compat view drop + SubPortal.jsx join selector update
