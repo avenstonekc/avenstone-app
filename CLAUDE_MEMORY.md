@@ -978,3 +978,31 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
 - Open: Custom line edit (after adding) — only qty and rate editable
   via inline cell click (same as formula lines). Description/trade
   not editable post-creation. Worth revisiting if reps complain.
+
+[LOG — 2026-05-01]
+- Action: Shipped 3 post-Layer-1 bug fixes for takeoff wizard
+- Files: EstimateTab.jsx, TakeoffWizard.jsx, supabase.js
+- Fix 1 — lineItemsLoaded cache invalidation: EstimateTab passes
+  onAccepted={() => setLineItemsLoaded(false)} to TakeoffWizard.
+  TakeoffWizard calls onAccepted?.() immediately after setSaveResult.
+  Line items tab now reloads fresh data on next visit after Accept & Save.
+  Without this fix, the Line items tab showed stale rows from before the
+  accept (cache was set true on initial load, never reset).
+- Fix 2 — Custom line restore on wizard reopen: Added
+  sbLoadCustomTakeoffLines(jobId, roomType) to supabase.js. Queries
+  estimate_line_items WHERE notes LIKE 'takeoff:custom:{roomType}:%',
+  reconstructs full line objects (roomId from notes parse, all fields
+  from DB columns). TakeoffWizard loadDraft now parallel-fetches this
+  alongside sbBuildTakeoffDraft and sets customLines state with restored
+  rows. Previously, custom lines were cleared from wizard state on
+  reopen even though the data was correct in the DB.
+- Fix 3 — Material rows PENDING RATE visual flag: Material rows now
+  use the same needsRate treatment as labor rows — amber WARN_BG rowBg,
+  amber border + text color on rate input, "REP MUST ENTER RATE" warning
+  span. Previously material rows had no visual warning when baseRate was
+  null, so reps could accept a draft with zero-cost material lines without
+  any indication something was wrong.
+- Decision: All 3 fixes shipped in a single commit for bisect clarity.
+- Open: Deferred items unchanged — Layer 2 (save custom to tenant
+  catalog), financial table drop (grace window 2026-05-07),
+  invitations_to_bid compat view drop, kitchen/basement templates.
