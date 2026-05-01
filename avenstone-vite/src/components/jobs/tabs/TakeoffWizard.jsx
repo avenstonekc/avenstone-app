@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { sbBuildTakeoffDraft } from '../../../lib/supabase';
+import { sbBuildTakeoffDraft, AV_TENANT, AV_USER_ID } from '../../../lib/supabase';
+import { acceptTakeoffDraft } from '../../../lib/takeoff';
 import { f$ } from '../../../lib/utils';
 
 const NAV = '#0A1F44';
@@ -17,13 +18,16 @@ const ROOM_TYPES = [
   { id: 'exterior', lb: 'Exterior' },
 ];
 
-export default function TakeoffWizard({ job }) {
+export default function TakeoffWizard({ job, setSub }) {
   const [selectedType, setSelectedType] = useState(null);
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [edits, setEdits] = useState({});
   const [collapsed, setCollapsed] = useState(() => new Set());
+  const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState(null); // { lineItemCount, overrideCount, errors[] }
+  const [saveError, setSaveError] = useState(null);
 
   const loadDraft = useCallback(async (roomType) => {
     setSelectedType(roomType);
@@ -285,6 +289,25 @@ export default function TakeoffWizard({ job }) {
             );
           })}
 
+          {/* Save result banner */}
+          {saveResult && (
+            <div style={{ background: '#D1FAE5', border: '1px solid #6EE7B7', color: '#065F46', padding: '10px 14px', borderRadius: 6, marginBottom: 8, fontSize: 13 }}>
+              ✓ Saved {saveResult.lineItemCount} line items
+              {saveResult.overrideCount > 0 && ` · ${saveResult.overrideCount} rate${saveResult.overrideCount !== 1 ? 's' : ''} saved as your defaults`}
+              {saveResult.errors.length > 0 && (
+                <span style={{ color: '#D97706', marginLeft: 8 }}>
+                  ({saveResult.errors.length} item{saveResult.errors.length !== 1 ? 's' : ''} had errors — check Line items tab)
+                </span>
+              )}
+            </div>
+          )}
+          {saveError && (
+            <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', borderRadius: 6, marginBottom: 8, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Save failed: {saveError}</span>
+              <button onClick={() => setSaveError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontWeight: 700 }}>✕</button>
+            </div>
+          )}
+
           {/* Footer */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `2px solid ${BORDER}`, marginTop: 4 }}>
             <div style={{ fontSize: 13, color: '#6B7280' }}>
@@ -297,8 +320,31 @@ export default function TakeoffWizard({ job }) {
                 <span style={{ color: '#D97706', marginLeft: 8 }}>({pendingRateCount} rate{pendingRateCount !== 1 ? 's' : ''} missing)</span>
               )}
             </div>
-            <button className="btn btn-navy" onClick={() => alert('Prompt C coming next — will save to Line Items')}>
-              Accept &amp; Save to Line Items
+            <button
+              className="btn btn-navy"
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                setSaveResult(null);
+                setSaveError(null);
+                try {
+                  const result = await acceptTakeoffDraft({
+                    draft,
+                    edits,
+                    tenantId: AV_TENANT,
+                    userId:   AV_USER_ID,
+                  });
+                  setSaveResult(result);
+                  // Switch to Line items tab after a brief moment so banner is readable
+                  setTimeout(() => setSub?.('items'), 1200);
+                } catch (e) {
+                  setSaveError(e.message || 'Unknown error');
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? 'Saving…' : 'Accept & Save to Line Items'}
             </button>
           </div>
         </div>

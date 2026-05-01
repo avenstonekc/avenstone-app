@@ -497,7 +497,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
       </div>
 
       {sub === 'build'    && renderBuild()}
-      {sub === 'takeoff'  && <TakeoffWizard job={job} />}
+      {sub === 'takeoff'  && <TakeoffWizard job={job} setSub={setSub} />}
       {sub === 'items'    && renderItems()}
       {sub === 'proposal' && renderProposal()}
     </div>
