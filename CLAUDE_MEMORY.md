@@ -1006,3 +1006,73 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
 - Open: Deferred items unchanged — Layer 2 (save custom to tenant
   catalog), financial table drop (grace window 2026-05-07),
   invitations_to_bid compat view drop, kitchen/basement templates.
+
+[LOG — 2026-04-30 — full day, multi-arc shipment]
+- Action: Step 4.6 architecture refactor + Step 4.5d per-line
+  exclude + niche/bench labor + Layer 1 custom line capability +
+  cache/restore/PENDING follow-ups + critical Blake-unblock fixes
+  (job creation + nav + sidebar layout).
+- Files: takeoff.js, ScopeDetailForm.jsx, TakeoffWizard.jsx,
+  EstimateTab.jsx, JobsScr.jsx, App.jsx, supabase.js,
+  ai-master-agent edge fn, AddCustomLineModal.jsx (new),
+  computeFns.js (new), index.css, ~10 migrations.
+
+Step 4.6 unification:
+- labor_formula JSONB inline in scope_definition. Single object per
+  trade. materials_formula remains array.
+- COMPUTE_FNS registry shared via lib/computeFns.js.
+- Schema-declared overridable + override_key replaces _override naming.
+- 'subtract' as schema field property removed; computed fields use
+  compute.fn='subtract'.
+- LABOR_SCOPE_DETAIL_OVERRIDE + resolveShowerSf deleted. Schema-driven
+  generic resolution. Trades without labor_formula fall back to legacy.
+
+Step 4.5d:
+- Per-line exclude in TakeoffWizard. Excluded lines greyed, not in
+  subtotals or estimate_line_items writes.
+
+Niche/bench labor:
+- labor_extras array on scope_definition for boolean-gated extras.
+  Niche install $200, bench framing+waterproof $175.
+- idx_uc_labor_uniq widened to (trade + COALESCE(material_name, '')).
+
+Layer 1 custom line:
+- AddCustomLineModal + customLines state per-job. Type/trade/desc/
+  qty/unit/rate/notes plus "Other" trade option.
+- Labor row label shows "trade — material_name" when both present.
+- Custom lines write notes prefix 'takeoff:custom:'. Trade on column.
+- TakeoffWizard restores custom lines via sbLoadCustomTakeoffLines.
+- EstimateTab cache invalidation via onAccepted callback.
+- PENDING RATE rows flagged with amber row + warning text.
+
+Critical bug fixes (Blake unblock):
+- ai-master-agent create_job tool generates crypto.randomUUID().
+- jobs.id has DEFAULT gen_random_uuid()::text.
+- JobsScr.jsx add() async with rollback + error banner.
+- sbSave returns {ok, error}. Other helpers need same sweep.
+- .sidebar background:#0A1F44 moved to base rule (was inside media
+  query, viewports near 768px boundary rendered with no sidebar
+  background).
+- Sidebar Projects click resets selJ via jobsSelClear counter →
+  JobsScr useEffect calls setSel(null).
+- JobDet back button "← Projects" visible on all viewports.
+- Cold-start Today redirect guarded: pg !== 'dashboard' check + once-
+  per-day localStorage. Was bouncing every refresh because
+  landingChecked ref resets on remount.
+- Sidebar footer pinned via flex layout. Nav list overflow-y:auto
+  with min-height:0. Vertical spacing tightened.
+
+Open items:
+- Sweep sb* write helpers for fire-and-forget + swallowed-error
+  patterns. Apply {ok, error} shape.
+- Failed-intent retry todos. When tool calls fail, capture inputs +
+  write retry todo. Multi-prompt feature.
+- URL-based routing. selJ as React state means browser back doesn't
+  return to list, refreshing inside a job loses position. Multi-day
+  refactor.
+- Custom lines as first-class concept. Notes-prefix routing fragile
+  when v4 client picker adds another consumer.
+- Step 5 — kitchen scope subsets + detail forms.
+- Step 8 — procurement view from estimate_line_items.
+- claude.ai/design exploration for navigation/morning-brief/sub-portal.
+- Layer 2 — "Save rate to tenant catalog" checkbox on custom modal.
