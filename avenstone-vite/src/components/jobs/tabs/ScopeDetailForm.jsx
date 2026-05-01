@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { runCompute } from '../../../lib/computeFns';
 
 const NAV    = '#0A1F44';
 const GOLD   = '#C9A84C';
@@ -7,7 +8,7 @@ const CREAM  = '#F7F5F0';
 
 // Groups fields into visual sections by conceptual category
 const SECTION_KEYS = {
-  shower:  ['shower_type', 'shower_width_in', 'shower_length_in', 'shower_wall_height_in', 'shower_wall_sf_override', 'shower_floor_sf_override', 'shower_door_type', 'niche', 'bench'],
+  shower:  ['shower_type', 'shower_width_in', 'shower_length_in', 'shower_wall_height_in', 'shower_wall_sf', 'shower_floor_sf', 'shower_door_type', 'niche', 'bench'],
   floor:   ['floor_tile_sf', 'floor_type'],
   vanity:  ['vanity_width', 'vanity_top', 'sink_count'],
   plumbing:['toilet_type', 'faucet_replace'],
@@ -61,71 +62,6 @@ function formatDimension(inches) {
   return `${ft}'${inch}"`;
 }
 
-// Compute shower wall sf and floor sf from dimension inputs (stored as total inches).
-// Mirrors resolveShowerSf in takeoff.js so the UI preview matches the draft.
-function computeShowerSfLocal(values) {
-  const type = values.shower_type || 'shower_only';
-  if (type === 'tub_only') return null;
-
-  const w = Number(values.shower_width_in)       || 0;
-  const l = Number(values.shower_length_in)      || 0;
-  const h = Number(values.shower_wall_height_in) || 96;
-  if (!w || !l) return null;
-
-  let computedWall;
-  if (type === 'tub_plus_shower') {
-    computedWall = (2 * (w + l) / 12) * (h / 12);
-  } else {
-    computedWall = (2 * (w + l) / 12) * (h / 12);
-  }
-  computedWall = Math.round(computedWall * 10) / 10;
-  const computedFloor = Math.round((w / 12) * (l / 12) * 10) / 10;
-
-  const wallOverride  = values.shower_wall_sf_override  != null ? Number(values.shower_wall_sf_override)  : null;
-  const floorOverride = values.shower_floor_sf_override != null ? Number(values.shower_floor_sf_override) : null;
-
-  return {
-    wall:           wallOverride  ?? computedWall,
-    floor:          floorOverride ?? computedFloor,
-    wallOverridden:  wallOverride  != null,
-    floorOverridden: floorOverride != null,
-    computedWall,
-    computedFloor,
-  };
-}
-
-// Read-only computed tile area display shown after dimension inputs.
-function ShowerSfDisplay({ values }) {
-  const sf = computeShowerSfLocal(values);
-  if (!sf) return null;
-  return (
-    <div style={{ marginBottom: 12, padding: '8px 10px', background: CREAM, borderRadius: 6, border: `1px solid ${BORDER}` }}>
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        Computed tile areas
-      </div>
-      <div style={{ display: 'flex', gap: 20 }}>
-        <div>
-          <span style={{ fontSize: 12, color: '#666' }}>Wall tile: </span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: sf.wallOverridden ? GOLD : NAV }}>
-            {sf.wall.toFixed(1)} sf
-          </span>
-          <span style={{ fontSize: 11, color: sf.wallOverridden ? GOLD : '#888', marginLeft: 4 }}>
-            {sf.wallOverridden ? '(override)' : '(auto)'}
-          </span>
-        </div>
-        <div>
-          <span style={{ fontSize: 12, color: '#666' }}>Floor tile: </span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: sf.floorOverridden ? GOLD : NAV }}>
-            {sf.floor.toFixed(1)} sf
-          </span>
-          <span style={{ fontSize: 11, color: sf.floorOverridden ? GOLD : '#888', marginLeft: 4 }}>
-            {sf.floorOverridden ? '(override)' : '(auto)'}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function FieldInput({ field, value, values, onChange }) {
   const visible = isVisible(field, values);
@@ -312,6 +248,39 @@ function FieldInput({ field, value, values, onChange }) {
     );
   }
 
+  // Computed field: shows auto-computed value with optional inline override input.
+  // `value` here is the current override value (values[field.override_key]) or null.
+  // `onChange` writes to override_key (handled by the parent render loop).
+  if (field.type === 'computed') {
+    const computedVal = runCompute(field.compute_fn, values) ?? 0;
+    const isOverridden = value != null;
+    const displayVal   = isOverridden ? Number(value) : computedVal;
+    return (
+      <div style={{ marginBottom: 12 }}>
+        {label}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: CREAM, borderRadius: 6, border: `1px solid ${BORDER}`, marginBottom: field.overridable ? 4 : 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: isOverridden ? GOLD : NAV }}>
+            {displayVal.toFixed(1)} sf
+          </span>
+          <span style={{ fontSize: 11, color: isOverridden ? GOLD : '#888' }}>
+            {isOverridden ? '(override)' : '(auto)'}
+          </span>
+        </div>
+        {field.overridable && (
+          <input
+            type="number"
+            min={0}
+            value={value ?? ''}
+            placeholder="Override (blank = auto)"
+            onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
+            className="finp"
+            style={{ width: '100%', fontSize: 12 }}
+          />
+        )}
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -375,19 +344,22 @@ export default function ScopeDetailForm({ schema, values, onChange, roomDefaults
               {section.label}
             </div>
           )}
-          {section.fields.map(field => (
-            <React.Fragment key={field.key}>
+          {section.fields.map(field => {
+            // Computed fields: value + onChange bind to override_key so the rep
+            // edits the override while the display derives from compute_fn.
+            const isComputed   = field.type === 'computed';
+            const valueKey     = isComputed && field.override_key ? field.override_key : field.key;
+            const onChangeKey  = valueKey;
+            return (
               <FieldInput
+                key={field.key}
                 field={field}
-                value={values[field.key]}
+                value={values[valueKey]}
                 values={values}
-                onChange={val => handleChange(field.key, val)}
+                onChange={val => handleChange(onChangeKey, val)}
               />
-              {section.key === 'shower' && field.key === 'shower_wall_height_in' && (
-                <ShowerSfDisplay values={values} />
-              )}
-            </React.Fragment>
-          ))}
+            );
+          })}
         </div>
       ))}
     </div>
