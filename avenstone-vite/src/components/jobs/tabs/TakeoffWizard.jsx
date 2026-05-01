@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { sbBuildTakeoffDraft, AV_TENANT, AV_USER_ID } from '../../../lib/supabase';
+import { sbBuildTakeoffDraft, sbLoadCustomTakeoffLines, AV_TENANT, AV_USER_ID } from '../../../lib/supabase';
 import { acceptTakeoffDraft } from '../../../lib/takeoff';
 import { f$ } from '../../../lib/utils';
 import AddCustomLineModal from './takeoff/AddCustomLineModal';
@@ -19,7 +19,7 @@ const ROOM_TYPES = [
   { id: 'exterior', lb: 'Exterior' },
 ];
 
-export default function TakeoffWizard({ job, setSub }) {
+export default function TakeoffWizard({ job, setSub, onAccepted }) {
   const [selectedType,       setSelectedType]       = useState(null);
   const [draft,              setDraft]              = useState(null);
   const [loading,            setLoading]            = useState(false);
@@ -63,8 +63,12 @@ export default function TakeoffWizard({ job, setSub }) {
     setError(null);
     setLoading(true);
     try {
-      const d = await sbBuildTakeoffDraft({ jobId: job.id, roomType });
+      const [d, restored] = await Promise.all([
+        sbBuildTakeoffDraft({ jobId: job.id, roomType }),
+        sbLoadCustomTakeoffLines(job.id, roomType),
+      ]);
       setDraft(d);
+      if (restored.length) setCustomLines(restored);
     } catch (e) {
       setError(e.message || 'Failed to build takeoff draft');
     }
@@ -308,7 +312,8 @@ export default function TakeoffWizard({ job, setSub }) {
 
                     {/* Material rows */}
                     {!matsCollapsed && roomMatLines.map((line, i) => {
-                      const rowBg = line.isExcluded ? '#F9F9F9' : (i % 2 === 0 ? '#fff' : '#FAF8F5');
+                      const needsRate = line.baseRate == null;
+                      const rowBg = line.isExcluded ? '#F9F9F9' : (needsRate ? WARN_BG : (i % 2 === 0 ? '#fff' : '#FAF8F5'));
                       return (
                         <div key={lineKey(line)} style={{ display: 'grid', gridTemplateColumns: '24px 2fr 60px 80px 80px 80px', padding: '7px 14px', gap: 8, background: rowBg, borderTop: `1px solid ${BORDER}`, alignItems: 'center', opacity: line.isExcluded ? 0.4 : 1 }}>
                           <input
@@ -327,6 +332,7 @@ export default function TakeoffWizard({ job, setSub }) {
                               )}
                             </div>
                             <div style={{ fontSize: 10, color: '#9CA3AF' }}>{line.trade}</div>
+                            {needsRate && !line.isExcluded && <span style={{ fontSize: 10, fontWeight: 700, color: '#D97706', display: 'block', marginTop: 1 }}>REP MUST ENTER RATE</span>}
                             {!line.isCustom && line.wastePct > 0 && (
                               <span style={{ fontSize: 9, background: '#E5E7EB', color: '#6B7280', borderRadius: 4, padding: '1px 5px', display: 'inline-block', marginTop: 2 }}>
                                 +{line.wastePct}% waste
@@ -347,7 +353,7 @@ export default function TakeoffWizard({ job, setSub }) {
                             value={line.baseRate ?? ''}
                             onChange={e => setEdit(line, 'baseRate', e.target.value)}
                             disabled={line.isExcluded}
-                            style={{ fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: NAV, background: '#fff' }}
+                            style={{ fontSize: 12, border: `1.5px solid ${needsRate && !line.isExcluded ? WARN_BORDER : BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: needsRate ? '#D97706' : NAV, background: needsRate && !line.isExcluded ? WARN_BG : '#fff', fontWeight: needsRate ? 700 : 400 }}
                             placeholder="—"
                           />
                           <div style={{ fontSize: 12, fontWeight: 700, color: line.lineCost != null ? NAV : '#9CA3AF' }}>
@@ -420,6 +426,7 @@ export default function TakeoffWizard({ job, setSub }) {
                     userId:   AV_USER_ID,
                   });
                   setSaveResult(result);
+                  onAccepted?.();
                   setTimeout(() => setSub?.('items'), 1200);
                 } catch (e) {
                   setSaveError(e.message || 'Unknown error');

@@ -733,6 +733,39 @@ export const sbLoadEstimateLineItems = async (jobId) => {
   const { data } = await sb.from('estimate_line_items').select('*').eq('job_id', jobId).order('display_order');
   return data || [];
 };
+export const sbLoadCustomTakeoffLines = async (jobId, roomType) => {
+  const prefix = `takeoff:custom:${roomType}:`;
+  const { data } = await sb.from('estimate_line_items').select('*').eq('job_id', jobId).like('notes', `${prefix}%`);
+  if (!data || !data.length) return [];
+  return data.map(row => {
+    const roomId = (row.notes || '').slice(prefix.length).split(' ')[0] || row.id;
+    return {
+      lineKey:           `custom__${roomId}__restored_${row.id}`,
+      roomId,
+      trade:             row.trade || '',
+      materialName:      row.category === 'materials' ? (row.description || '') : null,
+      category:          row.category || 'labor',
+      description:       row.description || '',
+      templateNotes:     row.description || '',
+      optional:          false,
+      conditional:       null,
+      unit:              row.unit || 'each',
+      unitCostId:        null,
+      unitCostSource:    null,
+      baseRate:          row.unit_cost ?? null,
+      baseRateMissing:   row.unit_cost == null,
+      multiplier:        1,
+      wastePct:          0,
+      quantity:          row.quantity ?? 0,
+      quantityPreFilled: true,
+      quantityNotes:     'custom',
+      lineCost:          row.total_cost ?? null,
+      lineCostStatus:    'ok',
+      notes:             row.notes || 'custom',
+      isCustom:          true,
+    };
+  });
+};
 
 // ─── QuickBooks export ────────────────────────────────────────────────────────
 export const sbLoadQbCategoryMap = async () => {
