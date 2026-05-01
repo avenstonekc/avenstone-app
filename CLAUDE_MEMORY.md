@@ -692,6 +692,12 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - Decision: Reused _params already declared at module scope (line 35). authLoading=true blocks LoginScr render during sign-in so no flash. onAuthStateChange handles success path automatically. Password TestClient2026! from CLAUDE.md test accounts section. Production guard: isProd = import.meta.env.PROD && hostname === 'avenstone-app.vercel.app' — both conditions must be true to block. ?devlogin=1 bypasses the block on any hostname including production, intentionally.
 - Open: Remove before any external tester or second-tenant onboarding. Long-term: pull creds from .env.local Vite env var instead of hardcoded.
 
+[LOG — 2026-04-30]
+- Action: Fixed takeoff data layer bug — buildTakeoffDraft was returning all scanned rooms for every roomType instead of filtering to matched rooms.
+- Files: avenstone-vite/src/lib/takeoff.js
+- Decision: Added roomMatchesType(room, roomType) helper. Matching rules: bathroom → roomLabel includes 'bath', kitchen → includes 'kitchen', basement → includes 'basement' OR floor===-1, exterior → captureMode==='exterior', refresh → all rooms (whole-job by design). Rooms with no label excluded from all types except refresh. captureMode threaded from scan row into room object to support exterior detection. Temporary console.log [TAKEOFF FILTER] added for browser verification — remove after Kalin confirms filter works.
+- Open: Confirm with Kalin that refresh including exterior scans is intended UX. Console.log must be removed in follow-up commit after verification passes.
+
 ---
 
 [LOG — 2026-04-29 — END OF DAY SUMMARY]
