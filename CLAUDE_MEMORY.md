@@ -773,6 +773,13 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - avenstone-vite/src/App.jsx (dev auto-login)
 
 [LOG — 2026-04-30]
+- Action: Replaced paired feet+inches inputs with single input accepting contractor-style dimension strings (5'6", 66", 5.5', etc.)
+- Files: avenstone-vite/src/components/jobs/tabs/ScopeDetailForm.jsx
+- Decision: Parser tolerates space, no quote, decimal feet, bare number as inches. Stored as total inches unchanged. No DB schema change.
+- Decision: Bare number treated as inches by default. Most contractor input is inches; if rep wants feet they add the apostrophe.
+- Decision: Display always shows feet-and-inches when both nonzero (5'6"), inches-only or feet-only when one is zero (5' or 6").
+
+[LOG — 2026-04-30]
 - Action: Step 4.5c — bathroom shower input switched from raw sf to dimensions; labor waste bug fixed; duplicate floor tile lines merged
 - Files: supabase/migrations/20260430_bathroom_shower_dimensions.sql, avenstone-vite/src/lib/takeoff.js, avenstone-vite/src/components/jobs/tabs/ScopeDetailForm.jsx
 - Decision: Shower wall and floor sf now computed from shower_width_in × shower_length_in × shower_wall_height_in (all stored as total inches). resolveShowerSf() mirrors the UI computation in takeoff.js — both use the same formula so draft preview matches form display.
