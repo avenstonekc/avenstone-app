@@ -800,3 +800,14 @@ Things Opus did poorly (don't repeat tomorrow):
 - Used "I" framing about what I "remember" or "experience" between sessions when in fact I have no continuity. User called it out.
 
 Pattern across the failures: smoothing over reality (sycophancy, silent corrections, false confidence in numbers) for short-term conversation flow at the cost of long-term trust. User noticed every time. Don't do it.
+
+[LOG — 2026-04-30]
+- Action: Step 3 of estimate+procurement arc — TakeoffWizard.jsx renders material lines as separate collapsible section per room
+- Files: avenstone-vite/src/components/jobs/tabs/TakeoffWizard.jsx
+- Decision: lineKey fixed from `${roomId}__${trade}` to `${roomId}__${trade}__${materialName||''}` — was causing silent edit-state collision between labor and material lines sharing the same trade string.
+- Decision: effectiveLines split into laborLines/materialLines; laborSubtotal, materialSubtotal, subtotal computed separately.
+- Decision: Summary bar now shows Labor | Materials | Total (3 cost stats) instead of single Subtotal.
+- Decision: Per-room render has two sections. Labor section: always expanded, section header shows "LABOR $X,XXX" inline with column names. Materials section: collapsible toggle (collapsed by default), hidden when room has zero material lines, shows "(N items) ▼ $X,XXX" in the toggle header.
+- Decision: Material rows use same 5-col grid (2fr 60px 80px 80px 80px). First column shows materialName as primary with trade name as subtitle + waste% pill badge. Qty and rate inputs both editable (pre-filled from formula + unit cost row).
+- Decision: Footer shows "Labor $X | Materials $Y | Total $Z" breakdown.
+- Open: Step 4 — Accept & Save persists labor + material lines to estimate_line_items (currently fires alert placeholder).
