@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   sbLoadJobRoomScopes, sbSaveJobRoomScope, sbDeleteJobRoomScope,
   sbLoadScopeSubsets, sbLoadActiveTradeStrings, sbLoadJobScanRooms,
-  AV_TENANT, AV_USER_ID,
+  AV_TENANT, AV_USER_ID, sb,
 } from '../../../lib/supabase';
+import ScopeDetailForm from './ScopeDetailForm';
 
 const NAV    = '#0A1F44';
 const GOLD   = '#C9A84C';
@@ -19,13 +20,16 @@ const ROOM_TYPES = [
   { id: 'exterior', lb: 'Exterior' },
 ];
 
+// Tags that have detail forms (bathroom only for now)
+const DETAIL_FORM_TAGS = new Set(['full_remodel', 'tile_only', 'vanity_swap', 'paint_and_floor']);
 
 export default function ScopeTab({ job, setSub }) {
-  const [allRooms, setAllRooms]         = useState([]);  // flat annotated rooms from drafts
-  const [scopeRows, setScopeRows]       = useState([]);  // saved job_room_scopes
-  const [subsets, setSubsets]           = useState({});  // { roomType → subset[] }
-  const [tradeStrings, setTradeStrings] = useState([]);  // for 'custom' checklist
-  const [localEdits, setLocalEdits]     = useState({});  // { roomId → { scopeTag, customTrades, notes } }
+  const [allRooms, setAllRooms]         = useState([]);
+  const [scopeRows, setScopeRows]       = useState([]);
+  const [subsets, setSubsets]           = useState({});
+  const [schemas, setSchemas]           = useState({}); // { "roomType::scopeTag" → schema JSONB }
+  const [tradeStrings, setTradeStrings] = useState([]);
+  const [localEdits, setLocalEdits]     = useState({}); // { roomId → { scopeTag, customTrades, notes, scopeDetails } }
   const [saving, setSaving]             = useState(false);
   const [saveMsg, setSaveMsg]           = useState('');
   const [loading, setLoading]           = useState(true);
@@ -34,34 +38,42 @@ export default function ScopeTab({ job, setSub }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch scan rooms, scope rows, trade strings, and subsets in parallel.
-      // sbLoadJobScanRooms returns ALL rooms without scope filter — orphan detector
-      // needs to see not_in_scope rooms or it flags them as orphans (false positive).
-      const [scanRooms, saved, trades, ...subsetResults] = await Promise.all([
+      const [scanRooms, saved, trades, schemaRows, ...subsetResults] = await Promise.all([
         sbLoadJobScanRooms(job.id),
         sbLoadJobRoomScopes(job.id),
         sbLoadActiveTradeStrings(),
+        sb.from('scope_detail_schemas').select('room_type, scope_tag, schema, tenant_id').eq('active', true).then(r => r.data || []),
         ...ROOM_TYPES.map(rt => sbLoadScopeSubsets(rt.id).then(s => [rt.id, s])),
       ]);
       setScopeRows(saved);
       setTradeStrings(trades);
 
+      // Build schema map — tenant override beats platform default
+      const schemaMap = {};
+      for (const row of schemaRows) {
+        const key  = `${row.room_type}::${row.scope_tag}`;
+        const prev = schemaMap[key];
+        if (!prev || (row.tenant_id !== null && prev.tenant_id === null)) {
+          schemaMap[key] = { schema: row.schema, tenant_id: row.tenant_id };
+        }
+      }
+      setSchemas(schemaMap);
+
       const subsetMap = {};
       for (const [rt, s] of subsetResults) subsetMap[rt] = s;
       setSubsets(subsetMap);
 
-      // scanRooms already has roomType assigned by label match (see sbLoadJobScanRooms).
-      // primaryType = roomType for display grouping.
       const flat = scanRooms.map(r => ({ ...r, primaryType: r.roomType }));
       setAllRooms(flat);
 
-      // Init localEdits from saved rows
+      // Init localEdits from saved rows, including scope_details
       const edits = {};
       for (const row of saved) {
         edits[row.room_id] = {
           scopeTag:     row.scope_tag,
           customTrades: row.custom_trades ?? [],
           notes:        row.notes ?? '',
+          scopeDetails: row.scope_details ?? {},
         };
       }
       setLocalEdits(edits);
@@ -100,6 +112,7 @@ export default function ScopeTab({ job, setSub }) {
         scopeTag:     edit.scopeTag,
         customTrades: edit.scopeTag === 'custom' ? edit.customTrades : null,
         notes:        edit.notes || null,
+        scopeDetails: DETAIL_FORM_TAGS.has(edit.scopeTag) ? (edit.scopeDetails ?? {}) : {},
         tenantId:     AV_TENANT,
         userId:       AV_USER_ID,
       });
@@ -108,7 +121,7 @@ export default function ScopeTab({ job, setSub }) {
     }
     if (errors) setSaveMsg(`Saved ${saved}, ${errors} error(s) — check console`);
     else setSaveMsg(`${saved} room${saved !== 1 ? 's' : ''} scoped`);
-    await load(); // refresh to sync scope_missing flags
+    await load();
     setSaving(false);
     setTimeout(() => setSaveMsg(''), 3500);
   };
@@ -116,7 +129,22 @@ export default function ScopeTab({ job, setSub }) {
   const setEdit = (roomId, field, value) => {
     setLocalEdits(prev => ({
       ...prev,
-      [roomId]: { ...(prev[roomId] || { scopeTag: '', customTrades: [], notes: '' }), [field]: value },
+      [roomId]: {
+        ...(prev[roomId] || { scopeTag: '', customTrades: [], notes: '', scopeDetails: {} }),
+        [field]: value,
+      },
+    }));
+  };
+
+  // When scope tag changes, reset scope_details (new tag = fresh defaults)
+  const setScopeTag = (roomId, newTag) => {
+    setLocalEdits(prev => ({
+      ...prev,
+      [roomId]: {
+        ...(prev[roomId] || { customTrades: [], notes: '' }),
+        scopeTag:     newTag,
+        scopeDetails: {}, // cleared — ScopeDetailForm will seed from schema defaults
+      },
     }));
   };
 
@@ -126,16 +154,11 @@ export default function ScopeTab({ job, setSub }) {
     return next;
   });
 
-  // ── Metrics ────────────────────────────────────────────────────────────────
   const scopedCount = allRooms.filter(r => localEdits[r.roomId]?.scopeTag).length;
   const totalCount  = allRooms.length;
 
   if (loading) {
-    return (
-      <div style={{ padding: 32, textAlign: 'center', color: '#888' }}>
-        Loading rooms…
-      </div>
-    );
+    return <div style={{ padding: 32, textAlign: 'center', color: '#888' }}>Loading rooms…</div>;
   }
 
   if (!allRooms.length) {
@@ -153,7 +176,7 @@ export default function ScopeTab({ job, setSub }) {
   return (
     <div style={{ padding: '0 0 80px' }}>
 
-      {/* Header summary */}
+      {/* Header */}
       <div style={{ padding: '16px 20px 12px', borderBottom: `1px solid ${BORDER}`, background: CREAM }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
@@ -188,8 +211,7 @@ export default function ScopeTab({ job, setSub }) {
           alignItems: 'center', justifyContent: 'space-between', gap: 8,
         }}>
           <div style={{ fontSize: 13, color: '#92400e' }}>
-            {orphanRows.length} orphaned scope row{orphanRows.length !== 1 ? 's' : ''} — likely
-            from deleted or re-scanned rooms.
+            {orphanRows.length} orphaned scope row{orphanRows.length !== 1 ? 's' : ''} — from deleted or re-scanned rooms.
           </div>
           <button
             onClick={clearOrphans}
@@ -223,11 +245,16 @@ export default function ScopeTab({ job, setSub }) {
             </div>
 
             {typeRooms.map(room => {
-              const edit  = localEdits[room.roomId] || { scopeTag: '', customTrades: [], notes: '' };
-              const saved = scopeRows.find(r => r.room_id === room.roomId);
-              const isSet = !!saved?.scope_tag;
-              const isCol = collapsed.has(room.roomId) && isSet;
+              const edit       = localEdits[room.roomId] || { scopeTag: '', customTrades: [], notes: '', scopeDetails: {} };
+              const savedRow   = scopeRows.find(r => r.room_id === room.roomId);
+              const isSet      = !!savedRow?.scope_tag;
+              const isCol      = collapsed.has(room.roomId) && isSet;
               const typeSubsets = subsets[rt.id] || [];
+
+              // Detail form: bathroom only, non-custom, non-not_in_scope tags
+              const schemaKey   = `${rt.id}::${edit.scopeTag}`;
+              const schemaEntry = schemas[schemaKey];
+              const showDetail  = rt.id === 'bathroom' && DETAIL_FORM_TAGS.has(edit.scopeTag) && !!schemaEntry;
 
               return (
                 <div
@@ -256,7 +283,6 @@ export default function ScopeTab({ job, setSub }) {
                       </div>
                       <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
                         {room.areaSf > 0 ? `${room.areaSf.toFixed(0)} sf` : 'No area'}
-                        {room.floorLabel ? ` · ${room.floorLabel}` : ''}
                         {isSet && edit.scopeTag
                           ? ` · ${typeSubsets.find(s => s.scope_tag === edit.scopeTag)?.label || edit.scopeTag}`
                           : ''}
@@ -280,14 +306,15 @@ export default function ScopeTab({ job, setSub }) {
                   {/* Room body */}
                   {!isCol && (
                     <div style={{ padding: '12px 14px', borderTop: `1px solid ${BORDER}` }}>
+
                       {/* Scope tag dropdown */}
-                      <div style={{ marginBottom: 10 }}>
+                      <div style={{ marginBottom: showDetail ? 0 : 10 }}>
                         <label style={{ fontSize: 12, fontWeight: 600, color: '#555', display: 'block', marginBottom: 4 }}>
                           Scope
                         </label>
                         <select
                           value={edit.scopeTag}
-                          onChange={e => setEdit(room.roomId, 'scopeTag', e.target.value)}
+                          onChange={e => setScopeTag(room.roomId, e.target.value)}
                           className="finp"
                           style={{ width: '100%', fontSize: 13 }}
                         >
@@ -298,9 +325,19 @@ export default function ScopeTab({ job, setSub }) {
                         </select>
                       </div>
 
+                      {/* Scope detail form (bathroom only, non-custom/not_in_scope) */}
+                      {showDetail && (
+                        <ScopeDetailForm
+                          schema={schemaEntry.schema}
+                          values={edit.scopeDetails ?? {}}
+                          onChange={newDetails => setEdit(room.roomId, 'scopeDetails', newDetails)}
+                          roomDefaults={{ floorSf: room.areaSf }}
+                        />
+                      )}
+
                       {/* Custom trades checklist */}
                       {edit.scopeTag === 'custom' && (
-                        <div style={{ marginBottom: 10 }}>
+                        <div style={{ marginBottom: 10, marginTop: 10 }}>
                           <div style={{
                             fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 6,
                             display: 'flex', justifyContent: 'space-between',
@@ -345,7 +382,7 @@ export default function ScopeTab({ job, setSub }) {
                       )}
 
                       {/* Notes */}
-                      <div>
+                      <div style={{ marginTop: 10 }}>
                         <label style={{ fontSize: 12, fontWeight: 600, color: '#555', display: 'block', marginBottom: 4 }}>
                           Notes (optional)
                         </label>
