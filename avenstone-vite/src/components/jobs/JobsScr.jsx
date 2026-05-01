@@ -30,7 +30,7 @@ function ErrorBoundary({ back, children }) {
   }
 }
 
-export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew }) {
+export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew, clearSel }) {
   const [sel, setSel] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
@@ -73,6 +73,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
 
   useEffect(() => { if (pendingJobId && !loading) { setSel(pendingJobId); clearPendingJobId(); } }, [pendingJobId, loading]);
   useEffect(() => { if (openNew) { setShowNew(true); clearOpenNew && clearOpenNew(); } }, [openNew]);
+  useEffect(() => { if (clearSel) setSel(null); }, [clearSel]);
 
   const upd = (id, ch) => { const u = jobs.map(j => j.id === id ? { ...j, ...ch } : j); setJobs(u); ls('av_j', u); sbUpd(id, ch); };
   const add = async () => {

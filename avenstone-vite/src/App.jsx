@@ -51,6 +51,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [pendingJobId, setPendingJobId] = useState(null);
   const [pendingNew, setPendingNew] = useState(false);
+  const [jobsSelClear, setJobsSelClear] = useState(0);
   const landingChecked = useRef(false);
 
   useEffect(() => {
@@ -181,7 +182,7 @@ export default function App() {
             }, []).map(item =>
               item.type === 's'
                 ? <div key={item.k} className="sb-sec">{item.lb}</div>
-                : <div key={item.id} className={`sb-item${pg === item.id ? ' on' : ''}`} onClick={() => setPg(item.id)}>
+                : <div key={item.id} className={`sb-item${pg === item.id ? ' on' : ''}`} onClick={() => { setPg(item.id); if (item.id === 'jobs') setJobsSelClear(n => n + 1); }}>
                     <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{Ic[item.ic] || Ic.grid}</span>
                     {item.lb}
                     {item.badge > 0 && <span className="sb-badge">{item.badge}</span>}
@@ -244,7 +245,7 @@ export default function App() {
             {pg === 'today' && <TodayScr profile={profile} />}
             {pg === 'dashboard' && <AiHomeScr profile={profile} jobs={jobs} nav={setPg} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
-            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('dashboard')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} />}
+            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('dashboard')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} />}
             {pg === 'subs' && isStaff && <SubDir profile={profile} />}
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
