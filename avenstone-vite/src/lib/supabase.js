@@ -44,7 +44,7 @@ export const GET_JOB_STATUS_URL         = `${FN}/get-job-status`;
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 export const sbSave = async j => {
   try {
-    await sb.from('jobs').upsert({
+    const { error } = await sb.from('jobs').upsert({
       id: j.id, tenant_id: AV_TENANT, address: j.address, status: j.status,
       scope: j.scope || '', sqft: j.sqft || '', created_at: j.created,
       intake_answers: j.ans || {}, client_name: j.client_name || '',
@@ -56,7 +56,9 @@ export const sbSave = async j => {
       referring_realtor_phone: j.referring_realtor_phone || '',
       referring_realtor_email: j.referring_realtor_email || '',
     });
-  } catch (e) { console.error(e); }
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message || 'Unknown error' }; }
 };
 
 export const sbLoad = async repName => {

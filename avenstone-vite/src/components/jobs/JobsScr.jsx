@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY, ADDRESS_AUTOCOMPLETE_URL } from '../../lib/supabase';
+import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY, ADDRESS_AUTOCOMPLETE_URL, AI_ERROR_LOGGER_URL, AV_USER_ID, AV_TENANT } from '../../lib/supabase';
 import { Ic, STATS, sc, sl, f$, isMob, ls } from '../../lib/utils';
 import JobDet from './JobDet';
 import AiIntakeWizard from '../ai/AiIntakeWizard';
@@ -41,6 +41,8 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   const [fil, setFil] = useState('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  const [saveErr, setSaveErr] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const fetchSuggestions = async val => {
     if (val.length < 4) { setAddrSuggestions([]); return; }
@@ -73,10 +75,24 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   useEffect(() => { if (openNew) { setShowNew(true); clearOpenNew && clearOpenNew(); } }, [openNew]);
 
   const upd = (id, ch) => { const u = jobs.map(j => j.id === id ? { ...j, ...ch } : j); setJobs(u); ls('av_j', u); sbUpd(id, ch); };
-  const add = () => {
-    if (!newA.trim()) return;
+  const add = async () => {
+    if (!newA.trim() || saving) return;
     const j = { id: crypto.randomUUID(), address: newA.trim(), status: 'lead', created: new Date().toISOString(), scope: '', sqft: '', photos: [], activity: [], change_orders: [], client_name: '', client_phone: '', client_email: '', assigned_rep: '', assigned_subs: '', contract_value: 0, co_total: 0, target_completion: '' };
-    const u = [j, ...jobs]; setJobs(u); ls('av_j', u); sbSave(j); setNewA(''); setShowNew(false); setSel(j.id);
+    const prev = [...jobs];
+    const u = [j, ...jobs]; setJobs(u); ls('av_j', u);
+    setSaving(true); setSaveErr(null);
+    const result = await sbSave(j);
+    setSaving(false);
+    if (!result.ok) {
+      setJobs(prev); ls('av_j', prev);
+      setSaveErr(result.error || 'Failed to save project — please try again');
+      fetch(AI_ERROR_LOGGER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({ function_name: 'JobsScr.add', error_type: 'db_write_failure', error_message: result.error, user_input: j.address, user_id: AV_USER_ID, tenant_id: AV_TENANT }),
+      }).catch(() => {});
+      return;
+    }
+    setNewA(''); setShowNew(false); setSel(j.id);
   };
   const del = id => { if (!window.confirm('Delete this job?')) return; const u = jobs.filter(j => j.id !== id); setJobs(u); ls('av_j', u); sbDel(id); setSel(null); };
 
@@ -144,9 +160,15 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
               </div>}
             </div>
           </div>
+          {saveErr && (
+            <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 6, padding: '8px 12px', marginTop: 8, fontSize: 12, color: '#991B1B', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{saveErr}</span>
+              <button onClick={() => setSaveErr(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B', fontSize: 14, lineHeight: 1, marginLeft: 8 }}>✕</button>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowNew(false); setAddrSuggestions([]); }}>Cancel</button>
-            <button className={`btn ${newA.trim() ? 'btn-navy' : 'btn-ghost'}`} style={{ flex: 1 }} onClick={add}>Add Project</button>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowNew(false); setAddrSuggestions([]); setSaveErr(null); }}>Cancel</button>
+            <button className={`btn ${newA.trim() && !saving ? 'btn-navy' : 'btn-ghost'}`} style={{ flex: 1 }} onClick={add} disabled={saving}>{saving ? 'Saving…' : 'Add Project'}</button>
           </div>
         </div>
       </div>}

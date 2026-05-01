@@ -101,7 +101,7 @@ export default function App() {
     sbCountPendingTodos().then(count => { if (count > 0) setPg('today'); });
   }, [profile?.id]);
 
-  const saveJob = j => { const u = [j, ...jobs]; setJobs(u); ls('av_j', u); sbSave(j); };
+  const saveJob = async j => { const u = [j, ...jobs]; setJobs(u); ls('av_j', u); await sbSave(j); };
   const signOut = async () => { await sb.auth.signOut(); ls('av_j', []); setJobs([]); setNotifs([]); };
 
   useEffect(() => {
