@@ -445,12 +445,13 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       const effectiveWallSf   = (laborOverrideKey === 'shower_wall_sf' && laborOverrideVal > 0)
         ? laborOverrideVal : room.wallAreaSf;
 
+      // Labor quantity never applies waste — waste_pct is materials-only.
       const { quantity, quantityPreFilled, quantityNotes } = buildQuantity({
         trade: def.trade, unit,
         areaSf: effectiveAreaSf,
         wallAreaSf: effectiveWallSf,
         perimeterLf: room.perimeterLf,
-        wastePct,
+        wastePct: 0,
       });
 
       const lineCost = (baseRate != null && quantity != null)
