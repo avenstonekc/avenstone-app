@@ -164,14 +164,60 @@ function evaluateFormula(formula, metrics, materialRow, scopeDetails) {
   return qty;
 }
 
+// ── Shower sf resolver ────────────────────────────────────────────────────────
+// Computes shower_wall_sf and shower_floor_sf from dimension inputs
+// (shower_width_in × shower_length_in × shower_wall_height_in, all in inches).
+// Override fields win when set. Returns {wall, floor} in sf.
+// Returns {wall:0, floor:0} when dimension fields are absent (old direct-entry
+// data or tub_only — formula evaluator falls back to existing scope_detail values).
+
+function resolveShowerSf(scopeDetails) {
+  if (!scopeDetails) return { wall: 0, floor: 0 };
+
+  const w = Number(scopeDetails.shower_width_in)       || 0;
+  const l = Number(scopeDetails.shower_length_in)      || 0;
+  const h = Number(scopeDetails.shower_wall_height_in) || 96;
+
+  if (!w || !l) return { wall: 0, floor: 0 };
+
+  const showerType = scopeDetails.shower_type || 'shower_only';
+  let wallSf = 0;
+
+  if (showerType === 'tub_only') {
+    // 3-wall tub surround: two long walls + back wall
+    wallSf = ((2 * w + l) / 12) * (h / 12);
+  } else {
+    // shower_only or tub_plus_shower: 4-wall shower stall
+    wallSf = (2 * (w + l) / 12) * (h / 12);
+  }
+
+  const floorSf = (w / 12) * (l / 12);
+
+  // Per-field override wins when explicitly set
+  return {
+    wall:  scopeDetails.shower_wall_sf_override  != null ? Number(scopeDetails.shower_wall_sf_override)  : wallSf,
+    floor: scopeDetails.shower_floor_sf_override != null ? Number(scopeDetails.shower_floor_sf_override) : floorSf,
+  };
+}
+
 // ── Scope details resolver ────────────────────────────────────────────────────
 // Merges rep-saved scope_details with schema field defaults for any missing key.
-// Applies subtract logic (e.g. floor_tile_sf = room.areaSf - shower_floor_sf).
+// Injects computed shower_wall_sf / shower_floor_sf from dimensions before the
+// subtract pass so floor_tile_sf can net out the shower area correctly.
 // Returns a flat object safe to pass into evaluateFormula.
 
 function resolveDetails(schema, scopeDetails, room) {
   if (!schema?.fields) return scopeDetails ?? {};
   const resolved = { ...(scopeDetails ?? {}) };
+
+  // Inject dimension-computed shower sf before defaults + subtract pass.
+  // When dimension fields exist → computed values overwrite any stale direct-entry.
+  // When dimensions are absent (old format / tub_only) → returns 0,0 → no injection,
+  // existing shower_wall_sf / shower_floor_sf in resolved (if present) are kept.
+  const showerSf = resolveShowerSf(resolved);
+  if (showerSf.wall  > 0) resolved.shower_wall_sf  = showerSf.wall;
+  if (showerSf.floor > 0) resolved.shower_floor_sf = showerSf.floor;
+
   for (const field of schema.fields) {
     if (resolved[field.key] !== undefined) continue;
     if (field.default_from === 'room.floorSf') {
