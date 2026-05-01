@@ -700,6 +700,17 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 
 ---
 
+[LOG — 2026-04-30]
+- Action: Step 1 of estimate+procurement arc — material rates and formulas added to takeoff data layer
+- Files: supabase/migrations/20260430_unit_costs_materials_columns.sql, supabase/migrations/20260430_seed_bathroom_materials.sql, supabase/migrations/20260430_bathroom_template_material_formulas.sql
+- Decision: Material rows live in same takeoff_unit_costs table as labor (category column: 'labor'|'materials'). No separate material catalog table — single source of truth. Partial unique indexes replace old UNIQUE constraint (NULL tenant_id wasn't enforced by old constraint).
+- Decision: Unit CHECK constraint expanded from sf|lf|each|lump to include material packaging units (sheet|bag|gallon|bottle|set|roll|bucket|quart|tube|box).
+- Decision: Bathroom template only in this commit. Kitchen, basement, whole-house, exterior get materials in separate prompts.
+- Decision: Quantity formulas use basis × multiplier ÷ coverage shape. waste_pct is on the unit cost row per material, not the formula. Formula references material_name string, not unit_cost id — looser coupling, easier to read.
+- Decision: scope_definition.waste_pct (existing JSONB key) is deprecated — all-null, unused. Active waste_pct is the new SQL column on takeoff_unit_costs. Will be dropped in a future cleanup migration.
+- Decision: Material rows seeded: labor=59, materials=35. Spec said ~38; actual is 35 from exact row count.
+- Open: Step 2 — extend buildTakeoffDraft to emit material lines using these formulas. Step 3 — render material section in TakeoffWizard. Step 4 — persist to estimate_line_items.
+
 [LOG — 2026-04-29 — END OF DAY SUMMARY]
 
 ## What shipped today (in order)

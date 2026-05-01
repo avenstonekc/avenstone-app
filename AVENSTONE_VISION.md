@@ -224,7 +224,9 @@ different sales motions for different jobs.
 - change_orders: + estimate_line_item_id, allowance_original,
   allowance_override, source_type, auto_generated,
   client_approved_at, disclosed_in_oh_shit_moment_id
-- New material_catalog table (tenant-scoped, seeded by hand)
+- **takeoff_unit_costs material rate rows** — material rates live in the same `takeoff_unit_costs` table as labor (distinguished by `category` column). No separate material_catalog table. 35 bathroom rows seeded 2026-04-30; kitchen/basement/refresh/exterior follow in separate prompts. Waste and coverage formulas live on the rate row.
+- **takeoff_templates.scope_definition.materials_formula** — quantity formula arrays per trade, added as a new JSONB key alongside existing scope_definition fields. Formula references material_name to join unit cost rows. Bathroom template wired 2026-04-30.
+- New material_catalog table (tenant-scoped, seeded by hand) — **SUPERSEDED** by the above approach; no separate catalog table will be built.
 - ai_knowledge: extend with category='inspection_checklist'
   — entries to be AI-seeded initially, owner-curated thereafter
 

@@ -140,6 +140,11 @@ Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
 - `consultation_extractions` — ambient listening output (concerns, budget, risks, scope hints)
 - `consultation_measurements` — per-trade measurements from measure mode
 
+**Takeoff tables:**
+- `takeoff_templates` — one row per (room_type, trade). `scope_definition` JSONB: `summary`, `optional`, `waste_pct` (deprecated/null), `conditional`, `default_unit`, `materials_formula` (array of formula objects — qty_basis, qty_multiplier, qty_divisor, fixed_qty per material). Platform defaults have `tenant_id=NULL`; tenant rows override.
+- `takeoff_unit_costs` — both labor and material rate rows, distinguished by `category` column (`labor` | `materials`). Labor rows: `unit`, `base_rate`, `multipliers` JSONB, `waste_pct`. Material rows: same plus `material_name`, `coverage_sf`. Platform defaults `tenant_id=NULL`; tenant override rows beat platform defaults in `buildTakeoffDraft` JS de-dup.
+- `trade_taxonomy` — canonical parent_trade / sub_trade hierarchy. Full-path strings (e.g. `Tile - Wall / shower`) join templates to unit costs.
+
 **Storage buckets:** `job-photos` (public), `job-documents` (private), `bid-quotes` (private)
 
 **RLS helpers:** `get_my_role()`, `get_my_tenant_id()`, `can_access_job(job_id)`
