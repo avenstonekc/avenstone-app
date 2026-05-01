@@ -111,6 +111,28 @@ function resolveLineCostStatus(baseRate, quantity) {
   return 'ok';
 }
 
+// ── Material formula evaluator ────────────────────────────────────────────────
+
+function evaluateFormula(formula, metrics, materialRow) {
+  if (formula.qty_basis === 'fixed') {
+    return Number(formula.fixed_qty || 0);
+  }
+
+  const basisVal = metrics[formula.qty_basis];
+  if (basisVal == null || basisVal === 0) return 0;
+
+  const multiplier   = Number(formula.qty_multiplier || 1);
+  const wasteFactor  = 1 + (Number(materialRow.waste_pct || 0) / 100);
+  let qty = basisVal * multiplier * wasteFactor;
+
+  if (formula.qty_divisor === 'coverage_sf') {
+    const coverage = Number(materialRow.coverage_sf || 0);
+    if (coverage > 0) qty = qty / coverage;
+  }
+
+  return qty;
+}
+
 // ── Room metrics for material formula evaluation ───────────────────────────────
 // Takes a processed room object (already in allRooms — has areaSf, wallAreaSf,
 // perimeterLf, height, doors, windows threaded through from raw scan JSONB).
@@ -297,6 +319,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       lines.push({
         roomId: room.roomId,
         trade: def.trade,
+        category: 'labor',
         templateNotes: def.summary,
         optional: def.optional,
         conditional: def.conditional,
@@ -315,14 +338,73 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
         lineCost,
         lineCostStatus: resolveLineCostStatus(baseRate, quantity),
       });
+
+      // Material lines from template formula
+      if (def.materialsFormula?.length) {
+        const metrics = roomMetrics(room);
+        for (const formula of def.materialsFormula) {
+          const matKey  = `${def.trade}::${formula.material_name}`;
+          const matRow  = materialRateMap[matKey];
+          const matRate = matRow?.base_rate != null ? Number(matRow.base_rate) : null;
+          const matUnit = matRow?.unit ?? 'each';
+
+          let matQty = null;
+          let matQtyNotes = '';
+
+          if (matRow) {
+            const raw = evaluateFormula(formula, metrics, matRow);
+            matQty = Math.round(raw * 100) / 100;
+            const divisorLabel = formula.qty_divisor === 'coverage_sf' ? ' ÷ coverage' : '';
+            const wasteLabel   = Number(matRow.waste_pct || 0) > 0
+              ? ` + ${matRow.waste_pct}% waste` : '';
+            matQtyNotes = formula.qty_basis === 'fixed'
+              ? `fixed: ${formula.fixed_qty}`
+              : `${formula.qty_basis} × ${formula.qty_multiplier}${divisorLabel}${wasteLabel}`;
+          } else {
+            matQtyNotes = 'no rate row found for material — rep must enter';
+          }
+
+          const matLineCost = (matRate != null && matQty != null)
+            ? Math.round(matRate * matQty * 100) / 100
+            : null;
+
+          lines.push({
+            roomId:    room.roomId,
+            trade:     def.trade,
+            category:  'materials',
+            materialName: formula.material_name,
+            templateNotes: def.summary,
+            optional:  def.optional,
+            conditional: def.conditional,
+            unit:       matUnit,
+            unitCostId: matRow?.id ?? null,
+            unitCostSource: matRow
+              ? (matRow.tenant_id !== null ? 'tenant_override' : 'platform_default')
+              : null,
+            baseRate:       matRate,
+            baseRateMissing: matRate == null,
+            multiplier:     1,
+            wastePct:       matRow?.waste_pct != null ? Number(matRow.waste_pct) : 0,
+            quantity:       matQty,
+            quantityPreFilled: matQty != null,
+            quantityNotes:  matQtyNotes,
+            lineCost:       matLineCost,
+            lineCostStatus: resolveLineCostStatus(matRate, matQty),
+          });
+        }
+      }
     }
   }
 
   // 7. Summary
+  const laborLinesList    = lines.filter(l => l.category === 'labor');
+  const materialLinesList = lines.filter(l => l.category === 'materials');
   const linesNeedingRate     = lines.filter(l => l.baseRateMissing).length;
   const linesNeedingQuantity = lines.filter(l => !l.quantityPreFilled).length;
   const linesReady           = lines.filter(l => l.lineCostStatus === 'ok').length;
-  const subtotal = Math.round(lines.reduce((s, l) => s + (l.lineCost ?? 0), 0) * 100) / 100;
+  const laborSubtotal    = Math.round(laborLinesList.reduce((s, l) => s + (l.lineCost ?? 0), 0) * 100) / 100;
+  const materialSubtotal = Math.round(materialLinesList.reduce((s, l) => s + (l.lineCost ?? 0), 0) * 100) / 100;
+  const subtotal         = Math.round((laborSubtotal + materialSubtotal) * 100) / 100;
 
   return {
     jobId,
@@ -330,11 +412,15 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     rooms,
     lines,
     summary: {
-      totalRooms: rooms.length,
-      totalLines: lines.length,
+      totalRooms:    rooms.length,
+      totalLines:    lines.length,
+      laborLines:    laborLinesList.length,
+      materialLines: materialLinesList.length,
       linesNeedingRate,
       linesNeedingQuantity,
       linesReady,
+      laborSubtotal,
+      materialSubtotal,
       subtotal,
       subtotalIncomplete: lines.some(l => l.lineCost == null),
     },
@@ -345,8 +431,10 @@ function emptyDraft(jobId, roomType) {
   return {
     jobId, roomType, rooms: [], lines: [],
     summary: {
-      totalRooms: 0, totalLines: 0, linesNeedingRate: 0,
-      linesNeedingQuantity: 0, linesReady: 0,
+      totalRooms: 0, totalLines: 0,
+      laborLines: 0, materialLines: 0,
+      linesNeedingRate: 0, linesNeedingQuantity: 0, linesReady: 0,
+      laborSubtotal: 0, materialSubtotal: 0,
       subtotal: 0, subtotalIncomplete: false,
     },
   };
