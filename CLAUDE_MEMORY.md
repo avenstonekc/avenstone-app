@@ -773,6 +773,20 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 - avenstone-vite/src/App.jsx (dev auto-login)
 
 [LOG — 2026-04-30]
+- Action: Step 4.5c — bathroom shower input switched from raw sf to dimensions; labor waste bug fixed; duplicate floor tile lines merged
+- Files: supabase/migrations/20260430_bathroom_shower_dimensions.sql, avenstone-vite/src/lib/takeoff.js, avenstone-vite/src/components/jobs/tabs/ScopeDetailForm.jsx
+- Decision: Shower wall and floor sf now computed from shower_width_in × shower_length_in × shower_wall_height_in (all stored as total inches). resolveShowerSf() mirrors the UI computation in takeoff.js — both use the same formula so draft preview matches form display.
+- Decision: feet_inches input type — pair of number inputs (ft + in), stored as total inches. Live "= N' N"" label displayed alongside.
+- Decision: number_optional input type — number that stores null when blank. Placeholder "blank = auto" signals the behavior.
+- Decision: ShowerSfDisplay renders a read-only computed tile area block after the shower_wall_height_in field — shows wall sf and floor sf with (auto) / (override) labels. Injected via React.Fragment key check in section render loop.
+- Decision: Labor never applies waste factor. wastePct: 0 passed to buildQuantity for all labor lines. Waste is materials-only (evaluateFormula handles it via materialRow.waste_pct).
+- Decision: Material lines with same trade + material_name within a room get summed at draft time via pendingMatLines → Map merge. No more duplicate "Floor tile field" rows.
+- Decision: Shower height default 96" (full ceiling, 8 ft). Rep adjusts down for tub surrounds or wet-zone-only tile.
+- Decision: resolveShowerSf branches on shower_type — tub_only uses 3-wall perimeter (2w+l), all others use 4-wall perimeter 2(w+l). Injected into resolvedDets before subtract pass so floor_tile_sf = room.floorSf - shower_floor_sf works correctly.
+- Decision: Per-field overrides (shower_wall_sf_override, shower_floor_sf_override) win over computed values when non-null. Mixed override supported (one field overridden, other auto).
+- Open: Other dimension-driven things (tub surround accent walls, niche dimensions) deferred to future. Same feet_inches + override pattern when needed.
+
+[LOG — 2026-04-30]
 - Action: Step 4.5b — bathroom scope detail forms shipped with adjacent fixes (orphan-detector, wall tile math, fixture catalog)
 - Files: supabase/migrations/20260430_scope_detail_schemas.sql, supabase/migrations/20260430_seed_bathroom_fixtures.sql, supabase/migrations/20260430_seed_bathroom_detail_schemas.sql, supabase/migrations/20260430_fix_bathroom_wall_tile_formulas.sql, avenstone-vite/src/lib/takeoff.js, avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/ScopeTab.jsx, avenstone-vite/src/components/jobs/tabs/ScopeDetailForm.jsx (new)
 - Decision: scope_detail_schemas table holds JSON schemas keyed by (room_type, scope_tag). Per-tenant override pattern via tenant_id NULL vs set, same as template_scope_subsets.
