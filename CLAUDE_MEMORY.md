@@ -900,3 +900,55 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
 - Decision: TakeoffWizard excluded Set + toggleExclude + checkbox column (24px leftmost). Excluded rows: opacity 0.4, inputs disabled, not counted in subtotals. acceptTakeoffDraft skips excluded lines for override saves + insert.
 - Verification: shower_wall_sf=128, shower_floor_sf=16, floor_tile_sf=133 confirmed via local simulation against live data (48×48×96in shower).
 - Open: Supabase PAT stored at C:/Users/Kalin/supabase-token.txt. Financial deprecated table drop (grace window expired 2026-05-07). invitations_to_bid compat view drop. Kitchen/basement material templates.
+
+[LOG — 2026-04-30]
+- Action: Step 4.6 + 4.5d shipped — labor/material formula
+  unification + per-line exclude toggle. Plus niche+bench labor
+  extras as follow-up.
+- Files: 4 commits across takeoff.js, ScopeDetailForm.jsx,
+  TakeoffWizard.jsx, new lib/computeFns.js, 4 migrations
+- Decision: labor_formula JSONB inline in
+  takeoff_templates.scope_definition (Option 1). Single object per
+  trade for the main labor line. Material formulas remain array.
+  Same evaluator family.
+- Decision: COMPUTE_FNS registry (subtract, sum, multiply,
+  shower_wall_sf_from_dims, shower_floor_sf_from_dims) lives in
+  shared lib/computeFns.js — both takeoff.js and ScopeDetailForm.jsx
+  import from it. No client/server drift on shower math.
+- Decision: Schema-declared overridable + override_key replaces the
+  shower_*_sf_override naming convention. Computed fields with
+  overridable: true auto-render override input below.
+- Decision: 'subtract' as a schema field property removed. Replaced
+  by computed fields using compute.fn='subtract'. Generic pattern.
+- Decision: LABOR_SCOPE_DETAIL_OVERRIDE constant + resolveShowerSf
+  function deleted. Replaced by schema-driven generic resolution.
+  Trades without labor_formula in scope_definition fall back to
+  legacy buildQuantity for backward compat — affects non-bathroom
+  templates (kitchen, basement, refresh, exterior) until those get
+  their own labor_formula entries.
+- Decision: Migration A — auto-translate old override keys in same
+  SQL. Stale shower_wall_sf and shower_floor_sf keys stripped from
+  existing job_room_scopes scope_details on migration.
+- Decision: Per-line exclude on TakeoffWizard. Excluded lines visible
+  (greyed) but not counted in subtotals or written to
+  estimate_line_items. lineKey from existing helper, no collision
+  between labor and material rows of same trade.
+- Decision: labor_extras array on scope_definition for
+  boolean-gated additional labor lines. Niche install ($200) and
+  bench framing + waterproof ($175) shipped as first entries.
+  Pattern: { material_name, qty_basis: 'scope_detail',
+  scope_detail_key, fixed_qty }.
+- Decision: idx_uc_labor_uniq widened from (trade) to (trade +
+  COALESCE(material_name, '')). Original index was a latent
+  landmine — would have collided on any second labor row for a
+  trade (custom labor, tenant overrides for extras, etc.). Mirrors
+  how materials are indexed.
+- Open: Other room types (kitchen, basement, refresh, exterior)
+  still on legacy buildQuantity path. Will get their own
+  labor_formula entries when scope detail forms ship for those room
+  types (Step 5+).
+- Open: Layer 1 — "Add custom line" button on TakeoffWizard for
+  one-off line items not in any template. Next prompt.
+- Open: Layer 2 — "Save this rate for future jobs" checkbox on
+  custom line modal. Adds to tenant catalog. Deferred until Layer 1
+  is in field use and patterns emerge.
