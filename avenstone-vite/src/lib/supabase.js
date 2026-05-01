@@ -1089,3 +1089,64 @@ export const sbBuildTakeoffDraft = async ({ jobId, roomType, roomIds }) => {
   const { buildTakeoffDraft } = await import('./takeoff');
   return buildTakeoffDraft({ jobId, roomType, roomIds });
 };
+
+/**
+ * Save a rep-edited rate back to takeoff_unit_costs as a tenant override row.
+ * Platform-default rows (tenant_id NULL) are never touched — only tenant rows
+ * are written. If a tenant override for this (trade, room_type, category,
+ * material_name) already exists, it is updated in-place.
+ *
+ * Uses SELECT → INSERT-or-UPDATE because the unique indexes on the table use
+ * coalesce() expressions that Supabase JS onConflict can't target directly.
+ */
+export const sbSaveTenantUnitCostOverride = async ({
+  tenantId,
+  roomType,
+  trade,
+  materialName,     // null for labor rows
+  category,         // 'labor' | 'materials'
+  unit,
+  baseRate,
+  sourceUnitCostId, // id of the platform-default row this overrides
+}) => {
+  if (!baseRate || Number(baseRate) <= 0) return { error: 'baseRate must be positive' };
+
+  // Find existing tenant override for this exact (trade, room_type, category, material_name)
+  let q = sb.from('takeoff_unit_costs')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('room_type', roomType)
+    .eq('trade', trade)
+    .eq('category', category)
+    .eq('active', true);
+
+  if (materialName == null) {
+    q = q.is('material_name', null);
+  } else {
+    q = q.eq('material_name', materialName);
+  }
+
+  const { data: existing } = await q.maybeSingle();
+
+  if (existing) {
+    const { error } = await sb.from('takeoff_unit_costs')
+      .update({ base_rate: Number(baseRate), updated_at: new Date().toISOString() })
+      .eq('id', existing.id);
+    return { error, id: existing.id };
+  }
+
+  const row = {
+    tenant_id:    tenantId,
+    room_type:    roomType,
+    trade,
+    category,
+    material_name: materialName ?? null,
+    unit,
+    base_rate:    Number(baseRate),
+    multipliers:  {},
+    active:       true,
+    notes:        sourceUnitCostId ? `override of platform row ${sourceUnitCostId}` : null,
+  };
+  const { data, error } = await sb.from('takeoff_unit_costs').insert(row).select('id').single();
+  return { error, id: data?.id };
+};
