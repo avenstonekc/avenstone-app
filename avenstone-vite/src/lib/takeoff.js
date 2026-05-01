@@ -1,4 +1,4 @@
-import { sb } from './supabase';
+import { sb, AV_TENANT, sbSaveEstimate, sbSaveTenantUnitCostOverride, sbResolveTodosBySource } from './supabase';
 import { floorLabel } from './captureTypes';
 
 // ── Geometry helpers ───────────────────────────────────────────────────────────
@@ -427,6 +427,121 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   };
 
   return draft;
+}
+
+/**
+ * Accept a takeoff draft. Writes labor + material lines to estimate_line_items.
+ * Saves any rate edits the rep made back to takeoff_unit_costs as tenant overrides.
+ * Resolves estimate-related todos tied to this job.
+ *
+ * @param {{ draft, edits, tenantId, userId }} args
+ *   edits — map keyed by lineKey (`${roomId}__${trade}__${materialName||''}`)
+ *            each value is { quantity?, baseRate? } with the rep's overrides
+ * @returns {{ jobEstimateId, lineItemCount, overrideCount, errors[] }}
+ */
+export async function acceptTakeoffDraft({ draft, edits, tenantId, userId }) {
+  const errors = [];
+
+  // 1. Upsert a job_estimates row so we have an estimate_id for line items
+  //    and a source_id to resolve estimate_no_proposal_24h todos.
+  //    sbSaveEstimate upserts on job_id — safe to call even if row exists.
+  const jobEstimateRow = await sbSaveEstimate(draft.jobId, []);
+  const jobEstimateId  = jobEstimateRow?.id ?? null;
+
+  // 2. Resolve final qty + rate per line, detect rep edits
+  const lineKey = (line) =>
+    `${line.roomId}__${line.trade}__${line.materialName || ''}`;
+
+  const resolvedLines = draft.lines.map(line => {
+    const k = lineKey(line);
+    const e = edits[k] || {};
+    const qty  = e.quantity  !== undefined ? e.quantity  : line.quantity;
+    const rate = e.baseRate  !== undefined ? e.baseRate  : line.baseRate;
+    const rateEdited = e.baseRate !== undefined && e.baseRate !== line.baseRate;
+    return { ...line, resolvedQty: qty, resolvedRate: rate, rateEdited };
+  });
+
+  // 3. Save rate overrides — deduplicated by (roomType, trade, materialName, category)
+  //    so editing the same material across multiple rooms writes a single override row.
+  const overridesSeen = new Set();
+  let overrideCount = 0;
+
+  for (const line of resolvedLines) {
+    if (!line.rateEdited || line.resolvedRate == null || line.resolvedRate <= 0) continue;
+    const dedupeKey = `${line.trade}::${line.materialName || ''}::${line.category}`;
+    if (overridesSeen.has(dedupeKey)) continue;
+    overridesSeen.add(dedupeKey);
+
+    const { error } = await sbSaveTenantUnitCostOverride({
+      tenantId,
+      roomType:       draft.roomType,
+      trade:          line.trade,
+      materialName:   line.materialName ?? null,
+      category:       line.category,
+      unit:           line.unit,
+      baseRate:       line.resolvedRate,
+      sourceUnitCostId: line.unitCostId,
+    });
+    if (error) {
+      errors.push({ type: 'override_save', trade: line.trade, material: line.materialName, error: error.message ?? error });
+    } else {
+      overrideCount++;
+    }
+  }
+
+  // 4. Delete existing takeoff-sourced line items for this job (notes prefix isolates
+  //    them from AI estimator / consultation rows — those are untouched).
+  await sb.from('estimate_line_items')
+    .delete()
+    .eq('job_id', draft.jobId)
+    .like('notes', 'takeoff:%');
+
+  // 5. Build row payloads
+  const rows = resolvedLines.map((line, i) => {
+    const qty      = line.resolvedQty  ?? 1;
+    const rate     = line.resolvedRate ?? 0;
+    const noRate   = line.resolvedRate == null;
+    const noteBase = line.category === 'materials'
+      ? `takeoff:${draft.roomType}:${line.roomId}:${line.trade}`
+      : `takeoff:${draft.roomType}:${line.roomId}`;
+    const notes    = noRate ? `${noteBase} PENDING RATE` : noteBase;
+
+    return {
+      tenant_id:    tenantId,
+      job_id:       draft.jobId,
+      estimate_id:  jobEstimateId,
+      phase:        line.trade,
+      category:     line.category,
+      trade:        line.trade,
+      description:  line.category === 'materials'
+        ? (line.materialName ?? line.trade)
+        : (line.templateNotes ?? line.trade),
+      quantity:     qty,
+      unit:         line.unit ?? null,
+      unit_cost:    rate,
+      markup_pct:   0,
+      display_order: i,
+      notes,
+      created_by:   userId,
+    };
+  });
+
+  // 6. Insert all rows
+  const { error: insertError } = await sb.from('estimate_line_items').insert(rows);
+  if (insertError) {
+    errors.push({ type: 'insert', error: insertError.message ?? insertError });
+    return { jobEstimateId, lineItemCount: 0, overrideCount, errors };
+  }
+
+  // 7. Resolve estimate-related todos. Two passes:
+  //    a) by job_estimates ID → catches estimate_no_proposal_24h
+  //    b) by jobs ID         → catches any job-level estimate todos from older rule shapes
+  if (jobEstimateId) {
+    await sbResolveTodosBySource('job_estimates', jobEstimateId);
+  }
+  await sbResolveTodosBySource('jobs', draft.jobId);
+
+  return { jobEstimateId, lineItemCount: rows.length, overrideCount, errors };
 }
 
 function emptyDraft(jobId, roomType) {
