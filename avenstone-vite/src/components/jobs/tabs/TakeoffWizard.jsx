@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { sbBuildTakeoffDraft, AV_TENANT, AV_USER_ID } from '../../../lib/supabase';
 import { acceptTakeoffDraft } from '../../../lib/takeoff';
 import { f$ } from '../../../lib/utils';
+import AddCustomLineModal from './takeoff/AddCustomLineModal';
 
 const NAV = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -19,16 +20,22 @@ const ROOM_TYPES = [
 ];
 
 export default function TakeoffWizard({ job, setSub }) {
-  const [selectedType, setSelectedType] = useState(null);
-  const [draft, setDraft] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [edits, setEdits] = useState({});
-  const [excluded, setExcluded] = useState(() => new Set());
-  const [collapsed, setCollapsed] = useState(() => new Set());
-  const [saving, setSaving] = useState(false);
-  const [saveResult, setSaveResult] = useState(null); // { lineItemCount, overrideCount, errors[] }
-  const [saveError, setSaveError] = useState(null);
+  const [selectedType,       setSelectedType]       = useState(null);
+  const [draft,              setDraft]              = useState(null);
+  const [loading,            setLoading]            = useState(false);
+  const [error,              setError]              = useState(null);
+  const [edits,              setEdits]              = useState({});
+  const [excluded,           setExcluded]           = useState(() => new Set());
+  const [collapsed,          setCollapsed]          = useState(() => new Set());
+  const [customLines,        setCustomLines]        = useState([]);
+  const [addCustomModalRoom, setAddCustomModalRoom] = useState(null); // roomId | null
+  const [saving,             setSaving]             = useState(false);
+  const [saveResult,         setSaveResult]         = useState(null);
+  const [saveError,          setSaveError]          = useState(null);
+
+  // Custom lines carry their own stable key; formula lines derive it from fields.
+  const lineKey = (line) =>
+    line.lineKey ?? `${line.roomId}__${line.trade}__${line.materialName || ''}`;
 
   const toggleExclude = (line) => {
     const k = lineKey(line);
@@ -39,12 +46,20 @@ export default function TakeoffWizard({ job, setSub }) {
     });
   };
 
+  const removeCustomLine = (line) => {
+    const k = lineKey(line);
+    setCustomLines(prev => prev.filter(l => lineKey(l) !== k));
+    setExcluded(prev => { const next = new Set(prev); next.delete(k); return next; });
+  };
+
   const loadDraft = useCallback(async (roomType) => {
     setSelectedType(roomType);
     setDraft(null);
     setEdits({});
     setExcluded(new Set());
     setCollapsed(new Set());
+    setCustomLines([]);
+    setAddCustomModalRoom(null);
     setError(null);
     setLoading(true);
     try {
@@ -56,14 +71,11 @@ export default function TakeoffWizard({ job, setSub }) {
     setLoading(false);
   }, [job.id]);
 
-  // material lines share the same trade — include materialName in key to prevent collision
-  const lineKey = (line) => `${line.roomId}__${line.trade}__${line.materialName || ''}`;
-
   const effectiveLine = (line) => {
     const k = lineKey(line);
     const e = edits[k] || {};
-    const qty  = e.quantity  !== undefined ? e.quantity  : line.quantity;
-    const rate = e.baseRate  !== undefined ? e.baseRate  : line.baseRate;
+    const qty  = e.quantity !== undefined ? e.quantity : line.quantity;
+    const rate = e.baseRate !== undefined ? e.baseRate : line.baseRate;
     const cost = (rate != null && qty != null)
       ? Math.round(rate * qty * (line.multiplier || 1) * 100) / 100
       : null;
@@ -76,17 +88,21 @@ export default function TakeoffWizard({ job, setSub }) {
     setEdits(prev => ({ ...prev, [k]: { ...(prev[k] || {}), [field]: val } }));
   };
 
-  const effectiveLines    = draft ? draft.lines.map(l => ({ ...effectiveLine(l), isExcluded: excluded.has(lineKey(l)) })) : [];
-  const laborLines        = effectiveLines.filter(l => l.category !== 'materials');
-  const materialLines     = effectiveLines.filter(l => l.category === 'materials');
-  const laborSubtotal     = Math.round(laborLines.filter(l => !l.isExcluded).reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
-  const materialSubtotal  = Math.round(materialLines.filter(l => !l.isExcluded).reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
-  const subtotal          = Math.round((laborSubtotal + materialSubtotal) * 100) / 100;
-  const pendingRateCount  = effectiveLines.filter(l => !l.isExcluded && l.baseRate == null).length;
+  // Merge formula lines + custom lines, tag isExcluded
+  const formulaLines  = draft ? draft.lines.map(l => ({ ...effectiveLine(l), isExcluded: excluded.has(lineKey(l)) })) : [];
+  const customEffective = customLines.map(l => ({ ...effectiveLine(l), isExcluded: excluded.has(lineKey(l)) }));
+  const allLines      = [...formulaLines, ...customEffective];
+
+  const laborLines       = allLines.filter(l => l.category !== 'materials');
+  const materialLines    = allLines.filter(l => l.category === 'materials');
+  const laborSubtotal    = Math.round(laborLines.filter(l => !l.isExcluded).reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
+  const materialSubtotal = Math.round(materialLines.filter(l => !l.isExcluded).reduce((s, l) => s + (l.lineCost || 0), 0) * 100) / 100;
+  const subtotal         = Math.round((laborSubtotal + materialSubtotal) * 100) / 100;
+  const pendingRateCount = allLines.filter(l => !l.isExcluded && l.baseRate == null).length;
 
   const laborByRoom = {};
   const materialsByRoom = {};
-  for (const line of effectiveLines) {
+  for (const line of allLines) {
     if (line.category === 'materials') {
       if (!materialsByRoom[line.roomId]) materialsByRoom[line.roomId] = [];
       materialsByRoom[line.roomId].push(line);
@@ -104,6 +120,21 @@ export default function TakeoffWizard({ job, setSub }) {
       return next;
     });
   };
+
+  // Trades present in a room (for custom line modal dropdown)
+  const tradesForRoom = (roomId) => {
+    const trades = new Set();
+    for (const l of allLines) {
+      if (l.roomId === roomId) trades.add(l.trade);
+    }
+    return [...trades].sort();
+  };
+
+  const CustomBadge = () => (
+    <span style={{ fontSize: 9, background: '#FEF3C7', color: '#92400E', borderRadius: 4, padding: '1px 5px', display: 'inline-block', marginTop: 2, fontWeight: 600 }}>
+      custom
+    </span>
+  );
 
   return (
     <div>
@@ -162,7 +193,7 @@ export default function TakeoffWizard({ job, setSub }) {
           <div style={{ display: 'flex', gap: 0, background: NAV, borderRadius: 8, padding: '12px 0', marginBottom: 16 }}>
             {[
               { label: 'Rooms',     value: draft.summary.totalRooms, color: '#fff' },
-              { label: 'Lines',     value: draft.summary.totalLines, color: '#fff' },
+              { label: 'Lines',     value: allLines.length,          color: '#fff' },
               pendingRateCount > 0 ? { label: 'Need Rate', value: pendingRateCount, color: WARN_BORDER } : null,
               { label: 'Labor',     value: f$(laborSubtotal),        color: '#fff' },
               { label: 'Materials', value: f$(materialSubtotal),     color: '#fff' },
@@ -223,8 +254,12 @@ export default function TakeoffWizard({ job, setSub }) {
                         style={{ width: 14, height: 14, accentColor: NAV, cursor: 'pointer' }}
                       />
                       <div>
-                        <div style={{ fontSize: 12, color: NAV, fontWeight: 500 }}>
+                        <div style={{ fontSize: 12, color: NAV, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           {line.materialName ? `${line.trade} — ${line.materialName}` : line.trade}
+                          {line.isCustom && <CustomBadge />}
+                          {line.isCustom && (
+                            <button onClick={() => removeCustomLine(line)} title="Remove line" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 13, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}>×</button>
+                          )}
                         </div>
                         {line.optional && <span style={{ fontSize: 10, color: '#9CA3AF', fontStyle: 'italic' }}>optional</span>}
                         {needsRate && !line.isExcluded && <span style={{ fontSize: 10, fontWeight: 700, color: '#D97706', display: 'block', marginTop: 1 }}>REP MUST ENTER RATE</span>}
@@ -284,9 +319,15 @@ export default function TakeoffWizard({ job, setSub }) {
                             style={{ width: 14, height: 14, accentColor: NAV, cursor: 'pointer' }}
                           />
                           <div>
-                            <div style={{ fontSize: 12, color: NAV, fontWeight: 500 }}>{line.materialName}</div>
+                            <div style={{ fontSize: 12, color: NAV, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              {line.materialName || line.description}
+                              {line.isCustom && <CustomBadge />}
+                              {line.isCustom && (
+                                <button onClick={() => removeCustomLine(line)} title="Remove line" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 13, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}>×</button>
+                              )}
+                            </div>
                             <div style={{ fontSize: 10, color: '#9CA3AF' }}>{line.trade}</div>
-                            {line.wastePct > 0 && (
+                            {!line.isCustom && line.wastePct > 0 && (
                               <span style={{ fontSize: 9, background: '#E5E7EB', color: '#6B7280', borderRadius: 4, padding: '1px 5px', display: 'inline-block', marginTop: 2 }}>
                                 +{line.wastePct}% waste
                               </span>
@@ -317,6 +358,16 @@ export default function TakeoffWizard({ job, setSub }) {
                     })}
                   </>
                 )}
+
+                {/* + Add custom line */}
+                <div style={{ padding: '8px 14px', borderTop: `1px solid ${BORDER}`, background: '#FAFAF9' }}>
+                  <button
+                    onClick={() => setAddCustomModalRoom(room.roomId)}
+                    style={{ fontSize: 12, color: GOLD, fontWeight: 600, background: 'none', border: `1px dashed ${GOLD}`, borderRadius: 6, padding: '5px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+                  >
+                    <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> Add custom line
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -364,11 +415,11 @@ export default function TakeoffWizard({ job, setSub }) {
                     draft,
                     edits,
                     excluded,
+                    customLines,
                     tenantId: AV_TENANT,
                     userId:   AV_USER_ID,
                   });
                   setSaveResult(result);
-                  // Switch to Line items tab after a brief moment so banner is readable
                   setTimeout(() => setSub?.('items'), 1200);
                 } catch (e) {
                   setSaveError(e.message || 'Unknown error');
@@ -381,6 +432,19 @@ export default function TakeoffWizard({ job, setSub }) {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Add custom line modal */}
+      {addCustomModalRoom && (
+        <AddCustomLineModal
+          roomId={addCustomModalRoom}
+          existingTrades={tradesForRoom(addCustomModalRoom)}
+          onAdd={(line) => {
+            setCustomLines(prev => [...prev, line]);
+            setAddCustomModalRoom(null);
+          }}
+          onClose={() => setAddCustomModalRoom(null)}
+        />
       )}
     </div>
   );
