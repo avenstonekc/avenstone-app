@@ -113,9 +113,29 @@ function resolveLineCostStatus(baseRate, quantity) {
 
 // ── Material formula evaluator ────────────────────────────────────────────────
 
-function evaluateFormula(formula, metrics, materialRow) {
+function evaluateFormula(formula, metrics, materialRow, scopeDetails) {
   if (formula.qty_basis === 'fixed') {
     return Number(formula.fixed_qty || 0);
+  }
+
+  if (formula.qty_basis === 'scope_detail') {
+    const key    = formula.scope_detail_key;
+    const detail = scopeDetails?.[key];
+    if (detail === undefined || detail === null) return 0;
+    // Boolean fields (e.g. niche) — true emits fixed_qty, false emits 0
+    if (typeof detail === 'boolean') {
+      return detail ? Number(formula.fixed_qty || 1) : 0;
+    }
+    const num = Number(detail);
+    if (!isFinite(num) || num === 0) return 0;
+    const multiplier  = Number(formula.qty_multiplier || 1);
+    const wasteFactor = 1 + (Number(materialRow.waste_pct || 0) / 100);
+    let qty = num * multiplier * wasteFactor;
+    if (formula.qty_divisor === 'coverage_sf') {
+      const coverage = Number(materialRow.coverage_sf || 0);
+      if (coverage > 0) qty = qty / coverage;
+    }
+    return qty;
   }
 
   const basisVal = metrics[formula.qty_basis];
@@ -131,6 +151,33 @@ function evaluateFormula(formula, metrics, materialRow) {
   }
 
   return qty;
+}
+
+// ── Scope details resolver ────────────────────────────────────────────────────
+// Merges rep-saved scope_details with schema field defaults for any missing key.
+// Applies subtract logic (e.g. floor_tile_sf = room.areaSf - shower_floor_sf).
+// Returns a flat object safe to pass into evaluateFormula.
+
+function resolveDetails(schema, scopeDetails, room) {
+  if (!schema?.fields) return scopeDetails ?? {};
+  const resolved = { ...(scopeDetails ?? {}) };
+  for (const field of schema.fields) {
+    if (resolved[field.key] !== undefined) continue;
+    if (field.default_from === 'room.floorSf') {
+      resolved[field.key] = room.areaSf || 0;
+    } else if (field.default !== undefined) {
+      resolved[field.key] = field.default;
+    }
+  }
+  // Apply subtract: floor_tile_sf → floor_tile_sf - shower_floor_sf (net bathroom floor)
+  for (const field of schema.fields) {
+    if (field.subtract?.length) {
+      const base = Number(resolved[field.key] ?? 0);
+      const net  = field.subtract.reduce((acc, k) => acc - Number(resolved[k] ?? 0), base);
+      resolved[field.key] = Math.max(0, net);
+    }
+  }
+  return resolved;
 }
 
 // ── Room metrics for material formula evaluation ───────────────────────────────
@@ -221,12 +268,14 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     return emptyDraft(jobId, roomType);
   }
 
-  // 3. Fetch scope rows + subsets in parallel with template/cost queries below.
-  //    scopeByRoomId — keyed by room_id, value is the saved scope row (may be absent).
+  // 3. Fetch scope rows, subsets, and detail schemas in parallel.
+  //    scopeByRoomId — keyed by room_id, value is the saved scope row.
   //    subsetByTag   — keyed by scope_tag, value is the template_scope_subsets row.
-  const [scopeRows, scopeSubsets] = await Promise.all([
+  //    schemaByKey   — keyed by "${room_type}::${scope_tag}", value is the schema JSONB.
+  const [scopeRows, scopeSubsets, schemaRows] = await Promise.all([
     sbLoadJobRoomScopes(jobId),
-    sbLoadScopeSubsets(null), // load all room types so cross-type tags (e.g. tile_only on refresh pill) resolve correctly
+    sbLoadScopeSubsets(null), // load all room types so cross-type tags resolve correctly
+    sb.from('scope_detail_schemas').select('*').eq('active', true).then(r => r.data || []),
   ]);
 
   const scopeByRoomId = {};
@@ -235,15 +284,26 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   const subsetByTag = {};
   for (const sub of scopeSubsets) subsetByTag[sub.scope_tag] = sub;
 
+  // De-dup schemas: tenant override beats platform default for same (room_type, scope_tag).
+  const schemaByKey = {};
+  for (const row of schemaRows) {
+    const key  = `${row.room_type}::${row.scope_tag}`;
+    const prev = schemaByKey[key];
+    if (!prev || (row.tenant_id !== null && prev.tenant_id === null)) {
+      schemaByKey[key] = row;
+    }
+  }
+
   // Annotate each matched room with its saved scope metadata.
   const rooms = matchedRooms.map(room => {
     const scopeRow = scopeByRoomId[room.roomId];
     const subset   = scopeRow ? subsetByTag[scopeRow.scope_tag] : null;
     return {
       ...room,
-      scope_tag:     scopeRow?.scope_tag  ?? null,
-      scope_label:   subset?.label        ?? null,
+      scope_tag:     scopeRow?.scope_tag     ?? null,
+      scope_label:   subset?.label           ?? null,
       scope_missing: !scopeRow,
+      scope_details: scopeRow?.scope_details ?? {},
     };
   });
 
@@ -330,11 +390,19 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
 
   // 6. Build lines: one per (room × trade), filtered by saved scope tag.
   const lines = [];
+  const scopeDetailsResolved = []; // debug: per-room resolved details
+
   for (const room of activeRooms) {
     // Resolve allowed trades for this room from its saved scope row.
     // null allowedTrades = no filter (all trades emitted — default when unscoped).
     let allowedTrades = null;
     const scopeRow = scopeByRoomId[room.roomId];
+
+    // Resolve scope_details with schema defaults + subtract logic
+    const schemaKey      = scopeRow ? `${scopeRow.room_type}::${scopeRow.scope_tag}` : null;
+    const schemaEntry    = schemaKey ? schemaByKey[schemaKey] : null;
+    const resolvedDets   = resolveDetails(schemaEntry?.schema ?? null, scopeRow?.scope_details ?? {}, room);
+
     if (scopeRow) {
       if (scopeRow.scope_tag === 'custom') {
         allowedTrades = new Set(scopeRow.custom_trades ?? []);
@@ -392,7 +460,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
         lineCostStatus: resolveLineCostStatus(baseRate, quantity),
       });
 
-      // Material lines from template formula
+      // Material lines from template formula — pass resolvedDets for scope_detail basis
       if (def.materialsFormula?.length) {
         const metrics = roomMetrics(room);
         for (const formula of def.materialsFormula) {
@@ -404,15 +472,23 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
           let matQty = null;
           let matQtyNotes = '';
 
-          if (matRow) {
-            const raw = evaluateFormula(formula, metrics, matRow);
+          if (matRow || formula.qty_basis === 'scope_detail') {
+            const raw = evaluateFormula(formula, metrics, matRow ?? {}, resolvedDets);
+            if (raw === 0 && formula.qty_basis === 'scope_detail') {
+              // skip zero-qty scope_detail lines (e.g. niche=false → niche kit qty 0)
+              continue;
+            }
             matQty = Math.round(raw * 100) / 100;
             const divisorLabel = formula.qty_divisor === 'coverage_sf' ? ' ÷ coverage' : '';
-            const wasteLabel   = Number(matRow.waste_pct || 0) > 0
+            const wasteLabel   = Number(matRow?.waste_pct || 0) > 0
               ? ` + ${matRow.waste_pct}% waste` : '';
-            matQtyNotes = formula.qty_basis === 'fixed'
-              ? `fixed: ${formula.fixed_qty}`
-              : `${formula.qty_basis} × ${formula.qty_multiplier}${divisorLabel}${wasteLabel}`;
+            if (formula.qty_basis === 'scope_detail') {
+              matQtyNotes = `scope: ${formula.scope_detail_key}${divisorLabel}${wasteLabel}`;
+            } else if (formula.qty_basis === 'fixed') {
+              matQtyNotes = `fixed: ${formula.fixed_qty}`;
+            } else {
+              matQtyNotes = `${formula.qty_basis} × ${formula.qty_multiplier}${divisorLabel}${wasteLabel}`;
+            }
           } else {
             matQtyNotes = 'no rate row found for material — rep must enter';
           }
@@ -447,6 +523,100 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
         }
       }
     }
+
+    // Fixture-select lines from scope detail schema.
+    // These are NOT in any materials_formula — they're driven purely by the rep's
+    // fixture choices (shower door, vanity, toilet). Emitted once per room after
+    // the normal trade loop.
+    if (schemaEntry?.schema?.fields) {
+      for (const field of schemaEntry.schema.fields) {
+        if (field.type !== 'fixture_select') continue;
+        const selectedValue = resolvedDets[field.key];
+        if (!selectedValue || selectedValue === 'custom') continue;
+
+        let materialName = null;
+        if (field.options_template) {
+          // e.g. "Vanity top - {material} {vanity_width}in"
+          const opt = field.options?.find(o => o.value === selectedValue);
+          if (opt?.material_label) {
+            materialName = field.options_template
+              .replace('{material}', opt.material_label.toLowerCase())
+              .replace('{vanity_width}', resolvedDets.vanity_width || '');
+          }
+        } else {
+          const opt = field.options?.find(o => o.value === selectedValue);
+          materialName = opt?.material_name ?? null;
+        }
+
+        if (!materialName) continue; // "keep" or null = no line item
+
+        const matKey = `${field.trade}::${materialName}`;
+        const matRow = materialRateMap[matKey];
+        const matRate = matRow?.base_rate != null ? Number(matRow.base_rate) : null;
+        const matUnit = matRow?.unit ?? 'each';
+
+        lines.push({
+          roomId:    room.roomId,
+          trade:     field.trade,
+          category:  'materials',
+          materialName,
+          templateNotes: field.label,
+          optional:  false,
+          conditional: null,
+          unit:      matUnit,
+          unitCostId: matRow?.id ?? null,
+          unitCostSource: matRow
+            ? (matRow.tenant_id !== null ? 'tenant_override' : 'platform_default')
+            : null,
+          baseRate:       matRate,
+          baseRateMissing: matRate == null,
+          multiplier:     1,
+          wastePct:       0,
+          quantity:       1,
+          quantityPreFilled: true,
+          quantityNotes:  `fixture: ${field.label}`,
+          lineCost:       matRate != null ? Math.round(matRate * 100) / 100 : null,
+          lineCostStatus: resolveLineCostStatus(matRate, 1),
+        });
+      }
+
+      // sink_count is a number field — emits a qty>1 line for Vanity sink standard
+      const sinkCount = Number(resolvedDets.sink_count ?? 0);
+      if (sinkCount > 0) {
+        const sinkName = 'Vanity sink standard';
+        const sinkKey  = `Plumbing - Finish / fixtures::${sinkName}`;
+        const sinkRow  = materialRateMap[sinkKey];
+        const sinkRate = sinkRow?.base_rate != null ? Number(sinkRow.base_rate) : null;
+        lines.push({
+          roomId:    room.roomId,
+          trade:     'Plumbing - Finish / fixtures',
+          category:  'materials',
+          materialName: sinkName,
+          templateNotes: 'Vanity sink',
+          optional:  false,
+          conditional: null,
+          unit:      sinkRow?.unit ?? 'each',
+          unitCostId: sinkRow?.id ?? null,
+          unitCostSource: sinkRow
+            ? (sinkRow.tenant_id !== null ? 'tenant_override' : 'platform_default')
+            : null,
+          baseRate:       sinkRate,
+          baseRateMissing: sinkRate == null,
+          multiplier:     1,
+          wastePct:       0,
+          quantity:       sinkCount,
+          quantityPreFilled: true,
+          quantityNotes:  `fixture: ${sinkCount} sink(s)`,
+          lineCost:       sinkRate != null ? Math.round(sinkRate * sinkCount * 100) / 100 : null,
+          lineCostStatus: resolveLineCostStatus(sinkRate, sinkCount),
+        });
+      }
+    }
+
+    // Track resolved details for debug
+    if (scopeRow) {
+      scopeDetailsResolved.push({ roomId: room.roomId, scopeTag: scopeRow.scope_tag, resolved: resolvedDets });
+    }
   }
 
   // 7. Summary
@@ -478,6 +648,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
       subtotal,
       subtotalIncomplete: lines.some(l => l.lineCost == null),
       roomsMissingScope,
+      scope_details_resolved: scopeDetailsResolved,
     },
   };
 
