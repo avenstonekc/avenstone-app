@@ -95,10 +95,14 @@ export default function App() {
 
   useEffect(() => { setGlobalJobs(jobs); }, [jobs]);
 
-  // Cold-start landing: redirect to Today if user has pending todos (runs once per session)
+  // Cold-start landing: redirect to Today if user has pending todos
   useEffect(() => {
     if (!profile?.id || landingChecked.current) return;
     landingChecked.current = true;
+    if (pg !== 'dashboard') return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem('av_landing_date') === today) return;
+    localStorage.setItem('av_landing_date', today);
     sbCountPendingTodos().then(count => { if (count > 0) setPg('today'); });
   }, [profile?.id]);
 
