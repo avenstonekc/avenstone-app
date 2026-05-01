@@ -223,7 +223,9 @@ export default function TakeoffWizard({ job, setSub }) {
                         style={{ width: 14, height: 14, accentColor: NAV, cursor: 'pointer' }}
                       />
                       <div>
-                        <div style={{ fontSize: 12, color: NAV, fontWeight: 500 }}>{line.trade}</div>
+                        <div style={{ fontSize: 12, color: NAV, fontWeight: 500 }}>
+                          {line.materialName ? `${line.trade} — ${line.materialName}` : line.trade}
+                        </div>
                         {line.optional && <span style={{ fontSize: 10, color: '#9CA3AF', fontStyle: 'italic' }}>optional</span>}
                         {needsRate && !line.isExcluded && <span style={{ fontSize: 10, fontWeight: 700, color: '#D97706', display: 'block', marginTop: 1 }}>REP MUST ENTER RATE</span>}
                       </div>

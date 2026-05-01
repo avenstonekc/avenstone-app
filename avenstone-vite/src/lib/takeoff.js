@@ -536,6 +536,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
             roomId: room.roomId,
             trade: def.trade,
             category: 'labor',
+            materialName: extra.material_name,
             description: extra.material_name,
             templateNotes: extra.material_name,
             optional: false,
