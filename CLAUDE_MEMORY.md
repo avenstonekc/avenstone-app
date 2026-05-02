@@ -748,7 +748,7 @@ Complete rebuild of the financial data model and UI. All phases shipped. Referen
 
 ## Locked architectural principles
 - **AI never invents rates without citation.** NULL in takeoff_unit_costs.base_rate is intentional — wizard surfaces "REP MUST ENTER" and human is accountable for the number. Future seed migrations and AI features must NOT replace NULL with derived/estimated values.
-- **CLAUDE_MEMORY.md cannot be trusted for 2026-04-29 schema claims** without verification. Two missing schema changes were caught and fixed retroactively. When future sessions see schema claims from that date, verify against information_schema before trusting.
+- **CLAUDE_MEMORY.md schema claims require live DB verification — always.** Three confirmed incidents: (1) sub_pricing reschema claimed shipped 2026-04-29, never applied. (2) sub_pricing_changes drop claimed 2026-04-29, never applied. (3) job_phases audit columns (started_at/by, completed_at/by) claimed shipped commit 0faa944, never applied — caught 2026-05-02 when phase save errored on missing column. Commit presence ≠ migration executed. Always verify via information_schema.columns before trusting any schema claim.
 - **Tenant override precedence pattern locked.** Multi-tenant tables use tenant_id NULL for platform defaults + tenant rows override via DISTINCT ON + ORDER BY tenant_id NULLS LAST. takeoff_templates, takeoff_unit_costs both use this. Any future platform-default table follows the same pattern.
 
 ## What did NOT ship (in scope but not done)
@@ -1164,3 +1164,19 @@ Open items:
 - Open: edge fn returns tool_input in action results (for true master
   agent per-tool bypass retry). Per-user drill-down on failure tile
   (privacy + scope). Sub bid_submit retry (separate UX design needed).
+
+[LOG — 2026-05-02]
+- Action: job_phases audit columns (started_at, started_by_id, completed_at,
+  completed_by_id) applied to live DB via migration 20260502_job_phases_audit_columns.sql.
+  Schema cache reloaded via NOTIFY pgrst, 'reload schema'.
+- Finding: CLAUDE_MEMORY (LOG 2026-04-21, line 416-421) claimed these columns
+  shipped in commit 0faa944. Live DB verification via information_schema.columns
+  confirmed all four were ABSENT. The migration was committed to the repo but
+  never executed against the live database.
+- Decision: This is the third schema-claim failure (after 2026-04-29 sub_pricing
+  incident). The "Locked architectural principles" section at line 751 already
+  warns about 2026-04-29 claims — expanding scope: ALL schema claims in
+  CLAUDE_MEMORY require information_schema verification before trusting, not
+  just 2026-04-29. Commit presence ≠ migration applied.
+- Files: supabase/migrations/20260502_job_phases_audit_columns.sql (new).
+- Open: none — columns confirmed present in re-query after apply.
