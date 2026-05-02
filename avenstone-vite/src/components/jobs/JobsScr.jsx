@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY, ADDRESS_AUTOCOMPLETE_URL, AI_ERROR_LOGGER_URL, AV_USER_ID, AV_TENANT } from '../../lib/supabase';
+import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY, ADDRESS_AUTOCOMPLETE_URL, AI_ERROR_LOGGER_URL, AV_USER_ID, AV_TENANT, captureFailedIntent, sbCompleteTodo } from '../../lib/supabase';
 import { Ic, STATS, sc, sl, f$, isMob, ls } from '../../lib/utils';
 import JobDet from './JobDet';
 import AiIntakeWizard from '../ai/AiIntakeWizard';
@@ -30,7 +30,7 @@ function ErrorBoundary({ back, children }) {
   }
 }
 
-export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew, clearSel }) {
+export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew, clearSel, pendingAction, clearPendingAction }) {
   const [sel, setSel] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
@@ -74,6 +74,13 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   useEffect(() => { if (pendingJobId && !loading) { setSel(pendingJobId); clearPendingJobId(); } }, [pendingJobId, loading]);
   useEffect(() => { if (openNew) { setShowNew(true); clearOpenNew && clearOpenNew(); } }, [openNew]);
   useEffect(() => { if (clearSel) setSel(null); }, [clearSel]);
+  useEffect(() => {
+    if (pendingAction?.kind === 'job_create') {
+      setNewA(pendingAction.payload?.address || '');
+      setShowNew(true);
+      clearPendingAction?.();
+    }
+  }, [pendingAction]);
 
   const upd = (id, ch) => { const u = jobs.map(j => j.id === id ? { ...j, ...ch } : j); setJobs(u); ls('av_j', u); sbUpd(id, ch); };
   const add = async () => {
@@ -91,8 +98,10 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
         body: JSON.stringify({ function_name: 'JobsScr.add', error_type: 'db_write_failure', error_message: result.error, user_input: j.address, user_id: AV_USER_ID, tenant_id: AV_TENANT }),
       }).catch(() => {});
+      captureFailedIntent({ kind: 'job_create', payload: { address: j.address }, message: result.error || 'Project save failed' }).catch(() => {});
       return;
     }
+    if (pendingAction?.todoId) sbCompleteTodo(pendingAction.todoId).catch(() => {});
     setNewA(''); setShowNew(false); setSel(j.id);
   };
   const del = id => { if (!window.confirm('Delete this job?')) return; const u = jobs.filter(j => j.id !== id); setJobs(u); ls('av_j', u); sbDel(id); setSel(null); };
@@ -100,7 +109,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   const selJ = jobs.find(j => j.id === sel);
   if (selJ) return (
     <ErrorBoundary back={() => setSel(null)}>
-      <JobDet job={selJ} upd={ch => upd(selJ.id, ch)} del={() => del(selJ.id)} back={() => setSel(null)} profile={profile} />
+      <JobDet job={selJ} upd={ch => upd(selJ.id, ch)} del={() => del(selJ.id)} back={() => setSel(null)} profile={profile} pendingAction={pendingAction} clearPendingAction={clearPendingAction} />
     </ErrorBoundary>
   );
 
