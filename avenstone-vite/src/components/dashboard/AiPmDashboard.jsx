@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_TENANT } from '../../lib/supabase';
+import { sb, AV_TENANT, sbCountRecentFailedIntents } from '../../lib/supabase';
 import { isMob } from '../../lib/utils';
 
 const PM_TYPES = ['contract_unsigned','payment_overdue','phase_starting_soon','no_daily_log','co_pending_approval','job_stale'];
@@ -17,6 +17,8 @@ export default function AiPmDashboard({ profile }) {
   const [loading, setLoading] = useState(true);
   const [alerts, setAlerts] = useState([]);
   const [jobs, setJobs] = useState([]);
+  const [failedIntents, setFailedIntents] = useState({ total: 0, byKind: {}, byUser: {} });
+  const [showFailedBreakdown, setShowFailedBreakdown] = useState(false);
   const mob = isMob();
 
   useEffect(() => {
@@ -39,6 +41,8 @@ export default function AiPmDashboard({ profile }) {
 
       setAlerts(notifData || []);
       setJobs(jobData || []);
+      const fi = await sbCountRecentFailedIntents(7);
+      setFailedIntents(fi);
       setLoading(false);
     };
     load();
@@ -97,6 +101,10 @@ export default function AiPmDashboard({ profile }) {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  const fiTotal = failedIntents.total;
+  const fiColor = fiTotal === 0 ? '#22c55e' : fiTotal <= 5 ? '#0A1F44' : '#f59e0b';
+  const fiLabel = fiTotal === 0 ? '✓ None' : String(fiTotal);
+
   const statCards = [
     { label: 'Total Alerts', value: alerts.length },
     { label: 'High Priority', value: highAlerts.length },
@@ -110,13 +118,39 @@ export default function AiPmDashboard({ profile }) {
         <p style={{ fontSize: 13, color: '#6B7280', margin: '4px 0 0' }}>Last 30 days · Owner view</p>
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         {statCards.map(sc => (
           <div key={sc.label} className="card" style={{ flex: '1 1 140px', minWidth: 120, padding: '14px 16px' }}>
             <div style={{ fontSize: 28, fontWeight: 700, color: '#0A1F44', lineHeight: 1 }}>{sc.value}</div>
             <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>{sc.label}</div>
           </div>
         ))}
+      </div>
+
+      <div className="card" style={{ padding: '14px 16px', marginBottom: 24, borderLeft: `4px solid ${fiColor}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>Failed saves (7 days)</div>
+            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>Silent write failures captured as Resume todos</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, color: fiColor }}>{fiLabel}</span>
+            {fiTotal > 0 && (
+              <button onClick={() => setShowFailedBreakdown(v => !v)} style={{ background: 'none', border: '1px solid #E8E4DC', borderRadius: 4, cursor: 'pointer', fontSize: 11, color: '#6B7280', padding: '3px 8px' }}>
+                {showFailedBreakdown ? 'Hide' : 'By kind ▾'}
+              </button>
+            )}
+          </div>
+        </div>
+        {showFailedBreakdown && fiTotal > 0 && (
+          <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {Object.entries(failedIntents.byKind).map(([kind, count]) => (
+              <span key={kind} style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 4, fontSize: 11, fontWeight: 600, color: '#92400e', padding: '3px 8px' }}>
+                {kind.replace(/_/g, ' ')}: {count}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <h2 style={{ fontFamily: 'DM Serif Display, serif', fontSize: 17, color: '#0A1F44', marginBottom: 12 }}>Alert Breakdown</h2>
