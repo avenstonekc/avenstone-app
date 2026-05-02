@@ -1108,3 +1108,19 @@ Open items:
   Callers: ClientPortal.jsx:176, Reports.jsx:22, supabase.js:258
   (sbLoadCostInvoices), supabase.js:538 (sbLoadPayments),
   supabase.js:642 (sbLoadPayments estimate tab).
+
+[LOG — 2026-05-02 — upsert RLS sweep]
+- Action: Audited all 7 .upsert() calls in supabase.js for insert-only
+  vs update-only vs genuine upsert misuse.
+- Result: All 7 are genuine upserts. Zero insert-only or update-only
+  misuses. No helper signature changes needed. Open item closed —
+  no broader refactor required.
+- RLS gap found and fixed: bid_responses had INSERT policy but no
+  UPDATE policy. sbSubmitBid (sub re-submitting a bid) was silently
+  RLS-blocked on the update path — same failure class as the sbSave
+  bug. Added bid_responses_sub_update policy (USING + WITH CHECK:
+  sub_id = auth.uid() AND tenant_id = get_my_tenant_id()).
+- Files: supabase/migrations/20260502_bid_responses_update_policy.sql
+- The other 6 upserts (job_phases, sub_pricing, sub_ratings,
+  job_estimates, qb_category_map, job_room_scopes) all had full
+  INSERT + UPDATE RLS coverage. No action needed.
