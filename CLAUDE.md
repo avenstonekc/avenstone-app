@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Avenstone** — an AI-powered construction field operations platform for Avenstone Contracting (Kansas City, MO). Manages the full job lifecycle: leads → AI consultation → estimate → proposal → contract → field ops → client portal → payments.
 
-**Today screen** is the morning brief replacement and the unifying interface across roles. On cold-start, the app lands here if the user has pending todos. Features (EstimateTab restructure, Subs tab, Materials tab, Takeoff wizard) emit todos as they ship — Today is the substrate.
+**Today screen** is the morning brief replacement and the unifying interface across roles. On cold-start, the app lands here if the user has pending todos. Features (EstimateTab restructure, Subs tab, Materials tab, Takeoff wizard) emit todos as they ship — Today is the substrate. Todos with `type='failed_intent'` render amber (FEF3C7 background, FCD34D border, amber left accent) with a "↩ Resume" button that fires `setPendingAction` → App.jsx routes to the right screen and pre-fills the original form. Auto-resolves via `sbCompleteTodo` on successful save; remains open if user closes modal without saving.
 
 **Competitive advantage:** AI embedded at every step of field operations. Not a CRM. Not a marketing tool. The thing that makes crews smarter, faster, and more profitable on every job.
 
@@ -490,7 +490,7 @@ That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the c
 - **Capacitor iOS native app + Codemagic pipeline** shipped to TestFlight (bundle id `com.avenstonekc.avenstone`)
 - **Full LiDAR capture stack** — single-room, multi-room (ContinuousRoomScanViewController, pauseARSession:false), exterior AR outline, height capture, quality meter (0–100), GPS stamping, floor picker, room-naming modal with polygon thumbnails
 - **Floor plan PDF renderer** (`src/lib/pdf.js`) — landscape per-floor + summary page, poché walls, chain dims with collision-tiered labels, room fill tint, left title column, polylabel, scale bar
-- **AI PM Dashboard** — owner-only, 30-day nightly alert history (`AiPmDashboard.jsx`)
+- **AI PM Dashboard** — owner-only, 30-day nightly alert history + "Failed saves (7 days)" tile (`AiPmDashboard.jsx`). Failure tile: green=0, navy=1-5, amber=6+; "By kind" toggle shows breakdown by todo kind. `captureFailedIntent` is a pure DB write — no AI calls, safe on every save failure.
 - **Floor plan PDF crash fixed (2026-04-26)** — `dimBoxes` const hoisted to let at outer scope
 - **Sub CO workflow** — sbSubSubmitCO generates co_number, stamps submitted_by_id/role; COTab shows submitter badge + inline edit for pending COs; PM approve/reject triggers targeted sub notification (sbNotifyUser)
 - **Phase audit columns** — started_at/started_by_id/completed_at/completed_by_id stamped on status change; ScheduleTab + SubJobView render audit lines

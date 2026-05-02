@@ -1065,8 +1065,8 @@ Critical bug fixes (Blake unblock):
 Open items:
 - Sweep sb* write helpers for fire-and-forget + swallowed-error
   patterns. Apply {ok, error} shape.
-- Failed-intent retry todos. When tool calls fail, capture inputs +
-  write retry todo. Multi-prompt feature.
+- ~~Failed-intent retry todos. When tool calls fail, capture inputs +
+  write retry todo. Multi-prompt feature.~~ DONE 2026-05-02.
 - URL-based routing. selJ as React state means browser back doesn't
   return to list, refreshing inside a job loses position. Multi-day
   refactor.
@@ -1124,3 +1124,43 @@ Open items:
 - The other 6 upserts (job_phases, sub_pricing, sub_ratings,
   job_estimates, qb_category_map, job_room_scopes) all had full
   INSERT + UPDATE RLS coverage. No action needed.
+
+[LOG — 2026-05-02 — failed-intent retry todos]
+- Action: Built full failed-intent capture + Resume todo system.
+- Migration: todos payload JSONB column + todos_self_insert RLS policy
+  (was missing — client-side todo writes were silently rejected).
+  Partial index idx_todos_failed_intent. File:
+  supabase/migrations/20260502_todos_payload.sql. Applied + verified.
+- New helpers (supabase.js): captureFailedIntent({kind, payload, jobId,
+  message}) → inserts failed_intent todo. Best-effort, never throws.
+  sbCountRecentFailedIntents(days) → owner telemetry aggregation.
+  sbResolveFailedIntent dropped; use sbCompleteTodo(todoId) directly.
+- Capture sites: JobsScr.add() on INSERT failure (job_create),
+  TransactionModal.save() on new-tx failure (transaction_save),
+  LineItemModal.handleSave() on add failure (line_item_save),
+  MasterAgent.sendMessage() per failed action (master_agent_tool_call).
+- Resume flow: pendingAction signal in App.jsx (mirrors pendingJobId
+  pattern). TodayScr is producer. JobsScr, MasterAgent, FinancialsTab
+  are consumers. Prop drilling: App→JobsScr→JobDet→FinancialsTab.
+  Modals receive only normal pre-fill props (tx, item) — oblivious to
+  pendingAction.
+- MasterAgent: captures {tool_name, error_message, user_message}.
+  Resume pre-fills input box with original message; user reviews + sends.
+  No bypass-the-model path — edge function returns {tool,result} only,
+  no tool_input. OPEN ITEM: update edge function to return tool_input
+  in action results so true per-tool retry can ship later.
+- TodayScr + TodoCard: failed_intent todos render amber (FEF3C7 bg,
+  FCD34D border). Resume button fires setPendingAction. Auto-resolve
+  on save success; stays open if modal closed without saving.
+- AiPmDashboard: "Failed saves (7 days)" tile. Green=0, navy=1-5,
+  amber=6+. "By kind" toggle expands breakdown. Owner-only via existing
+  App.jsx role gate.
+- Files: supabase/migrations/20260502_todos_payload.sql,
+  supabase.js, App.jsx, JobsScr.jsx, JobDet.jsx, FinancialsTab.jsx,
+  TransactionModal.jsx, LineItemModal.jsx, MasterAgent.jsx,
+  TodayScr.jsx, TodoCard.jsx, AiPmDashboard.jsx, CLAUDE.md.
+- Decision: status CHECK in todos uses 'done' not 'completed'. Spec
+  was wrong. Use sbCompleteTodo() everywhere.
+- Open: edge fn returns tool_input in action results (for true master
+  agent per-tool bypass retry). Per-user drill-down on failure tile
+  (privacy + scope). Sub bid_submit retry (separate UX design needed).
