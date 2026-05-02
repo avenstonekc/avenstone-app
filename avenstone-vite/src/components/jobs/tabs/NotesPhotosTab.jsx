@@ -12,8 +12,8 @@ export function NotesTab({ job, upd, profile }) {
     if (!nt.trim()) return;
     setSaving(true);
     const s = await sbNote(job.id, nt.trim(), na);
-    if (s) {
-      upd({ activity: [s, ...(job.activity || [])] });
+    if (s.ok) {
+      upd({ activity: [s.data, ...(job.activity || [])] });
       sbNotify('note_posted', `Note on ${job.address}`, nt.trim().slice(0, 120), job.id, AV_USER_ID);
       setNt('');
     }

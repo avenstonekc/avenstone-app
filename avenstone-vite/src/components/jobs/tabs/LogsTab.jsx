@@ -8,6 +8,7 @@ export default function LogsTab({ job }) {
   const [showLogForm, setShowLogForm] = useState(false);
   const [logForm, setLogForm] = useState({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
   const [logSaving, setLogSaving] = useState(false);
+  const [logErr, setLogErr] = useState('');
 
   const ssty = { appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 };
 
@@ -18,12 +19,15 @@ export default function LogsTab({ job }) {
 
   const submitLog = async () => {
     setLogSaving(true);
+    setLogErr('');
     const d = await sbSubmitDailyLog({ job_id: job.id, log_date: logForm.log_date, weather: logForm.weather, crew_count: logForm.crew_count ? Number(logForm.crew_count) : null, hours_worked: logForm.hours_worked ? Number(logForm.hours_worked) : null, work_completed: logForm.work_completed || null, materials_used: logForm.materials_used || null, issues: logForm.issues || null });
-    if (d) {
-      setLogs(p => [d, ...p]);
+    if (d.ok) {
+      setLogs(p => [d.data, ...p]);
       sbNotify('daily_log_submitted', `Daily log — ${job.address}`, `${logForm.log_date}: ${(logForm.work_completed || '').slice(0, 80)}`, job.id, AV_USER_ID);
       setShowLogForm(false);
       setLogForm({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
+    } else {
+      setLogErr(d.error || 'Save failed');
     }
     setLogSaving(false);
   };
@@ -68,6 +72,7 @@ export default function LogsTab({ job }) {
         <div className="fg" style={{ marginTop: 10 }}><label className="flbl">Work Completed</label><textarea className="finp fta" value={logForm.work_completed} onChange={e => setLogForm(p => ({ ...p, work_completed: e.target.value }))} placeholder="Describe what was accomplished today..." rows={3} /></div>
         <div className="fg"><label className="flbl">Materials Used</label><textarea className="finp fta" value={logForm.materials_used} onChange={e => setLogForm(p => ({ ...p, materials_used: e.target.value }))} placeholder="List materials delivered or consumed..." rows={2} /></div>
         <div className="fg"><label className="flbl">Issues / Delays</label><textarea className="finp fta" value={logForm.issues} onChange={e => setLogForm(p => ({ ...p, issues: e.target.value }))} placeholder="Any problems, delays, safety concerns..." rows={2} /></div>
+        {logErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>{logErr}</div>}
         <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowLogForm(false)}>Cancel</button>
           <button className="btn btn-navy" style={{ flex: 1 }} onClick={submitLog} disabled={logSaving}>{logSaving ? 'Saving...' : 'Submit Log'}</button>

@@ -29,14 +29,22 @@ export default function DocsTab({ job, docs, setDocs, docsLoaded, setDocsLoaded 
 
   const delDoc = async doc => {
     if (!window.confirm(`Delete "${doc.name}"?`)) return;
-    await sbDelDoc(doc);
-    setDocs(p => p.filter(d => d.id !== doc.id));
+    const r = await sbDelDoc(doc);
+    if (r.ok) {
+      setDocs(p => p.filter(d => d.id !== doc.id));
+    } else {
+      setDocErr(r.error || 'Delete failed');
+    }
   };
 
   const toggleDocVisible = async doc => {
     const val = !doc.client_visible;
-    await sbToggleDocVisible(doc.id, val);
-    setDocs(p => p.map(d => d.id === doc.id ? { ...d, client_visible: val } : d));
+    const r = await sbToggleDocVisible(doc.id, val);
+    if (r.ok) {
+      setDocs(p => p.map(d => d.id === doc.id ? { ...d, client_visible: val } : d));
+    } else {
+      setDocErr(r.error || 'Update failed');
+    }
   };
 
   const ssty = { appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 };

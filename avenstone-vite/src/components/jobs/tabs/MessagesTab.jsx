@@ -37,8 +37,8 @@ export default function MessagesTab({ job, profile }) {
     if (!msgTxt.trim()) return;
     setSendingMsg(true);
     const m = await sbPostMessage(job.id, msgTxt.trim());
-    if (m) {
-      setMsgs(p => [...p, m]);
+    if (m.ok) {
+      setMsgs(p => [...p, m.data]);
       sbNotify('job_message', `Message on ${job.address}`, msgTxt.trim().slice(0, 120), job.id, AV_USER_ID);
       sbNotifyEmail(job.client_user_id, `New message on your project`, msgTxt.trim().slice(0, 160), job.id);
       setMsgTxt('');
@@ -50,8 +50,8 @@ export default function MessagesTab({ job, profile }) {
     if (!staffMsgTxt.trim()) return;
     setSendingStaffMsg(true);
     const m = await sbPostStaffMessage(job.id, staffMsgTxt.trim());
-    if (m) {
-      setStaffMsgs(p => [...p, m]);
+    if (m.ok) {
+      setStaffMsgs(p => [...p, m.data]);
       sbNotify('staff_message', `Staff message — ${job.address}`, staffMsgTxt.trim().slice(0, 120), job.id, AV_USER_ID);
       setStaffMsgTxt('');
     }

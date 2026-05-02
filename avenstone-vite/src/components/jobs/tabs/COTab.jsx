@@ -10,6 +10,7 @@ export default function COTab({ job, upd, profile }) {
   const [cor, setCor] = useState('');
   const [coa, setCoa] = useState('');
   const [savCO, setSavCO] = useState(false);
+  const [coErr, setCoErr] = useState('');
   const [editingCOId, setEditingCOId] = useState(null);
   const [editForm, setEditForm] = useState({ description: '', amount: '' });
 
@@ -21,13 +22,16 @@ export default function COTab({ job, upd, profile }) {
   const addCO = async () => {
     if (!cod.trim() || !coa) return;
     setSavCO(true);
+    setCoErr('');
     const num = `CO-${String((job.change_orders || []).length + 1).padStart(3, '0')}`;
     const co = { job_id: job.id, co_number: num, description: cod.trim(), reason: cor.trim(), amount: Number(coa), status: 'pending', created_at: new Date().toISOString(), submitted_by_id: AV_USER_ID, submitted_by_role: profile?.role || 'project_manager' };
     const s = await sbCO(co);
-    if (s) {
-      upd({ change_orders: [s, ...(job.change_orders || [])] });
+    if (s.ok) {
+      upd({ change_orders: [s.data, ...(job.change_orders || [])] });
       sbNotify('co_submitted', `New CO on ${job.address}`, `${num}: ${cod.trim()} — ${f$(Number(coa))}`, job.id, AV_USER_ID);
       setCod(''); setCor(''); setCoa(''); setShowCO(false);
+    } else {
+      setCoErr(s.error || 'Save failed');
     }
     setSavCO(false);
   };
@@ -84,9 +88,11 @@ export default function COTab({ job, upd, profile }) {
                 <button className="btn btn-ghost" style={{ flex: 1, fontSize: 11 }} onClick={() => setEditingCOId(null)}>Cancel</button>
                 <button className="btn btn-navy" style={{ flex: 1, fontSize: 11 }} onClick={async () => {
                   const patch = { description: editForm.description.trim(), amount: Number(editForm.amount) };
-                  await sbUpdCO(co.id, patch);
-                  upd({ change_orders: (job.change_orders || []).map(c => c.id === co.id ? { ...c, ...patch } : c) });
-                  setEditingCOId(null);
+                  const r = await sbUpdCO(co.id, patch);
+                  if (r.ok) {
+                    upd({ change_orders: (job.change_orders || []).map(c => c.id === co.id ? { ...c, ...patch } : c) });
+                    setEditingCOId(null);
+                  }
                 }}>Save</button>
               </div>
             </div>
@@ -126,6 +132,7 @@ export default function COTab({ job, upd, profile }) {
         <div className="fg"><label className="flbl"><span className="freq">*</span>Description</label><input className="finp" value={cod} onChange={e => setCod(e.target.value)} placeholder="What work is being added or changed?" /></div>
         <div className="fg"><label className="flbl">Reason</label><input className="finp" value={cor} onChange={e => setCor(e.target.value)} placeholder="Why is this change needed?" /></div>
         <div className="fg"><label className="flbl"><span className="freq">*</span>Amount ($)</label><input className="finp" type="number" value={coa} onChange={e => setCoa(e.target.value)} placeholder="e.g. 2500" /></div>
+        {coErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>{coErr}</div>}
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowCO(false)}>Cancel</button>
           <button className={`btn ${cod.trim() && coa ? 'btn-gold' : 'btn-ghost'}`} style={{ flex: 1 }} onClick={addCO} disabled={savCO || !cod.trim() || !coa}>{savCO ? 'Saving...' : 'Create CO'}</button>

@@ -27,14 +27,14 @@ export default function LeadsScr({ profile, onConvertToJob }) {
   };
 
   const updateStatus = async (id, status) => {
-    await sbUpdContact(id, { status });
-    setContacts(p => p.map(c => c.id === id ? { ...c, status } : c));
+    const r = await sbUpdContact(id, { status });
+    if (r.ok) setContacts(p => p.map(c => c.id === id ? { ...c, status } : c));
   };
 
   const remove = async id => {
     if (!confirm('Delete this lead?')) return;
-    await sbDelContact(id);
-    setContacts(p => p.filter(c => c.id !== id));
+    const r = await sbDelContact(id);
+    if (r.ok) setContacts(p => p.filter(c => c.id !== id));
   };
 
   const profileUrl = `${window.location.origin}?pro=${AV_TENANT}`;
@@ -236,18 +236,15 @@ function LeadModal({ contact, onClose, onSaved }) {
     source:     contact?.source     || 'manual',
   });
   const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState('');
 
   const save = async () => {
     if (!form.first_name.trim()) return;
-    setSaving(true);
-    if (contact?.id) {
-      await sbUpdContact(contact.id, form);
-    } else {
-      await sbSaveContact(form);
-    }
+    setSaving(true); setSaveErr('');
+    const r = contact?.id ? await sbUpdContact(contact.id, form) : await sbSaveContact(form);
     setSaving(false);
-    onSaved();
-    onClose();
+    if (r.ok) { onSaved(); onClose(); }
+    else setSaveErr(r.error || 'Save failed');
   };
 
   return (
@@ -298,6 +295,7 @@ function LeadModal({ contact, onClose, onSaved }) {
             </select>
           </div>
         </div>
+        {saveErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>{saveErr}</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <button className="btn btn-navy" style={{ flex: 1 }} onClick={save} disabled={saving || !form.first_name.trim()}>
             {saving ? 'Saving…' : 'Save'}

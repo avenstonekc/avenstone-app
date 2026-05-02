@@ -29,22 +29,23 @@ export default function UserMgmt() {
   };
 
   const toggleActive = async u => {
-    await sbSetUserActive(u.id, !u.is_active);
-    setTeam(p => p.map(x => x.id === u.id ? { ...x, is_active: !u.is_active } : x));
+    const r = await sbSetUserActive(u.id, !u.is_active);
+    if (r.ok) setTeam(p => p.map(x => x.id === u.id ? { ...x, is_active: !u.is_active } : x));
+    else setErr(r.error || 'Update failed');
   };
 
   const saveRole = async () => {
     if (!editRole) return;
-    await sbSetUserRole(editRole.id, editRole.role);
-    setTeam(p => p.map(x => x.id === editRole.id ? { ...x, role: editRole.role } : x));
-    setEditRole(null);
+    const r = await sbSetUserRole(editRole.id, editRole.role);
+    if (r.ok) { setTeam(p => p.map(x => x.id === editRole.id ? { ...x, role: editRole.role } : x)); setEditRole(null); }
+    else setErr(r.error || 'Save failed');
   };
 
   const saveComm = async () => {
     if (!commEdit) return;
-    await sbSaveCommission(commEdit.id, commEdit.pct, commEdit.dollar);
-    setTeam(p => p.map(x => x.id === commEdit.id ? { ...x, commission_pct: Number(commEdit.pct) || 0, commission_dollar: Number(commEdit.dollar) || 0 } : x));
-    setCommEdit(null);
+    const r = await sbSaveCommission(commEdit.id, commEdit.pct, commEdit.dollar);
+    if (r.ok) { setTeam(p => p.map(x => x.id === commEdit.id ? { ...x, commission_pct: Number(commEdit.pct) || 0, commission_dollar: Number(commEdit.dollar) || 0 } : x)); setCommEdit(null); }
+    else setErr(r.error || 'Save failed');
   };
 
   return (

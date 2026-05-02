@@ -95,8 +95,8 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const submitLog = async () => {
     setLogSaving(true);
     const d = await sbSubmitDailyLog({ job_id: job.id, log_date: logForm.log_date, weather: logForm.weather, crew_count: logForm.crew_count ? Number(logForm.crew_count) : null, hours_worked: logForm.hours_worked ? Number(logForm.hours_worked) : null, work_completed: logForm.work_completed || null, materials_used: logForm.materials_used || null, issues: logForm.issues || null });
-    if (d) {
-      setLogs(p => [d, ...p]);
+    if (d.ok) {
+      setLogs(p => [d.data, ...p]);
       sbNotify('daily_log_submitted', `Daily log — ${job.address}`, `${logForm.log_date}: ${(logForm.work_completed || '').slice(0, 80)}`, job.id, AV_USER_ID);
       setShowLogForm(false);
       setLogForm({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
@@ -107,7 +107,7 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const sendMsg = async () => {
     if (!msgTxt.trim()) return; setSendingMsg(true);
     const m = await sbPostMessage(job.id, msgTxt.trim());
-    if (m) { setMsgs(p => [...p, m]); sbNotify('job_message', `Message on ${job.address}`, msgTxt.trim().slice(0, 120), job.id, AV_USER_ID); setMsgTxt(''); }
+    if (m.ok) { setMsgs(p => [...p, m.data]); sbNotify('job_message', `Message on ${job.address}`, msgTxt.trim().slice(0, 120), job.id, AV_USER_ID); setMsgTxt(''); }
     setSendingMsg(false);
   };
 
@@ -115,8 +115,8 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
     if (!staffMsgTxt.trim()) return;
     setSendingStaffMsg(true);
     const m = await sbPostStaffMessage(job.id, staffMsgTxt.trim());
-    if (m) {
-      setStaffMsgs(p => [...p, m]);
+    if (m.ok) {
+      setStaffMsgs(p => [...p, m.data]);
       sbNotify('staff_message', `Staff message — ${job.address}`, staffMsgTxt.trim().slice(0, 120), job.id, AV_USER_ID);
       setStaffMsgTxt('');
     }
@@ -126,7 +126,7 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const updatePhase = async (phase, status) => {
     setPhaseUpdating(phase.id);
     const updated = await sbSubUpdatePhase(phase.id, status);
-    if (updated) {
+    if (updated.ok) {
       setPhases(ps => ps.map(p => p.id === phase.id ? { ...p, status } : p));
       sbNotify('phase_status_update', `Phase update — ${job.address}`, `${phase.name}: ${status.replace(/_/g, ' ')}`, job.id, AV_USER_ID);
     }
@@ -137,8 +137,8 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
     if (!coForm.title.trim()) return;
     setCoSaving(true);
     const co = await sbSubSubmitCO({ job_id: job.id, tenant_id: profile.tenant_id, description: coForm.title.trim(), amount: coForm.amount });
-    if (co) {
-      setCos(p => [co, ...p]);
+    if (co.ok) {
+      setCos(p => [co.data, ...p]);
       sbNotify('co_submitted', `Change order request — ${job.address}`, coForm.title.trim(), job.id, AV_USER_ID);
       setShowCOForm(false);
       setCoForm({ title: '', description: '', amount: '' });

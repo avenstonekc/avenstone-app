@@ -104,7 +104,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
     if (pendingAction?.todoId) sbCompleteTodo(pendingAction.todoId).catch(() => {});
     setNewA(''); setShowNew(false); setSel(j.id);
   };
-  const del = id => { if (!window.confirm('Delete this job?')) return; const u = jobs.filter(j => j.id !== id); setJobs(u); ls('av_j', u); sbDel(id); setSel(null); };
+  const del = async id => { if (!window.confirm('Delete this job?')) return; const u = jobs.filter(j => j.id !== id); setJobs(u); ls('av_j', u); setSel(null); const r = await sbDel(id); if (!r.ok) { setJobs(jobs); ls('av_j', jobs); alert('Delete failed: ' + (r.error || 'Unknown error')); } };
 
   const selJ = jobs.find(j => j.id === sel);
   if (selJ) return (

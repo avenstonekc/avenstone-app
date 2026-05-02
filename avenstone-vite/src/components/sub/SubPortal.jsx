@@ -28,6 +28,7 @@ export default function SubPortal({ profile, signOut }) {
   const [bidFile, setBidFile] = useState(null);
   const [bidSaving, setBidSaving] = useState(false);
   const [bidDone, setBidDone] = useState(null);
+  const [bidErr, setBidErr] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [pricing, setPricing] = useState([]);
   const [pricingLoaded, setPricingLoaded] = useState(false);
@@ -74,10 +75,16 @@ export default function SubPortal({ profile, signOut }) {
 
   const submitBid = async () => {
     if (!bidITB) return;
-    setBidSaving(true);
+    setBidSaving(true); setBidErr('');
     const r = await sbSubmitBid(bidITB.id, bidForm.amount, bidForm.notes, bidFile);
-    if (r) { setBidDone(bidITB.id); setItbs(p => p.map(x => x.id === bidITB.id ? { ...x, responses: [...(x.responses || []).filter(b => b.sub_id !== AV_USER_ID), r] } : x)); }
-    setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null); setBidSaving(false);
+    if (r.ok) {
+      setBidDone(bidITB.id);
+      setItbs(p => p.map(x => x.id === bidITB.id ? { ...x, responses: [...(x.responses || []).filter(b => b.sub_id !== AV_USER_ID), r.data] } : x));
+      setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null);
+    } else {
+      setBidErr(r.error || 'Submit failed');
+    }
+    setBidSaving(false);
   };
 
   const existingTrades = pricing.map(p => p.trade);
@@ -331,8 +338,9 @@ export default function SubPortal({ profile, signOut }) {
               <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.dl}</span>{bidFile ? bidFile.name : t('Choose file to upload', lang)}
             </button>
           </div>
+          {bidErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>{bidErr}</div>}
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null); }}>{t('Cancel', lang)}</button>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null); setBidErr(''); }}>{t('Cancel', lang)}</button>
             <button className="btn btn-gold" style={{ flex: 1 }} onClick={submitBid} disabled={bidSaving}>{bidSaving ? t('Submitting...', lang) : t('Submit Bid', lang)}</button>
           </div>
         </div>

@@ -51,7 +51,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       editOverrides: null,
     });
     setSaving(false);
-    if (error) { setSaveError(error.message || JSON.stringify(error)); return; }
+    if (error) { setSaveError(error || 'Save failed'); return; }
     setSavedOk(true);
     setTimeout(onClose, 1400);
   }
@@ -72,7 +72,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
       editOverrides: null,
     });
     setSaving(false);
-    if (error) { setSaveError(error.message || JSON.stringify(error)); return; }
+    if (error) { setSaveError(error || 'Save failed'); return; }
     setSavedOk(true);
     setTimeout(onClose, 1400);
   }

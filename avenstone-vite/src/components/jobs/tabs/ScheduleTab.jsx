@@ -7,6 +7,7 @@ export default function ScheduleTab({ job }) {
   const [phasesLoaded, setPhasesLoaded] = useState(false);
   const [phaseEdit, setPhaseEdit] = useState(null);
   const [phaseEdits, setPhaseEdits] = useState({});
+  const [phaseErr, setPhaseErr] = useState('');
   const [schedView, setSchedView] = useState('list');
   const [auditProfiles, setAuditProfiles] = useState({});
 
@@ -145,9 +146,11 @@ export default function ScheduleTab({ job }) {
                     {['not_started', 'in_progress', 'complete', 'blocked'].map(s => <option key={s} value={s}>{phSl(s)}</option>)}
                   </select>
                 </div>
+                {phaseErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>{phaseErr}</div>}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-ghost" style={{ flex: 1, fontSize: 12 }} onClick={() => setPhaseEdit(null)}>Cancel</button>
                   <button className="btn btn-navy" style={{ flex: 1, fontSize: 12 }} onClick={async () => {
+                    setPhaseErr('');
                     const auditFields = {};
                     if (ed.status === 'in_progress' && ph.status !== 'in_progress' && !ph.started_at) {
                       auditFields.started_at = new Date().toISOString();
@@ -159,7 +162,8 @@ export default function ScheduleTab({ job }) {
                     }
                     const updated = { ...ph, ...ed, ...auditFields, start_date: ed.start_date || null, end_date: ed.end_date || null };
                     const saved = await sbSavePhase(updated);
-                    setPhases(p => p.map(x => x.id === ph.id ? (saved || updated) : x));
+                    if (!saved.ok) { setPhaseErr(saved.error || 'Save failed'); return; }
+                    setPhases(p => p.map(x => x.id === ph.id ? (saved.data || updated) : x));
                     if (ed.status === 'complete' && ph.status !== 'complete') {
                       sbNotify('phase_complete', `Phase complete: ${ph.phase_name}`, `${ph.phase_name} marked complete on ${job.address}`, job.id, AV_USER_ID);
                       if (job.referring_realtor_phone || job.referring_realtor_email) {

@@ -95,9 +95,11 @@ export default function MaterialsTab({ job, profile }) {
       notes: form.notes.trim() || null,
     };
     if (editTarget) {
-      await sbUpdMaterial(editTarget.id, payload);
+      const r = await sbUpdMaterial(editTarget.id, payload);
+      if (!r.ok) { setError(r.error || 'Save failed'); setSaving(false); return; }
     } else {
-      await sbSaveMaterial(payload);
+      const r = await sbSaveMaterial(payload);
+      if (!r.ok) { setError(r.error || 'Save failed'); setSaving(false); return; }
     }
     setSaving(false);
     closeModal();
@@ -107,16 +109,17 @@ export default function MaterialsTab({ job, profile }) {
   const handleAdvance = async mat => {
     const next = NEXT_STATUS[mat.status];
     if (!next) return;
-    await sbUpdMaterial(mat.id, { status: next });
-    load();
+    const r = await sbUpdMaterial(mat.id, { status: next });
+    if (r.ok) load();
   };
 
   const handleDelete = async mat => {
     if (!window.confirm(`Delete "${mat.name}"?`)) return;
     setDeleting(mat.id);
-    await sbDelMaterial(mat.id);
+    const r = await sbDelMaterial(mat.id);
     setDeleting(null);
-    load();
+    if (r.ok) load();
+    else setError(r.error || 'Delete failed');
   };
 
   const filtered = filter === 'all' ? materials : materials.filter(m => m.status === filter);
