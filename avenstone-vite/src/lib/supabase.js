@@ -117,14 +117,25 @@ export const sbDel = async id => {
       sb.from('change_orders').delete().eq('job_id', id),
       sb.from('jobs').delete().eq('id', id),
     ]);
-  } catch (e) {}
+    return { ok: true, error: null };
+  } catch (e) {
+    captureFailedIntent({ kind: 'job_delete', payload: { jobId: id }, jobId: id, message: e.message, resumable: false }).catch(() => {});
+    return { ok: false, error: e.message || 'Delete failed' };
+  }
 };
 
 export const sbNote = async (jid, content, author) => {
   try {
     const { data, error } = await sb.from('job_notes').insert({ job_id: jid, tenant_id: AV_TENANT, content, author, created_at: new Date().toISOString() }).select().single();
-    return error ? null : data;
-  } catch (e) { return null; }
+    if (error) {
+      captureFailedIntent({ kind: 'note_save', payload: {}, jobId: jid, message: error.message, resumable: false }).catch(() => {});
+      return { ok: false, error: error.message, data: null };
+    }
+    return { ok: true, error: null, data };
+  } catch (e) {
+    captureFailedIntent({ kind: 'note_save', payload: {}, jobId: jid, message: e.message, resumable: false }).catch(() => {});
+    return { ok: false, error: e.message || 'Unknown error', data: null };
+  }
 };
 
 export const sbPhoto = async (jid, file) => {
@@ -144,18 +155,44 @@ export const sbPhoto = async (jid, file) => {
 export const sbLabelPhoto = async (jobId, photoId, label) => {
   try {
     if (label) await sb.from('photos').update({ label: null }).eq('job_id', jobId).eq('label', label).neq('id', photoId);
-    await sb.from('photos').update({ label: label || null }).eq('id', photoId);
-    return true;
-  } catch (e) { console.error(e); return false; }
+    const { error } = await sb.from('photos').update({ label: label || null }).eq('id', photoId);
+    if (error) {
+      captureFailedIntent({ kind: 'photo_label', payload: { photoId }, jobId, message: error.message, resumable: false }).catch(() => {});
+      return { ok: false, error: error.message };
+    }
+    return { ok: true, error: null };
+  } catch (e) {
+    captureFailedIntent({ kind: 'photo_label', payload: { photoId }, jobId, message: e.message, resumable: false }).catch(() => {});
+    return { ok: false, error: e.message || 'Unknown error' };
+  }
 };
 
 export const sbCO = async co => {
   try {
     const { data, error } = await sb.from('change_orders').insert({ ...co, tenant_id: AV_TENANT }).select().single();
-    return error ? null : data;
-  } catch (e) { return null; }
+    if (error) {
+      captureFailedIntent({ kind: 'co_save', payload: { co_number: co.co_number }, jobId: co.job_id, message: error.message, resumable: false }).catch(() => {});
+      return { ok: false, error: error.message, data: null };
+    }
+    return { ok: true, error: null, data };
+  } catch (e) {
+    captureFailedIntent({ kind: 'co_save', payload: {}, jobId: co.job_id, message: e.message, resumable: false }).catch(() => {});
+    return { ok: false, error: e.message || 'Unknown error', data: null };
+  }
 };
-export const sbUpdCO = async (id, ch) => { try { await sb.from('change_orders').update(ch).eq('id', id); } catch (e) {} };
+export const sbUpdCO = async (id, ch) => {
+  try {
+    const { error } = await sb.from('change_orders').update(ch).eq('id', id);
+    if (error) {
+      captureFailedIntent({ kind: 'co_update', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+      return { ok: false, error: error.message };
+    }
+    return { ok: true, error: null };
+  } catch (e) {
+    captureFailedIntent({ kind: 'co_update', payload: { id }, jobId: null, message: e.message, resumable: false }).catch(() => {});
+    return { ok: false, error: e.message || 'Unknown error' };
+  }
+};
 export const getJobCoTotal = (job) => Number(job?.co_total || 0);
 
 // ─── Phases ───────────────────────────────────────────────────────────────────
@@ -166,7 +203,11 @@ export const sbLoadPhases = async jid => {
 };
 export const sbSavePhase = async ph => {
   const { data, error } = await sb.from('job_phases').upsert(ph).select().single();
-  return error ? null : data;
+  if (error) {
+    captureFailedIntent({ kind: 'phase_save', payload: { phaseId: ph.id }, jobId: ph.job_id, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 
 // ─── Documents ────────────────────────────────────────────────────────────────
@@ -211,10 +252,30 @@ export const sbDelDoc = async doc => {
   try {
     const path = docPathFromUrl(doc.file_url);
     if (path) await sb.storage.from('job-documents').remove([path]);
-    await sb.from('job_documents').delete().eq('id', doc.id);
-  } catch (e) { console.error(e); }
+    const { error } = await sb.from('job_documents').delete().eq('id', doc.id);
+    if (error) {
+      captureFailedIntent({ kind: 'doc_delete', payload: { docId: doc.id }, jobId: doc.job_id, message: error.message, resumable: false }).catch(() => {});
+      return { ok: false, error: error.message };
+    }
+    return { ok: true, error: null };
+  } catch (e) {
+    captureFailedIntent({ kind: 'doc_delete', payload: { docId: doc.id }, jobId: doc.job_id, message: e.message, resumable: false }).catch(() => {});
+    return { ok: false, error: e.message || 'Delete failed' };
+  }
 };
-export const sbToggleDocVisible = async (id, val) => { await sb.from('job_documents').update({ client_visible: val }).eq('id', id); };
+export const sbToggleDocVisible = async (id, val) => {
+  try {
+    const { error } = await sb.from('job_documents').update({ client_visible: val }).eq('id', id);
+    if (error) {
+      captureFailedIntent({ kind: 'doc_toggle', payload: { id, val }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+      return { ok: false, error: error.message };
+    }
+    return { ok: true, error: null };
+  } catch (e) {
+    captureFailedIntent({ kind: 'doc_toggle', payload: { id, val }, jobId: null, message: e.message, resumable: false }).catch(() => {});
+    return { ok: false, error: e.message || 'Unknown error' };
+  }
+};
 
 // ─── Cost-plus tracking ───────────────────────────────────────────────────────
 const costFileSignedUrl = async path => {
@@ -247,13 +308,28 @@ export const sbUploadCostItemProposal = async (jid, itemId, file) => {
 };
 export const sbCreateCostItem = async (jid, item) => {
   const { data, error } = await sb.from('job_cost_items').insert({ ...item, job_id: jid, tenant_id: AV_TENANT, created_at: new Date().toISOString() }).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'cost_item_save', payload: {}, jobId: jid, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbUpdCostItem = async (id, ch) => {
   const { data, error } = await sb.from('job_cost_items').update(ch).eq('id', id).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'cost_item_update', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
-export const sbDelCostItem = async id => sb.from('job_cost_items').delete().eq('id', id);
+export const sbDelCostItem = async id => {
+  const { error } = await sb.from('job_cost_items').delete().eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'cost_item_delete', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
+};
 export const sbLoadCostInvoices = async jid => {
   const { data } = await sb.from('job_cost_invoices').select('*').eq('job_id', jid).order('created_at', { ascending: true });
   if (!data || !data.length) return [];
@@ -282,7 +358,11 @@ export const sbCreateCostInvoice = async (jid, invoice) => {
     created_by: AV_USER_ID,
     created_at: new Date().toISOString(),
   }).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'cost_invoice_save', payload: {}, jobId: jid, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbUpdCostInvoice = async (id, ch) => {
   // Map compat field names to job_transactions columns
@@ -294,9 +374,20 @@ export const sbUpdCostInvoice = async (id, ch) => {
   if ('date' in ch) { mapped.date_incurred = ch.date; delete mapped.date; }
   if ('paid' in ch) { mapped.status = ch.paid ? 'paid' : 'pending'; delete mapped.paid; }
   const { data, error } = await sb.from('job_transactions').update(mapped).eq('id', id).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'cost_invoice_update', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
-export const sbDelCostInvoice = async id => sb.from('job_transactions').delete().eq('id', id);
+export const sbDelCostInvoice = async id => {
+  const { error } = await sb.from('job_transactions').delete().eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'cost_invoice_delete', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
+};
 export const sbUploadInvoiceFile = async (jid, invId, file) => {
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
   const path = `${jid}/invoice-${invId}/${Date.now()}.${ext}`;
@@ -402,11 +493,22 @@ export const sbLoadJobSubs = async jid => {
   return data || [];
 };
 export const sbAssignSub = async (jid, subId, jobAddress = '') => {
-  const { data } = await sb.from('job_subs').insert({ tenant_id: AV_TENANT, job_id: jid, sub_id: subId }).select().single();
-  if (data) sbNotify('assigned_to_job', 'Sub Assigned', `A sub was assigned to ${jobAddress || 'a job'}`, jid, subId).catch(() => {});
-  return data;
+  const { data, error } = await sb.from('job_subs').insert({ tenant_id: AV_TENANT, job_id: jid, sub_id: subId }).select().single();
+  if (error) {
+    captureFailedIntent({ kind: 'sub_assign', payload: { subId }, jobId: jid, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  sbNotify('assigned_to_job', 'Sub Assigned', `A sub was assigned to ${jobAddress || 'a job'}`, jid, subId).catch(() => {});
+  return { ok: true, error: null, data };
 };
-export const sbUnassignSub = async (jid, subId) => sb.from('job_subs').delete().eq('job_id', jid).eq('sub_id', subId);
+export const sbUnassignSub = async (jid, subId) => {
+  const { error } = await sb.from('job_subs').delete().eq('job_id', jid).eq('sub_id', subId);
+  if (error) {
+    captureFailedIntent({ kind: 'sub_unassign', payload: { subId }, jobId: jid, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
+};
 
 // ─── Messages ─────────────────────────────────────────────────────────────────
 export const sbLoadMessages = async jid => {
@@ -414,8 +516,12 @@ export const sbLoadMessages = async jid => {
   return data || [];
 };
 export const sbPostMessage = async (jid, content) => {
-  const { data } = await sb.from('job_messages').insert({ tenant_id: AV_TENANT, job_id: jid, sender_id: AV_USER_ID, content }).select('*,sender:profiles(id,full_name,role)').single();
-  return data;
+  const { data, error } = await sb.from('job_messages').insert({ tenant_id: AV_TENANT, job_id: jid, sender_id: AV_USER_ID, content }).select('*,sender:profiles(id,full_name,role)').single();
+  if (error) {
+    captureFailedIntent({ kind: 'message_send', payload: { content }, jobId: jid, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbNotifyEmail = (userId, title, body, jobId) => {
   if (!userId) return;
@@ -426,8 +532,12 @@ export const sbLoadStaffMessages = async jid => {
   return data || [];
 };
 export const sbPostStaffMessage = async (jid, content) => {
-  const { data } = await sb.from('staff_messages').insert({ tenant_id: AV_TENANT, job_id: jid, sender_id: AV_USER_ID, content }).select('*,sender:profiles(id,full_name,role)').single();
-  return data;
+  const { data, error } = await sb.from('staff_messages').insert({ tenant_id: AV_TENANT, job_id: jid, sender_id: AV_USER_ID, content }).select('*,sender:profiles(id,full_name,role)').single();
+  if (error) {
+    captureFailedIntent({ kind: 'message_send', payload: { content }, jobId: jid, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 
 // ─── Quote Requests ───────────────────────────────────────────────────────────
@@ -436,10 +546,21 @@ export const sbLoadQuoteRequests = async jid => {
   return data || [];
 };
 export const sbCreateQuoteRequest = async itb => {
-  const { data } = await sb.from('quote_requests').insert({ ...itb, tenant_id: AV_TENANT, created_by: AV_USER_ID }).select().single();
-  return data;
+  const { data, error } = await sb.from('quote_requests').insert({ ...itb, tenant_id: AV_TENANT, created_by: AV_USER_ID }).select().single();
+  if (error) {
+    captureFailedIntent({ kind: 'quote_request_save', payload: {}, jobId: itb.job_id || null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
-export const sbUpdateQuoteRequest = async (id, ch) => sb.from('quote_requests').update(ch).eq('id', id);
+export const sbUpdateQuoteRequest = async (id, ch) => {
+  const { data, error } = await sb.from('quote_requests').update(ch).eq('id', id).select().single();
+  if (error) {
+    captureFailedIntent({ kind: 'quote_request_save', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
+};
 // Backward-compat aliases
 export const sbLoadITBs = sbLoadQuoteRequests;
 export const sbCreateITB = sbCreateQuoteRequest;
@@ -478,10 +599,21 @@ export const sbSubmitBid = async (itbId, amount, notes, quoteFile) => {
       quote_file_size = quoteFile.size;
     }
   }
-  const { data } = await sb.from('bid_responses').upsert({ tenant_id: AV_TENANT, invitation_id: itbId, sub_id: AV_USER_ID, amount: Number(amount) || null, notes: notes || null, quote_file_url, quote_file_name, quote_file_size, status: 'submitted', submitted_at: new Date().toISOString() }, { onConflict: 'invitation_id,sub_id' }).select().single();
-  return data;
+  const { data, error } = await sb.from('bid_responses').upsert({ tenant_id: AV_TENANT, invitation_id: itbId, sub_id: AV_USER_ID, amount: Number(amount) || null, notes: notes || null, quote_file_url, quote_file_name, quote_file_size, status: 'submitted', submitted_at: new Date().toISOString() }, { onConflict: 'invitation_id,sub_id' }).select().single();
+  if (error) {
+    captureFailedIntent({ kind: 'bid_submit', payload: { itbId }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
-export const sbUpdateBidStatus = async (id, status) => sb.from('bid_responses').update({ status }).eq('id', id);
+export const sbUpdateBidStatus = async (id, status) => {
+  const { error } = await sb.from('bid_responses').update({ status }).eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'bid_status_update', payload: { id, status }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
+};
 
 export const sbLoadSubsTabData = async (jobId) => {
   const [jobSubsRes, quoteReqRes] = await Promise.all([
@@ -514,11 +646,19 @@ export const sbSaveSubPricing = async ({ subId, tenantId, trade, pricingMode, un
     notes: notes || null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'sub_id,trade' }).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'sub_pricing_save', payload: { subId, trade }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbDeleteSubPricing = async (subId, trade) => {
   const { error } = await sb.from('sub_pricing').delete().eq('sub_id', subId).eq('trade', trade);
-  return { error };
+  if (error) {
+    captureFailedIntent({ kind: 'sub_pricing_delete', payload: { subId, trade }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
 };
 export const sbLoadSubRating = async (subId) => {
   const { data } = await sb.from('sub_ratings').select('*').eq('sub_id', subId).order('created_at', { ascending: false });
@@ -548,8 +688,16 @@ export const sbSubUpdatePhase = async (id, status) => {
     if (status === 'in_progress') { audit.started_at = new Date().toISOString(); audit.started_by_id = AV_USER_ID; }
     else if (status === 'complete') { audit.completed_at = new Date().toISOString(); audit.completed_by_id = AV_USER_ID; }
     const { data, error } = await sb.from('job_phases').update({ status, ...audit }).eq('id', id).eq('assigned_sub_id', AV_USER_ID).select().single();
-    return error ? null : data;
-  } catch (e) { console.error('sbSubUpdatePhase', e); return null; }
+    if (error) {
+      captureFailedIntent({ kind: 'sub_phase_update', payload: { id, status }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+      return { ok: false, error: error.message, data: null };
+    }
+    return { ok: true, error: null, data };
+  } catch (e) {
+    console.error('sbSubUpdatePhase', e);
+    captureFailedIntent({ kind: 'sub_phase_update', payload: { id, status }, jobId: null, message: e.message, resumable: false }).catch(() => {});
+    return { ok: false, error: e.message, data: null };
+  }
 };
 export const sbSubSubmitCO = async ({ job_id, tenant_id, description, amount }) => {
   try {
@@ -562,8 +710,16 @@ export const sbSubSubmitCO = async ({ job_id, tenant_id, description, amount }) 
       status: 'pending', created_at: new Date().toISOString(),
       submitted_by_id: AV_USER_ID, submitted_by_role: 'sub',
     }).select().single();
-    return error ? null : data;
-  } catch (e) { console.error('sbSubSubmitCO', e); return null; }
+    if (error) {
+      captureFailedIntent({ kind: 'sub_co_submit', payload: { description, amount }, jobId: job_id, message: error.message, resumable: false }).catch(() => {});
+      return { ok: false, error: error.message, data: null };
+    }
+    return { ok: true, error: null, data };
+  } catch (e) {
+    console.error('sbSubSubmitCO', e);
+    captureFailedIntent({ kind: 'sub_co_submit', payload: { description, amount }, jobId: job_id, message: e.message, resumable: false }).catch(() => {});
+    return { ok: false, error: e.message, data: null };
+  }
 };
 
 // ─── Sub jobs ─────────────────────────────────────────────────────────────────
@@ -579,7 +735,11 @@ export const sbLoadSubJobs = async subId => {
 export const toBase64 = blob => new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result.split(',')[1]); rd.readAsDataURL(blob); });
 export const sbSaveSignature = async sig => {
   const { data, error } = await sb.from('contract_signatures').insert({ ...sig, tenant_id: sig.tenant_id || AV_TENANT }).select().single();
-  return error ? null : data;
+  if (error) {
+    captureFailedIntent({ kind: 'signature_save', payload: {}, jobId: sig.job_id || null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbSendContractEmail = async (job, contractType, pdfBlob) => {
   const b64 = pdfBlob ? await toBase64(pdfBlob) : null;
@@ -597,7 +757,11 @@ export const sbLoadSubRatings = async subId => {
 };
 export const sbSubmitRating = async (subId, stars, comment, jobId) => {
   const { data, error } = await sb.from('sub_ratings').upsert({ tenant_id: AV_TENANT, sub_id: subId, rater_id: AV_USER_ID, job_id: jobId || null, stars, comment: comment || null }, { onConflict: 'tenant_id,sub_id,rater_id,job_id' }).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'rating_submit', payload: { subId, stars }, jobId: jobId || null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbSubmitJobReview = async (jobId, tenantId, r) => {
   return await sb.from('job_reviews').insert({ job_id: jobId, tenant_id: tenantId, client_name: r.client_name || null, client_email: r.client_email || null, rating_quality: r.quality, rating_communication: r.communication, rating_timeliness: r.timeliness, would_recommend: r.would_recommend, review_text: r.text || null, created_at: new Date().toISOString() });
@@ -618,8 +782,12 @@ export const sbLoadDailyLogs = async jid => {
   return data || [];
 };
 export const sbSubmitDailyLog = async log => {
-  const { data } = await sb.from('daily_logs').insert({ ...log, tenant_id: AV_TENANT, author_id: AV_USER_ID }).select('*,author:profiles(full_name,role)').single();
-  return data;
+  const { data, error } = await sb.from('daily_logs').insert({ ...log, tenant_id: AV_TENANT, author_id: AV_USER_ID }).select('*,author:profiles(full_name,role)').single();
+  if (error) {
+    captureFailedIntent({ kind: 'daily_log_save', payload: {}, jobId: log.job_id || null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 
 // ─── AI Estimator ─────────────────────────────────────────────────────────────
@@ -810,9 +978,30 @@ export const sbInviteStaff = async (name, email, role) => {
   const res = await fetch(INVITE_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, full_name: name, role, tenant_id: AV_TENANT }) });
   return res.json();
 };
-export const sbSetUserActive = async (id, val) => sb.from('profiles').update({ is_active: val }).eq('id', id);
-export const sbSetUserRole = async (id, role) => sb.from('profiles').update({ role }).eq('id', id);
-export const sbSaveCommission = async (id, pct, dollar) => sb.from('profiles').update({ commission_pct: Number(pct) || 0, commission_dollar: Number(dollar) || 0 }).eq('id', id);
+export const sbSetUserActive = async (id, val) => {
+  const { error } = await sb.from('profiles').update({ is_active: val }).eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'user_manage', payload: { id, is_active: val }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
+};
+export const sbSetUserRole = async (id, role) => {
+  const { error } = await sb.from('profiles').update({ role }).eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'user_manage', payload: { id, role }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
+};
+export const sbSaveCommission = async (id, pct, dollar) => {
+  const { error } = await sb.from('profiles').update({ commission_pct: Number(pct) || 0, commission_dollar: Number(dollar) || 0 }).eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'user_manage', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
+};
 
 // ─── Contacts (CRM) ───────────────────────────────────────────────────────────
 export const CONTACT_STATUSES = ['new','contacted','qualified','customer','lost'];
@@ -824,13 +1013,28 @@ export const sbLoadContacts = async () => {
 };
 export const sbSaveContact = async c => {
   const { data, error } = await sb.from('contacts').insert({ ...c, tenant_id: AV_TENANT, created_at: new Date().toISOString() }).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'contact_save', payload: {}, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbUpdContact = async (id, ch) => {
   const { data, error } = await sb.from('contacts').update(ch).eq('id', id).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'contact_update', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
-export const sbDelContact = async id => sb.from('contacts').delete().eq('id', id);
+export const sbDelContact = async id => {
+  const { error } = await sb.from('contacts').delete().eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'contact_delete', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
+};
 export const sbLoadContactMessages = async contactId => {
   const { data } = await sb.from('contact_messages').select('*').eq('contact_id', contactId).order('created_at', { ascending: true });
   return data || [];
@@ -858,7 +1062,11 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode,
     outline_data: outlineData ?? null,
     edit_overrides: editOverrides ?? null,
   }).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'lidar_scan_save', payload: {}, jobId: jobId || null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbGetJobLidarScans = async jobId => {
   const { data } = await sb.from('job_lidar_scans').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
@@ -885,7 +1093,11 @@ export const sbSaveLidarScan = async ({ contactId, rooms, totalSqft, captureMode
     outline_data: outlineData ?? null,
     edit_overrides: editOverrides ?? null,
   }).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'lidar_scan_save', payload: {}, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbGetContactLidarScans = async contactId => {
   const { data } = await sb.from('contact_lidar_scans').select('*').eq('contact_id', contactId).order('created_at', { ascending: false });
@@ -1063,13 +1275,28 @@ export const sbLoadMaterials = async jid => {
 };
 export const sbSaveMaterial = async mat => {
   const { data, error } = await sb.from('job_materials').insert({ ...mat, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'material_save', payload: {}, jobId: mat.job_id || null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 export const sbUpdMaterial = async (id, ch) => {
   const { data, error } = await sb.from('job_materials').update(ch).eq('id', id).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'material_update', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
-export const sbDelMaterial = async id => sb.from('job_materials').delete().eq('id', id);
+export const sbDelMaterial = async id => {
+  const { error } = await sb.from('job_materials').delete().eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'material_delete', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
+};
 
 // ─── Owner Intelligence ───────────────────────────────────────────────────────
 export const sbLoadSubPerformance = (tenant_id) =>
@@ -1216,12 +1443,20 @@ export const sbSaveJobRoomScope = async ({
     created_by:    userId,
     updated_at:    new Date().toISOString(),
   }, { onConflict: 'tenant_id,job_id,room_id' }).select().single();
-  return { data, error };
+  if (error) {
+    captureFailedIntent({ kind: 'room_scope_save', payload: { roomId, scopeTag }, jobId: jobId || null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
 };
 
 export const sbDeleteJobRoomScope = async (id) => {
   const { error } = await sb.from('job_room_scopes').delete().eq('id', id);
-  return { error };
+  if (error) {
+    captureFailedIntent({ kind: 'room_scope_delete', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null };
 };
 
 /**
