@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { sbCompleteTodo, sbSnoozeTodo, sbDismissTodo } from '../../lib/supabase';
 
 const SEV_COLOR = { high: '#EF4444', medium: '#C9A84C', low: '#9CA3AF' };
+const AMBER = '#f59e0b';
+const AMBER_BG = '#FEF3C7';
 
 function timeAgo(iso) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -12,7 +14,7 @@ function timeAgo(iso) {
   return `${d}d ago`;
 }
 
-export default function TodoCard({ todo, onRemove }) {
+export default function TodoCard({ todo, onRemove, setPendingAction }) {
   const [showSnooze, setShowSnooze] = useState(false);
   const [snoozing, setSnoozing] = useState(false);
 
@@ -34,6 +36,14 @@ export default function TodoCard({ todo, onRemove }) {
     setSnoozing(false);
   };
 
+  const isFailedIntent = todo.type === 'failed_intent';
+  const accentColor = isFailedIntent ? AMBER : (SEV_COLOR[todo.severity] || '#C9A84C');
+
+  const handleResume = () => {
+    if (!setPendingAction || !todo.payload) return;
+    setPendingAction({ kind: todo.payload.kind, payload: todo.payload, todoId: todo.id, jobId: todo.payload.jobId || null });
+  };
+
   const btnBase = {
     border: '1px solid #E8E4DC', background: '#fff', cursor: 'pointer',
     fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 5,
@@ -41,9 +51,9 @@ export default function TodoCard({ todo, onRemove }) {
   };
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `3px solid ${SEV_COLOR[todo.severity] || '#C9A84C'}`, borderRadius: 8, padding: '14px 16px', marginBottom: 10, position: 'relative' }}>
+    <div style={{ background: isFailedIntent ? AMBER_BG : '#fff', border: `1px solid ${isFailedIntent ? '#FCD34D' : '#E8E4DC'}`, borderLeft: `3px solid ${accentColor}`, borderRadius: 8, padding: '14px 16px', marginBottom: 10, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: SEV_COLOR[todo.severity] || '#C9A84C', marginTop: 5, flexShrink: 0 }} />
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: accentColor, marginTop: 5, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#0A1F44', marginBottom: 2 }}>{todo.title}</div>
           {todo.body && <div style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.5, marginBottom: 4 }}>{todo.body}</div>}
@@ -55,6 +65,11 @@ export default function TodoCard({ todo, onRemove }) {
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+        {isFailedIntent && (
+          <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
+            ↩ Resume
+          </button>
+        )}
         <button style={{ ...btnBase, background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#16a34a' }} onClick={handleDone}>
           ✓ Done
         </button>

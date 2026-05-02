@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { sbLoadMyTodos } from '../../lib/supabase';
 import TodoCard from '../common/TodoCard';
 
-export default function TodayScr({ profile }) {
+export default function TodayScr({ profile, setPendingAction }) {
   const [todos, setTodos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,7 +48,7 @@ export default function TodayScr({ profile }) {
                   Needs attention · {active.length}
                 </div>
                 {active.map(t => (
-                  <TodoCard key={t.id} todo={t} onRemove={removeTodo} />
+                  <TodoCard key={t.id} todo={t} onRemove={removeTodo} setPendingAction={setPendingAction} />
                 ))}
               </>
             )}
@@ -59,7 +59,7 @@ export default function TodayScr({ profile }) {
                   <span>Snoozed · {snoozed.length}</span>
                 </summary>
                 {snoozed.map(t => (
-                  <TodoCard key={t.id} todo={t} onRemove={removeTodo} />
+                  <TodoCard key={t.id} todo={t} onRemove={removeTodo} setPendingAction={setPendingAction} />
                 ))}
               </details>
             )}
