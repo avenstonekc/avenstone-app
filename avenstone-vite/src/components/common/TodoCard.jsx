@@ -65,7 +65,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction }) {
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-        {isFailedIntent && (
+        {isFailedIntent && todo.payload?.resumable !== false && (
           <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
             ↩ Resume
           </button>
