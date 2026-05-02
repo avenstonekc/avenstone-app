@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AI_MASTER_URL, ANON_KEY } from '../../lib/supabase';
+import { AI_MASTER_URL, ANON_KEY, captureFailedIntent } from '../../lib/supabase';
 
 const EXAMPLE_PROMPTS = [
   'Show me what needs attention today',
@@ -118,7 +118,7 @@ function ActionsPanel({ actions }) {
   );
 }
 
-export default function MasterAgent({ profile }) {
+export default function MasterAgent({ profile, pendingAction, clearPendingAction }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -154,6 +154,14 @@ export default function MasterAgent({ profile }) {
       setTimeout(() => inputRef.current && inputRef.current.focus(), 120);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (pendingAction?.kind === 'master_agent_tool_call') {
+      setInput(pendingAction.payload?.user_message || '');
+      setOpen(true);
+      clearPendingAction?.();
+    }
+  }, [pendingAction]);
 
   useEffect(() => {
     if (threadRef.current) {
@@ -193,6 +201,16 @@ export default function MasterAgent({ profile }) {
       const data = await res.json();
       const aiText = data.response || 'No response.';
       const aiActions = data.actions || [];
+
+      aiActions.forEach(action => {
+        if (action.result?.error) {
+          captureFailedIntent({
+            kind: 'master_agent_tool_call',
+            payload: { tool_name: action.tool, error_message: action.result.error, user_message: trimmed },
+            message: action.result.error,
+          }).catch(() => {});
+        }
+      });
 
       setMessages((prev) => [
         ...prev,
