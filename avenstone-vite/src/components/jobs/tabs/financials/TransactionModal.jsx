@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbUploadLienWaiverTx, sbLoadPhases, sbLoadActiveSubs, sbResolveTodosBySource } from '../../../../lib/supabase';
+import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbUploadLienWaiverTx, sbLoadPhases, sbLoadActiveSubs, sbResolveTodosBySource, captureFailedIntent } from '../../../../lib/supabase';
 import { f$ } from '../../../../lib/utils';
 
 const TX_TYPES_IN  = ['client_payment','client_deposit','client_refund','other_income'];
@@ -89,7 +89,12 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
     const result = isNew
       ? await sbCreateTransaction(payload)
       : await sbUpdateTransaction(tx.id, payload);
-    if (result.error) { setErr(result.error.message || 'Save failed'); setSaving(false); return; }
+    if (result.error) {
+      const msg = result.error.message || 'Save failed';
+      setErr(msg); setSaving(false);
+      if (isNew) captureFailedIntent({ kind: 'transaction_save', payload: { ...form }, jobId: job.id, message: msg }).catch(() => {});
+      return;
+    }
     onSaved();
   };
 

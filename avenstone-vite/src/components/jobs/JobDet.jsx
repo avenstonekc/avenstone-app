@@ -26,7 +26,7 @@ const TABS = [
   { id: 'session',    lb: 'Consultation', ic: 'eye' },
 ];
 
-export default function JobDet({ job, upd, del, back, profile }) {
+export default function JobDet({ job, upd, del, back, profile, pendingAction, clearPendingAction }) {
   const [tab, setTab] = useState('info');
   const [showSt, setShowSt] = useState(false);
   const [editInf, setEditInf] = useState(false);
@@ -35,6 +35,12 @@ export default function JobDet({ job, upd, del, back, profile }) {
   const [showAiPmConfirm, setShowAiPmConfirm] = useState(false);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [completionCopied, setCompletionCopied] = useState(false);
+
+  useEffect(() => {
+    if (pendingAction?.kind === 'transaction_save' || pendingAction?.kind === 'line_item_save') {
+      setTab('financials');
+    }
+  }, [pendingAction]);
 
   const reviewLink = `${window.location.origin}?review=${job.id}&rt=${AV_TENANT}`;
   const completionLink = `${window.location.origin}?completion=${job.id}`;
@@ -209,7 +215,7 @@ export default function JobDet({ job, upd, del, back, profile }) {
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} setTab={setTab} />}
         {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
         {tab === 'subs' && <SubsTab job={job} profile={profile} setTab={setTab} />}
-        {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} />}
+        {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} />}

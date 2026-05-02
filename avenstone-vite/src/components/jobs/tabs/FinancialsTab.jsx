@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import COTab from './COTab';
 import TransactionModal from './financials/TransactionModal';
 import LineItemModal from './financials/LineItemModal';
-import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced } from '../../../lib/supabase';
+import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo } from '../../../lib/supabase';
 import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
 import { f$ } from '../../../lib/utils';
 
@@ -21,7 +21,7 @@ const TYPE_LABELS = {
 
 const STATUS_COLOR = { paid: '#22c55e', pending: '#f59e0b', overdue: '#ef4444', void: '#9CA3AF', draft: '#9CA3AF', refunded: '#8b5cf6' };
 
-export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
+export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendingAction, clearPendingAction }) {
   const [sub, setSub] = useState('ledger');
   const [txs, setTxs] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -41,6 +41,22 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
   const [qbExporting, setQbExporting] = useState(false);
   const [showSynced, setShowSynced] = useState(true);
   const [catMap, setCatMap] = useState([]);
+  const [pendingTodoId, setPendingTodoId] = useState(null);
+
+  useEffect(() => {
+    if (!pendingAction) return;
+    if (pendingAction.kind === 'transaction_save') {
+      setSub('ledger');
+      setModal({ mode: 'new', tx: pendingAction.payload || {} });
+      setPendingTodoId(pendingAction.todoId || null);
+      clearPendingAction?.();
+    } else if (pendingAction.kind === 'line_item_save') {
+      setSub('budget');
+      setLiModal({ mode: 'add', item: pendingAction.payload || {} });
+      setPendingTodoId(pendingAction.todoId || null);
+      clearPendingAction?.();
+    }
+  }, [pendingAction]);
 
   useEffect(() => {
     if (sub === 'ledger') loadLedger();
@@ -242,7 +258,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
           item={liModal.item}
           job={job}
           onClose={() => setLiModal(null)}
-          onSaved={() => { setLiModal(null); loadBudget(); }}
+          onSaved={() => { if (pendingTodoId) { sbCompleteTodo(pendingTodoId).catch(() => {}); setPendingTodoId(null); } setLiModal(null); loadBudget(); }}
         />
       )}
 
@@ -380,7 +396,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs }) {
           tx={modal.tx}
           job={job}
           onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); loadLedger(); }}
+          onSaved={() => { if (pendingTodoId) { sbCompleteTodo(pendingTodoId).catch(() => {}); setPendingTodoId(null); } setModal(null); loadLedger(); }}
         />
       )}
     </div>

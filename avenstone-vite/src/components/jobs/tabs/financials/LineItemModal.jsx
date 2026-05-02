@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadActiveTradeStrings, AV_USER_ID, AV_TENANT } from '../../../../lib/supabase';
+import { sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadActiveTradeStrings, AV_USER_ID, AV_TENANT, captureFailedIntent } from '../../../../lib/supabase';
 import { f$ } from '../../../../lib/utils';
 
 const lbl = { display: 'block', fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' };
@@ -52,7 +52,9 @@ export default function LineItemModal({ mode: initialMode, item = {}, job, onClo
       await sbSaveEstimateLineItems(job.id, null, updated);
       onSaved();
     } catch (e) {
-      setError(e.message || 'Failed to save line item.');
+      const msg = e.message || 'Failed to save line item.';
+      setError(msg);
+      if (initialMode !== 'edit') captureFailedIntent({ kind: 'line_item_save', payload: { phase, trade, category, description, quantity, unit, unitCost, markupPct, notes }, jobId: job.id, message: msg }).catch(() => {});
     } finally {
       setSaving(false);
     }
