@@ -1092,3 +1092,19 @@ Open items:
   Avoid .upsert() shortcuts that pretend to be insert-only.
 - Open: other sb* helpers using .upsert() may have the same latent
   bug. Sweep when convenient.
+
+[LOG — 2026-05-02]
+- Action: Dropped _deprecated_payments_20260423 and
+  _deprecated_job_cost_invoices_20260423. Grace window expired
+  2026-05-07; both tables were empty. Dropped early (2026-05-02).
+- Files: supabase/migrations/20260502_drop_deprecated_financial_tables.sql
+- Decision: Kept payments and job_cost_invoices compat views. 5 live
+  callers across ClientPortal.jsx, Reports.jsx, supabase.js. Views
+  encode direction+type filter logic callers would need to duplicate
+  — not dead weight, real business logic.
+- Open: Migrate 5 compat-view callers to query job_transactions
+  directly. Views to drop after callers are migrated. This is a real
+  refactor (not a mechanical sweep) — deserves its own session.
+  Callers: ClientPortal.jsx:176, Reports.jsx:22, supabase.js:258
+  (sbLoadCostInvoices), supabase.js:538 (sbLoadPayments),
+  supabase.js:642 (sbLoadPayments estimate tab).

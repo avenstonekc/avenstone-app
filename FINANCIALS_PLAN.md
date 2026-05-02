@@ -92,8 +92,9 @@ build this," check here first — it's probably an intentional defer.
 - Retainage fields on job_transactions — present, no dashboard yet
 - MaterialSelectionScr.jsx — WIP client tile/fixture picker, not
   imported anywhere yet (pre-existing)
-- _deprecated_payments_20260423 and _deprecated_job_cost_invoices_20260423
-  — backup tables, drop after 2026-05-07 if no rollback needed
+- ~~_deprecated_payments_20260423 and _deprecated_job_cost_invoices_20260423
+  — backup tables, drop after 2026-05-07 if no rollback needed~~
+  Dropped 2026-05-02 (both tables were empty, grace window clear).
 
 ## Open questions
 
@@ -104,13 +105,15 @@ build this," check here first — it's probably an intentional defer.
 
 ## Rollback plan
 
-If the ledger migration causes issues within the first 2 weeks:
-1. DROP VIEW payments;
-2. DROP VIEW job_cost_invoices;
-3. ALTER TABLE _deprecated_payments_20260423 RENAME TO payments;
-4. ALTER TABLE _deprecated_job_cost_invoices_20260423 RENAME TO job_cost_invoices;
-5. Revert stripe-webhook and create-payment-link edge functions to
-   their previous commits (git log --follow supabase/functions/stripe-webhook/)
+~~If the ledger migration causes issues within the first 2 weeks:~~
+~~1. DROP VIEW payments;~~
+~~2. DROP VIEW job_cost_invoices;~~
+~~3. ALTER TABLE _deprecated_payments_20260423 RENAME TO payments;~~
+~~4. ALTER TABLE _deprecated_job_cost_invoices_20260423 RENAME TO job_cost_invoices;~~
+~~5. Revert stripe-webhook and create-payment-link edge functions to~~
+   ~~their previous commits (git log --follow supabase/functions/stripe-webhook/)~~
+
+Rollback window closed 2026-05-02. Deprecated tables dropped. No rollback path available.
 
 Append to FINANCIALS_PLAN.md under the "Plumbed but not wired"
 section (or create a new "Future integrations" section if cleaner):
