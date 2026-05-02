@@ -157,7 +157,7 @@ export default function ScheduleTab({ job }) {
                       auditFields.completed_at = new Date().toISOString();
                       auditFields.completed_by_id = AV_USER_ID;
                     }
-                    const updated = { ...ph, ...ed, ...auditFields };
+                    const updated = { ...ph, ...ed, ...auditFields, start_date: ed.start_date || null, end_date: ed.end_date || null };
                     const saved = await sbSavePhase(updated);
                     setPhases(p => p.map(x => x.id === ph.id ? (saved || updated) : x));
                     if (ed.status === 'complete' && ph.status !== 'complete') {
