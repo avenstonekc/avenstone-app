@@ -101,7 +101,7 @@ export const sbUpd = async (id, ch) => {
     const p = {};
     ok.forEach(k => { if (ch[k] !== undefined) p[k] = ch[k]; });
     if (Object.keys(p).length) await sb.from('jobs').update(p).eq('id', id);
-  } catch (e) {}
+  } catch (e) { console.error('[sbUpd]', e); }
 };
 
 export const sbDel = async id => {
@@ -321,7 +321,7 @@ export const sbLoadNotifs = async () => {
 };
 export const sbMarkNotifsRead = async ids => {
   if (!ids.length) return;
-  await sb.from('notifications').update({ read: true }).in('id', ids);
+  await sb.from('notifications').update({ read: true }).in('id', ids).catch(err => console.error('[sbMarkNotifsRead]', err));
 };
 const getTenantStaffIds = async () => {
   const { data } = await sb.from('profiles').select('id').eq('tenant_id', AV_TENANT).in('role', ['owner','project_manager','sales_rep']);
@@ -628,8 +628,10 @@ export const sbLoadEstimate = async jid => {
   return data || null;
 };
 export const sbSaveEstimate = async (jid, messages) => {
-  const { data } = await sb.from('job_estimates').upsert({ job_id: jid, tenant_id: AV_TENANT, messages, updated_at: new Date().toISOString() }, { onConflict: 'job_id' }).select().single();
-  return data;
+  try {
+    const { data } = await sb.from('job_estimates').upsert({ job_id: jid, tenant_id: AV_TENANT, messages, updated_at: new Date().toISOString() }, { onConflict: 'job_id' }).select().single();
+    return data;
+  } catch (e) { console.error('[sbSaveEstimate]', e); return null; }
 };
 export const sbSendEstimateEmail = async (job, pdfBlob) => {
   const b64 = await toBase64(pdfBlob);
@@ -978,11 +980,39 @@ export const sbResolveTodosBySource = async (sourceTable, sourceId) => {
 };
 
 // ─── Failed-intent capture ────────────────────────────────────────────────────
-const VALID_KINDS = new Set(['job_create', 'transaction_save', 'line_item_save', 'master_agent_tool_call']);
-export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, message = '' }) => {
+const VALID_KINDS = new Set([
+  'job_create', 'transaction_save', 'line_item_save', 'master_agent_tool_call',
+  'phase_save', 'note_save', 'co_save', 'co_update', 'job_delete', 'doc_delete', 'doc_toggle',
+  'message_send', 'quote_request_save', 'bid_submit', 'bid_status_update',
+  'sub_pricing_save', 'sub_pricing_delete', 'sub_phase_update', 'sub_co_submit',
+  'signature_save', 'rating_submit', 'daily_log_save',
+  'cost_item_save', 'cost_item_update', 'cost_item_delete',
+  'cost_invoice_save', 'cost_invoice_update', 'cost_invoice_delete',
+  'user_manage', 'contact_save', 'contact_update', 'contact_delete',
+  'sub_assign', 'sub_unassign', 'material_save', 'material_update', 'material_delete',
+  'lidar_scan_save', 'room_scope_save', 'room_scope_delete', 'photo_label',
+]);
+const KIND_LABEL = {
+  job_create: 'Add Project', transaction_save: 'Add Transaction', line_item_save: 'Add Line Item',
+  master_agent_tool_call: 'AI Action', phase_save: 'Save Phase', note_save: 'Save Note',
+  co_save: 'Create CO', co_update: 'Update CO', job_delete: 'Delete Project',
+  doc_delete: 'Delete Document', doc_toggle: 'Document Visibility', message_send: 'Send Message',
+  quote_request_save: 'Quote Request', bid_submit: 'Submit Bid', bid_status_update: 'Bid Status',
+  sub_pricing_save: 'Save Pricing', sub_pricing_delete: 'Delete Pricing',
+  sub_phase_update: 'Phase Update', sub_co_submit: 'Submit CO', signature_save: 'Save Signature',
+  rating_submit: 'Submit Rating', daily_log_save: 'Daily Log',
+  cost_item_save: 'Save Cost Item', cost_item_update: 'Update Cost Item', cost_item_delete: 'Delete Cost Item',
+  cost_invoice_save: 'Save Invoice', cost_invoice_update: 'Update Invoice', cost_invoice_delete: 'Delete Invoice',
+  user_manage: 'User Management', contact_save: 'Save Contact', contact_update: 'Update Contact',
+  contact_delete: 'Delete Contact', sub_assign: 'Assign Sub', sub_unassign: 'Remove Sub',
+  material_save: 'Save Material', material_update: 'Update Material', material_delete: 'Delete Material',
+  lidar_scan_save: 'Save Scan', room_scope_save: 'Save Room Scope', room_scope_delete: 'Delete Room Scope',
+  photo_label: 'Label Photo',
+};
+export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, message = '', resumable = true }) => {
   try {
     if (!VALID_KINDS.has(kind)) return { ok: false, error: 'invalid kind' };
-    const kindLabel = { job_create: 'Add Project', transaction_save: 'Add Transaction', line_item_save: 'Add Line Item', master_agent_tool_call: 'AI Action' }[kind] || kind;
+    const kindLabel = KIND_LABEL[kind] || kind;
     const { data, error } = await sb.from('todos').insert({
       tenant_id: AV_TENANT,
       target_user_id: AV_USER_ID,
@@ -991,7 +1021,7 @@ export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, me
       type: 'failed_intent',
       severity: 'medium',
       job_id: jobId || null,
-      payload: { kind, jobId, ...payload },
+      payload: { kind, jobId, resumable, ...payload },
     }).select().single();
     if (error) return { ok: false, error: error.message };
     return { ok: true, todoId: data.id };
