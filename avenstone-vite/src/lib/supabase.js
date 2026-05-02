@@ -977,6 +977,43 @@ export const sbResolveTodosBySource = async (sourceTable, sourceId) => {
   if (error) console.error('sbResolveTodosBySource', error);
 };
 
+// ─── Failed-intent capture ────────────────────────────────────────────────────
+const VALID_KINDS = new Set(['job_create', 'transaction_save', 'line_item_save', 'master_agent_tool_call']);
+export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, message = '' }) => {
+  try {
+    if (!VALID_KINDS.has(kind)) return { ok: false, error: 'invalid kind' };
+    const kindLabel = { job_create: 'Add Project', transaction_save: 'Add Transaction', line_item_save: 'Add Line Item', master_agent_tool_call: 'AI Action' }[kind] || kind;
+    const { data, error } = await sb.from('todos').insert({
+      tenant_id: AV_TENANT,
+      target_user_id: AV_USER_ID,
+      title: `Resume: ${kindLabel}`,
+      body: message || 'Save failed — tap Resume to retry.',
+      type: 'failed_intent',
+      severity: 'medium',
+      job_id: jobId || null,
+      payload: { kind, jobId, ...payload },
+    }).select().single();
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, todoId: data.id };
+  } catch (e) { return { ok: false, error: e.message }; }
+};
+export const sbCountRecentFailedIntents = async (days = 7) => {
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const { data, error } = await sb.from('todos')
+    .select('id, payload, target_user_id')
+    .eq('type', 'failed_intent')
+    .gte('created_at', since);
+  if (error) return { total: 0, byKind: {}, byUser: {} };
+  const byKind = {};
+  const byUser = {};
+  (data || []).forEach(t => {
+    const k = t.payload?.kind || 'unknown';
+    byKind[k] = (byKind[k] || 0) + 1;
+    byUser[t.target_user_id] = (byUser[t.target_user_id] || 0) + 1;
+  });
+  return { total: data.length, byKind, byUser };
+};
+
 // ─── Address autocomplete ─────────────────────────────────────────────────────
 export const fetchAddressSuggestions = async input => {
   if (!input || input.length < 3) return [];
