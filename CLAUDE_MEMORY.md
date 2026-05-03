@@ -78,7 +78,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 ### Future architecture (design-only, not building yet)
 
-- **RAG-based archive retrieval** — Idea: instead of loading CLAUDE_ARCHIVE.md into context manually, embed every archive entry into a vector store (Supabase pgvector, already provisioned), and retrieve the 3-5 most relevant entries at session start based on semantic similarity to the current task. Lean memory stays small forever; archive can grow unbounded; per-session tokens drop from current ~3K static load to ~500-2000 dynamic retrieval. Trigger to build: archive exceeds ~50K tokens, or first non-Avenstone tenant onboards, or first session where missing context bites. Estimated build: 2-3 days. Captured 2026-05-03 — review before building.
+- **RAG-based archive retrieval** — Embed archive entries to Supabase pgvector, retrieve top 3-5 relevant on session start instead of static load. Per-session tokens drop from ~3K to ~500-2000. Trigger to build: archive >50K tokens, first non-Avenstone tenant, or first session where missing context bites. Estimated 2-3 days. Captured 2026-05-03 — review before building.
+
+- **Sub management arc** — Multi-step sub system tightening. Step 1: filter schedule item modal sub dropdown by trade match (currently shows all assigned subs regardless of trade). Step 2: auto-populate when exactly one approved sub matches. Step 3: lock definition of "approved sub" (minimal / insurance-gated / relationship-gated). Step 4: tenant-level sub roster screen (separate from per-job SubsTab). Step 5: sub-side acknowledge button on schedule items + `sub_acknowledged_at` column. Steps 1-2 are 40 lines total. Steps 3-5 is a real arc. Captured 2026-05-03.
+
+- **Speed/cost audit candidates** — (a) sequential sb*Load calls on tab mount could parallelize with Promise.all, (b) edge functions probably on Sonnet where Haiku would suffice, (c) `select('*')` sweep to targeted columns, (d) Vite code-splitting + lazy-loading LiDAR/PDF heavy modules, (e) LiDAR scan storage lifecycle (no cleanup today). None urgent. Captured 2026-05-03.
 
 ---
 
@@ -97,6 +101,8 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 ## Shipped & archived
 
 *Slug pointers → CLAUDE_ARCHIVE.md. Search `## slug` to retrieve.*
+
+*Archive build in progress — chunks 1-3 of 5 committed (commits ec8f2c8, 82cc051, 543eb55). Slugs through 2026-04-28 are populated. Chunks 4-5 pending — slugs after that are listed as pointers but not yet retrievable.*
 
 **PDF / LiDAR**
 - `lidar-phase1 · 2026-04-15` — Phase 1 confirmed on device; scan persistence to job/contact tables
@@ -167,3 +173,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
   - C4: Remaining listed CO submission + sub phase-marking as "spec'd, not built". Actual: CO submission shipped 2026-04-26; sub phase-marking removed 2026-05-03.
   - C5: Open items said "Financial deprecated table drop (grace window expires 2026-05-07)". Actual: dropped 2026-05-02.
   - C6: END OF DAY SUMMARY "What did NOT ship" said Prompts B/C not done. Actual: both shipped 2026-04-30.
+
+[LOG — 2026-05-03]
+- Action: Archive build chunks 1-3 of 5 shipped (commits ec8f2c8, 82cc051, 543eb55). Slugs through 2026-04-28 now retrievable from CLAUDE_ARCHIVE.md.
+- Action: Three future-architecture ideas captured under "Future architecture" subsection: RAG retrieval, sub management arc, speed/cost audit candidates.
+- Open: Chunks 4-5 of archive build pending. Sub management steps 1-2 are quick-win candidates (40 lines total).
+- Decision: Stopped at end of session. Resume tomorrow with chunks 4-5, then revisit prioritization.
