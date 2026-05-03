@@ -154,12 +154,12 @@ export default function ScheduleTab({ job }) {
       {orderedPhases.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '14px 16px', marginBottom: 16, borderRadius: 4 }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Phase Progress</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {orderedPhases.map(ph => {
               const col = PILL_COLOR[ph.status] || '#9CA3AF';
               return (
-                <div key={ph.id} style={{ textAlign: 'center', minWidth: 72 }}>
-                  <div style={{ background: col + '20', border: `1.5px solid ${col}`, borderRadius: 20, padding: '4px 12px', fontSize: 11, fontWeight: 700, color: col, whiteSpace: 'nowrap' }}>
+                <div key={ph.id} style={{ textAlign: 'center', display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ background: col + '20', border: `1.5px solid ${col}`, borderRadius: 20, padding: '4px 12px', fontSize: 11, fontWeight: 700, color: col, whiteSpace: 'nowrap', lineHeight: 1.4 }}>
                     {PHASE_LABELS[ph.phase_name] || ph.phase_name}
                   </div>
                   {ph.status === 'in_progress' && ph.started_at && (
@@ -192,7 +192,7 @@ export default function ScheduleTab({ job }) {
 
         {items.filter(i => i.status !== 'cancelled').length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 20px', background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4 }}>
-            <div style={{ fontSize: 32, marginBottom: 10, opacity: 0.3 }}>{Ic.cal}</div>
+            <span style={{ width: 36, height: 36, display: 'block', margin: '0 auto 10px', opacity: 0.3, color: '#374151' }}>{Ic.cal}</span>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No schedule items yet</div>
             <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 16 }}>Add your first delivery, inspection, or sub start.</div>
             <button className="btn btn-gold" style={{ fontSize: 12 }} onClick={() => { setEditItem(null); setShowModal(true); }}>
