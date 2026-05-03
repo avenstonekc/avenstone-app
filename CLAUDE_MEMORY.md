@@ -1197,6 +1197,16 @@ Open items:
 - Candidates found: 6 total. 5 already coalesced from prior work: start_date/end_date (ScheduleTab), due_date (TransactionModal, SubsTab), insurance_expiry (SubComplianceModal). 1 needed fixing: date_incurred in TransactionModal was sent bare — TODAY default meant no regression in practice, but user clearing the date input would send '' to Postgres.
 - Deferred: None. All user-editable date fields now coalesced at write boundary.
 
+[LOG — 2026-05-03 — trade_phase_map is_primary (Prompt A follow-up)]
+- Action: Added is_primary BOOLEAN column to trade_phase_map. derivePhaseStatus now filters to is_primary=TRUE only.
+- Migration: 20260503_trade_phase_map_primary.sql — applied and verified (column confirmed in information_schema, 10 TRUE rows, schema reloaded).
+- Primary trades (Avenstone GC): Demo, Framing, Plumbing-Rough-in, Electrical-Rough-in, HVAC-Install, Drywall-Hang, Paint-Interior, Tile-Floor, Tile-Wall/shower, Cabinets/vanities-Install.
+- Non-primary (map rows but no phase derivation): Drywall-Patch, Drywall-Tape/mud/texture, Trim×3, Plumbing-Finish/fixtures, Electrical-Finish.
+- Test confirmed: Drywall-Patch is_primary=false → filtered out of primary-only query; Drywall-Hang is only drywall primary.
+- Known limitation: cancel-after-complete still doesn't revert phase (asymmetry by design). Other tenants need their own primary mapping when seeded — each new tenant onboarding must include is_primary=TRUE rows.
+- Files: supabase/migrations/20260503_trade_phase_map_primary.sql, avenstone-vite/src/lib/supabase.js (derivePhaseStatus).
+- Open: none.
+
 [LOG — 2026-05-03 — schedule items UI (Prompt B)]
 - Action: Full ScheduleTab.jsx rewrite + notification helpers + SubJobView schedule section.
 - Commits: 02958bf (ScheduleTab rewrite), 232b059 (notification helpers), c5a7b02 (SubJobView).
