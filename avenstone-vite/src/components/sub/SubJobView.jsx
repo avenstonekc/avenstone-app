@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadSubPhases, sbSubUpdatePhase, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID } from '../../lib/supabase';
+import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID } from '../../lib/supabase';
 import { Ic, sc, sl, fD, fDT, f$ } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 
@@ -33,8 +33,8 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const [showLogForm, setShowLogForm] = useState(false);
   const [logForm, setLogForm] = useState({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
   const [logSaving, setLogSaving] = useState(false);
-  const [phases, setPhases] = useState([]);
-  const [phasesLoaded, setPhasesLoaded] = useState(false);
+  const [schedItems, setSchedItems] = useState([]);
+  const [schedLoaded, setSchedLoaded] = useState(false);
   const [docs, setDocs] = useState([]);
   const [docsLoaded, setDocsLoaded] = useState(false);
   const [payments, setPayments] = useState([]);
@@ -46,7 +46,6 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const [staffMsgTxt, setStaffMsgTxt] = useState('');
   const [sendingStaffMsg, setSendingStaffMsg] = useState(false);
   const staffMsgsEndRef = useRef();
-  const [phaseUpdating, setPhaseUpdating] = useState(null);
   const [showCOForm, setShowCOForm] = useState(false);
   const [coForm, setCoForm] = useState({ title: '', description: '', amount: '' });
   const [coSaving, setCoSaving] = useState(false);
@@ -62,9 +61,13 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   }, [tab, logsLoaded]);
 
   useEffect(() => {
-    if (tab !== 'schedule' || phasesLoaded) return;
-    sbLoadSubPhases(AV_USER_ID, job.id).then(d => { setPhases(d); setPhasesLoaded(true); });
-  }, [tab, phasesLoaded]);
+    if (tab !== 'schedule' || schedLoaded) return;
+    sbLoadScheduleItemsForSub(AV_USER_ID).then(r => {
+      const active = (r.data || []).filter(i => i.job_id === job.id && ['scheduled', 'in_progress'].includes(i.status));
+      setSchedItems(active);
+      setSchedLoaded(true);
+    });
+  }, [tab, schedLoaded]);
 
   useEffect(() => {
     if (tab !== 'docs' || docsLoaded) return;
@@ -121,16 +124,6 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
       setStaffMsgTxt('');
     }
     setSendingStaffMsg(false);
-  };
-
-  const updatePhase = async (phase, status) => {
-    setPhaseUpdating(phase.id);
-    const updated = await sbSubUpdatePhase(phase.id, status);
-    if (updated.ok) {
-      setPhases(ps => ps.map(p => p.id === phase.id ? { ...p, status } : p));
-      sbNotify('phase_status_update', `Phase update — ${job.address}`, `${phase.name}: ${status.replace(/_/g, ' ')}`, job.id, AV_USER_ID);
-    }
-    setPhaseUpdating(null);
   };
 
   const submitCO = async () => {
@@ -209,43 +202,29 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
           ))}
         </div>}
         {tab === 'schedule' && <div>
-          {!phasesLoaded && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>{t('Loading schedule...', lang)}</div>}
-          {phasesLoaded && !phases.length && <div className="empty">{Ic.cal}<div className="empty-t">{t('No phases assigned to you', lang)}</div><div>{t('Your contractor will update your schedule here', lang)}</div></div>}
-          {phases.map(p => {
+          {!schedLoaded && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>{t('Loading schedule...', lang)}</div>}
+          {schedLoaded && !schedItems.length && (
+            <div className="empty">{Ic.cal}<div className="empty-t">{t('Nothing scheduled yet', lang)}</div><div>{t('Your contractor will add items here', lang)}</div></div>
+          )}
+          {schedItems.map(item => {
             const today = new Date().toISOString().slice(0, 10);
-            const isOverdue = p.end_date && p.end_date < today && p.status !== 'complete';
-            const isActive = p.status === 'in_progress';
+            const isOverdue = item.status === 'scheduled' && item.scheduled_date && item.scheduled_date < today;
+            const isActive  = item.status === 'in_progress';
+            const accentCol = isOverdue ? '#ef4444' : isActive ? '#C9A84C' : '#E8E4DC';
+            const badgeBg   = isOverdue ? '#FEE2E2' : isActive ? '#FEF3C7' : '#EFF6FF';
+            const badgeCol  = isOverdue ? '#991B1B' : isActive ? '#92400E' : '#1D4ED8';
+            const badgeTxt  = isOverdue ? (lang === 'es' ? 'Vencido' : 'Overdue') : item.status?.replace(/_/g, ' ') || 'scheduled';
             return (
-              <div key={p.id} style={{ background: '#fff', border: `1px solid #E8E4DC`, borderLeft: `4px solid ${isOverdue ? '#ef4444' : isActive ? '#C9A84C' : p.status === 'complete' ? '#22c55e' : '#E8E4DC'}`, padding: '14px 16px', marginBottom: 10, borderRadius: 8 }}>
+              <div key={item.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `4px solid ${accentCol}`, padding: '14px 16px', marginBottom: 10, borderRadius: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{p.name}</div>
-                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: isOverdue ? '#FEE2E2' : isActive ? '#FEF3C7' : p.status === 'complete' ? '#D1FAE5' : '#F3F4F6', color: isOverdue ? '#991B1B' : isActive ? '#92400E' : p.status === 'complete' ? '#065F46' : '#6B7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    {isOverdue ? t('Overdue', lang) : p.status?.replace(/_/g, ' ') || t('Pending', lang)}
-                  </span>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{item.title}</div>
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: badgeBg, color: badgeCol, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{badgeTxt}</span>
                 </div>
-                {p.description && <div style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>{p.description}</div>}
-                <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: '#9CA3AF' }}>
-                  {p.start_date && <span>{t('Start', lang)}: <strong style={{ color: '#374151' }}>{fD(p.start_date)}</strong></span>}
-                  {p.end_date && <span>{t('Due', lang)}: <strong style={{ color: isOverdue ? '#ef4444' : '#374151' }}>{fD(p.end_date)}</strong></span>}
+                <div style={{ display: 'flex', gap: 12, marginTop: 6, fontSize: 12, color: '#9CA3AF', flexWrap: 'wrap' }}>
+                  {item.scheduled_date && <span>{fD(item.scheduled_date)}{item.scheduled_end_date ? ` → ${fD(item.scheduled_end_date)}` : ''}</span>}
+                  {item.trade && <span style={{ background: '#F7F5F0', padding: '1px 6px', borderRadius: 10 }}>{item.trade}</span>}
                 </div>
-                {(p.started_at || p.completed_at) && (
-                  <div style={{ marginTop: 4, fontSize: 11, color: '#9CA3AF', lineHeight: 1.5 }}>
-                    {p.started_at && <div>Started {fD(p.started_at)}</div>}
-                    {p.completed_at && <div>Completed {fD(p.completed_at)}</div>}
-                  </div>
-                )}
-                {p.status !== 'complete' && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    {p.status !== 'in_progress' && (
-                      <button className="btn btn-gold" style={{ fontSize: 12, padding: '6px 14px', flex: 1 }} onClick={() => updatePhase(p, 'in_progress')} disabled={phaseUpdating === p.id}>
-                        {phaseUpdating === p.id ? '...' : lang === 'es' ? 'Iniciar Fase' : 'Mark Started'}
-                      </button>
-                    )}
-                    <button className="btn btn-navy" style={{ fontSize: 12, padding: '6px 14px', flex: 1 }} onClick={() => updatePhase(p, 'complete')} disabled={phaseUpdating === p.id}>
-                      {phaseUpdating === p.id ? '...' : lang === 'es' ? 'Marcar Completo' : 'Mark Complete'}
-                    </button>
-                  </div>
-                )}
+                {item.notes && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 6, background: '#F7F5F0', padding: '6px 8px', borderRadius: 4, lineHeight: 1.4 }}>{item.notes}</div>}
               </div>
             );
           })}
