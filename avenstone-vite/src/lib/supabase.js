@@ -1767,8 +1767,9 @@ export const derivePhaseStatus = async (jobId, tenantId) => {
       .select('id, phase_name, status, started_at, started_by_id, completed_at, completed_by_id')
       .eq('job_id', jobId),
     sb.from('trade_phase_map')
-      .select('trade, phase_name, tenant_id')
-      .or(`tenant_id.eq.${tid},tenant_id.is.null`),
+      .select('trade, phase_name, tenant_id, is_primary')
+      .or(`tenant_id.eq.${tid},tenant_id.is.null`)
+      .eq('is_primary', true),
     sb.from('schedule_items')
       .select('id, trade, status, scheduled_date, updated_at, created_by_id')
       .eq('job_id', jobId)
