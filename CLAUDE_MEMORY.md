@@ -1196,3 +1196,12 @@ Open items:
 - Files: avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx (date_incurred: form.date_incurred || null)
 - Candidates found: 6 total. 5 already coalesced from prior work: start_date/end_date (ScheduleTab), due_date (TransactionModal, SubsTab), insurance_expiry (SubComplianceModal). 1 needed fixing: date_incurred in TransactionModal was sent bare — TODAY default meant no regression in practice, but user clearing the date input would send '' to Postgres.
 - Deferred: None. All user-editable date fields now coalesced at write boundary.
+
+[LOG — 2026-05-03 — schedule items UI (Prompt B)]
+- Action: Full ScheduleTab.jsx rewrite + notification helpers + SubJobView schedule section.
+- Commits: 02958bf (ScheduleTab rewrite), 232b059 (notification helpers), c5a7b02 (SubJobView).
+- ScheduleTab: read-only phase pill bar (never editable), schedule items list grouped by week (this/next/later/noDate/past-collapsed), ScheduleItemModal (6 types, multi-day toggle, trade/sub picker, notify checkboxes), soft-cancel with asymmetry warning dialog, derivePhaseStatus called after every save/cancel.
+- Notification helpers (supabase.js): sbNotifyScheduleItemCreated (all recipients on create), sbNotifyScheduleItemChanged (diff-based, only fires when date/status/sub/trade/title change). Recipients: assigned_sub_id + job.assigned_pm_id + client (if notify_client). Excludes acting user. Fire-and-forget — callers .catch().
+- SubJobView: replaced old sbLoadSubPhases phase list with read-only sbLoadScheduleItemsForSub items filtered to status=[scheduled, in_progress] for current job. Removed updatePhase/phaseUpdating — subs no longer mark phases directly.
+- Dynamic import pattern: ScheduleTab uses `import('../../../lib/supabase').then(({ sbNotifyScheduleItemCreated })...)` so module loads clean even before helpers existed.
+- Open: none — Prompt B complete.
