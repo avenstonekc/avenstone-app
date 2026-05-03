@@ -1180,3 +1180,9 @@ Open items:
   just 2026-04-29. Commit presence ≠ migration applied.
 - Files: supabase/migrations/20260502_job_phases_audit_columns.sql (new).
 - Open: none — columns confirmed present in re-query after apply.
+
+[LOG — 2026-05-02 — date field sweep (Sweep 2)]
+- Action: Audited all date/timestamp fields in Supabase write payloads across avenstone-vite/src/. Applied one-line coalesce fix. Committed and pushed (b443378).
+- Files: avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx (date_incurred: form.date_incurred || null)
+- Candidates found: 6 total. 5 already coalesced from prior work: start_date/end_date (ScheduleTab), due_date (TransactionModal, SubsTab), insurance_expiry (SubComplianceModal). 1 needed fixing: date_incurred in TransactionModal was sent bare — TODAY default meant no regression in practice, but user clearing the date input would send '' to Postgres.
+- Deferred: None. All user-editable date fields now coalesced at write boundary.
