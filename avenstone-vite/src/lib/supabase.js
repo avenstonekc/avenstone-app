@@ -1614,3 +1614,228 @@ export const sbSaveTenantUnitCostOverride = async ({
   const { data, error } = await sb.from('takeoff_unit_costs').insert(row).select('id').single();
   return { error, id: data?.id };
 };
+
+// ─── Schedule Items ───────────────────────────────────────────────────────────
+
+export const sbLoadScheduleItems = async (jobId) => {
+  try {
+    const { data, error } = await sb
+      .from('schedule_items')
+      .select('*, assigned_sub:profiles!assigned_sub_id(id, full_name)')
+      .eq('job_id', jobId)
+      .order('scheduled_date', { nullsFirst: false })
+      .order('created_at');
+    if (error) throw error;
+    return { ok: true, error: null, data: data || [] };
+  } catch (e) {
+    return { ok: false, error: e.message, data: [] };
+  }
+};
+
+export const sbCreateScheduleItem = async (payload) => {
+  try {
+    const row = {
+      ...payload,
+      tenant_id:           AV_TENANT,
+      created_by_id:       AV_USER_ID,
+      // coalesce empty strings → null at write boundary (sweep 2 pattern)
+      scheduled_date:      payload.scheduled_date      || null,
+      scheduled_end_date:  payload.scheduled_end_date  || null,
+      assigned_sub_id:     payload.assigned_sub_id     || null,
+      trade:               payload.trade               || null,
+    };
+    const { data, error } = await sb
+      .from('schedule_items')
+      .insert(row)
+      .select('*, assigned_sub:profiles!assigned_sub_id(id, full_name)')
+      .single();
+    if (error) throw error;
+    if (payload.type === 'sub_start') {
+      await derivePhaseStatus(payload.job_id, AV_TENANT).catch(() => {});
+    }
+    return { ok: true, error: null, data };
+  } catch (e) {
+    captureFailedIntent({ kind: 'schedule_item_create', payload, jobId: payload.job_id, message: e.message }).catch(() => {});
+    return { ok: false, error: e.message, data: null };
+  }
+};
+
+export const sbUpdateScheduleItem = async (id, patch) => {
+  try {
+    const { data: prevRow } = await sb
+      .from('schedule_items')
+      .select('*')
+      .eq('id', id)
+      .single();
+    const clean = {
+      ...patch,
+      scheduled_date:     patch.scheduled_date     !== undefined ? (patch.scheduled_date     || null) : undefined,
+      scheduled_end_date: patch.scheduled_end_date !== undefined ? (patch.scheduled_end_date || null) : undefined,
+      assigned_sub_id:    patch.assigned_sub_id    !== undefined ? (patch.assigned_sub_id    || null) : undefined,
+      trade:              patch.trade              !== undefined ? (patch.trade              || null) : undefined,
+    };
+    // strip undefined keys so we don't accidentally null un-patched columns
+    Object.keys(clean).forEach(k => clean[k] === undefined && delete clean[k]);
+    const { data, error } = await sb
+      .from('schedule_items')
+      .update(clean)
+      .eq('id', id)
+      .select('*, assigned_sub:profiles!assigned_sub_id(id, full_name)')
+      .single();
+    if (error) throw error;
+    const type    = data?.type    ?? prevRow?.type;
+    const jobId   = data?.job_id  ?? prevRow?.job_id;
+    const tenantId = data?.tenant_id ?? prevRow?.tenant_id ?? AV_TENANT;
+    if (type === 'sub_start' || patch.status) {
+      await derivePhaseStatus(jobId, tenantId).catch(() => {});
+    }
+    return { ok: true, error: null, data, prevRow: prevRow || null };
+  } catch (e) {
+    captureFailedIntent({ kind: 'schedule_item_update', payload: { id, patch }, jobId: patch.job_id, message: e.message }).catch(() => {});
+    return { ok: false, error: e.message, data: null, prevRow: null };
+  }
+};
+
+// Soft-delete: sets status='cancelled' rather than hard-deleting.
+// If the item was a sub_start, re-derives phase status.
+// NOTE: phase derivation never decrements — a phase already at 'complete' stays 'complete'
+// even after its driver sub_start item is cancelled. UI in Prompt B should warn the PM.
+export const sbDeleteScheduleItem = async (id) => {
+  try {
+    const { data: row } = await sb
+      .from('schedule_items')
+      .select('type, job_id, tenant_id')
+      .eq('id', id)
+      .single();
+    const { error } = await sb
+      .from('schedule_items')
+      .update({ status: 'cancelled' })
+      .eq('id', id);
+    if (error) throw error;
+    if (row?.type === 'sub_start') {
+      await derivePhaseStatus(row.job_id, row.tenant_id ?? AV_TENANT).catch(() => {});
+    }
+    return { ok: true, error: null };
+  } catch (e) {
+    captureFailedIntent({ kind: 'schedule_item_delete', payload: { id }, jobId: null, message: e.message }).catch(() => {});
+    return { ok: false, error: e.message };
+  }
+};
+
+export const sbLoadScheduleItemsForSub = async (subId) => {
+  try {
+    // Get all job_ids this sub is assigned to
+    const { data: assignments } = await sb
+      .from('job_subs')
+      .select('job_id')
+      .eq('sub_id', subId);
+    const jobIds = (assignments || []).map(a => a.job_id);
+
+    // Items directly assigned to the sub OR on any job the sub is on
+    let q = sb
+      .from('schedule_items')
+      .select('*, assigned_sub:profiles!assigned_sub_id(id, full_name)')
+      .neq('status', 'cancelled')
+      .order('scheduled_date', { nullsFirst: false });
+
+    if (jobIds.length > 0) {
+      q = q.or(`assigned_sub_id.eq.${subId},job_id.in.(${jobIds.join(',')})`);
+    } else {
+      q = q.eq('assigned_sub_id', subId);
+    }
+
+    const { data, error } = await q;
+    if (error) throw error;
+    return { ok: true, error: null, data: data || [] };
+  } catch (e) {
+    return { ok: false, error: e.message, data: [] };
+  }
+};
+
+// ─── Phase derivation ─────────────────────────────────────────────────────────
+// Derives job_phases.status from sub_start schedule items via trade_phase_map.
+// Asymmetry (by design): phases never decrement. A phase at 'complete' stays
+// 'complete' even if its driver sub_start item is later cancelled.
+// Idempotent: calling twice in a row is a no-op.
+export const derivePhaseStatus = async (jobId, tenantId) => {
+  if (!jobId) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const tid   = tenantId || AV_TENANT;
+
+  const [{ data: phases }, { data: maps }, { data: items }] = await Promise.all([
+    sb.from('job_phases')
+      .select('id, phase_name, status, started_at, started_by_id, completed_at, completed_by_id')
+      .eq('job_id', jobId),
+    sb.from('trade_phase_map')
+      .select('trade, phase_name, tenant_id')
+      .or(`tenant_id.eq.${tid},tenant_id.is.null`),
+    sb.from('schedule_items')
+      .select('id, trade, status, scheduled_date, updated_at, created_by_id')
+      .eq('job_id', jobId)
+      .eq('type', 'sub_start')
+      .neq('status', 'cancelled'),
+  ]);
+
+  if (!phases?.length || !maps?.length || !items) return;
+
+  // Deduplicate map: tenant row beats platform null for same trade
+  const tradeToPhase = {};
+  for (const m of maps) {
+    if (!tradeToPhase[m.trade] || m.tenant_id !== null) {
+      tradeToPhase[m.trade] = m.phase_name;
+    }
+  }
+
+  // Build phase_name → [trades]
+  const phaseToTrades = {};
+  for (const [trade, phaseName] of Object.entries(tradeToPhase)) {
+    if (!phaseToTrades[phaseName]) phaseToTrades[phaseName] = [];
+    phaseToTrades[phaseName].push(trade);
+  }
+
+  const updates = [];
+  for (const phase of phases) {
+    // Never decrement from complete
+    if (phase.status === 'complete') continue;
+
+    const trades = phaseToTrades[phase.phase_name];
+    if (!trades?.length) continue;
+
+    const relevant = items.filter(i => trades.includes(i.trade));
+    if (!relevant.length) continue;
+
+    const driverComplete   = relevant.find(i => i.status === 'complete');
+    const driverInProgress = relevant.find(i => i.status === 'in_progress');
+    const driverOverdue    = relevant.find(
+      i => i.status === 'scheduled' && i.scheduled_date && i.scheduled_date <= today
+    );
+
+    if (driverComplete) {
+      const upd = { status: 'complete' };
+      if (!phase.completed_at) {
+        upd.completed_at    = driverComplete.updated_at;
+        upd.completed_by_id = driverComplete.created_by_id || null;
+      }
+      if (!phase.started_at) {
+        upd.started_at    = driverComplete.updated_at;
+        upd.started_by_id = driverComplete.created_by_id || null;
+      }
+      updates.push({ id: phase.id, patch: upd });
+    } else if (driverInProgress || driverOverdue) {
+      if (phase.status === 'in_progress') continue;
+      const driver = driverInProgress || driverOverdue;
+      const upd    = { status: 'in_progress' };
+      if (!phase.started_at) {
+        upd.started_at    = driver.updated_at || new Date().toISOString();
+        upd.started_by_id = driver.created_by_id || null;
+      }
+      updates.push({ id: phase.id, patch: upd });
+    }
+  }
+
+  await Promise.all(
+    updates.map(({ id, patch }) =>
+      sb.from('job_phases').update(patch).eq('id', id)
+    )
+  );
+};
