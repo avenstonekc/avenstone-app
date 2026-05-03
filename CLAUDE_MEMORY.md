@@ -76,6 +76,10 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring
 - `MaterialSelectionScr.jsx` — built, landing surface decision outstanding
 
+### Future architecture (design-only, not building yet)
+
+- **RAG-based archive retrieval** — Idea: instead of loading CLAUDE_ARCHIVE.md into context manually, embed every archive entry into a vector store (Supabase pgvector, already provisioned), and retrieve the 3-5 most relevant entries at session start based on semantic similarity to the current task. Lean memory stays small forever; archive can grow unbounded; per-session tokens drop from current ~3K static load to ~500-2000 dynamic retrieval. Trigger to build: archive exceeds ~50K tokens, or first non-Avenstone tenant onboards, or first session where missing context bites. Estimated build: 2-3 days. Captured 2026-05-03 — review before building.
+
 ---
 
 ## Working-mode patterns
