@@ -1839,3 +1839,58 @@ export const derivePhaseStatus = async (jobId, tenantId) => {
     )
   );
 };
+
+// ─── Schedule item notification helpers ──────────────────────────────────────
+// Fire-and-forget — callers .catch() at the call site.
+
+const TYPE_LABEL_MAP = {
+  material_delivery: 'Material delivery',
+  sub_start:         'Sub start',
+  site_visit:        'Site visit',
+  inspection:        'Inspection',
+  milestone:         'Milestone',
+  delay:             'Schedule delay',
+};
+
+const fDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
+
+// Collect recipient user IDs for a schedule item
+const _collectRecipients = async (item, job, includeClient) => {
+  const ids = new Set();
+  if (item.assigned_sub_id) ids.add(item.assigned_sub_id);
+  if (includeClient && item.notify_client && job?.client_user_id) ids.add(job.client_user_id);
+  // Staff: PM assigned to job
+  if (job?.assigned_pm_id) ids.add(job.assigned_pm_id);
+  // Exclude the acting user so they don't self-notify
+  if (AV_USER_ID) ids.delete(AV_USER_ID);
+  return [...ids].filter(Boolean);
+};
+
+export const sbNotifyScheduleItemCreated = async (item, job) => {
+  const typeLabel = TYPE_LABEL_MAP[item.type] || item.type;
+  const datePart  = item.scheduled_date ? ` on ${fDate(item.scheduled_date)}` : '';
+  const title = `${typeLabel}${datePart} — ${job?.address || 'job'}`;
+  const body  = `${item.title}${item.trade ? ` (${item.trade})` : ''}${item.notes ? ': ' + item.notes.slice(0, 80) : ''}`;
+  const recipients = await _collectRecipients(item, job, true);
+  await Promise.all(recipients.map(uid => sbNotifyUser(uid, 'schedule_item_created', title, body, job?.id).catch(() => {})));
+};
+
+export const sbNotifyScheduleItemChanged = async (item, prevRow, job) => {
+  // Only fire if meaningful fields changed
+  const watchFields = ['scheduled_date', 'scheduled_end_date', 'status', 'assigned_sub_id', 'trade', 'title'];
+  const changed = watchFields.filter(k => item[k] !== prevRow[k]);
+  if (!changed.length) return;
+
+  const parts = [];
+  if (changed.includes('scheduled_date'))     parts.push(`Date → ${fDate(item.scheduled_date) || 'TBD'}`);
+  if (changed.includes('scheduled_end_date')) parts.push(`End → ${fDate(item.scheduled_end_date) || 'removed'}`);
+  if (changed.includes('status'))             parts.push(`Status → ${(item.status || '').replace(/_/g, ' ')}`);
+  if (changed.includes('assigned_sub_id'))    parts.push(item.assigned_sub_id ? 'Reassigned' : 'Unassigned');
+  if (changed.includes('trade'))              parts.push(`Trade → ${item.trade || 'none'}`);
+  if (changed.includes('title'))              parts.push(`Renamed to "${item.title}"`);
+
+  const title = `Schedule update — ${job?.address || 'job'}`;
+  const body  = `${item.title}: ${parts.join(' · ')}`;
+  const recipients = await _collectRecipients(item, job, true);
+  await Promise.all(recipients.map(uid => sbNotifyUser(uid, 'schedule_item_changed', title, body, job?.id).catch(() => {})));
+};
