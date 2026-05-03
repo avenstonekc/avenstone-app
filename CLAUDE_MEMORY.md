@@ -84,9 +84,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 - **Speed/cost audit candidates** — (a) sequential sb*Load calls on tab mount could parallelize with Promise.all, (b) edge functions probably on Sonnet where Haiku would suffice, (c) `select('*')` sweep to targeted columns, (d) Vite code-splitting + lazy-loading LiDAR/PDF heavy modules, (e) LiDAR scan storage lifecycle (no cleanup today). None urgent. Captured 2026-05-03.
 
-- **Failed-attempts log** — Today the archive captures successful ships only. Wrong hypotheses, dead-end audits, reverted experiments don't get slugs. Add a discipline + format: every audit-before-fix that produced a wrong guess, every reverted approach, every "we thought X, it was actually Y" gets its own slug as `attempt-name-failed · date · what we thought / why wrong / what worked`. Highest-value addition to the library — diagnoses repeat failures faster. Captured 2026-05-03.
+- **Failed-attempts log** — Today the archive captures successful ships only. Wrong hypotheses, dead-end audits, reverted experiments don't get slugs. Add discipline + format: every wrong hypothesis or reverted approach gets a slug suffixed `-failed`. First-class entries. Captured 2026-05-03.
 
-- **Symptom index** — A new section in CLAUDE_MEMORY mapping common error messages or symptoms to the archive slugs that solved them. Example: `"could not find X column in schema cache" → schema-claim-incidents`, `"upsert silently fails on existing row" → rls-sweep-2026-05-02`. Manual to maintain but high-value at debug time. Build alongside failed-attempts log. Captured 2026-05-03.
+- **CLAUDE_INDEX.md categorized lookup** — Build after chunks 4-5 ship. Small file (~200 lines), three categories: app area, type of work, failure pattern. Each line: `YYYY-MM-DD · slug-name`. Slugs can appear in multiple categories. Future Claude reads index first, identifies relevant category, jumps to specific slugs in archive — saves 5-15K tokens per session needing historical context. Discipline enforced via OPUS_RULES rules added 2026-05-03. Captured 2026-05-03.
 
 ---
 
@@ -118,7 +118,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 *Slug pointers → CLAUDE_ARCHIVE.md. Search `## slug` to retrieve.*
 
-*Archive build in progress — chunks 1-3 of 5 committed. Slugs through 2026-04-28 are populated. Chunks 4-5 cover Apr 29 → May 3 work — slug pointers exist below but archive content is pending. Fallback retrieval until chunks 4-5 ship: `git show 7070d65^:CLAUDE_MEMORY.md` returns the pre-cleanup file containing all original LOG entries.*
+*Archive build in progress — chunks 1-3 of 5 committed. Slugs through 2026-04-28 populated. Chunks 4-5 cover Apr 29 → May 3 work — slug pointers exist below but archive content pending. Fallback: `git show 7070d65^:CLAUDE_MEMORY.md` returns pre-cleanup file with all original LOG entries.*
 
 **PDF / LiDAR**
 - `lidar-phase1 · 2026-04-15` — Phase 1 confirmed on device; scan persistence to job/contact tables
@@ -202,3 +202,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Action: Symptom index seeded with 5 entries from this session's debug history.
 - Open: Chunks 4-5 of archive build pending. Sub management steps 1-2 are quick-win candidates. Failed-attempts log + symptom index need ongoing discipline, not a one-time build.
 - Decision: Stopped at end of session for sleep. Resume tomorrow with fresh brain on chunks 4-5, then revisit prioritization.
+
+[LOG — 2026-05-03]
+- Action: Archive build chunks 1-3 of 5 shipped. Archive at 584 lines.
+- Action: Five future-architecture ideas captured: RAG retrieval, sub management arc, speed/cost candidates, failed-attempts log, CLAUDE_INDEX.md categorized lookup.
+- Action: Symptom index seeded with 5 entries from this session's debug history.
+- Action: OPUS_RULES updated with index discipline (separate commit).
+- Open: Chunks 4-5 of archive build pending. CLAUDE_INDEX.md to be built after chunks land.
+- Decision: Stopped at end of session for sleep.
