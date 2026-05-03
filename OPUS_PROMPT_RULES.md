@@ -93,4 +93,25 @@ writes must follow these.
 - Vague success criteria. Every bug has a concrete outcome.
 - Hardcoded Avenstone-only values (specific tenant UUIDs, Kalin's email, the 8-phase GC pipeline) treated as global constants. These belong in env config or `ai_knowledge`, never in shared code paths.
 
+## Archive + Index discipline (locked 2026-05-03)
+
+**Rule A — Every shipped slug requires an index entry.**
+Once CLAUDE_INDEX.md exists, every prompt that ships work to CLAUDE_ARCHIVE.md must include, as a mandatory closing task, adding the slug to CLAUDE_INDEX.md under all relevant categories. Format: `YYYY-MM-DD · slug-name`. Categories: app area (PDF, Financial, Schedule, Subs, etc.), type of work (feature, fix, audit, refactor, schema, doc), failure pattern (only when applicable — schema-claim, swallowed-write, RLS misconfig, etc.).
+
+A slug can appear in multiple lines under app area when it's cross-cutting. Rule of thumb: appear where someone would actually look for it.
+
+**Rule B — Index entry verification before commit.**
+After adding an index entry, the prompt verifies:
+- Slug exists as a heading in CLAUDE_ARCHIVE.md (`grep "^## slug-name" CLAUDE_ARCHIVE.md` returns 1)
+- Slug appears in at least one category in CLAUDE_INDEX.md
+- Date format matches `YYYY-MM-DD`
+
+Any of three failing aborts the commit. Same structure as migration verification (information_schema + schema reload + pg_policies).
+
+**Rule C — Failed attempts use `-failed` suffix.**
+Slugs for wrong hypotheses, reverted experiments, dead-end audits use the suffix `-failed`. They are first-class archive entries with full content (what we thought / why wrong / what worked instead). Indexed under their relevant app area + the "failure pattern" category. Failed slugs must not be silently dropped — they're the most valuable retrieval entries when something breaks the same way twice.
+
+**Rule D — Three categories, ruthlessly.**
+Index categories are locked at three: app area, type of work, failure pattern. Adding a fourth requires a deliberate decision — one new category implies one more lookup the prompt-writer must perform per ship. Six categories was rejected as undisciplined; three survives. Cost, relationships, and open-item status are tracked elsewhere (CLAUDE_MEMORY) and do not belong in the index.
+
 ## Default closing section for every prompt
