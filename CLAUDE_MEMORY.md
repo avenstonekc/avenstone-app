@@ -1197,6 +1197,9 @@ Open items:
 - Candidates found: 6 total. 5 already coalesced from prior work: start_date/end_date (ScheduleTab), due_date (TransactionModal, SubsTab), insurance_expiry (SubComplianceModal). 1 needed fixing: date_incurred in TransactionModal was sent bare — TODAY default meant no regression in practice, but user clearing the date input would send '' to Postgres.
 - Deferred: None. All user-editable date fields now coalesced at write boundary.
 
+[LOG — 2026-05-03 — ScheduleTab pill layout regression]
+- Regression: phase pills rendered as viewport-filling gray shapes. Root causes: (1) `align-items` missing on pill flex container (default stretch caused wrappers with audit dates to stretch peer wrappers); (2) `Ic.cal` in empty state had no width/height — SVG defaults to 300×150px browser intrinsic. Fixed: pill container → inline-flex column + align-items:flex-start + gap:8; empty state icon → 36×36 constrained span. Commit 9bd03d8.
+
 [LOG — 2026-05-03 — trade_phase_map is_primary (Prompt A follow-up)]
 - Action: Added is_primary BOOLEAN column to trade_phase_map. derivePhaseStatus now filters to is_primary=TRUE only.
 - Migration: 20260503_trade_phase_map_primary.sql — applied and verified (column confirmed in information_schema, 10 TRUE rows, schema reloaded).
