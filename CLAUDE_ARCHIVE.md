@@ -346,3 +346,239 @@ _To retrieve: search for the slug heading._
 - Files: RoomPlanPlugin.swift
 - Decision: StructureBuilder is load-bearing for wall merging — never skip it again. Without it, adjacent rooms render with parallel un-merged walls, hallway geometry extends into empty space, door swings float, and chain dim Z-line math fails. Centroid matching (matchNamesToStructuredRooms) failed every iteration; bounding-box area is more robust because StructureBuilder doesn't change room area meaningfully. New matchNamesByArea: compute bbox ft² for each captured + rebuilt room, greedy closest-area match, each captured used at most once. structureToRooms now takes [Int: (String, Int)] (name, scanIndex) and emits scanIndex in the room dict; buildStructure sorts output by scanIndex so PDF renders in scan order. StructureBuilder failure falls back to fallbackRooms (unmerged capturedRooms with inline names). showNamingScreen / nameFields / structuredRooms marked DEAD CODE.
 - Open: If two rooms have very similar area (e.g. two bedrooms ~140sf each), area match may mis-pair. Watch the [LIDAR_NAME] console log — it prints rebuilt area, captured area, and delta for every match. If mis-pairing is detected, add centroid distance as a tiebreaker when delta < 5% of the smaller area.
+
+---
+
+## pdf-branding-polish · 2026-04-26 · Scan-order naming + logo + chain edge math + label rotation
+
+[LOG — 2026-04-26]
+- Action: Floor plan PDF — math + branding pass (late session). Five-commit polish covering naming order, branded logo, chain edge math, label rotation, and door swing arc cap.
+- Files: ios/App/CapApp-SPM/Sources/CapApp-SPM/RoomPlanPlugin.swift (scan-order sort), avenstone-vite/src/lib/pdf.js (branding + math + label + arc cap), avenstone-vite/src/components/jobs/tabs/FloorPlanTab.jsx (await buildFloorPlanPDF)
+- Commits: 0c415e2 (scan-order naming), 6f8fc52 (logo image + portrait summary), f9cd937 (snap chain edges + overlap dedup), cb0a9a7 (rotate label on wall collision), 2282861 (cap swing arcs at 4/room)
+- Decision: Scan-order naming — Swift now sorts the multi-room naming modal in scan order (not StructureBuilder spatial order), pairs with thumbnails to fully resolve room-name-backwards bug.
+- Decision: Logo image — _loadLogo fetches logo.png and base64-encodes via FileReader, passed once to all renderers. _drawTitleColumn and _renderSummaryPage call addImage instead of typed AVENSTONE/GROUP text. Honors user-memory rule "logo, not text, on Avenstone brand files." Typed-text fallback retained for image load failure. buildFloorPlanPDF is now async; FloorPlanTab awaits it.
+- Decision: Summary page now uses addPage('letter', 'portrait') — was inheriting landscape orientation from doc default.
+- Decision: Chain edge math — global bbox computed from allWallSegs before exterior classification. Top/bottom/right segs snap to gMinZ/gMaxZ/gMaxX within 1.0ft tolerance to merge wall-thickness twins from adjacent rooms onto the same plane. Midpoint-proximity dedup (0.3ft) replaced with overlap-range dedup (drop seg if ≥80% range overlaps an already-kept seg, sort by start with longer first on ties). [LIDAR_PDF_DEDUP] log added.
+- Decision: Label rotation — _ptSegDistFt + _labelFitsInRoom helpers test all four corners of label box are inside polygon AND ≥6pt from every wall segment. After interior point chosen, horizontal box tested first; on fail, retry rotated; if rotated fits, narrow=true triggers existing angle:90 render path. [LIDAR_PDF_LABEL] log only fires when neither orientation fits.
+- Decision: Swing arc cap — swingCountByRoom tracks arcs per room index. Skip arc when room has 4 already (panel line still drawn). Stroke lightened from (80,80,80)/0.4lw to (140,140,140)/0.3lw. Stops dense rooms from drowning in arcs.
+- Open: All changes are in pdf.js worldMode path; single-room (non-world) path still doesn't get chain dims, label rotation, or arc cap. Pre-existing limitation tracked in priority order #1 sub-bullets.
+
+---
+
+## apr26-misc-ships · 2026-04-26 · Wall squaring, corner gaps, quality meter removal, exterior soft-rip
+
+[LOG — 2026-04-26]
+- Action: Closed wall corner gaps in floor plan PDF
+- Files: avenstone-vite/src/lib/pdf.js
+- Decision: Root cause — _drawPoché rendered each wall as a rectangle exactly the segment's length, so adjacent perpendicular rectangles shared an endpoint but didn't overlap, leaving a visible gap at every junction. Fix: extend each rectangle by thick/2 past both endpoints along the segment axis; perpendicular rectangles now overlap at corners, filling the gap. Single 5-line change inside _drawPoché.
+- Open: T-junctions (three walls meeting at one point) will still show a small exposed area on the non-overlapping side of the intersecting wall — the extension only helps the two endpoint walls. Not visually critical but notable.
+
+[LOG — 2026-04-26]
+- Action: Removed user-facing capture quality meter
+- Files: avenstone-vite/src/components/ai/AiIntakeWizard.jsx, avenstone-vite/ios/App/CapApp-SPM/Sources/CapApp-SPM/RoomPlanPlugin.swift, avenstone-vite/ios/App/CapApp-SPM/Sources/CapApp-SPM/ExteriorScanViewController.swift
+- Decision: Score was noise once scans stabilized. Removed live bar overlay from RoomPlanScanViewController and ExteriorScanViewController; removed 'report' step from AiIntakeWizard (flow is now scan → height → save). CaptureQualityTracker class retained. DB columns retained nullable; qualityScore/Grade/Deductions saved as null going forward.
+- Open: none
+
+[LOG — 2026-04-26]
+- Action: Soft rip exterior AR scan UI
+- Files: avenstone-vite/src/components/ai/LidarScanner.jsx, avenstone-vite/src/components/ai/AiIntakeWizard.jsx, avenstone-vite/src/components/jobs/tabs/FloorPlanTab.jsx
+- Decision: Dot-on-corners ARKit method doesn't get accurate measurements outdoors — removed mode toggle from LidarScanner (interior-only now). Removed exteriorResult state, handleExteriorCapture(), saveExterior(), and all exterior branches from AiIntakeWizard. Legacy exterior records in FloorPlanTab render as a minimal "Legacy scan · N sf" row with date — no crash on null outline_data.
+- Decision: ExteriorScanViewController.swift and startExteriorScan() in RoomPlanPlugin.swift left untouched (dead code, retained for potential revisit). DB capture_mode column unchanged.
+- Open: none
+
+[LOG — 2026-04-26]
+- Action: Aggressive wall squaring + label render order fix
+- Files: avenstone-vite/src/lib/pdf.js
+- Decision: Snap tolerance widened 5°→10° so near-ortho walls force exactly 0°/90°; genuinely angled walls (>10° off square) stay as-is. Endpoint merge tolerance widened 2 in→6 in so near-touching corners collapse cleanly. Both constants are in _snapToOrtho. Label z-order was already correct (labels after poché); root cause was narrow rooms (hallways, aspect > 3) skipping the wall-margin check — centroid could land on a wall. Fix: narrow rooms now also run _labelFitsInRoom with rotated dims and fall back to _interiorPoint when centroid clips a wall.
+- Open: If hallways are still very narrow (< ~2 ft rendered), font may still clip — could add font-size reduction loop as a follow-up.
+
+---
+
+## dead-code-audit · 2026-04-26 · Built-but-not-wired audit
+
+[LOG — 2026-04-26]
+- Action: Audited built-but-not-wired surfaces across codebase.
+- Files: none changed (audit only)
+- Decision: 4 confirmed DEAD surfaces (MaterialSelectionScr, FloorPlanEditor, SequencesScr, commission type='commission' UI), 2 PARTIAL (retainage columns exist in schema only — no UI reads/writes them; daily_tasks table + sbLoadDailyTasks exist but AiHomeScr queries the table inline without using the helper), 1 bonus dead (SubOnboardingModal listed in CLAUDE.md but the file doesn't exist — was never created). MasterAgent is WIRED (owner-only floating button, invokes ai-master-agent which does real DB writes: insert jobs/contacts/notes/phases/COs/payments/subs, update jobs/phases). AiFieldAgent is WIRED (voice orb UI, field-agent edge fn) but overlaps heavily with MasterAgent — field-agent has 5 tools vs master-agent's ~12; field-agent is voice-first for field use, master-agent is text-panel for owner. AiHomeScr is WIRED. QB columns (qb_account, qb_class) are populated via SettingsModal and exported via qbExport.js — WIRED for CSV; qb_customer/qb_vendor remain schema-only placeholders. inspection_checklist in ai_knowledge: zero rows confirmed via live REST query (returns []). FloorPlanEditor intentionally hidden (fa3582f) — code retained, no import anywhere.
+- Open: User decisions needed: (1) Kill or eventually wire MaterialSelectionScr? (2) Kill SequencesScr or add to NAV? (3) FloorPlanEditor — decide UX before rewiring. (4) Retainage UI — scope and build when needed. (5) SubOnboardingModal stale reference in CLAUDE.md — should be removed.
+
+---
+
+## notification-audit · 2026-04-26 · Notification system audit
+
+[LOG — 2026-04-26]
+- Action: Notification system audit (read-only)
+- Files: none changed (audit only)
+- Decision: Staff bell is solid; client experience is nearly silent at financial events — no payment receipt email, no client bell anywhere in ClientPortal, ai-pm-nightly client alerts land in DB but client has no UI to see them, sub assignment notifies nobody.
+- Open: Follow-up prompt generated for 6 fixes (stripe-webhook receipt email, sub assignment bell, contract_signed/completion_signed type fixes, notify-email SUBJECTS map, NotifPanel + SettingsModal new types). Client bell (ClientPortal.jsx) deferred as a larger task.
+
+[LOG — 2026-04-26]
+- Action: Notification system audit (read-only)
+- Files: none changed (audit only)
+- Decision: System is staff-complete but client-silent at financial events — Stripe payment fires no client confirmation, ai-pm-nightly client-targeted alerts write to a notifications table ClientPortal never reads, manual TransactionModal fires nothing. SMS is a dead stub. Per-event preference matrix stored but never consulted at delivery. Follow-up prompt generated for three fixes.
+- Open: Follow-up prompt generated (paste into separate window) — covers Stripe payment confirmation email, nightly alert → email for client, CO submitted → immediate client email.
+
+---
+
+## aihome-cleanup · 2026-04-26 · "Brief me" auto-fire removed + SequencesScr wired owner-only
+
+[LOG — 2026-04-26]
+- Action: Removed "Brief me" auto-fire from AI Home screen
+- Files: avenstone-vite/src/components/ai/AiHomeScr.jsx
+- Decision: Asking the app what to do on open is dead weight — if the app has to tell you, it failed. Removed the useEffect auto-trigger (sendMessage('brief me', [])) and hasOpened ref. Empty state now shows neutral "Ask me anything about your projects" + "Daily to-do list coming soon" placeholder card when no tasks. ai-pm-nightly rule checks and edge function untouched.
+- Open: To-do tab design + build (separate prompt).
+
+[LOG — 2026-04-26]
+- Action: Cleanup pass — removed sbLoadDailyTasks helper. CLAUDE.md SubOnboardingModal typo not found (already resolved in a prior session — grep confirms zero matches).
+- Files: avenstone-vite/src/lib/supabase.js
+- Decision: SequencesScr retained for sub-ops automation pivot (see separate audit). sbLoadDailyTasks superseded by inline query in AiHomeScr; only caller reference was in CLAUDE_MEMORY.md logs, not live code.
+- Open: SequencesScr scope-change audit pending; MaterialSelectionScr still unwired pending decision on landing surface.
+
+---
+
+## sequences-sub-ops · 2026-04-26–28 · Sub-ops sequences: manual + auto-triggers + time-based
+
+[LOG — 2026-04-26]
+- Action: Read-only audit — sequences engine repurpose for sub-ops (contact_id → sub_id).
+- Files: none changed (audit only)
+- Decision: Sequences engine is contact/SMS-only throughout — sequence_enrollments.contact_id hardcoded, sequence-runner joins contacts directly, delivery writes to contact_messages, TRIGGERS constant has only manual/new_contact/missed_call, enroll modal queries contacts table.
+- Decision: Minimum viable sub sequences (manual enrollment only) = 5 commits: 2 migrations (enrollments schema + sub_messages table), 1 runner branch (join subs on recipient_type='sub'), 2 UI commits (enroll modal + enrollment list display). Full build with auto-triggers + cron = 8 commits.
+- Decision: Blocker — verify subs table has a phone column before building runner branch. No phone = SMS dead on arrival. Must check before writing a line of runner code.
+- Decision: New sub-ops trigger keys needed: sub_onboarded, bid_sent, co_sent, bid_overdue, invoice_overdue. Time-based triggers (bid_overdue, invoice_overdue) require a cron wrapper — current runner is HTTP POST only, no scheduler.
+- Open: Decision needed — (1) add phone column to subs if missing, (2) confirm scope (manual-only MVP vs auto-triggers vs time-based triggers), then build.
+
+[LOG — 2026-04-26]
+- Action: Sub-ops sequences MVP — manual enrollment shipped
+- Files: supabase/migrations/20260426_sequence_sub_enrollment.sql (sub_id FK → profiles, CHECK one-recipient, index, RLS), supabase/migrations/20260426_sequence_trigger_constraint.sql (CHECK constraint on trigger values), supabase/functions/sequence-runner/index.ts (sub branch — fetch profile phone, skip contact_messages write), avenstone-vite/src/lib/supabase.js (+sbLoadActiveSubs), avenstone-vite/src/components/common/SequencesScr.jsx (recipient toggle, sub picker, SUB badge on enrollment list, loadSubs, manual_sub trigger)
+- Decision: Subs are profiles with role='sub' — no separate subs table. sub_id in sequence_enrollments references profiles(id). Phone and email come from profiles.
+- Decision: Manual enrollment shipped first to validate runner can deliver to subs at all. Contact path fully unchanged and must keep working.
+- Decision: trigger column was free text — added CHECK constraint now to document valid values: manual, new_contact, missed_call, manual_sub.
+- Decision: Sub message delivery skips contact_messages write — no sub_messages table yet. Enrollment advances normally; delivery is fire-and-forget SMS only.
+- Decision: Enroll modal warns inline when selected sub has no phone (SMS will skip). PM sees this before committing the enrollment.
+- Open: Auto-trigger wiring (bid_sent, sub_invited, payment_made) and time-based triggers (bid_overdue, invoice_overdue) deferred to follow-up prompts. Bulk enrollment UI deferred. sub_messages table deferred.
+
+[LOG — 2026-04-26]
+- Action: Added email delivery branch to sequence-runner
+- Files: supabase/functions/sequence-runner/index.ts
+- Decision: Email delivery routes through existing notify-email edge fn (Resend) for sub recipients (subs are profiles, so user_id lookup works + opt-out applies). Contact recipients call Resend directly — contacts are not profiles so notify-email's user_id lookup can't resolve them. step.action_type defaults to 'sms' for existing steps without the field, preserving all prior behavior.
+- Open: Re-run the sub email test prompt — should now deliver. Auto-trigger wiring (bid_sent, sub_invited, payment_made) + time-based triggers still pending.
+
+[LOG — 2026-04-27]
+- Action: Diagnosed missing sequence_enrollments row in sub email test; ran full delivery test end-to-end
+- Decision: Root cause was every DO block in the SQL editor rolled back silently on any error (duplicate key, carriage return in JSON, NOT NULL violation), leaving no rows committed. Final SELECT-based INSERT inserted 0 rows because sub profile and sequence never existed — SQL editor showed "Success" for 0 rows inserted. Fix: ran each INSERT separately via Management API (bypasses SQL editor copy-paste issues). Also discovered sequence_enrollments.contact_id had NOT NULL constraint blocking sub-only rows — dropped it. Runner returned sent:1 / completed_last_step — delivery confirmed pending inbox check.
+- Open: Awaiting inbox confirmation of test email. contact_id NOT NULL drop should be committed as a proper migration file. Auto-trigger wiring still pending.
+
+[LOG — 2026-04-28]
+- Action: Auto-trigger wiring shipped — bid_sent, sub_invited, payment_made sequences fire automatically
+- Files: supabase/migrations/20260428_sequences_trigger_widen.sql (new), avenstone-vite/src/lib/supabase.js (+sbAutoEnrollSubInSequences, wired to sbCreateTransaction), supabase/functions/send-bid-invite/index.ts (auto-enroll after email ok), supabase/functions/send-invite/index.ts (auto-enroll after invite), avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx (sub picker + payer_or_payee_id)
+- Commits: be0ef64 (migration), f21669a (supabase.js helper + sbCreateTransaction wire), 89ec700 (edge fn wires), c4e69be (TransactionModal)
+- Decision: sequences_trigger_check constraint widened (DROP + ADD) to include bid_sent, sub_invited, payment_made. Applied live via Management API.
+- Decision: sbAutoEnrollSubInSequences(subId, triggerType, tenantId) — finds active sequences with matching trigger, skips if sub already active/complete enrolled, inserts with next_send_at computed from step[0].day. Fire-and-forget from sbCreateTransaction.
+- Decision: send-bid-invite auto-enrolls userId in bid_sent sequences only when Resend call succeeds (res.ok gate). send-invite auto-enrolls in sub_invited sequences after inviteUserByEmail succeeds.
+- Decision: TransactionModal shows a sub picker dropdown (sbLoadActiveSubs) when type=sub_payout. Selecting a sub sets payer_or_payee_id (uuid) + auto-fills payer_or_payee_name. payer_or_payee_id now included in save payload — sbCreateTransaction uses it for payment_made enrollment.
+- Open: Time-based triggers (bid_overdue, invoice_overdue) still deferred — require cron wrapper.
+
+[LOG — 2026-04-28]
+- Action: Time-based trigger sub_inactive_60d wired
+- Files: supabase/migrations/20260428_sequences_inactive_sub_trigger.sql (new), supabase/functions/sequence-runner/index.ts (inactive-sub scan block)
+- Decision: Option A — extended sequence-runner (already pg_cron'd `*/15 * * * *`) rather than creating a new edge function. Inactive-sub scan is gated to `getUTCHours() === 4` so it runs at most 4 times per day (4:00/4:15/4:30/4:45 UTC); idempotency means 2nd–4th runs are no-ops. Activity signal is `bid_responses.submitted_at` (most recent per sub); no bids ever + profile created >60 days ago also qualifies. 60-day window hardcoded. Other time-based triggers (bid_overdue, invoice_overdue) deferred.
+- Open: SequencesScr UI trigger dropdown does not yet list sub_inactive_60d — PM creating a re-engagement sequence would need to insert `trigger='sub_inactive_60d'` manually via SQL until dropdown is updated.
+
+[LOG — 2026-04-28]
+- Action: Surfaced new sequence trigger types in SequencesScr dropdown
+- Files: avenstone-vite/src/components/common/SequencesScr.jsx
+- Decision: Expanded TRIGGERS constant to include bid_sent, sub_invited, payment_made, sub_inactive_60d with '(auto)' suffix labels. No grouping added — existing flat pattern retained. PMs can now create sequences for all wired trigger types from UI. No SQL required.
+- Open: Sequences track complete pending real-world testing.
+
+---
+
+## bid-system-audit · 2026-04-28 · Bid invitation system audit
+
+[LOG — 2026-04-28]
+- Action: Audited bid invitation system end-to-end
+- Files: none changed (audit only)
+- Decision: System is real and functional but thin — lump-sum only, scope is free-text typed by PM from scratch; no estimate_line_items, no consultation, no takeoff linkage. shared_doc_ids/shared_photo_ids are a stub (saved, never rendered for sub). The `bids` table is a ghost (no reads or writes in live code). bid_analytics exists but nothing in the ITB flow writes to it.
+- Open: Before takeoff wizard can feed bids cleanly, need to decide: (1) will ITBs stay lump-sum or become per-line? (2) should awarding a bid write to estimate_line_items? (3) is the ghost `bids` table worth wiring or should it be dropped?
+
+---
+
+## todo-system · 2026-04-28 · Todo system foundation
+
+[LOG — 2026-04-28]
+- Action: To-do system foundation shipped — schema, helpers, TodayScr, default landing, ai-pm-nightly integration
+- Files: supabase/migrations/20260428_todos_table.sql (new table, indexes, RLS), avenstone-vite/src/lib/supabase.js (+sbLoadMyTodos, sbCountPendingTodos, sbCreateTodo, sbSnoozeTodo, sbDismissTodo, sbCompleteTodo, sbResolveTodosBySource), avenstone-vite/src/components/common/TodoCard.jsx (new), avenstone-vite/src/components/dashboard/TodayScr.jsx (new), avenstone-vite/src/App.jsx (nav, pg-wrap, bot-nav, landing logic), supabase/functions/ai-pm-nightly/index.ts (todos write + source tracking), CLAUDE.md (Today screen description)
+- Decision: Real todos table (not computed-live). Feature-that-resolves marks done via sbResolveTodosBySource(sourceTable, sourceId). Push deferred (TODO comment in TodayScr.jsx). ai-pm-nightly is first writer — todos written after existing notifications insert, notifications untouched. Cold-start landing uses useRef (not session storage) to run once per page load.
+- Open: Push wiring deferred (send-push edge fn exists, just needs callers). Severity tuning deferred (all ai-pm-nightly todos inherit alert.level, which defaults to medium for most rules). Bulk actions, history view, per-job todo drill-down deferred to v2. As future features (EstimateTab restructure, Subs tab, Materials tab, Takeoff wizard) ship, they emit todos via sbCreateTodo or direct service-role inserts.
+
+---
+
+## consultation-estimate-restructure · 2026-04-28 · ConsultationTab atoms + EstimateTab sub-tab restructure
+
+[LOG — 2026-04-28]
+- Action: ConsultationTab atom extraction + EstimateTab sub-view restructure shipped (12 commits)
+- Files: avenstone-vite/src/components/jobs/consultation/GapResolutionModal.jsx (new atom), avenstone-vite/src/components/jobs/consultation/MeasurePanel.jsx (new atom), avenstone-vite/src/components/jobs/consultation/AmbientPanel.jsx (new atom), avenstone-vite/src/components/jobs/tabs/ConsultationTab.jsx (thin composer — sessionIdRef pattern, parent-owned state, OhShitCurator inline), avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx (full restructure — 3 sub-tabs, no modal overlays, no LiDAR scanner card), supabase/functions/ai-pm-nightly/index.ts (+Rules 12/13/14), CLAUDE.md (atom architecture + EstimateTab sub-view docs)
+- Decision: ConsultationTab down from 1438 to ~784 lines. Parent-owned state + prop callbacks — no Context. sessionIdRef.current set synchronously in startSession() so async closures in atoms can read it via getSessionId() callback. AmbientPanel unmount cleanup (stopMicCleanup + clearInterval) is non-negotiable — mic-stuck-on bug confirmed in prior sessions. GapResolutionModal owns its own resolution state + calls onClose() itself. flushTranscript() moved inside AmbientPanel's button handlers (fire-and-forget before phase transition) — ensures short sessions (<60s) get processed. OhShitCurator stayed inline (no 4th atom).
+- Decision: EstimateTab — Build sub-view: AI Estimator chat inline (was modal). Line items sub-view: CRUD table via LineItemModal, defaults here if job has ≥1 row. Proposal sub-view: proposal builder inline (was modal), propReady guard prevents duplicate AI extractions. No LiDAR scanner card (Scanner tab owns LiDAR). No modal overlays.
+- Decision: ai-pm-nightly Rules 12/13/14 — consultation_stale (no session after 14 days, or session >30 days old); estimate_no_proposal_24h (has job_estimate, no proposal doc after 24h); proposal_not_sent_48h (has proposal doc >48h old). All target pmUserId, all participate in 24h recentTypes dedup.
+- Open: Financial deprecated table drop (after 2026-05-07). ai-sub-onboard prices.length undefined ref. invitations_to_bid compat view drop. ConsultationTab tab retirement (Prompt F, not yet). SubPortal.jsx still has invitations_to_bid join selector.
+
+---
+
+## financial-rebuild · 2026-04-23 · Full rebuild Phases 1–6: unified ledger, FinancialsTab, QB CSV export
+
+[LOG — 2026-04-23 to 2026-04-25]
+- Action: Complete rebuild of the financial data model and UI. All phases shipped. Reference FINANCIALS_PLAN.md for full architectural decisions and rollback plan.
+
+**Bug fixes (pre-rebuild):**
+- `paid_at` column missing from job_transactions — migration added + backfilled from created_at
+- ai-pm-nightly Rule 2 checked `status='due'` (invalid enum) — fixed to `status='overdue' OR (status='pending' AND due_date < today)`
+- COTab co_total computed client-side — DB trigger `trg_sync_co_total` now auto-updates jobs.co_total on every CO change
+- Migration file: `20260423_financial_bug_fixes.sql`
+
+**Phase 1 — Unified ledger:**
+- `job_transactions` is single source of truth. payments + job_cost_invoices migrated in.
+- Compat views `payments` and `job_cost_invoices` kept alive (SECURITY INVOKER, RLS enforces through them) — rollback path via `_deprecated_*_20260423` tables, keep until 2026-05-07 minimum
+- `change_order_id` on job_transactions is TEXT (not UUID — change_orders.id is TEXT)
+- New supabase.js helpers: sbLoadJobTransactions, sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt (job-receipts bucket), sbUploadLienWaiverTx (job-documents/lien-waivers/)
+- Migration file: `20260423_unified_financial_ledger.sql`
+
+**Phase 3 — Financials tab (13→10 JobDet tabs):**
+- New FinancialsTab.jsx with 5 sub-tabs: Ledger, Estimate, Budget, Change Orders, Costs
+- TransactionModal.jsx — create/edit/view modes; 3-button segmented toggle (Paid/Pending/Draft) default; full status dropdown only for void/overdue/refunded
+- Lien waiver badge on sub_payout/vendor_payment rows missing lien_waiver_url
+- ai-pm-nightly Rule 7 (lien_waiver_missing), Rule 8 (budget_overrun >110%)
+- ai-companion updated to read job_transactions
+- Stat bar: Contract / Received / Client Owes / Paid Out / Outstanding
+
+**Phase 4 — Budget vs Actual:**
+- `estimate_line_items` table — GENERATED ALWAYS AS STORED columns: `total_cost = quantity * unit_cost`, `client_price = quantity * unit_cost * (1 + markup_pct/100)`. RLS: staff full access, client SELECT only on cost_plus jobs.
+- `sbSaveEstimateLineItems` uses delete-then-insert (full replacement per job)
+- `job_transactions.phase TEXT` added alongside `phase_id UUID FK` for free-text budget matching
+- **job_phases column is `phase_name` (not `name`)** — critical for any query joining job_phases
+- Budget matching: `t.phase.trim().toLowerCase() === li.phase.trim().toLowerCase()`
+- Migrations: `20260423_estimate_line_items.sql`, `20260424_add_phase_text_to_transactions.sql`
+- **Migration deployment method:** temp `run-migration` edge function using postgres.js via `SUPABASE_DB_URL` (auto-injected in hosted edge functions). Management API PAT only works for function deploys, NOT for DB queries.
+
+**Phase 5 — QuickBooks CSV export:**
+- `qb_category_map` table — `(tenant_id, tx_type)` UNIQUE. RLS: owner write, staff read. 12 seeded rows.
+- `job_transactions.qb_synced_at TIMESTAMPTZ` — optional stamp after export
+- `src/lib/qbExport.js` — QB bank CSV: Date MM/DD/YYYY, Amount (+in/-out), Account, Class, Customer (from `tx.job.client_name`), Vendor (from `payer_or_payee_name`, fallback: `"Sub Payout - unnamed"`), Memo, Job. RFC 4180 escaping. void+draft skipped.
+- Export modal in Ledger: date range (This Month/Quarter/YTD/All/Custom), all-jobs scope (owner only), mark-synced checkbox; "Hide Synced" toggle in filter bar
+- Settings → QuickBooks tab (owner only): editable table of 12 tx types → QB Account/Class, auto-saves on blur
+- `sbLoadTransactionsForExport` joins `job:jobs(address,client_name)` for multi-job exports
+- Migration: `20260425_qb_category_map.sql`
+
+**Phase 6 — Field tab consolidation (10→8 tabs):**
+- New `FieldTab.jsx` — thin wrapper with sub-tabs: Notes & Photos / Daily Logs / Materials
+- Notes + Photos combined into one sub-tab (were two separate top-level tabs)
+- Consultation tab (id=`session`) was rendering in JobDet but missing from TABS array — surfaced in tab bar
+- Final JobDet tab order: Info, Financials, Schedule, Field, Messages, Documents, Scanner, Consultation
+- No changes to NotesPhotosTab, LogsTab, or MaterialsTab
+- Completion banner "Go to Photos →" updated from `setTab('photos')` → `setTab('field')`
+
+**Locked architectural decisions:**
+- `job_transactions` is the single financial source of truth — no parallel tables
+- `cost_plus` is a client-visibility flag only — all jobs track costs internally regardless
+- Lien waivers are warnings, not hard blocks — transaction saves without them
+- Commissions are transactions (`type='commission'`, `direction='out'`)
+- Retainage fields present on job_transactions (`retainage_pct`, `retainage_held`) — no UI yet
