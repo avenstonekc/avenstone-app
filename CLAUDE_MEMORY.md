@@ -1181,6 +1181,16 @@ Open items:
 - Files: supabase/migrations/20260502_job_phases_audit_columns.sql (new).
 - Open: none — columns confirmed present in re-query after apply.
 
+[LOG — 2026-05-02 — schedule items schema (Prompt A)]
+- Action: schedule_items table + trade_phase_map table + derivePhaseStatus + 5 helpers shipped.
+- Migrations: 20260502_schedule_items.sql, 20260502_trade_phase_map.sql — both applied to live DB and verified.
+- Verification (5-step): schedule_items 15 columns ✓, trade_phase_map 5 columns ✓, 4 RLS policies ✓ (3 on schedule_items, 1 on trade_phase_map), schema reload sent ✓, seed 17 rows ✓.
+- Trade taxonomy divergences from spec: "Drywall" bare → 3 sub-trade rows (Hang, Patch, Tape/mud/texture). "Plumbing" bare → "Plumbing - Rough-in" (rough_mep) + "Plumbing - Finish / fixtures" (finish). "Electrical" bare → "Electrical - Rough-in" (rough_mep) + "Electrical - Finish" (finish). "Cabinets" bare → "Cabinets / vanities - Install". "Trim" bare → 3 Trim/carpentry sub-trade rows. All use canonical full-path strings from trade_taxonomy.
+- Helpers: sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem (returns prevRow), sbDeleteScheduleItem (soft-cancel, not hard delete), sbLoadScheduleItemsForSub. All { ok, error, data }. Date fields coalesced at write boundary.
+- Phase derivation asymmetry (by design, flagged for UI): derivePhaseStatus never decrements. A job_phase that reaches 'complete' stays 'complete' even if its driver sub_start item is later cancelled or its status changes. Prompt B UI must warn the PM of this when cancelling a sub_start item that drove a phase transition.
+- Files: supabase/migrations/20260502_schedule_items.sql, supabase/migrations/20260502_trade_phase_map.sql, avenstone-vite/src/lib/supabase.js (+6 exports), CLAUDE.md (Job statuses note, IA section, Common Task Patterns).
+- Open: Prompt B — ScheduleTab UI replacement + notification wiring.
+
 [LOG — 2026-05-02 — date field sweep (Sweep 2)]
 - Action: Audited all date/timestamp fields in Supabase write payloads across avenstone-vite/src/. Applied one-line coalesce fix. Committed and pushed (b443378).
 - Files: avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx (date_incurred: form.date_incurred || null)

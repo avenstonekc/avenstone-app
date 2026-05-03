@@ -351,12 +351,17 @@ Always filter by `AV_TENANT`. Always handle loading, empty, and error states.
 `lead → bid_sent → active → demo → framing → rough_mep → drywall → finish → punch → complete`
 Also: `on_hold`
 
+**Phase progression is now derived from schedule items, not edited directly.**
+When a `sub_start` schedule item changes status, `derivePhaseStatus(jobId, tenantId)` in `supabase.js` automatically advances the matching `job_phases` row. Derivation is idempotent and never decrements — a phase at `complete` stays there even if its driver item is cancelled. The `trade_phase_map` table (per-tenant) defines which trade maps to which phase_name.
+
 ### Information Architecture
 - **Top nav** — daily-use screens only. Job-specific features belong in `JobDet` tabs.
 - **JobDet tabs** — Info, Estimate, Subs, Financials, Schedule, Field, Messages, Documents, Scanner, Consultation. Tab IDs in TABS array: `info`, `estimate`, `subs`, `financials`, `sched`, `field`, `msgs`, `docs`, `floorplan`, `session`.
 - **Subs tab** (`SubsTab.jsx`) — assigned sub list with status badges + payment summary, quote requests (renamed from invitations_to_bid), bid award workflow. Invite from directory via SubPicker. ITB code fully removed from EstimateTab as of 2026-04-29.
 - **Estimate tab** (`EstimateTab.jsx`) — 5 sub-tabs in order: **Build** (AI Estimator chat inline), **Scope** (per-room scope tagging — filters which trades the takeoff wizard generates; `ScopeTab.jsx`), **Takeoff** (room-type wizard; `acceptTakeoffDraft` writes labor + material lines to estimate_line_items in one transaction, scoped-deletes existing takeoff rows by `notes LIKE 'takeoff:%'`), **Line items** (CRUD table of estimate_line_items via LineItemModal), **Proposal** (proposal builder inline). Default landing: `items` if line items exist → `scope` if scope rows exist → `build`. No LiDAR scanner card — Scanner tab owns capture. No modal overlays — all content is inline in its sub-tab.
 - **Procurement substrate** — `quote_requests` table (renamed from `invitations_to_bid`) has `kind` column (sub_bid | material_rfq), `lead_time_days`, `needed_by_date`. Compat view `invitations_to_bid` still exists for SubPortal until next cleanup migration.
+- **Schedule items** (`schedule_items` table) — flexible job schedule events: `material_delivery`, `sub_start`, `site_visit`, `inspection`, `milestone`, `delay`. Fields: `title`, `scheduled_date`, `scheduled_end_date`, `trade`, `assigned_sub_id`, `notify_client` (bool), `status` (scheduled/in_progress/complete/cancelled). `sub_start` items with a matching `trade` in `trade_phase_map` auto-advance the corresponding `job_phases` row via `derivePhaseStatus`. Clients see items where `notify_client=TRUE` (via `schedule_items_client_select` RLS). Subs see items they're assigned to or on jobs they're on. Helpers: `sbLoadScheduleItems`, `sbCreateScheduleItem`, `sbUpdateScheduleItem`, `sbDeleteScheduleItem` (soft-cancel), `sbLoadScheduleItemsForSub`.
+- **`trade_phase_map`** — per-tenant mapping of canonical trade strings (full-path from `trade_taxonomy`) to `job_phases.phase_name` values. Avenstone GC: 17 rows seeded (Demo→demo, Framing→framing, Plumbing/Electrical/HVAC Rough-in→rough_mep, Drywall sub-trades→drywall, Paint/Tile/Cabinets/Trim/Plumbing-Finish/Electrical-Finish→finish). Other tenants insert their own rows; tenant rows override platform-null rows.
 - **Floating elements** — `AiCompanionChat` floats over job detail. One floating button max per screen.
 - **Modals** — single-action confirmations or short forms only.
 - **Full-screen overlays** — complex multi-step flows (e.g. AiIntakeWizard). Never cram these into a modal.
@@ -508,6 +513,7 @@ That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the c
 - **"wire it up"** — connect two existing pieces (button → Supabase call or edge function)
 - **"test it"** — run both Playwright suites and report results
 - **"deploy it"** — push to main, GitHub Actions handles functions, Vercel handles frontend
+- **"write a migration"** — every migration prompt closes with `information_schema` verification + `NOTIFY pgrst, 'reload schema'` + `pg_policies` check. Three incidents on 2026-05-02 established this is non-negotiable. Commit presence ≠ migration applied to live DB.
 
 ---
 
