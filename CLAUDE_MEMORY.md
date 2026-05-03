@@ -84,6 +84,10 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 - **Speed/cost audit candidates** — (a) sequential sb*Load calls on tab mount could parallelize with Promise.all, (b) edge functions probably on Sonnet where Haiku would suffice, (c) `select('*')` sweep to targeted columns, (d) Vite code-splitting + lazy-loading LiDAR/PDF heavy modules, (e) LiDAR scan storage lifecycle (no cleanup today). None urgent. Captured 2026-05-03.
 
+- **Failed-attempts log** — Today the archive captures successful ships only. Wrong hypotheses, dead-end audits, reverted experiments don't get slugs. Add a discipline + format: every audit-before-fix that produced a wrong guess, every reverted approach, every "we thought X, it was actually Y" gets its own slug as `attempt-name-failed · date · what we thought / why wrong / what worked`. Highest-value addition to the library — diagnoses repeat failures faster. Captured 2026-05-03.
+
+- **Symptom index** — A new section in CLAUDE_MEMORY mapping common error messages or symptoms to the archive slugs that solved them. Example: `"could not find X column in schema cache" → schema-claim-incidents`, `"upsert silently fails on existing row" → rls-sweep-2026-05-02`. Manual to maintain but high-value at debug time. Build alongside failed-attempts log. Captured 2026-05-03.
+
 ---
 
 ## Working-mode patterns
@@ -98,11 +102,23 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 ---
 
+## Symptom index (seed entries)
+
+*Add an entry here whenever a debugging session resolves a symptom that's likely to repeat. Format: 'symptom phrase' → cause → archive slug. Triage tool, not exhaustive.*
+
+- "could not find X column in schema cache" → migration committed but not applied. See `schema-claim-incidents · 2026-05-02`.
+- "upsert silently fails on existing row, no error surfaced" → swallowed write error or wrong helper shape. See `rls-sweep-2026-05-02 · 2026-05-02`.
+- "empty string sent to DATE column rejected silently" → uncoalesced date input. See `date-sweep-2 · 2026-05-02`.
+- "icon renders huge or fills viewport" → unconstrained SVG, default 300×150. See `schedule-rebuild · 2026-05-02–03`.
+- "phase status reverts after page reload despite UI confirming save" → write rejected, error swallowed by helper. See `rls-sweep-2026-05-02 · 2026-05-02`.
+
+---
+
 ## Shipped & archived
 
 *Slug pointers → CLAUDE_ARCHIVE.md. Search `## slug` to retrieve.*
 
-*Archive build in progress — chunks 1-3 of 5 committed (commits ec8f2c8, 82cc051, 543eb55). Slugs through 2026-04-28 are populated. Chunks 4-5 pending — slugs after that are listed as pointers but not yet retrievable.*
+*Archive build in progress — chunks 1-3 of 5 committed. Slugs through 2026-04-28 are populated. Chunks 4-5 cover Apr 29 → May 3 work — slug pointers exist below but archive content is pending. Fallback retrieval until chunks 4-5 ship: `git show 7070d65^:CLAUDE_MEMORY.md` returns the pre-cleanup file containing all original LOG entries.*
 
 **PDF / LiDAR**
 - `lidar-phase1 · 2026-04-15` — Phase 1 confirmed on device; scan persistence to job/contact tables
@@ -179,3 +195,10 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Action: Three future-architecture ideas captured under "Future architecture" subsection: RAG retrieval, sub management arc, speed/cost audit candidates.
 - Open: Chunks 4-5 of archive build pending. Sub management steps 1-2 are quick-win candidates (40 lines total).
 - Decision: Stopped at end of session. Resume tomorrow with chunks 4-5, then revisit prioritization.
+
+[LOG — 2026-05-03]
+- Action: Archive build chunks 1-3 of 5 shipped (commits ec8f2c8, 82cc051, 543eb55). Archive at 584 lines.
+- Action: Five future-architecture ideas captured: RAG retrieval, sub management arc, speed/cost audit candidates, failed-attempts log, symptom index.
+- Action: Symptom index seeded with 5 entries from this session's debug history.
+- Open: Chunks 4-5 of archive build pending. Sub management steps 1-2 are quick-win candidates. Failed-attempts log + symptom index need ongoing discipline, not a one-time build.
+- Decision: Stopped at end of session for sleep. Resume tomorrow with fresh brain on chunks 4-5, then revisit prioritization.
