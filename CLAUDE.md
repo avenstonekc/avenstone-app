@@ -530,7 +530,7 @@ That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the c
 
 **Failed-attempts logging:** When an audit produces a wrong hypothesis, or an experiment is reverted, or a "we thought X" moment ends in "it was actually Y" — log it as a slug in CLAUDE_ARCHIVE with the suffix `-failed` (e.g. `structurebuilder-skip-failed · 2026-04-26 · we thought skipping it would fix naming, it broke wall geometry, reversed same day`). These slugs are first-class archive entries. Diagnose faster by surfacing what already didn't work.
 
-**CLAUDE_INDEX.md (planned):** Pending build after chunks 4-5 ship. Categorized lookup file with three categories: app area, type of work, failure pattern. Each line: `YYYY-MM-DD · slug-name`. Future Claude reads this before archive to identify relevant slugs. Discipline enforced via OPUS_RULES.
+**CLAUDE_INDEX.md (planned, not yet built):** Categorized lookup file. Three categories: function (app area), date (chronological), failure pattern. Each line: `YYYY-MM-DD · slug-name`. Future Claude reads this before archive to identify relevant slugs. Build deferred until real friction justifies it. Discipline rules pre-locked in OPUS_RULES so when built, it ships disciplined.
 
 At session start: read CLAUDE_MEMORY.md top-to-bottom. It is now lean enough to read fully every time.
 
