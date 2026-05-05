@@ -176,6 +176,18 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 ---
 
+## Memory contradictions surfaced 2026-05-04 (followup queued)
+
+- `sub_pricing_changes` table still exists despite memory claim of DROP in `sub-onboarding-rebuild · 2026-04-29`
+- `itb_invitees` table exists, not documented in memory anywhere
+- `quote_requests` has no `sub_id` column — recent prompts assumed it did, errored on cleanup
+- `kalin@avenstonekc.com` role state uncertain — memory says it gets flipped to client when contracts are sent there, but PM invite flow worked tonight so something is inconsistent
+- `send-invite` flow does NOT use a sub_invitations table — invite IS the auth.users creation via `inviteUserByEmail()`; no separate invite tracking row
+- `jobs.client_user_id` field exists and was NULLed on 2 jobs during cleanup — memory should track this field
+- Stale profile rows on freed emails get overwritten by send-invite upsert (no manual cleanup needed on profiles.email, only auth.users matters)
+
+---
+
 [LOG — 2026-05-03]
 - Action: CLAUDE_MEMORY.md + CLAUDE_ARCHIVE.md two-file split established. All prior LOG content moved to CLAUDE_ARCHIVE.md under slugs.
 - Action: ScheduleTab.jsx full rewrite — read-only phase pill bar (auto-derived), schedule items list grouped by week, ScheduleItemModal (6 types), soft-cancel with asymmetry warning dialog, derivePhaseStatus called on every save/cancel.
@@ -220,4 +232,15 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Action: OPUS_RULES updated with index discipline (separate commit) — applies only when CLAUDE_INDEX.md exists.
 - Action: Sales approach MD captured as future doc (commit a2bc82a).
 - Open: Chunks 4-5 of archive build pending. CLAUDE_INDEX.md build deferred until friction justifies it.
+- Decision: Stopped at end of session for sleep.
+
+[LOG — 2026-05-04]
+- Action: Archive build chunks 1-3 of 5 shipped. Archive at 584 lines.
+- Action: Five future-architecture ideas captured.
+- Action: Symptom index seeded with 5 entries from this session's debug history.
+- Action: OPUS_RULES updated with archive + index discipline — applies only when CLAUDE_INDEX.md exists.
+- Action: Sales approach MD captured as future doc (commit a2bc82a).
+- Action: Sub portal test partially run — invite + onboarding + portal load verified for kalinspratling@gmail.com. Schedule sync + notification delivery test deferred to tomorrow.
+- Action: 7 memory contradictions surfaced during sub portal cleanup, queued in new "Memory contradictions" section above.
+- Open: Chunks 4-5 of archive build. CLAUDE_INDEX.md build (deferred). Memory contradictions cleanup. Schedule sync E2E test. kalin@avenstonekc.com role fix.
 - Decision: Stopped at end of session for sleep.
