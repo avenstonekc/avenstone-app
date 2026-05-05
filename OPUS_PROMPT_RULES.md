@@ -95,23 +95,26 @@ writes must follow these.
 
 ## Archive + Index discipline (locked 2026-05-03)
 
-**Rule A — Every shipped slug requires an index entry.**
-Once CLAUDE_INDEX.md exists, every prompt that ships work to CLAUDE_ARCHIVE.md must include, as a mandatory closing task, adding the slug to CLAUDE_INDEX.md under all relevant categories. Format: `YYYY-MM-DD · slug-name`. Categories: app area (PDF, Financial, Schedule, Subs, etc.), type of work (feature, fix, audit, refactor, schema, doc), failure pattern (only when applicable — schema-claim, swallowed-write, RLS misconfig, etc.).
+**Rule A — Every shipped slug requires an index entry (once index exists).**
+Once CLAUDE_INDEX.md exists, every prompt that ships work to CLAUDE_ARCHIVE.md must include, as a mandatory closing task, adding the slug to CLAUDE_INDEX.md under all relevant categories. Format: `YYYY-MM-DD · slug-name`. Categories are exactly three: function (app area — PDF, Schedule, Financial, Subs, etc.), date (chronological grouping by month — 2026-05, 2026-04, etc.), failure pattern (only when applicable — schema-claim, swallowed-write, RLS misconfig, etc.).
 
-A slug can appear in multiple lines under app area when it's cross-cutting. Rule of thumb: appear where someone would actually look for it.
+A slug appears in exactly one function bucket, exactly one date bucket, and zero or more failure-pattern buckets. Rule of thumb on function: appear where someone would actually look for it.
+
+If CLAUDE_INDEX.md does not yet exist, this rule is dormant — no action required.
 
 **Rule B — Index entry verification before commit.**
 After adding an index entry, the prompt verifies:
 - Slug exists as a heading in CLAUDE_ARCHIVE.md (`grep "^## slug-name" CLAUDE_ARCHIVE.md` returns 1)
-- Slug appears in at least one category in CLAUDE_INDEX.md
+- Slug appears under exactly one function category in CLAUDE_INDEX.md
+- Slug appears under exactly one date category in CLAUDE_INDEX.md
 - Date format matches `YYYY-MM-DD`
 
-Any of three failing aborts the commit. Same structure as migration verification (information_schema + schema reload + pg_policies).
+Any of four failing aborts the commit. Same structure as migration verification (information_schema + schema reload + pg_policies).
 
 **Rule C — Failed attempts use `-failed` suffix.**
-Slugs for wrong hypotheses, reverted experiments, dead-end audits use the suffix `-failed`. They are first-class archive entries with full content (what we thought / why wrong / what worked instead). Indexed under their relevant app area + the "failure pattern" category. Failed slugs must not be silently dropped — they're the most valuable retrieval entries when something breaks the same way twice.
+Slugs for wrong hypotheses, reverted experiments, dead-end audits use the suffix `-failed`. They are first-class archive entries with full content (what we thought / why wrong / what worked instead). Indexed under their relevant function category + date category + the "failure pattern" category. Failed slugs must not be silently dropped — they're the most valuable retrieval entries when something breaks the same way twice.
 
 **Rule D — Three categories, ruthlessly.**
-Index categories are locked at three: app area, type of work, failure pattern. Adding a fourth requires a deliberate decision — one new category implies one more lookup the prompt-writer must perform per ship. Six categories was rejected as undisciplined; three survives. Cost, relationships, and open-item status are tracked elsewhere (CLAUDE_MEMORY) and do not belong in the index.
+Index categories are locked at three: function, date, failure pattern. Adding a fourth requires a deliberate decision — one new category implies one more lookup the prompt-writer must perform per ship. The discarded alternatives (type-of-work, cost impact, relationships, open-item status) are tracked elsewhere or implied by other signals and do not belong in the index.
 
 ## Default closing section for every prompt
