@@ -313,3 +313,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 [LOG — 2026-05-05]
 - Action: send-client-link outer catch now returns JSON (matches send-invite pattern). Last plain-text 500 path in the role-guard cluster eliminated.
 - Files: supabase/functions/send-client-link/index.ts, CLAUDE_MEMORY.md
+
+[LOG — 2026-05-05]
+- Action: Sub engagement Phase 2a — AddSubToJobModal standalone component built. Wraps sbCreateEngagement (Phase 1b). Context-aware title/button labels based on initialSubId/initialJobId. Trade dropdown filtered to selected sub's approved trades from sub_pricing. Bid origination radio (sub_drafted/gc_drafted). Inline error, finally-clears spinner.
+- Files: avenstone-vite/src/components/modals/AddSubToJobModal.jsx, CLAUDE_MEMORY.md
+- Decision: 2a builds the component in isolation; no wiring to Subs Directory or JobDet (Phase 2b). "Invite new sub by email" path and file attachments deferred.
+- Open: Phase 2b — wire AddSubToJobModal into Subs Directory rows and JobDet engagements tab. Phase 2c — JobDet engagements tab redesign (replaces SubsTab). Phase 2d — SubPortal updates calling the Phase 1e edge functions.
