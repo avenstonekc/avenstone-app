@@ -528,3 +528,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: EXECUTION_ARC.md, CLAUDE_MEMORY.md
 - Decision: keeping EXECUTION_ARC at 9 phases with light expansions rather than ballooning to 15 — the gaps that came up in vision discussion are real but split across follow-up arcs by concern. Prevents pace-risk + scope creep.
 - Open: Phase 1 (engagement_bids availability fields) is the first build slice when arc goes live.
+
+[LOG — 2026-05-06]
+- Action: EXECUTION_ARC.md updated with Phase 10 (auto-invoice draft on milestone trigger). Adds auto_invoice_trigger JSONB + auto_invoiced_at TIMESTAMPTZ to draw_schedules. When trigger event fires (sub_start_complete, phase_advanced, delivery_complete, etc.), system auto-creates draft invoice + todo. Drafts never auto-send — PM is always the gate.
+- Files: EXECUTION_ARC.md, CLAUDE_MEMORY.md
+- Decision: auto value is heads-up + prefill, not action. Real progress varies from planned milestones; clients hate being billed wrong.
+- Open: trigger UI on draw modal, draft "auto-drafted" badge — both lock at Phase 10 implementation.

@@ -147,6 +147,16 @@ Template item shape: `{ id, label, code_reference?, severity ('must'|'should'), 
 
 Job checklist item shape: `{ id, status ('pass'|'fail'|'skip'), measurement_value?, photo_url?, notes? }`
 
+### `draw_schedules` extension (Phase 10)
+
+```sql
+ALTER TABLE draw_schedules
+  ADD COLUMN IF NOT EXISTS auto_invoice_trigger JSONB,
+  ADD COLUMN IF NOT EXISTS auto_invoiced_at TIMESTAMPTZ;
+```
+
+`auto_invoice_trigger` shape: `{ type: 'sub_start_complete' | 'sub_start_in_progress' | 'phase_advanced' | 'delivery_complete' | null, trade?: string, phase?: string }`. Null means manual — PM composes the invoice when ready. `auto_invoiced_at` stamps when the auto-draft fired; presence of the timestamp prevents the trigger from firing again on duplicate state changes (idempotency).
+
 ## 5. State machines
 
 ### Material order lifecycle
@@ -237,6 +247,8 @@ Stored as JSONB rows in `inspection_checklist_templates` with `tenant_id IS NULL
 
 **Phase 9 — Learning loop.** Optional toggle on financial entry: "Save this rate as my default" → updates `takeoff_unit_costs` tenant override.
 
+**Phase 10 — Auto-invoice draft on milestone trigger.** When PM plans a draw, optional `auto_invoice_trigger` tags the event that fires the draft (e.g., `sub_start_complete` for flooring, `phase_advanced` to Final Touches, `delivery_complete` for tile). When the trigger event fires (caught via the same state-change hooks built in Phase 5), system auto-creates a draft invoice linked to the draw with the target amount prefilled as a single line item ("Progress payment — [draw title]"), stamps `auto_invoiced_at` on the draw for idempotency, and creates a todo "Review and send invoice for [draw title] — [trigger met]". PM opens the draft, edits if real progress differs from planned amount, hits Save & Send. Draft never auto-sends.
+
 Each phase ~one evening's slice. Total arc 7-10 days at the invoicing-arc cadence.
 
 ## 10. Future arcs (named, not in scope here)
@@ -282,6 +294,7 @@ These are real arcs that the EXECUTION_ARC deliberately doesn't cover. Naming th
 11. Photos are tied to source entities, not in a generic gallery. Walkthrough photos live on checklist items; delivery photos on schedule items; CO photos on change orders. Generic "Photos" tab on ClientPortal stays as a curated subset for client viewing.
 12. Sub portal expansion is incremental. EXECUTION_ARC adds two state transition buttons (in_progress, complete) on assigned sub_start items. Full sub workflow expansion is a separate arc (SUB_WORKFLOW_ARC.md) when sub engagement with the app surfaces real gaps.
 13. Process discipline post-arc: dogfood invoicing on a real job before EXECUTION_ARC Phase 5+. Track phase advancement override rate post-launch. Verify schema claims against information_schema before trusting memory artifacts.
+14. Auto-invoice drafts never auto-send. Triggers fire to create a draft + todo. PM is the gate on every invoice that goes out. Reason: real progress is rarely exactly the planned milestone amount; clients hate being billed wrong; the auto value is the heads-up + the prefill, not the action.
 
 ## 13. Open questions
 
@@ -289,3 +302,5 @@ These are real arcs that the EXECUTION_ARC deliberately doesn't cover. Naming th
 - Walkthrough UI specifics (camera integration, photo storage, offline support) — Phase 8 scope
 - Sequence message templates per trigger × per role — Phase 7 scope
 - Whether Schedule tab gets a "Review pending auto-creations" badge — Phase 6 scope
+- Trigger UI on draw modal — radio + dropdown selector for trigger type, vs. a free-text rule? Lock per-Phase-10 implementation.
+- Edit behavior on auto-drafts — PM gets a normal draft, can fully edit. But should the draft be flagged "auto-drafted from {trigger}" so PM knows the source? Lean: yes, small badge on the draft row. Confirm at Phase 10 build.
