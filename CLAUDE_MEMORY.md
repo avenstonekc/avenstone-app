@@ -484,3 +484,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx, avenstone-vite/src/components/client/ClientInvoicesTab.jsx, CLAUDE_MEMORY.md
 - Decision: derivation in helper not in component — single source of truth. Both overdue pill maps were already present from Phase 3/5b specs so no new color/label needed.
 - Open: Phase 6a (ClientPortal compat view migration), Phase 6d (white-label PDF + email).
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 6a — ClientPortal compat view migration. Removed dead Payments tab body (tab was already absent from BASE_CLIENT_TABS since Phase 5b). Overview Next Payment Card now reads next unpaid invoice from sbLoadInvoicesForJob (filter sent/viewed/partially_paid/overdue, sorted due_date asc nulls last). Pay Now calls sbRegenerateInvoicePaymentUrl for fresh Stripe session. View Invoice opens pdf_url. Progress Bar / Quick Stats "Paid to Date" reads job_transactions directly via new sbLoadJobTotalPaid helper (Path A — jt_client_select RLS policy confirmed includes client role with direction=in access). Compat view left alive.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/client/ClientPortal.jsx, CLAUDE_MEMORY.md
+- Decision: Path A (direct query) — no RPC needed. status filter on unpaid invoices uses raw DB status; deriveInvoiceStatus used for overdue badge display only. client_refund subtracted from total paid math.
+- Open: Phase 6d (white-label PDF + email — audit tenants table, add business_name/email/phone/address columns, update send-invoice + resend-invoice).

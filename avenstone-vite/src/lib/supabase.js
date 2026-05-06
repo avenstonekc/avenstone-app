@@ -2158,6 +2158,23 @@ export async function sbDeleteDrawSchedule(id) {
 
 // ─── Invoices (Invoicing Phase 3a) ───────────────────────────────────────────
 
+export async function sbLoadJobTotalPaid(jobId) {
+  if (!jobId) throw new Error('jobId required');
+  const { data, error } = await sb
+    .from('job_transactions')
+    .select('amount, type')
+    .eq('job_id', jobId)
+    .eq('direction', 'in')
+    .eq('status', 'paid');
+  if (error) throw error;
+  let total = 0;
+  for (const row of data || []) {
+    if (row.type === 'client_refund') total -= Number(row.amount);
+    else total += Number(row.amount);
+  }
+  return total;
+}
+
 export function deriveInvoiceStatus(invoice) {
   if (!invoice) return null;
   if (invoice.status !== 'sent' && invoice.status !== 'viewed') return invoice.status;

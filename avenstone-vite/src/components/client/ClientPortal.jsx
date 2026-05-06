@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems } from '../../lib/supabase';
+// Note: legacy `payments` compat view is deprecated. ClientPortal reads invoices + job_transactions directly.
+// Compat view still alive in DB until verified no consumers remain. — Phase 6a, 2026-05-06
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
@@ -120,6 +122,8 @@ export default function ClientPortal({ profile, signOut }) {
   const [photos, setPhotos] = useState([]);
   const [docs, setDocs] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [totalPaid, setTotalPaid] = useState(0);
+  const [payingNext, setPayingNext] = useState(false);
   const [msgs, setMsgs] = useState([]);
   const [jobSubs, setJobSubs] = useState([]);
   const [loaded, setLoaded] = useState({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false, notes: false });
@@ -174,8 +178,15 @@ export default function ClientPortal({ profile, signOut }) {
   }, [job?.id, tab]);
 
   useEffect(() => {
-    if (!job || (tab !== 'payments' && tab !== 'overview') || loaded.payments) return;
-    sb.from('payments').select('*').eq('job_id', job.id).order('created_at', { ascending: false }).then(({ data }) => { setPayments(data || []); setLoaded(p => ({ ...p, payments: true })); });
+    if (!job || tab !== 'overview' || loaded.payments) return;
+    Promise.all([
+      sbLoadInvoicesForJob(job.id),
+      sbLoadJobTotalPaid(job.id),
+    ]).then(([invs, paid]) => {
+      setPayments(invs);
+      setTotalPaid(paid);
+      setLoaded(p => ({ ...p, payments: true }));
+    }).catch(e => { console.error('ClientPortal overview load error:', e); setLoaded(p => ({ ...p, payments: true })); });
   }, [job?.id, tab]);
 
   useEffect(() => {
@@ -220,6 +231,7 @@ export default function ClientPortal({ profile, signOut }) {
     setSel(id); setTab('overview');
     setLoaded({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false });
     setPhases([]); setPhotos([]); setDocs([]); setPayments([]); setMsgs([]); setJobSubs([]);
+    setTotalPaid(0); setPayingNext(false);
     setRatings({}); setRatingDone({}); setJobReview(null); setCostItems([]); setCostInvoices([]); setNotes([]); setNoteText('');
     setReviewForm({ quality: 0, communication: 0, timeliness: 0, would_recommend: null, text: '' }); setReviewDone(false);
     sbLoadJobReview(id).then(r => setJobReview(r || false));
@@ -365,23 +377,54 @@ export default function ClientPortal({ profile, signOut }) {
 
             {/* C) Next Payment Card */}
             {loaded.payments && (() => {
-              const pending = payments.filter(p => p.status === 'pending' || p.status === 'due');
-              if (!pending.length) return null;
-              const next = pending[0];
+              const unpaid = (payments || [])
+                .filter(inv => ['sent', 'viewed', 'partially_paid', 'overdue'].includes(inv.status))
+                .sort((a, b) => {
+                  if (!a.due_date) return 1;
+                  if (!b.due_date) return -1;
+                  return a.due_date.localeCompare(b.due_date);
+                });
+              const next = unpaid[0] ?? null;
+              if (!next) return null;
+              const balance = Number(next.total_amount) - Number(next.amount_paid);
+              const isOverdue = deriveInvoiceStatus(next) === 'overdue';
               return (
                 <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Your Next Payment</div>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
                     <div style={{ flex: 1, minWidth: 140 }}>
-                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#0A1F44', marginBottom: 4 }}>{f$(Number(next.amount))}</div>
-                      {next.description && <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>{next.description}</div>}
-                      {next.due_date && <div style={{ fontSize: 12, color: '#9CA3AF' }}>Due: <strong style={{ color: '#374151' }}>{fD(next.due_date)}</strong></div>}
+                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#0A1F44', marginBottom: 4 }}>{f$(balance)}</div>
+                      <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>{next.invoice_number}</div>
+                      {next.due_date && (
+                        <div style={{ fontSize: 12, color: isOverdue ? '#991b1b' : '#9CA3AF', fontWeight: isOverdue ? 700 : 400 }}>
+                          {isOverdue ? '⚠ Overdue — ' : 'Due: '}<strong>{fD(next.due_date)}</strong>
+                        </div>
+                      )}
                     </div>
-                    {next.stripe_checkout_url && (
-                      <a href={next.stripe_checkout_url} target="_blank" rel="noreferrer" style={{ background: '#0A1F44', color: '#C9A84C', padding: '10px 18px', fontWeight: 700, fontSize: 13, textDecoration: 'none', flexShrink: 0, alignSelf: 'center' }}>Pay Now →</a>
-                    )}
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignSelf: 'center', flexWrap: 'wrap' }}>
+                      {next.pdf_url && (
+                        <button onClick={() => window.open(next.pdf_url, '_blank', 'noopener,noreferrer')} className="btn btn-ghost" style={{ fontSize: 12, padding: '8px 14px' }}>View Invoice</button>
+                      )}
+                      <button
+                        disabled={payingNext}
+                        onClick={async () => {
+                          try {
+                            setPayingNext(true);
+                            const url = await sbRegenerateInvoicePaymentUrl(next.id);
+                            window.open(url, '_blank', 'noopener,noreferrer');
+                          } catch (e) {
+                            alert(`Could not generate payment link: ${e.message}`);
+                          } finally {
+                            setPayingNext(false);
+                          }
+                        }}
+                        style={{ background: '#0A1F44', color: '#C9A84C', padding: '10px 18px', fontWeight: 700, fontSize: 13, border: 'none', cursor: payingNext ? 'default' : 'pointer', flexShrink: 0, opacity: payingNext ? 0.7 : 1 }}
+                      >
+                        {payingNext ? 'Loading...' : 'Pay Now →'}
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ marginTop: 12, fontSize: 11, color: '#9CA3AF', borderTop: '1px solid #F3F0EB', paddingTop: 10 }}>Contact your contractor with payment questions.</div>
+                  <div style={{ fontSize: 11, color: '#9CA3AF', borderTop: '1px solid #F3F0EB', paddingTop: 10 }}>Contact your contractor with payment questions.</div>
                 </div>
               );
             })()}
@@ -389,7 +432,7 @@ export default function ClientPortal({ profile, signOut }) {
             {/* D) Quick Stats Row */}
             {Number(job.contract_value || 0) > 0 && (() => {
               const contractTotal = Number(job.contract_value || 0) + Number(job.co_total || 0);
-              const paid = loaded.payments ? payments.filter(p => p.status === 'paid' || p.status === 'completed').reduce((s, p) => s + Number(p.amount || 0), 0) : 0;
+              const paid = loaded.payments ? totalPaid : 0;
               const remaining = contractTotal - paid;
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: '#E8E4DC', marginBottom: 16 }}>
@@ -576,24 +619,6 @@ export default function ClientPortal({ profile, signOut }) {
             {clbIdx !== null && <PhotoLightbox photos={photos} startIdx={clbIdx} onClose={() => setClbIdx(null)} />}
           </div>}
 
-          {tab === 'payments' && <div>
-            {!loaded.payments && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
-            {loaded.payments && !payments.length && <div className="empty">{Ic.doc}<div className="empty-t">No payment requests yet</div><div>Payment requests from your contractor will appear here</div></div>}
-            {payments.map(p => (
-              <div key={p.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44', marginBottom: 3 }}>{p.description}</div>
-                    <div style={{ fontSize: 12, color: '#9CA3AF' }}>{p.payment_type}{p.created_at ? ` · ${fD(p.created_at.slice(0, 10))}` : ''}{p.paid_at && <span style={{ color: '#22c55e' }}> · Paid {fD(p.paid_at.slice(0, 10))}</span>}</div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: '#0A1F44' }}>{f$(Number(p.amount))}</div>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: p.status === 'paid' ? '#D1FAE5' : '#FEF9EC', color: p.status === 'paid' ? '#065F46' : '#92400E', textTransform: 'uppercase' }}>{p.status}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>}
 
           {tab === 'msgs' && <div style={{ display: 'flex', flexDirection: 'column', minHeight: 400 }}>
             {!loaded.msgs && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
