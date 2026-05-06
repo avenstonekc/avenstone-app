@@ -2296,3 +2296,13 @@ export async function sbSaveInvoiceLineItems(invoiceId, lineItems) {
   }
   return data || [];
 }
+
+export async function sbSendInvoice(invoiceId) {
+  if (!invoiceId) throw new Error('invoiceId required');
+  const { data, error } = await sb.functions.invoke('send-invoice', {
+    body: { invoice_id: invoiceId },
+  });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error ?? 'Failed to send invoice');
+  return data;
+}

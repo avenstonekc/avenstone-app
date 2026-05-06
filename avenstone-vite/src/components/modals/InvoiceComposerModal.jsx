@@ -5,6 +5,7 @@ import {
   sbUpdateInvoice,
   sbLoadInvoice,
   sbSaveInvoiceLineItems,
+  sbSendInvoice,
 } from '../../lib/supabase';
 import { f$ } from '../../lib/utils';
 
@@ -171,6 +172,75 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
     }
   };
 
+  const saveAndSend = async () => {
+    setError('');
+    if (!invoiceNumber.trim()) { setError('Invoice number is required.'); return; }
+    if (lineItems.length === 0) { setError('Add at least one line item.'); return; }
+    for (const li of lineItems) {
+      if (!li.description.trim()) { setError('Every line item needs a description.'); return; }
+      if (!(Number(li.quantity) > 0)) { setError('Quantity must be greater than 0 on all lines.'); return; }
+      if (Number(li.unit_price) < 0) { setError('Unit price cannot be negative.'); return; }
+    }
+    if (!(total_amount > 0)) { setError('Total must be greater than 0.'); return; }
+
+    setSaving(true);
+    try {
+      const meta = {
+        draw_id:        drawId || null,
+        invoice_number: invoiceNumber.trim(),
+        invoice_date:   invoiceDate || today(),
+        due_date:       dueDate || null,
+        notes:          notes.trim() || null,
+        internal_notes: internalNotes.trim() || null,
+        subtotal,
+        tax_amount:     Number(taxAmount || 0),
+        total_amount,
+      };
+
+      const rows = lineItems.map((li, idx) => ({
+        description:  li.description.trim(),
+        quantity:     Number(li.quantity),
+        unit:         li.unit.trim() || null,
+        unit_price:   Number(li.unit_price),
+        line_total:   Number(li.line_total),
+        phase:        li.phase.trim() || null,
+        source_type:  li.source_type || 'manual',
+        source_id:    li.source_id   || null,
+        display_order: idx,
+      }));
+
+      let invoiceId;
+      if (!isEdit) {
+        const created = await sbCreateInvoice(job.id, meta);
+        invoiceId = created.id;
+      } else {
+        await sbUpdateInvoice(invoice.id, meta);
+        invoiceId = invoice.id;
+      }
+      await sbSaveInvoiceLineItems(invoiceId, rows);
+
+      const result = await sbSendInvoice(invoiceId);
+      if (result.email_warning) {
+        setError(`Invoice sent. Note: ${result.email_warning}`);
+        onSaved();
+        setSaving(false);
+        // keep modal open briefly so PM sees the warning
+        setTimeout(() => onClose(), 4000);
+        return;
+      }
+      onSaved();
+      onClose();
+    } catch (e) {
+      const msg = e.message || 'Send failed.';
+      if (msg.toLowerCase().includes('draft saved') || isEdit) {
+        setError(`Draft saved but send failed: ${msg}. Retry sending from the invoice list.`);
+      } else {
+        setError(msg);
+      }
+      setSaving(false);
+    }
+  };
+
   const inp  = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 13, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' };
   const lbl  = { fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
   const fg   = { marginBottom: 14 };
@@ -288,7 +358,8 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>
-              <button onClick={save} disabled={saving} className="btn btn-navy" style={{ flex: 2 }}>{saving ? 'Saving...' : 'Save Draft'}</button>
+              <button onClick={save} disabled={saving} className="btn btn-navy" style={{ flex: 1 }}>{saving ? 'Saving...' : 'Save Draft'}</button>
+              <button onClick={saveAndSend} disabled={saving || total_amount <= 0 || lineItems.length === 0} className="btn btn-gold" style={{ flex: 2 }}>{saving ? 'Sending...' : 'Save & Send'}</button>
             </div>
           </>
         )}
