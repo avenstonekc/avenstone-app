@@ -229,17 +229,35 @@ Stored as JSONB rows in `inspection_checklist_templates` with `tenant_id IS NULL
 
 **Phase 5 — Phase-driven todo engine.** Rules config + fan-out helpers + auto-resolution wiring throughout existing helpers (sbCreateEngagement, sbCreateMaterialOrder, sbCreateInvoice, etc.).
 
-**Phase 6 — Auto-create schedule items on dual-trigger.** When `material_orders.status` becomes `quoted` AND engagement has accepted bid with `earliest_start_date` for same trade → system creates `material_delivery` + `sub_start`. PM confirms via Schedule with date conflict warnings.
+**Phase 6 — Auto-create schedule items on dual-trigger.** When `material_orders.status` becomes `quoted` AND engagement has accepted bid with `earliest_start_date` for same trade → system creates `material_delivery` + `sub_start`. PM confirms via Schedule with date conflict warnings. **Photos on delivery confirmation:** when PM marks a `material_delivery` as `delivered`, optional photo upload (one or more) attached to the schedule item. Stored in `job-documents/{jobId}/deliveries/`. Surface on the Materials sub-tab when the order is in `delivered` or `installed` state.
 
-**Phase 7 — Sequence triggers (3-sided).** New triggers respecting `notify_sub` + `notify_client` flags. Per-trigger audience defaults from section 7. Adds `notify_sub` column on `schedule_items`.
+**Phase 7 — Sequence triggers (3-sided).** New triggers respecting `notify_sub` + `notify_client` flags. Per-trigger audience defaults from section 7. Adds `notify_sub` column on `schedule_items`. **Sub-side state transitions:** the sub assigned to a `sub_start` schedule item can mark it `in_progress` ("On site, started today") and `complete` ("Done"). Two-button UI on the sub portal job view. State changes fire downstream sequences (PM gets "Sub started" / "Sub finished" notifications; phase derivation runs as currently wired). No new schema.
 
-**Phase 8 — Site visit checklists.** Schemas + hardcoded starter set + walkthrough mode UI (mobile) + failed-item-to-todo wiring.
+**Phase 8 — Site visit checklists.** Schemas + hardcoded starter set + walkthrough mode UI (mobile) + failed-item-to-todo wiring. **Walkthrough photos:** checklist items with `photo_required: true` capture photos inline. Stored in `job-documents/{jobId}/walkthroughs/`. Failed item follow-up todos link to the walkthrough's photos for context.
 
 **Phase 9 — Learning loop.** Optional toggle on financial entry: "Save this rate as my default" → updates `takeoff_unit_costs` tenant override.
 
 Each phase ~one evening's slice. Total arc 7-10 days at the invoicing-arc cadence.
 
-## 10. Out of scope
+## 10. Future arcs (named, not in scope here)
+
+These are real arcs that the EXECUTION_ARC deliberately doesn't cover. Naming them so they don't get lost.
+
+- **`DOCUMENT_MANAGEMENT_ARC.md`** — unified documents surface. Today: lien waivers in financials, change orders in financials, contracts and signed proposals scattered, COIs (sub insurance certificates) not modeled, permits and inspection reports informal. Real arc when document retrieval becomes painful or compliance demands it.
+
+- **`SUB_WORKFLOW_ARC.md`** — full sub portal expansion. Today: subs can submit bids and view engagements, plus minimal start/complete buttons added in this arc. Real expansion: daily logs, progress photos tied to phases, in-app payment requests with attached lien waivers, schedule conflict surfacing, available-to-work calendar, multi-job dashboard. The platform is half-blind to field reality without subs engaged daily.
+
+- **`ANALYTICS_ARC.md`** — cross-job business intelligence. Today: per-job financial summary works, no aggregation. Real arc: gross margin by trade across jobs, average days per phase, sub reliability scoring, supplier delivery performance, CO frequency by job type, profit/loss reports. The data is already there in `job_transactions`, `engagement_bids`, `material_orders`, `schedule_items`. Just needs a query layer + dashboards.
+
+- **`MOBILE_AUDIT_ARC.md`** — phone-first UX pass on existing surfaces. Today: walkthrough mode is mobile-first by design (Phase 8); rest of app is desktop-first. Real arc: review every screen for phone usability, fix navigation, fix forms, fix lists. Cross-cutting cleanup, not a feature add.
+
+- **`VOICE_AGENT_ARC.md`** — see existing VOICE_AGENT.md. Voice as a first-class interface for in-the-field PM workflows. Reads from EXECUTION_ARC's data (checklists, todos, schedule items, current phase context).
+
+- **`SALES_PIPELINE_ARC.md`** (open question) — leads → qualified → consultations scheduled → proposals → contracts. Today: jobs start at "Review" phase; lead-handling is out of the platform. Decide later if the platform should own this or stay focused on post-contract execution.
+
+- **`CODE_JURISDICTION_ARC.md`** (polish) — extend inspection checklists to be jurisdiction-aware (KC vs Overland Park have different specifics; 2018 vs 2021 IRC matters). Hardcoded starter set v1 per this arc; jurisdiction-aware AI-seeded templates is the real moat play.
+
+## 11. Out of scope
 
 - Voice agent integration (separate arc; will read this arc's data)
 - AI-seeded checklist templates (hardcoded for v1)
@@ -249,7 +267,7 @@ Each phase ~one evening's slice. Total arc 7-10 days at the invoicing-arc cadenc
 - Subs submitting their own walkthrough results (PM-only for v1)
 - Photo annotation in walkthroughs (basic upload only)
 
-## 11. Decisions locked (2026-05-06)
+## 12. Decisions locked (2026-05-06)
 
 1. Auto-creation only after PM data entry — no surprise auto-creation
 2. Phase advancement is mechanical-with-override; required data per transition
@@ -261,8 +279,11 @@ Each phase ~one evening's slice. Total arc 7-10 days at the invoicing-arc cadenc
 8. Failed checklist items create follow-up todos
 9. Phase-driven todos auto-resolve on state changes; PM-created custom todos still have manual checkboxes
 10. 6 phases hardcoded — Review / Proposal / Contract / In Progress / Final Touches / Complete
+11. Photos are tied to source entities, not in a generic gallery. Walkthrough photos live on checklist items; delivery photos on schedule items; CO photos on change orders. Generic "Photos" tab on ClientPortal stays as a curated subset for client viewing.
+12. Sub portal expansion is incremental. EXECUTION_ARC adds two state transition buttons (in_progress, complete) on assigned sub_start items. Full sub workflow expansion is a separate arc (SUB_WORKFLOW_ARC.md) when sub engagement with the app surfaces real gaps.
+13. Process discipline post-arc: dogfood invoicing on a real job before EXECUTION_ARC Phase 5+. Track phase advancement override rate post-launch. Verify schema claims against information_schema before trusting memory artifacts.
 
-## 12. Open questions
+## 13. Open questions
 
 - Exact items in each phase's todo rules (refine per phase as we ship)
 - Walkthrough UI specifics (camera integration, photo storage, offline support) — Phase 8 scope

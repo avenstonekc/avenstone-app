@@ -522,3 +522,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: EXECUTION_ARC.md, CLAUDE_MEMORY.md
 - Decision: blueprint-first workflow (proven on invoicing arc) — design doc lands before any build prompt. Phase 1 (bid availability fields on engagement_bids) is the first slice when build starts.
 - Open: phase-by-phase decisions still to refine per slice — exact todo rule items, walkthrough UI specifics, sequence message templates.
+
+[LOG — 2026-05-06]
+- Action: Updated EXECUTION_ARC.md — expanded Phases 6/7/8 with photos integration and sub-side execution touchpoints (state transition buttons on sub portal). Added section "Future arcs (named, not in scope here)" listing 7 follow-up arcs: DOCUMENT_MANAGEMENT, SUB_WORKFLOW, ANALYTICS, MOBILE_AUDIT, VOICE_AGENT, SALES_PIPELINE (open question), CODE_JURISDICTION. Added 3 decisions locked: photos tied to source entities not generic galleries; sub portal expansion incremental in this arc full expansion later; process discipline (dogfood, override rate tracking, schema verification). Sections renumbered: Out of scope → 11, Decisions locked → 12, Open questions → 13.
+- Files: EXECUTION_ARC.md, CLAUDE_MEMORY.md
+- Decision: keeping EXECUTION_ARC at 9 phases with light expansions rather than ballooning to 15 — the gaps that came up in vision discussion are real but split across follow-up arcs by concern. Prevents pace-risk + scope creep.
+- Open: Phase 1 (engagement_bids availability fields) is the first build slice when arc goes live.
