@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
-import {
-  sbLoadEngagementsForJob, sbAcceptBid, sbDeclineBid,
-  sbWithdrawEngagement, sbRemoveEngagement, sbCompleteEngagement,
-} from '../../../lib/supabase';
+import { sbLoadEngagementsForJob } from '../../../lib/supabase';
 import { Ic, f$, fDT } from '../../../lib/utils';
 import AddSubToJobModal from '../../modals/AddSubToJobModal';
+import EngagementActionModal from '../../modals/EngagementActionModal';
 
 // ── Engagement status display ─────────────────────────────────────────────────
 const ENG_STATUS_META = {
@@ -24,8 +22,8 @@ export default function SubsTab({ job, profile, setTab }) {
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 4000); };
 
   const [engagements, setEngagements] = useState([]);
-  const [busyId, setBusyId] = useState(null);
   const [showOffJob, setShowOffJob] = useState(false);
+  const [engagementAction, setEngagementAction] = useState(null); // { engagement, action } | null
 
   const loadEngagements = () => {
     sbLoadEngagementsForJob(job.id).then(res => { if (res.ok) setEngagements(res.data); });
@@ -65,69 +63,15 @@ export default function SubsTab({ job, profile, setTab }) {
           const renderRow = eng => {
             const meta = ENG_STATUS_META[eng.status] || ENG_STATUS_META.invited;
             const lastTs = [eng.invited_at, eng.bid_submitted_at, eng.activated_at, eng.completed_at, eng.terminated_at].filter(Boolean).sort().pop();
-            const busy = busyId === eng.id;
 
             const btnStyle = (variant) => ({
               background: variant === 'primary' ? '#1e3a5f' : 'transparent',
               border: `1px solid ${variant === 'primary' ? '#3b82f6' : '#374151'}`,
               color: variant === 'primary' ? '#60a5fa' : '#9ca3af',
-              borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600,
-              cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
+              borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
             });
 
-            const doAccept = async () => {
-              if (!window.confirm('Accept this bid? Schedule items will be auto-drafted.')) return;
-              setBusyId(eng.id);
-              try {
-                const res = await sbAcceptBid({ engagementId: eng.id });
-                if (!res.ok) { alert(res.error || 'Accept failed'); return; }
-                showToast('Bid accepted — review draft schedule items');
-                loadEngagements();
-              } finally { setBusyId(null); }
-            };
-            const doDecline = async () => {
-              const reason = window.prompt('Reason for declining (required):');
-              if (!reason?.trim()) return;
-              setBusyId(eng.id);
-              try {
-                const res = await sbDeclineBid({ engagementId: eng.id, reason: reason.trim() });
-                if (!res.ok) { alert(res.error || 'Decline failed'); return; }
-                showToast('Bid declined');
-                loadEngagements();
-              } finally { setBusyId(null); }
-            };
-            const doWithdraw = async () => {
-              const reason = window.prompt('Reason for withdrawing (required):');
-              if (!reason?.trim()) return;
-              setBusyId(eng.id);
-              try {
-                const res = await sbWithdrawEngagement({ engagementId: eng.id, reason: reason.trim() });
-                if (!res.ok) { alert(res.error || 'Withdraw failed'); return; }
-                showToast('Engagement withdrawn');
-                loadEngagements();
-              } finally { setBusyId(null); }
-            };
-            const doComplete = async () => {
-              if (!window.confirm('Mark this engagement complete?')) return;
-              setBusyId(eng.id);
-              try {
-                const res = await sbCompleteEngagement({ engagementId: eng.id });
-                if (!res.ok) { alert(res.error || 'Complete failed'); return; }
-                showToast('Engagement completed');
-                loadEngagements();
-              } finally { setBusyId(null); }
-            };
-            const doRemove = async () => {
-              const reason = window.prompt('Reason for removing sub from job (required):');
-              if (!reason?.trim()) return;
-              setBusyId(eng.id);
-              try {
-                const res = await sbRemoveEngagement({ engagementId: eng.id, reason: reason.trim() });
-                if (!res.ok) { alert(res.error || 'Remove failed'); return; }
-                showToast('Sub removed from job');
-                loadEngagements();
-              } finally { setBusyId(null); }
-            };
+            const open = (action) => setEngagementAction({ engagement: eng, action });
 
             return (
               <div key={eng.id} style={rowStyle}>
@@ -147,16 +91,16 @@ export default function SubsTab({ job, profile, setTab }) {
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     {eng.status === 'invited' && (
-                      <button style={btnStyle('ghost')} disabled={busy} onClick={doWithdraw}>Withdraw</button>
+                      <button style={btnStyle('ghost')} onClick={() => open('withdraw')}>Withdraw</button>
                     )}
                     {eng.status === 'bid_submitted' && (<>
-                      <button style={btnStyle('primary')} disabled={busy} onClick={doAccept}>Accept</button>
-                      <button style={btnStyle('ghost')} disabled={busy} onClick={doDecline}>Decline</button>
-                      <button style={btnStyle('ghost')} disabled={busy} onClick={doWithdraw}>Withdraw</button>
+                      <button style={btnStyle('primary')} onClick={() => open('accept')}>Accept</button>
+                      <button style={btnStyle('ghost')} onClick={() => open('decline')}>Decline</button>
+                      <button style={btnStyle('ghost')} onClick={() => open('withdraw')}>Withdraw</button>
                     </>)}
                     {eng.status === 'active' && (<>
-                      <button style={btnStyle('primary')} disabled={busy} onClick={doComplete}>Complete</button>
-                      <button style={btnStyle('ghost')} disabled={busy} onClick={doRemove}>Remove</button>
+                      <button style={btnStyle('primary')} onClick={() => open('complete')}>Complete</button>
+                      <button style={btnStyle('ghost')} onClick={() => open('remove')}>Remove</button>
                     </>)}
                   </div>
                 </div>
@@ -183,6 +127,25 @@ export default function SubsTab({ job, profile, setTab }) {
       </section>
 
       <AddSubToJobModal isOpen={engModalOpen} onClose={() => setEngModalOpen(false)} onSuccess={() => { showToast('Engagement created — sub invited to bid'); loadEngagements(); }} initialJobId={job.id} />
+
+      {engagementAction && (
+        <EngagementActionModal
+          engagement={engagementAction.engagement}
+          action={engagementAction.action}
+          onClose={() => setEngagementAction(null)}
+          onConfirmed={() => {
+            const msgs = {
+              accept:   'Bid accepted — review draft schedule items',
+              decline:  'Bid declined',
+              withdraw: 'Engagement withdrawn',
+              complete: 'Engagement completed',
+              remove:   'Sub removed from job',
+            };
+            showToast(msgs[engagementAction.action] || 'Done');
+            loadEngagements();
+          }}
+        />
+      )}
     </div>
   );
 }

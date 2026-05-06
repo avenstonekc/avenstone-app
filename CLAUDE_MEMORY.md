@@ -497,3 +497,10 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Schema reality: tenants now has id/name/slug/logo_url/primary_color/plan/created_at/business_email/business_phone/business_address
 - Decision: tenant load after job load on every email path — single extra query per send, no caching needed at this scale. Fallbacks ensure backward compat for any tenant row missing these columns.
 - Open: invoicing arc complete. Next: sub portal upgrades (PM-Sub chat, phase confirm, CO submission).
+
+[LOG — 2026-05-06]
+- Action: Sub arc polish slice 1 — replaced window.confirm / window.prompt calls in engagement actions with new EngagementActionModal. Single component handles all 5 actions (decline / withdraw / remove / accept / complete) via action-driven config (title, message, button label/color, optional reason textarea, helper to call). Wires existing helpers from Phase 1c/1d — no helper changes. PM-side (JobDet SubsTab Engagements) migrated; sub-side SubPortal window.confirm at line 310 is for deleteTrade (profile trade removal), not an engagement action — left alone.
+- Files: avenstone-vite/src/components/modals/EngagementActionModal.jsx (new), avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, CLAUDE_MEMORY.md
+- Decision: single multi-action modal vs. five single-purpose modals — single is simpler to maintain, action-driven config keeps per-action quirks tidy. Reason textarea hides cleanly for accept/complete. Destructive actions use red inline styling (matches Void in invoicing arc). Toast messages preserved in onConfirmed callback at call site.
+- Decision: sbDeclineBid (not sbDeclineEngagement) is the actual helper name — spec had wrong name, adjusted.
+- Open: Sub arc polish slice 2 — 500→409 fix on submit-bid-response concurrent double-submit. Slice 3 — line items entry UI in bid form (sub side currently lump-sum only).
