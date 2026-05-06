@@ -325,3 +325,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/components/sub/SubDir.jsx, avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, CLAUDE_MEMORY.md
 - Decision: strictly additive in this slice — no retirement of existing buttons. Retirement happens in Phase 2e once new flow is end-to-end exercised.
 - Open: Phase 2c (JobDet engagements tab redesign — list rows from job_sub_engagements with state-aware actions). Phase 2d (SubPortal calls view-engagement on open + submit-bid-response on submit). Phase 2e (retire Quote Request page + Assign-to-Project flow + obsolete buttons).
+
+[LOG — 2026-05-05]
+- Action: Sub engagement Phase 2c — Engagements section live on JobDet's SubsTab. Reads via extended sbLoadEngagementsForJob (now includes current_bid per row via left join, normalized in JS to single object or null). Four state groups: Awaiting bid, Active, Completed, Off the job. Per-row inline action buttons gated by status; transitions fire existing helpers (sbAcceptBid, sbDeclineBid, sbWithdrawEngagement, sbRemoveEngagement, sbCompleteEngagement). Confirmation via window.confirm / window.prompt — inline modal upgrade is a polish slice later.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, CLAUDE_MEMORY.md
+- Decision: strictly additive — legacy SubsTab content stays. Retirement is Phase 2e.
+- Open: Phase 2d (SubPortal — call view-engagement on open, submit-bid-response on submit). Phase 2e (retire Quote Request page + Assign-to-Project flow + obsolete legacy content on SubsTab).
