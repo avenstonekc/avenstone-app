@@ -2316,3 +2316,112 @@ export async function sbRegenerateInvoicePaymentUrl(invoiceId) {
   if (!data?.ok) throw new Error(data?.error ?? 'Failed to generate fresh payment link');
   return data.checkout_url;
 }
+
+export async function sbMarkInvoicePaid(invoiceId, payment) {
+  if (!invoiceId) throw new Error('invoiceId required');
+  if (!payment?.amount || payment.amount <= 0) throw new Error('Amount must be greater than zero');
+  if (!payment?.payment_method) throw new Error('Payment method required');
+
+  const { data: invoice, error: loadErr } = await sb
+    .from('invoices')
+    .select('id, tenant_id, job_id, draw_id, total_amount, amount_paid, status, invoice_number')
+    .eq('id', invoiceId)
+    .single();
+  if (loadErr) throw loadErr;
+  if (!invoice) throw new Error('Invoice not found');
+  if (['draft', 'paid', 'void'].includes(invoice.status)) {
+    throw new Error(`Cannot mark paid on a ${invoice.status} invoice`);
+  }
+
+  const paidAmount    = Number(payment.amount);
+  const currentPaid   = Number(invoice.amount_paid);
+  const totalAmount   = Number(invoice.total_amount);
+  const newAmountPaid = currentPaid + paidAmount;
+
+  if (newAmountPaid > totalAmount + 0.01) {
+    const remaining = (totalAmount - currentPaid).toFixed(2);
+    throw new Error(`Payment exceeds invoice balance — $${remaining} remaining`);
+  }
+
+  const dateISO = payment.date_paid ?? new Date().toISOString().slice(0, 10);
+  const refNote = payment.reference ? ` (${payment.reference})` : '';
+
+  const txRow = {
+    tenant_id:     invoice.tenant_id,
+    job_id:        invoice.job_id,
+    invoice_id:    invoice.id,
+    direction:     'in',
+    type:          'client_payment',
+    status:        'paid',
+    amount:        paidAmount,
+    description:   `Payment for Invoice ${invoice.invoice_number}${refNote}`,
+    date_incurred: dateISO,
+    date_paid:     dateISO,
+    payment_method: payment.payment_method,
+    notes:         payment.notes ?? null,
+    created_by:    AV_USER_ID,
+  };
+
+  const { data: tx, error: txErr } = await sb
+    .from('job_transactions')
+    .insert(txRow)
+    .select()
+    .single();
+  if (txErr) {
+    captureFailedIntent({
+      kind: 'mark_invoice_paid_tx',
+      payload: txRow,
+      jobId: invoice.job_id,
+      message: txErr.message,
+      resumable: true,
+    }).catch(() => {});
+    throw txErr;
+  }
+
+  const newStatus = newAmountPaid >= totalAmount - 0.01 ? 'paid' : 'partially_paid';
+  const invPatch = {
+    amount_paid: newAmountPaid,
+    status:      newStatus,
+    updated_at:  new Date().toISOString(),
+  };
+  if (newStatus === 'paid') invPatch.paid_at = new Date().toISOString();
+
+  const { error: invErr } = await sb
+    .from('invoices')
+    .update(invPatch)
+    .eq('id', invoice.id);
+  if (invErr) {
+    captureFailedIntent({
+      kind: 'mark_invoice_paid_invoice_update',
+      payload: { invoiceId: invoice.id, ...invPatch },
+      jobId: invoice.job_id,
+      message: invErr.message,
+      resumable: true,
+    }).catch(() => {});
+    throw invErr;
+  }
+
+  if (invoice.draw_id) {
+    const { data: draw } = await sb
+      .from('draw_schedules')
+      .select('target_amount, invoiced_amount, paid_amount, status')
+      .eq('id', invoice.draw_id)
+      .single();
+    if (draw) {
+      const newDrawPaid = Number(draw.paid_amount) + paidAmount;
+      const drawPatch = {
+        paid_amount: newDrawPaid,
+        updated_at:  new Date().toISOString(),
+      };
+      if (
+        newDrawPaid >= Number(draw.target_amount) - 0.01 &&
+        Number(draw.invoiced_amount) >= Number(draw.target_amount) - 0.01
+      ) {
+        drawPatch.status = 'paid';
+      }
+      await sb.from('draw_schedules').update(drawPatch).eq('id', invoice.draw_id);
+    }
+  }
+
+  return { invoice: { ...invoice, ...invPatch }, transaction: tx };
+}

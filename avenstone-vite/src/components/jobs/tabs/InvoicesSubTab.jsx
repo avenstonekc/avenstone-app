@@ -3,6 +3,7 @@ import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDelete
 import { f$, fD } from '../../../lib/utils';
 import DrawModal from '../../modals/DrawModal';
 import InvoiceComposerModal from '../../modals/InvoiceComposerModal';
+import MarkPaidModal from '../../modals/MarkPaidModal';
 
 const DRAW_STATUS = {
   planned:     { label: 'Planned',     bg: '#F3F4F6', color: '#6B7280' },
@@ -33,6 +34,7 @@ export default function InvoicesSubTab({ job, profile }) {
   const [composerOpen, setComposerOpen]       = useState(false);
   const [editInvoice, setEditInvoice]         = useState(null);
   const [prefillDrawId, setPrefillDrawId]     = useState(null);
+  const [markPaidInvoice, setMarkPaidInvoice] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -230,6 +232,9 @@ export default function InvoicesSubTab({ job, profile }) {
                           <button onClick={() => handleDeleteInvoice(inv)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>Delete</button>
                         </>
                       )}
+                      {['sent', 'viewed', 'partially_paid', 'overdue'].includes(inv.status) && (
+                        <button onClick={() => setMarkPaidInvoice(inv)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: '#065f46', borderColor: '#6EE7B7' }}>Mark Paid</button>
+                      )}
                       {inv.status !== 'draft' && inv.status !== 'paid' && (
                         <button onClick={() => handleVoidInvoice(inv)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>Void</button>
                       )}
@@ -259,6 +264,14 @@ export default function InvoicesSubTab({ job, profile }) {
           invoice={editInvoice}
           prefillDrawId={prefillDrawId}
           onClose={closeComposer}
+          onSaved={load}
+        />
+      )}
+
+      {markPaidInvoice && (
+        <MarkPaidModal
+          invoice={markPaidInvoice}
+          onClose={() => setMarkPaidInvoice(null)}
           onSaved={load}
         />
       )}
