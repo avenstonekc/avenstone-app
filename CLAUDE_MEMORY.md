@@ -374,3 +374,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/migrations/20260506074657_migrate_job_subs_to_engagements.sql, CLAUDE_MEMORY.md
 - Decision: gc_drafted bid_type because legacy assignments were GC-side decisions, not sub-submitted bids. trade='general' (job_subs has no trade column). invited_by_id=Kalin's auth ID fallback (no created_by_id column). notes column tags each migrated row with source job_subs id for traceability.
 - Open: Phase 2e-3-retire — retire QR section + Assigned Subs section + awardBid path now that all 6 assignments live in the new engagement system.
+
+[LOG — 2026-05-06]
+- Action: Sub engagement Phase 2e-3-retire — both legacy SubsTab sections (QR + Assigned Subs) and the awardBid path retired. Migration at commit a111972 had already moved 6 live rows into the engagement schema, clearing the data gate.
+- Files: avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: sbAssignSub + sbLoadSubsTabData + sbUpdateQuoteRequest + sbUpdateITB alias + sbSendBidInvite + sbUpdateBidStatus removed (orphaned after this slice per fresh grep). sbLoadSubDirectory, sbLoadJobTransactions, sbResolveTodosBySource retained — have callers in SubDir.jsx, FinancialsTab.jsx, takeoff.js, TransactionModal.jsx. job_subs table is now fully orphaned in the codebase — no readers, no writers.
+- Open: Phase 2e-4 (standalone Quote Request page if exists). Phase 3 schema cleanup: DROP bids ghost, sub_pricing_changes, legacy bid_responses, invitations_to_bid view, quote_requests, itb_invitees, AND job_subs (fully orphaned — writer + readers removed; migrated rows preserved as backup).

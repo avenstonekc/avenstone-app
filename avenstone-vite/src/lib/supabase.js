@@ -494,15 +494,7 @@ export const sbLoadJobSubs = async jid => {
   const { data } = await sb.from('job_subs').select('*,profile:profiles(id,full_name,email,trade,phone)').eq('job_id', jid);
   return data || [];
 };
-export const sbAssignSub = async (jid, subId, jobAddress = '') => {
-  const { data, error } = await sb.from('job_subs').insert({ tenant_id: AV_TENANT, job_id: jid, sub_id: subId }).select().single();
-  if (error) {
-    captureFailedIntent({ kind: 'sub_assign', payload: { subId }, jobId: jid, message: error.message, resumable: false }).catch(() => {});
-    return { ok: false, error: error.message, data: null };
-  }
-  sbNotify('assigned_to_job', 'Sub Assigned', `A sub was assigned to ${jobAddress || 'a job'}`, jid, subId).catch(() => {});
-  return { ok: true, error: null, data };
-};
+
 export const sbUnassignSub = async (jid, subId) => {
   const { error } = await sb.from('job_subs').delete().eq('job_id', jid).eq('sub_id', subId);
   if (error) {
@@ -542,44 +534,6 @@ export const sbPostStaffMessage = async (jid, content) => {
   return { ok: true, error: null, data };
 };
 
-// ─── Quote Requests ───────────────────────────────────────────────────────────
-export const sbLoadQuoteRequests = async jid => {
-  const { data } = await sb.from('quote_requests').select('*,invitees:itb_invitees(id,email,sub_id,profile:profiles(full_name,trade)),responses:bid_responses(*)').eq('job_id', jid).order('created_at', { ascending: false });
-  return data || [];
-};
-export const sbUpdateQuoteRequest = async (id, ch) => {
-  const { data, error } = await sb.from('quote_requests').update(ch).eq('id', id).select().single();
-  if (error) {
-    captureFailedIntent({ kind: 'quote_request_save', payload: { id }, jobId: null, message: error.message, resumable: false }).catch(() => {});
-    return { ok: false, error: error.message, data: null };
-  }
-  return { ok: true, error: null, data };
-};
-// Backward-compat alias
-export const sbUpdateITB = sbUpdateQuoteRequest;
-export const sbSendBidInvite = async (itb, email, name) => {
-  const res = await fetch(BID_INVITE_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, sub_name: name || '', job_address: itb._jobAddress || '', trade: itb.trade || '', description: itb.description || '', budget_range: itb.budget_range || '', due_date: itb.due_date || '', itb_id: itb.id, tenant_id: AV_TENANT }) });
-  return res.json();
-};
-export const sbUpdateBidStatus = async (id, status) => {
-  const { error } = await sb.from('bid_responses').update({ status }).eq('id', id);
-  if (error) {
-    captureFailedIntent({ kind: 'bid_status_update', payload: { id, status }, jobId: null, message: error.message, resumable: false }).catch(() => {});
-    return { ok: false, error: error.message };
-  }
-  return { ok: true, error: null };
-};
-
-export const sbLoadSubsTabData = async (jobId) => {
-  const [jobSubsRes, quoteReqRes] = await Promise.all([
-    sb.from('job_subs').select('*,profile:profiles(id,full_name,email,trade,phone)').eq('job_id', jobId),
-    sb.from('quote_requests').select('*,invitees:itb_invitees(id,email,sub_id,profile:profiles(full_name,trade)),responses:bid_responses(*)').eq('job_id', jobId).order('created_at', { ascending: false }),
-  ]);
-  return {
-    jobSubs: jobSubsRes.data || [],
-    quoteRequests: quoteReqRes.data || [],
-  };
-};
 
 // ─── Client link ──────────────────────────────────────────────────────────────
 export const sbSendClientLink = async (email, clientName, jobAddress, jobId) => {
