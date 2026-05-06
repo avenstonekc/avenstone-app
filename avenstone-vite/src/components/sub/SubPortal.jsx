@@ -4,6 +4,7 @@ import { Ic, sc, sl, f$, fD, fDT } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 import SubJobView from './SubJobView';
 import SubOnboardingWizard from './SubOnboardingWizard';
+import EngagementDetailModal from '../modals/EngagementDetailModal';
 const NAV = '#0A1F44';
 const GOLD = '#C9A84C';
 const BORDER = '#E8E4DC';
@@ -53,6 +54,7 @@ export default function SubPortal({ profile, signOut }) {
 
   const [engagements, setEngagements] = useState([]);
   const [showPast, setShowPast] = useState(false);
+  const [detailEngId, setDetailEngId] = useState(null);
 
   useEffect(() => {
     sbLoadActiveTradeStrings().then(setAllTradeStrings);
@@ -203,7 +205,7 @@ export default function SubPortal({ profile, signOut }) {
             const meta = statusMeta[eng.status] || statusMeta.invited;
             const lastTs = [eng.invited_at, eng.bid_submitted_at, eng.activated_at, eng.completed_at, eng.terminated_at].filter(Boolean).sort().pop();
             return (
-              <div key={eng.id} style={{ background: '#fff', border: `1px solid ${BORDER}`, borderLeft: `3px solid ${meta.color}`, borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
+              <div key={eng.id} onClick={() => setDetailEngId(eng.id)} style={{ background: '#fff', border: `1px solid ${BORDER}`, borderLeft: `3px solid ${meta.color}`, borderRadius: 8, padding: '12px 14px', marginBottom: 8, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: NAV, marginBottom: 2 }}>{eng.job?.address || '—'}</div>
@@ -412,6 +414,8 @@ export default function SubPortal({ profile, signOut }) {
           <button className="btn btn-ghost" style={{ width: '100%' }} onClick={() => setShowAddTrade(false)}>{t('Cancel', lang)}</button>
         </div>
       </div>}
+
+      <EngagementDetailModal isOpen={!!detailEngId} onClose={() => setDetailEngId(null)} engagementId={detailEngId} />
 
       {/* Bid submit modal */}
       {bidITB && <div className="overlay" onClick={() => setBidITB(null)}>
