@@ -30,7 +30,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 3. **AI never invents rates without citation.** `NULL base_rate` on `takeoff_unit_costs` is intentional — wizard shows "REP MUST ENTER." Never backfill with derived or estimated values.
 
-4. **Schema verification required. Commit ≠ applied.** Every migration: `information_schema.columns` check + `NOTIFY pgrst, 'reload schema'` + `pg_policies` check. Three incidents on 2026-05-02. Do not declare shipped until rows confirm.
+4. **Schema verification required. Commit ≠ applied.** Every migration: `information_schema.columns` check + `NOTIFY pgrst, 'reload schema'` + `pg_policies` check. Three incidents on 2026-05-02. Do not declare shipped until rows confirm. **When DROPping a table, also audit `pg_policies` for any policy referencing it — RLS policy deps are invisible to the FK query but will block the DROP.** (2026-05-06)
 
 5. **Tenant override precedence.** Platform defaults: `tenant_id IS NULL`. Tenant rows override via `DISTINCT ON` + `ORDER BY tenant_id NULLS LAST`. Never rely on app-side fallback when the DB query can enforce it.
 
@@ -46,14 +46,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 *Authoritative DB facts — verified against `information_schema`. Do not contradict without re-verifying.*
 
-- **`sub_pricing_changes` table EXISTS.** Memory previously claimed DROP in `sub-onboarding-rebuild · 2026-04-29` — never applied. DROP candidate.
-- **`itb_invitees` table EXISTS.** Canonical sub-to-ITB link. Columns: `id`, `tenant_id`, `itb_id`, `sub_id` (nullable), `email`, `invited_at`. This is how subs are linked to bid invitations — NOT a `sub_id` column on `quote_requests`.
-- **`quote_requests` has NO `sub_id` column.** Schema: `id`, `tenant_id`, `job_id`, `title`, `description`, `trade`, `budget_range`, `due_date`, `status`, `created_by`, `created_at`, `shared_doc_ids`, `shared_photo_ids`, `kind`, `lead_time_days`, `needed_by_date`. Sub linkage flows through `itb_invitees`.
+- **Phase 3 DROPs (2026-05-06):** `invitations_to_bid` view, `itb_invitees`, `quote_requests`, `bid_responses` (legacy), `bids`, `sub_pricing_changes`, `job_subs` — all dropped. `engagement_bids` and `job_sub_engagements` are the canonical engagement schema. RLS policies on `job_messages` and `schedule_items` updated to reference `job_sub_engagements` in the same migration.
 - **`jobs.client_user_id` (uuid) EXISTS and is actively used** — `supabase.js` (job load + `sbNotifyUser`), `ClientPortal.jsx` (job query + Realtime subscription filter), `MessagesTab.jsx` (email-on-new-message). Do not NULL it carelessly.
 - **`profiles.onboarding_completed` (boolean) EXISTS.** 2026-04-29 migration did ship for this column.
 - **`sub_pricing` reschema confirmed live.** Columns: `id`, `sub_id`, `tenant_id`, `trade`, `pricing_mode`, `unit`, `rate`, `notes`, `created_at`, `updated_at`. Single row per (sub, trade) with `pricing_mode` enum — no materials/labor split.
 - **No `sub_invitations` table exists or ever did.** `send-invite` calls `inviteUserByEmail()` directly; the invite IS the auth.users creation.
-- **`bids` table is a legacy ghost.** Columns: `id` (text), `job_id` (text), `bid_number` (text), `status` (text), `total_amount` (text), `bid_answers` (jsonb), `created_at`, `sent_at`. All TEXT PKs (predates UUID migration), no `tenant_id`, no RLS, no current callers. DROP candidate; final call waits on sub consolidation design.
 - **`job_sub_engagements` table EXISTS** (Phase 1a, 2026-05-05). Canonical sub-to-job engagement record. Replaces scattered quote_requests / itb_invitees / Assign-to-Project paths going forward. State machine: `invited` → `bid_submitted` → `active` → `completed` plus terminal off-ramps `declined`, `withdrawn`, `removed`. Partial unique index `idx_one_live_engagement` enforces one live engagement per (job_id, sub_id, trade).
 - **`engagement_bids` table EXISTS** (Phase 1a, 2026-05-05). Bids attached to engagements. Named `engagement_bids` (not `bid_responses`) to avoid collision with the existing ITB/quote `bid_responses` table. `idx_engbid_one_current` partial unique index keeps one current bid per engagement; revisions stack as historical rows.
 - **`schedule_items.engagement_id` column EXISTS** (Phase 1a, 2026-05-05). Nullable audit FK to `job_sub_engagements`. Stamped on schedule items created from accepted bids; old items remain null.
@@ -74,14 +71,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 *Outstanding decisions or deferred work — do not assume resolved.*
 
 **Sub portal & financial:**
-- `invitations_to_bid` compat view DROP — Phase 3 schema cleanup. SubPortal selector update completed in Phase 2e-1.
 - `submit-bid-response` returns 500 on concurrent double-submit instead of the spec'd 409 JSON `{ ok: false, error: 'Engagement state changed concurrently' }`. Behavior is correct (no double-bid created); response shape is wrong. Surfaced during 2026-05-06 smoke test edge case.
 - ConsultationTab tab retirement
 - Auto-bid generation (sub_pricing × takeoff quantity, AI sanity pass)
 - Sub password retrofit for existing magic-link-only subs
 - Client notification silence at financial events — identified, not fixed
-- `bids` legacy ghost table — text PKs, no tenant_id, no RLS, no current callers. DROP candidate; decision waits on sub consolidation design pass.
-- `sub_pricing_changes` legacy table — DROP candidate (memory previously claimed dropped, never was).
 - Sub management consolidation design pass — design doc only, no code. Unifies "Invite sub to bid on job" across Subs Directory invite, Assign-to-Project, and Quote Request → Send Invite flows. Promoted from Future architecture 2026-05-05 after triple-UI pain proved it's not deferable.
 - Picker enrichment in unified modal (Phase 2): show per-sub schedule load badge ("2 active jobs · 3 items next 14d"), trade-match indicator, last-engagement-age. Optional Haiku-cheap AI summary on hover. Anti-Surprise alignment — flag overcommitted subs before invite, not after. Captured 2026-05-05.
 
@@ -386,3 +380,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/components/owner/OwnerPortal.jsx, avenstone-vite/src/components/client/ClientPortal.jsx, avenstone-vite/src/components/jobs/tabs/InfoTab.jsx, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: sbLoadScheduleItemsForSub now filters assigned_sub_id directly — no job_subs join needed. ClientPortal ratings section uses js.sub (engagement sub) and js.trade (engagement trade) instead of legacy js.profile shape. InfoTab "Assigned Subs" shows active engagements, read-only.
 - Open: Phase 3 schema cleanup re-run — all gate failures resolved.
+
+[LOG — 2026-05-06]
+- Action: Phase 3 schema cleanup — DROPped invitations_to_bid view + 6 legacy tables (bid_responses [legacy], itb_invitees, quote_requests, bids, sub_pricing_changes, job_subs). Also replaced 3 RLS policies (job_messages_read, job_messages_insert, schedule_items_sub_select) that referenced job_subs — rewritten to reference job_sub_engagements with same access intent. All audits clean before apply: 0 src/ references, 0 unexpected FKs, migrated-data parity 6/6. engagement_bids and job_sub_engagements survived intact.
+- Files: supabase/migrations/20260506080811_phase3_drop_legacy_sub_tables.sql, CLAUDE_MEMORY.md
+- Decision: NO CASCADE on any DROP. BEGIN/COMMIT for atomicity. bid_responses dropped BEFORE quote_requests per FK. Policy replacements run before table DROP in same transaction — atomic. RLS policies use NOT IN ('completed','declined','withdrawn','removed') to cover all live engagement states including invited/bid_submitted (subs need message access during bid clarification).
+- Open: Sub engagement consolidation arc is COMPLETE. Polish items queued: 500-vs-409 fix on submit-bid-response, inline modals replacing window.confirm/window.prompt, line-item bid entry, picker enrichment, auto-bid generation for gc_drafted path. Next major arc: invoicing.
