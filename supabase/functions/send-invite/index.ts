@@ -24,15 +24,20 @@ Deno.serve(async (req) => {
 
     if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    await sb.from("profiles").upsert({
-      id: data.user.id,
-      tenant_id,
-      full_name: full_name || "",
-      email,
-      role: role || "sub",
-      trade: trade || null,
-      phone: phone || null,
-    }, { onConflict: "id" });
+    // Never downgrade a staff member — preserve existing role if already staff
+    const { data: existingProfile } = await sb.from("profiles").select("role").eq("id", data.user.id).single();
+    const isStaff = existingProfile?.role && ["owner", "project_manager", "sales_rep"].includes(existingProfile.role);
+    if (!isStaff) {
+      await sb.from("profiles").upsert({
+        id: data.user.id,
+        tenant_id,
+        full_name: full_name || "",
+        email,
+        role: role || "sub",
+        trade: trade || null,
+        phone: phone || null,
+      }, { onConflict: "id" });
+    }
 
     try {
       const { data: invSeqs } = await sb.from("sequences").select("id, steps").eq("tenant_id", tenant_id).eq("trigger", "sub_invited").eq("status", "active");
