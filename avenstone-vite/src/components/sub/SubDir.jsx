@@ -31,11 +31,17 @@ export default function SubDir({ profile }) {
   const addSub = async () => {
     if (!form.name.trim() || !form.email.trim()) { setErr('Name and email are required.'); return; }
     setSaving(true); setErr('');
-    const res = await sbInviteSub(form.name.trim(), form.email.trim(), form.trade.trim(), form.phone.trim());
-    if (res.error) { setErr(res.error); setSaving(false); return; }
-    setSubs(await sbLoadSubDirectory());
-    setForm({ name: '', email: '', trade: '', phone: '' });
-    setShowAdd(false); setSaving(false);
+    try {
+      const res = await sbInviteSub(form.name.trim(), form.email.trim(), form.trade.trim(), form.phone.trim());
+      if (res.error) { setErr(res.error); return; }
+      setSubs(await sbLoadSubDirectory());
+      setForm({ name: '', email: '', trade: '', phone: '' });
+      setShowAdd(false);
+    } catch (e) {
+      setErr(e?.message || 'Something went wrong — check that send-invite is deployed');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const isOwnerOrMgr = profile && ['owner', 'sales_rep', 'project_manager'].includes(profile.role);

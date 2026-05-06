@@ -53,6 +53,6 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("send-invite error:", err);
-    return new Response(String(err), { status: 500, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
