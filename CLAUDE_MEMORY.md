@@ -386,3 +386,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/migrations/20260506080811_phase3_drop_legacy_sub_tables.sql, CLAUDE_MEMORY.md
 - Decision: NO CASCADE on any DROP. BEGIN/COMMIT for atomicity. bid_responses dropped BEFORE quote_requests per FK. Policy replacements run before table DROP in same transaction — atomic. RLS policies use NOT IN ('completed','declined','withdrawn','removed') to cover all live engagement states including invited/bid_submitted (subs need message access during bid clarification).
 - Open: Sub engagement consolidation arc is COMPLETE. Polish items queued: 500-vs-409 fix on submit-bid-response, inline modals replacing window.confirm/window.prompt, line-item bid entry, picker enrichment, auto-bid generation for gc_drafted path. Next major arc: invoicing.
+
+[LOG — 2026-05-06]
+- Action: Created INVOICING_ARC.md at repo root. Living design doc for the invoicing arc — covers schema foundation (draw_schedules, invoices, invoice_line_items, job_transactions.invoice_id, next_invoice_number fn), state machines, UI map (FinancialsTab Invoices sub-tab + ClientPortal Invoices section), Stripe + email integration, pdf-lib PDF generation, 6-phase rollout plan, out-of-scope (sub-side, lien waiver PDF, retainage, QB API, etc.), and 6 locked decisions (Stripe Checkout over Stripe Invoices, manual tax, phase on line items, hardcoded due date, signed PDF link, edit-after-send rules).
+- Files: INVOICING_ARC.md, CLAUDE_MEMORY.md
+- Decision: Blueprint-first workflow — design doc lands before any build prompt. Pattern tested here for the invoicing arc.
+- Open: Phase 1 (schema foundation) is the next slice — creates the 3 new tables + ALTER + Postgres function. Strictly additive.
