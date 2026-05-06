@@ -582,3 +582,120 @@ _To retrieve: search for the slug heading._
 - Lien waivers are warnings, not hard blocks — transaction saves without them
 - Commissions are transactions (`type='commission'`, `direction='out'`)
 - Retainage fields present on job_transactions (`retainage_pct`, `retainage_held`) — no UI yet
+
+---
+
+## takeoff-schema-foundation · 2026-04-28–29 · Schema tables for takeoff: pricing_lookup, templates, unit_costs, seed
+
+[LOG — 2026-04-28]
+- Action: Schema foundation for restructure — pricing_lookup, takeoff_templates, takeoff_drafts, material_orders, scope_notes column, job_materials.estimate_line_item_id FK, oh_shit_moments label rename in PDF
+- Files: supabase/migrations/20260428_pricing_lookup.sql, supabase/migrations/20260428_takeoff_templates.sql, supabase/migrations/20260428_takeoff_drafts.sql, supabase/migrations/20260428_misc_schema_additions.sql, supabase/migrations/20260428_material_orders.sql, supabase/migrations/20260428_seed_pricing_lookup.sql, avenstone-vite/src/lib/supabase.js (+sbLoadPricingLookup, sbLoadTakeoffTemplates, sbSaveTakeoffDraft, sbLoadTakeoffDrafts, sbLoadMaterialOrders, sbCreateMaterialOrder, sbUpdateMaterialOrder), avenstone-vite/src/lib/pdf.js (label rename)
+- Decision: Multi-tenant + trade-aware tables throughout. AI material output → estimate_line_items (category='materials'), job_materials tracks delivery/install status, joined via estimate_line_item_id FK (Option A from audit). pricing_lookup seeded from ai_knowledge prose — values read directly from 15 pricing rows queried live (32 entries: demo, framing, drywall, paint, flooring, tile, cabinets, plumbing); no AI parsing edge function needed. Display label in client PDF changed to 'POSSIBLE CHANGE ORDERS — DISCLOSED UP FRONT'. Note: misc migration targets job_materials (not materials) — verified against live DB.
+- Open: takeoff_templates need seeding (Prompt C). Owner UI for pricing_lookup + templates deferred to v2. Other oh_shit_moments UI strings found but out of scope: ConsultationTab.jsx line 1092 renders 'OH SHIT Moments' as an internal staff label — address in cleanup prompt. material_orders supplier is free-text (v1); suppliers table is v2. job_materials.estimate_line_item_id nullable for backward compat — existing rows stay null, wizard-generated rows will populate it.
+
+[LOG — 2026-04-29]
+- Action: takeoff_templates platform-default infrastructure shipped. (1) tenant_id made nullable + RLS updated to expose tenant_id IS NULL rows to all tenants while blocking tenant sessions from inserting platform rows. (2) Seeded 6 room-type templates (bathroom, kitchen, basement, refresh, addition, exterior) — one row per trade per room type, 81 rows total.
+- Files: supabase/migrations/20260429_takeoff_templates_platform_defaults.sql, supabase/migrations/20260429_seed_takeoff_templates.sql
+- Decision: Path A from schema audit — true platform defaults via nullable tenant_id + RLS `OR tenant_id IS NULL`. Matches CLAUDE.md multi-tenant architecture rules. Seed shape forced by schema: one row per (trade, room_type) pair, scope details in scope_definition JSONB. Optional/alternate trades flagged in JSONB (optional, conditional fields).
+- Open: Owner edit UI for templates deferred. Takeoff wizard consumes these as starting scaffolds — that prompt comes next.
+
+[LOG — 2026-04-29]
+- Action: Two migrations shipped — (1) dropped 22 addition rows from takeoff_templates (cut from v1, can't scan something that doesn't exist yet; plan parsing is v2 work), (2) created takeoff_unit_costs table with unit column ('sf' | 'lf' | 'each' | 'lump') + per-trade multipliers JSONB.
+- Files: supabase/migrations/20260429_drop_addition_template_rows.sql, supabase/migrations/20260429_takeoff_unit_costs.sql
+- Decision: Lump-cost approach replaced with unit-cost approach (per-sf/lf/each rate × multiplier). Schema pre-fills from scan area when unit='sf', prompts rep for lf/each, uses base_rate as flat amount when unit='lump'. Multi-tenant pattern matches takeoff_templates: platform defaults (tenant_id IS NULL) visible to all tenants via RLS, tenant rows override platform defaults at wizard query time.
+- Open: Seed rows (Prompt 0b — mine ai_knowledge for grounded starter rates with citations). Then wizard data layer (Prompt A).
+
+[LOG — 2026-04-29]
+- Action: Seeded takeoff_unit_costs with 59 platform-default rows. Applied via Management API. Verified: 59 total, basement 18, bathroom 14, exterior 4, kitchen 16, refresh 7, 6 NULL base_rate rows, 0 MISSING vs takeoff_templates.
+- Files: supabase/migrations/20260429_seed_takeoff_unit_costs.sql
+- Decision: AI never invents rates without ai_knowledge citation. 53 rows have cited base_rates. 6 rows are base_rate=NULL by design (bathroom/basement/exterior/kitchen/refresh Cleanup + kitchen Appliances) — wizard surfaces "REP MUST ENTER" and the human is accountable. Flooring - Laminate has a rate but notes flag it as interpolated with no direct citation — verify against real jobs before relying on it. Rep-entered values become per-tenant overrides on takeoff_unit_costs so the same rep does not re-enter on the next job.
+- Open: Wizard data layer (Prompt A) is next. Wizard must render NULL base_rate rows as yellow-flagged "REP MUST ENTER" lines and save rep-entered values back as tenant overrides.
+
+---
+
+## trade-taxonomy · 2026-04-29 · Canonical trade string DB — ended Paint vs Painting mismatch risk
+
+[LOG — 2026-04-29]
+- Action: Audited trade-string usage across codebase before taxonomy migration
+- Decision: 6 source files with 4 divergent lists; 12 write sites across 6 tables; 16 read sites; 2 AI prompts with hardcoded trade names (ai-estimator system prompt + process-transcript AI extraction). Core risk: sub_pricing.trade="Paint" never matches quote_requests.trade="Painting" (COMMON_TRADES); auto-bid join silently misses. CostsTab and LineItemModal are free-text writes and will require normalization scripts.
+- Open: Build prompt for taxonomy migration is next; must update COMMON_TRADES, SubOnboardingWizard.TRADES, SubPortal.ALL_TRADES to one import; update ai-estimator system prompt trade list; add controlled vocab to process-transcript; backfill estimate_line_items + quote_requests + profiles + consultation_measurements. DB distinct-value query still needs to be run to surface actual stored values (SQL in audit report above).
+
+[LOG — 2026-04-29]
+- Action: Trade taxonomy built end-to-end — DB schema, canonical seed, backfill, helpers, UI wire-up, AI prompt constraints
+- Files: supabase/migrations/20260429_trade_taxonomy.sql (trade_taxonomy + tenant_trade_visibility tables, RLS, 43 canonical seed rows, Avenstone visibility insert), supabase/migrations/20260429_trade_taxonomy_backfill.sql (UPDATE consultation_measurements painting→Paint, Cabinets→Cabinets / vanities; UPDATE estimate_line_items Finish→NULL), avenstone-vite/src/lib/supabase.js (removed COMMON_TRADES; added sbLoadTradeTaxonomy, sbLoadActiveTradeStrings, sbGetTradeMeta), avenstone-vite/src/components/jobs/tabs/SubsTab.jsx (QR trade dropdown from sbLoadActiveTradeStrings), avenstone-vite/src/components/sub/SubOnboardingWizard.jsx (Step 2 grouped by parent from taxonomy; full-path trade strings in selectedTrades; default_unit pre-filled in Step 3), avenstone-vite/src/components/sub/SubPortal.jsx (allTradeStrings from sbLoadActiveTradeStrings replaces ALL_TRADES), supabase/functions/process-transcript/index.ts (loadCanonicalTradeStrings helper; canonical list injected into MEASURE_SYSTEM; extractedTrade validated against canonical set; non-canonical → null + ai_error_logs insert), supabase/functions/generate-estimate-from-session/index.ts (prompt note: use trade names exactly as in measurements)
+- Decision: Full-path canonical format ("Tile - Floor", "Plumbing - Rough-in", "Demo"). trade_taxonomy.tenant_id NULL = canonical shared rows; per-tenant rows FK to tenants. UNIQUE NULLS NOT DISTINCT on (tenant_id, parent_trade, sub_trade). measure-guide and ai-consultation-gap-analyzer skipped — pure conversational, no trade string DB writes. ai-estimator system prompt hardcoded list deferred (estimator rare, low blast radius).
+- Open: CostsTab + LineItemModal are still free-text trade inputs — normalization deferred (estimate_line_items.trade is free-text by design for custom scopes). auto-bid join (sub_pricing.trade vs quote_requests.trade) still needs full-path alignment when auto-bid generation ships. compat view invitations_to_bid still alive for SubPortal (needs cleanup). ai-estimator system prompt trade list still hardcoded.
+
+[LOG — 2026-04-29]
+- Action: Trade taxonomy migrations applied + verified live (after Sonnet's initial "shipped" report-back was committed-only, not DB-applied)
+- Files: 20260429_trade_taxonomy.sql, 20260429_trade_taxonomy_backfill.sql
+- Decision: Verified — 43 canonical rows in trade_taxonomy (tenant_id NULL), 43 active visibility rows for Avenstone tenant, zero dirty trade strings remaining in consultation_measurements or estimate_line_items.
+- Lesson: Migration prompts must include hard verification step (SELECT count on the new table) before declaring shipped — committing the SQL file is not the same as applying it. Update OPUS_PROMPT_RULES.md if pattern repeats.
+- Open: measure-guide + ai-consultation-gap-analyzer system prompts not updated with canonical list (acceptable — they don't write trade strings, validation happens upstream at process-transcript). ai-estimator hardcoded list of 17 client-facing trade sections intentionally left alone (different vocabulary layer). CostsTab + LineItemModal still free-text trade input — low priority.
+- Open: invitations_to_bid compat view + sbLoadITBs alias still alive per Subs tab rollout plan. Drop in cleanup commit ~one release after Subs tab confirmed.
+
+[LOG — 2026-04-29]
+- Action: Trade taxonomy migration shipped (retroactive log — was missed in original session)
+- Files: supabase/migrations/20260429_trade_taxonomy.sql, avenstone-vite/src/lib/supabase.js (+sbLoadTradeTaxonomy, sbLoadActiveTradeStrings), avenstone-vite/src/components/sub/SubOnboardingWizard.jsx (TRADES const removed, DB-driven), avenstone-vite/src/components/sub/SubPortal.jsx (ALL_TRADES const removed, DB-driven)
+- Decision: Single source of truth for trade vocabulary — DB taxonomy table queried at runtime. Eliminates the "Paint" vs "Painting" mismatch risk that would have broken auto-bid joins. Audit on 2026-04-29 (commit df8cb95) confirmed zero hardcoded trade list constants remain in src/.
+- Open: none
+
+---
+
+## subs-tab · 2026-04-29 · New SubsTab: procurement rename, bid workflow, ITB removal from EstimateTab
+
+[LOG — 2026-04-29]
+- Action: Subs tab feature build (Prompt D) — full procurement substrate rename + new SubsTab component + ITB code removal from EstimateTab + ai-pm-nightly rule additions
+- Files: supabase/migrations/20260429_quote_requests_rename.sql (rename invitations_to_bid → quote_requests, add kind/lead_time_days/needed_by_date columns, compat view), avenstone-vite/src/lib/supabase.js (renamed ITB helpers → sbLoadQuoteRequests/sbCreateQuoteRequest/sbUpdateQuoteRequest + compat aliases, new sbLoadSubsTabData, sbAssignSub now takes jobAddress param), avenstone-vite/src/components/sub/SubPicker.jsx (new pure search component), avenstone-vite/src/components/jobs/tabs/SubsTab.jsx (new — computeSubStatus, StatusBadge, SubPaymentSummary, assigned sub list, quote request list, bid award workflow, SubPicker modal, invite from directory), avenstone-vite/src/components/jobs/JobDet.jsx (Subs tab added to TABS array + render, InfoTab gets setTab prop), avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx (all ITB code removed — ~130 lines JSX + all state + buggy useState→useEffect call), avenstone-vite/src/components/jobs/tabs/InfoTab.jsx (removed sub picker, assigned subs now read-only with Manage link → setTab('subs')), supabase/functions/ai-pm-nightly/index.ts (Rule 5 retargeted to PM/owner; Rules 9/10/11 added for sub bid lifecycle; PM user pre-fetched once per job in Promise.all), avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx (sbResolveTodosBySource on lien waiver upload), CLAUDE.md (Subs tab + procurement substrate entries)
+- Decision: ITB code fully migrated to SubsTab; EstimateTab is now estimate-only. Compat view invitations_to_bid kept alive for SubPortal until next cleanup migration. computeSubStatus derives badge from quoteRequests + transactions data without extra DB queries. PM user pre-fetched once per job in ai-pm-nightly Promise.all (avoids N+1 per rule). Commits 6+7 merged (SubPicker + directory invite were natural parts of SubsTab build).
+- Open: SubPortal.jsx line 68 still has itb:invitations_to_bid join selector — needs update to itb:quote_requests in a follow-up. Compat view invitations_to_bid should be dropped after SubPortal cleanup. Push notifications deferred (send-push edge fn exists, no callers yet).
+
+---
+
+## sub-onboarding-rebuild · 2026-04-29 · Form-based wizard replaces AI chat; schema fixes for sub_pricing never actually applied
+
+[LOG — 2026-04-29]
+- Action: Sub onboarding rebuilt — removed AI conversational wizard, replaced with structured trade + rate form
+- Files: supabase/functions/ai-sub-onboard/ (DELETED), supabase/functions/ai-sub-pricing/ (DELETED), supabase/migrations/20260429_sub_onboarding_rebuild.sql (DROP sub_pricing_changes; DROP+RECREATE sub_pricing with form-based schema — one row per sub/trade, pricing_mode+rate+unit; ADD onboarding_completed to profiles), avenstone-vite/src/components/sub/SubOnboardingWizard.jsx (full rewrite: 5-step form — welcome, trade multi-select, per-trade rate/self-bid, W9+insurance upload, done; localStorage progress persistence), avenstone-vite/src/components/sub/SubPortal.jsx (AI chat + bot state removed; pricing tab replaced with per-trade rate cards + inline edit + Add Trade modal; bids tab pricing reference updated for new column names), avenstone-vite/src/lib/supabase.js (AI_SUB_ONBOARD_URL + AI_SUB_PRICING_URL removed; sbSaveSubPricing + sbDeleteSubPricing added; sbLoadSubPricing order fixed)
+- Decision: Form-based wizard, no AI. sub_pricing schema rebuilt (old had item_key/item_label/is_custom per-item rows; new has pricing_mode/rate/unit per-trade rows). estimate_line_items.trade already existed from 20260423 — no change needed. AI Checkpoint A on auto-bids deferred until auto-bid generation ships.
+- Open: Auto-bid generation prompt pending — takes sub_pricing rate x takeoff quantity, runs Checkpoint A AI sanity pass before sending to sub. sub_pricing_changes view of price history dropped permanently (AI-era only). Migration applied manually to live DB (no PAT available in session).
+
+[LOG — 2026-04-29]
+- Action: Sub onboarding wizard — three bugs fixed. (1) profiles.onboarding_completed column added + backfilled (was claimed shipped 2026-04-29 but never actually applied). (2) Wizard gate moved from !sub_pricing.length to !profile.onboarding_completed — sub who saves one trade rate and refreshes can now resume the wizard. !jobs.length sub-gate removed so subs assigned to a job mid-onboarding can still finish. (3) Password step added to wizard between welcome and trade selection. Required, validated, calls supabase.auth.updateUser on the already-magic-linked session. localStorage persists passwordSet boolean (not the password itself).
+- Files: supabase/migrations/20260429_profiles_onboarding_completed.sql, avenstone-vite/src/components/sub/SubPortal.jsx, avenstone-vite/src/components/sub/SubOnboardingWizard.jsx
+- Decision: Backfilled existing subs with sub_pricing rows as onboarding_completed=true so they are not re-prompted. Magic-link invite flow unchanged — password step happens post-auth inside wizard. !jobs.length gate removed entirely (was a footgun, no legitimate use case).
+- Open: Existing subs onboarded before this fix have no password. Separate "set your password" retrofit prompt needed — fire on first login if profile.onboarding_completed=true but auth provider has no password. Deferred until a sub hits an expired session.
+
+[LOG — 2026-04-29]
+- Action: sub_pricing reschema applied (was claimed shipped in 20260429_sub_onboarding_rebuild.sql commit but was never executed against live DB). Old schema had item_key/item_label/price NOT NULL — caused every sbSaveSubPricing upsert to silently fail with 0 rows written. Also dropped sub_pricing_changes (AI-era audit log) which still existed in live DB despite CLAUDE_MEMORY claiming it was dropped.
+- Files: supabase/migrations/20260429_sub_pricing_reschema.sql (committed 7bbddf9)
+- Decision: Schema matches 20260429_sub_onboarding_rebuild.sql spec exactly: UNIQUE(sub_id,trade), pricing_mode CHECK IN ('rate','self_bid'), unit CHECK IN ('sf','lf','hour','each'), sp_self FOR ALL + sp_staff_read FOR SELECT (owner/PM). Column order corrected (tenant_id before sub_id per rebuild spec).
+- Open: Wizard smoke test pending — test-sub should see wizard, set password in step 2, pick a trade in step 3, price it in step 4, verify sub_pricing row written.
+
+[LOG — 2026-04-29 — AUDIT: 20260429_sub_onboarding_rebuild.sql claims vs live DB]
+- Action: Read-only audit of every claim in the 2026-04-29 sub onboarding rebuild. Six items checked.
+- Files: none changed (audit only)
+- Decision: Findings:
+  A) ai-sub-onboard/ edge function directory: DELETED (directory not found)
+  B) ai-sub-pricing/ edge function directory: DELETED (directory not found)
+  C) sub_pricing_changes table: STILL EXISTED in live DB — DROP never executed. Fixed in sub_pricing_reschema migration (this session).
+  D) 20260429_sub_onboarding_rebuild.sql: FILE EXISTS in repo but was NEVER applied to live DB. It contained DROP sub_pricing_changes + DROP/CREATE sub_pricing + ALTER TABLE profiles ADD COLUMN IF NOT EXISTS onboarding_completed. All three operations were still needed on live DB (confirmed by pre-flight SELECTs). The three separate migrations applied this session (onboarding_completed, reschema) cover its intent.
+  E) AI_SUB_ONBOARD_URL / AI_SUB_PRICING_URL exports: REMOVED from supabase.js
+  F) sbDeleteSubPricing helper: PRESENT at supabase.js:517
+- Open: 20260429_sub_onboarding_rebuild.sql should be treated as a spec doc, not an applied migration. If ever applying via CLI (supabase db push), skip it — its operations are covered by the individual migrations that were actually applied.
+
+---
+
+## apr29-cleanup · 2026-04-29 · Cleanup sweep Parts A+B: dead code, daily_tasks→todos, ai_pm_runs rate limit
+
+[LOG — 2026-04-29]
+- Action: Cleanup sweep Part A — 7 frontend deletions, 2 edge fn deletions, NAV cleanup, DashScr Quick Start prune, SequencesScr wired (owner-only), CLAUDE.md drift fixed.
+- Files: see commit list 1-5. Also Commit 0: CaptureQualityReport.jsx (orphaned since 4/26 Swift deletion). App.jsx import removals folded into Commit 1 (build sequencing requirement). forms/ dir deleted (was empty after FormScr removal). NOTIFY_SMS_URL not present in supabase.js (already gone).
+- Decision: Pure subtraction + SequencesScr wire-in. Codebase ready for Part B (ai-project-manager rate limit + AiHomeScr migration + LineItemModal taxonomy picker + ai-estimator taxonomy constraint). Financial deprecated table drop deferred until 2026-05-07 (grace window not expired).
+- Open: Part B prompt pending. EstimateTab restructure (Prompt 1) needs Opus planning before build prompt is written.
+
+[LOG — 2026-04-29]
+- Action: Cleanup sweep Part B — ai_pm_runs rate limit table + edge fn rate logic + JobDet confirmation modal, AiHomeScr task panel removed + ai-home-companion daily_tasks writes migrated to todos table + daily_tasks table dropped, LineItemModal uses DB-driven trade picker.
+- Files: supabase/migrations/20260429_ai_pm_runs.sql (new rate limit table, applied + verified), supabase/functions/ai-project-manager/index.ts (CORS headers added, SB_ANON added, user_id from JWT, 24h rate limit check via ai_pm_runs, run record insert after Opus), avenstone-vite/src/components/jobs/JobDet.jsx (showAiPmConfirm state + confirmation modal wrapping runAiAnalysis, Fragment wrapper for modal), avenstone-vite/src/components/ai/AiHomeScr.jsx (tasks/tasksExpanded state removed, loadTasks/completeTask removed, Daily Tasks panel removed, "View your todos" button added), supabase/functions/ai-home-companion/index.ts (create_task tool migrated from daily_tasks to todos table — Case A, dedup check updated to match on pending status), supabase/migrations/20260429_drop_daily_tasks.sql (DROP TABLE CASCADE, applied + verified gone), avenstone-vite/src/components/jobs/tabs/financials/LineItemModal.jsx (trade input replaced with sbLoadActiveTradeStrings select dropdown).
+- Decision: Commit 0 (CaptureQualityReport) was no-op — Part A already handled. Commit 6 (ai-estimator trade constraint) was no-op — ai-estimator's trade field is the hardcoded 17 presentation-layer sections intentionally different from canonical taxonomy; function returns raw text to caller, never writes to DB directly. ai-home-companion create_task: Case A (actionable todos, not cache) — migrated to todos table with type=ai_suggestion, severity=low. daily_tasks grep returned zero hits before drop was applied.
+- Open: EstimateTab restructure (Prompt 1) needs Opus planning. Financial deprecated table drop deferred until 2026-05-07. ai-sub-onboard prices.length undefined ref deferred.
