@@ -42,6 +42,21 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 ---
 
+## Schema reality (verified 2026-05-05)
+
+*Authoritative DB facts — verified against `information_schema`. Do not contradict without re-verifying.*
+
+- **`sub_pricing_changes` table EXISTS.** Memory previously claimed DROP in `sub-onboarding-rebuild · 2026-04-29` — never applied. DROP candidate.
+- **`itb_invitees` table EXISTS.** Canonical sub-to-ITB link. Columns: `id`, `tenant_id`, `itb_id`, `sub_id` (nullable), `email`, `invited_at`. This is how subs are linked to bid invitations — NOT a `sub_id` column on `quote_requests`.
+- **`quote_requests` has NO `sub_id` column.** Schema: `id`, `tenant_id`, `job_id`, `title`, `description`, `trade`, `budget_range`, `due_date`, `status`, `created_by`, `created_at`, `shared_doc_ids`, `shared_photo_ids`, `kind`, `lead_time_days`, `needed_by_date`. Sub linkage flows through `itb_invitees`.
+- **`jobs.client_user_id` (uuid) EXISTS and is actively used** — `supabase.js` (job load + `sbNotifyUser`), `ClientPortal.jsx` (job query + Realtime subscription filter), `MessagesTab.jsx` (email-on-new-message). Do not NULL it carelessly.
+- **`profiles.onboarding_completed` (boolean) EXISTS.** 2026-04-29 migration did ship for this column.
+- **`sub_pricing` reschema confirmed live.** Columns: `id`, `sub_id`, `tenant_id`, `trade`, `pricing_mode`, `unit`, `rate`, `notes`, `created_at`, `updated_at`. Single row per (sub, trade) with `pricing_mode` enum — no materials/labor split.
+- **No `sub_invitations` table exists or ever did.** `send-invite` calls `inviteUserByEmail()` directly; the invite IS the auth.users creation.
+- **`bids` table is a legacy ghost.** Columns: `id` (text), `job_id` (text), `bid_number` (text), `status` (text), `total_amount` (text), `bid_answers` (jsonb), `created_at`, `sent_at`. All TEXT PKs (predates UUID migration), no `tenant_id`, no RLS, no current callers. DROP candidate; final call waits on sub consolidation design.
+
+---
+
 ## Financial locked decisions
 
 - `job_transactions` is single source of truth for all money movement.
@@ -61,7 +76,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Auto-bid generation (sub_pricing × takeoff quantity, AI sanity pass)
 - Sub password retrofit for existing magic-link-only subs
 - Client notification silence at financial events — identified, not fixed
-- `bids` table ghost persists in schema; lump-sum ITB model decision outstanding
+- `bids` legacy ghost table — text PKs, no tenant_id, no RLS, no current callers. DROP candidate; decision waits on sub consolidation design pass.
+- `sub_pricing_changes` legacy table — DROP candidate (memory previously claimed dropped, never was).
+- `send-invite` profile upsert has NO role guard — will overwrite owner/pm/sales_rep roles to `sub` if invited email already has a staff profile. Add `isStaff` guard matching `send-contract-email` pattern.
+- `send-client-link` profile upsert has NO role guard — will overwrite ANY existing role to `client`. Sending a client link to `kalin@avenstonekc.com` flips his role. Add `isStaff` guard matching `send-contract-email` pattern.
+- Sub management consolidation design pass — design doc only, no code. Unifies "Invite sub to bid on job" across Subs Directory invite, Assign-to-Project, and Quote Request → Send Invite flows. Promoted from Future architecture 2026-05-05 after triple-UI pain proved it's not deferable.
 
 **Takeoff wizard:**
 - Step 5 kitchen scope subsets + detail forms
@@ -176,17 +195,6 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 ---
 
-## Memory contradictions surfaced 2026-05-04 (followup queued)
-
-- `sub_pricing_changes` table still exists despite memory claim of DROP in `sub-onboarding-rebuild · 2026-04-29`
-- `itb_invitees` table exists, not documented in memory anywhere
-- `quote_requests` has no `sub_id` column — recent prompts assumed it did, errored on cleanup
-- `kalin@avenstonekc.com` role state uncertain — memory says it gets flipped to client when contracts are sent there, but PM invite flow worked tonight so something is inconsistent
-- `send-invite` flow does NOT use a sub_invitations table — invite IS the auth.users creation via `inviteUserByEmail()`; no separate invite tracking row
-- `jobs.client_user_id` field exists and was NULLed on 2 jobs during cleanup — memory should track this field
-- Stale profile rows on freed emails get overwritten by send-invite upsert (no manual cleanup needed on profiles.email, only auth.users matters)
-
----
 
 [LOG — 2026-05-03]
 - Action: CLAUDE_MEMORY.md + CLAUDE_ARCHIVE.md two-file split established. All prior LOG content moved to CLAUDE_ARCHIVE.md under slugs.
@@ -256,3 +264,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: CLAUDE.md
 - Decision: Gate vs delete — kept all existing dispatch content for Opus-as-executor sessions; only added the Sonnet-skip / Opus-applies guard at top + renamed dispatch headings to clarify Opus subject.
 - Open: none
+
+[LOG — 2026-05-05]
+- Action: Memory contradictions cleanup. Verified 9 schema/code claims against live DB + repo via prior verification prompt. Replaced the 2026-05-04 contradictions section with the new authoritative Schema reality block above.
+- Action: Surfaced two role-guard bugs not previously tracked. `send-invite` profile upsert and `send-client-link` profile upsert both overwrite existing roles with no `isStaff` guard. Queued to Active open items.
+- Action: `sub_pricing_changes` table confirmed still present despite prior memory claim of DROP. Added as DROP candidate to Active open items.
+- Action: `bids` ghost-table entry expanded with full schema notes. Final consolidation/DROP decision deferred to sub consolidation design pass.
+- Action: CLAUDE.md line 26 warning sharpened — only `send-client-link` flips Kalin's role; `send-contract-email` has a staff guard and is safe.
+- Open: Sub consolidation design pass (Opus, no code) is next. Two role-guard fixes queued behind the design pass.
+- Decision: No code changes this prompt. Memory + doc only.

@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Supabase URL: `https://cbfftukmhqvvjlrlnltk.supabase.co`
 - Avenstone tenant ID: `00000000-0000-0000-0000-000000000001`
 - Kalin's auth ID: `8171742a-b586-4f13-be61-744e191a1896`
-- **Never send contracts or test emails to `kalin@avenstonekc.com`** — it will set his role to `client`
+- **Never send client links to `kalin@avenstonekc.com`** — `send-client-link` has no role guard and will overwrite his profile to `role='client'`. Contracts are safe (`send-contract-email` has an `isStaff` guard). Verified 2026-05-05.
 
 ---
 
