@@ -490,3 +490,10 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/client/ClientPortal.jsx, CLAUDE_MEMORY.md
 - Decision: Path A (direct query) — no RPC needed. status filter on unpaid invoices uses raw DB status; deriveInvoiceStatus used for overdue badge display only. client_refund subtracted from total paid math.
 - Open: Phase 6d (white-label PDF + email — audit tenants table, add business_name/email/phone/address columns, update send-invoice + resend-invoice).
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 6d — white-label tenant business info on PDF and email. Migration 20260506120000_tenant_business_info.sql adds business_email/business_phone/business_address columns to tenants; Avenstone row seeded (email=notifications@avenstonekc.com, address=Kansas City MO). Reuses existing name column as businessName. send-invoice: generatePDF now accepts businessName/businessEmail/businessPhone/businessAddress and renders them dynamically in PDF header; FROM/subject/email header+footer/reply_to all tenant-driven. resend-invoice: same email changes (no PDF regen). stripe-webhook: handleInvoicePayment loads tenant inline before sending client payment confirmation email; same brand tokens applied. FROM display name is dynamic; sending domain stays notifications@avenstonekc.com (Avenstone-verified).
+- Files: supabase/migrations/20260506120000_tenant_business_info.sql (new), supabase/functions/send-invoice/index.ts, supabase/functions/resend-invoice/index.ts, supabase/functions/stripe-webhook/index.ts, CLAUDE_MEMORY.md
+- Schema reality: tenants now has id/name/slug/logo_url/primary_color/plan/created_at/business_email/business_phone/business_address
+- Decision: tenant load after job load on every email path — single extra query per send, no caching needed at this scale. Fallbacks ensure backward compat for any tenant row missing these columns.
+- Open: invoicing arc complete. Next: sub portal upgrades (PM-Sub chat, phase confirm, CO submission).

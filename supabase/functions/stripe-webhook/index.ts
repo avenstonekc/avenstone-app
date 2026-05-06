@@ -6,7 +6,6 @@ const SB_SERVICE     = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const STRIPE_KEY     = Deno.env.get("STRIPE_SECRET_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
 const RESEND_KEY     = Deno.env.get("RESEND_API_KEY")!;
-const FROM           = "Avenstone Group <notifications@avenstonekc.com>";
 
 const stripe = new Stripe(STRIPE_KEY, { apiVersion: "2023-10-16", httpClient: Stripe.createFetchHttpClient() });
 const ok = () =>
@@ -164,13 +163,19 @@ async function handleInvoicePayment(
 
   // Step 9b — Notify client via email (non-fatal on failure)
   if (job.client_email) {
+    const { data: tenant } = await sb.from("tenants").select("name, business_email, business_address").eq("id", invoice.tenant_id as string).single();
+    const businessName    = (tenant?.name             as string) || "Avenstone Group";
+    const businessEmail   = (tenant?.business_email   as string) || "notifications@avenstonekc.com";
+    const businessAddress = (tenant?.business_address as string) || "Kansas City, MO";
+    const FROM = `${businessName} <notifications@avenstonekc.com>`;
+
     const subject = `Payment received — Invoice ${invoice.invoice_number}`;
     const html    = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#F7F5F0;font-family:sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F5F0;padding:40px 16px;">
 <tr><td align="center"><table width="100%" style="max-width:560px;">
 <tr><td style="padding-bottom:20px;text-align:center;">
-  <div style="font-size:11px;color:#C9A84C;letter-spacing:4px;text-transform:uppercase;margin-bottom:4px;">Avenstone Group</div>
+  <div style="font-size:11px;color:#C9A84C;letter-spacing:4px;text-transform:uppercase;margin-bottom:4px;">${businessName}</div>
   <div style="width:32px;height:2px;background:#C9A84C;margin:0 auto;"></div>
 </td></tr>
 <tr><td style="background:#fff;border-radius:8px;padding:32px;border:1px solid #E8E4DC;">
@@ -183,14 +188,14 @@ async function handleInvoicePayment(
   </div>
   <p style="margin:0;font-size:13px;color:#6B7280;text-align:center;">Thank you for your payment. If you have any questions, please reply to this email.</p>
 </td></tr>
-<tr><td style="padding-top:20px;text-align:center;font-size:11px;color:#9CA3AF;">Avenstone Group · Kansas City, MO</td></tr>
+<tr><td style="padding-top:20px;text-align:center;font-size:11px;color:#9CA3AF;">${businessName} · ${businessAddress}</td></tr>
 </table></td></tr></table>
 </body></html>`;
     try {
       await fetch("https://api.resend.com/emails", {
         method:  "POST",
         headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-        body:    JSON.stringify({ from: FROM, to: job.client_email, subject, html }),
+        body:    JSON.stringify({ from: FROM, reply_to: businessEmail, to: job.client_email, subject, html }),
       });
     } catch (emailErr) {
       console.error("handleInvoicePayment: client email failed:", emailErr);

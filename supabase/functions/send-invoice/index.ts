@@ -7,7 +7,6 @@ const SB_SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY")!;
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY")!;
 const APP_URL    = "https://avenstone-app.vercel.app";
-const FROM       = "Avenstone Group <notifications@avenstonekc.com>";
 
 const stripe = new Stripe(STRIPE_KEY, { apiVersion: "2023-10-16", httpClient: Stripe.createFetchHttpClient() });
 
@@ -34,6 +33,10 @@ async function generatePDF(
   invoice: Record<string, unknown>,
   lineItems: Record<string, unknown>[],
   job: Record<string, unknown>,
+  businessName: string,
+  businessEmail: string,
+  businessPhone: string,
+  businessAddress: string,
 ): Promise<Uint8Array> {
   const doc  = await PDFDocument.create();
   const page = doc.addPage([612, 792]);
@@ -51,8 +54,17 @@ async function generatePDF(
 
   // ── Header ───────────────────────────────────────────────────────────────
   const topY = 792 - margin; // 742
-  page.drawText("Avenstone KC", { x: margin, y: topY - 20, size: 22, font: bold, color: dark });
-  page.drawText("notifications@avenstonekc.com", { x: margin, y: topY - 36, size: 9, font: regular, color: gray });
+  page.drawText(businessName, { x: margin, y: topY - 20, size: 22, font: bold, color: dark });
+  let contactY = topY - 36;
+  if (businessAddress) {
+    page.drawText(businessAddress, { x: margin, y: contactY, size: 9, font: regular, color: gray });
+    contactY -= 13;
+  }
+  if (businessPhone) {
+    page.drawText(businessPhone, { x: margin, y: contactY, size: 9, font: regular, color: gray });
+    contactY -= 13;
+  }
+  page.drawText(businessEmail, { x: margin, y: contactY, size: 9, font: regular, color: gray });
 
   const invLabel     = "INVOICE";
   const invLabelW    = bold.widthOfTextAtSize(invLabel, 26);
@@ -221,8 +233,16 @@ Deno.serve(async (req) => {
     if (jobErr || !job) return json({ ok: false, error: "Job not found" }, 404);
     if (!job.client_email) return json({ ok: false, error: "Job has no client email — cannot send invoice" }, 400);
 
+    // 5b. Load tenant config
+    const { data: tenant } = await sb.from("tenants").select("name, business_email, business_phone, business_address").eq("id", invoice.tenant_id as string).single();
+    const businessName    = (tenant?.name           as string) || "Avenstone Group";
+    const businessEmail   = (tenant?.business_email as string) || "notifications@avenstonekc.com";
+    const businessPhone   = (tenant?.business_phone as string) || "";
+    const businessAddress = (tenant?.business_address as string) || "Kansas City, MO";
+    const FROM = `${businessName} <notifications@avenstonekc.com>`;
+
     // 6. Generate PDF
-    const pdfBytes = await generatePDF(invoice, lineItems, job);
+    const pdfBytes = await generatePDF(invoice, lineItems, job, businessName, businessEmail, businessPhone, businessAddress);
 
     // 7. Upload to storage
     const pdfPath = `${invoice.job_id}/invoices/${invoice.invoice_number}.pdf`;
@@ -298,14 +318,14 @@ Deno.serve(async (req) => {
     const greeting  = firstName ? `Hi ${firstName},` : "Hi,";
     const dueLine   = invoice.due_date ? ` due by ${fmtDate(invoice.due_date as string)}` : "";
     const totalFmt  = "$" + Number(invoice.total_amount).toLocaleString("en-US", { minimumFractionDigits: 2 });
-    const subject   = `Invoice ${invoice.invoice_number} from Avenstone — ${totalFmt}`;
+    const subject   = `Invoice ${invoice.invoice_number} from ${businessName} — ${totalFmt}`;
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#F7F5F0;font-family:sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F5F0;padding:40px 16px;">
 <tr><td align="center"><table width="100%" style="max-width:560px;">
 <tr><td style="padding-bottom:20px;text-align:center;">
-  <div style="font-size:11px;color:#C9A84C;letter-spacing:4px;text-transform:uppercase;margin-bottom:4px;">Avenstone Group</div>
+  <div style="font-size:11px;color:#C9A84C;letter-spacing:4px;text-transform:uppercase;margin-bottom:4px;">${businessName}</div>
   <div style="width:32px;height:2px;background:#C9A84C;margin:0 auto;"></div>
 </td></tr>
 <tr><td style="background:#fff;border-radius:8px;padding:32px;border:1px solid #E8E4DC;">
@@ -321,7 +341,7 @@ Deno.serve(async (req) => {
   <a href="${session.url}" style="display:block;background:#0A1F44;color:#C9A84C;padding:14px 32px;border-radius:4px;text-decoration:none;font-size:15px;font-weight:700;text-align:center;">Pay Now →</a>
   <p style="margin:20px 0 0;font-size:12px;color:#9CA3AF;text-align:center;">Pay securely by card or bank transfer. Questions? Reply to this email.</p>
 </td></tr>
-<tr><td style="padding-top:20px;text-align:center;font-size:11px;color:#9CA3AF;">Avenstone Group · Kansas City, MO</td></tr>
+<tr><td style="padding-top:20px;text-align:center;font-size:11px;color:#9CA3AF;">${businessName} · ${businessAddress}</td></tr>
 </table></td></tr></table>
 </body></html>`;
 
@@ -329,7 +349,7 @@ Deno.serve(async (req) => {
       const emailRes = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: FROM, to: job.client_email, subject, html }),
+        body: JSON.stringify({ from: FROM, reply_to: businessEmail, to: job.client_email, subject, html }),
       });
       if (!emailRes.ok) {
         const errText = await emailRes.text();
