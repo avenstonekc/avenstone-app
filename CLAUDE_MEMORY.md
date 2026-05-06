@@ -54,6 +54,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - **`sub_pricing` reschema confirmed live.** Columns: `id`, `sub_id`, `tenant_id`, `trade`, `pricing_mode`, `unit`, `rate`, `notes`, `created_at`, `updated_at`. Single row per (sub, trade) with `pricing_mode` enum — no materials/labor split.
 - **No `sub_invitations` table exists or ever did.** `send-invite` calls `inviteUserByEmail()` directly; the invite IS the auth.users creation.
 - **`bids` table is a legacy ghost.** Columns: `id` (text), `job_id` (text), `bid_number` (text), `status` (text), `total_amount` (text), `bid_answers` (jsonb), `created_at`, `sent_at`. All TEXT PKs (predates UUID migration), no `tenant_id`, no RLS, no current callers. DROP candidate; final call waits on sub consolidation design.
+- **`job_sub_engagements` table EXISTS** (Phase 1a, 2026-05-05). Canonical sub-to-job engagement record. Replaces scattered quote_requests / itb_invitees / Assign-to-Project paths going forward. State machine: `invited` → `bid_submitted` → `active` → `completed` plus terminal off-ramps `declined`, `withdrawn`, `removed`. Partial unique index `idx_one_live_engagement` enforces one live engagement per (job_id, sub_id, trade).
+- **`engagement_bids` table EXISTS** (Phase 1a, 2026-05-05). Bids attached to engagements. Named `engagement_bids` (not `bid_responses`) to avoid collision with the existing ITB/quote `bid_responses` table. `idx_engbid_one_current` partial unique index keeps one current bid per engagement; revisions stack as historical rows.
+- **`schedule_items.engagement_id` column EXISTS** (Phase 1a, 2026-05-05). Nullable audit FK to `job_sub_engagements`. Stamped on schedule items created from accepted bids; old items remain null.
 
 ---
 
@@ -273,3 +276,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Action: CLAUDE.md line 26 warning sharpened — only `send-client-link` flips Kalin's role; `send-contract-email` has a staff guard and is safe.
 - Open: Sub consolidation design pass (Opus, no code) is next. Two role-guard fixes queued behind the design pass.
 - Decision: No code changes this prompt. Memory + doc only.
+
+[LOG — 2026-05-05]
+- Action: Sub engagement Phase 1a — schema foundation. Created `job_sub_engagements` and `engagement_bids` tables with full RLS. Added `schedule_items.engagement_id` audit FK. Strictly additive — no legacy tables touched.
+- Files: supabase/migrations/20260505_sub_engagement_phase1a.sql, CLAUDE_MEMORY.md
+- Decision: Table named `engagement_bids` (not `bid_responses`) — collision with existing ITB/quote `bid_responses` table; IF NOT EXISTS would have silently skipped creation. State machine encoded in CHECK constraint; partial unique index enforces one live engagement per (job, sub, trade).
+- Open: Phase 1b helpers (sbCreateEngagement, sbTransitionEngagement, sbAcceptBid, sbDeclineBid, loaders), Phase 1c edge functions (submit-bid-response, view-engagement). Then UI slice. Then migration of legacy data + DROPs.
