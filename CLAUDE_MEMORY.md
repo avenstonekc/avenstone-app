@@ -516,3 +516,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, CLAUDE_MEMORY.md
 - Decision: inline display rather than modal — bid breakdowns are usually short (few lines), comparing them across engagements is more useful when visible at once. If clutter becomes a problem with very long itemizations, can move to expandable / modal later.
 - Open: sub arc polish punch list now empty. Larger arcs queued: voice agent, takeoff wizard.
+
+[LOG — 2026-05-06]
+- Action: Created EXECUTION_ARC.md at repo root. Living design doc for the next major arc — connects takeoff, sub engagement, materials, scheduling, todos, sequences, and walkthroughs into the Anti-Surprise Engine. 9 phases planned, 11 decisions locked, mechanical-with-override phase advancement, 3-sided audience defaults per trigger, hardcoded inspection checklist starter set for v1.
+- Files: EXECUTION_ARC.md, CLAUDE_MEMORY.md
+- Decision: blueprint-first workflow (proven on invoicing arc) — design doc lands before any build prompt. Phase 1 (bid availability fields on engagement_bids) is the first slice when build starts.
+- Open: phase-by-phase decisions still to refine per slice — exact todo rule items, walkthrough UI specifics, sequence message templates.
