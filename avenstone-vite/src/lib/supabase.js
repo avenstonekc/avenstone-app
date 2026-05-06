@@ -1895,3 +1895,91 @@ export const sbNotifyScheduleItemChanged = async (item, prevRow, job) => {
   const recipients = await _collectRecipients(item, job, true);
   await Promise.all(recipients.map(uid => sbNotifyUser(uid, 'schedule_item_changed', title, body, job?.id).catch(() => {})));
 };
+
+// ─── Sub Engagements ──────────────────────────────────────────────────────────
+
+export const sbCreateEngagement = async ({
+  jobId, subId, trade, bidType,
+  scopeDescription = null, dueDate = null,
+  budgetMin = null, budgetMax = null,
+  sharedDocIds = [], sharedPhotoIds = [], notes = null,
+}) => {
+  if (!jobId) return { ok: false, error: 'jobId is required', data: null };
+  if (!subId) return { ok: false, error: 'subId is required', data: null };
+  if (!trade) return { ok: false, error: 'trade is required', data: null };
+  if (!bidType) return { ok: false, error: 'bidType is required', data: null };
+  if (!['sub_drafted', 'gc_drafted'].includes(bidType))
+    return { ok: false, error: "bidType must be 'sub_drafted' or 'gc_drafted'", data: null };
+  if (!AV_TENANT || !AV_USER_ID) return { ok: false, error: 'Not authenticated', data: null };
+
+  const { data, error } = await sb.from('job_sub_engagements').insert({
+    tenant_id: AV_TENANT,
+    job_id: jobId,
+    sub_id: subId,
+    trade,
+    bid_type: bidType,
+    status: 'invited',
+    invited_by_id: AV_USER_ID,
+    scope_description: scopeDescription,
+    due_date: dueDate || null,
+    budget_min: budgetMin != null ? Number(budgetMin) : null,
+    budget_max: budgetMax != null ? Number(budgetMax) : null,
+    shared_doc_ids: sharedDocIds,
+    shared_photo_ids: sharedPhotoIds,
+    notes: notes || null,
+    invited_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).select().single();
+
+  if (error) {
+    if (error.code === '23505')
+      return { ok: false, error: 'This sub already has a live engagement for this job and trade. Re-engage only after the current one is completed, declined, withdrawn, or removed.', data: null };
+    captureFailedIntent({ kind: 'sub_assign', payload: { subId, trade, jobId }, jobId, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  return { ok: true, error: null, data };
+};
+
+export const sbLoadEngagementsForJob = async jobId => {
+  if (!jobId) return { ok: false, error: 'jobId is required', data: null };
+  const { data, error } = await sb
+    .from('job_sub_engagements')
+    .select('*, sub:profiles!sub_id(id, full_name, email, phone), invited_by:profiles!invited_by_id(id, full_name)')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false });
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || [] };
+};
+
+export const sbLoadEngagementsForSub = async subId => {
+  if (!subId) return { ok: false, error: 'subId is required', data: null };
+  const { data, error } = await sb
+    .from('job_sub_engagements')
+    .select('*, job:jobs!job_id(id, address, status)')
+    .eq('sub_id', subId)
+    .order('created_at', { ascending: false });
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || [] };
+};
+
+export const sbLoadEngagementByIds = async ({ jobId, subId, trade, includeTerminal = false }) => {
+  if (!jobId) return { ok: false, error: 'jobId is required', data: null };
+  if (!subId) return { ok: false, error: 'subId is required', data: null };
+  if (!trade) return { ok: false, error: 'trade is required', data: null };
+
+  let q = sb
+    .from('job_sub_engagements')
+    .select('*')
+    .eq('job_id', jobId)
+    .eq('sub_id', subId)
+    .eq('trade', trade)
+    .order('created_at', { ascending: false });
+
+  if (!includeTerminal)
+    q = q.not('status', 'in', '("completed","declined","withdrawn","removed")');
+
+  const { data, error } = await q;
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || [] };
+};

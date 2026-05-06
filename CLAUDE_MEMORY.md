@@ -282,3 +282,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/migrations/20260505_sub_engagement_phase1a.sql, CLAUDE_MEMORY.md
 - Decision: Table named `engagement_bids` (not `bid_responses`) — collision with existing ITB/quote `bid_responses` table; IF NOT EXISTS would have silently skipped creation. State machine encoded in CHECK constraint; partial unique index enforces one live engagement per (job, sub, trade).
 - Open: Phase 1b helpers (sbCreateEngagement, sbTransitionEngagement, sbAcceptBid, sbDeclineBid, loaders), Phase 1c edge functions (submit-bid-response, view-engagement). Then UI slice. Then migration of legacy data + DROPs.
+
+[LOG — 2026-05-05]
+- Action: Sub engagement Phase 1b — 4 helpers added to supabase.js: sbCreateEngagement, sbLoadEngagementsForJob, sbLoadEngagementsForSub, sbLoadEngagementByIds. PM-side only. All return { ok, error, data }. sbCreateEngagement maps Postgres unique-violation 23505 to a user-friendly "already engaged" error.
+- Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: tenant_id sourced from AV_TENANT module global (match existing pattern — no getUser() calls in existing helpers), not passed by caller.
+- Open: Phase 1c (state machine helpers — sbTransitionEngagement, sbAcceptBid, sbDeclineBid). Phase 1c is where the auto-draft-schedule-items handoff lives.
