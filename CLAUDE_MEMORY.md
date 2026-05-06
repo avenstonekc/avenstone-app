@@ -380,3 +380,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: sbAssignSub + sbLoadSubsTabData + sbUpdateQuoteRequest + sbUpdateITB alias + sbSendBidInvite + sbUpdateBidStatus removed (orphaned after this slice per fresh grep). sbLoadSubDirectory, sbLoadJobTransactions, sbResolveTodosBySource retained — have callers in SubDir.jsx, FinancialsTab.jsx, takeoff.js, TransactionModal.jsx. job_subs table is now fully orphaned in the codebase — no readers, no writers.
 - Open: Phase 2e-4 (standalone Quote Request page if exists). Phase 3 schema cleanup: DROP bids ghost, sub_pricing_changes, legacy bid_responses, invitations_to_bid view, quote_requests, itb_invitees, AND job_subs (fully orphaned — writer + readers removed; migrated rows preserved as backup).
+
+[LOG — 2026-05-06]
+- Action: Pre-Phase-3 cleanup — retired sub_pricing_changes workflow (OwnerPortal PricingTab + sbLoadPricingApprovals); migrated ClientPortal, InfoTab to job_sub_engagements; rewrote sbLoadScheduleItemsForSub to use schedule_items.assigned_sub_id directly. Removed sbLoadJobSubs, sbUnassignSub.
+- Files: avenstone-vite/src/components/owner/OwnerPortal.jsx, avenstone-vite/src/components/client/ClientPortal.jsx, avenstone-vite/src/components/jobs/tabs/InfoTab.jsx, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: sbLoadScheduleItemsForSub now filters assigned_sub_id directly — no job_subs join needed. ClientPortal ratings section uses js.sub (engagement sub) and js.trade (engagement trade) instead of legacy js.profile shape. InfoTab "Assigned Subs" shows active engagements, read-only.
+- Open: Phase 3 schema cleanup re-run — all gate failures resolved.

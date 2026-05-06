@@ -490,19 +490,6 @@ export const sbInviteSub = async (name, email, trade, phone) => {
   const res = await fetch(INVITE_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, full_name: name, role: 'sub', trade, phone, tenant_id: AV_TENANT }) });
   return res.json();
 };
-export const sbLoadJobSubs = async jid => {
-  const { data } = await sb.from('job_subs').select('*,profile:profiles(id,full_name,email,trade,phone)').eq('job_id', jid);
-  return data || [];
-};
-
-export const sbUnassignSub = async (jid, subId) => {
-  const { error } = await sb.from('job_subs').delete().eq('job_id', jid).eq('sub_id', subId);
-  if (error) {
-    captureFailedIntent({ kind: 'sub_unassign', payload: { subId }, jobId: jid, message: error.message, resumable: false }).catch(() => {});
-    return { ok: false, error: error.message };
-  }
-  return { ok: true, error: null };
-};
 
 // ─── Messages ─────────────────────────────────────────────────────────────────
 export const sbLoadMessages = async jid => {
@@ -1631,27 +1618,12 @@ export const sbDeleteScheduleItem = async (id) => {
 
 export const sbLoadScheduleItemsForSub = async (subId) => {
   try {
-    // Get all job_ids this sub is assigned to
-    const { data: assignments } = await sb
-      .from('job_subs')
-      .select('job_id')
-      .eq('sub_id', subId);
-    const jobIds = (assignments || []).map(a => a.job_id);
-
-    // Items directly assigned to the sub OR on any job the sub is on
-    let q = sb
+    const { data, error } = await sb
       .from('schedule_items')
-      .select('*, assigned_sub:profiles!assigned_sub_id(id, full_name)')
-      .neq('status', 'cancelled')
+      .select('*, job:jobs!job_id(id, address)')
+      .eq('assigned_sub_id', subId)
+      .not('status', 'in', '(completed,cancelled)')
       .order('scheduled_date', { nullsFirst: false });
-
-    if (jobIds.length > 0) {
-      q = q.or(`assigned_sub_id.eq.${subId},job_id.in.(${jobIds.join(',')})`);
-    } else {
-      q = q.eq('assigned_sub_id', subId);
-    }
-
-    const { data, error } = await q;
     if (error) throw error;
     return { ok: true, error: null, data: data || [] };
   } catch (e) {

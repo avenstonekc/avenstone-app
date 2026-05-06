@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbLoadJobSubs, sbSendClientLink, sbLoadDocs } from '../../../lib/supabase';
+import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbSendClientLink, sbLoadDocs } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildGenericPDF } from '../../../lib/pdf';
 import ContractModal from '../../modals/ContractModal';
@@ -65,7 +65,12 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
 
   useEffect(() => {
     if (jobSubsLoaded) return;
-    sbLoadJobSubs(job.id).then(d => setJobSubs(d));
+    sb.from('job_sub_engagements')
+      .select('id, trade, sub:profiles!sub_id(id, full_name, email)')
+      .eq('job_id', job.id)
+      .eq('status', 'active')
+      .order('activated_at', { ascending: true })
+      .then(({ data }) => setJobSubs(data || []));
     sbLoadDocs(job.id).then(docs => {
       const p = docs.find(d => d.file_type === 'proposal');
       if (p) setProposalDoc(p);
@@ -171,12 +176,12 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
           <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11 }} onClick={() => setTab && setTab('subs')}>Manage in Subs tab →</button>
         </div>
         {!jobSubs.length && <div style={{ textAlign: 'center', padding: '16px 0', color: '#9CA3AF', fontSize: 13 }}>No subs assigned yet</div>}
-        {jobSubs.map(js => { const p = js.profile || {}; return (
+        {jobSubs.map(js => { const p = js.sub || {}; return (
           <div key={js.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #F3F0E8' }}>
             <div style={{ width: 32, height: 32, background: '#0A1F4422', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#0A1F44', flexShrink: 0 }}>{(p.full_name || '?')[0].toUpperCase()}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{p.full_name || p.email}</div>
-              {p.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{p.trade}</div>}
+              {js.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{js.trade}</div>}
             </div>
           </div>
         ); })}

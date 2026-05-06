@@ -157,7 +157,7 @@ export default function ClientPortal({ profile, signOut }) {
   useEffect(() => {
     if (!job) return;
     if (!loaded.phases) { sbLoadPhases(job.id).then(d => { setPhases(d); setLoaded(p => ({ ...p, phases: true })); }); }
-    if (!loaded.subs) { sb.from('job_subs').select('*,profile:profiles(id,full_name,email,trade)').eq('job_id', job.id).then(({ data }) => { setJobSubs(data || []); setLoaded(p => ({ ...p, subs: true })); }); }
+    if (!loaded.subs) { sb.from('job_sub_engagements').select('id,trade,sub:profiles!sub_id(id,full_name,email)').eq('job_id', job.id).eq('status', 'active').order('activated_at', { ascending: true }).then(({ data }) => { setJobSubs(data || []); setLoaded(p => ({ ...p, subs: true })); }); }
     if (!staffOwnerId) { sb.from('profiles').select('id').eq('tenant_id', AV_TENANT).eq('role', 'owner').limit(1).single().then(({ data }) => { if (data?.id) setStaffOwnerId(data.id); }); }
   }, [job?.id]);
 
@@ -501,14 +501,14 @@ export default function ClientPortal({ profile, signOut }) {
               <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Rate Our Team</div>
               <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16, lineHeight: 1.6 }}>Your feedback helps us keep standards high and rewards our best crew.</div>
               {jobSubs.map(js => {
-                const sub = js.profile || {};
+                const sub = js.sub || {};
                 const r = ratings[sub.id] || { stars: 0, comment: '' };
                 const done = ratingDone[sub.id];
                 return (
                   <div key={js.id} style={{ borderTop: '1px solid #F3F0EB', paddingTop: 14, marginTop: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <div style={{ width: 36, height: 36, background: '#0A1F4418', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#0A1F44', flexShrink: 0 }}>{(sub.full_name || '?')[0].toUpperCase()}</div>
-                      <div><div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{sub.full_name || sub.email}</div>{sub.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{sub.trade}</div>}</div>
+                      <div><div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{sub.full_name || sub.email}</div>{js.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{js.trade}</div>}</div>
                     </div>
                     {done ? <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600 }}>✓ Review submitted — thank you!</div> : (
                       <>
