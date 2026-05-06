@@ -446,3 +446,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Commit: 68f49a0 (deployed via GitHub Actions)
 - Decision: webhook returns 200 even on handleInvoicePayment throw (prevents Stripe retry loops on data-integrity issues; transient infra errors are logged). RESEND_API_KEY added to webhook env reads — already provisioned from Phase 4a.
 - Open: Phase 5 — ClientPortal Invoices section (view invoices, PDF link, Pay Now). Phase 4c polish: Resend button on sent invoices, InvoiceDetailModal, revision log on edit-after-send.
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 5a — regenerate-invoice-payment edge function + sbRegenerateInvoicePaymentUrl helper. Solves Stripe Checkout 24-hour session expiry: clients click Pay Now and we mint a fresh Stripe session at click time. Authorization gated via JWT-scoped read (RLS handles it — no role re-check needed). Updates invoice.stripe_session_id + stripe_checkout_url; does NOT touch status. Identical metadata to send-invoice so the webhook reconciliation path is unchanged.
+- Files: supabase/functions/regenerate-invoice-payment/index.ts (new), avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: JWT-scoped RLS read uses SUPABASE_ANON_KEY + caller token as Authorization header (callerClient pattern). Validation rejects draft/paid/void — only sent/viewed/partially_paid/overdue can regenerate. Idempotent: each call overwrites the previous session, webhook reconciles correctly because metadata is constant.
+- Open: Phase 5b — ClientInvoicesTab component + ClientPortal Invoices tab integration. Pay Now button calls sbRegenerateInvoicePaymentUrl.

@@ -2306,3 +2306,13 @@ export async function sbSendInvoice(invoiceId) {
   if (!data?.ok) throw new Error(data?.error ?? 'Failed to send invoice');
   return data;
 }
+
+export async function sbRegenerateInvoicePaymentUrl(invoiceId) {
+  if (!invoiceId) throw new Error('invoiceId required');
+  const { data, error } = await sb.functions.invoke('regenerate-invoice-payment', {
+    body: { invoice_id: invoiceId },
+  });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error ?? 'Failed to generate fresh payment link');
+  return data.checkout_url;
+}
