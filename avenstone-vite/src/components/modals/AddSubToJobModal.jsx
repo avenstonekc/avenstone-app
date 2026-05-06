@@ -35,9 +35,10 @@ export default function AddSubToJobModal({ isOpen, onClose, onSuccess, initialSu
   }, [subId]);
 
   useEffect(() => {
+    // Sync controlled IDs whenever modal opens/closes so props changes take effect
+    setSubId(initialSubId || '');
+    setJobId(initialJobId || '');
     if (!isOpen) {
-      setSubId(initialSubId || '');
-      setJobId(initialJobId || '');
       setTrade('');
       setBidType('sub_drafted');
       setScopeDescription('');

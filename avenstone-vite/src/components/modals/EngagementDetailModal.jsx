@@ -29,18 +29,25 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
   const refetchModalData = async () => {
     try {
       const { data: { session } } = await sb.auth.getSession();
-      const res = await fetch(`${VIEW_ENGAGEMENT_URL}?id=${engagementId}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+      const res = await fetch(VIEW_ENGAGEMENT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ engagementId }),
       });
       const json = await res.json();
       if (!res.ok || json.error) { setErr(json.error || 'Failed to load engagement'); return; }
-      const fetched = json.data || json;
+      // fn returns { ok, data: { engagement, currentBid } }
+      const { engagement, currentBid } = json.data;
+      const fetched = { ...engagement, current_bid: currentBid || null };
       setEng(fetched);
       setForm({
-        totalAmount: fetched.current_bid?.total_amount ?? '',
-        terms: fetched.current_bid?.terms ?? '',
-        startDate: fetched.current_bid?.start_date ?? '',
-        endDate: fetched.current_bid?.end_date ?? '',
+        totalAmount: currentBid?.total_amount ?? '',
+        terms: currentBid?.terms ?? '',
+        startDate: currentBid?.start_date ?? '',
+        endDate: currentBid?.end_date ?? '',
       });
     } catch (e) {
       setErr(e?.message || 'Network error');
