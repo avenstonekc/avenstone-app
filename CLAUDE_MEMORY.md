@@ -81,8 +81,6 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Client notification silence at financial events — identified, not fixed
 - `bids` legacy ghost table — text PKs, no tenant_id, no RLS, no current callers. DROP candidate; decision waits on sub consolidation design pass.
 - `sub_pricing_changes` legacy table — DROP candidate (memory previously claimed dropped, never was).
-- `send-invite` profile upsert has NO role guard — will overwrite owner/pm/sales_rep roles to `sub` if invited email already has a staff profile. Add `isStaff` guard matching `send-contract-email` pattern.
-- `send-client-link` profile upsert has NO role guard — will overwrite ANY existing role to `client`. Sending a client link to `kalin@avenstonekc.com` flips his role. Add `isStaff` guard matching `send-contract-email` pattern.
 - Sub management consolidation design pass — design doc only, no code. Unifies "Invite sub to bid on job" across Subs Directory invite, Assign-to-Project, and Quote Request → Send Invite flows. Promoted from Future architecture 2026-05-05 after triple-UI pain proved it's not deferable.
 - Picker enrichment in unified modal (Phase 2): show per-sub schedule load badge ("2 active jobs · 3 items next 14d"), trade-match indicator, last-engagement-age. Optional Haiku-cheap AI summary on hover. Anti-Surprise alignment — flag overcommitted subs before invite, not after. Captured 2026-05-05.
 
@@ -303,3 +301,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: not transactional. Step order ensures the engagement-active state is the load-bearing commit; downstream is recoverable manually if needed. Hardening to a Postgres RPC for atomic acceptance can come later if real failures show up. Spec column-name mismatches corrected against live schema: description→title, sub_id→assigned_sub_id, created_by→created_by_id; no phase column on schedule_items (trade is sufficient for derivePhaseStatus); jobs.address used instead of nonexistent jobs.name.
 - Open: Phase 1e (sub-side edge functions: submit-bid-response, view-engagement). Phase 2 (UI: unified Add-to-Job modal, JobDet engagements tab, retire old paths).
+
+[LOG — 2026-05-05]
+- Action: Two role-guard fixes shipped.
+  - send-invite: now reads existing profile before upsert; if role is owner/project_manager/sales_rep, preserves it instead of overwriting to 'sub'.
+  - send-client-link: now hard-errors (JSON 409) if target email already has a staff role. New-user path unchanged.
+- Files: supabase/functions/send-invite/index.ts, supabase/functions/send-client-link/index.ts, CLAUDE_MEMORY.md, CLAUDE.md
+- Decision: send-invite tolerates staff (keeps role); send-client-link rejects staff (no defensible use case for sending a client link to a staff member).
+- Open: Phase 2 of sub engagement consolidation (UI). Legacy bid_responses table column-list query (DROP prep, queued).

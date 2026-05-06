@@ -21,6 +21,11 @@ Deno.serve(async (req) => {
 
     if (existing) {
       userId = existing.id;
+      const { data: existingProfile } = await sb.from("profiles").select("role").eq("id", userId).single();
+      const isStaff = existingProfile?.role && ["owner", "project_manager", "sales_rep"].includes(existingProfile.role);
+      if (isStaff) {
+        return new Response(JSON.stringify({ ok: false, error: "Cannot send client link to a staff email — would overwrite their staff role" }), { status: 409, headers: { "Content-Type": "application/json" } });
+      }
       await sb.from("profiles").upsert({ id: userId, tenant_id, full_name: client_name || "", email, role: "client" }, { onConflict: "id" });
     } else {
       const { data, error } = await sb.auth.admin.inviteUserByEmail(email, {
