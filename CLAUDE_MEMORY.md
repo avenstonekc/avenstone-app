@@ -337,3 +337,15 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/sub/SubPortal.jsx, CLAUDE_MEMORY.md
 - Decision: strictly additive — legacy itb:quote_requests selector stays. Retirement is Phase 2e. Section placed at top of content area (above all tabs) since it's always relevant to the sub.
 - Open: Phase 2d-2 (engagement detail modal calling view-engagement edge fn). Phase 2d-3 (bid submission form calling submit-bid-response edge fn). Phase 2e (retire legacy SubPortal selector + Quote Request page + Assign-to-Project flow).
+
+[LOG — 2026-05-06]
+- Action: Sub engagement Phase 2d-2 — EngagementDetailModal built. Click engagement row in SubPortal → modal opens → calls view-engagement edge fn with sub's real JWT (sb.auth.getSession) → stamps first_viewed_at server-side → renders job, trade, status, scope, budget/dates, bid type, and current bid read-only. Engagement rows have cursor:pointer + onClick.
+- Files: avenstone-vite/src/components/modals/EngagementDetailModal.jsx (new), avenstone-vite/src/components/sub/SubPortal.jsx, CLAUDE_MEMORY.md
+- Decision: auth pattern sb.auth.getSession() → Bearer ${session.access_token} is the canonical pattern for edge fns that validate real user JWT (vs. anon key). First use in components.
+- Open: Phase 2d-3 (bid submission form in EngagementDetailModal calling submit-bid-response). Phase 2e (retire legacy).
+
+[LOG — 2026-05-06]
+- Action: Sub engagement Phase 2d-3 — bid submission live in EngagementDetailModal. Edit mode with form (total amount, terms, start/end dates; line items deferred). State-aware action button labels: "Submit your bid" / "Review and submit" / "Modify and resubmit". POSTs submit-bid-response with caller JWT; on success, refetches modal data (now shows bid_submitted state) and fires onSuccess callback to SubPortal for toast + list refetch.
+- Files: avenstone-vite/src/components/modals/EngagementDetailModal.jsx, avenstone-vite/src/components/sub/SubPortal.jsx, CLAUDE_MEMORY.md
+- Decision: lump-sum bids only in v1 (lineItems: null). Itemized line-item entry is a polish slice.
+- Open: end-to-end smoke test of the full pipeline (PM create → sub submit → PM accept → schedule items auto-draft). Phase 2e (retire legacy SubPortal Bids tab + Quote Request page + obsolete buttons).

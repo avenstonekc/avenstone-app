@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, VIEW_ENGAGEMENT_URL } from '../../lib/supabase';
+import { sb, VIEW_ENGAGEMENT_URL, SUBMIT_BID_RESPONSE_URL } from '../../lib/supabase';
 import { f$, fD, fDT } from '../../lib/utils';
 
 const NAV = '#0A1F44';
@@ -16,45 +16,105 @@ const STATUS_META = {
   removed:       { label: 'Removed',        color: '#ef4444', bg: 'rgba(239,68,68,0.1)'   },
 };
 
-export default function EngagementDetailModal({ isOpen, onClose, engagementId }) {
+export default function EngagementDetailModal({ isOpen, onClose, engagementId, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [eng, setEng] = useState(null);
 
+  const [mode, setMode] = useState('view');
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState(null);
+  const [form, setForm] = useState({ totalAmount: '', terms: '', startDate: '', endDate: '' });
+
+  const refetchModalData = async () => {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(`${VIEW_ENGAGEMENT_URL}?id=${engagementId}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) { setErr(json.error || 'Failed to load engagement'); return; }
+      const fetched = json.data || json;
+      setEng(fetched);
+      setForm({
+        totalAmount: fetched.current_bid?.total_amount ?? '',
+        terms: fetched.current_bid?.terms ?? '',
+        startDate: fetched.current_bid?.start_date ?? '',
+        endDate: fetched.current_bid?.end_date ?? '',
+      });
+    } catch (e) {
+      setErr(e?.message || 'Network error');
+    }
+  };
+
   useEffect(() => {
     if (!isOpen || !engagementId) return;
-    setLoading(true); setErr(''); setEng(null);
-    (async () => {
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        const res = await fetch(`${VIEW_ENGAGEMENT_URL}?id=${engagementId}`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const json = await res.json();
-        if (!res.ok || json.error) { setErr(json.error || 'Failed to load engagement'); return; }
-        setEng(json.data || json);
-      } catch (e) {
-        setErr(e?.message || 'Network error');
-      } finally {
-        setLoading(false);
-      }
-    })();
+    setLoading(true); setErr(''); setEng(null); setMode('view'); setFormError(null);
+    refetchModalData().finally(() => setLoading(false));
   }, [isOpen, engagementId]);
+
+  const handleSubmit = async () => {
+    const amount = Number(form.totalAmount);
+    if (!form.totalAmount || isNaN(amount) || amount <= 0) {
+      setFormError('Total amount is required and must be greater than zero');
+      return;
+    }
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(SUBMIT_BID_RESPONSE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          engagementId: eng.id,
+          totalAmount: amount,
+          terms: form.terms || null,
+          startDate: form.startDate || null,
+          endDate: form.endDate || null,
+          lineItems: null,
+          attachedDocIds: [],
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setFormError(json.error || `Server error (${res.status})`);
+        return;
+      }
+      await refetchModalData();
+      setMode('view');
+      if (typeof onSuccess === 'function') onSuccess();
+    } catch (e) {
+      setFormError(e?.message || 'Network error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (!isOpen) return null;
 
   const meta = eng ? (STATUS_META[eng.status] || STATUS_META.invited) : null;
   const bid = eng?.current_bid;
 
+  const actionLabel = (() => {
+    if (!eng || eng.status !== 'invited') return null;
+    if (eng.bid_type === 'gc_drafted' && bid?.drafted_by === 'gc') return 'Review and submit';
+    if (bid?.drafted_by === 'sub' && bid?.revision_number > 1) return 'Modify and resubmit';
+    if (!bid) return 'Submit your bid';
+    return null;
+  })();
+
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 480, width: '90%', maxHeight: '85dvh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
 
         {loading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Loading...</div>}
-
         {err && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{err}</div>}
 
-        {eng && <>
+        {eng && mode === 'view' && <>
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
             <div style={{ minWidth: 0 }}>
@@ -137,9 +197,79 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId })
               {eng.completed_at && <span>Completed {fDT(eng.completed_at)}</span>}
             </div>
           )}
+
+          {/* Action footer */}
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button className="btn btn-ghost" style={{ flex: actionLabel ? 1 : undefined, width: actionLabel ? undefined : '100%' }} onClick={onClose}>Close</button>
+            {actionLabel && (
+              <button className="btn btn-navy" style={{ flex: 1 }} onClick={() => setMode('edit')}>{actionLabel}</button>
+            )}
+          </div>
         </>}
 
-        <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={onClose}>Close</button>
+        {eng && mode === 'edit' && (
+          <>
+            {/* Breadcrumb */}
+            <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 14 }}>
+              Submitting bid for <strong style={{ color: NAV }}>{eng.job?.address || '—'}</strong>{eng.trade ? ` – ${eng.trade}` : ''}
+            </div>
+
+            {formError && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{formError}</div>
+            )}
+
+            <div className="fg">
+              <label className="flbl"><span className="freq">*</span>Total Amount ($)</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', fontSize: 14 }}>$</span>
+                <input
+                  className="finp"
+                  style={{ paddingLeft: 22 }}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.totalAmount}
+                  onChange={e => setForm(p => ({ ...p, totalAmount: e.target.value }))}
+                  placeholder="0.00"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="fg">
+              <label className="flbl">Terms / Notes</label>
+              <textarea
+                className="finp fta"
+                rows={3}
+                value={form.terms}
+                onChange={e => setForm(p => ({ ...p, terms: e.target.value }))}
+                placeholder="Payment terms, conditions, exclusions, etc."
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div className="fg" style={{ flex: 1 }}>
+                <label className="flbl">Start Date</label>
+                <input className="finp" type="date" value={form.startDate} onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))} />
+              </div>
+              <div className="fg" style={{ flex: 1 }}>
+                <label className="flbl">End Date</label>
+                <input className="finp" type="date" value={form.endDate} onChange={e => setForm(p => ({ ...p, endDate: e.target.value }))} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setMode('view')} disabled={submitting}>Cancel</button>
+              <button className="btn btn-navy" style={{ flex: 1 }} onClick={handleSubmit} disabled={submitting}>
+                {submitting ? 'Submitting...' : 'Submit Bid'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {!eng && !loading && (
+          <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={onClose}>Close</button>
+        )}
       </div>
     </div>
   );

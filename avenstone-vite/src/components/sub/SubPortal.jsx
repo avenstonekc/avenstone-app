@@ -55,15 +55,21 @@ export default function SubPortal({ profile, signOut }) {
   const [engagements, setEngagements] = useState([]);
   const [showPast, setShowPast] = useState(false);
   const [detailEngId, setDetailEngId] = useState(null);
+  const [toast, setToast] = useState('');
+  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 4000); };
+
+  const loadEngagements = async () => {
+    if (!profile?.id) return;
+    const res = await sbLoadEngagementsForSub(profile.id);
+    if (res.ok) setEngagements(res.data);
+  };
 
   useEffect(() => {
     sbLoadActiveTradeStrings().then(setAllTradeStrings);
   }, []);
 
   useEffect(() => {
-    if (profile?.id) {
-      sbLoadEngagementsForSub(profile.id).then(res => { if (res.ok) setEngagements(res.data); });
-    }
+    loadEngagements();
   }, [profile?.id]);
 
   useEffect(() => {
@@ -415,7 +421,13 @@ export default function SubPortal({ profile, signOut }) {
         </div>
       </div>}
 
-      <EngagementDetailModal isOpen={!!detailEngId} onClose={() => setDetailEngId(null)} engagementId={detailEngId} />
+      {toast && <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: '#D1FAE5', color: '#065F46', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 2000, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{toast}</div>}
+      <EngagementDetailModal
+        isOpen={!!detailEngId}
+        onClose={() => setDetailEngId(null)}
+        engagementId={detailEngId}
+        onSuccess={() => { showToast('Bid submitted — awaiting PM review'); loadEngagements(); }}
+      />
 
       {/* Bid submit modal */}
       {bidITB && <div className="overlay" onClick={() => setBidITB(null)}>
