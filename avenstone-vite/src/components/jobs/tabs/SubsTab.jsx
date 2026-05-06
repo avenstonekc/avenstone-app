@@ -104,6 +104,17 @@ export default function SubsTab({ job, profile, setTab }) {
                     </>)}
                   </div>
                 </div>
+                {Array.isArray(eng.current_bid?.line_items) && eng.current_bid.line_items.length > 0 && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #1f2937' }}>
+                    {eng.current_bid.line_items.map((li, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: 8, fontSize: 11, color: '#9ca3af', padding: '2px 0' }}>
+                        <span style={{ flex: 1, color: '#d1d5db' }}>{li.description}</span>
+                        <span style={{ flexShrink: 0 }}>{li.quantity}{li.unit ? ' ' + li.unit : ''} @ {f$(li.unit_price)}</span>
+                        <span style={{ flexShrink: 0, color: '#60a5fa', fontWeight: 600, minWidth: 60, textAlign: 'right' }}>{f$(li.line_total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           };

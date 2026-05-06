@@ -510,3 +510,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/migrations/20260506150000_engagement_bids_line_items_default.sql, supabase/functions/submit-bid-response/index.ts, avenstone-vite/src/components/modals/EngagementDetailModal.jsx, CLAUDE_MEMORY.md
 - Decision: line_total field on each row is overridable (type=number, editable) but auto-fills from qty × unit_price. Edge function honors explicit line_total or falls back to computed — same pattern. Empty lineItems array = lump-sum path (no change to existing bids).
 - Open: sbAcceptBid schedule-item auto-draft reads line_items (already built in Phase 1d) — line items now flow end-to-end. PM-side SubsTab view mode already shows line items in current_bid display from Phase 2c.
+
+[LOG — 2026-05-06]
+- Action: Sub arc polish slice 3b — PM-side display of bid line items in JobDet SubsTab Engagements section. Inline breakdown below bid total, formatted as description + "qty unit @ unit_price" + line_total. Empty / missing line_items renders nothing extra (lump-sum bids unchanged). Renders across all state groups (Awaiting bid / Active / Completed / Off the job). Helper unchanged — line_items was already in sbLoadEngagementsForJob select (line 1827).
+- Files: avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, CLAUDE_MEMORY.md
+- Decision: inline display rather than modal — bid breakdowns are usually short (few lines), comparing them across engagements is more useful when visible at once. If clutter becomes a problem with very long itemizations, can move to expandable / modal later.
+- Open: sub arc polish punch list now empty. Larger arcs queued: voice agent, takeoff wizard.
