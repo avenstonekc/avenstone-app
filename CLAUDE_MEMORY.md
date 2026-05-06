@@ -368,3 +368,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: SubPicker.jsx file left in repo — import removed from SubsTab but file not deleted (Phase 2e-3 is the right time to sweep orphaned files). No test references to the removed buttons.
 - Open: Phase 2e-3 (retire Assigned Subs + QR sections on SubsTab; SubPicker.jsx orphan). Phase 2e-4 (standalone Quote Request page if any). Phase 3 schema cleanup.
+
+[LOG — 2026-05-06]
+- Action: Phase 2e-3-migrate — migrated 6 live job_subs rows into job_sub_engagements (status='active', bid_type='gc_drafted') with placeholder engagement_bids rows (total_amount=0, is_current=true). Verification: legacy_count=6 == migrated_count=6, all active, each has exactly 1 current bid. Original job_subs rows untouched as backup until Phase 3.
+- Files: supabase/migrations/20260506074657_migrate_job_subs_to_engagements.sql, CLAUDE_MEMORY.md
+- Decision: gc_drafted bid_type because legacy assignments were GC-side decisions, not sub-submitted bids. trade='general' (job_subs has no trade column). invited_by_id=Kalin's auth ID fallback (no created_by_id column). notes column tags each migrated row with source job_subs id for traceability.
+- Open: Phase 2e-3-retire — retire QR section + Assigned Subs section + awardBid path now that all 6 assignments live in the new engagement system.
