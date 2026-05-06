@@ -3,6 +3,7 @@ import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage,
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
+import ClientInvoicesTab from './ClientInvoicesTab';
 
 async function sbSubmitRating(subId, stars, comment, jobId) {
   const { data, error } = await sb.from('sub_ratings').upsert({ tenant_id: AV_TENANT, sub_id: subId, rater_id: AV_USER_ID, job_id: jobId || null, stars, comment: comment || null }, { onConflict: 'tenant_id,sub_id,rater_id,job_id' }).select().single();
@@ -95,10 +96,11 @@ function ProgressStepper({ status }) {
 }
 
 const BASE_CLIENT_TABS = [
-  { id: 'overview', lb: 'Overview', ic: 'info' },
-  { id: 'schedule', lb: 'Schedule', ic: 'sched' },
-  { id: 'photos', lb: 'Photos', ic: 'cam' },
-  { id: 'msgs', lb: 'Messages', ic: 'note' },
+  { id: 'overview',  lb: 'Overview',  ic: 'info' },
+  { id: 'invoices',  lb: 'Invoices',  ic: 'doc'  },
+  { id: 'schedule',  lb: 'Schedule',  ic: 'sched' },
+  { id: 'photos',    lb: 'Photos',    ic: 'cam'  },
+  { id: 'msgs',      lb: 'Messages',  ic: 'note' },
 ];
 const getClientTabs = job => job?.cost_plus ? [...BASE_CLIENT_TABS, { id: 'financials', lb: 'Financials', ic: 'doc' }] : BASE_CLIENT_TABS;
 
@@ -522,6 +524,8 @@ export default function ClientPortal({ profile, signOut }) {
               })}
             </div>}
           </>}
+
+          {tab === 'invoices' && <ClientInvoicesTab job={job} />}
 
           {tab === 'schedule' && <ClientScheduleView jobId={job.id} />}
 

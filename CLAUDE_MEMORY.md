@@ -452,3 +452,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/functions/regenerate-invoice-payment/index.ts (new), avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: JWT-scoped RLS read uses SUPABASE_ANON_KEY + caller token as Authorization header (callerClient pattern). Validation rejects draft/paid/void — only sent/viewed/partially_paid/overdue can regenerate. Idempotent: each call overwrites the previous session, webhook reconciles correctly because metadata is constant.
 - Open: Phase 5b — ClientInvoicesTab component + ClientPortal Invoices tab integration. Pay Now button calls sbRegenerateInvoicePaymentUrl.
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 5b — ClientInvoicesTab component + Invoices tab in ClientPortal.
+- ClientInvoicesTab: owns its own load (sbLoadInvoicesForJob on mount). Cards match payments-tab visual style (white card, border, padding 16). Status pills use client-friendly labels: sent/viewed both show "Awaiting payment", partially_paid "Partially paid", paid "Paid", overdue "Overdue". Amount grid shows Total / Paid / Balance. View Invoice opens pdf_url in new tab. Pay Now calls sbRegenerateInvoicePaymentUrl for fresh Stripe session, opens in new tab. Loading spinner per-button via payingInvoiceId state. Void invoices dim (opacity 0.6) and hide action buttons.
+- ClientPortal: Invoices tab added to BASE_CLIENT_TABS (after Overview, before Schedule). Render branch wired. Payments tab and all other surfaces untouched.
+- Files: avenstone-vite/src/components/client/ClientInvoicesTab.jsx (new), avenstone-vite/src/components/client/ClientPortal.jsx
+- Decision: Payments tab not removed from BASE_CLIENT_TABS (it wasn't there — data surfaces in Overview's Next Payment Card). Invoices tab goes between overview and schedule as the primary billing surface. PDF 30-day signed URL expiry accepted as v1 limitation per spec.
+- Open: Phase 4c (polish — Resend button on sent invoices, InvoiceDetailModal, edit-after-send revision log). Phase 6 (cleanup — migrate Overview/Payments off compat payments view, retire unused legacy helpers).
