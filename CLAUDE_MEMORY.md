@@ -349,3 +349,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/components/modals/EngagementDetailModal.jsx, avenstone-vite/src/components/sub/SubPortal.jsx, CLAUDE_MEMORY.md
 - Decision: lump-sum bids only in v1 (lineItems: null). Itemized line-item entry is a polish slice.
 - Open: end-to-end smoke test of the full pipeline (PM create → sub submit → PM accept → schedule items auto-draft). Phase 2e (retire legacy SubPortal Bids tab + Quote Request page + obsolete buttons).
+
+[LOG — 2026-05-06]
+- Action: Engagement pipeline smoke test — 6/6 passing. Steps: seed, sub sees action-needed, sub submits bid, PM accepts, schedule item auto-drafted, double-submit returns 4xx. Three bugs fixed during test runs: (1) EngagementDetailModal was calling view-engagement as GET with query param; fixed to POST with JSON body + correct response destructuring. (2) AddSubToJobModal subId not syncing from props on open (only on close); fixed to always sync on isOpen change. (3) Job row selector was matching outermost container div; fixed to getByRole("row").filter({hasText}).
+- Files: tests/engagement-smoke.spec.js (new), avenstone-vite/src/components/modals/EngagementDetailModal.jsx, avenstone-vite/src/components/modals/AddSubToJobModal.jsx
+- Commits: 793f9cc, f8ff78d (pushed to main)
+- Open: Phase 2e — retire legacy SubPortal Bids tab, Quote Request page, Assign-to-Project flow, obsolete buttons on SubsTab.
