@@ -1241,3 +1241,51 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
 - Files: supabase/migrations/20260502_job_phases_audit_columns.sql (new).
 - Open: none — columns confirmed present in re-query after apply.
 
+
+---
+
+## date-sweep-2 · 2026-05-02 · Date field sweep — empty-string coalesce
+
+[LOG — 2026-05-02 — date field sweep (Sweep 2)]
+- Action: Audited all date/timestamp fields in Supabase write payloads across avenstone-vite/src/. Applied one-line coalesce fix. Committed and pushed (b443378).
+- Files: avenstone-vite/src/components/jobs/tabs/financials/TransactionModal.jsx (date_incurred: form.date_incurred || null)
+- Candidates found: 6 total. 5 already coalesced from prior work: start_date/end_date (ScheduleTab), due_date (TransactionModal, SubsTab), insurance_expiry (SubComplianceModal). 1 needed fixing: date_incurred in TransactionModal was sent bare — TODAY default meant no regression in practice, but user clearing the date input would send '' to Postgres.
+- Deferred: None. All user-editable date fields now coalesced at write boundary.
+
+
+---
+
+## schedule-rebuild · 2026-05-02–03 · schedule_items + trade_phase_map; ScheduleTab rewrite; is_primary; subs no longer mark phases
+
+[LOG — 2026-05-02 — schedule items schema (Prompt A)]
+- Action: schedule_items table + trade_phase_map table + derivePhaseStatus + 5 helpers shipped.
+- Migrations: 20260502_schedule_items.sql, 20260502_trade_phase_map.sql — both applied to live DB and verified.
+- Verification (5-step): schedule_items 15 columns ✓, trade_phase_map 5 columns ✓, 4 RLS policies ✓ (3 on schedule_items, 1 on trade_phase_map), schema reload sent ✓, seed 17 rows ✓.
+- Trade taxonomy divergences from spec: "Drywall" bare → 3 sub-trade rows (Hang, Patch, Tape/mud/texture). "Plumbing" bare → "Plumbing - Rough-in" (rough_mep) + "Plumbing - Finish / fixtures" (finish). "Electrical" bare → "Electrical - Rough-in" (rough_mep) + "Electrical - Finish" (finish). "Cabinets" bare → "Cabinets / vanities - Install". "Trim" bare → 3 Trim/carpentry sub-trade rows. All use canonical full-path strings from trade_taxonomy.
+- Helpers: sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem (returns prevRow), sbDeleteScheduleItem (soft-cancel, not hard delete), sbLoadScheduleItemsForSub. All { ok, error, data }. Date fields coalesced at write boundary.
+- Phase derivation asymmetry (by design, flagged for UI): derivePhaseStatus never decrements. A job_phase that reaches 'complete' stays 'complete' even if its driver sub_start item is later cancelled or its status changes. Prompt B UI must warn the PM of this when cancelling a sub_start item that drove a phase transition.
+- Files: supabase/migrations/20260502_schedule_items.sql, supabase/migrations/20260502_trade_phase_map.sql, avenstone-vite/src/lib/supabase.js (+6 exports), CLAUDE.md (Job statuses note, IA section, Common Task Patterns).
+- Open: Prompt B — ScheduleTab UI replacement + notification wiring.
+
+[LOG — 2026-05-03 — ScheduleTab pill layout regression]
+- Regression: phase pills rendered as viewport-filling gray shapes. Root causes: (1) `align-items` missing on pill flex container (default stretch caused wrappers with audit dates to stretch peer wrappers); (2) `Ic.cal` in empty state had no width/height — SVG defaults to 300×150px browser intrinsic. Fixed: pill container → inline-flex column + align-items:flex-start + gap:8; empty state icon → 36×36 constrained span. Commit 9bd03d8.
+
+
+[LOG — 2026-05-03 — trade_phase_map is_primary (Prompt A follow-up)]
+- Action: Added is_primary BOOLEAN column to trade_phase_map. derivePhaseStatus now filters to is_primary=TRUE only.
+- Migration: 20260503_trade_phase_map_primary.sql — applied and verified (column confirmed in information_schema, 10 TRUE rows, schema reloaded).
+- Primary trades (Avenstone GC): Demo, Framing, Plumbing-Rough-in, Electrical-Rough-in, HVAC-Install, Drywall-Hang, Paint-Interior, Tile-Floor, Tile-Wall/shower, Cabinets/vanities-Install.
+- Non-primary (map rows but no phase derivation): Drywall-Patch, Drywall-Tape/mud/texture, Trim×3, Plumbing-Finish/fixtures, Electrical-Finish.
+- Test confirmed: Drywall-Patch is_primary=false → filtered out of primary-only query; Drywall-Hang is only drywall primary.
+- Known limitation: cancel-after-complete still doesn't revert phase (asymmetry by design). Other tenants need their own primary mapping when seeded — each new tenant onboarding must include is_primary=TRUE rows.
+- Files: supabase/migrations/20260503_trade_phase_map_primary.sql, avenstone-vite/src/lib/supabase.js (derivePhaseStatus).
+- Open: none.
+
+[LOG — 2026-05-03 — schedule items UI (Prompt B)]
+- Action: Full ScheduleTab.jsx rewrite + notification helpers + SubJobView schedule section.
+- Commits: 02958bf (ScheduleTab rewrite), 232b059 (notification helpers), c5a7b02 (SubJobView).
+- ScheduleTab: read-only phase pill bar (never editable), schedule items list grouped by week (this/next/later/noDate/past-collapsed), ScheduleItemModal (6 types, multi-day toggle, trade/sub picker, notify checkboxes), soft-cancel with asymmetry warning dialog, derivePhaseStatus called after every save/cancel.
+- Notification helpers (supabase.js): sbNotifyScheduleItemCreated (all recipients on create), sbNotifyScheduleItemChanged (diff-based, only fires when date/status/sub/trade/title change). Recipients: assigned_sub_id + job.assigned_pm_id + client (if notify_client). Excludes acting user. Fire-and-forget — callers .catch().
+- SubJobView: replaced old sbLoadSubPhases phase list with read-only sbLoadScheduleItemsForSub items filtered to status=[scheduled, in_progress] for current job. Removed updatePhase/phaseUpdating — subs no longer mark phases directly.
+- Dynamic import pattern: ScheduleTab uses `import('../../../lib/supabase').then(({ sbNotifyScheduleItemCreated })...)` so module loads clean even before helpers existed.
+- Open: none — Prompt B complete.
