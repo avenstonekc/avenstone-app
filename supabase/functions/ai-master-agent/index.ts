@@ -188,6 +188,7 @@ const TOOLS = [
         amount: { type: "number" },
         description: { type: "string", description: "e.g. 'Foundation draw', 'Final payment'" },
         due_date: { type: "string", description: "YYYY-MM-DD" },
+        direction: { type: "string", enum: ["in", "out"], description: "Money direction. 'in' = money received from client (default). 'out' = money paid out (sub payout, expense)." },
       },
       required: ["job_id", "amount", "description"],
     },
@@ -341,7 +342,6 @@ async function executeTool(
           type: input.type || "client",
           notes: input.notes || null,
           job_id: input.job_id || null,
-          created_by: userId,
           created_at: new Date().toISOString(),
         }).select().single();
         if (error) return { error: error.message };
@@ -442,12 +442,14 @@ async function executeTool(
       }
 
       case "create_payment": {
-        const { data, error } = await sb.from("payments").insert({
+        const { data, error } = await sb.from("job_transactions").insert({
           tenant_id: tenantId,
           job_id: input.job_id,
           amount: input.amount,
           description: input.description,
           due_date: input.due_date || null,
+          direction: String(input.direction || "in"),
+          type: "payment",
           status: "pending",
           created_at: new Date().toISOString(),
         }).select().single();
