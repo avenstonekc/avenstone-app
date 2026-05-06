@@ -25,6 +25,23 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
   const [form, setForm] = useState({ totalAmount: '', terms: '', startDate: '', endDate: '' });
+  const [lineItems, setLineItems] = useState([]);
+
+  const updateLine = (idx, field, rawValue) => {
+    setLineItems(prev => prev.map((li, i) => {
+      if (i !== idx) return li;
+      const updated = { ...li, [field]: rawValue };
+      const qty = field === 'quantity' ? Number(rawValue) : Number(li.quantity);
+      const price = field === 'unit_price' ? Number(rawValue) : Number(li.unit_price);
+      if ((field === 'quantity' || field === 'unit_price') && !isNaN(qty) && !isNaN(price)) {
+        updated.line_total = qty * price;
+      }
+      return updated;
+    }));
+  };
+
+  const addLine = () => setLineItems(prev => [...prev, { description: '', quantity: 1, unit: '', unit_price: '', line_total: 0 }]);
+  const removeLine = idx => setLineItems(prev => prev.filter((_, i) => i !== idx));
 
   const refetchModalData = async () => {
     try {
@@ -43,8 +60,10 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
       const { engagement, currentBid } = json.data;
       const fetched = { ...engagement, current_bid: currentBid || null };
       setEng(fetched);
+      const savedLines = Array.isArray(currentBid?.line_items) ? currentBid.line_items : [];
+      setLineItems(savedLines);
       setForm({
-        totalAmount: currentBid?.total_amount ?? '',
+        totalAmount: savedLines.length > 0 ? '' : (currentBid?.total_amount ?? ''),
         terms: currentBid?.terms ?? '',
         startDate: currentBid?.start_date ?? '',
         endDate: currentBid?.end_date ?? '',
@@ -56,15 +75,28 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
 
   useEffect(() => {
     if (!isOpen || !engagementId) return;
-    setLoading(true); setErr(''); setEng(null); setMode('view'); setFormError(null);
+    setLoading(true); setErr(''); setEng(null); setMode('view'); setFormError(null); setLineItems([]);
     refetchModalData().finally(() => setLoading(false));
   }, [isOpen, engagementId]);
 
   const handleSubmit = async () => {
-    const amount = Number(form.totalAmount);
-    if (!form.totalAmount || isNaN(amount) || amount <= 0) {
-      setFormError('Total amount is required and must be greater than zero');
-      return;
+    let payload;
+    if (lineItems.length > 0) {
+      for (const li of lineItems) {
+        if (!li.description?.trim()) { setFormError('Each line item requires a description'); return; }
+        if (!li.quantity || Number(li.quantity) <= 0) { setFormError('Each line item requires a quantity greater than zero'); return; }
+        if (li.unit_price === '' || Number(li.unit_price) < 0) { setFormError('Each line item requires a non-negative unit price'); return; }
+      }
+      const finalTotal = lineItems.reduce((s, li) => s + Number(li.line_total || 0), 0);
+      if (finalTotal <= 0) { setFormError('Line items must sum to a positive total'); return; }
+      payload = { lineItems: lineItems.map(li => ({ ...li, quantity: Number(li.quantity), unit_price: Number(li.unit_price), line_total: Number(li.line_total) })) };
+    } else {
+      const amount = Number(form.totalAmount);
+      if (!form.totalAmount || isNaN(amount) || amount <= 0) {
+        setFormError('Total amount is required and must be greater than zero');
+        return;
+      }
+      payload = { totalAmount: amount, lineItems: [] };
     }
     setSubmitting(true);
     setFormError(null);
@@ -78,12 +110,11 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
         },
         body: JSON.stringify({
           engagementId: eng.id,
-          totalAmount: amount,
           terms: form.terms || null,
           startDate: form.startDate || null,
           endDate: form.endDate || null,
-          lineItems: null,
           attachedDocIds: [],
+          ...payload,
         }),
       });
       const json = await res.json();
@@ -187,8 +218,8 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Line Items</div>
                   {bid.line_items.map((li, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0', borderBottom: i < bid.line_items.length - 1 ? '1px solid #D1FAE5' : 'none' }}>
-                      <span style={{ color: '#374151' }}>{li.description || li.name || `Item ${i + 1}`}</span>
-                      {li.amount != null && <span style={{ color: NAV, fontWeight: 600 }}>{f$(li.amount)}</span>}
+                      <span style={{ color: '#374151', flex: 1 }}>{li.description || `Item ${i + 1}`}{li.quantity ? ` × ${li.quantity}${li.unit ? ' ' + li.unit : ''}` : ''}</span>
+                      {li.line_total != null && <span style={{ color: NAV, fontWeight: 600, flexShrink: 0 }}>{f$(li.line_total)}</span>}
                     </div>
                   ))}
                 </div>
@@ -225,23 +256,80 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
               <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{formError}</div>
             )}
 
-            <div className="fg">
-              <label className="flbl"><span className="freq">*</span>Total Amount ($)</label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', fontSize: 14 }}>$</span>
-                <input
-                  className="finp"
-                  style={{ paddingLeft: 22 }}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.totalAmount}
-                  onChange={e => setForm(p => ({ ...p, totalAmount: e.target.value }))}
-                  placeholder="0.00"
-                  autoFocus
-                />
+            {/* Line items */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <label className="flbl" style={{ margin: 0 }}>Line Items</label>
+                <button type="button" onClick={addLine} style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>+ Add Line</button>
               </div>
+              {lineItems.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                  {lineItems.map((li, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        className="finp"
+                        style={{ flex: 3, fontSize: 12 }}
+                        placeholder="Description"
+                        value={li.description}
+                        onChange={e => updateLine(i, 'description', e.target.value)}
+                      />
+                      <input
+                        className="finp"
+                        style={{ width: 52, fontSize: 12 }}
+                        type="number"
+                        min="0"
+                        step="any"
+                        placeholder="Qty"
+                        value={li.quantity}
+                        onChange={e => updateLine(i, 'quantity', e.target.value)}
+                      />
+                      <input
+                        className="finp"
+                        style={{ width: 48, fontSize: 12 }}
+                        placeholder="Unit"
+                        value={li.unit}
+                        onChange={e => updateLine(i, 'unit', e.target.value)}
+                      />
+                      <input
+                        className="finp"
+                        style={{ width: 72, fontSize: 12 }}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="$/unit"
+                        value={li.unit_price}
+                        onChange={e => updateLine(i, 'unit_price', e.target.value)}
+                      />
+                      <span style={{ width: 64, fontSize: 12, color: NAV, fontWeight: 600, flexShrink: 0, textAlign: 'right' }}>{li.line_total != null && li.line_total !== '' ? f$(Number(li.line_total)) : '—'}</span>
+                      <button type="button" onClick={() => removeLine(i)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 16, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>×</button>
+                    </div>
+                  ))}
+                  <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: NAV, paddingRight: 26 }}>
+                    Total: {f$(lineItems.reduce((s, li) => s + Number(li.line_total || 0), 0))}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {lineItems.length === 0 && (
+              <div className="fg">
+                <label className="flbl"><span className="freq">*</span>Total Amount ($)</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', fontSize: 14 }}>$</span>
+                  <input
+                    className="finp"
+                    style={{ paddingLeft: 22 }}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.totalAmount}
+                    onChange={e => setForm(p => ({ ...p, totalAmount: e.target.value }))}
+                    placeholder="0.00"
+                    autoFocus
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="fg">
               <label className="flbl">Terms / Notes</label>

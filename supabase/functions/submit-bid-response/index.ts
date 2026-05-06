@@ -31,9 +31,36 @@ Deno.serve(async (req) => {
     // 2. Validate body
     let body: any;
     try { body = await req.json(); } catch { return json({ ok: false, error: "Invalid JSON body" }, 400); }
-    const { engagementId, totalAmount, terms, startDate, endDate, lineItems, attachedDocIds } = body;
+    const { engagementId, totalAmount, terms, startDate, endDate, lineItems: rawLineItems, attachedDocIds } = body;
     if (!engagementId) return json({ ok: false, error: "engagementId is required" }, 400);
-    if (totalAmount == null) return json({ ok: false, error: "totalAmount is required" }, 400);
+
+    // Validate + normalize line items
+    const lineItems: Record<string, unknown>[] = Array.isArray(rawLineItems) ? rawLineItems : [];
+    for (const li of lineItems) {
+      if (!li.description || typeof li.description !== "string" || !(li.description as string).trim()) {
+        return json({ ok: false, error: "Each line item requires a description" }, 400);
+      }
+      if (typeof li.quantity !== "number" || (li.quantity as number) <= 0) {
+        return json({ ok: false, error: "Each line item requires a quantity greater than zero" }, 400);
+      }
+      if (typeof li.unit_price !== "number" || (li.unit_price as number) < 0) {
+        return json({ ok: false, error: "Each line item requires a non-negative unit_price" }, 400);
+      }
+      // Ensure line_total is set (honor explicit value, fall back to computed)
+      const computed = (li.quantity as number) * (li.unit_price as number);
+      li.line_total = typeof li.line_total === "number" ? li.line_total : computed;
+    }
+
+    // Compute total: sum of line_totals when lines present, else use lump-sum input
+    let finalTotal: number;
+    if (lineItems.length > 0) {
+      finalTotal = lineItems.reduce((sum, li) => sum + Number(li.line_total), 0);
+      if (finalTotal <= 0) return json({ ok: false, error: "Line items must sum to a positive total" }, 400);
+    } else {
+      if (totalAmount == null) return json({ ok: false, error: "totalAmount is required when no line items provided" }, 400);
+      finalTotal = Number(totalAmount);
+      if (!finalTotal || finalTotal <= 0) return json({ ok: false, error: "totalAmount must be greater than zero" }, 400);
+    }
 
     // 3. SELECT engagement — load-bearing security + status check
     const { data: engagement, error: engErr } = await sb
@@ -71,11 +98,11 @@ Deno.serve(async (req) => {
       .insert({
         engagement_id: engagementId,
         tenant_id: engagement.tenant_id,
-        total_amount: Number(totalAmount),
+        total_amount: finalTotal,
         terms: terms || null,
         start_date: startDate || null,
         end_date: endDate || null,
-        line_items: lineItems || null,
+        line_items: lineItems,
         attached_doc_ids: attachedDocIds || [],
         revision_number: revisionNumber,
         is_current: true,
