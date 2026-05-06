@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice } from '../../../lib/supabase';
+import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice } from '../../../lib/supabase';
 import { f$, fD } from '../../../lib/utils';
 import DrawModal from '../../modals/DrawModal';
 import InvoiceComposerModal from '../../modals/InvoiceComposerModal';
@@ -34,7 +34,8 @@ export default function InvoicesSubTab({ job, profile }) {
   const [composerOpen, setComposerOpen]       = useState(false);
   const [editInvoice, setEditInvoice]         = useState(null);
   const [prefillDrawId, setPrefillDrawId]     = useState(null);
-  const [markPaidInvoice, setMarkPaidInvoice] = useState(null);
+  const [markPaidInvoice, setMarkPaidInvoice]     = useState(null);
+  const [resendingInvoiceId, setResendingInvoiceId] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -90,6 +91,19 @@ export default function InvoicesSubTab({ job, profile }) {
       load();
     } catch (e) {
       alert(e.message || 'Delete failed.');
+    }
+  };
+
+  const handleResend = async inv => {
+    if (!window.confirm(`Resend Invoice ${inv.invoice_number} to the client?`)) return;
+    try {
+      setResendingInvoiceId(inv.id);
+      const result = await sbResendInvoice(inv.id);
+      alert(`Invoice resent to ${result.sent_to}`);
+    } catch (err) {
+      alert(`Resend failed: ${err.message}`);
+    } finally {
+      setResendingInvoiceId(null);
     }
   };
 
@@ -234,6 +248,16 @@ export default function InvoicesSubTab({ job, profile }) {
                       )}
                       {['sent', 'viewed', 'partially_paid', 'overdue'].includes(inv.status) && (
                         <button onClick={() => setMarkPaidInvoice(inv)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: '#065f46', borderColor: '#6EE7B7' }}>Mark Paid</button>
+                      )}
+                      {['sent', 'viewed', 'partially_paid', 'overdue'].includes(inv.status) && (
+                        <button
+                          onClick={() => handleResend(inv)}
+                          disabled={resendingInvoiceId === inv.id}
+                          className="btn btn-ghost"
+                          style={{ fontSize: 11, padding: '4px 10px', color: '#1e40af', borderColor: '#93c5fd' }}
+                        >
+                          {resendingInvoiceId === inv.id ? 'Resending...' : 'Resend'}
+                        </button>
                       )}
                       {inv.status !== 'draft' && inv.status !== 'paid' && (
                         <button onClick={() => handleVoidInvoice(inv)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>Void</button>

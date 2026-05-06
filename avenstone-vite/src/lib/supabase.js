@@ -2317,6 +2317,16 @@ export async function sbRegenerateInvoicePaymentUrl(invoiceId) {
   return data.checkout_url;
 }
 
+export async function sbResendInvoice(invoiceId) {
+  if (!invoiceId) throw new Error('invoiceId required');
+  const { data, error } = await sb.functions.invoke('resend-invoice', {
+    body: { invoice_id: invoiceId },
+  });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error ?? 'Failed to resend invoice');
+  return data;
+}
+
 export async function sbMarkInvoicePaid(invoiceId, payment) {
   if (!invoiceId) throw new Error('invoiceId required');
   if (!payment?.amount || payment.amount <= 0) throw new Error('Amount must be greater than zero');
