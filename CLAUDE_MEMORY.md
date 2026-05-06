@@ -250,3 +250,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Final archive line count: 1299
 - /tmp/old_claude_memory.md cleanup: deleted, source preserved in git at 7070d65^.
 - Open from session: schedule sync E2E test (deferred), memory contradictions cleanup (7+ items), sub management Steps 1-2 quick wins, invoicing arc design + build.
+
+[LOG — 2026-05-05]
+- Action: Gated `## Model selection` section (formerly `## Opus finds solutions. Sonnet does coding.`) in CLAUDE.md with explicit audience guard. Sonnet executors were reading the dispatch instructions literally and writing paste-ready prompts for themselves on trigger words; reproduced in MasterAgent fix session.
+- Files: CLAUDE.md
+- Decision: Gate vs delete — kept all existing dispatch content for Opus-as-executor sessions; only added the Sonnet-skip / Opus-applies guard at top + renamed dispatch headings to clarify Opus subject.
+- Open: none

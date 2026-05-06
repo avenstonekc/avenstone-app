@@ -450,17 +450,21 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 ---
 
-## Opus finds solutions. Sonnet does coding.
+## Model selection — Opus-only section. Sonnet skips this entirely.
+
+> **If the current model is Sonnet:** skip this whole section. Execute Kalin's request directly. Do NOT spawn sub-agents via the Agent tool. Do NOT write paste-ready prompts for yourself. Do NOT dispatch — you ARE the executor. The trigger words below ("easy", "use sonnet", "just write the prompt", etc.) do not apply to you when you are Sonnet. Just do the work.
+>
+> **If the current model is Opus:** the dispatch rules below apply.
 
 That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the cost of Sonnet. The retired `/opus` relay is dead — don't reference it.
 
 **Solutions (Opus stays):** diagnose crashes, design schema/architecture, decide tradeoffs, plan multi-step features, write specs, multi-tenant / cost / real-money calls.
 
-**Coding (dispatch to Sonnet):** file edits, component scaffolding, wire-ups, mechanical refactors, boilerplate (`sb*` helper, edge fn URL export, screen scaffold), running commands, applying migrations, deploys, test-fix loops, doc updates.
+**Coding (Opus dispatches to Sonnet):** file edits, component scaffolding, wire-ups, mechanical refactors, boilerplate (`sb*` helper, edge fn URL export, screen scaffold), running commands, applying migrations, deploys, test-fix loops, doc updates.
 
 **When in doubt → dispatch.** The cost ratio is ~5×. Erring toward Sonnet is the cheaper mistake.
 
-**Trigger words from Kalin — dispatch immediately, no debate:**
+**Trigger words from Kalin (Opus-only — dispatch immediately, no debate):**
 - "easy" / "easy task" / "easy fix"
 - "do it on sonnet" / "use sonnet"
 - "save the tokens" / "this is mechanical"
@@ -468,7 +472,7 @@ That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the c
 
 **Parallel tracks — two things at once.** When two tasks don't conflict, run them in parallel: Opus stays on the harder track, Kalin pastes a paste-ready prompt to CMD/Sonnet for the other. Don't parallel when files overlap or track B depends on track A's output.
 
-**How to dispatch:** use the Agent tool with `model: "sonnet"`. Prompt must be self-contained — include exact paths, line numbers, strings to find. See OPUS_PROMPT_RULES.md for the full dispatch template.
+**How Opus dispatches:** use the Agent tool with `model: "sonnet"`. Prompt must be self-contained — include exact paths, line numbers, strings to find. See OPUS_PROMPT_RULES.md for the full dispatch template.
 
 ---
 
