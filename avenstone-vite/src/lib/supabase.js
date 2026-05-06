@@ -2068,3 +2068,90 @@ export async function sbAcceptBid({ engagementId }) {
     },
   };
 }
+
+// ─── Draw Schedules (Invoicing Phase 2a) ─────────────────────────────────────
+
+export async function sbCreateDrawSchedule(jobId, draw) {
+  if (!jobId) throw new Error('jobId required');
+  if (!draw?.title) throw new Error('title required');
+  if (draw?.target_amount == null) throw new Error('target_amount required');
+  if (draw?.draw_number == null) throw new Error('draw_number required');
+
+  const row = {
+    tenant_id: AV_TENANT,
+    job_id: jobId,
+    draw_number: draw.draw_number,
+    title: draw.title,
+    description: draw.description ?? null,
+    target_amount: draw.target_amount,
+    target_date: draw.target_date ?? null,
+    phase: draw.phase ?? null,
+    display_order: draw.display_order ?? 0,
+  };
+
+  const { data, error } = await sb
+    .from('draw_schedules')
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      const friendly = `Draw ${draw.draw_number} already exists on this job`;
+      captureFailedIntent({ kind: 'create_draw_schedule', payload: row, jobId, message: friendly, resumable: false }).catch(() => {});
+      throw new Error(friendly);
+    }
+    captureFailedIntent({ kind: 'create_draw_schedule', payload: row, jobId, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbLoadDrawsForJob(jobId) {
+  if (!jobId) throw new Error('jobId required');
+  const { data, error } = await sb
+    .from('draw_schedules')
+    .select('*')
+    .eq('job_id', jobId)
+    .order('display_order', { ascending: true })
+    .order('draw_number', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function sbUpdateDrawSchedule(id, updates) {
+  if (!id) throw new Error('id required');
+  const { id: _id, tenant_id, job_id, created_at, ...patch } = updates || {};
+  patch.updated_at = new Date().toISOString();
+
+  const { data, error } = await sb
+    .from('draw_schedules')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      const friendly = 'Draw number conflicts with another draw on this job';
+      captureFailedIntent({ kind: 'update_draw_schedule', payload: { id, ...patch }, jobId: null, message: friendly, resumable: false }).catch(() => {});
+      throw new Error(friendly);
+    }
+    captureFailedIntent({ kind: 'update_draw_schedule', payload: { id, ...patch }, jobId: null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbDeleteDrawSchedule(id) {
+  if (!id) throw new Error('id required');
+  const { error } = await sb
+    .from('draw_schedules')
+    .delete()
+    .eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'delete_draw_schedule', payload: { id }, jobId: null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return true;
+}

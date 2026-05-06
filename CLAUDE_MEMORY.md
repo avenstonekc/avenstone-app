@@ -402,3 +402,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/migrations/20260506090000_invoicing_phase1_schema.sql, CLAUDE_MEMORY.md
 - Decision: client RLS allows reading own non-draft invoices + own draws (transparency on billing schedule). Drafts are PM-only. Smoke test confirmed: next_invoice_number returns INV-2026-0001 for Avenstone tenant.
 - Open: Invoicing Phase 2 — sb* helpers for draw_schedules CRUD + new "Invoices" sub-tab on FinancialsTab with draw schedule section.
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 2a — added sbCreateDrawSchedule, sbLoadDrawsForJob, sbUpdateDrawSchedule, sbDeleteDrawSchedule to supabase.js. Standard tenant-stamped pattern, captureFailedIntent fire-and-forget on write failures, Postgres 23505 mapped to friendly "draw number conflict" error.
+- Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: helper requires explicit draw_number input — UI (Phase 2b) computes next available number from sbLoadDrawsForJob result. Keeps helper simple, defers auto-numbering policy to UI layer.
+- Open: Invoicing Phase 2b — new "Invoices" sub-tab on FinancialsTab with draw schedule section + Add Draw modal.
