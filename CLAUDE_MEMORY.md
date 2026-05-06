@@ -309,3 +309,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/functions/send-invite/index.ts, supabase/functions/send-client-link/index.ts, CLAUDE_MEMORY.md, CLAUDE.md
 - Decision: send-invite tolerates staff (keeps role); send-client-link rejects staff (no defensible use case for sending a client link to a staff member).
 - Open: Phase 2 of sub engagement consolidation (UI). Legacy bid_responses table column-list query (DROP prep, queued).
+
+[LOG — 2026-05-05]
+- Action: send-client-link outer catch now returns JSON (matches send-invite pattern). Last plain-text 500 path in the role-guard cluster eliminated.
+- Files: supabase/functions/send-client-link/index.ts, CLAUDE_MEMORY.md
