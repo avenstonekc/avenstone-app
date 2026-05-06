@@ -420,3 +420,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: invoice_number stripped from sbUpdateInvoice patch (immutable post-creation). sbVoidInvoice stamps voided_at + voided_by_id atomically. CO loader: no standalone sbLoadChangeOrders — Phase 3b composer reads COs from job.change_orders (loaded with the job).
 - Open: Invoicing Phase 3b — invoice composer modal (lines from estimate / change orders / manual, draft-only save). Phase 3c — Invoices list in InvoicesSubTab + InvoiceDetailModal + draw "Generate Invoice" wiring.
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 3b+3c — InvoiceComposerModal built + wired; InvoicesSubTab placeholder replaced with live invoices list.
+- InvoiceComposerModal: draw dropdown pre-filled via prefillDrawId prop; manual line items (description, qty, unit, price, phase); tax field; totals computed live; save-draft only. Edit mode loads full invoice via sbLoadInvoice; non-draft invoices show warning and block editing.
+- InvoicesSubTab: invoices load in parallel with draws (Promise.all). Invoice cards show number, status pill, draw linkage, date/due/total/paid. Staff actions: edit/delete draft, void sent/viewed. Per-draw "Invoice" button pre-fills composer. "+ New Invoice" standalone path.
+- Files: avenstone-vite/src/components/modals/InvoiceComposerModal.jsx (new), avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx
+- Commit: 976eeec
+- Open: Phase 4 — send-invoice edge fn (pdf-lib PDF + Stripe Checkout + email). "Save & Send" button on composer. stripe-webhook reconciliation to invoice. Phase 5 — ClientPortal Invoices section.
