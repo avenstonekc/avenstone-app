@@ -2158,6 +2158,14 @@ export async function sbDeleteDrawSchedule(id) {
 
 // ─── Invoices (Invoicing Phase 3a) ───────────────────────────────────────────
 
+export function deriveInvoiceStatus(invoice) {
+  if (!invoice) return null;
+  if (invoice.status !== 'sent' && invoice.status !== 'viewed') return invoice.status;
+  if (!invoice.due_date) return invoice.status;
+  const today = new Date().toISOString().slice(0, 10);
+  return invoice.due_date < today ? 'overdue' : invoice.status;
+}
+
 export async function sbGenerateInvoiceNumber() {
   const { data, error } = await sb.rpc('next_invoice_number', { p_tenant_id: AV_TENANT });
   if (error) throw error;

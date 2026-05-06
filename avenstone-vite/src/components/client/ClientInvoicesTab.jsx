@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbLoadInvoicesForJob, sbRegenerateInvoicePaymentUrl } from '../../lib/supabase';
+import { sbLoadInvoicesForJob, sbRegenerateInvoicePaymentUrl, deriveInvoiceStatus } from '../../lib/supabase';
 import { f$, fD } from '../../lib/utils';
 
 const STATUS_PILL = {
@@ -63,7 +63,7 @@ export default function ClientInvoicesTab({ job }) {
         </div>
       ) : (
         invoices.map(inv => {
-          const pill    = STATUS_PILL[inv.status] || STATUS_PILL.sent;
+          const pill    = STATUS_PILL[deriveInvoiceStatus(inv)] || STATUS_PILL.sent;
           const balance = Math.max(0, Number(inv.total_amount) - Number(inv.amount_paid));
           const isVoid  = inv.status === 'void';
           const isPaid  = inv.status === 'paid';

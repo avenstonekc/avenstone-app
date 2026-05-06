@@ -478,3 +478,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx, CLAUDE_MEMORY.md
 - Decision: void+reissue is the canonical correction path for sent invoices. Credit memo flow for paid-invoice corrections deferred — PMs handle in QuickBooks. Edit-after-send revision log officially dropped from invoicing arc scope.
 - Open: Phase 6b (overdue auto-derivation), Phase 6a (compat view migration), Phase 6d (white-label PDF + email).
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 6b — overdue auto-derivation. New deriveInvoiceStatus pure helper returns 'overdue' for sent/viewed invoices with due_date < today; otherwise returns raw status. Display-only — DB stays at 'sent', schema unchanged, no scheduled job. Status pill in InvoicesSubTab and ClientInvoicesTab now uses derived value. Action button gates (Mark Paid, Resend, Void, PAYABLE set) continue using raw invoice.status — overdue invoices are still actionable as if they were sent.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx, avenstone-vite/src/components/client/ClientInvoicesTab.jsx, CLAUDE_MEMORY.md
+- Decision: derivation in helper not in component — single source of truth. Both overdue pill maps were already present from Phase 3/5b specs so no new color/label needed.
+- Open: Phase 6a (ClientPortal compat view migration), Phase 6d (white-label PDF + email).

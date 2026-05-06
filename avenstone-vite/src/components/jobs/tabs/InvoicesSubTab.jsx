@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice } from '../../../lib/supabase';
+import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice, deriveInvoiceStatus } from '../../../lib/supabase';
 import { f$, fD } from '../../../lib/utils';
 import DrawModal from '../../modals/DrawModal';
 import InvoiceComposerModal from '../../modals/InvoiceComposerModal';
@@ -216,7 +216,7 @@ export default function InvoicesSubTab({ job, profile }) {
       ) : !loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {invoices.map(inv => {
-            const st = INVOICE_STATUS[inv.status] || INVOICE_STATUS.draft;
+            const st = INVOICE_STATUS[deriveInvoiceStatus(inv)] || INVOICE_STATUS.draft;
             const linkedDraw = draws.find(d => d.id === inv.draw_id);
             return (
               <div key={inv.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, padding: '12px 14px' }}>
