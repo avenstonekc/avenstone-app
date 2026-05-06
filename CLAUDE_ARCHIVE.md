@@ -1138,3 +1138,106 @@ Things Opus did poorly (don't repeat tomorrow):
 
 Pattern across the failures: smoothing over reality (sycophancy, silent corrections, false confidence in numbers) for short-term conversation flow at the cost of long-term trust. User noticed every time. Don't do it.
 
+
+---
+
+## failed-intent-retry · 2026-05-02 · captureFailedIntent + Resume todos
+
+[LOG — 2026-05-02 — failed-intent retry todos]
+- Action: Built full failed-intent capture + Resume todo system.
+- Migration: todos payload JSONB column + todos_self_insert RLS policy
+  (was missing — client-side todo writes were silently rejected).
+  Partial index idx_todos_failed_intent. File:
+  supabase/migrations/20260502_todos_payload.sql. Applied + verified.
+- New helpers (supabase.js): captureFailedIntent({kind, payload, jobId,
+  message}) → inserts failed_intent todo. Best-effort, never throws.
+  sbCountRecentFailedIntents(days) → owner telemetry aggregation.
+  sbResolveFailedIntent dropped; use sbCompleteTodo(todoId) directly.
+- Capture sites: JobsScr.add() on INSERT failure (job_create),
+  TransactionModal.save() on new-tx failure (transaction_save),
+  LineItemModal.handleSave() on add failure (line_item_save),
+  MasterAgent.sendMessage() per failed action (master_agent_tool_call).
+- Resume flow: pendingAction signal in App.jsx (mirrors pendingJobId
+  pattern). TodayScr is producer. JobsScr, MasterAgent, FinancialsTab
+  are consumers. Prop drilling: App→JobsScr→JobDet→FinancialsTab.
+  Modals receive only normal pre-fill props (tx, item) — oblivious to
+  pendingAction.
+- MasterAgent: captures {tool_name, error_message, user_message}.
+  Resume pre-fills input box with original message; user reviews + sends.
+  No bypass-the-model path — edge function returns {tool,result} only,
+  no tool_input. OPEN ITEM: update edge function to return tool_input
+  in action results so true per-tool retry can ship later.
+- TodayScr + TodoCard: failed_intent todos render amber (FEF3C7 bg,
+  FCD34D border). Resume button fires setPendingAction. Auto-resolve
+  on save success; stays open if modal closed without saving.
+- AiPmDashboard: "Failed saves (7 days)" tile. Green=0, navy=1-5,
+  amber=6+. "By kind" toggle expands breakdown. Owner-only via existing
+  App.jsx role gate.
+- Files: supabase/migrations/20260502_todos_payload.sql,
+  supabase.js, App.jsx, JobsScr.jsx, JobDet.jsx, FinancialsTab.jsx,
+  TransactionModal.jsx, LineItemModal.jsx, MasterAgent.jsx,
+  TodayScr.jsx, TodoCard.jsx, AiPmDashboard.jsx, CLAUDE.md.
+- Decision: status CHECK in todos uses 'done' not 'completed'. Spec
+  was wrong. Use sbCompleteTodo() everywhere.
+- Open: edge fn returns tool_input in action results (for true master
+  agent per-tool bypass retry). Per-user drill-down on failure tile
+  (privacy + scope). Sub bid_submit retry (separate UX design needed).
+
+
+---
+
+## rls-sweep-2026-05-02 · 2026-05-02 · Deprecated table drop; upsert audit; bid_responses UPDATE RLS fix
+
+[LOG — 2026-05-02]
+- Action: Dropped _deprecated_payments_20260423 and
+  _deprecated_job_cost_invoices_20260423. Grace window expired
+  2026-05-07; both tables were empty. Dropped early (2026-05-02).
+- Files: supabase/migrations/20260502_drop_deprecated_financial_tables.sql
+- Decision: Kept payments and job_cost_invoices compat views. 5 live
+  callers across ClientPortal.jsx, Reports.jsx, supabase.js. Views
+  encode direction+type filter logic callers would need to duplicate
+  — not dead weight, real business logic.
+- Open: Migrate 5 compat-view callers to query job_transactions
+  directly. Views to drop after callers are migrated. This is a real
+  refactor (not a mechanical sweep) — deserves its own session.
+  Callers: ClientPortal.jsx:176, Reports.jsx:22, supabase.js:258
+  (sbLoadCostInvoices), supabase.js:538 (sbLoadPayments),
+  supabase.js:642 (sbLoadPayments estimate tab).
+
+[LOG — 2026-05-02 — upsert RLS sweep]
+- Action: Audited all 7 .upsert() calls in supabase.js for insert-only
+  vs update-only vs genuine upsert misuse.
+- Result: All 7 are genuine upserts. Zero insert-only or update-only
+  misuses. No helper signature changes needed. Open item closed —
+  no broader refactor required.
+- RLS gap found and fixed: bid_responses had INSERT policy but no
+  UPDATE policy. sbSubmitBid (sub re-submitting a bid) was silently
+  RLS-blocked on the update path — same failure class as the sbSave
+  bug. Added bid_responses_sub_update policy (USING + WITH CHECK:
+  sub_id = auth.uid() AND tenant_id = get_my_tenant_id()).
+- Files: supabase/migrations/20260502_bid_responses_update_policy.sql
+- The other 6 upserts (job_phases, sub_pricing, sub_ratings,
+  job_estimates, qb_category_map, job_room_scopes) all had full
+  INSERT + UPDATE RLS coverage. No action needed.
+
+
+---
+
+## schema-claim-incidents · 2026-05-02 · Third schema-claim failure; job_phases audit columns applied live
+
+[LOG — 2026-05-02]
+- Action: job_phases audit columns (started_at, started_by_id, completed_at,
+  completed_by_id) applied to live DB via migration 20260502_job_phases_audit_columns.sql.
+  Schema cache reloaded via NOTIFY pgrst, 'reload schema'.
+- Finding: CLAUDE_MEMORY (LOG 2026-04-21, line 416-421) claimed these columns
+  shipped in commit 0faa944. Live DB verification via information_schema.columns
+  confirmed all four were ABSENT. The migration was committed to the repo but
+  never executed against the live database.
+- Decision: This is the third schema-claim failure (after 2026-04-29 sub_pricing
+  incident). The "Locked architectural principles" section at line 751 already
+  warns about 2026-04-29 claims — expanding scope: ALL schema claims in
+  CLAUDE_MEMORY require information_schema verification before trusting, not
+  just 2026-04-29. Commit presence ≠ migration applied.
+- Files: supabase/migrations/20260502_job_phases_audit_columns.sql (new).
+- Open: none — columns confirmed present in re-query after apply.
+
