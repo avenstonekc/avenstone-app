@@ -408,3 +408,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: helper requires explicit draw_number input — UI (Phase 2b) computes next available number from sbLoadDrawsForJob result. Keeps helper simple, defers auto-numbering policy to UI layer.
 - Open: Invoicing Phase 2b — new "Invoices" sub-tab on FinancialsTab with draw schedule section + Add Draw modal.
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 2b — added "Invoices" 4th sub-tab to FinancialsTab. New InvoicesSubTab.jsx (draw table as mobile cards with status pills, summary totals, Invoices placeholder block) and DrawModal.jsx (create/edit, auto-defaults next draw_number, status dropdown in edit mode only). Wires Phase 2a helpers.
+- Files: avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx, avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx (new), avenstone-vite/src/components/modals/DrawModal.jsx (new), CLAUDE_MEMORY.md
+- Decision: Invoices section is an intentional dashed-border placeholder — Phase 3 adds the composer and invoice list together.
+- Open: Invoicing Phase 3 — invoice composer modal + Invoices list section + sb* helpers for invoices CRUD + draw amount roll-up logic.
