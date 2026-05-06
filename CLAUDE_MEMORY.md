@@ -438,3 +438,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Commit: e6a466f (deployed via GitHub Actions on push to main)
 - Decision: email failure tolerant (invoice stays sent). PDF v1 hardcodes Avenstone branding per INVOICING_ARC.md out-of-scope list.
 - Open: Phase 4b — stripe-webhook update (read invoice_id from metadata, update invoices.amount_paid + status, create job_transactions row with invoice_id, roll up draw.paid_amount, notify client + staff). Phase 5 — ClientPortal Invoices section.
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 4b — stripe-webhook extended with invoice reconciliation branch.
+- invoice flow: idempotency check via stripe_session_id lookup (skips on duplicate Stripe retry), loads invoice, validates status not already paid/void, inserts job_transactions row (direction=in, type=client_payment, status=paid, invoice_id FK, payer_or_payee_name/id from job.client_name/client_user_id), updates invoices.amount_paid + transitions to paid (stamps paid_at) or partially_paid, rolls up draw_schedules.paid_amount + transitions draw to paid when fully invoiced + fully paid, notifies all tenant staff in-app, notifies client in-app (client_user_id) + Resend email (non-fatal failure). Legacy payment-link flow (no invoice_id in metadata) completely unchanged.
+- Files: supabase/functions/stripe-webhook/index.ts, CLAUDE_MEMORY.md
+- Commit: 68f49a0 (deployed via GitHub Actions)
+- Decision: webhook returns 200 even on handleInvoicePayment throw (prevents Stripe retry loops on data-integrity issues; transient infra errors are logged). RESEND_API_KEY added to webhook env reads — already provisioned from Phase 4a.
+- Open: Phase 5 — ClientPortal Invoices section (view invoices, PDF link, Pay Now). Phase 4c polish: Resend button on sent invoices, InvoiceDetailModal, revision log on edit-after-send.
