@@ -414,3 +414,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx, avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx (new), avenstone-vite/src/components/modals/DrawModal.jsx (new), CLAUDE_MEMORY.md
 - Decision: Invoices section is an intentional dashed-border placeholder — Phase 3 adds the composer and invoice list together.
 - Open: Invoicing Phase 3 — invoice composer modal + Invoices list section + sb* helpers for invoices CRUD + draw amount roll-up logic.
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 3a — added 8 invoice helpers to supabase.js. sbGenerateInvoiceNumber wraps next_invoice_number RPC (first sb.rpc() call in the file). sbCreateInvoice auto-generates number if omitted, defaults invoice_date to today. sbLoadInvoice joins line items via Supabase relational select. sbDeleteInvoice guards drafts-only. sbSaveInvoiceLineItems uses bulk-replace pattern matching sbSaveEstimateLineItems.
+- Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: invoice_number stripped from sbUpdateInvoice patch (immutable post-creation). sbVoidInvoice stamps voided_at + voided_by_id atomically. CO loader: no standalone sbLoadChangeOrders — Phase 3b composer reads COs from job.change_orders (loaded with the job).
+- Open: Invoicing Phase 3b — invoice composer modal (lines from estimate / change orders / manual, draft-only save). Phase 3c — Invoices list in InvoicesSubTab + InvoiceDetailModal + draw "Generate Invoice" wiring.

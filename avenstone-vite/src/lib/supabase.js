@@ -2155,3 +2155,144 @@ export async function sbDeleteDrawSchedule(id) {
   }
   return true;
 }
+
+// ─── Invoices (Invoicing Phase 3a) ───────────────────────────────────────────
+
+export async function sbGenerateInvoiceNumber() {
+  const { data, error } = await sb.rpc('next_invoice_number', { p_tenant_id: AV_TENANT });
+  if (error) throw error;
+  return data;
+}
+
+export async function sbCreateInvoice(jobId, invoice) {
+  if (!jobId) throw new Error('jobId required');
+
+  let invoiceNumber = invoice?.invoice_number;
+  if (!invoiceNumber) invoiceNumber = await sbGenerateInvoiceNumber();
+
+  const row = {
+    tenant_id:      AV_TENANT,
+    job_id:         jobId,
+    draw_id:        invoice?.draw_id        ?? null,
+    invoice_number: invoiceNumber,
+    invoice_date:   invoice?.invoice_date   ?? new Date().toISOString().slice(0, 10),
+    due_date:       invoice?.due_date       ?? null,
+    subtotal:       invoice?.subtotal       ?? 0,
+    tax_amount:     invoice?.tax_amount     ?? 0,
+    total_amount:   invoice?.total_amount   ?? 0,
+    notes:          invoice?.notes          ?? null,
+    internal_notes: invoice?.internal_notes ?? null,
+    created_by_id:  AV_USER_ID,
+  };
+
+  const { data, error } = await sb.from('invoices').insert(row).select().single();
+  if (error) {
+    if (error.code === '23505') {
+      const friendly = `Invoice number ${invoiceNumber} already exists`;
+      captureFailedIntent({ kind: 'create_invoice', payload: row, jobId, message: friendly, resumable: false }).catch(() => {});
+      throw new Error(friendly);
+    }
+    captureFailedIntent({ kind: 'create_invoice', payload: row, jobId, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbLoadInvoicesForJob(jobId) {
+  if (!jobId) throw new Error('jobId required');
+  const { data, error } = await sb
+    .from('invoices')
+    .select('*')
+    .eq('job_id', jobId)
+    .order('invoice_date', { ascending: false })
+    .order('invoice_number', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function sbLoadInvoice(id) {
+  if (!id) throw new Error('id required');
+  const { data, error } = await sb
+    .from('invoices')
+    .select('*, line_items:invoice_line_items(*)')
+    .eq('id', id)
+    .single();
+  if (error) throw error;
+  if (data?.line_items) {
+    data.line_items.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+  }
+  return data;
+}
+
+export async function sbUpdateInvoice(id, updates) {
+  if (!id) throw new Error('id required');
+  const { id: _id, tenant_id, job_id, created_at, created_by_id, invoice_number, ...patch } = updates || {};
+  patch.updated_at = new Date().toISOString();
+
+  const { data, error } = await sb.from('invoices').update(patch).eq('id', id).select().single();
+  if (error) {
+    captureFailedIntent({ kind: 'update_invoice', payload: { id, ...patch }, jobId: data?.job_id ?? null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbVoidInvoice(id, reason) {
+  if (!id) throw new Error('id required');
+  const patch = {
+    status:       'void',
+    voided_at:    new Date().toISOString(),
+    voided_by_id: AV_USER_ID,
+    void_reason:  reason ?? null,
+    updated_at:   new Date().toISOString(),
+  };
+  const { data, error } = await sb.from('invoices').update(patch).eq('id', id).select().single();
+  if (error) {
+    captureFailedIntent({ kind: 'void_invoice', payload: { id, reason }, jobId: data?.job_id ?? null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbDeleteInvoice(id) {
+  if (!id) throw new Error('id required');
+  const { data: existing, error: loadErr } = await sb.from('invoices').select('status').eq('id', id).single();
+  if (loadErr) throw loadErr;
+  if (!existing) throw new Error('Invoice not found');
+  if (existing.status !== 'draft') throw new Error('Only draft invoices can be deleted. Void sent invoices instead.');
+  const { error } = await sb.from('invoices').delete().eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'delete_invoice', payload: { id }, jobId: null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return true;
+}
+
+export async function sbSaveInvoiceLineItems(invoiceId, lineItems) {
+  if (!invoiceId) throw new Error('invoiceId required');
+  if (!Array.isArray(lineItems)) throw new Error('lineItems must be an array');
+
+  await sb.from('invoice_line_items').delete().eq('invoice_id', invoiceId);
+  if (lineItems.length === 0) return [];
+
+  const rows = lineItems.map((li, idx) => ({
+    tenant_id:    AV_TENANT,
+    invoice_id:   invoiceId,
+    description:  li.description,
+    quantity:     li.quantity  ?? 1,
+    unit:         li.unit      ?? null,
+    unit_price:   li.unit_price,
+    line_total:   li.line_total,
+    source_type:  li.source_type ?? 'manual',
+    source_id:    li.source_id   ?? null,
+    phase:        li.phase       ?? null,
+    display_order: li.display_order ?? idx,
+  }));
+
+  const { data, error } = await sb.from('invoice_line_items').insert(rows).select();
+  if (error) {
+    captureFailedIntent({ kind: 'save_invoice_line_items_insert', payload: { invoiceId, count: rows.length }, jobId: null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data || [];
+}
