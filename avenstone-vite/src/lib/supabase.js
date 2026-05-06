@@ -564,49 +564,11 @@ export const sbUpdateQuoteRequest = async (id, ch) => {
   return { ok: true, error: null, data };
 };
 // Backward-compat aliases
-export const sbLoadITBs = sbLoadQuoteRequests;
 export const sbCreateITB = sbCreateQuoteRequest;
 export const sbUpdateITB = sbUpdateQuoteRequest;
 export const sbSendBidInvite = async (itb, email, name) => {
   const res = await fetch(BID_INVITE_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, sub_name: name || '', job_address: itb._jobAddress || '', trade: itb.trade || '', description: itb.description || '', budget_range: itb.budget_range || '', due_date: itb.due_date || '', itb_id: itb.id, tenant_id: AV_TENANT }) });
   return res.json();
-};
-const bidQuotePath = url => {
-  if (!url) return null;
-  if (url.startsWith('http')) return url.split('/bid-quotes/')[1] || null;
-  return url;
-};
-export const sbLoadSubITBs = async subId => {
-  const { data } = await sb.from('itb_invitees').select('itb:quote_requests(*,responses:bid_responses(*),job:jobs(id,address,status))').eq('sub_id', subId);
-  const itbs = (data || []).map(d => d.itb).filter(Boolean);
-  await Promise.all(itbs.flatMap(itb => (itb.responses || []).map(async r => {
-    if (r.quote_file_url) {
-      const path = bidQuotePath(r.quote_file_url);
-      if (path) {
-        const { data: s } = await sb.storage.from('bid-quotes').createSignedUrl(path, 3600);
-        if (s?.signedUrl) r.quote_file_url = s.signedUrl;
-      }
-    }
-  })));
-  return itbs;
-};
-export const sbSubmitBid = async (itbId, amount, notes, quoteFile) => {
-  let quote_file_url = null, quote_file_name = null, quote_file_size = null;
-  if (quoteFile) {
-    const path = `${AV_USER_ID}/${itbId}/${quoteFile.name}`;
-    const { data: up } = await sb.storage.from('bid-quotes').upload(path, quoteFile, { upsert: true });
-    if (up) {
-      quote_file_url = path;
-      quote_file_name = quoteFile.name;
-      quote_file_size = quoteFile.size;
-    }
-  }
-  const { data, error } = await sb.from('bid_responses').upsert({ tenant_id: AV_TENANT, invitation_id: itbId, sub_id: AV_USER_ID, amount: Number(amount) || null, notes: notes || null, quote_file_url, quote_file_name, quote_file_size, status: 'submitted', submitted_at: new Date().toISOString() }, { onConflict: 'invitation_id,sub_id' }).select().single();
-  if (error) {
-    captureFailedIntent({ kind: 'bid_submit', payload: { itbId }, jobId: null, message: error.message, resumable: false }).catch(() => {});
-    return { ok: false, error: error.message, data: null };
-  }
-  return { ok: true, error: null, data };
 };
 export const sbUpdateBidStatus = async (id, status) => {
   const { error } = await sb.from('bid_responses').update({ status }).eq('id', id);

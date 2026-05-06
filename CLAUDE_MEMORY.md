@@ -74,7 +74,8 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 *Outstanding decisions or deferred work — do not assume resolved.*
 
 **Sub portal & financial:**
-- `invitations_to_bid` compat view drop + `SubPortal.jsx` `itb:quote_requests` selector update
+- `invitations_to_bid` compat view DROP — Phase 3 schema cleanup. SubPortal selector update completed in Phase 2e-1.
+- `submit-bid-response` returns 500 on concurrent double-submit instead of the spec'd 409 JSON `{ ok: false, error: 'Engagement state changed concurrently' }`. Behavior is correct (no double-bid created); response shape is wrong. Surfaced during 2026-05-06 smoke test edge case.
 - ConsultationTab tab retirement
 - Auto-bid generation (sub_pricing × takeoff quantity, AI sanity pass)
 - Sub password retrofit for existing magic-link-only subs
@@ -355,3 +356,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: tests/engagement-smoke.spec.js (new), avenstone-vite/src/components/modals/EngagementDetailModal.jsx, avenstone-vite/src/components/modals/AddSubToJobModal.jsx
 - Commits: 793f9cc, f8ff78d (pushed to main)
 - Open: Phase 2e — retire legacy SubPortal Bids tab, Quote Request page, Assign-to-Project flow, obsolete buttons on SubsTab.
+
+[LOG — 2026-05-06]
+- Action: Sub engagement Phase 2e-1 — legacy SubPortal "Bid Invitations" tab retired. Tab button, content section (itbs/bidITB/bidForm/bidFile/bidSaving/bidDone/bidErr state, submitBid fn, bid submit modal), and view-bids useEffect removed. Dead supabase.js helpers removed: sbLoadSubITBs, sbSubmitBid, sbLoadITBs alias, bidQuotePath private fn. New "My Engagements" section (Phase 2d-1/2/3) is now the sole sub-side surface for engagements/bids.
+- Files: avenstone-vite/src/components/sub/SubPortal.jsx, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: invitations_to_bid compat view stays alive in DB (Phase 3 schema cleanup). itb_invitees table had 0 rows — clean retirement, no in-flight data lost. Open-item bullet split: selector update marked done, compat view DROP still queued.
+- Open: Phase 2e-2 (JobDet SubsTab top buttons "Invite from Directory" + "New Quote Request" retirement). Phase 2e-3 (JobDet legacy "Assigned Subs" section retirement). Phase 2e-4 (standalone Quote Request page if exists). Phase 3 (schema cleanup: DROP bids ghost, sub_pricing_changes, legacy bid_responses, eventually invitations_to_bid view + quote_requests + itb_invitees). Smoke-test follow-up: submit-bid-response 500-vs-409 response shape (behavior correct, shape wrong).

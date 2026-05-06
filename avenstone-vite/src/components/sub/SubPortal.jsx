@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'; // useRef kept for bidFileRef
-import { sb, sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, sbLoadActiveTradeStrings, sbLoadEngagementsForSub, AV_USER_ID } from '../../lib/supabase';
+import { useState, useEffect } from 'react';
+import { sb, sbLoadSubJobs, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, sbLoadActiveTradeStrings, sbLoadEngagementsForSub } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 import SubJobView from './SubJobView';
@@ -20,16 +20,8 @@ function StarRating({ value }) {
 export default function SubPortal({ profile, signOut }) {
   const [view, setView] = useState('jobs');
   const [jobs, setJobs] = useState([]);
-  const [itbs, setItbs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [itbsLoading, setItbsLoading] = useState(false);
   const [sel, setSel] = useState(null);
-  const [bidITB, setBidITB] = useState(null);
-  const [bidForm, setBidForm] = useState({ amount: '', notes: '' });
-  const [bidFile, setBidFile] = useState(null);
-  const [bidSaving, setBidSaving] = useState(false);
-  const [bidDone, setBidDone] = useState(null);
-  const [bidErr, setBidErr] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [pricing, setPricing] = useState([]);
   const [pricingLoaded, setPricingLoaded] = useState(false);
@@ -50,8 +42,6 @@ export default function SubPortal({ profile, signOut }) {
   const [showAddTrade, setShowAddTrade] = useState(false);
   const [addTrades, setAddTrades] = useState([]);
   const [allTradeStrings, setAllTradeStrings] = useState([]);
-  const bidFileRef = useRef();
-
   const [engagements, setEngagements] = useState([]);
   const [showPast, setShowPast] = useState(false);
   const [detailEngId, setDetailEngId] = useState(null);
@@ -83,26 +73,6 @@ export default function SubPortal({ profile, signOut }) {
       });
     }
   }, [profile?.id]);
-
-  useEffect(() => {
-    if (view !== 'bids' || itbs.length) return;
-    setItbsLoading(true);
-    sbLoadSubITBs(profile.id).then(d => { setItbs(d); setItbsLoading(false); });
-  }, [view, profile?.id]);
-
-  const submitBid = async () => {
-    if (!bidITB) return;
-    setBidSaving(true); setBidErr('');
-    const r = await sbSubmitBid(bidITB.id, bidForm.amount, bidForm.notes, bidFile);
-    if (r.ok) {
-      setBidDone(bidITB.id);
-      setItbs(p => p.map(x => x.id === bidITB.id ? { ...x, responses: [...(x.responses || []).filter(b => b.sub_id !== AV_USER_ID), r.data] } : x));
-      setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null);
-    } else {
-      setBidErr(r.error || 'Submit failed');
-    }
-    setBidSaving(false);
-  };
 
   const existingTrades = pricing.map(p => p.trade);
   const availableToAdd = allTradeStrings.filter(tr => !existingTrades.includes(tr));
@@ -146,11 +116,8 @@ export default function SubPortal({ profile, signOut }) {
     />
   );
 
-  const unreadBids = itbs.filter(x => !(x.responses || []).find(r => r.sub_id === AV_USER_ID)).length;
-
   const TABS = [
     { id: 'jobs', lb: t('My Projects', lang), ic: 'home' },
-    { id: 'bids', lb: t('Bid Invitations', lang), ic: 'doc', badge: unreadBids },
     { id: 'pricing', lb: t('My Pricing', lang), ic: 'box' },
   ];
 
@@ -284,58 +251,6 @@ export default function SubPortal({ profile, signOut }) {
           ))}
         </>}
 
-        {/* Bids tab */}
-        {view === 'bids' && <>
-          {itbsLoading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>{t('Loading invitations...', lang)}</div>}
-          {!itbsLoading && !itbs.length && <div className="empty" style={{ paddingTop: 60 }}>{Ic.doc}<div className="empty-t">{t('No bid invitations yet', lang)}</div><div>{t('Bid invitations from contractors will appear here', lang)}</div></div>}
-          {itbs.map(itb => {
-            const myBid = (itb.responses || []).find(r => r.sub_id === AV_USER_ID);
-            // Find relevant stored pricing for this trade
-            const tradePricing = pricing.filter(p => (p.trade || '').toLowerCase() === (itb.trade || '').toLowerCase());
-            return (
-              <div key={itb.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `3px solid ${myBid ? '#22c55e' : GOLD}`, padding: 16, marginBottom: 10, borderRadius: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: NAV, marginBottom: 2 }}>{itb.trade || 'General'}</div>
-                    {itb.job && <div style={{ fontSize: 12, color: '#9CA3AF' }}>{itb.job.address}</div>}
-                  </div>
-                  <span style={{ fontSize: 10, background: myBid ? '#F0FDF4' : 'rgba(201,168,76,0.1)', color: myBid ? '#16a34a' : GOLD, padding: '3px 10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, border: `1px solid ${myBid ? '#BBF7D0' : 'rgba(201,168,76,0.3)'}`, borderRadius: 20 }}>
-                    {myBid ? t('Bid Submitted', lang) : t('Awaiting Your Bid', lang)}
-                  </span>
-                </div>
-                {itb.description && <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, marginBottom: 10 }}>{itb.description}</div>}
-                <div style={{ display: 'flex', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
-                  {itb.budget_range && <span style={{ fontSize: 12, color: '#9CA3AF' }}><strong style={{ color: '#374151' }}>Budget:</strong> {itb.budget_range}</span>}
-                  {itb.due_date && <span style={{ fontSize: 12, color: '#9CA3AF' }}><strong style={{ color: '#374151' }}>Due:</strong> {fD(itb.due_date)}</span>}
-                </div>
-                {/* Your pricing reference */}
-                {tradePricing.length > 0 && !myBid && (
-                  <div style={{ background: '#F7F5F0', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{t('Your Rate on File', lang)}</div>
-                    {tradePricing.map(p => (
-                      <div key={p.id} style={{ fontSize: 13, color: NAV, fontWeight: 600 }}>
-                        {p.pricing_mode === 'self_bid' ? t('Bidding each job myself', lang) : `${f$(p.rate)} / ${p.unit}`}
-                        {p.notes && <div style={{ fontSize: 11, color: '#6B7280', fontWeight: 400, marginTop: 2 }}>{p.notes}</div>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {myBid ? (
-                  <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: 12, borderRadius: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#16a34a', marginBottom: 4 }}>{t('Your bid', lang)}: {myBid.amount ? f$(myBid.amount) : 'No amount'}</div>
-                    {myBid.notes && <div style={{ fontSize: 12, color: '#6B7280' }}>{myBid.notes}</div>}
-                    {myBid.quote_file_name && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Quote: {myBid.quote_file_name}</div>}
-                    {myBid.status === 'awarded' && <div style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', marginTop: 6 }}>🏆 {t('Your bid was awarded!', lang)}</div>}
-                  </div>
-                ) : (
-                  <button className="btn btn-navy" style={{ width: '100%', marginTop: 4 }} onClick={() => { setBidITB(itb); setBidDone(null); }}>{t('Submit Your Bid', lang)}</button>
-                )}
-                {bidDone === itb.id && <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600, marginTop: 8, textAlign: 'center' }}>✓ {t('Bid submitted successfully!', lang)}</div>}
-              </div>
-            );
-          })}
-        </>}
-
         {/* Pricing tab — Trade Rates */}
         {view === 'pricing' && (
           <div>
@@ -428,28 +343,6 @@ export default function SubPortal({ profile, signOut }) {
         engagementId={detailEngId}
         onSuccess={() => { showToast('Bid submitted — awaiting PM review'); loadEngagements(); }}
       />
-
-      {/* Bid submit modal */}
-      {bidITB && <div className="overlay" onClick={() => setBidITB(null)}>
-        <div className="modal" onClick={e => e.stopPropagation()}>
-          <div className="modal-title">{t('Submit Bid', lang)}</div>
-          <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 14 }}>{bidITB.trade} — {bidITB.job?.address || ''}</div>
-          <div className="fg"><label className="flbl">{t('Your Bid Amount ($)', lang)}</label><input className="finp" type="number" value={bidForm.amount} onChange={e => setBidForm(p => ({ ...p, amount: e.target.value }))} placeholder="e.g. 9500" /></div>
-          <div className="fg"><label className="flbl">{t('Notes / Scope Clarifications', lang)}</label><textarea className="finp fta" value={bidForm.notes} onChange={e => setBidForm(p => ({ ...p, notes: e.target.value }))} placeholder={t('Any assumptions, exclusions, or details about your quote...', lang)} rows={3} /></div>
-          <div className="fg" style={{ marginBottom: 0 }}>
-            <label className="flbl">{t('Upload Quote (PDF, Word, Excel)', lang)}</label>
-            <input ref={bidFileRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => setBidFile(e.target.files[0] || null)} style={{ display: 'none' }} />
-            <button className="btn btn-ghost" style={{ width: '100%', padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => bidFileRef.current.click()}>
-              <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.dl}</span>{bidFile ? bidFile.name : t('Choose file to upload', lang)}
-            </button>
-          </div>
-          {bidErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>{bidErr}</div>}
-          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setBidITB(null); setBidForm({ amount: '', notes: '' }); setBidFile(null); setBidErr(''); }}>{t('Cancel', lang)}</button>
-            <button className="btn btn-gold" style={{ flex: 1 }} onClick={submitBid} disabled={bidSaving}>{bidSaving ? t('Submitting...', lang) : t('Submit Bid', lang)}</button>
-          </div>
-        </div>
-      </div>}
 
     </div>
   );
