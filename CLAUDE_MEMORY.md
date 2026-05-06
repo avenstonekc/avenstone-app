@@ -120,7 +120,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 *Slug pointers → CLAUDE_ARCHIVE.md. Search `## slug` to retrieve.*
 
-*Archive build in progress — chunks 1-3 of 5 committed. Slugs through 2026-04-28 populated. Chunks 4-5 cover Apr 29 → May 3 work — slug pointers exist below but archive content pending. Fallback: `git show 7070d65^:CLAUDE_MEMORY.md` returns pre-cleanup file with all original LOG entries.*
+*Archive complete — all chunks committed (1, 2, 3, 4a, 4b, 4c, 5a, 5b, plus helper-error-sweep extracted from current memory). All slug pointers below resolve to populated entries in CLAUDE_ARCHIVE.md. Search by slug heading. Fallback: `git show 7070d65^:CLAUDE_MEMORY.md` returns pre-cleanup file.*
 
 **PDF / LiDAR**
 - `lidar-phase1 · 2026-04-15` — Phase 1 confirmed on device; scan persistence to job/contact tables
@@ -244,3 +244,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Action: 7 memory contradictions surfaced during sub portal cleanup, queued in new "Memory contradictions" section above.
 - Open: Chunks 4-5 of archive build. CLAUDE_INDEX.md build (deferred). Memory contradictions cleanup. Schedule sync E2E test. kalin@avenstonekc.com role fix.
 - Decision: Stopped at end of session for sleep.
+
+[LOG — 2026-05-05]
+- Action: Archive build complete. All slugs extracted across 8 passes (1, 2, 3, 4a, 4b, 4c, 5a, 5b) plus helper-error-sweep pulled from current memory.
+- Final archive line count: 1299
+- /tmp/old_claude_memory.md cleanup: deleted, source preserved in git at 7070d65^.
+- Open from session: schedule sync E2E test (deferred), memory contradictions cleanup (7+ items), sub management Steps 1-2 quick wins, invoicing arc design + build.
