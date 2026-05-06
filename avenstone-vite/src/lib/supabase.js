@@ -1983,3 +1983,87 @@ export const sbLoadEngagementByIds = async ({ jobId, subId, trade, includeTermin
   if (error) return { ok: false, error: error.message, data: null };
   return { ok: true, error: null, data: data || [] };
 };
+
+const ENGAGEMENT_TRANSITIONS = {
+  invited:       ['bid_submitted', 'declined', 'withdrawn'],
+  bid_submitted: ['active', 'declined', 'withdrawn'],
+  active:        ['completed', 'removed'],
+  completed:     [],
+  declined:      [],
+  withdrawn:     [],
+  removed:       [],
+};
+
+const TERMINAL_STATUSES = new Set(['declined', 'withdrawn', 'removed']);
+
+export async function sbTransitionEngagement({ engagementId, toStatus, reason = null }) {
+  if (!engagementId) return { ok: false, error: 'engagementId is required', data: null };
+  if (!toStatus) return { ok: false, error: 'toStatus is required', data: null };
+
+  const { data: current, error: fetchErr } = await sb
+    .from('job_sub_engagements')
+    .select('id, status')
+    .eq('id', engagementId)
+    .single();
+  if (fetchErr || !current) return { ok: false, error: 'Engagement not found', data: null };
+
+  const currentStatus = current.status;
+  const allowed = ENGAGEMENT_TRANSITIONS[currentStatus] ?? [];
+  if (!allowed.includes(toStatus))
+    return { ok: false, error: `Illegal transition: ${currentStatus} → ${toStatus}`, data: null };
+
+  if (TERMINAL_STATUSES.has(toStatus) && !reason?.trim())
+    return { ok: false, error: `reason is required when transitioning to '${toStatus}'`, data: null };
+
+  const now = new Date().toISOString();
+  const auditCols = { updated_at: now };
+  if (toStatus === 'bid_submitted') {
+    auditCols.bid_submitted_at = now;
+  } else if (toStatus === 'active') {
+    auditCols.activated_at = now;
+    auditCols.activated_by_id = AV_USER_ID;
+  } else if (toStatus === 'completed') {
+    auditCols.completed_at = now;
+    auditCols.completed_by_id = AV_USER_ID;
+  } else if (TERMINAL_STATUSES.has(toStatus)) {
+    auditCols.terminated_at = now;
+    auditCols.terminated_by_id = AV_USER_ID;
+    auditCols.termination_reason = reason;
+  }
+
+  const { data, error } = await sb
+    .from('job_sub_engagements')
+    .update({ status: toStatus, ...auditCols })
+    .eq('id', engagementId)
+    .eq('status', currentStatus)
+    .select()
+    .single();
+
+  if (error) {
+    captureFailedIntent({ kind: 'transition_engagement', payload: { engagementId, fromStatus: currentStatus, toStatus, reason }, jobId: null, message: error.message, resumable: false }).catch(() => {});
+    return { ok: false, error: error.message, data: null };
+  }
+  if (!data)
+    return { ok: false, error: 'Engagement state changed concurrently — refresh and retry', data: null };
+
+  return { ok: true, error: null, data };
+}
+
+export async function sbDeclineBid({ engagementId, reason }) {
+  if (!reason?.trim()) return { ok: false, error: 'reason is required to decline', data: null };
+  return sbTransitionEngagement({ engagementId, toStatus: 'declined', reason });
+}
+
+export async function sbWithdrawEngagement({ engagementId, reason }) {
+  if (!reason?.trim()) return { ok: false, error: 'reason is required to withdraw', data: null };
+  return sbTransitionEngagement({ engagementId, toStatus: 'withdrawn', reason });
+}
+
+export async function sbRemoveEngagement({ engagementId, reason }) {
+  if (!reason?.trim()) return { ok: false, error: 'reason is required to remove', data: null };
+  return sbTransitionEngagement({ engagementId, toStatus: 'removed', reason });
+}
+
+export async function sbCompleteEngagement({ engagementId }) {
+  return sbTransitionEngagement({ engagementId, toStatus: 'completed' });
+}

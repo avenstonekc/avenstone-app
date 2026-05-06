@@ -84,6 +84,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - `send-invite` profile upsert has NO role guard — will overwrite owner/pm/sales_rep roles to `sub` if invited email already has a staff profile. Add `isStaff` guard matching `send-contract-email` pattern.
 - `send-client-link` profile upsert has NO role guard — will overwrite ANY existing role to `client`. Sending a client link to `kalin@avenstonekc.com` flips his role. Add `isStaff` guard matching `send-contract-email` pattern.
 - Sub management consolidation design pass — design doc only, no code. Unifies "Invite sub to bid on job" across Subs Directory invite, Assign-to-Project, and Quote Request → Send Invite flows. Promoted from Future architecture 2026-05-05 after triple-UI pain proved it's not deferable.
+- Picker enrichment in unified modal (Phase 2): show per-sub schedule load badge ("2 active jobs · 3 items next 14d"), trade-match indicator, last-engagement-age. Optional Haiku-cheap AI summary on hover. Anti-Surprise alignment — flag overcommitted subs before invite, not after. Captured 2026-05-05.
 
 **Takeoff wizard:**
 - Step 5 kitchen scope subsets + detail forms
@@ -288,3 +289,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: tenant_id sourced from AV_TENANT module global (match existing pattern — no getUser() calls in existing helpers), not passed by caller.
 - Open: Phase 1c (state machine helpers — sbTransitionEngagement, sbAcceptBid, sbDeclineBid). Phase 1c is where the auto-draft-schedule-items handoff lives.
+
+[LOG — 2026-05-05]
+- Action: Sub engagement Phase 1c — state machine validator + 4 simple transition wrappers in supabase.js. sbTransitionEngagement enforces the legal-transitions map (encoded as ENGAGEMENT_TRANSITIONS constant), uses optimistic concurrency on UPDATE, requires reason for terminal off-ramps. Wrappers: sbDeclineBid, sbWithdrawEngagement, sbRemoveEngagement, sbCompleteEngagement.
+- Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: sbAcceptBid intentionally split into Phase 1d because it carries schedule-item drafting + notification side effects.
+- Open: Phase 1d (sbAcceptBid + auto-draft schedule items from engagement_bids.line_items + PM/sub notifications). Phase 1e (edge functions for sub-side mutations: submit-bid-response, view-engagement).
