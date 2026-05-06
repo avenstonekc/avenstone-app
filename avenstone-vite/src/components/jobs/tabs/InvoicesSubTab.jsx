@@ -259,7 +259,8 @@ export default function InvoicesSubTab({ job, profile }) {
                           {resendingInvoiceId === inv.id ? 'Resending...' : 'Resend'}
                         </button>
                       )}
-                      {inv.status !== 'draft' && inv.status !== 'paid' && (
+                      {/* Void only allowed when no payment received — partially_paid/paid require a credit memo flow we don't have yet */}
+                      {['sent', 'viewed', 'overdue'].includes(inv.status) && (
                         <button onClick={() => handleVoidInvoice(inv)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>Void</button>
                       )}
                     </div>

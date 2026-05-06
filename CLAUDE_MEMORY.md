@@ -472,3 +472,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/functions/resend-invoice/index.ts (new), avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx, CLAUDE_MEMORY.md
 - Decision: email failure is fatal in resend (unlike send-invoice where DB state was prioritized) — the whole point of resend is the email, so no email = no purpose. Original PDF must exist in storage; if missing (storage cleanup edge case), helper instructs PM to void and reissue rather than regenerating. No resend audit trail in v1 — sent_at stays canonical, no resend_count column.
 - Open: Phase 6 — compat view cleanup (migrate ClientPortal Overview/Payments tabs off the legacy payments view, retire unused legacy helpers, possibly drop the compat view itself once nothing reads it).
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 6c — sbVoidInvoice rewritten for correctness. Now validates amount_paid=0 before voiding (rejects partially_paid/paid with friendly error suggesting credit memo via QuickBooks until that ships). Reverses draw.invoiced_amount rollup. Transitions draw status in_progress→planned only when this void zeros out invoiced amount (handles multi-invoice-per-draw correctly). Drafts blocked from void with friendly error directing to Delete. Void button visibility tightened in InvoicesSubTab to sent/viewed/overdue only. draw refresh already covered by existing load() which does Promise.all on both.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx, CLAUDE_MEMORY.md
+- Decision: void+reissue is the canonical correction path for sent invoices. Credit memo flow for paid-invoice corrections deferred — PMs handle in QuickBooks. Edit-after-send revision log officially dropped from invoicing arc scope.
+- Open: Phase 6b (overdue auto-derivation), Phase 6a (compat view migration), Phase 6d (white-label PDF + email).

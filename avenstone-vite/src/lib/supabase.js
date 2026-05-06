@@ -2239,6 +2239,21 @@ export async function sbUpdateInvoice(id, updates) {
 
 export async function sbVoidInvoice(id, reason) {
   if (!id) throw new Error('id required');
+
+  const { data: invoice, error: loadErr } = await sb
+    .from('invoices')
+    .select('id, tenant_id, job_id, draw_id, total_amount, amount_paid, status')
+    .eq('id', id)
+    .single();
+  if (loadErr) throw loadErr;
+  if (!invoice) throw new Error('Invoice not found');
+
+  if (invoice.status === 'void') throw new Error('Invoice is already void');
+  if (invoice.status === 'draft') throw new Error('Drafts should be deleted, not voided. Use the Delete action instead.');
+  if (Number(invoice.amount_paid) > 0.01) {
+    throw new Error('Cannot void an invoice with payments received. Issue a refund or credit memo (handle in QuickBooks for now until credit memo support ships).');
+  }
+
   const patch = {
     status:       'void',
     voided_at:    new Date().toISOString(),
@@ -2246,12 +2261,39 @@ export async function sbVoidInvoice(id, reason) {
     void_reason:  reason ?? null,
     updated_at:   new Date().toISOString(),
   };
-  const { data, error } = await sb.from('invoices').update(patch).eq('id', id).select().single();
-  if (error) {
-    captureFailedIntent({ kind: 'void_invoice', payload: { id, reason }, jobId: data?.job_id ?? null, message: error.message, resumable: true }).catch(() => {});
-    throw error;
+  const { error: updErr } = await sb.from('invoices').update(patch).eq('id', id);
+  if (updErr) {
+    captureFailedIntent({ kind: 'void_invoice', payload: { id, reason }, jobId: invoice.job_id, message: updErr.message, resumable: true }).catch(() => {});
+    throw updErr;
   }
-  return data;
+
+  if (invoice.draw_id) {
+    const { data: draw } = await sb
+      .from('draw_schedules')
+      .select('invoiced_amount, status')
+      .eq('id', invoice.draw_id)
+      .single();
+
+    if (draw) {
+      const newInvoiced = Math.max(0, Number(draw.invoiced_amount) - Number(invoice.total_amount));
+      const drawPatch = {
+        invoiced_amount: newInvoiced,
+        updated_at: new Date().toISOString(),
+      };
+      if (newInvoiced < 0.01 && draw.status === 'in_progress') drawPatch.status = 'planned';
+
+      const { error: drawErr } = await sb
+        .from('draw_schedules')
+        .update(drawPatch)
+        .eq('id', invoice.draw_id);
+      if (drawErr) {
+        captureFailedIntent({ kind: 'void_invoice_draw_rollup', payload: { id, draw_id: invoice.draw_id }, jobId: invoice.job_id, message: drawErr.message, resumable: true }).catch(() => {});
+        console.warn(`Invoice ${id} voided but draw rollup reversal failed: ${drawErr.message}`);
+      }
+    }
+  }
+
+  return { ...invoice, ...patch };
 }
 
 export async function sbDeleteInvoice(id) {
