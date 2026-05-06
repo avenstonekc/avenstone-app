@@ -126,11 +126,29 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
         )}
 
         {step === 'height' && (
-          <HeightCaptureStep
-            captureMode="interior"
-            autoHeightFt={rooms.length > 0 ? Math.max(...rooms.map(r => r.height || 0)) || null : null}
-            onConfirm={handleHeightConfirm}
-          />
+          <div>
+            {saving && (
+              <div style={{ textAlign: 'center', padding: '12px 0 0', color: '#888', fontFamily: '"DM Sans", sans-serif', fontSize: 14 }}>
+                Saving...
+              </div>
+            )}
+            {saveError && (
+              <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#991B1B', fontFamily: '"DM Sans", sans-serif' }}>
+                Save failed: {saveError}
+              </div>
+            )}
+            {savedOk ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: '#22c55e', fontFamily: '"DM Sans", sans-serif', fontSize: 16, fontWeight: 600 }}>
+                ✓ Saved
+              </div>
+            ) : (
+              <HeightCaptureStep
+                captureMode="interior"
+                autoHeightFt={rooms.length > 0 ? Math.max(...rooms.map(r => r.height || 0)) || null : null}
+                onConfirm={handleHeightConfirm}
+              />
+            )}
+          </div>
         )}
 
         {step === 'save' && (
