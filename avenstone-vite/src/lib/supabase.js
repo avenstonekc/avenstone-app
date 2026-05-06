@@ -1962,11 +1962,15 @@ export const sbLoadEngagementsForSub = async subId => {
   if (!subId) return { ok: false, error: 'subId is required', data: null };
   const { data, error } = await sb
     .from('job_sub_engagements')
-    .select('*, job:jobs!job_id(id, address, status)')
+    .select(`*, job:jobs!job_id(id, address, status), current_bid:engagement_bids!engagement_id(id, total_amount, terms, start_date, end_date, line_items, drafted_by, submitted_at, revision_number, is_current)`)
     .eq('sub_id', subId)
     .order('created_at', { ascending: false });
   if (error) return { ok: false, error: error.message, data: null };
-  return { ok: true, error: null, data: data || [] };
+  const normalized = (data || []).map(eng => ({
+    ...eng,
+    current_bid: (eng.current_bid || []).find(b => b.is_current) || null,
+  }));
+  return { ok: true, error: null, data: normalized };
 };
 
 export const sbLoadEngagementByIds = async ({ jobId, subId, trade, includeTerminal = false }) => {

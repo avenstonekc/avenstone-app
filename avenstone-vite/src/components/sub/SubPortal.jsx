@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'; // useRef kept for bidFileRef
-import { sb, sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, sbLoadActiveTradeStrings, AV_USER_ID } from '../../lib/supabase';
-import { Ic, sc, sl, f$, fD } from '../../lib/utils';
+import { sb, sbLoadSubJobs, sbLoadSubITBs, sbSubmitBid, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, sbLoadActiveTradeStrings, sbLoadEngagementsForSub, AV_USER_ID } from '../../lib/supabase';
+import { Ic, sc, sl, f$, fD, fDT } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 import SubJobView from './SubJobView';
 import SubOnboardingWizard from './SubOnboardingWizard';
@@ -51,9 +51,18 @@ export default function SubPortal({ profile, signOut }) {
   const [allTradeStrings, setAllTradeStrings] = useState([]);
   const bidFileRef = useRef();
 
+  const [engagements, setEngagements] = useState([]);
+  const [showPast, setShowPast] = useState(false);
+
   useEffect(() => {
     sbLoadActiveTradeStrings().then(setAllTradeStrings);
   }, []);
+
+  useEffect(() => {
+    if (profile?.id) {
+      sbLoadEngagementsForSub(profile.id).then(res => { if (res.ok) setEngagements(res.data); });
+    }
+  }, [profile?.id]);
 
   useEffect(() => {
     if (profile?.id) {
@@ -172,6 +181,86 @@ export default function SubPortal({ profile, signOut }) {
       </div>
 
       <div style={{ padding: 16 }}>
+
+        {/* ── My Engagements ── */}
+        {(() => {
+          const actionNeeded = engagements.filter(e => e.status === 'invited');
+          const awaitingPM   = engagements.filter(e => e.status === 'bid_submitted');
+          const active       = engagements.filter(e => e.status === 'active');
+          const past         = engagements.filter(e => ['completed', 'declined', 'withdrawn', 'removed'].includes(e.status));
+
+          const statusMeta = {
+            invited:       { label: 'Invited',    color: GOLD,      bg: 'rgba(201,168,76,0.12)' },
+            bid_submitted: { label: 'Bid In',     color: '#3b82f6', bg: 'rgba(59,130,246,0.1)'  },
+            active:        { label: 'Active',     color: '#22c55e', bg: 'rgba(34,197,94,0.1)'   },
+            completed:     { label: 'Completed',  color: '#9CA3AF', bg: 'rgba(156,163,175,0.1)' },
+            declined:      { label: 'Declined',   color: '#ef4444', bg: 'rgba(239,68,68,0.1)'   },
+            withdrawn:     { label: 'Withdrawn',  color: '#ef4444', bg: 'rgba(239,68,68,0.1)'   },
+            removed:       { label: 'Removed',    color: '#ef4444', bg: 'rgba(239,68,68,0.1)'   },
+          };
+
+          const renderRow = eng => {
+            const meta = statusMeta[eng.status] || statusMeta.invited;
+            const lastTs = [eng.invited_at, eng.bid_submitted_at, eng.activated_at, eng.completed_at, eng.terminated_at].filter(Boolean).sort().pop();
+            return (
+              <div key={eng.id} style={{ background: '#fff', border: `1px solid ${BORDER}`, borderLeft: `3px solid ${meta.color}`, borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: NAV, marginBottom: 2 }}>{eng.job?.address || '—'}</div>
+                    <div style={{ fontSize: 12, color: '#9CA3AF', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {eng.trade && <span>{eng.trade}</span>}
+                      {eng.current_bid?.total_amount != null && <span style={{ color: NAV, fontWeight: 600 }}>{f$(eng.current_bid.total_amount)}</span>}
+                      {lastTs && <span>{fDT(lastTs)}</span>}
+                    </div>
+                    {eng.status === 'invited' && (
+                      <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 4, display: 'inline-block', background: eng.bid_type === 'gc_drafted' ? 'rgba(59,130,246,0.1)' : 'rgba(201,168,76,0.12)', color: eng.bid_type === 'gc_drafted' ? '#3b82f6' : GOLD }}>
+                        {eng.bid_type === 'gc_drafted' ? 'Pre-drafted bid ready for your review' : 'Submit your bid'}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: meta.bg, color: meta.color, border: `1px solid ${meta.color}44`, flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{meta.label}</span>
+                </div>
+              </div>
+            );
+          };
+
+          const groupHeader = (label, count) => (
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {label}
+              <span style={{ background: '#F7F5F0', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '1px 7px', fontSize: 10, color: '#9CA3AF' }}>{count}</span>
+            </div>
+          );
+
+          return (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: NAV, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                My Engagements
+                {engagements.length > 0 && <span style={{ fontSize: 12, background: '#F7F5F0', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '1px 9px', color: '#9CA3AF', fontWeight: 600 }}>{engagements.length}</span>}
+              </div>
+
+              {engagements.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#9CA3AF', padding: '12px 0' }}>
+                  No engagements yet. PMs will reach out when they want a bid from you.
+                </div>
+              ) : (
+                <div>
+                  {actionNeeded.length > 0 && <div style={{ marginBottom: 14 }}>{groupHeader('Action needed', actionNeeded.length)}{actionNeeded.map(renderRow)}</div>}
+                  {awaitingPM.length > 0 && <div style={{ marginBottom: 14 }}>{groupHeader('Awaiting PM', awaitingPM.length)}{awaitingPM.map(renderRow)}</div>}
+                  {active.length > 0 && <div style={{ marginBottom: 14 }}>{groupHeader('Active', active.length)}{active.map(renderRow)}</div>}
+                  {past.length > 0 && (
+                    <div>
+                      <button onClick={() => setShowPast(v => !v)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 8 }}>
+                        {showPast ? '▾' : '▸'} Show {past.length} past
+                      </button>
+                      {showPast && past.map(renderRow)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Jobs tab */}
         {view === 'jobs' && <>
           {loading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>{t('Loading your projects...', lang)}</div>}

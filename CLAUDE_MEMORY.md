@@ -331,3 +331,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, CLAUDE_MEMORY.md
 - Decision: strictly additive — legacy SubsTab content stays. Retirement is Phase 2e.
 - Open: Phase 2d (SubPortal — call view-engagement on open, submit-bid-response on submit). Phase 2e (retire Quote Request page + Assign-to-Project flow + obsolete legacy content on SubsTab).
+
+[LOG — 2026-05-05]
+- Action: Sub engagement Phase 2d-1 — sub-side engagement list rendered on SubPortal. Reads via extended sbLoadEngagementsForSub (now includes current_bid via left join, normalized in JS). Four state groups: Action needed / Awaiting PM / Active / Past. Read-only — no click-through, no bid form yet.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/sub/SubPortal.jsx, CLAUDE_MEMORY.md
+- Decision: strictly additive — legacy itb:quote_requests selector stays. Retirement is Phase 2e. Section placed at top of content area (above all tabs) since it's always relevant to the sub.
+- Open: Phase 2d-2 (engagement detail modal calling view-engagement edge fn). Phase 2d-3 (bid submission form calling submit-bid-response edge fn). Phase 2e (retire legacy SubPortal selector + Quote Request page + Assign-to-Project flow).
