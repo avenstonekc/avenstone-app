@@ -1289,3 +1289,11 @@ Pattern across the failures: smoothing over reality (sycophancy, silent correcti
 - SubJobView: replaced old sbLoadSubPhases phase list with read-only sbLoadScheduleItemsForSub items filtered to status=[scheduled, in_progress] for current job. Removed updatePhase/phaseUpdating — subs no longer mark phases directly.
 - Dynamic import pattern: ScheduleTab uses `import('../../../lib/supabase').then(({ sbNotifyScheduleItemCreated })...)` so module loads clean even before helpers existed.
 - Open: none — Prompt B complete.
+
+---
+
+## helper-error-sweep · 2026-05-02 · 30+ sb* helpers converted to {ok, error, data}
+
+*No discrete LOG entry was written for this work. The following is the working-mode pattern note from CLAUDE_MEMORY.md — the only record of this shipment in either memory source.*
+
+- **Supabase helpers return `{ ok, error, data }`.** `captureFailedIntent` is fire-and-forget, never throws. `sbNotifyUser(userId, type, title, body, jobId)` for targeted single-user; `sbNotify` for broadcast.
