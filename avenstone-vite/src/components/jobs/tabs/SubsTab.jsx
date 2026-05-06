@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
 import {
   sbLoadSubsTabData, sbLoadSubDirectory, sbLoadJobTransactions,
-  sbLoadQuoteRequests, sbCreateQuoteRequest, sbUpdateQuoteRequest,
+  sbUpdateQuoteRequest,
   sbSendBidInvite, sbUpdateBidStatus, sbAssignSub, sbResolveTodosBySource,
-  sbLoadActiveTradeStrings,
   sbLoadEngagementsForJob, sbAcceptBid, sbDeclineBid,
   sbWithdrawEngagement, sbRemoveEngagement, sbCompleteEngagement,
 } from '../../../lib/supabase';
 import { Ic, f$, fD, fDT } from '../../../lib/utils';
-import SubPicker from '../../sub/SubPicker';
 import AddSubToJobModal from '../../modals/AddSubToJobModal';
 
 // ── computeSubStatus ──────────────────────────────────────────────────────────
@@ -72,9 +70,6 @@ const ENG_STATUS_META = {
   removed:       { label: 'Removed',    color: '#ef4444', bg: '#450a0a' },
 };
 
-// ── ITB select styles ─────────────────────────────────────────────────────────
-const ssty = { appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 };
-
 // ── Main component ────────────────────────────────────────────────────────────
 export default function SubsTab({ job, profile, setTab }) {
   const [jobSubs, setJobSubs] = useState([]);
@@ -82,20 +77,14 @@ export default function SubsTab({ job, profile, setTab }) {
   const [allSubs, setAllSubs] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tradeStrings, setTradeStrings] = useState([]);
 
   // QR state
-  const [showNewQR, setShowNewQR] = useState(false);
-  const [qrForm, setQrForm] = useState({ trade: '', description: '', budget_range: '', due_date: '' });
-  const [qrSaving, setQrSaving] = useState(false);
   const [expandedQR, setExpandedQR] = useState(null);
   const [qrInviteEmail, setQrInviteEmail] = useState('');
   const [qrInviteName, setQrInviteName] = useState('');
   const [qrSendingTo, setQrSendingTo] = useState(null);
   const [qrErr, setQrErr] = useState('');
 
-  // Assign from directory
-  const [showPicker, setShowPicker] = useState(false);
   const [engModalOpen, setEngModalOpen] = useState(false);
   const [toast, setToast] = useState('');
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 4000); };
@@ -126,29 +115,6 @@ export default function SubsTab({ job, profile, setTab }) {
 
   useEffect(() => { reload(); }, [job.id]);
   useEffect(() => { loadEngagements(); }, [job.id]);
-  useEffect(() => { sbLoadActiveTradeStrings().then(setTradeStrings); }, []);
-
-  const createQR = async () => {
-    if (!qrForm.trade) return;
-    setQrSaving(true); setQrErr('');
-    const d = await sbCreateQuoteRequest({
-      job_id: job.id,
-      title: `${qrForm.trade} — ${job.address}`,
-      description: qrForm.description,
-      trade: qrForm.trade,
-      budget_range: qrForm.budget_range,
-      due_date: qrForm.due_date || null,
-      status: 'draft',
-      kind: 'sub_bid',
-    });
-    if (d) {
-      setQuoteRequests(p => [d, ...p]);
-      setShowNewQR(false);
-      setQrForm({ trade: '', description: '', budget_range: '', due_date: '' });
-      setExpandedQR(d.id);
-    }
-    setQrSaving(false);
-  };
 
   const sendInvite = async qr => {
     if (!qrInviteEmail.trim()) return;
@@ -180,12 +146,6 @@ export default function SubsTab({ job, profile, setTab }) {
     setQuoteRequests(p => p.map(qr => qr.id === qrId
       ? { ...qr, responses: (qr.responses || []).map(r => r.id === bidId ? { ...r, status: 'rejected' } : r) }
       : qr));
-  };
-
-  const handleAssignFromDirectory = async sub => {
-    setShowPicker(false);
-    await sbAssignSub(job.id, sub.id, job.address);
-    reload();
   };
 
   if (loading) return <p style={{ color: '#9ca3af', padding: 24 }}>Loading…</p>;
@@ -343,15 +303,7 @@ export default function SubsTab({ job, profile, setTab }) {
 
       {/* ── Assigned Subs ── */}
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h3 style={{ color: '#f9fafb', fontSize: 15, fontWeight: 700, margin: 0 }}>Assigned Subs</h3>
-          <button
-            onClick={() => setShowPicker(true)}
-            style={{ background: '#1f2937', border: '1px solid #374151', color: '#f9fafb', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <span style={{ width: 12, height: 12 }}>{Ic.plus}</span>Invite from Directory
-          </button>
-        </div>
+        <h3 style={{ color: '#f9fafb', fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Assigned Subs</h3>
         {jobSubs.length === 0 ? (
           <p style={{ color: '#6b7280', fontSize: 13 }}>No subs assigned yet.</p>
         ) : (
@@ -378,15 +330,7 @@ export default function SubsTab({ job, profile, setTab }) {
 
       {/* ── Quote Requests ── */}
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h3 style={{ color: '#f9fafb', fontSize: 15, fontWeight: 700, margin: 0 }}>Quote Requests</h3>
-          <button
-            onClick={() => setShowNewQR(true)}
-            style={{ background: '#1f2937', border: '1px solid #374151', color: '#f9fafb', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <span style={{ width: 12, height: 12 }}>{Ic.plus}</span>New Quote Request
-          </button>
-        </div>
+        <h3 style={{ color: '#f9fafb', fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Quote Requests</h3>
 
         {quoteRequests.length === 0 && (
           <p style={{ color: '#6b7280', fontSize: 13 }}>No quote requests yet. Create one to invite subs to bid.</p>
@@ -516,45 +460,6 @@ export default function SubsTab({ job, profile, setTab }) {
         })}
       </section>
 
-      {/* ── New Quote Request modal ── */}
-      {showNewQR && (
-        <div className="overlay" onClick={() => setShowNewQR(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">New Quote Request</div>
-            <div className="fg">
-              <label className="flbl"><span className="freq">*</span>Trade</label>
-              <select className="finp" value={qrForm.trade} onChange={e => setQrForm(p => ({ ...p, trade: e.target.value }))} style={ssty}>
-                <option value="">Select trade...</option>
-                {tradeStrings.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div className="fg"><label className="flbl">Scope Description</label><textarea className="finp fta" value={qrForm.description} onChange={e => setQrForm(p => ({ ...p, description: e.target.value }))} placeholder="Describe the work scope, specs, requirements..." rows={3} /></div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div className="fg" style={{ marginBottom: 0 }}><label className="flbl">Budget Range</label><input className="finp" value={qrForm.budget_range} onChange={e => setQrForm(p => ({ ...p, budget_range: e.target.value }))} placeholder="e.g. $8,000–$12,000" /></div>
-              <div className="fg" style={{ marginBottom: 0 }}><label className="flbl">Bid Due Date</label><input className="finp" type="date" value={qrForm.due_date} onChange={e => setQrForm(p => ({ ...p, due_date: e.target.value }))} /></div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowNewQR(false)}>Cancel</button>
-              <button className={`btn ${qrForm.trade ? 'btn-gold' : 'btn-ghost'}`} style={{ flex: 1 }} onClick={createQR} disabled={qrSaving || !qrForm.trade}>{qrSaving ? 'Creating...' : 'Create'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Invite from directory modal ── */}
-      {showPicker && (
-        <div className="overlay" onClick={() => setShowPicker(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">Invite from Directory</div>
-            <SubPicker
-              subs={allSubs}
-              exclude={assignedIds}
-              onSelect={handleAssignFromDirectory}
-              emptyMsg="All subs already assigned to this job"
-            />
-          </div>
-        </div>
-      )}
       <AddSubToJobModal isOpen={engModalOpen} onClose={() => setEngModalOpen(false)} onSuccess={() => { showToast('Engagement created — sub invited to bid'); loadEngagements(); }} initialJobId={job.id} />
     </div>
   );

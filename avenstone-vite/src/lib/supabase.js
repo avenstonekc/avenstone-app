@@ -547,14 +547,6 @@ export const sbLoadQuoteRequests = async jid => {
   const { data } = await sb.from('quote_requests').select('*,invitees:itb_invitees(id,email,sub_id,profile:profiles(full_name,trade)),responses:bid_responses(*)').eq('job_id', jid).order('created_at', { ascending: false });
   return data || [];
 };
-export const sbCreateQuoteRequest = async itb => {
-  const { data, error } = await sb.from('quote_requests').insert({ ...itb, tenant_id: AV_TENANT, created_by: AV_USER_ID }).select().single();
-  if (error) {
-    captureFailedIntent({ kind: 'quote_request_save', payload: {}, jobId: itb.job_id || null, message: error.message, resumable: false }).catch(() => {});
-    return { ok: false, error: error.message, data: null };
-  }
-  return { ok: true, error: null, data };
-};
 export const sbUpdateQuoteRequest = async (id, ch) => {
   const { data, error } = await sb.from('quote_requests').update(ch).eq('id', id).select().single();
   if (error) {
@@ -563,8 +555,7 @@ export const sbUpdateQuoteRequest = async (id, ch) => {
   }
   return { ok: true, error: null, data };
 };
-// Backward-compat aliases
-export const sbCreateITB = sbCreateQuoteRequest;
+// Backward-compat alias
 export const sbUpdateITB = sbUpdateQuoteRequest;
 export const sbSendBidInvite = async (itb, email, name) => {
   const res = await fetch(BID_INVITE_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, sub_name: name || '', job_address: itb._jobAddress || '', trade: itb.trade || '', description: itb.description || '', budget_range: itb.budget_range || '', due_date: itb.due_date || '', itb_id: itb.id, tenant_id: AV_TENANT }) });
