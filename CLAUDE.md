@@ -522,9 +522,9 @@ That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the c
 **Two-file split (established 2026-05-03):**
 
 - **CLAUDE_MEMORY.md** — lean working memory. Contains locked principles, active open items, working-mode patterns, and a slug pointer index. Read this at session start. Append new [LOG] entries here. When a LOG is no longer actively relevant, move its content to CLAUDE_ARCHIVE.md under a new slug and add the pointer to the index.
-- **CLAUDE_ARCHIVE.md** — full historical LOG content organized by `## slug · date · description` headings. Retrieve by searching for the slug. **Partially populated — chunks 1-3 of 5 committed (slugs through 2026-04-28). Chunks 4-5 cover Apr 29 → May 3 work — slug pointers exist in CLAUDE_MEMORY but archive content is pending. To retrieve a slug not yet in archive, fall back to git history: `git show 7070d65^:CLAUDE_MEMORY.md` retrieves the pre-cleanup file containing all original LOG entries.**
+- **CLAUDE_ARCHIVE.md** — full historical LOG content organized by `## slug · date · description` headings. Retrieve by searching for the slug. Fully populated — all chunks committed. Pre-cleanup CLAUDE_MEMORY.md (1220 lines) preserved at `git show 7070d65^:CLAUDE_MEMORY.md`.
 
-**Archive in progress:** CLAUDE_ARCHIVE.md exists and is partially populated. Chunks 1-3 of 5 committed (slugs through 2026-04-28). Chunks 4-5 cover Apr 29 → May 3 work — slug pointers exist in CLAUDE_MEMORY but archive content pending. Fallback retrieval: `git show 7070d65^:CLAUDE_MEMORY.md`.
+**Archive complete.** CLAUDE_ARCHIVE.md fully populated with all historical LOG entries by slug. Search by slug heading or scan the pointer index in CLAUDE_MEMORY.md. Pre-cleanup CLAUDE_MEMORY.md (1220 lines) preserved in git history at commit `7070d65^`.
 
 **Symptom index:** CLAUDE_MEMORY.md contains a "Symptom index" section mapping common error patterns to the archive slugs that solved them. Consult this section first when debugging — it's the triage layer before reading archive entries in full. Add new entries whenever a resolved bug fits a pattern likely to recur.
 
