@@ -1217,8 +1217,6 @@ export const sbLoadJobOutcomes = (tenant_id) =>
 export const sbLoadBidAnalytics = (tenant_id) =>
   sb.from('bid_analytics').select('*').eq('tenant_id', tenant_id).order('bid_sent_at', { ascending: false }).then(r => r.data || []);
 
-export const sbLoadPricingApprovals = (tenant_id) =>
-  sb.from('sub_pricing_changes').select('*, profiles(full_name)').eq('tenant_id', tenant_id).eq('status', 'pending_owner').order('created_at', { ascending: false }).then(r => r.data || []);
 
 export const sbLoadOwnerEscalations = (tenant_id) =>
   sb.from('owner_escalations').select('*, jobs(address)').eq('tenant_id', tenant_id).eq('status', 'pending').order('created_at', { ascending: false }).then(r => r.data || []);

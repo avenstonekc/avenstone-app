@@ -5,7 +5,6 @@ import {
   sbLoadSubPerformance,
   sbLoadJobOutcomes,
   sbLoadBidAnalytics,
-  sbLoadPricingApprovals,
   sbLoadOwnerEscalations,
 } from '../../lib/supabase';
 import SubPortal from '../sub/SubPortal';
@@ -13,7 +12,6 @@ import ClientPortal from '../client/ClientPortal';
 
 const TABS = [
   { id: 'intelligence', lb: 'Intelligence Dashboard' },
-  { id: 'pricing', lb: 'Pricing Approvals' },
   { id: 'escalations', lb: 'Owner Escalations' },
   { id: 'preview', lb: 'Portal Preview' },
 ];
@@ -147,119 +145,7 @@ function IntelligenceTab({ profile }) {
 }
 
 // ─── Tab 2: Pricing Approvals ───────────────────────────────────────────────────
-function PricingTab({ profile }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [working, setWorking] = useState(null);
-  const [toast, setToast] = useState('');
-
-  useEffect(() => {
-    const tid = profile.tenant_id || AV_TENANT;
-    sbLoadPricingApprovals(tid)
-      .then(d => { setItems(d); setLoading(false); })
-      .catch(e => { setError(e.message || 'Failed to load'); setLoading(false); });
-  }, []);
-
-  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 4000); };
-
-  const approve = async item => {
-    setWorking(item.id);
-    await sb.from('sub_pricing').update({ price: item.new_price }).eq('id', item.pricing_id);
-    await sb.from('sub_pricing_changes').update({ status: 'approved' }).eq('id', item.id);
-    await sb.from('notifications').insert({
-      tenant_id: item.tenant_id,
-      user_id: item.sub_id,
-      type: 'pricing_approved',
-      title: 'Price change approved',
-      body: `Your ${item.item_label} price update to $${item.new_price} has been approved.`,
-      read: false,
-    });
-    setItems(p => p.filter(x => x.id !== item.id));
-    setWorking(null);
-    showToast('Approved and sub notified.');
-  };
-
-  const reject = async item => {
-    setWorking(item.id);
-    await sb.from('sub_pricing_changes').update({ status: 'rejected' }).eq('id', item.id);
-    await sb.from('notifications').insert({
-      tenant_id: item.tenant_id,
-      user_id: item.sub_id,
-      type: 'pricing_rejected',
-      title: 'Price change rejected',
-      body: `Your ${item.item_label} price update to $${item.new_price} was not approved.`,
-      read: false,
-    });
-    setItems(p => p.filter(x => x.id !== item.id));
-    setWorking(null);
-    showToast('Rejected and sub notified.');
-  };
-
-  if (loading) return <Spinner />;
-  if (error) return <div style={{ background: '#FEE2E2', color: '#991B1B', padding: 12, borderRadius: 8, margin: 16 }}>{error}</div>;
-
-  return (
-    <div style={{ padding: '16px 0' }}>
-      {toast && (
-        <div style={{ background: '#D1FAE5', color: '#065F46', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>{toast}</div>
-      )}
-      {items.length === 0 ? (
-        <EmptyState msg="No pending pricing approvals." />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {items.map(item => (
-            <div key={item.id} className="card" style={{ padding: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                <div>
-                  <div style={{ fontWeight: 600, color: NAVY, fontSize: 14 }}>{item.profiles?.full_name || 'Unknown Sub'}</div>
-                  <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{item.trade || 'No trade'}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 13, color: '#6B7280' }}>{item.item_label}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, marginTop: 2 }}>
-                    <span style={{ color: '#EF4444', textDecoration: 'line-through', marginRight: 6 }}>${item.old_price}</span>
-                    <span style={{ color: '#22c55e' }}>→ ${item.new_price}</span>
-                  </div>
-                </div>
-              </div>
-              {item.reason && (
-                <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${BORDER}` }}>
-                  <strong style={{ color: '#374151' }}>Reason: </strong>{item.reason}
-                </div>
-              )}
-              {item.ai_evaluation && (
-                <div style={{ fontSize: 13, background: '#EFF6FF', color: '#1E40AF', padding: '8px 12px', borderRadius: 6, marginBottom: 12, borderLeft: '3px solid #3B82F6' }}>
-                  <strong>AI: </strong>{item.ai_evaluation}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  className="btn btn-navy"
-                  disabled={working === item.id}
-                  onClick={() => approve(item)}
-                  style={{ flex: 1 }}
-                >
-                  {working === item.id ? 'Working...' : 'Approve'}
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  disabled={working === item.id}
-                  onClick={() => reject(item)}
-                  style={{ flex: 1, borderColor: '#EF4444', color: '#EF4444' }}
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Tab 3: Owner Escalations ───────────────────────────────────────────────────
+// ─── Tab 2: Owner Escalations ───────────────────────────────────────────────────
 function EscalationsTab({ profile }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -520,7 +406,6 @@ export default function OwnerPortal({ profile }) {
 
       {/* Tab content */}
       {activeTab === 'intelligence' && <IntelligenceTab profile={profile} />}
-      {activeTab === 'pricing' && <PricingTab profile={profile} />}
       {activeTab === 'escalations' && <EscalationsTab profile={profile} />}
       {activeTab === 'preview' && <PreviewTab profile={profile} />}
     </div>
