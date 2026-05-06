@@ -319,3 +319,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/components/modals/AddSubToJobModal.jsx, CLAUDE_MEMORY.md
 - Decision: 2a builds the component in isolation; no wiring to Subs Directory or JobDet (Phase 2b). "Invite new sub by email" path and file attachments deferred.
 - Open: Phase 2b — wire AddSubToJobModal into Subs Directory rows and JobDet engagements tab. Phase 2c — JobDet engagements tab redesign (replaces SubsTab). Phase 2d — SubPortal updates calling the Phase 1e edge functions.
+
+[LOG — 2026-05-05]
+- Action: Sub engagement Phase 2b — AddSubToJobModal wired into two PM-side entry points. SubDir adds "Add to Job" button per sub row (opens modal pre-filled with sub). JobDet subs tab adds "Add Sub" button at top (opens modal pre-filled with job). Both fire success toast on engagement creation. Old buttons left in place.
+- Files: avenstone-vite/src/components/sub/SubDir.jsx, avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, CLAUDE_MEMORY.md
+- Decision: strictly additive in this slice — no retirement of existing buttons. Retirement happens in Phase 2e once new flow is end-to-end exercised.
+- Open: Phase 2c (JobDet engagements tab redesign — list rows from job_sub_engagements with state-aware actions). Phase 2d (SubPortal calls view-engagement on open + submit-bid-response on submit). Phase 2e (retire Quote Request page + Assign-to-Project flow + obsolete buttons).

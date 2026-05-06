@@ -7,6 +7,7 @@ import {
 } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import SubPicker from '../../sub/SubPicker';
+import AddSubToJobModal from '../../modals/AddSubToJobModal';
 
 // ── computeSubStatus ──────────────────────────────────────────────────────────
 function computeSubStatus(subId, quoteRequests, transactions) {
@@ -82,6 +83,9 @@ export default function SubsTab({ job, profile, setTab }) {
 
   // Assign from directory
   const [showPicker, setShowPicker] = useState(false);
+  const [engModalOpen, setEngModalOpen] = useState(false);
+  const [toast, setToast] = useState('');
+  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 4000); };
 
   const reload = () => {
     setLoading(true);
@@ -167,6 +171,13 @@ export default function SubsTab({ job, profile, setTab }) {
 
   return (
     <div style={{ padding: '0 0 80px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {toast && <div style={{ background: '#D1FAE5', color: '#065F46', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{toast}</div>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={() => setEngModalOpen(true)} style={{ background: '#1f2937', border: '1px solid #374151', color: '#f9fafb', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 12, height: 12 }}>{Ic.plus}</span>Add Sub
+        </button>
+      </div>
 
       {/* ── Assigned Subs ── */}
       <section>
@@ -382,6 +393,7 @@ export default function SubsTab({ job, profile, setTab }) {
           </div>
         </div>
       )}
+      <AddSubToJobModal isOpen={engModalOpen} onClose={() => setEngModalOpen(false)} onSuccess={() => showToast('Engagement created — sub invited to bid')} initialJobId={job.id} />
     </div>
   );
 }

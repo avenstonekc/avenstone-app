@@ -4,6 +4,7 @@ import { Ic } from '../../lib/utils';
 import StarRating from '../shared/StarRating';
 import SubRateModal from './SubRateModal';
 import SubComplianceModal from './SubComplianceModal';
+import AddSubToJobModal from '../modals/AddSubToJobModal';
 
 export default function SubDir({ profile }) {
   const [subs, setSubs] = useState([]);
@@ -15,6 +16,9 @@ export default function SubDir({ profile }) {
   const [ratingSub, setRatingSub] = useState(null);
   const [onboardingSub, setOnboardingSub] = useState(null);
   const [avgMap, setAvgMap] = useState({});
+  const [engModalSubId, setEngModalSubId] = useState(null);
+  const [toast, setToast] = useState('');
+  const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 4000); };
 
   useEffect(() => {
     sbLoadSubDirectory().then(async d => {
@@ -55,6 +59,7 @@ export default function SubDir({ profile }) {
       </div>
       {loading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Loading...</div>}
       {!loading && !subs.length && <div className="empty">{Ic.home}<div className="empty-t">No subs yet</div><div>Add your first subcontractor above</div></div>}
+      {toast && <div style={{ background: '#D1FAE5', color: '#065F46', padding: '10px 14px', borderRadius: 8, marginBottom: 8, fontSize: 13 }}>{toast}</div>}
       {subs.map(s => {
         const rt = avgMap[s.id];
         const avg = rt ? rt.sum / rt.cnt : 0;
@@ -78,6 +83,7 @@ export default function SubDir({ profile }) {
               <div style={{ display: 'flex', gap: 6 }}>
                 {isOwnerOrMgr && <button onClick={() => setOnboardingSub(s)} style={{ background: 'transparent', border: '1px solid #C9A84C', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#C9A84C', fontWeight: 600 }}>Onboarding</button>}
                 <button onClick={() => setRatingSub(s)} style={{ background: 'transparent', border: '1px solid #E8E4DC', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: canRate ? '#C9A84C' : '#9CA3AF', fontWeight: 600 }}>{canRate ? 'Rate / Reviews' : 'Reviews'}</button>
+                {isOwnerOrMgr && <button onClick={() => setEngModalSubId(s.id)} style={{ background: 'transparent', border: '1px solid #0A1F44', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#0A1F44', fontWeight: 600 }}>Add to Job</button>}
               </div>
             </div>
           </div>
@@ -99,6 +105,7 @@ export default function SubDir({ profile }) {
       </div>}
       {ratingSub && <SubRateModal sub={ratingSub} onClose={() => setRatingSub(null)} profile={profile} />}
       {onboardingSub && <SubComplianceModal sub={onboardingSub} onClose={() => setOnboardingSub(null)} onUpdated={updated => { setSubs(ss => ss.map(s => s.id === updated.id ? updated : s)); setOnboardingSub(updated); }} />}
+      <AddSubToJobModal isOpen={!!engModalSubId} onClose={() => setEngModalSubId(null)} onSuccess={() => showToast('Engagement created — sub invited to bid')} initialSubId={engModalSubId} />
     </div>
   );
 }
