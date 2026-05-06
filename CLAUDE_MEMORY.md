@@ -428,3 +428,13 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/components/modals/InvoiceComposerModal.jsx (new), avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx
 - Commit: 976eeec
 - Open: Phase 4 — send-invoice edge fn (pdf-lib PDF + Stripe Checkout + email). "Save & Send" button on composer. stripe-webhook reconciliation to invoice. Phase 5 — ClientPortal Invoices section.
+
+[LOG — 2026-05-06]
+- Action: Invoicing Phase 4a — send-invoice edge function + sbSendInvoice helper + Save & Send on composer.
+- send-invoice: pdf-lib US Letter PDF (header band, bill-to, line items table with right-aligned currency, totals, notes, footer), upload to job-documents/{jobId}/invoices/{invoiceNumber}.pdf (upsert), 30-day signed URL, Stripe Checkout Session with invoice_id/job_id/tenant_id in metadata, update invoice (status→sent, pdf_url, stripe_session_id, stripe_checkout_url, sent_at, sent_by_id), draw roll-up (invoiced_amount += total, planned→in_progress if draw status was planned), Resend email (View Invoice PDF + Pay Now buttons). Email failure does NOT roll back DB — invoice stays sent, returns email_warning field.
+- sbSendInvoice: uses sb.functions.invoke('send-invoice') — first functions.invoke call in supabase.js.
+- InvoiceComposerModal: Save & Send button (btn-gold) — saves draft first, then calls sbSendInvoice. Email warning: shows error, fires onSaved, auto-closes after 4s. Send failure after draft save: descriptive "Draft saved but send failed" message, keeps modal open for retry from list.
+- Files: supabase/functions/send-invoice/index.ts (new), avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/modals/InvoiceComposerModal.jsx
+- Commit: e6a466f (deployed via GitHub Actions on push to main)
+- Decision: email failure tolerant (invoice stays sent). PDF v1 hardcodes Avenstone branding per INVOICING_ARC.md out-of-scope list.
+- Open: Phase 4b — stripe-webhook update (read invoice_id from metadata, update invoices.amount_paid + status, create job_transactions row with invoice_id, roll up draw.paid_amount, notify client + staff). Phase 5 — ClientPortal Invoices section.
