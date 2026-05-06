@@ -297,3 +297,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: sbAcceptBid intentionally split into Phase 1d because it carries schedule-item drafting + notification side effects.
 - Open: Phase 1d (sbAcceptBid + auto-draft schedule items from engagement_bids.line_items + PM/sub notifications). Phase 1e (edge functions for sub-side mutations: submit-bid-response, view-engagement).
+
+[LOG — 2026-05-05]
+- Action: Sub engagement Phase 1d — sbAcceptBid added to supabase.js. Reads engagement + current bid → transitions engagement to active via sbTransitionEngagement (Phase 1c) → stamps engagement_bids accepted → auto-drafts schedule_items from bid line_items (or one placeholder if line_items empty) → fires sub notification via sbNotifyUser. Partial-failure tolerant: state-machine transition is the gate; downstream failures (bid stamp, schedule items, notify) capture failed_intent and continue rather than rolling back.
+- Files: avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: not transactional. Step order ensures the engagement-active state is the load-bearing commit; downstream is recoverable manually if needed. Hardening to a Postgres RPC for atomic acceptance can come later if real failures show up. Spec column-name mismatches corrected against live schema: description→title, sub_id→assigned_sub_id, created_by→created_by_id; no phase column on schedule_items (trade is sufficient for derivePhaseStatus); jobs.address used instead of nonexistent jobs.name.
+- Open: Phase 1e (sub-side edge functions: submit-bid-response, view-engagement). Phase 2 (UI: unified Add-to-Job modal, JobDet engagements tab, retire old paths).

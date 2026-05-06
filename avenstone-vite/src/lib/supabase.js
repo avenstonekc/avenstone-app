@@ -2067,3 +2067,117 @@ export async function sbRemoveEngagement({ engagementId, reason }) {
 export async function sbCompleteEngagement({ engagementId }) {
   return sbTransitionEngagement({ engagementId, toStatus: 'completed' });
 }
+
+export async function sbAcceptBid({ engagementId }) {
+  if (!engagementId) return { ok: false, error: 'engagementId is required', data: null };
+
+  // 1. Read engagement + current bid
+  const { data: engagement, error: engErr } = await sb
+    .from('job_sub_engagements')
+    .select('*, job:jobs!job_id(id, address, status), sub:profiles!sub_id(id, full_name, email)')
+    .eq('id', engagementId)
+    .single();
+  if (engErr || !engagement) return { ok: false, error: 'Engagement not found', data: null };
+  if (engagement.status !== 'bid_submitted')
+    return { ok: false, error: `Cannot accept bid — engagement status is '${engagement.status}', expected 'bid_submitted'`, data: null };
+
+  const { data: bid, error: bidFetchErr } = await sb
+    .from('engagement_bids')
+    .select('*')
+    .eq('engagement_id', engagementId)
+    .eq('is_current', true)
+    .single();
+  if (bidFetchErr || !bid) return { ok: false, error: 'No current bid found for this engagement', data: null };
+
+  // 2. Transition engagement → active (optimistic concurrency via Phase 1c)
+  const transition = await sbTransitionEngagement({ engagementId, toStatus: 'active' });
+  if (!transition.ok) return transition;
+
+  const now = new Date().toISOString();
+
+  // 3. Stamp the bid as accepted (non-blocking on failure)
+  const { error: bidStampErr } = await sb
+    .from('engagement_bids')
+    .update({ accepted_at: now, accepted_by_id: AV_USER_ID })
+    .eq('id', bid.id);
+  if (bidStampErr) {
+    captureFailedIntent({ kind: 'stamp_bid_accepted', payload: { engagementId, bidId: bid.id }, jobId: engagement.job_id, message: bidStampErr.message, resumable: false }).catch(() => {});
+  }
+
+  // 4. Auto-draft schedule items
+  let insertedItems = null;
+  try {
+    const { data: phaseRow } = await sb
+      .from('trade_phase_map')
+      .select('phase_name')
+      .eq('tenant_id', AV_TENANT)
+      .eq('trade', engagement.trade)
+      .eq('is_primary', true)
+      .maybeSingle();
+
+    if (!phaseRow) {
+      captureFailedIntent({ kind: 'schedule_item_save', payload: { engagementId, trade: engagement.trade, reason: 'no primary phase mapping' }, jobId: engagement.job_id, message: `No primary trade_phase_map entry for trade: ${engagement.trade}`, resumable: false }).catch(() => {});
+    }
+
+    const lineItems = Array.isArray(bid.line_items) && bid.line_items.length > 0 ? bid.line_items : null;
+    const baseRow = {
+      tenant_id: AV_TENANT,
+      job_id: engagement.job_id,
+      type: 'sub_start',
+      trade: engagement.trade,
+      assigned_sub_id: engagement.sub_id,
+      engagement_id: engagement.id,
+      scheduled_date: bid.start_date || null,
+      scheduled_end_date: bid.end_date || null,
+      status: 'scheduled',
+      notify_client: false,
+      created_by_id: AV_USER_ID,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const rows = lineItems
+      ? lineItems.map(li => ({
+          ...baseRow,
+          title: li.description || li.name || 'Sub work',
+        }))
+      : [{
+          ...baseRow,
+          title: bid.scope_description || engagement.scope_description || `Sub work for ${engagement.trade}`,
+          notes: 'Auto-drafted from bid acceptance — review and split into specific schedule items as needed.',
+        }];
+
+    const { data: drafted, error: schedErr } = await sb.from('schedule_items').insert(rows).select('id');
+    if (schedErr) {
+      captureFailedIntent({ kind: 'schedule_item_save', payload: { engagementId, rowCount: rows.length }, jobId: engagement.job_id, message: schedErr.message, resumable: false }).catch(() => {});
+    } else {
+      insertedItems = drafted;
+    }
+  } catch (schedEx) {
+    captureFailedIntent({ kind: 'schedule_item_save', payload: { engagementId }, jobId: engagement.job_id, message: schedEx.message, resumable: false }).catch(() => {});
+  }
+
+  // 5. Notify the sub (non-blocking)
+  try {
+    await sbNotifyUser(
+      engagement.sub_id,
+      'bid_accepted',
+      'Your bid was accepted',
+      `Your bid for ${engagement.job?.address || 'a job'} was accepted. Schedule details coming soon.`,
+      engagement.job_id,
+    );
+  } catch (notifyEx) {
+    console.error('[sbAcceptBid] sub notify failed:', notifyEx.message);
+  }
+
+  // 6. Return
+  return {
+    ok: true,
+    error: null,
+    data: {
+      engagement: transition.data,
+      bid,
+      scheduleItemIds: insertedItems?.map(r => r.id) || [],
+    },
+  };
+}
