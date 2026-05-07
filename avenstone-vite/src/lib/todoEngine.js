@@ -24,6 +24,24 @@ const RULES = [
       todo.related_entity_type === 'material_order' &&
       todo.source === 'engine',
   },
+  // ---- Rule 2: auto-created sub_start needs PM review ----
+  {
+    name: 'auto_sub_start_review',
+    create_on: 'schedule_item.auto_created',
+    create_payload: (event) => ({
+      title: `Review auto-created ${event.trade} start: ${event.startDate}`,
+      notes: 'System scheduled this from an accepted bid + quoted delivery date. Adjust the start date or buffer if needed, or resolve to confirm.',
+      type: 'auto_sub_start_review',
+      job_id: event.jobId,
+      related_entity_type: 'schedule_item',
+      related_entity_id: event.scheduleItemId,
+    }),
+    resolve_on: [],
+    resolve_match: (todo) =>
+      todo.type === 'auto_sub_start_review' &&
+      todo.related_entity_type === 'schedule_item' &&
+      todo.source === 'engine',
+  },
 ];
 
 function findCreateRules(eventType) {

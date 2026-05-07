@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { runGatesForTransition, getNextPhase, PHASE_LABELS } from './phaseGates.js';
 import { runTodoEngine } from './todoEngine.js';
+import { checkAndCreateSubStart } from './scheduleAutoCreate.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -2134,7 +2135,16 @@ export async function sbAcceptBid({ engagementId }) {
     console.error('[sbAcceptBid] sub notify failed:', notifyEx.message);
   }
 
-  // 6. Return
+  // 6. Phase 6 dual-trigger: auto-create delivery-based sub_start if material order exists
+  checkAndCreateSubStart(sb, AV_TENANT, AV_USER_ID, engagement.job_id, engagement.trade)
+    .then(result => {
+      if (result) {
+        fireTodoEvent('schedule_item.auto_created', { jobId: engagement.job_id, trade: result.trade, scheduleItemId: result.id, startDate: result.scheduled_date }).catch(() => {});
+      }
+    })
+    .catch(err => console.warn('[sbAcceptBid] Phase 6 auto-create failed:', err?.message));
+
+  // 7. Return
   return {
     ok: true,
     error: null,
@@ -2671,6 +2681,15 @@ export async function sbUpdateMaterialOrder(id, updates) {
   }
   if (patch.status !== undefined) {
     fireTodoEvent('material_order.status_changed', { jobId: data.job_id, orderId: data.id, trade: data.trade, newStatus: data.status }).catch(() => {});
+  }
+  if (patch.quoted_delivery_date !== undefined && data.quoted_delivery_date) {
+    checkAndCreateSubStart(sb, AV_TENANT, AV_USER_ID, data.job_id, data.trade)
+      .then(result => {
+        if (result) {
+          fireTodoEvent('schedule_item.auto_created', { jobId: data.job_id, trade: result.trade, scheduleItemId: result.id, startDate: result.scheduled_date }).catch(() => {});
+        }
+      })
+      .catch(err => console.warn('[sbUpdateMaterialOrder] Phase 6 auto-create failed:', err?.message));
   }
   return data;
 }
