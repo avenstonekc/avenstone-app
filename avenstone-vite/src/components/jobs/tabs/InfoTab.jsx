@@ -5,6 +5,7 @@ import { buildGenericPDF } from '../../../lib/pdf';
 import ContractModal from '../../modals/ContractModal';
 import CompletionSignoffModal from '../../modals/CompletionSignoffModal';
 import PhaseAdvanceCard from '../PhaseAdvanceCard';
+import JobTodosBlock from '../JobTodosBlock';
 
 function ClientLinkButton({ job }) {
   const [sending, setSending] = useState(false);
@@ -85,6 +86,9 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
     <div>
       {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && (
         <PhaseAdvanceCard jobId={job.id} jobStatus={job.status} />
+      )}
+      {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && (
+        <JobTodosBlock job={job} profile={profile} />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Job Details</div>

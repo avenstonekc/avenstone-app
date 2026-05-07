@@ -30,6 +30,7 @@ import MasterAgent from './components/shared/MasterAgent';
 import SequencesScr from './components/common/SequencesScr';
 import AiPmDashboard from './components/dashboard/AiPmDashboard';
 import TodayScr from './components/dashboard/TodayScr';
+import MyTodosScreen from './components/todos/MyTodosScreen';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -161,6 +162,7 @@ export default function App() {
     { id: 'today', lb: 'Today', ic: 'check', sec: 'Main' },
     { id: 'dashboard', lb: 'AI Home', ic: 'grid', sec: 'Main' },
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
+    ...(isStaff ? [{ id: 'todos', lb: 'Todos', ic: 'check', sec: 'Main' }] : []),
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
     ...(isOwnerOrRep ? [{ id: 'leads', lb: 'Leads', ic: 'doc', sec: 'Sales' }, { id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }, { id: 'stats', lb: 'Stats', ic: 'box', sec: 'Sales' }] : []),
     ...(isStaff ? [{ id: 'field-agent', lb: 'Field Agent', ic: 'grid', sec: 'AI' }] : []),
@@ -248,6 +250,7 @@ export default function App() {
 
           <div className="pg-wrap">
             {pg === 'today' && <TodayScr profile={profile} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { /* MasterAgent reads pendingAction directly */ } }} />}
+            {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}
             {pg === 'dashboard' && <AiHomeScr profile={profile} jobs={jobs} nav={setPg} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
             {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('dashboard')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} />}
@@ -285,6 +288,7 @@ export default function App() {
               { id: 'today', ic: 'check', lb: 'Today' },
               { id: 'dashboard', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
+              ...(isStaff ? [{ id: 'todos', ic: 'check', lb: 'Todos' }] : []),
               ...(isStaff ? [{ id: 'field-agent', ic: 'grid', lb: '⚡ Agent' }] : []),
               ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
             ].map(t => (
