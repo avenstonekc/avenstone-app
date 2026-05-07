@@ -548,3 +548,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Schema reality: material_orders table REPLACED (old per-row design → new per-order JSONB design, 0 rows migrated). 15 columns, 4 RLS policies, 4 indexes, status CHECK constraint. PM-side write/read; no client/sub access this phase.
 - Decision: status auto-detected on create — if quote info supplied (supplier_name OR quote_total OR quoted_delivery_date), status='quoted', else 'planned'. Transitioning to 'delivered' auto-stamps actual_delivery_date if not provided. Old table had different schema (per-row, no trade column, no JSONB materials); dropped and recreated since 0 rows existed.
 - Open: EXECUTION_ARC Phase 3 — Materials sub-tab UI on JobDet (lists pending materials grouped by trade, Add Quote modal creates material_orders rows).
+
+[LOG — 2026-05-06]
+- Action: EXECUTION_ARC Phase 3 — Materials sub-tab shipped. Replaced old per-row MaterialsTab.jsx with new per-order design backed by material_orders. Grouped by trade, status transition buttons (planned→quoted→ordered→delivered→installed) with inline confirm pattern for destructive "Cancel". New AddQuoteModal creates material_order rows with JSONB materials editor (description/qty/unit/unit_price rows). JobDet: Materials tab added with pmOnly:true role gate (owner/PM/sales_rep); filtered in TABS render.
+- Action: GitHub secret SUPABASE_ACCESS_TOKEN updated with new PAT from tokenfile.txt.
+- Files: avenstone-vite/src/components/jobs/tabs/MaterialsTab.jsx (rewritten), avenstone-vite/src/components/modals/AddQuoteModal.jsx (new), avenstone-vite/src/components/jobs/JobDet.jsx
+- Commit: 0d6e865 (pushed to main)
+- Decision: grouped-by-trade rendering rather than flat list — material orders are fundamentally per-trade documents. pmOnly gate hides tab from sub/client roles without nav refactor.
+- Schema reality: material_orders.supplier_name (TEXT), .quote_total (NUMERIC), .quoted_delivery_date (DATE), .actual_delivery_date (DATE), .materials (JSONB), .status (TEXT CHECK). All Phase 2 columns confirmed.
+- Open: EXECUTION_ARC Phase 4 — phase advancement gates / todo generation on bid accept (connect engagement acceptance to schedule item todos).
