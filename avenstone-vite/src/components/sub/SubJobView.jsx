@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID } from '../../lib/supabase';
+import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID, sbUpdateScheduleItem, sbCountPhotosForEntity } from '../../lib/supabase';
 import { Ic, sc, sl, fD, fDT, f$ } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 
@@ -49,6 +49,12 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const [showCOForm, setShowCOForm] = useState(false);
   const [coForm, setCoForm] = useState({ title: '', description: '', amount: '' });
   const [coSaving, setCoSaving] = useState(false);
+  const [pendingComplete, setPendingComplete] = useState(null); // item id awaiting photo + confirm
+  const [completePhotoCounts, setCompletePhotoCounts] = useState({}); // { [itemId]: count }
+  const [completeUploading, setCompleteUploading] = useState(false);
+  const [completeWorking, setCompleteWorking] = useState(null);
+  const [completeErr, setCompleteErr] = useState(null);
+  const completePhotoRef = useRef();
 
   useEffect(() => {
     if (tab !== 'msgs' || msgsLoaded) return;
@@ -139,6 +145,41 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
     setCoSaving(false);
   };
 
+  const PHOTO_GATE_TYPES = ['sub_start', 'site_visit', 'inspection'];
+
+  const startComplete = async (item) => {
+    setCompleteErr(null);
+    if (PHOTO_GATE_TYPES.includes(item.type)) {
+      // Pre-load existing photo count (idempotency: sub may have uploaded before)
+      const existing = await sbCountPhotosForEntity('schedule_item', item.id);
+      setCompletePhotoCounts(p => ({ ...p, [item.id]: existing }));
+    }
+    setPendingComplete(item.id);
+  };
+
+  const handleCompletePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !pendingComplete) return;
+    setCompleteUploading(true);
+    await sbPhoto(job.id, file, 'schedule_item', pendingComplete);
+    setCompletePhotoCounts(p => ({ ...p, [pendingComplete]: (p[pendingComplete] ?? 0) + 1 }));
+    setCompleteUploading(false);
+    e.target.value = '';
+  };
+
+  const confirmComplete = async (itemId) => {
+    setCompleteWorking(itemId);
+    setCompleteErr(null);
+    const res = await sbUpdateScheduleItem(itemId, { status: 'complete' });
+    setCompleteWorking(null);
+    if (!res.ok) {
+      setCompleteErr(res.error || 'Failed to mark complete');
+      return;
+    }
+    setSchedItems(p => p.filter(i => i.id !== itemId));
+    setPendingComplete(null);
+  };
+
   const onFile = async e => {
     const files = Array.from(e.target.files); if (!files.length) return;
     setUpl(true); setUplPct(0); const res = [];
@@ -206,6 +247,8 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
           {schedLoaded && !schedItems.length && (
             <div className="empty">{Ic.cal}<div className="empty-t">{t('Nothing scheduled yet', lang)}</div><div>{t('Your contractor will add items here', lang)}</div></div>
           )}
+          {completeErr && <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{completeErr}</div>}
+          <input ref={completePhotoRef} type="file" accept="image/*" capture="environment" onChange={handleCompletePhoto} style={{ display: 'none' }} />
           {schedItems.map(item => {
             const today = new Date().toISOString().slice(0, 10);
             const isOverdue = item.status === 'scheduled' && item.scheduled_date && item.scheduled_date < today;
@@ -214,6 +257,9 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
             const badgeBg   = isOverdue ? '#FEE2E2' : isActive ? '#FEF3C7' : '#EFF6FF';
             const badgeCol  = isOverdue ? '#991B1B' : isActive ? '#92400E' : '#1D4ED8';
             const badgeTxt  = isOverdue ? (lang === 'es' ? 'Vencido' : 'Overdue') : item.status?.replace(/_/g, ' ') || 'scheduled';
+            const needsPhoto = PHOTO_GATE_TYPES.includes(item.type);
+            const photoCount = completePhotoCounts[item.id] ?? 0;
+            const isPending  = pendingComplete === item.id;
             return (
               <div key={item.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `4px solid ${accentCol}`, padding: '14px 16px', marginBottom: 10, borderRadius: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -225,6 +271,58 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
                   {item.trade && <span style={{ background: '#F7F5F0', padding: '1px 6px', borderRadius: 10 }}>{item.trade}</span>}
                 </div>
                 {item.notes && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 6, background: '#F7F5F0', padding: '6px 8px', borderRadius: 4, lineHeight: 1.4 }}>{item.notes}</div>}
+
+                {/* Mark Complete flow */}
+                {!isPending && (
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      onClick={() => startComplete(item)}
+                      style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6, border: '1px solid #0A1F44', background: '#0A1F44', color: '#fff', cursor: 'pointer' }}
+                    >
+                      {t('Mark Complete', lang)}
+                    </button>
+                  </div>
+                )}
+                {isPending && (
+                  <div style={{ marginTop: 10, background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6, padding: '10px 12px' }}>
+                    {needsPhoto && (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44', marginBottom: 4 }}>
+                          {photoCount > 0
+                            ? `✓ ${photoCount} ${t('photo', lang)}${photoCount !== 1 ? 's' : ''} ${t('uploaded', lang)}`
+                            : t('📷 Take a photo of the completed work to mark complete.', lang)}
+                        </div>
+                        {photoCount === 0 && (
+                          <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 8 }}>
+                            {t('Required for', lang)} {item.type.replace(/_/g, ' ')}: {t('at least 1 photo.', lang)}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => completePhotoRef.current?.click()}
+                          disabled={completeUploading}
+                          style={{ fontSize: 12, fontWeight: 600, padding: '6px 12px', borderRadius: 5, border: '1px solid #0A1F44', background: '#fff', color: '#0A1F44', cursor: 'pointer' }}
+                        >
+                          {completeUploading ? t('Uploading…', lang) : t('📷 Add Photo', lang)}
+                        </button>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => confirmComplete(item.id)}
+                        disabled={completeWorking === item.id || (needsPhoto && photoCount === 0)}
+                        style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 5, border: `1px solid ${needsPhoto && photoCount === 0 ? '#D1D5DB' : '#22c55e'}`, background: needsPhoto && photoCount === 0 ? '#F9FAFB' : '#D1FAE5', color: needsPhoto && photoCount === 0 ? '#9CA3AF' : '#065F46', cursor: needsPhoto && photoCount === 0 ? 'not-allowed' : 'pointer' }}
+                      >
+                        {completeWorking === item.id ? t('Saving…', lang) : t('Confirm Complete', lang)}
+                      </button>
+                      <button
+                        onClick={() => { setPendingComplete(null); setCompleteErr(null); }}
+                        style={{ fontSize: 12, padding: '6px 12px', borderRadius: 5, border: '1px solid #D1D5DB', background: 'transparent', color: '#6B7280', cursor: 'pointer' }}
+                      >
+                        {t('Cancel', lang)}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
