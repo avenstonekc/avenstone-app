@@ -1661,6 +1661,14 @@ export const sbUpdateScheduleItem = async (id, patch) => {
     if (type === 'sub_start' || patch.status) {
       await derivePhaseStatus(jobId, tenantId).catch(() => {});
     }
+    const siTrade = data?.trade ?? prevRow?.trade;
+    if (data?.status === 'complete') {
+      fireTodoEvent('schedule_item.completed', { jobId, scheduleItemId: id, trade: siTrade }).catch(() => {});
+    } else if (data?.status === 'cancelled') {
+      fireTodoEvent('schedule_item.cancelled', { jobId, scheduleItemId: id, trade: siTrade }).catch(() => {});
+    } else {
+      fireTodoEvent('schedule_item.modified', { jobId, scheduleItemId: id, trade: siTrade, newStatus: data?.status }).catch(() => {});
+    }
     return { ok: true, error: null, data, prevRow: prevRow || null };
   } catch (e) {
     captureFailedIntent({ kind: 'schedule_item_update', payload: { id, patch }, jobId: patch.job_id, message: e.message }).catch(() => {});
@@ -1676,7 +1684,7 @@ export const sbDeleteScheduleItem = async (id) => {
   try {
     const { data: row } = await sb
       .from('schedule_items')
-      .select('type, job_id, tenant_id')
+      .select('type, job_id, tenant_id, trade')
       .eq('id', id)
       .single();
     const { error } = await sb
@@ -1687,6 +1695,7 @@ export const sbDeleteScheduleItem = async (id) => {
     if (row?.type === 'sub_start') {
       await derivePhaseStatus(row.job_id, row.tenant_id ?? AV_TENANT).catch(() => {});
     }
+    fireTodoEvent('schedule_item.cancelled', { jobId: row?.job_id, scheduleItemId: id, trade: row?.trade }).catch(() => {});
     return { ok: true, error: null };
   } catch (e) {
     captureFailedIntent({ kind: 'schedule_item_delete', payload: { id }, jobId: null, message: e.message }).catch(() => {});

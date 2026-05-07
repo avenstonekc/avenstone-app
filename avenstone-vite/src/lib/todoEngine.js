@@ -36,7 +36,8 @@ const RULES = [
       related_entity_type: 'schedule_item',
       related_entity_id: event.scheduleItemId,
     }),
-    resolve_on: [],
+    resolve_on: ['schedule_item.modified', 'schedule_item.cancelled', 'schedule_item.completed'],
+    resolve_condition: (event, todo) => todo.related_entity_id === event.scheduleItemId,
     resolve_match: (todo) =>
       todo.type === 'auto_sub_start_review' &&
       todo.related_entity_type === 'schedule_item' &&

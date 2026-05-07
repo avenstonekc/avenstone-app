@@ -607,3 +607,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Schema reality: schedule_items.auto_created (BOOL NOT NULL DEFAULT false), .auto_created_from_engagement_id (UUID), .auto_created_from_material_order_id (UUID) — all 3 confirmed via PAT verify.
 - Decision: idempotency guard is .eq('auto_created', true) NOT .neq('status', 'cancelled'). Reason: sbAcceptBid already creates sub_starts (auto_created=false) — if guard checked all sub_starts, Phase 6 would always skip. Both PM-visible: bid-date item shows negotiated start, delivery-date item shows constraint-based start. PM resolves on review.
 - Decision: spec had wrong column names (start_date → scheduled_date, status 'planned' → 'scheduled', missing title NOT NULL). All corrected in scheduleAutoCreate.js before writing.
+
+[LOG — 2026-05-07]
+- Action: EXECUTION_ARC Phase 5b-i — schedule_item state change hooks. todoEngine.js auto_sub_start_review rule extended with resolve_on (schedule_item.modified | cancelled | completed) and resolve_condition (match by related_entity_id). fireTodoEvent calls added to sbUpdateScheduleItem (fires completed/cancelled/modified based on resulting status) and sbDeleteScheduleItem (fires cancelled; added trade to pre-fetch select). Closes the Phase 6 review-todo loop — no more stale todos requiring manual resolution.
+- Files: avenstone-vite/src/lib/todoEngine.js, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Decision: any PM action on the schedule_item resolves the review todo — modify, cancel, or complete all mean PM has acknowledged it. sbDeleteScheduleItem is a soft-cancel (sets status='cancelled') so fires schedule_item.cancelled. Idempotency relies on existing engine .eq('status', 'open') guard — no double-resolve risk.
+- Open: EXECUTION_ARC Phase 5b-ii (engagement event rules — scope todo on bid sent, auto-resolve on accept/decline). Phase 7 — sequence triggers. Phase 8 — site visit checklists.
