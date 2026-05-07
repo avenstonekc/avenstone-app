@@ -25,6 +25,8 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
   const [form, setForm] = useState({ totalAmount: '', terms: '', startDate: '', endDate: '' });
+  const [earliestStartDate, setEarliestStartDate] = useState('');
+  const [availabilityNotes, setAvailabilityNotes] = useState('');
   const [lineItems, setLineItems] = useState([]);
 
   const updateLine = (idx, field, rawValue) => {
@@ -62,6 +64,8 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
       setEng(fetched);
       const savedLines = Array.isArray(currentBid?.line_items) ? currentBid.line_items : [];
       setLineItems(savedLines);
+      setEarliestStartDate(currentBid?.earliest_start_date ?? '');
+      setAvailabilityNotes(currentBid?.availability_notes ?? '');
       setForm({
         totalAmount: savedLines.length > 0 ? '' : (currentBid?.total_amount ?? ''),
         terms: currentBid?.terms ?? '',
@@ -75,11 +79,13 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
 
   useEffect(() => {
     if (!isOpen || !engagementId) return;
-    setLoading(true); setErr(''); setEng(null); setMode('view'); setFormError(null); setLineItems([]);
+    setLoading(true); setErr(''); setEng(null); setMode('view'); setFormError(null); setLineItems([]); setEarliestStartDate(''); setAvailabilityNotes('');
     refetchModalData().finally(() => setLoading(false));
   }, [isOpen, engagementId]);
 
   const handleSubmit = async () => {
+    if (!earliestStartDate) { setFormError('Earliest start date is required'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(earliestStartDate)) { setFormError('Earliest start date must be a valid date'); return; }
     let payload;
     if (lineItems.length > 0) {
       for (const li of lineItems) {
@@ -113,6 +119,8 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
           terms: form.terms || null,
           startDate: form.startDate || null,
           endDate: form.endDate || null,
+          earliestStartDate,
+          availabilityNotes: availabilityNotes.trim() || null,
           attachedDocIds: [],
           ...payload,
         }),
@@ -210,6 +218,13 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
                 {bid.end_date && <span><span style={{ color: '#9CA3AF' }}>End: </span><span style={{ color: '#374151' }}>{fD(bid.end_date)}</span></span>}
                 {bid.submitted_at && <span><span style={{ color: '#9CA3AF' }}>Submitted: </span><span style={{ color: '#374151' }}>{fDT(bid.submitted_at)}</span></span>}
               </div>
+              {bid.earliest_start_date && (
+                <div style={{ fontSize: 12, marginTop: 4 }}>
+                  <span style={{ color: '#9CA3AF' }}>Available: </span>
+                  <span style={{ color: '#374151', fontWeight: 600 }}>{fD(bid.earliest_start_date)}</span>
+                  {bid.availability_notes && <span style={{ color: '#6B7280' }}> — {bid.availability_notes}</span>}
+                </div>
+              )}
               {bid.terms && (
                 <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5, marginTop: 4 }}>{bid.terms}</div>
               )}
@@ -255,6 +270,30 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
             {formError && (
               <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{formError}</div>
             )}
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div className="fg" style={{ flex: 1 }}>
+                <label className="flbl"><span className="freq">*</span>Earliest start date</label>
+                <input
+                  className="finp"
+                  type="date"
+                  value={earliestStartDate}
+                  onChange={e => setEarliestStartDate(e.target.value)}
+                />
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>When can you begin work on this trade?</div>
+              </div>
+            </div>
+
+            <div className="fg">
+              <label className="flbl">Availability notes (optional)</label>
+              <textarea
+                className="finp fta"
+                rows={2}
+                value={availabilityNotes}
+                onChange={e => setAvailabilityNotes(e.target.value)}
+                placeholder="Scheduling constraints, conditional availability, etc."
+              />
+            </div>
 
             {/* Line items */}
             <div style={{ marginBottom: 12 }}>

@@ -534,3 +534,10 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: EXECUTION_ARC.md, CLAUDE_MEMORY.md
 - Decision: auto value is heads-up + prefill, not action. Real progress varies from planned milestones; clients hate being billed wrong.
 - Open: trigger UI on draw modal, draft "auto-drafted" badge — both lock at Phase 10 implementation.
+
+[LOG — 2026-05-06]
+- Action: EXECUTION_ARC Phase 1 — bid availability fields. ALTER engagement_bids adds earliest_start_date DATE + availability_notes TEXT (both nullable for legacy compat). submit-bid-response edge function accepts and validates new fields (required on new submissions). EngagementDetailModal bid form adds date picker + notes textarea above line items. SubsTab Engagements display shows availability line in bid breakdown when set. sbLoadEngagementsForJob + sbLoadEngagementsForSub select clauses updated to include both fields. Legacy bids without start_date render silently (no "not specified" placeholder).
+- Files: supabase/migrations/20260506160000_engagement_bids_availability.sql, supabase/functions/submit-bid-response/index.ts, avenstone-vite/src/components/modals/EngagementDetailModal.jsx, avenstone-vite/src/components/jobs/tabs/SubsTab.jsx, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Schema reality: engagement_bids.earliest_start_date (DATE, nullable) + .availability_notes (TEXT, nullable) EXIST. Required in submit-bid-response payload but nullable in DB to support pre-Phase-1 rows.
+- Decision: required at submission time (UI + edge function validate), nullable in DB for legacy compat. Date format YYYY-MM-DD enforced. Past dates allowed (sub may have already started prep work).
+- Open: EXECUTION_ARC Phase 2 — material_orders schema next slice.

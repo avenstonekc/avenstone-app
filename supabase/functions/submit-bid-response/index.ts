@@ -31,8 +31,10 @@ Deno.serve(async (req) => {
     // 2. Validate body
     let body: any;
     try { body = await req.json(); } catch { return json({ ok: false, error: "Invalid JSON body" }, 400); }
-    const { engagementId, totalAmount, terms, startDate, endDate, lineItems: rawLineItems, attachedDocIds } = body;
+    const { engagementId, totalAmount, terms, startDate, endDate, lineItems: rawLineItems, attachedDocIds, earliestStartDate, availabilityNotes } = body;
     if (!engagementId) return json({ ok: false, error: "engagementId is required" }, 400);
+    if (!earliestStartDate) return json({ ok: false, error: "earliestStartDate is required" }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(earliestStartDate)) return json({ ok: false, error: "earliestStartDate must be YYYY-MM-DD" }, 400);
 
     // Validate + normalize line items
     const lineItems: Record<string, unknown>[] = Array.isArray(rawLineItems) ? rawLineItems : [];
@@ -103,6 +105,8 @@ Deno.serve(async (req) => {
         start_date: startDate || null,
         end_date: endDate || null,
         line_items: lineItems,
+        earliest_start_date: earliestStartDate,
+        availability_notes: availabilityNotes ?? null,
         attached_doc_ids: attachedDocIds || [],
         revision_number: revisionNumber,
         is_current: true,

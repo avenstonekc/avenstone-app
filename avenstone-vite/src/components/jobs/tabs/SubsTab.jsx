@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { sbLoadEngagementsForJob } from '../../../lib/supabase';
-import { Ic, f$, fDT } from '../../../lib/utils';
+import { Ic, f$, fD, fDT } from '../../../lib/utils';
 import AddSubToJobModal from '../../modals/AddSubToJobModal';
 import EngagementActionModal from '../../modals/EngagementActionModal';
 
@@ -104,6 +104,15 @@ export default function SubsTab({ job, profile, setTab }) {
                     </>)}
                   </div>
                 </div>
+                {eng.current_bid?.earliest_start_date && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #1f2937', fontSize: 11, color: '#9ca3af' }}>
+                    <span>Available: </span>
+                    <span style={{ color: '#d1d5db', fontWeight: 600 }}>{fD(eng.current_bid.earliest_start_date)}</span>
+                    {eng.current_bid.availability_notes && (
+                      <span> — {eng.current_bid.availability_notes}</span>
+                    )}
+                  </div>
+                )}
                 {Array.isArray(eng.current_bid?.line_items) && eng.current_bid.line_items.length > 0 && (
                   <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #1f2937' }}>
                     {eng.current_bid.line_items.map((li, idx) => (

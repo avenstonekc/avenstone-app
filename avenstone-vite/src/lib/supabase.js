@@ -1824,7 +1824,7 @@ export const sbLoadEngagementsForJob = async jobId => {
   if (!jobId) return { ok: false, error: 'jobId is required', data: null };
   const { data, error } = await sb
     .from('job_sub_engagements')
-    .select(`*, sub:profiles!sub_id(id, full_name, email, phone), invited_by:profiles!invited_by_id(id, full_name), current_bid:engagement_bids!engagement_id(id, total_amount, terms, start_date, end_date, line_items, drafted_by, submitted_at, revision_number, is_current)`)
+    .select(`*, sub:profiles!sub_id(id, full_name, email, phone), invited_by:profiles!invited_by_id(id, full_name), current_bid:engagement_bids!engagement_id(id, total_amount, terms, start_date, end_date, line_items, earliest_start_date, availability_notes, drafted_by, submitted_at, revision_number, is_current)`)
     .eq('job_id', jobId)
     .order('created_at', { ascending: false });
   if (error) return { ok: false, error: error.message, data: null };
@@ -1839,7 +1839,7 @@ export const sbLoadEngagementsForSub = async subId => {
   if (!subId) return { ok: false, error: 'subId is required', data: null };
   const { data, error } = await sb
     .from('job_sub_engagements')
-    .select(`*, job:jobs!job_id(id, address, status), current_bid:engagement_bids!engagement_id(id, total_amount, terms, start_date, end_date, line_items, drafted_by, submitted_at, revision_number, is_current)`)
+    .select(`*, job:jobs!job_id(id, address, status), current_bid:engagement_bids!engagement_id(id, total_amount, terms, start_date, end_date, line_items, earliest_start_date, availability_notes, drafted_by, submitted_at, revision_number, is_current)`)
     .eq('sub_id', subId)
     .order('created_at', { ascending: false });
   if (error) return { ok: false, error: error.message, data: null };
