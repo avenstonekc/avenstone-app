@@ -1262,33 +1262,7 @@ export const sbLoadTakeoffDrafts = async (jobId) => {
   return data || [];
 };
 
-// ─── Material Orders ──────────────────────────────────────────────────────────
-export const sbLoadMaterialOrders = async (jobId) => {
-  const { data, error } = await sb.from('material_orders')
-    .select('*, estimate_line_item:estimate_line_items(*)')
-    .eq('job_id', jobId)
-    .order('expected_at', { nullsFirst: false });
-  if (error) console.error('sbLoadMaterialOrders', error);
-  return data || [];
-};
-export const sbCreateMaterialOrder = async (order) => {
-  const { data, error } = await sb.from('material_orders').insert({
-    tenant_id: AV_TENANT,
-    created_by: AV_USER_ID,
-    ...order,
-  }).select().single();
-  if (error) console.error('sbCreateMaterialOrder', error);
-  return data;
-};
-export const sbUpdateMaterialOrder = async (id, updates) => {
-  const { data, error } = await sb.from('material_orders')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) console.error('sbUpdateMaterialOrder', error);
-  return data;
-};
+// ─── Material Orders (legacy stubs removed — see sbCreateMaterialOrder etc. at bottom) ───
 
 // ─── Gap Analyzer ─────────────────────────────────────────────────────────────
 export const GAP_ANALYZER_URL = `${FN}/ai-consultation-gap-analyzer`;
@@ -2501,4 +2475,117 @@ export async function sbMarkInvoicePaid(invoiceId, payment) {
   }
 
   return { invoice: { ...invoice, ...invPatch }, transaction: tx };
+}
+
+// ---------------------------------------------------------------------------
+// Material Orders (EXECUTION_ARC Phase 2)
+// ---------------------------------------------------------------------------
+
+export async function sbCreateMaterialOrder(jobId, order) {
+  if (!jobId) throw new Error('jobId required');
+  if (!order?.trade) throw new Error('trade required');
+  if (!Array.isArray(order?.line_item_ids)) throw new Error('line_item_ids must be array');
+  if (!Array.isArray(order?.materials)) throw new Error('materials must be array');
+
+  const hasQuote = order.supplier_name || order.quote_total || order.quoted_delivery_date;
+  const initialStatus = hasQuote ? 'quoted' : 'planned';
+
+  const row = {
+    tenant_id: AV_TENANT,
+    job_id: jobId,
+    trade: order.trade,
+    line_item_ids: order.line_item_ids,
+    materials: order.materials,
+    supplier_name: order.supplier_name ?? null,
+    quote_total: order.quote_total ?? null,
+    quoted_delivery_date: order.quoted_delivery_date ?? null,
+    notes: order.notes ?? null,
+    status: initialStatus,
+    created_by_id: AV_USER_ID,
+  };
+
+  const { data, error } = await sb
+    .from('material_orders')
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) {
+    captureFailedIntent({ kind: 'create_material_order', payload: row, jobId, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbLoadMaterialOrdersForJob(jobId) {
+  if (!jobId) throw new Error('jobId required');
+  const { data, error } = await sb
+    .from('material_orders')
+    .select('*')
+    .eq('job_id', jobId)
+    .order('trade', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function sbLoadMaterialOrder(id) {
+  if (!id) throw new Error('id required');
+  const { data, error } = await sb
+    .from('material_orders')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function sbUpdateMaterialOrder(id, updates) {
+  if (!id) throw new Error('id required');
+  const { id: _id, tenant_id, job_id, created_at, created_by_id, ...patch } = updates || {};
+  patch.updated_at = new Date().toISOString();
+
+  if (patch.status) {
+    const validStatuses = ['planned', 'quoted', 'ordered', 'delivered', 'installed', 'cancelled'];
+    if (!validStatuses.includes(patch.status)) throw new Error(`Invalid material order status: ${patch.status}`);
+  }
+
+  if (patch.status === 'delivered' && !patch.actual_delivery_date) {
+    patch.actual_delivery_date = new Date().toISOString().slice(0, 10);
+  }
+
+  const { data, error } = await sb
+    .from('material_orders')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    captureFailedIntent({ kind: 'update_material_order', payload: { id, ...patch }, jobId: null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbDeleteMaterialOrder(id) {
+  if (!id) throw new Error('id required');
+
+  const { data: existing, error: loadErr } = await sb
+    .from('material_orders')
+    .select('status')
+    .eq('id', id)
+    .single();
+  if (loadErr) throw loadErr;
+  if (!existing) throw new Error('Material order not found');
+  if (existing.status !== 'planned') {
+    throw new Error(`Only planned orders can be deleted. Use status='cancelled' for any other state.`);
+  }
+
+  const { error } = await sb.from('material_orders').delete().eq('id', id);
+  if (error) {
+    captureFailedIntent({ kind: 'delete_material_order', payload: { id }, jobId: null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return true;
 }

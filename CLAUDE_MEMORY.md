@@ -541,3 +541,10 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Schema reality: engagement_bids.earliest_start_date (DATE, nullable) + .availability_notes (TEXT, nullable) EXIST. Required in submit-bid-response payload but nullable in DB to support pre-Phase-1 rows.
 - Decision: required at submission time (UI + edge function validate), nullable in DB for legacy compat. Date format YYYY-MM-DD enforced. Past dates allowed (sub may have already started prep work).
 - Open: EXECUTION_ARC Phase 2 — material_orders schema next slice.
+
+[LOG — 2026-05-06]
+- Action: EXECUTION_ARC Phase 2 — material_orders table + 5 CRUD helpers (sbCreateMaterialOrder, sbLoadMaterialOrdersForJob, sbLoadMaterialOrder, sbUpdateMaterialOrder, sbDeleteMaterialOrder). Status lifecycle: planned → quoted → ordered → delivered → installed (terminal). Cancelled is terminal off-ramp. Hard delete guarded to planned-only; cancelled is canonical off-ramp for any other state. line_item_ids UUID array audit FK to estimate_line_items (snapshot pattern). materials JSONB stores per-order material list at creation time. PM-side RLS only (owner/PM/sales_rep). Old per-row stub helpers (sbLoadMaterialOrders, sbCreateMaterialOrder, sbUpdateMaterialOrder) removed — they referenced the old schema and had no callers.
+- Files: supabase/migrations/20260506170000_material_orders.sql, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Schema reality: material_orders table REPLACED (old per-row design → new per-order JSONB design, 0 rows migrated). 15 columns, 4 RLS policies, 4 indexes, status CHECK constraint. PM-side write/read; no client/sub access this phase.
+- Decision: status auto-detected on create — if quote info supplied (supplier_name OR quote_total OR quoted_delivery_date), status='quoted', else 'planned'. Transitioning to 'delivered' auto-stamps actual_delivery_date if not provided. Old table had different schema (per-row, no trade column, no JSONB materials); dropped and recreated since 0 rows existed.
+- Open: EXECUTION_ARC Phase 3 — Materials sub-tab UI on JobDet (lists pending materials grouped by trade, Add Quote modal creates material_orders rows).
