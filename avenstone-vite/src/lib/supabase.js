@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { runGatesForTransition, getNextPhase, PHASE_LABELS } from './phaseGates.js';
 import { runTodoEngine } from './todoEngine.js';
 import { checkAndCreateSubStart } from './scheduleAutoCreate.js';
+import { checkAndAutoInvoice } from './autoInvoice.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -1669,6 +1670,12 @@ export const sbUpdateScheduleItem = async (id, patch) => {
     } else {
       fireTodoEvent('schedule_item.modified', { jobId, scheduleItemId: id, trade: siTrade, newStatus: data?.status }).catch(() => {});
     }
+    if ((data?.type ?? prevRow?.type) === 'sub_start' && patch.status !== undefined) {
+      checkAndAutoInvoice(sb, AV_TENANT, AV_USER_ID, 'sub_start.status_changed', {
+        jobId, trade: siTrade, newStatus: data?.status,
+      }).then(fired => fired.forEach(f => fireTodoEvent('invoice.auto_drafted', { jobId, invoiceId: f.invoiceId, drawId: f.drawId, triggerLabel: f.triggerLabel }).catch(() => {})))
+        .catch(err => console.warn('[autoInvoice] sbUpdateScheduleItem hook failed:', err?.message));
+    }
     return { ok: true, error: null, data, prevRow: prevRow || null };
   } catch (e) {
     captureFailedIntent({ kind: 'schedule_item_update', payload: { id, patch }, jobId: patch.job_id, message: e.message }).catch(() => {});
@@ -2387,6 +2394,7 @@ export async function sbVoidInvoice(id, reason) {
     captureFailedIntent({ kind: 'void_invoice', payload: { id, reason }, jobId: invoice.job_id, message: updErr.message, resumable: true }).catch(() => {});
     throw updErr;
   }
+  fireTodoEvent('invoice.voided', { invoiceId: id, jobId: invoice.job_id }).catch(() => {});
 
   if (invoice.draw_id) {
     const { data: draw } = await sb
@@ -2419,15 +2427,16 @@ export async function sbVoidInvoice(id, reason) {
 
 export async function sbDeleteInvoice(id) {
   if (!id) throw new Error('id required');
-  const { data: existing, error: loadErr } = await sb.from('invoices').select('status').eq('id', id).single();
+  const { data: existing, error: loadErr } = await sb.from('invoices').select('status, job_id').eq('id', id).single();
   if (loadErr) throw loadErr;
   if (!existing) throw new Error('Invoice not found');
   if (existing.status !== 'draft') throw new Error('Only draft invoices can be deleted. Void sent invoices instead.');
   const { error } = await sb.from('invoices').delete().eq('id', id);
   if (error) {
-    captureFailedIntent({ kind: 'delete_invoice', payload: { id }, jobId: null, message: error.message, resumable: true }).catch(() => {});
+    captureFailedIntent({ kind: 'delete_invoice', payload: { id }, jobId: existing.job_id, message: error.message, resumable: true }).catch(() => {});
     throw error;
   }
+  fireTodoEvent('invoice.deleted', { invoiceId: id, jobId: existing.job_id }).catch(() => {});
   return true;
 }
 
@@ -2467,6 +2476,7 @@ export async function sbSendInvoice(invoiceId) {
   });
   if (error) throw error;
   if (!data?.ok) throw new Error(data?.error ?? 'Failed to send invoice');
+  fireTodoEvent('invoice.sent', { invoiceId, jobId: null }).catch(() => {});
   return data;
 }
 
@@ -2699,6 +2709,10 @@ export async function sbUpdateMaterialOrder(id, updates) {
       data.job_id,
       AV_USER_ID,
     ).catch(() => {});
+    checkAndAutoInvoice(sb, AV_TENANT, AV_USER_ID, 'material_order.delivered', {
+      jobId: data.job_id, trade: data.trade,
+    }).then(fired => fired.forEach(f => fireTodoEvent('invoice.auto_drafted', { jobId: data.job_id, invoiceId: f.invoiceId, drawId: f.drawId, triggerLabel: f.triggerLabel }).catch(() => {})))
+      .catch(err => console.warn('[autoInvoice] sbUpdateMaterialOrder hook failed:', err?.message));
   }
   if (patch.quoted_delivery_date !== undefined && data.quoted_delivery_date) {
     checkAndCreateSubStart(sb, AV_TENANT, AV_USER_ID, data.job_id, data.trade)
@@ -2847,6 +2861,11 @@ export async function sbAdvancePhase(jobId, opts = {}) {
     jobId,
     AV_USER_ID,
   ).catch(() => {});
+
+  checkAndAutoInvoice(sb, AV_TENANT, AV_USER_ID, 'phase.advanced', {
+    jobId, newPhase: gateStatus.nextPhase,
+  }).then(fired => fired.forEach(f => fireTodoEvent('invoice.auto_drafted', { jobId, invoiceId: f.invoiceId, drawId: f.drawId, triggerLabel: f.triggerLabel }).catch(() => {})))
+    .catch(err => console.warn('[autoInvoice] sbAdvancePhase hook failed:', err?.message));
 
   return {
     previousPhase: gateStatus.currentPhase,

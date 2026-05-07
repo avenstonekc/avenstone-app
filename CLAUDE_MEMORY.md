@@ -622,3 +622,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Decision: Sub default true preserves existing behavior (sub was included unconditionally pre-Phase-7). PM can uncheck to suppress.
 - Decision: phase.advanced and material_order.delivered use sbNotify() (all staff) — no per-row audience flags on those entities; 3-sided client routing on those events is future.
 - Open: EXECUTION_ARC Phase 5b-ii (engagement event rules). Phase 8 — site visit checklists. Phase 9 — learning loop. Phase 10 — auto-invoice draft on milestone trigger.
+
+[LOG — 2026-05-07]
+- Action: EXECUTION_ARC Phase 10 — auto-invoice draft on milestone trigger. ALTER draw_schedules adds auto_invoice_trigger JSONB + auto_invoiced_at TIMESTAMPTZ (applied via PAT, both confirmed). New src/lib/autoInvoice.js with checkAndAutoInvoice — does raw DB ops (no circular supabase.js import), generates invoice number via sb.rpc('next_invoice_number'), inserts draft invoice + line item, stamps idempotency. Hooks added fire-and-forget to sbUpdateScheduleItem (sub_start type + status patch), sbAdvancePhase, sbUpdateMaterialOrder (delivered). Three new fireTodoEvent calls: sbSendInvoice→invoice.sent, sbVoidInvoice→invoice.voided, sbDeleteInvoice→invoice.deleted (also extended select to include job_id). New engine Rule 3 auto_invoice_review in todoEngine.js (resolves on sent/voided/deleted). DrawModal.jsx rewritten with trigger section (type select + conditional trade/phase dropdown).
+- Files: supabase/migrations/20260507140000_draw_schedules_auto_trigger.sql, avenstone-vite/src/lib/autoInvoice.js (new), avenstone-vite/src/lib/supabase.js (import + 3 hooks + 3 invoice event fires), avenstone-vite/src/lib/todoEngine.js (Rule 3), avenstone-vite/src/components/modals/DrawModal.jsx, CLAUDE_MEMORY.md
+- Decision: autoInvoice.js uses raw sb client — can't import sbCreateInvoice (circular: supabase.js imports autoInvoice.js). Same pattern as scheduleAutoCreate.js.
+- Decision: created_by_id = AV_USER_ID — sbUpdateScheduleItem/sbAdvancePhase/sbUpdateMaterialOrder are PM-facing; sub-side actors don't call these helpers.
+- Decision: idempotency via .is('auto_invoiced_at', null) conditional update — prevents race-condition double-fire.
+- Open: EXECUTION_ARC Phase 5b-ii (engagement event rules). Phase 8 — site visit checklists. Phase 9 — learning loop.

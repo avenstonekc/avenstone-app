@@ -24,6 +24,25 @@ const RULES = [
       todo.related_entity_type === 'material_order' &&
       todo.source === 'engine',
   },
+  // ---- Rule 3: auto-drafted invoice needs PM review before sending ----
+  {
+    name: 'auto_invoice_review',
+    create_on: 'invoice.auto_drafted',
+    create_payload: (event) => ({
+      title: `Review auto-drafted invoice — ${event.triggerLabel || 'milestone'}`,
+      notes: 'System drafted this invoice from a milestone trigger. Verify the amount matches actual progress, then Save & Send.',
+      type: 'auto_invoice_review',
+      job_id: event.jobId,
+      related_entity_type: 'invoice',
+      related_entity_id: event.invoiceId,
+    }),
+    resolve_on: ['invoice.sent', 'invoice.voided', 'invoice.deleted'],
+    resolve_condition: (event, todo) => todo.related_entity_id === event.invoiceId,
+    resolve_match: (todo) =>
+      todo.type === 'auto_invoice_review' &&
+      todo.related_entity_type === 'invoice' &&
+      todo.source === 'engine',
+  },
   // ---- Rule 2: auto-created sub_start needs PM review ----
   {
     name: 'auto_sub_start_review',
