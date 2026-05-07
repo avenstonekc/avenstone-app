@@ -557,3 +557,16 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Decision: grouped-by-trade rendering rather than flat list — material orders are fundamentally per-trade documents. pmOnly gate hides tab from sub/client roles without nav refactor.
 - Schema reality: material_orders.supplier_name (TEXT), .quote_total (NUMERIC), .quoted_delivery_date (DATE), .actual_delivery_date (DATE), .materials (JSONB), .status (TEXT CHECK). All Phase 2 columns confirmed.
 - Open: EXECUTION_ARC Phase 4 — phase advancement gates / todo generation on bid accept (connect engagement acceptance to schedule item todos).
+
+[LOG — 2026-05-06]
+- Action: EXECUTION_ARC Phase 4a — phase advancement gates schema + helpers.
+- Migration 20260506180000_phase_advancement_gates.sql: ALTER jobs adds phase_override_used (BOOL NOT NULL DEFAULT false), phase_override_reason (TEXT), phase_override_at (TIMESTAMPTZ), phase_override_by_id (UUID FK profiles). Override audit belongs on jobs (not job_phases) — see architecture note in migration.
+- New src/lib/phaseGates.js: PHASE_ORDER maps to jobs.status values (lead→bid_sent→active→demo→framing→rough_mep→drywall→finish→punch→complete). Gate functions accept (jobId, sb) — no import from supabase.js, no circular dep. Five checkable transitions + four MANUAL_ONLY. Exported: runGatesForTransition, getNextPhase, getPreviousPhase, PHASE_ORDER, PHASE_LABELS.
+- New sbCheckPhaseGates(jobId): reads jobs.status, evaluates gates for next transition, returns {currentPhase, nextPhase, gates[], allPassed, canAdvance, requiresOverride, overrideReason, lastOverride}.
+- New sbAdvancePhase(jobId, opts): advances jobs.status to next phase, throws if gates fail and no reason provided, stamps phase_override_* columns when override used. captureFailedIntent on DB error.
+- Files: supabase/migrations/20260506180000_phase_advancement_gates.sql, avenstone-vite/src/lib/phaseGates.js (new), avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Schema reality: jobs.phase_override_used (bool NOT NULL default false), .phase_override_reason (text), .phase_override_at (timestamptz), .phase_override_by_id (uuid FK) EXIST. Verified 4 columns.
+- CRITICAL SPEC MISMATCH RESOLVED: spec assumed job_phases would have lifecycle rows (review/proposal/contract/in_progress/final_touches/complete). Actual: job_phases has TRADE phase rows (Demo, Framing, etc.) auto-driven by derivePhaseStatus. The lifecycle phase tracker is jobs.status. phaseGates.js and sbCheckPhaseGates operate on jobs.status accordingly.
+- Gates defined: lead→bid_sent (scope_tagged + consultation_logged), bid_sent→active (contract_signed), active→demo (deposit_paid via job_transactions), finish→punch (all_sub_starts_complete). MANUAL_ONLY: demo→framing, framing→rough_mep, rough_mep→drywall, drywall→finish (construction flow — PM judges; derivePhaseStatus covers job_phases rows in parallel), punch→complete (no final-invoice-paid signal yet).
+- Decision: derivePhaseStatus untouched — it continues updating job_phases trade rows via schedule_items; sbAdvancePhase is an orthogonal explicit PM path on jobs.status. No interaction between the two systems.
+- Open: EXECUTION_ARC Phase 4b — UI on JobDet showing current/next phase, gate checklist, Advance + Override buttons. Phase 5 — phase-driven todo engine.

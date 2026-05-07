@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { runGatesForTransition, getNextPhase, PHASE_LABELS } from './phaseGates.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -2588,4 +2589,116 @@ export async function sbDeleteMaterialOrder(id) {
     throw error;
   }
   return true;
+}
+
+// ─── Phase Advancement Gates (EXECUTION_ARC Phase 4a) ────────────────────────
+// Gates check jobs.status transitions. job_phases trade rows (Demo, Framing, etc.)
+// are a separate system driven by derivePhaseStatus — untouched here.
+
+export async function sbCheckPhaseGates(jobId) {
+  if (!jobId) throw new Error('jobId required');
+
+  const { data: job, error: jobErr } = await sb
+    .from('jobs')
+    .select('status, phase_override_used, phase_override_reason, phase_override_at')
+    .eq('id', jobId)
+    .single();
+  if (jobErr) throw jobErr;
+  if (!job) throw new Error('Job not found');
+
+  const currentPhase = job.status;
+  const nextPhase = getNextPhase(currentPhase);
+
+  if (!nextPhase) {
+    return {
+      currentPhase,
+      currentPhaseLabel: PHASE_LABELS[currentPhase] ?? currentPhase,
+      nextPhase: null,
+      nextPhaseLabel: null,
+      gates: [],
+      allPassed: false,
+      canAdvance: false,
+      requiresOverride: false,
+      overrideReason: null,
+      lastOverride: job.phase_override_used ? {
+        reason: job.phase_override_reason,
+        at: job.phase_override_at,
+      } : null,
+      message: 'Job is at terminal phase — no further advancement.',
+    };
+  }
+
+  const { gates, allPassed, requiresOverride, overrideReason } =
+    await runGatesForTransition(jobId, currentPhase, nextPhase, sb);
+
+  return {
+    currentPhase,
+    currentPhaseLabel: PHASE_LABELS[currentPhase] ?? currentPhase,
+    nextPhase,
+    nextPhaseLabel: PHASE_LABELS[nextPhase] ?? nextPhase,
+    gates,
+    allPassed,
+    canAdvance: allPassed,
+    requiresOverride,
+    overrideReason,
+    lastOverride: job.phase_override_used ? {
+      reason: job.phase_override_reason,
+      at: job.phase_override_at,
+    } : null,
+    message: null,
+  };
+}
+
+export async function sbAdvancePhase(jobId, opts = {}) {
+  // opts: { reason?: string }
+  // If all gates pass: advance freely.
+  // If any gate fails or transition is manual-only: reason is required for override.
+  if (!jobId) throw new Error('jobId required');
+
+  const gateStatus = await sbCheckPhaseGates(jobId);
+
+  if (!gateStatus.nextPhase) {
+    throw new Error('Already at terminal phase — cannot advance further.');
+  }
+
+  const useOverride = !gateStatus.allPassed;
+  if (useOverride && !opts.reason?.trim()) {
+    const failing = gateStatus.gates.filter(g => !g.passed).map(g => g.label);
+    const reason = failing.length
+      ? `Gates failing: ${failing.join('; ')}`
+      : (gateStatus.overrideReason ?? 'Manual override required for this transition');
+    throw new Error(`Cannot advance: ${reason}. Provide a reason to override.`);
+  }
+
+  const nowIso = new Date().toISOString();
+  const patch = {
+    status: gateStatus.nextPhase,
+    phase_override_used: useOverride,
+    phase_override_reason: useOverride ? opts.reason.trim() : null,
+    phase_override_at: useOverride ? nowIso : null,
+    phase_override_by_id: useOverride ? AV_USER_ID : null,
+  };
+
+  const { error: advErr } = await sb
+    .from('jobs')
+    .update(patch)
+    .eq('id', jobId);
+
+  if (advErr) {
+    captureFailedIntent({
+      kind: 'advance_phase',
+      payload: { jobId, from: gateStatus.currentPhase, to: gateStatus.nextPhase, override: useOverride },
+      jobId,
+      message: advErr.message,
+      resumable: true,
+    }).catch(() => {});
+    throw advErr;
+  }
+
+  return {
+    previousPhase: gateStatus.currentPhase,
+    advancedTo: gateStatus.nextPhase,
+    overrideUsed: useOverride,
+    overrideReason: useOverride ? opts.reason.trim() : null,
+  };
 }
