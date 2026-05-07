@@ -31,13 +31,13 @@ export default function MaterialsTab({ job }) {
     setLoading(true);
     setError(null);
     try {
-      const [ordRes, tradeRes] = await Promise.all([
+      const [ordRes, tradeStrings] = await Promise.all([
         sbLoadMaterialOrdersForJob(job.id),
         sbLoadActiveTradeStrings(),
       ]);
       if (ordRes.ok) setOrders(ordRes.data);
       else setError(ordRes.error || 'Failed to load orders');
-      if (tradeRes.ok) setTradeOptions(tradeRes.data);
+      setTradeOptions(tradeStrings || []);
     } catch {
       setError('Failed to load materials');
     } finally {

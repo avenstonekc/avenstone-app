@@ -2734,10 +2734,9 @@ export async function sbMarkInvoicePaid(invoiceId, payment) {
 // ---------------------------------------------------------------------------
 
 export async function sbCreateMaterialOrder(jobId, order) {
-  if (!jobId) throw new Error('jobId required');
-  if (!order?.trade) throw new Error('trade required');
-  if (!Array.isArray(order?.line_item_ids)) throw new Error('line_item_ids must be array');
-  if (!Array.isArray(order?.materials)) throw new Error('materials must be array');
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+  if (!order?.trade) return { ok: false, error: 'trade required', data: null };
+  if (!Array.isArray(order?.materials)) return { ok: false, error: 'materials must be array', data: null };
 
   const hasQuote = order.supplier_name || order.quote_total || order.quoted_delivery_date;
   const initialStatus = hasQuote ? 'quoted' : 'planned';
@@ -2746,7 +2745,7 @@ export async function sbCreateMaterialOrder(jobId, order) {
     tenant_id: AV_TENANT,
     job_id: jobId,
     trade: order.trade,
-    line_item_ids: order.line_item_ids,
+    line_item_ids: Array.isArray(order.line_item_ids) ? order.line_item_ids : [],
     materials: order.materials,
     supplier_name: order.supplier_name ?? null,
     quote_total: order.quote_total ?? null,
@@ -2764,22 +2763,22 @@ export async function sbCreateMaterialOrder(jobId, order) {
 
   if (error) {
     captureFailedIntent({ kind: 'create_material_order', payload: row, jobId, message: error.message, resumable: true }).catch(() => {});
-    throw error;
+    return { ok: false, error: error.message, data: null };
   }
   fireTodoEvent('material_order.created', { jobId: data.job_id, orderId: data.id, trade: data.trade, status: data.status }).catch(() => {});
-  return data;
+  return { ok: true, error: null, data };
 }
 
 export async function sbLoadMaterialOrdersForJob(jobId) {
-  if (!jobId) throw new Error('jobId required');
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
   const { data, error } = await sb
     .from('material_orders')
     .select('*')
     .eq('job_id', jobId)
     .order('trade', { ascending: true })
     .order('created_at', { ascending: true });
-  if (error) throw error;
-  return data || [];
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || [] };
 }
 
 export async function sbLoadMaterialOrder(id) {
