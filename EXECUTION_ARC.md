@@ -1,6 +1,28 @@
 # EXECUTION_ARC.md
 
-*Living design doc. Update as decisions are made. Built 2026-05-06.*
+*Living design doc. Update as decisions are made. Built 2026-05-06. Final state declared 2026-05-07.*
+
+## 0. Arc Status (2026-05-07)
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 1 — Bid availability fields | ✅ SHIPPED | `earliest_start_date` + `availability_notes` on `engagement_bids` |
+| Phase 2 — Material orders schema | ✅ SHIPPED | `material_orders` table + 5 CRUD helpers |
+| Phase 3 — Materials sub-tab | ✅ SHIPPED | `MaterialsTab.jsx` + `AddQuoteModal.jsx` |
+| Phase 4 — Phase advancement gates | ✅ SHIPPED | `phaseGates.js`, `PhaseAdvanceCard`, canonical status CHECK |
+| Phase 5a — Todo engine foundation | ✅ SHIPPED | `todos` table, `todoEngine.js`, `TodayScr`, `MyTodosScreen` |
+| Phase 5b-i — Schedule item hooks | ✅ SHIPPED | `fireTodoEvent` on complete/cancelled/modified |
+| Phase 5b-ii — Engagement event rules | ✅ SHIPPED | `engagement_confirm_scope` rule + hooks in create/accept/decline/withdraw/remove |
+| Phase 5c — Todo UI surfaces | ✅ SHIPPED | `MyTodosScreen`, `TodoCreateEditModal`, `JobTodosBlock` |
+| Phase 6 — Auto-create schedule items | ✅ SHIPPED | `scheduleAutoCreate.js`, dual-trigger (bid accepted + delivery date) |
+| Phase 7 — 3-sided audience notifications | ✅ SHIPPED | `notify_sub` column, `_collectRecipients` gates, notify on phase/delivery |
+| Phase 8 — Site visit checklists | ✅ SHIPPED | `site_visit_checklist_items` table, 5 JS templates, `SiteVisitChecklist.jsx`, Rule 4 in engine |
+| Phase 9 — Learning loop | ⏸ DEFERRED | Rate override persistence — move to `ANALYTICS_ARC.md` or standalone slice |
+| Phase 10 — Auto-invoice on milestone | ✅ SHIPPED | `autoInvoice.js`, `auto_invoice_trigger` JSONB on draws, Rule 3 in engine |
+| Phase 11a — PM-side photo gates | ✅ SHIPPED | `photos` entity linkage columns, `photoGate.js`, gates on complete + delivered |
+| Phase 11b — Sub portal photo upload | ✅ SHIPPED | Sub Mark Complete flow with inline camera capture + entity-linked photos |
+
+**Arc complete.** 14 of 15 phases shipped. Phase 9 (learning loop) deferred — see `ANALYTICS_ARC.md` for future home.
 
 ## 1. Why
 

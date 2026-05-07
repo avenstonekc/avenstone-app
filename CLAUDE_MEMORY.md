@@ -644,4 +644,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Schema reality: site_visit_checklist_items table EXISTS with 12 columns, 4 RLS policies (svci_select/insert/update/delete), 3 indexes. Migration applied + verified before commit.
 - Decision: JS config templates (not DB-driven) for v1 — fast iteration without migrations per template change. AI-seeded + jurisdiction-aware are future. Photos go to parent site_visit (Phase 11a gate covers); per-checklist-item photos deferred.
 - Decision: Fail status staged on client — saves nothing until PM adds notes + clicks Save Fail. Pass/N/A auto-save immediately. Avoids partial failed items with no context.
-- Open: EXECUTION_ARC Phase 5b-ii (engagement event rules). Phase 9 — learning loop. Future: AI-seeded jurisdiction-aware templates.
+- Open: Phase 9 — learning loop (deferred to ANALYTICS_ARC). Future: AI-seeded jurisdiction-aware templates.
+
+[LOG — 2026-05-07]
+- Action: EXECUTION_ARC Phase 5b-ii — engagement event rules. New Rule 5 in todoEngine.js: `engagement_confirm_scope` — creates "Confirm scope with sub — {trade}" todo on engagement.created; auto-resolves on engagement.accepted/declined/withdrawn/removed. fireTodoEvent hooks added to sbCreateEngagement (fires engagement.created after successful insert), sbTransitionEngagement (fires engagement.declined/withdrawn/removed based on toStatus), sbAcceptBid (fires engagement.accepted after transition.ok). oh_shit_moments deferred — no sbCreate helper exists (written by process-transcript edge function), no state transition to hook.
+- Action: EXECUTION_ARC.md — added Phase 0 Arc Status table declaring final state of all 15 phases. Phase 9 (learning loop) marked DEFERRED. All other phases SHIPPED. Arc complete 14/15.
+- Files: avenstone-vite/src/lib/todoEngine.js, avenstone-vite/src/lib/supabase.js, EXECUTION_ARC.md, CLAUDE_MEMORY.md
+- Decision: engagement.declined/withdrawn/removed all resolve the scope-confirm todo — any terminal state means the engagement ended and the PM acted on it. No new todo is created for accepted (that resolves the scope-confirm; the auto_sub_start_review rule handles the post-acceptance review loop).
+- Decision: fireTodoEvent in sbTransitionEngagement vs. wrappers — using sbTransitionEngagement directly gives us jobId from the returned data row without an extra fetch. Wrappers (sbDeclineBid, sbWithdrawEngagement, sbRemoveEngagement) are thin pass-throughs that don't touch jobId.
+- Open: EXECUTION_ARC complete. Phase 9 (learning loop) is the only deferred item — move to ANALYTICS_ARC or ship as a standalone slice when the rate-editing UX is prioritized.

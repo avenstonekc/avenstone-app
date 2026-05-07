@@ -2024,6 +2024,7 @@ export const sbCreateEngagement = async ({
     captureFailedIntent({ kind: 'sub_assign', payload: { subId, trade, jobId }, jobId, message: error.message, resumable: false }).catch(() => {});
     return { ok: false, error: error.message, data: null };
   }
+  fireTodoEvent('engagement.created', { engagementId: data.id, jobId: data.job_id, trade: data.trade }).catch(() => {});
   return { ok: true, error: null, data };
 };
 
@@ -2140,6 +2141,10 @@ export async function sbTransitionEngagement({ engagementId, toStatus, reason = 
   if (!data)
     return { ok: false, error: 'Engagement state changed concurrently — refresh and retry', data: null };
 
+  if (['declined', 'withdrawn', 'removed'].includes(toStatus)) {
+    fireTodoEvent(`engagement.${toStatus}`, { engagementId, jobId: data.job_id }).catch(() => {});
+  }
+
   return { ok: true, error: null, data };
 }
 
@@ -2186,6 +2191,8 @@ export async function sbAcceptBid({ engagementId }) {
   // 2. Transition engagement → active (optimistic concurrency via Phase 1c)
   const transition = await sbTransitionEngagement({ engagementId, toStatus: 'active' });
   if (!transition.ok) return transition;
+
+  fireTodoEvent('engagement.accepted', { engagementId, jobId: engagement.job_id }).catch(() => {});
 
   const now = new Date().toISOString();
 

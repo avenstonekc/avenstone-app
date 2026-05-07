@@ -62,6 +62,25 @@ const RULES = [
       todo.related_entity_type === 'site_visit_checklist_item' &&
       todo.source === 'engine',
   },
+  // ---- Rule 5: new engagement needs scope confirmation ----
+  {
+    name: 'engagement_confirm_scope',
+    create_on: 'engagement.created',
+    create_payload: (event) => ({
+      title: `Confirm scope with sub — ${event.trade}`,
+      notes: 'Sub engagement created. Review scope description with the sub and confirm before they draft a bid.',
+      type: 'engagement_confirm_scope',
+      job_id: event.jobId,
+      related_entity_type: 'job_sub_engagement',
+      related_entity_id: event.engagementId,
+    }),
+    resolve_on: ['engagement.accepted', 'engagement.declined', 'engagement.withdrawn', 'engagement.removed'],
+    resolve_condition: (event, todo) => todo.related_entity_id === event.engagementId,
+    resolve_match: (todo) =>
+      todo.type === 'engagement_confirm_scope' &&
+      todo.related_entity_type === 'job_sub_engagement' &&
+      todo.source === 'engine',
+  },
   // ---- Rule 2: auto-created sub_start needs PM review ----
   {
     name: 'auto_sub_start_review',
