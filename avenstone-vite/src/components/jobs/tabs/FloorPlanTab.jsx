@@ -137,6 +137,7 @@ export default function FloorPlanTab({ job, profile }) {
         <AiIntakeWizard
           profile={profile}
           jobId={job.id}
+          job={job}
           onClose={() => { setShowScanner(false); loadScans(); }}
         />
       )}

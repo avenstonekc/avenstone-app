@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import LidarScanner from './LidarScanner';
 import HeightCaptureStep from './HeightCaptureStep';
-import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan } from '../../lib/supabase';
+import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan, sbUploadDoc } from '../../lib/supabase';
 import { stampGPS } from '../../lib/gps';
+import { buildFloorPlanPDF } from '../../lib/pdf';
 
 const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
 const CREAM = '#F7F5F0';
 const BORDER = '#E8E4DC';
 
-export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }) {
+export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, job }) {
   const [rooms, setRooms] = useState([]);
   const [step, setStep] = useState('scan'); // 'scan' | 'height' | 'save'
   const [contacts, setContacts] = useState([]);
@@ -43,15 +44,29 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId }
     setSaveError(null);
     const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0);
     const gps = await stampGPS();
-    const { error } = await sbSaveJobLidarScan({
+    const { ok, error, data: savedScan } = await sbSaveJobLidarScan({
       jobId, rooms, totalSqft, captureMode: 'interior',
       heightMeters, heightSource, heightPoints,
       qualityScore: null, qualityGrade: null, qualityDeductions: null,
       gpsLatitude: gps?.latitude, gpsLongitude: gps?.longitude, gpsAccuracy: gps?.accuracy,
       editOverrides: null,
     });
+    if (!ok) { setSaving(false); setSaveError(error || 'Save failed'); return; }
+
+    // Auto-export PDF to Documents
+    if (savedScan && job) {
+      try {
+        const doc = await buildFloorPlanPDF(savedScan, job);
+        const blob = doc.output('blob');
+        const date = new Date(savedScan.created_at).toISOString().slice(0, 10);
+        const file = new File([blob], `floor-plan-${date}.pdf`, { type: 'application/pdf' });
+        await sbUploadDoc(jobId, file, 'plan');
+      } catch {
+        // PDF export failure is non-fatal — scan is already saved
+      }
+    }
+
     setSaving(false);
-    if (error) { setSaveError(error || 'Save failed'); return; }
     setSavedOk(true);
     setTimeout(onClose, 1400);
   }
