@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity } from '../../../lib/supabase';
+import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity, sbCreateChecklistFromTemplate, sbLoadChecklistForScheduleItem } from '../../../lib/supabase';
+import { getTemplateOptions } from '../../../lib/siteVisitTemplates';
+import SiteVisitChecklist from '../SiteVisitChecklist';
 import { Ic, fD } from '../../../lib/utils';
 
 // Phase display config
@@ -364,6 +366,11 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
   const [entityPhotoCount, setEntityPhotoCount] = useState(0);
   const [uploading, setUploading]       = useState(false);
   const photoRef                        = useRef();
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [hasChecklist, setHasChecklist] = useState(false);
+  const [addingChecklist, setAddingChecklist] = useState(false);
+  const [checklistTemplate, setChecklistTemplate] = useState('');
+  const [checklistKey, setChecklistKey] = useState(0); // bump to reload SiteVisitChecklist
 
   useEffect(() => {
     import('../../../lib/supabase').then(({ sbLoadActiveTradeStrings, sbLoadActiveSubs }) => {
@@ -372,6 +379,9 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     });
     if (!isNew && PHOTO_GATE_TYPES.includes(item.type)) {
       sbCountPhotosForEntity('schedule_item', item.id).then(setEntityPhotoCount);
+    }
+    if (!isNew && item.type === 'site_visit') {
+      sbLoadChecklistForScheduleItem(item.id).then(rows => setHasChecklist(rows.length > 0)).catch(() => {});
     }
   }, []);
 
@@ -430,6 +440,9 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
 
     setSaving(false);
     if (!result.ok) { setErr(result.error || 'Save failed'); return; }
+    if (isNew && selectedTemplate && result.data?.id) {
+      sbCreateChecklistFromTemplate(result.data.id, selectedTemplate).catch(() => {});
+    }
     onSaved(result.data, isNew ? null : item, notifyOnSave);
   };
 
@@ -504,6 +517,62 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
           <label className="flbl">Notes</label>
           <textarea className="finp" rows={2} value={form.notes} onChange={e => setField('notes', e.target.value)} style={{ resize: 'vertical' }} />
         </div>
+
+        {/* Checklist template picker — new site_visit items */}
+        {isNew && form.type === 'site_visit' && (
+          <div className="fg">
+            <label className="flbl">Checklist Template</label>
+            <select className="finp" style={ssty} value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)}>
+              <option value="">(none)</option>
+              {getTemplateOptions().map(t => <option key={t.key} value={t.key}>{t.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Checklist section — edit mode site_visit */}
+        {!isNew && form.type === 'site_visit' && (
+          <div style={{ marginBottom: 14 }}>
+            {hasChecklist ? (
+              <SiteVisitChecklist key={checklistKey} scheduleItemId={item.id} />
+            ) : (
+              <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6, padding: '10px 12px' }}>
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 8 }}>No checklist attached to this site visit.</div>
+                {!addingChecklist ? (
+                  <button type="button" onClick={() => setAddingChecklist(true)} style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 5, border: '1px solid #0A1F44', background: '#0A1F44', color: '#fff', cursor: 'pointer' }}>
+                    + Add Checklist
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select className="finp" style={{ ...ssty, flex: 1, minWidth: 140 }} value={checklistTemplate} onChange={e => setChecklistTemplate(e.target.value)}>
+                      <option value="">— Pick template —</option>
+                      {getTemplateOptions().map(t => <option key={t.key} value={t.key}>{t.name}</option>)}
+                    </select>
+                    <button type="button"
+                      disabled={!checklistTemplate}
+                      onClick={async () => {
+                        if (!checklistTemplate) return;
+                        try {
+                          await sbCreateChecklistFromTemplate(item.id, checklistTemplate);
+                          setHasChecklist(true);
+                          setAddingChecklist(false);
+                          setChecklistKey(k => k + 1);
+                        } catch (e) {
+                          setErr(e.message);
+                        }
+                      }}
+                      style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 5, border: `1px solid ${checklistTemplate ? '#0A1F44' : '#D1D5DB'}`, background: checklistTemplate ? '#0A1F44' : '#F9FAFB', color: checklistTemplate ? '#fff' : '#9CA3AF', cursor: checklistTemplate ? 'pointer' : 'not-allowed' }}
+                    >
+                      Create
+                    </button>
+                    <button type="button" onClick={() => setAddingChecklist(false)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #D1D5DB', background: 'transparent', color: '#6B7280', cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Status (edit only) */}
         {!isNew && (

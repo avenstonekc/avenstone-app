@@ -4,6 +4,7 @@ import { runTodoEngine } from './todoEngine.js';
 import { checkAndCreateSubStart } from './scheduleAutoCreate.js';
 import { checkAndAutoInvoice } from './autoInvoice.js';
 import { countPhotosForEntity } from './photoGate.js';
+import { getTemplateItems } from './siteVisitTemplates.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -1730,6 +1731,97 @@ export const sbDeleteScheduleItem = async (id) => {
     return { ok: false, error: e.message };
   }
 };
+
+// ─── Site Visit Checklists (EXECUTION_ARC Phase 8) ──────────────────────────
+
+export async function sbCreateChecklistFromTemplate(scheduleItemId, templateKey) {
+  if (!scheduleItemId) throw new Error('scheduleItemId required');
+  if (!templateKey) throw new Error('templateKey required');
+
+  const items = getTemplateItems(templateKey);
+  if (!items.length) throw new Error(`Unknown template: ${templateKey}`);
+
+  const { count } = await sb
+    .from('site_visit_checklist_items')
+    .select('*', { count: 'exact', head: true })
+    .eq('schedule_item_id', scheduleItemId);
+  if ((count ?? 0) > 0) throw new Error('Checklist already exists for this site visit');
+
+  const rows = items.map((name, idx) => ({
+    tenant_id:        AV_TENANT,
+    schedule_item_id: scheduleItemId,
+    template_name:    templateKey,
+    item_name:        name,
+    item_order:       idx,
+    status:           'pending',
+  }));
+
+  const { data, error } = await sb
+    .from('site_visit_checklist_items')
+    .insert(rows)
+    .select();
+
+  if (error) {
+    captureFailedIntent({ kind: 'create_checklist_from_template', payload: { scheduleItemId, templateKey }, jobId: null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbLoadChecklistForScheduleItem(scheduleItemId) {
+  if (!scheduleItemId) throw new Error('scheduleItemId required');
+  const { data, error } = await sb
+    .from('site_visit_checklist_items')
+    .select('*')
+    .eq('schedule_item_id', scheduleItemId)
+    .order('item_order', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function sbUpdateChecklistItem(itemId, updates) {
+  if (!itemId) throw new Error('itemId required');
+  const { id: _id, tenant_id, schedule_item_id, template_name, item_order, created_at, ...patch } = updates || {};
+  patch.updated_at = new Date().toISOString();
+
+  if (patch.status && ['pass', 'fail', 'n_a'].includes(patch.status)) {
+    patch.completed_at    = new Date().toISOString();
+    patch.completed_by_id = AV_USER_ID;
+  }
+
+  const { data, error } = await sb
+    .from('site_visit_checklist_items')
+    .update(patch)
+    .eq('id', itemId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  // Look up job_id once for engine events
+  let jobId = null;
+  if (patch.status) {
+    const { data: si } = await sb.from('schedule_items').select('job_id').eq('id', data.schedule_item_id).single();
+    jobId = si?.job_id ?? null;
+  }
+
+  if (patch.status === 'fail') {
+    fireTodoEvent('checklist_item.failed', {
+      jobId,
+      checklistItemId:  data.id,
+      itemName:         data.item_name,
+      templateName:     data.template_name,
+      scheduleItemId:   data.schedule_item_id,
+    }).catch(() => {});
+  } else if (patch.status === 'pass' || patch.status === 'n_a') {
+    fireTodoEvent('checklist_item.resolved', {
+      jobId,
+      checklistItemId: data.id,
+    }).catch(() => {});
+  }
+
+  return data;
+}
 
 export const sbLoadScheduleItemsForSub = async (subId) => {
   try {

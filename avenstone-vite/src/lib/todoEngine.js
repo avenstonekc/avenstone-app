@@ -43,6 +43,25 @@ const RULES = [
       todo.related_entity_type === 'invoice' &&
       todo.source === 'engine',
   },
+  // ---- Rule 4: failed checklist item needs follow-up ----
+  {
+    name: 'checklist_item_failed',
+    create_on: 'checklist_item.failed',
+    create_payload: (event) => ({
+      title: `Follow up: ${event.itemName} failed (${event.templateName})`,
+      notes: 'A site visit checklist item was marked failed. Address the issue, photograph the resolution, and mark the checklist item pass.',
+      type: 'checklist_followup',
+      job_id: event.jobId,
+      related_entity_type: 'site_visit_checklist_item',
+      related_entity_id: event.checklistItemId,
+    }),
+    resolve_on: ['checklist_item.resolved'],
+    resolve_condition: (event, todo) => todo.related_entity_id === event.checklistItemId,
+    resolve_match: (todo) =>
+      todo.type === 'checklist_followup' &&
+      todo.related_entity_type === 'site_visit_checklist_item' &&
+      todo.source === 'engine',
+  },
   // ---- Rule 2: auto-created sub_start needs PM review ----
   {
     name: 'auto_sub_start_review',
