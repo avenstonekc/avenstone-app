@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus } from '../../../lib/supabase';
+import { useState, useEffect, useRef } from 'react';
+import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity } from '../../../lib/supabase';
 import { Ic, fD } from '../../../lib/utils';
 
 // Phase display config
@@ -338,6 +338,9 @@ const TYPE_SUGGESTIONS = {
 };
 const SHOW_TRADE_FOR = ['material_delivery', 'sub_start', 'delay'];
 
+const PHOTO_GATE_TYPES = ['sub_start', 'site_visit', 'inspection'];
+const ITEM_STATUSES = ['scheduled', 'in_progress', 'complete', 'cancelled'];
+
 function ScheduleItemModal({ item, job, onClose, onSaved }) {
   const isNew = !item;
   const [form, setForm] = useState({
@@ -350,6 +353,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     assigned_sub_id:    item?.assigned_sub_id || '',
     notify_client:      item?.notify_client   ?? true,
     notify_sub:         item?.notify_sub      ?? true,
+    status:             item?.status          || 'scheduled',
   });
   const [notifyOnSave, setNotifyOnSave] = useState(true);
   const [showEndDate, setShowEndDate]   = useState(!!item?.scheduled_end_date);
@@ -357,15 +361,31 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
   const [err, setErr]                   = useState(null);
   const [trades, setTrades]             = useState([]);
   const [subs, setSubs]                 = useState([]);
+  const [entityPhotoCount, setEntityPhotoCount] = useState(0);
+  const [uploading, setUploading]       = useState(false);
+  const photoRef                        = useRef();
 
   useEffect(() => {
     import('../../../lib/supabase').then(({ sbLoadActiveTradeStrings, sbLoadActiveSubs }) => {
       sbLoadActiveTradeStrings().then(setTrades);
       sbLoadActiveSubs().then(setSubs);
     });
+    if (!isNew && PHOTO_GATE_TYPES.includes(item.type)) {
+      sbCountPhotosForEntity('schedule_item', item.id).then(setEntityPhotoCount);
+    }
   }, []);
 
   const setField = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleEntityPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !item?.id) return;
+    setUploading(true);
+    const result = await sbPhoto(job.id, file, 'schedule_item', item.id);
+    setUploading(false);
+    if (result) setEntityPhotoCount(c => c + 1);
+    e.target.value = '';
+  };
 
   const handleTypeChange = (type) => {
     setField('type', type);
@@ -484,6 +504,41 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
           <label className="flbl">Notes</label>
           <textarea className="finp" rows={2} value={form.notes} onChange={e => setField('notes', e.target.value)} style={{ resize: 'vertical' }} />
         </div>
+
+        {/* Status (edit only) */}
+        {!isNew && (
+          <div className="fg">
+            <label className="flbl">Status</label>
+            <select className="finp" style={ssty} value={form.status} onChange={e => setField('status', e.target.value)}>
+              {ITEM_STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Photo gate — required when marking gateable types complete */}
+        {!isNew && PHOTO_GATE_TYPES.includes(form.type) && (
+          <div style={{ background: form.status === 'complete' && entityPhotoCount === 0 ? '#FEF3C7' : '#F7F5F0', border: `1px solid ${form.status === 'complete' && entityPhotoCount === 0 ? '#FCD34D' : '#E8E4DC'}`, borderRadius: 6, padding: '10px 12px', marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 2 }}>
+                  {entityPhotoCount > 0 ? `${entityPhotoCount} photo${entityPhotoCount !== 1 ? 's' : ''} attached` : 'No photos attached'}
+                </div>
+                {form.status === 'complete' && entityPhotoCount === 0 && (
+                  <div style={{ fontSize: 11, color: '#92400E' }}>1 photo required to mark complete</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => photoRef.current?.click()}
+                disabled={uploading}
+                style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 5, border: '1px solid #0A1F44', background: '#0A1F44', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                {uploading ? 'Uploading…' : '📷 Add Photo'}
+              </button>
+            </div>
+            <input ref={photoRef} type="file" accept="image/*" capture="environment" onChange={handleEntityPhoto} style={{ display: 'none' }} />
+          </div>
+        )}
 
         {/* Audience */}
         <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Notify</div>

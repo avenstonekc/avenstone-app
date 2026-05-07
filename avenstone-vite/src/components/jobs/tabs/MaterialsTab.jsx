@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { sbLoadMaterialOrdersForJob, sbUpdateMaterialOrder, sbLoadActiveTradeStrings } from '../../../lib/supabase';
+import { useState, useEffect, useRef } from 'react';
+import { sbLoadMaterialOrdersForJob, sbUpdateMaterialOrder, sbLoadActiveTradeStrings, sbPhoto } from '../../../lib/supabase';
 import { f$, fD } from '../../../lib/utils';
 import AddQuoteModal from '../../modals/AddQuoteModal';
 
@@ -23,6 +23,9 @@ export default function MaterialsTab({ job }) {
   const [addQuoteTrade, setAddQuoteTrade] = useState(null);
   const [working, setWorking] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); // { id, action, label }
+  const [pendingDelivery, setPendingDelivery] = useState(null); // { orderId, photoCount }
+  const [deliveryUploading, setDeliveryUploading] = useState(false);
+  const deliveryPhotoRef = useRef();
 
   const load = async () => {
     setLoading(true);
@@ -45,12 +48,27 @@ export default function MaterialsTab({ job }) {
   useEffect(() => { load(); }, [job.id]);
 
   const handleTransition = async (id, status) => {
+    if (status === 'delivered' && (!pendingDelivery || pendingDelivery.orderId !== id)) {
+      setPendingDelivery({ orderId: id, photoCount: 0 });
+      return;
+    }
     setWorking(id);
     const res = await sbUpdateMaterialOrder(id, { status });
     setWorking(null);
     setConfirmAction(null);
+    setPendingDelivery(null);
     if (res.ok) load();
     else setError(res.error || 'Update failed');
+  };
+
+  const handleDeliveryPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !pendingDelivery) return;
+    setDeliveryUploading(true);
+    await sbPhoto(job.id, file, 'material_order', pendingDelivery.orderId);
+    setDeliveryUploading(false);
+    setPendingDelivery(p => ({ ...p, photoCount: (p?.photoCount ?? 0) + 1 }));
+    e.target.value = '';
   };
 
   const openAdd = (trade) => { setAddQuoteTrade(trade); setAddQuoteOpen(true); };
@@ -83,6 +101,41 @@ export default function MaterialsTab({ job }) {
           >
             No
           </button>
+        </div>
+      );
+    }
+
+    // Delivery photo gate panel
+    if (next === 'delivered' && pendingDelivery?.orderId === order.id) {
+      return (
+        <div style={{ marginTop: 10, background: '#0d1f35', border: '1px solid #1e3a5f', borderRadius: 6, padding: '10px 12px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#60a5fa', marginBottom: 6 }}>
+            Delivery photo required
+            {pendingDelivery.photoCount > 0 && <span style={{ color: '#34d399', marginLeft: 8 }}>✓ {pendingDelivery.photoCount} added</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => deliveryPhotoRef.current?.click()}
+              disabled={deliveryUploading}
+              style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 5, border: '1px solid #3b82f6', background: '#1e3a5f', color: '#60a5fa', cursor: 'pointer' }}
+            >
+              {deliveryUploading ? '…' : '📷 Take Photo'}
+            </button>
+            <input ref={deliveryPhotoRef} type="file" accept="image/*" capture="environment" onChange={handleDeliveryPhoto} style={{ display: 'none' }} />
+            <button
+              onClick={() => handleTransition(order.id, 'delivered')}
+              disabled={pendingDelivery.photoCount === 0 || working === order.id}
+              style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 5, border: `1px solid ${pendingDelivery.photoCount > 0 ? '#22c55e' : '#374151'}`, background: pendingDelivery.photoCount > 0 ? '#052e16' : 'transparent', color: pendingDelivery.photoCount > 0 ? '#34d399' : '#6b7280', cursor: pendingDelivery.photoCount > 0 ? 'pointer' : 'not-allowed' }}
+            >
+              {working === order.id ? '…' : 'Confirm Delivered'}
+            </button>
+            <button
+              onClick={() => setPendingDelivery(null)}
+              style={{ fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid #374151', background: 'transparent', color: '#9ca3af', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       );
     }

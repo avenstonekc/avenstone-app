@@ -3,6 +3,7 @@ import { runGatesForTransition, getNextPhase, PHASE_LABELS } from './phaseGates.
 import { runTodoEngine } from './todoEngine.js';
 import { checkAndCreateSubStart } from './scheduleAutoCreate.js';
 import { checkAndAutoInvoice } from './autoInvoice.js';
+import { countPhotosForEntity } from './photoGate.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -144,7 +145,7 @@ export const sbNote = async (jid, content, author) => {
   }
 };
 
-export const sbPhoto = async (jid, file) => {
+export const sbPhoto = async (jid, file, entityType, entityId) => {
   try {
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
@@ -152,10 +153,20 @@ export const sbPhoto = async (jid, file) => {
     if (ue) { console.error(ue); return null; }
     const { data: ud } = sb.storage.from('job-photos').getPublicUrl(path);
     const url = ud.publicUrl;
-    const row = { job_id: jid, tenant_id: AV_TENANT, type: file.type.startsWith('video') ? 'video' : 'photo', url, name: file.name };
+    const row = {
+      job_id: jid, tenant_id: AV_TENANT,
+      type: file.type.startsWith('video') ? 'video' : 'photo',
+      url, name: file.name,
+      ...(entityType ? { related_entity_type: entityType } : {}),
+      ...(entityId   ? { related_entity_id:   entityId }   : {}),
+    };
     const { data: inserted } = await sb.from('photos').insert(row).select('id').single();
     return { id: inserted?.id, type: row.type, url, name: file.name };
   } catch (e) { console.error(e); return null; }
+};
+
+export const sbCountPhotosForEntity = async (entityType, entityId) => {
+  return countPhotosForEntity(sb, entityType, entityId);
 };
 
 export const sbLabelPhoto = async (jobId, photoId, label) => {
@@ -1640,6 +1651,16 @@ export const sbUpdateScheduleItem = async (id, patch) => {
       .select('*')
       .eq('id', id)
       .single();
+    // Photo gate: sub_start / site_visit / inspection require ≥1 linked photo to complete
+    if (patch.status === 'complete') {
+      const itemType = patch.type ?? prevRow?.type;
+      if (['sub_start', 'site_visit', 'inspection'].includes(itemType)) {
+        const photoCount = await countPhotosForEntity(sb, 'schedule_item', id);
+        if (photoCount === 0) {
+          return { ok: false, error: 'At least 1 photo is required to mark this item complete.', data: null, prevRow: prevRow || null };
+        }
+      }
+    }
     const clean = {
       ...patch,
       scheduled_date:     patch.scheduled_date     !== undefined ? (patch.scheduled_date     || null) : undefined,
@@ -2687,6 +2708,14 @@ export async function sbUpdateMaterialOrder(id, updates) {
     patch.actual_delivery_date = new Date().toISOString().slice(0, 10);
   }
 
+  // Photo gate: at least 1 delivery photo required
+  if (patch.status === 'delivered') {
+    const photoCount = await countPhotosForEntity(sb, 'material_order', id);
+    if (photoCount === 0) {
+      return { ok: false, error: 'At least 1 delivery photo is required.', data: null };
+    }
+  }
+
   const { data, error } = await sb
     .from('material_orders')
     .update(patch)
@@ -2696,7 +2725,7 @@ export async function sbUpdateMaterialOrder(id, updates) {
 
   if (error) {
     captureFailedIntent({ kind: 'update_material_order', payload: { id, ...patch }, jobId: null, message: error.message, resumable: true }).catch(() => {});
-    throw error;
+    return { ok: false, error: error.message, data: null };
   }
   if (patch.status !== undefined) {
     fireTodoEvent('material_order.status_changed', { jobId: data.job_id, orderId: data.id, trade: data.trade, newStatus: data.status }).catch(() => {});
@@ -2723,7 +2752,7 @@ export async function sbUpdateMaterialOrder(id, updates) {
       })
       .catch(err => console.warn('[sbUpdateMaterialOrder] Phase 6 auto-create failed:', err?.message));
   }
-  return data;
+  return { ok: true, data };
 }
 
 export async function sbDeleteMaterialOrder(id) {
