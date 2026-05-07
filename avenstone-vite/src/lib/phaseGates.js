@@ -10,22 +10,16 @@
 // ── Phase order ───────────────────────────────────────────────────────────────
 
 export const PHASE_ORDER = [
-  'lead', 'bid_sent', 'active',
-  'demo', 'framing', 'rough_mep', 'drywall', 'finish',
-  'punch', 'complete',
+  'lead', 'bid_sent', 'contract', 'active', 'final_touches', 'complete',
 ];
 
 export const PHASE_LABELS = {
-  lead:      'Lead',
-  bid_sent:  'Proposal Sent',
-  active:    'Active',
-  demo:      'Demo',
-  framing:   'Framing',
-  rough_mep: 'Rough MEP',
-  drywall:   'Drywall',
-  finish:    'Finish',
-  punch:     'Punch List',
-  complete:  'Complete',
+  lead:          'Lead',
+  bid_sent:      'Proposal Sent',
+  contract:      'Contract',
+  active:        'Active',
+  final_touches: 'Final Touches',
+  complete:      'Complete',
 };
 
 export function getNextPhase(current) {
@@ -119,22 +113,16 @@ async function checkAllSubStartsComplete(jobId, sb) {
 // Absent transitions that can proceed freely get allPassed:true from the runner.
 
 const TRANSITION_GATES = {
-  'lead→bid_sent':   [checkScopeTagged, checkConsultationLogged],
-  'bid_sent→active': [checkContractSigned],
-  'active→demo':     [checkDepositPaid],
-  'finish→punch':    [checkAllSubStartsComplete],
+  'lead→bid_sent':          [checkScopeTagged, checkConsultationLogged],
+  'bid_sent→contract':      [checkContractSigned],
+  'contract→active':        [checkDepositPaid],
+  'active→final_touches':   [checkAllSubStartsComplete],
 };
 
-// These transitions have no clean automated gate today.
+// No clean automated gate for this transition today.
 // Runner returns requiresOverride:true with an explanatory message.
-// 'demo→finish' construction sub-transitions are primarily driven by
-// derivePhaseStatus via schedule_items — PM advances manually as construction progresses.
 const MANUAL_ONLY = new Set([
-  'demo→framing',
-  'framing→rough_mep',
-  'rough_mep→drywall',
-  'drywall→finish',
-  'punch→complete',  // No clean "final invoice paid" signal yet
+  'final_touches→complete',  // No clean "final invoice paid" signal yet
 ]);
 
 // ── Public runner ─────────────────────────────────────────────────────────────

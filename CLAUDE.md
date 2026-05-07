@@ -347,11 +347,12 @@ Always filter by `AV_TENANT`. Always handle loading, empty, and error states.
 - Session globals: `AV_TENANT`, `AV_USER_ID` — set on login, imported from `supabase.js`
 
 ### Job statuses (in order)
-`lead → bid_sent → active → demo → framing → rough_mep → drywall → finish → punch → complete`
-Also: `on_hold`
+`lead → bid_sent → contract → active → final_touches → complete`
+Also: `on_hold` (lateral pause state — not a phase advancement)
 
-**Phase progression is now derived from schedule items, not edited directly.**
-When a `sub_start` schedule item changes status, `derivePhaseStatus(jobId, tenantId)` in `supabase.js` automatically advances the matching `job_phases` row. Derivation is idempotent and never decrements — a phase at `complete` stays there even if its driver item is cancelled. The `trade_phase_map` table (per-tenant) defines which trade maps to which phase_name.
+CHECK constraint on `jobs.status` enforces this set (Phase 4a-ii, EXECUTION_ARC).
+
+**Trade phases are separate from job lifecycle.** `job_phases` rows track construction trade phases (Demo, Framing, etc.) and are auto-advanced by `derivePhaseStatus(jobId, tenantId)` via `schedule_items` completion. This is completely separate from `jobs.status`. The `trade_phase_map` table (per-tenant) defines which trade maps to which `job_phases.phase_name`.
 
 ### Information Architecture
 - **Top nav** — daily-use screens only. Job-specific features belong in `JobDet` tabs.

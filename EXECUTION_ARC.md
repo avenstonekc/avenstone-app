@@ -31,27 +31,27 @@ The PM does the human work (sourcing quotes, picking subs, negotiating dates, do
 JOB CREATED
    │
    ▼
-PHASE: REVIEW ──── todos: schedule consultation, capture scan
+PHASE: LEAD (lead) ──── todos: schedule consultation, capture scan
    │
    ▼ (consultation logged + scope tagged)
-PHASE: PROPOSAL ─── todos per trade: send bid invitation, get material quote
-                  └─ todos: build proposal, send to client
+PHASE: PROPOSAL SENT (bid_sent) ─── todos per trade: send bid invitation, get material quote
+                                  └─ todos: build proposal, send to client
    │
-   ▼ (proposal accepted)
-PHASE: CONTRACT ──── todos: send contract, collect signed contract, send deposit invoice
+   ▼ (contract signed)
+PHASE: CONTRACT (contract) ──── todos: collect signed contract, send deposit invoice
    │
    ▼ (deposit paid)
-PHASE: IN PROGRESS ── per trade where bid accepted + material quoted:
-                    ├─ AUTO-CREATE: material_delivery (quoted_delivery_date)
-                    ├─ AUTO-CREATE: sub_start (sub's earliest_start_date)
-                    └─ Sequences fire on state changes
+PHASE: ACTIVE (active) ── per trade where bid accepted + material quoted:
+                        ├─ AUTO-CREATE: material_delivery (quoted_delivery_date)
+                        ├─ AUTO-CREATE: sub_start (sub's earliest_start_date)
+                        └─ Sequences fire on state changes
    │             walkthroughs scheduled per trade run off code-aware checklists
    │
    ▼ (last sub off site)
-PHASE: FINAL TOUCHES ──── todos: schedule walkthrough w/ client, build punch list, send final invoice
+PHASE: FINAL TOUCHES (final_touches) ──── todos: schedule walkthrough w/ client, build punch list, send final invoice
    │
    ▼ (final invoice paid)
-PHASE: COMPLETE ──── archive
+PHASE: COMPLETE (complete) ──── archive
 ```
 
 ## 4. Schema additions
@@ -104,10 +104,10 @@ ALTER TABLE schedule_items
 
 Hardcoded in `src/lib/phaseTodoRules.js`:
 
-- `review`: schedule_consultation, capture_scan
-- `proposal`: per-trade bid_invitation + material_quote, build_proposal, send_proposal
-- `contract`: send_contract, collect_signed, send_deposit_invoice, collect_deposit
-- `in_progress`: per-trade confirm_delivery, confirm_start
+- `lead`: schedule_consultation, capture_scan
+- `bid_sent`: per-trade bid_invitation + material_quote, build_proposal, send_proposal
+- `contract`: collect_signed, send_deposit_invoice, collect_deposit
+- `active`: per-trade confirm_delivery, confirm_start
 - `final_touches`: schedule_walkthrough, build_punch_list, send_final_invoice
 - `complete`: none (archived)
 
@@ -170,11 +170,11 @@ planned → quoted → ordered → delivered → installed (terminal)
 
 | From | To | Required data | Manual override |
 |---|---|---|---|
-| review | proposal | scope tagged on at least one room AND consultation logged | yes |
-| proposal | contract | proposal status = 'accepted' | yes |
-| contract | in_progress | contract signed AND deposit invoice paid | yes (rare) |
-| in_progress | final_touches | all `sub_start` items have status='complete' | yes |
-| final_touches | complete | final invoice paid AND no open todos | yes |
+| lead | bid_sent | scope tagged on at least one room AND consultation logged | yes |
+| bid_sent | contract | contract signed | yes |
+| contract | active | client payment (deposit) received | yes (rare) |
+| active | final_touches | all `sub_start` items have status='complete' | yes |
+| final_touches | complete | no automatic gate — PM judgement required | yes (required) |
 
 Manual override logs reason on the phase advance audit trail.
 
@@ -265,7 +265,7 @@ These are real arcs that the EXECUTION_ARC deliberately doesn't cover. Naming th
 
 - **`VOICE_AGENT_ARC.md`** — see existing VOICE_AGENT.md. Voice as a first-class interface for in-the-field PM workflows. Reads from EXECUTION_ARC's data (checklists, todos, schedule items, current phase context).
 
-- **`SALES_PIPELINE_ARC.md`** (open question) — leads → qualified → consultations scheduled → proposals → contracts. Today: jobs start at "Review" phase; lead-handling is out of the platform. Decide later if the platform should own this or stay focused on post-contract execution.
+- **`SALES_PIPELINE_ARC.md`** (open question) — leads → qualified → consultations scheduled → proposals → contracts. Today: jobs start at the `lead` phase; lead-handling is out of the platform. Decide later if the platform should own this or stay focused on post-contract execution.
 
 - **`CODE_JURISDICTION_ARC.md`** (polish) — extend inspection checklists to be jurisdiction-aware (KC vs Overland Park have different specifics; 2018 vs 2021 IRC matters). Hardcoded starter set v1 per this arc; jurisdiction-aware AI-seeded templates is the real moat play.
 
@@ -290,7 +290,7 @@ These are real arcs that the EXECUTION_ARC deliberately doesn't cover. Naming th
 7. Material cost actuals optionally update catalog (PM toggle, not auto)
 8. Failed checklist items create follow-up todos
 9. Phase-driven todos auto-resolve on state changes; PM-created custom todos still have manual checkboxes
-10. 6 phases hardcoded — Review / Proposal / Contract / In Progress / Final Touches / Complete
+10. 6 phases hardcoded — lead / bid_sent / contract / active / final_touches / complete (jobs.status values; enforced by CHECK constraint as of Phase 4a-ii)
 11. Photos are tied to source entities, not in a generic gallery. Walkthrough photos live on checklist items; delivery photos on schedule items; CO photos on change orders. Generic "Photos" tab on ClientPortal stays as a curated subset for client viewing.
 12. Sub portal expansion is incremental. EXECUTION_ARC adds two state transition buttons (in_progress, complete) on assigned sub_start items. Full sub workflow expansion is a separate arc (SUB_WORKFLOW_ARC.md) when sub engagement with the app surfaces real gaps.
 13. Process discipline post-arc: dogfood invoicing on a real job before EXECUTION_ARC Phase 5+. Track phase advancement override rate post-launch. Verify schema claims against information_schema before trusting memory artifacts.
