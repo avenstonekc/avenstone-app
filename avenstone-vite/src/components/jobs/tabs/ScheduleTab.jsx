@@ -349,6 +349,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     trade:              item?.trade           || '',
     assigned_sub_id:    item?.assigned_sub_id || '',
     notify_client:      item?.notify_client   ?? true,
+    notify_sub:         item?.notify_sub      ?? true,
   });
   const [notifyOnSave, setNotifyOnSave] = useState(true);
   const [showEndDate, setShowEndDate]   = useState(!!item?.scheduled_end_date);
@@ -484,10 +485,17 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
           <textarea className="finp" rows={2} value={form.notes} onChange={e => setField('notes', e.target.value)} style={{ resize: 'vertical' }} />
         </div>
 
-        {/* Notify client */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <input type="checkbox" id="notifyClient" checked={form.notify_client} onChange={e => setField('notify_client', e.target.checked)} />
-          <label htmlFor="notifyClient" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Notify client</label>
+        {/* Audience */}
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Notify</div>
+        <div style={{ display: 'flex', gap: 20, marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" id="notifyClient" checked={form.notify_client} onChange={e => setField('notify_client', e.target.checked)} />
+            <label htmlFor="notifyClient" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Client</label>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" id="notifySub" checked={form.notify_sub} onChange={e => setField('notify_sub', e.target.checked)} />
+            <label htmlFor="notifySub" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Sub</label>
+          </div>
         </div>
 
         {/* Notify on save (edit only) */}

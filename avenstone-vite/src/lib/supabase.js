@@ -1824,7 +1824,7 @@ const fDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
 // Collect recipient user IDs for a schedule item
 const _collectRecipients = async (item, job, includeClient) => {
   const ids = new Set();
-  if (item.assigned_sub_id) ids.add(item.assigned_sub_id);
+  if (item.notify_sub !== false && item.assigned_sub_id) ids.add(item.assigned_sub_id);
   if (includeClient && item.notify_client && job?.client_user_id) ids.add(job.client_user_id);
   // Staff: PM assigned to job
   if (job?.assigned_pm_id) ids.add(job.assigned_pm_id);
@@ -2691,6 +2691,15 @@ export async function sbUpdateMaterialOrder(id, updates) {
   if (patch.status !== undefined) {
     fireTodoEvent('material_order.status_changed', { jobId: data.job_id, orderId: data.id, trade: data.trade, newStatus: data.status }).catch(() => {});
   }
+  if (patch.status === 'delivered') {
+    sbNotify(
+      'material_delivered',
+      `Materials delivered — ${data.trade || 'job'}`,
+      `${data.supplier_name || 'Order'} delivered${data.actual_delivery_date ? ' ' + data.actual_delivery_date : ''}`,
+      data.job_id,
+      AV_USER_ID,
+    ).catch(() => {});
+  }
   if (patch.quoted_delivery_date !== undefined && data.quoted_delivery_date) {
     checkAndCreateSubStart(sb, AV_TENANT, AV_USER_ID, data.job_id, data.trade)
       .then(result => {
@@ -2829,6 +2838,15 @@ export async function sbAdvancePhase(jobId, opts = {}) {
     }).catch(() => {});
     throw advErr;
   }
+
+  const { data: jobRow } = await sb.from('jobs').select('address').eq('id', jobId).single().catch(() => ({ data: null }));
+  sbNotify(
+    'phase_advanced',
+    `Phase advanced — ${jobRow?.address || 'job'}`,
+    `Moved to ${PHASE_LABELS[gateStatus.nextPhase] || gateStatus.nextPhase}${useOverride ? ' (override)' : ''}`,
+    jobId,
+    AV_USER_ID,
+  ).catch(() => {});
 
   return {
     previousPhase: gateStatus.currentPhase,

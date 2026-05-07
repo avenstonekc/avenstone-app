@@ -613,3 +613,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/todoEngine.js, avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
 - Decision: any PM action on the schedule_item resolves the review todo — modify, cancel, or complete all mean PM has acknowledged it. sbDeleteScheduleItem is a soft-cancel (sets status='cancelled') so fires schedule_item.cancelled. Idempotency relies on existing engine .eq('status', 'open') guard — no double-resolve risk.
 - Open: EXECUTION_ARC Phase 5b-ii (engagement event rules — scope todo on bid sent, auto-resolve on accept/decline). Phase 7 — sequence triggers. Phase 8 — site visit checklists.
+
+[LOG — 2026-05-07]
+- Action: EXECUTION_ARC Phase 7 — sequence triggers + 3-sided audience. New notify_sub BOOL on schedule_items (DEFAULT true, mirrors notify_client). _collectRecipients now gates sub inclusion on item.notify_sub. scheduleAutoCreate sets notify_client=true + notify_sub=true on auto-created sub_starts (was notify_client=false). ScheduleItemModal has grouped Notify section with Client + Sub checkboxes. sbAdvancePhase fires sbNotify (staff) after advance. sbUpdateMaterialOrder fires sbNotify (staff) when status→delivered.
+- Files: supabase/migrations/20260507130000_schedule_items_notify_sub.sql, avenstone-vite/src/lib/supabase.js (_collectRecipients + sbAdvancePhase + sbUpdateMaterialOrder), avenstone-vite/src/lib/scheduleAutoCreate.js, avenstone-vite/src/components/jobs/tabs/ScheduleTab.jsx, CLAUDE_MEMORY.md
+- Schema reality: schedule_items.notify_sub (BOOLEAN NOT NULL DEFAULT true) confirmed applied.
+- Decision: NO fireSequenceEvent bridge built. Audit found sequence-runner is an SMS drip re-engagement tool (sub_inactive_60d only) — not a real-time state-change dispatcher. Phase 7 extends the existing _collectRecipients → sbNotifyUser pattern instead. This is the correct path.
+- Decision: Sub default true preserves existing behavior (sub was included unconditionally pre-Phase-7). PM can uncheck to suppress.
+- Decision: phase.advanced and material_order.delivered use sbNotify() (all staff) — no per-row audience flags on those entities; 3-sided client routing on those events is future.
+- Open: EXECUTION_ARC Phase 5b-ii (engagement event rules). Phase 8 — site visit checklists. Phase 9 — learning loop. Phase 10 — auto-invoice draft on milestone trigger.
