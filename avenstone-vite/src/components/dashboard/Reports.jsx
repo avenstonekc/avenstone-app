@@ -7,8 +7,8 @@ export default function Reports({ jobs, profile }) {
   const isOwner = profile?.role === 'owner';
   const myJobs = isOwner ? jobs : jobs.filter(j => (j.assigned_rep || '') === (profile?.full_name || profile?.email || '__none__'));
   const complete = myJobs.filter(j => j.status === 'complete');
-  const bids = myJobs.filter(j => j.status === 'bid_sent');
-  const inProgress = myJobs.filter(j => ['demo', 'framing', 'rough_mep', 'drywall', 'finish', 'punch'].includes(j.status));
+  const bids = myJobs.filter(j => j.status === 'proposal');
+  const inProgress = myJobs.filter(j => j.status === 'in_progress');
 
   const [subRatings, setSubRatings] = useState([]);
   const [logStats, setLogStats] = useState([]);

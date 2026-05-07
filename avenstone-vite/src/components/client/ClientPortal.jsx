@@ -54,12 +54,12 @@ function ClientScheduleView({ jobId }) {
 }
 
 const JOB_STAGES = [
-  { label: 'Review', statuses: ['lead'] },
-  { label: 'Proposal', statuses: ['bid_sent'] },
-  { label: 'Contract', statuses: ['signed'] },
-  { label: 'In Progress', statuses: ['active', 'demo', 'framing', 'rough_mep', 'drywall', 'finish'] },
-  { label: 'Final Touches', statuses: ['punch'] },
-  { label: 'Complete', statuses: ['complete'] },
+  { label: 'Lead',          statuses: ['lead'] },
+  { label: 'Proposal',      statuses: ['proposal'] },
+  { label: 'Contract',      statuses: ['contract'] },
+  { label: 'In Progress',   statuses: ['in_progress'] },
+  { label: 'Final Touches', statuses: ['final_touches'] },
+  { label: 'Complete',      statuses: ['complete'] },
 ];
 
 function ProgressStepper({ status }) {
@@ -748,8 +748,8 @@ export default function ClientPortal({ profile, signOut }) {
 
         </div>
 
-        {showSignContract && job && <ClientSignContractModal job={job} onClose={() => setShowSignContract(false)} onSigned={() => { setJobs(js => js.map(j => j.id === job.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'active' } : j)); setShowSignContract(false); }} />}
-        {bannerSignJob && <ClientSignContractModal job={bannerSignJob} onClose={() => setBannerSignJob(null)} onSigned={() => { setJobs(js => js.map(j => j.id === bannerSignJob.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'active' } : j)); setBannerSignJob(null); }} />}
+        {showSignContract && job && <ClientSignContractModal job={job} onClose={() => setShowSignContract(false)} onSigned={() => { setJobs(js => js.map(j => j.id === job.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'in_progress' } : j)); setShowSignContract(false); }} />}
+        {bannerSignJob && <ClientSignContractModal job={bannerSignJob} onClose={() => setBannerSignJob(null)} onSigned={() => { setJobs(js => js.map(j => j.id === bannerSignJob.id ? { ...j, contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'in_progress' } : j)); setBannerSignJob(null); }} />}
       </>}
     </div>
   );

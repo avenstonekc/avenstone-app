@@ -7,9 +7,9 @@ export default function DashScr({ nav, jobs, profile }) {
   const greet = hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : 'evening';
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const active = jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length;
-  const bids = jobs.filter(j => j.status === 'bid_sent').length;
+  const bids = jobs.filter(j => j.status === 'proposal').length;
   const signed = jobs.filter(j => j.status === 'signed').length;
-  const pipeline = jobs.filter(j => j.status === 'bid_sent').reduce((a, j) => a + Number(j.contract_value || 0), 0);
+  const pipeline = jobs.filter(j => j.status === 'proposal').reduce((a, j) => a + Number(j.contract_value || 0), 0);
   const mob = isMob();
   const [reviews, setReviews] = useState([]);
 

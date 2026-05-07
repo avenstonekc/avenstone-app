@@ -45,7 +45,7 @@ const TOOLS = [
         job_id: { type: 'string' },
         status: {
           type: 'string',
-          enum: ['lead','bid_sent','signed','demo','framing','rough_mep','drywall','finish','punch','complete','on_hold'],
+          enum: ['lead','proposal','contract','in_progress','final_touches','complete','on_hold'],
         },
       },
       required: ['job_id', 'status'],

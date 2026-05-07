@@ -2,27 +2,24 @@ import { useState } from 'react';
 import { f$ } from '../../lib/utils';
 
 const PIPELINE_COLS = [
-  { id: 'lead',     lb: 'Lead',     c: '#6366f1' },
-  { id: 'bid_sent', lb: 'Bid Sent', c: '#f59e0b' },
-  { id: 'signed',   lb: 'Signed',   c: '#22c55e' },
-  { id: 'active',   lb: 'Active',   c: '#0A1F44', ids: ['demo','framing','rough_mep','drywall','finish','punch'] },
-  { id: 'complete', lb: 'Complete', c: '#9CA3AF' },
-  { id: 'on_hold',  lb: 'On Hold',  c: '#ef4444' },
+  { id: 'lead',          lb: 'Lead',          c: '#6366f1' },
+  { id: 'proposal',      lb: 'Proposal',      c: '#f59e0b' },
+  { id: 'contract',      lb: 'Contract',      c: '#22c55e' },
+  { id: 'in_progress',   lb: 'In Progress',   c: '#0A1F44' },
+  { id: 'final_touches', lb: 'Final Touches', c: '#06b6d4' },
+  { id: 'complete',      lb: 'Complete',      c: '#9CA3AF' },
+  { id: 'on_hold',       lb: 'On Hold',       c: '#ef4444' },
 ];
 
 export default function Pipeline({ jobs, onStatusChange, onOpenJob }) {
   const [dragging, setDragging] = useState(null);
   const [dragOver, setDragOver] = useState(null);
 
-  const colJobs = col => {
-    if (col.ids) return jobs.filter(j => col.ids.includes(j.status));
-    return jobs.filter(j => j.status === col.id);
-  };
+  const colJobs = col => jobs.filter(j => j.status === col.id);
 
   const drop = async colId => {
     if (!dragging || dragging === colId) return;
-    const newStatus = colId === 'active' ? 'demo' : colId;
-    onStatusChange(dragging, newStatus);
+    onStatusChange(dragging, colId);
     setDragging(null); setDragOver(null);
   };
 

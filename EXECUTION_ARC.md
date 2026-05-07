@@ -34,14 +34,14 @@ JOB CREATED
 PHASE: LEAD (lead) ──── todos: schedule consultation, capture scan
    │
    ▼ (consultation logged + scope tagged)
-PHASE: PROPOSAL SENT (bid_sent) ─── todos per trade: send bid invitation, get material quote
-                                  └─ todos: build proposal, send to client
+PHASE: PROPOSAL (proposal) ─── todos per trade: send bid invitation, get material quote
+                             └─ todos: build proposal, send to client
    │
-   ▼ (contract signed)
+   ▼ (contract signed — manual advancement)
 PHASE: CONTRACT (contract) ──── todos: collect signed contract, send deposit invoice
    │
-   ▼ (deposit paid)
-PHASE: ACTIVE (active) ── per trade where bid accepted + material quoted:
+   ▼ (contract signed + deposit paid)
+PHASE: IN PROGRESS (in_progress) ── per trade where bid accepted + material quoted:
                         ├─ AUTO-CREATE: material_delivery (quoted_delivery_date)
                         ├─ AUTO-CREATE: sub_start (sub's earliest_start_date)
                         └─ Sequences fire on state changes
@@ -105,9 +105,9 @@ ALTER TABLE schedule_items
 Hardcoded in `src/lib/phaseTodoRules.js`:
 
 - `lead`: schedule_consultation, capture_scan
-- `bid_sent`: per-trade bid_invitation + material_quote, build_proposal, send_proposal
+- `proposal`: per-trade bid_invitation + material_quote, build_proposal, send_proposal
 - `contract`: collect_signed, send_deposit_invoice, collect_deposit
-- `active`: per-trade confirm_delivery, confirm_start
+- `in_progress`: per-trade confirm_delivery, confirm_start
 - `final_touches`: schedule_walkthrough, build_punch_list, send_final_invoice
 - `complete`: none (archived)
 
@@ -170,10 +170,10 @@ planned → quoted → ordered → delivered → installed (terminal)
 
 | From | To | Required data | Manual override |
 |---|---|---|---|
-| lead | bid_sent | scope tagged on at least one room AND consultation logged | yes |
-| bid_sent | contract | contract signed | yes |
-| contract | active | client payment (deposit) received | yes (rare) |
-| active | final_touches | all `sub_start` items have status='complete' | yes |
+| lead | proposal | scope tagged on at least one room AND consultation logged | yes |
+| proposal | contract | no automatic gate — PM judgement required | yes (required) |
+| contract | in_progress | contract signed AND client payment (deposit) received | yes (rare) |
+| in_progress | final_touches | all `sub_start` items have status='complete' | yes |
 | final_touches | complete | no automatic gate — PM judgement required | yes (required) |
 
 Manual override logs reason on the phase advance audit trail.
@@ -290,11 +290,12 @@ These are real arcs that the EXECUTION_ARC deliberately doesn't cover. Naming th
 7. Material cost actuals optionally update catalog (PM toggle, not auto)
 8. Failed checklist items create follow-up todos
 9. Phase-driven todos auto-resolve on state changes; PM-created custom todos still have manual checkboxes
-10. 6 phases hardcoded — lead / bid_sent / contract / active / final_touches / complete (jobs.status values; enforced by CHECK constraint as of Phase 4a-ii)
+10. 6 phases hardcoded — lead / proposal / contract / in_progress / final_touches / complete (jobs.status values; enforced by CHECK constraint as of Phase 4a-ii migration 20260506200000)
 11. Photos are tied to source entities, not in a generic gallery. Walkthrough photos live on checklist items; delivery photos on schedule items; CO photos on change orders. Generic "Photos" tab on ClientPortal stays as a curated subset for client viewing.
 12. Sub portal expansion is incremental. EXECUTION_ARC adds two state transition buttons (in_progress, complete) on assigned sub_start items. Full sub workflow expansion is a separate arc (SUB_WORKFLOW_ARC.md) when sub engagement with the app surfaces real gaps.
 13. Process discipline post-arc: dogfood invoicing on a real job before EXECUTION_ARC Phase 5+. Track phase advancement override rate post-launch. Verify schema claims against information_schema before trusting memory artifacts.
 14. Auto-invoice drafts never auto-send. Triggers fire to create a draft + todo. PM is the gate on every invoice that goes out. Reason: real progress is rarely exactly the planned milestone amount; clients hate being billed wrong; the auto value is the heads-up + the prefill, not the action.
+15. Lifecycle phase names are CANONICAL across schema, code, and UI: lead, proposal, contract, in_progress, final_touches, complete. White-label-driven — these terms work for non-GC tenants (painters, roofers, tile contractors). Tenant-specific UI labels can override the display string but the underlying value is fixed. No "bid_sent" (bids are what subs send the GC, not a job state) or "active" (too vague). Decision made 2026-05-06 alongside Phase 4a-ii migration.
 
 ## 13. Open questions
 

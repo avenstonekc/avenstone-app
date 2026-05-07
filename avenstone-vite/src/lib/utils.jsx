@@ -1,17 +1,12 @@
 // ─── Job status helpers ───────────────────────────────────────────────────────
 const STATUS_MAP = [
-  { id: 'lead',      lb: 'Lead',        c: '#6366f1' },
-  { id: 'bid_sent',  lb: 'Bid Sent',    c: '#f59e0b' },
-  { id: 'signed',    lb: 'Signed',      c: '#22c55e' },
-  { id: 'active',    lb: 'Active',      c: '#3B82F6' },
-  { id: 'demo',      lb: 'Demo',        c: '#ef4444' },
-  { id: 'framing',   lb: 'Framing',     c: '#f97316' },
-  { id: 'rough_mep', lb: 'Rough MEP',   c: '#eab308' },
-  { id: 'drywall',   lb: 'Drywall',     c: '#84cc16' },
-  { id: 'finish',    lb: 'Finish Work', c: '#14b8a6' },
-  { id: 'punch',     lb: 'Punch List',  c: '#06b6d4' },
-  { id: 'complete',  lb: 'Complete',    c: '#22c55e' },
-  { id: 'on_hold',   lb: 'On Hold',     c: '#9CA3AF' },
+  { id: 'lead',          lb: 'Lead',          c: '#6366f1' },
+  { id: 'proposal',      lb: 'Proposal',      c: '#f59e0b' },
+  { id: 'contract',      lb: 'Contract',      c: '#22c55e' },
+  { id: 'in_progress',   lb: 'In Progress',   c: '#3B82F6' },
+  { id: 'final_touches', lb: 'Final Touches', c: '#06b6d4' },
+  { id: 'complete',      lb: 'Complete',      c: '#10B981' },
+  { id: 'on_hold',       lb: 'On Hold',       c: '#9CA3AF' },
 ];
 const SC = id => STATUS_MAP.find(s => s.id === id) || { c: '#9CA3AF', lb: id };
 export const sc = id => SC(id).c;   // status color

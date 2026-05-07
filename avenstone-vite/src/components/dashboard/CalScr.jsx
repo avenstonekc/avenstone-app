@@ -3,7 +3,7 @@ import { sb } from '../../lib/supabase';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const SC = { lead: '#9CA3AF', active: '#C9A84C', complete: '#10B981', punch: '#3B82F6', cancelled: '#EF4444', on_hold: '#F97316' };
+const SC = { lead: '#9CA3AF', proposal: '#f59e0b', contract: '#22c55e', in_progress: '#C9A84C', final_touches: '#3B82F6', complete: '#10B981', on_hold: '#F97316' };
 
 export default function CalScr({ jobs, profile, onSelectJob }) {
   const [view, setView] = useState('month');
@@ -70,9 +70,9 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select value={filter} onChange={e => setFilter(e.target.value)} style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #E8E4DC', borderRadius: 4, background: '#fff', color: '#374151' }}>
             <option value="all">All Projects</option>
-            <option value="lead">Leads</option>
-            <option value="active">Active</option>
-            <option value="punch">Punch List</option>
+            <option value="lead">Lead</option>
+            <option value="in_progress">In Progress</option>
+            <option value="final_touches">Final Touches</option>
             <option value="complete">Complete</option>
           </select>
           <div style={{ display: 'flex', border: '1px solid #E8E4DC', borderRadius: 4, overflow: 'hidden' }}>

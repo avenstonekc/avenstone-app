@@ -347,10 +347,10 @@ Always filter by `AV_TENANT`. Always handle loading, empty, and error states.
 - Session globals: `AV_TENANT`, `AV_USER_ID` — set on login, imported from `supabase.js`
 
 ### Job statuses (in order)
-`lead → bid_sent → contract → active → final_touches → complete`
+`lead → proposal → contract → in_progress → final_touches → complete`
 Also: `on_hold` (lateral pause state — not a phase advancement)
 
-CHECK constraint on `jobs.status` enforces this set (Phase 4a-ii, EXECUTION_ARC).
+CHECK constraint `jobs_status_canonical_check` enforces this set (Phase 4a-ii, migration 20260506200000). White-label-driven: terms work for any contractor type, not just GC. `bid_sent` and `active` are legacy values; all existing rows backfilled.
 
 **Trade phases are separate from job lifecycle.** `job_phases` rows track construction trade phases (Demo, Framing, etc.) and are auto-advanced by `derivePhaseStatus(jobId, tenantId)` via `schedule_items` completion. This is completely separate from `jobs.status`. The `trade_phase_map` table (per-tenant) defines which trade maps to which `job_phases.phase_name`.
 

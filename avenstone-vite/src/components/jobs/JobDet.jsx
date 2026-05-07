@@ -238,8 +238,8 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             setShowSt(false);
             if (s.id !== job.status) {
               sbNotify('status_changed', `Status updated — ${job.address}`, `Job moved to: ${s.lb}`, job.id, AV_USER_ID);
-              if (['active', 'punch', 'complete'].includes(s.id) && (job.referring_realtor_phone || job.referring_realtor_email)) {
-                const ms = s.id === 'active' ? 'kickoff' : s.id === 'punch' ? 'punch_list' : 'complete';
+              if (['in_progress', 'final_touches', 'complete'].includes(s.id) && (job.referring_realtor_phone || job.referring_realtor_email)) {
+                const ms = s.id === 'in_progress' ? 'kickoff' : s.id === 'final_touches' ? 'punch_list' : 'complete';
                 fetch(NOTIFY_REALTOR_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` }, body: JSON.stringify({ job_id: job.id, milestone: ms }) }).catch(() => {});
               }
             }

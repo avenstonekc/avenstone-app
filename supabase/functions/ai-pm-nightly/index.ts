@@ -12,7 +12,7 @@ const CORS = {
   "Content-Type": "application/json",
 };
 
-const ACTIVE_STATUSES = ["active", "demo", "framing", "rough_mep", "drywall", "finish", "punch"];
+const ACTIVE_STATUSES = ["in_progress", "final_touches"];
 
 const daysSince = (dateStr: string) =>
   Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);

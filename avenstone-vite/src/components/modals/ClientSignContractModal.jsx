@@ -29,7 +29,7 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
     }
 
     await sbSaveSignature({ job_id: job.id, tenant_id: job.tenant_id, type: 'contract', signed_by_name: job.client_name || '', signed_by_email: job.client_email || '', signature_data: png, signed_at: new Date().toISOString(), document_url: fileUrl });
-    await sb.from('jobs').update({ contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'active' }).eq('id', job.id);
+    await sb.from('jobs').update({ contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'in_progress' }).eq('id', job.id);
     sbNotify('note_posted', `Contract signed — ${job.address}`, 'The client has signed the contract.', job.id, AV_USER_ID);
     setSaving(false); setStep('done');
     if (onSigned) onSigned();

@@ -10,14 +10,14 @@
 // ── Phase order ───────────────────────────────────────────────────────────────
 
 export const PHASE_ORDER = [
-  'lead', 'bid_sent', 'contract', 'active', 'final_touches', 'complete',
+  'lead', 'proposal', 'contract', 'in_progress', 'final_touches', 'complete',
 ];
 
 export const PHASE_LABELS = {
   lead:          'Lead',
-  bid_sent:      'Proposal Sent',
+  proposal:      'Proposal',
   contract:      'Contract',
-  active:        'Active',
+  in_progress:   'In Progress',
   final_touches: 'Final Touches',
   complete:      'Complete',
 };
@@ -113,16 +113,16 @@ async function checkAllSubStartsComplete(jobId, sb) {
 // Absent transitions that can proceed freely get allPassed:true from the runner.
 
 const TRANSITION_GATES = {
-  'lead→bid_sent':          [checkScopeTagged, checkConsultationLogged],
-  'bid_sent→contract':      [checkContractSigned],
-  'contract→active':        [checkDepositPaid],
-  'active→final_touches':   [checkAllSubStartsComplete],
+  'lead→proposal':            [checkScopeTagged, checkConsultationLogged],
+  'contract→in_progress':     [checkContractSigned, checkDepositPaid],
+  'in_progress→final_touches': [checkAllSubStartsComplete],
 };
 
-// No clean automated gate for this transition today.
+// No clean automated gate for these transitions today.
 // Runner returns requiresOverride:true with an explanatory message.
 const MANUAL_ONLY = new Set([
-  'final_touches→complete',  // No clean "final invoice paid" signal yet
+  'proposal→contract',       // Proposal acceptance not yet a schema event
+  'final_touches→complete',  // Final invoice paid not yet a schema signal
 ]);
 
 // ── Public runner ─────────────────────────────────────────────────────────────
