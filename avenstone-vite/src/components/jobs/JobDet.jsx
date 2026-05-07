@@ -12,11 +12,13 @@ import FinancialsTab from './tabs/FinancialsTab';
 import FieldTab from './tabs/FieldTab';
 import EstimateTab from './tabs/EstimateTab';
 import SubsTab from './tabs/SubsTab';
+import MaterialsTab from './tabs/MaterialsTab';
 
 const TABS = [
   { id: 'info',       lb: 'Info',         ic: 'info' },
   { id: 'estimate',   lb: 'Estimate',     ic: 'doc' },
   { id: 'subs',       lb: 'Subs',         ic: 'clip' },
+  { id: 'materials',  lb: 'Materials',    ic: 'box',  pmOnly: true },
   { id: 'financials', lb: 'Financials',   ic: 'doc' },
   { id: 'sched',      lb: 'Schedule',     ic: 'sched' },
   { id: 'field',      lb: 'Field',        ic: 'clip' },
@@ -149,7 +151,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
 
       {/* Tab bar */}
       <div className="tabbar">
-        {TABS.map(t => (
+        {TABS.filter(t => !t.pmOnly || ['owner', 'project_manager', 'sales_rep'].includes(profile?.role)).map(t => (
           <button key={t.id} className={`tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)}>
             <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Ic[t.ic] || Ic.info}</span>{t.lb}
           </button>
@@ -215,6 +217,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} setTab={setTab} />}
         {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
         {tab === 'subs' && <SubsTab job={job} profile={profile} setTab={setTab} />}
+        {tab === 'materials' && <MaterialsTab job={job} />}
         {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
