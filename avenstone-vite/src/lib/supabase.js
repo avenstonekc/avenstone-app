@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { runGatesForTransition, getNextPhase, PHASE_LABELS } from './phaseGates.js';
+import { runTodoEngine } from './todoEngine.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -1039,52 +1040,149 @@ export const sbAutoEnrollSubInSequences = async (subId, triggerType, tenantId) =
   } catch (e) { console.error('[sbAutoEnrollSubInSequences] error:', e); }
 };
 
-// ─── Todos ────────────────────────────────────────────────────────────────────
-export const sbLoadMyTodos = async () => {
-  const { data, error } = await sb.from('todos')
-    .select('*, job:jobs(id, address, client_name)')
-    .eq('target_user_id', AV_USER_ID)
-    .in('status', ['pending', 'snoozed'])
-    .order('severity', { ascending: false })
-    .order('created_at', { ascending: false });
-  if (error) console.error('sbLoadMyTodos', error);
+// ─── Todos (EXECUTION_ARC Phase 5a) ───────────────────────────────────────────
+
+export async function sbLoadTodosForJob(jobId, { status = 'open' } = {}) {
+  if (!jobId) throw new Error('jobId required');
+  let q = sb.from('todos').select('*').eq('job_id', jobId);
+  if (status) q = q.eq('status', status);
+  const { data, error } = await q.order('created_at', { ascending: false });
+  if (error) throw error;
   return data || [];
-};
+}
+
+export async function sbLoadTodosForUser(userId, { status = 'open' } = {}) {
+  if (!userId) throw new Error('userId required');
+  let q = sb.from('todos').select('*, job:jobs(id, address, client_name)');
+  q = q.or(`assigned_to_user_id.eq.${userId},created_by_id.eq.${userId}`);
+  if (status) q = q.eq('status', status);
+  const { data, error } = await q
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function sbLoadMyTodos(opts = {}) {
+  if (!AV_USER_ID) return [];
+  return sbLoadTodosForUser(AV_USER_ID, opts);
+}
+
+export async function sbCreateUserTodo({ title, notes, jobId, assignedToUserId, dueDate, priority }) {
+  if (!title?.trim()) throw new Error('title required');
+  const row = {
+    tenant_id: AV_TENANT,
+    title: title.trim(),
+    notes: notes?.trim() ?? null,
+    type: 'user_task',
+    source: 'manual',
+    status: 'open',
+    job_id: jobId ?? null,
+    assigned_to_user_id: assignedToUserId ?? AV_USER_ID,
+    created_by_id: AV_USER_ID,
+    due_date: dueDate ?? null,
+    priority: priority ?? null,
+  };
+  const { data, error } = await sb.from('todos').insert(row).select().single();
+  if (error) {
+    captureFailedIntent({ kind: 'create_user_todo', payload: row, jobId: jobId ?? null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbUpdateTodo(todoId, updates) {
+  if (!todoId) throw new Error('todoId required');
+  const { id: _id, tenant_id, source, created_by_id, created_at, ...patch } = updates || {};
+  patch.updated_at = new Date().toISOString();
+  const { data, error } = await sb
+    .from('todos')
+    .update(patch)
+    .eq('id', todoId)
+    .select()
+    .single();
+  if (error) {
+    captureFailedIntent({ kind: 'update_todo', payload: { todoId, ...patch }, jobId: data?.job_id ?? null, message: error.message, resumable: true }).catch(() => {});
+    throw error;
+  }
+  return data;
+}
+
+export async function sbResolveTodoManually(todoId, reason = 'manually_resolved') {
+  if (!todoId) throw new Error('todoId required');
+  const { data, error } = await sb
+    .from('todos')
+    .update({ status: 'resolved', resolved_at: new Date().toISOString(), resolved_reason: reason, updated_at: new Date().toISOString() })
+    .eq('id', todoId)
+    .eq('status', 'open')
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function fireTodoEvent(eventType, event) {
+  try {
+    return await runTodoEngine(sb, AV_TENANT, AV_USER_ID, eventType, event);
+  } catch (err) {
+    console.warn('[todoEngine] event handling failed:', eventType, err.message);
+    return { created: [], resolved: [] };
+  }
+}
+
+// Legacy helpers — updated to work with new schema; kept for TodoCard, App.jsx, edge functions
 export const sbCountPendingTodos = async () => {
+  if (!AV_USER_ID) return 0;
   const { count, error } = await sb.from('todos')
     .select('id', { count: 'exact', head: true })
-    .eq('target_user_id', AV_USER_ID)
-    .eq('status', 'pending')
-    .or('snoozed_until.is.null,snoozed_until.lt.' + new Date().toISOString());
+    .or(`assigned_to_user_id.eq.${AV_USER_ID},created_by_id.eq.${AV_USER_ID}`)
+    .eq('status', 'open');
   if (error) console.error('sbCountPendingTodos', error);
   return count || 0;
 };
+
 export const sbCreateTodo = async ({ targetUserId, title, body, type, severity = 'medium', jobId = null, sourceTable = null, sourceId = null, dueAt = null }) => {
-  const { data, error } = await sb.from('todos').insert({
-    tenant_id: AV_TENANT, target_user_id: targetUserId,
-    title, body, type, severity, job_id: jobId,
-    source_table: sourceTable, source_id: sourceId, due_at: dueAt,
-  }).select().single();
+  const row = {
+    tenant_id: AV_TENANT,
+    assigned_to_user_id: targetUserId,
+    created_by_id: AV_USER_ID,
+    title,
+    notes: body,
+    type: type || 'user_task',
+    source: 'engine',
+    status: 'open',
+    job_id: jobId,
+    related_entity_type: sourceTable,
+    related_entity_id: sourceId || null,
+    due_date: dueAt ? dueAt.slice(0, 10) : null,
+  };
+  const { data, error } = await sb.from('todos').insert(row).select().single();
   if (error) console.error('sbCreateTodo', error);
   return data;
 };
-export const sbSnoozeTodo = async (id, snoozeHours) => {
-  const snoozedUntil = new Date(Date.now() + snoozeHours * 60 * 60 * 1000).toISOString();
-  const { error } = await sb.from('todos').update({ status: 'snoozed', snoozed_until: snoozedUntil }).eq('id', id);
+
+export const sbSnoozeTodo = async (id, _snoozeHours) => {
+  // New schema has no snooze concept — maps to cancelled until Phase 5c redesigns the UI
+  const { error } = await sb.from('todos').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', id).eq('status', 'open');
   if (error) console.error('sbSnoozeTodo', error);
 };
+
 export const sbDismissTodo = async (id) => {
-  const { error } = await sb.from('todos').update({ status: 'dismissed', dismissed_at: new Date().toISOString() }).eq('id', id);
+  const { error } = await sb.from('todos').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', id).eq('status', 'open');
   if (error) console.error('sbDismissTodo', error);
 };
+
 export const sbCompleteTodo = async (id) => {
-  const { error } = await sb.from('todos').update({ status: 'done', completed_at: new Date().toISOString(), completed_by: AV_USER_ID }).eq('id', id);
+  const { error } = await sb.from('todos').update({ status: 'resolved', resolved_at: new Date().toISOString(), resolved_reason: 'manually_resolved', updated_at: new Date().toISOString() }).eq('id', id).eq('status', 'open');
   if (error) console.error('sbCompleteTodo', error);
 };
+
 export const sbResolveTodosBySource = async (sourceTable, sourceId) => {
   const { error } = await sb.from('todos')
-    .update({ status: 'done', completed_at: new Date().toISOString() })
-    .eq('source_table', sourceTable).eq('source_id', sourceId).eq('status', 'pending');
+    .update({ status: 'resolved', resolved_at: new Date().toISOString(), resolved_reason: 'auto_resolved_by_engine', updated_at: new Date().toISOString() })
+    .eq('related_entity_type', sourceTable)
+    .eq('related_entity_id', sourceId)
+    .eq('status', 'open');
   if (error) console.error('sbResolveTodosBySource', error);
 };
 
@@ -1100,6 +1198,7 @@ const VALID_KINDS = new Set([
   'user_manage', 'contact_save', 'contact_update', 'contact_delete',
   'sub_assign', 'sub_unassign', 'material_save', 'material_update', 'material_delete',
   'lidar_scan_save', 'room_scope_save', 'room_scope_delete', 'photo_label',
+  'create_user_todo', 'update_todo',
 ]);
 const KIND_LABEL = {
   job_create: 'Add Project', transaction_save: 'Add Transaction', line_item_save: 'Add Line Item',
@@ -1117,6 +1216,7 @@ const KIND_LABEL = {
   material_save: 'Save Material', material_update: 'Update Material', material_delete: 'Delete Material',
   lidar_scan_save: 'Save Scan', room_scope_save: 'Save Room Scope', room_scope_delete: 'Delete Room Scope',
   photo_label: 'Label Photo',
+  create_user_todo: 'Create Todo', update_todo: 'Update Todo',
 };
 export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, message = '', resumable = true }) => {
   try {
@@ -1124,11 +1224,13 @@ export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, me
     const kindLabel = KIND_LABEL[kind] || kind;
     const { data, error } = await sb.from('todos').insert({
       tenant_id: AV_TENANT,
-      target_user_id: AV_USER_ID,
+      assigned_to_user_id: AV_USER_ID,
+      created_by_id: AV_USER_ID,
       title: `Resume: ${kindLabel}`,
-      body: message || 'Save failed — tap Resume to retry.',
+      notes: message || 'Save failed — tap Resume to retry.',
       type: 'failed_intent',
-      severity: 'medium',
+      source: 'manual',
+      status: 'open',
       job_id: jobId || null,
       payload: { kind, jobId, resumable, ...payload },
     }).select().single();
@@ -1139,7 +1241,7 @@ export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, me
 export const sbCountRecentFailedIntents = async (days = 7) => {
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const { data, error } = await sb.from('todos')
-    .select('id, payload, target_user_id')
+    .select('id, payload, assigned_to_user_id')
     .eq('type', 'failed_intent')
     .gte('created_at', since);
   if (error) return { total: 0, byKind: {}, byUser: {} };
@@ -1148,7 +1250,7 @@ export const sbCountRecentFailedIntents = async (days = 7) => {
   (data || []).forEach(t => {
     const k = t.payload?.kind || 'unknown';
     byKind[k] = (byKind[k] || 0) + 1;
-    byUser[t.target_user_id] = (byUser[t.target_user_id] || 0) + 1;
+    byUser[t.assigned_to_user_id] = (byUser[t.assigned_to_user_id] || 0) + 1;
   });
   return { total: data.length, byKind, byUser };
 };
@@ -2515,6 +2617,7 @@ export async function sbCreateMaterialOrder(jobId, order) {
     captureFailedIntent({ kind: 'create_material_order', payload: row, jobId, message: error.message, resumable: true }).catch(() => {});
     throw error;
   }
+  fireTodoEvent('material_order.created', { jobId: data.job_id, orderId: data.id, trade: data.trade, status: data.status }).catch(() => {});
   return data;
 }
 
@@ -2566,6 +2669,9 @@ export async function sbUpdateMaterialOrder(id, updates) {
     captureFailedIntent({ kind: 'update_material_order', payload: { id, ...patch }, jobId: null, message: error.message, resumable: true }).catch(() => {});
     throw error;
   }
+  if (patch.status !== undefined) {
+    fireTodoEvent('material_order.status_changed', { jobId: data.job_id, orderId: data.id, trade: data.trade, newStatus: data.status }).catch(() => {});
+  }
   return data;
 }
 
@@ -2574,7 +2680,7 @@ export async function sbDeleteMaterialOrder(id) {
 
   const { data: existing, error: loadErr } = await sb
     .from('material_orders')
-    .select('status')
+    .select('status, job_id, trade')
     .eq('id', id)
     .single();
   if (loadErr) throw loadErr;
@@ -2588,6 +2694,7 @@ export async function sbDeleteMaterialOrder(id) {
     captureFailedIntent({ kind: 'delete_material_order', payload: { id }, jobId: null, message: error.message, resumable: true }).catch(() => {});
     throw error;
   }
+  fireTodoEvent('material_order.deleted', { jobId: existing?.job_id, orderId: id, trade: existing?.trade, newStatus: null }).catch(() => {});
   return true;
 }
 

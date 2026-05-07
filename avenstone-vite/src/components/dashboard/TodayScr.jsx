@@ -19,8 +19,8 @@ export default function TodayScr({ profile, setPendingAction }) {
   const removeTodo = (id) => setTodos(p => p.filter(t => t.id !== id));
 
   const now = new Date();
-  const active = todos.filter(t => t.status === 'pending' || (t.status === 'snoozed' && new Date(t.snoozed_until) <= now));
-  const snoozed = todos.filter(t => t.status === 'snoozed' && new Date(t.snoozed_until) > now);
+  const active = todos.filter(t => t.status === 'open');
+  const snoozed = [];
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 

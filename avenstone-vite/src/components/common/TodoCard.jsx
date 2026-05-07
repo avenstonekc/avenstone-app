@@ -56,7 +56,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction }) {
         <div style={{ width: 8, height: 8, borderRadius: '50%', background: accentColor, marginTop: 5, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#0A1F44', marginBottom: 2 }}>{todo.title}</div>
-          {todo.body && <div style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.5, marginBottom: 4 }}>{todo.body}</div>}
+          {(todo.notes || todo.body) && <div style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.5, marginBottom: 4 }}>{todo.notes || todo.body}</div>}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11, color: '#9CA3AF' }}>
             {todo.job?.address && <span>📍 {todo.job.address}</span>}
             <span>{timeAgo(todo.created_at)}</span>
