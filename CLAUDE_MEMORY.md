@@ -578,3 +578,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Decision: white-label driven. 'bid_sent' leaked GC framing (bids = what subs send the GC, not a job state). 'active' was too vague for a multi-tenant platform. New canonical set works for painters, roofers, tile contractors — any tenant type. Locked in EXECUTION_ARC.md Decision #15.
 - Gate corrections: TRANSITION_GATES now has lead→proposal (scope+consultation), contract→in_progress (contract_signed + deposit_paid), in_progress→final_touches (all_sub_starts). MANUAL_ONLY: proposal→contract (no auto gate), final_touches→complete (no final-invoice signal). Previous partial work (20260506190000 migration with bid_sent/active) superseded and dropped by this migration.
 - Open: EXECUTION_ARC Phase 4b — UI on JobDet for phase advancement. Verify migration applied: `SELECT status, count(*) FROM jobs GROUP BY status;` — should show only canonical values.
+
+[LOG — 2026-05-06]
+- Action: EXECUTION_ARC Phase 4b — phase advancement UI on JobDet Info tab.
+- New PhaseAdvanceCard on Info tab top: current/next phase pills (colored via sc()), gate checklist (✓/✗), primary Advance button. Branches: allPassed → sbAdvancePhase directly; gates fail or MANUAL_ONLY → opens PhaseOverrideModal. Override audit indicator (⚠) shows when lastOverride present, expands on click.
+- New PhaseOverrideModal: lists failing gates or "manual override required" message, reason textarea (min 10 chars), "Override and Advance" button calls onOverride(reason) which calls sbAdvancePhase(jobId, { reason }).
+- Card self-refreshes via sbCheckPhaseGates after every advance. onAdvanced no-op in InfoTab (card manages own state; parent job.status updates on next navigation).
+- Files: avenstone-vite/src/components/jobs/PhaseAdvanceCard.jsx (new), avenstone-vite/src/components/modals/PhaseOverrideModal.jsx (new), avenstone-vite/src/components/jobs/tabs/InfoTab.jsx, CLAUDE_MEMORY.md
+- Decision: card lives on Info tab top rather than a JobDet-level banner — less invasive; no JobDet changes. Override always available regardless of gate status. Terminal phase (complete) shows static message, no button.
+- Open: EXECUTION_ARC Phase 5 — phase-driven todo engine (auto-resolution wiring on state changes).
