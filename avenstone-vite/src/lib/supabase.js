@@ -147,6 +147,18 @@ export const sbNote = async (jid, content, author) => {
   }
 };
 
+// Canonical note-create wrapper: insert via sbNote + fire note_posted notification.
+// Use this from any caller that wants the full note-add side effects (voice agent, master agent, future UI callers).
+// UI sites that already manage their own notify call (e.g. NotesPhotosTab) can keep using sbNote directly.
+export const sbCreateNote = async (jobId, content, author, opts = {}) => {
+  const r = await sbNote(jobId, content, author);
+  if (!r.ok) return r;
+  const title = opts.jobAddress ? `Note on ${opts.jobAddress}` : 'New job note';
+  const preview = String(content || '').slice(0, 120);
+  sbNotify('note_posted', title, preview, jobId, opts.excludeUserId ?? AV_USER_ID).catch(() => {});
+  return r;
+};
+
 export const sbPhoto = async (jid, file, entityType, entityId) => {
   try {
     const ext = file.name.split('.').pop() || 'jpg';
@@ -210,6 +222,39 @@ export const sbCO = async co => {
   } catch (e) {
     captureFailedIntent({ kind: 'co_save', payload: {}, jobId: co.job_id, message: e.message, resumable: false }).catch(() => {});
     return { ok: false, error: e.message || 'Unknown error', data: null };
+  }
+};
+
+// Canonical change-order create wrapper: auto co_number, insert via sbCO + fire co_submitted notification.
+// Use this from voice/master agents where the full side-effect path is required.
+// UI sites (COTab) keep using sbCO directly because they already orchestrate co_number + notify locally.
+export const sbCreateChangeOrder = async ({ jobId, description, amount, jobAddress, excludeUserId } = {}) => {
+  if (!jobId || !description || amount == null) {
+    return { ok: false, error: 'jobId, description, and amount are required', data: null };
+  }
+  try {
+    const { count, error: cerr } = await sb
+      .from('change_orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('job_id', jobId);
+    if (cerr) return { ok: false, error: cerr.message, data: null };
+    const coNumber = `CO-${String((count || 0) + 1).padStart(3, '0')}`;
+    const r = await sbCO({
+      job_id: jobId,
+      co_number: coNumber,
+      description,
+      amount: Number(amount),
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    });
+    if (!r.ok) return r;
+    const title = jobAddress ? `New CO on ${jobAddress}` : `New change order ${coNumber}`;
+    const dollar = `$${Number(amount || 0).toLocaleString()}`;
+    const body = `${coNumber}: ${String(description).trim()} — ${dollar}`;
+    sbNotify('co_submitted', title, body, jobId, excludeUserId ?? AV_USER_ID).catch(() => {});
+    return r;
+  } catch (e) {
+    return { ok: false, error: e.message || 'Change order failed', data: null };
   }
 };
 export const sbUpdCO = async (id, ch) => {
