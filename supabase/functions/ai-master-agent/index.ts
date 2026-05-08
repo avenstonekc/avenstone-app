@@ -331,12 +331,13 @@ async function executeTool(
 
       case "get_jobs": {
         let q = sb.from("jobs")
-          .select("id, address, client_name, status, contract_value, target_completion, start_date, assigned_rep, created_at")
+          .select("id, address, client_name, status, contract_value, target_completion, assigned_rep, created_at")
           .eq("tenant_id", tenantId)
           .order("created_at", { ascending: false })
           .limit(Number(input.limit) || 30);
         if (input.status) q = q.eq("status", String(input.status));
-        const { data } = await q;
+        const { data, error } = await q;
+        if (error) return { error: error.message, jobs: [], count: 0 };
         return { jobs: data || [], count: (data || []).length };
       }
 
