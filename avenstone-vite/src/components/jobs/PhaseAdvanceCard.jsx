@@ -28,19 +28,22 @@ export default function PhaseAdvanceCard({ jobId, onAdvanced = () => {} }) {
   const advance = async () => {
     setAdvancing(true);
     setError(null);
-    try {
-      await sbAdvancePhase(jobId);
-      await load();
-      onAdvanced();
-    } catch (e) {
-      setError(e.message || 'Advance failed.');
-    } finally {
-      setAdvancing(false);
+    const r = await sbAdvancePhase(jobId);
+    setAdvancing(false);
+    if (!r.ok) {
+      setError(r.error || 'Advance failed.');
+      return;
     }
+    await load();
+    onAdvanced();
   };
 
   const handleOverride = async (reason) => {
-    await sbAdvancePhase(jobId, { reason });
+    const r = await sbAdvancePhase(jobId, { reason });
+    if (!r.ok) {
+      setError(r.error || 'Advance failed.');
+      return;
+    }
     setOverrideOpen(false);
     await load();
     onAdvanced();

@@ -152,7 +152,7 @@ export const sbPhoto = async (jid, file, entityType, entityId) => {
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error: ue } = await sb.storage.from('job-photos').upload(path, file, { contentType: file.type, upsert: false });
-    if (ue) { console.error(ue); return null; }
+    if (ue) { console.error('[sbPhoto] upload failed:', ue.message); return { ok: false, error: ue.message, data: null }; }
     const { data: ud } = sb.storage.from('job-photos').getPublicUrl(path);
     const url = ud.publicUrl;
     const row = {
@@ -163,9 +163,12 @@ export const sbPhoto = async (jid, file, entityType, entityId) => {
       ...(entityId   ? { related_entity_id:   entityId }   : {}),
     };
     const { data: inserted, error: ie } = await sb.from('photos').insert(row).select('id').single();
-    if (ie) { console.error('[sbPhoto] insert failed:', ie.message); return null; }
-    return { id: inserted?.id, type: row.type, url, name: file.name };
-  } catch (e) { console.error(e); return null; }
+    if (ie) { console.error('[sbPhoto] insert failed:', ie.message); return { ok: false, error: ie.message, data: null }; }
+    return { ok: true, error: null, data: { id: inserted?.id, type: row.type, url, name: file.name } };
+  } catch (e) {
+    console.error('[sbPhoto]', e);
+    return { ok: false, error: e.message || 'Photo save failed', data: null };
+  }
 };
 
 export const sbCountPhotosForEntity = async (entityType, entityId) => {
@@ -767,10 +770,11 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
 };
 export const sbCreateTransaction = async tx => {
   const { data, error } = await sb.from('job_transactions').insert({ ...tx, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();
-  if (!error && data?.type === 'sub_payout' && data?.payer_or_payee_id) {
+  if (error) return { ok: false, error: error.message, data: null };
+  if (data?.type === 'sub_payout' && data?.payer_or_payee_id) {
     sbAutoEnrollSubInSequences(data.payer_or_payee_id, 'payment_made', AV_TENANT).catch(console.error);
   }
-  return { data, error };
+  return { ok: true, error: null, data };
 };
 export const sbUpdateTransaction = async (id, updates) => {
   const { data, error } = await sb.from('job_transactions').update(updates).eq('id', id).select().single();
@@ -2947,14 +2951,23 @@ export async function sbCheckPhaseGates(jobId) {
 
 export async function sbAdvancePhase(jobId, opts = {}) {
   // opts: { reason?: string }
-  // If all gates pass: advance freely.
-  // If any gate fails or transition is manual-only: reason is required for override.
-  if (!jobId) throw new Error('jobId required');
+  // Returns { ok, error, data } — never throws.
+  // Gate-fail without reason returns ok:false with data.requiresOverride=true so callers can route to override UX.
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
 
-  const gateStatus = await sbCheckPhaseGates(jobId);
+  let gateStatus;
+  try {
+    gateStatus = await sbCheckPhaseGates(jobId);
+  } catch (e) {
+    return { ok: false, error: e.message || 'Failed to check phase gates', data: null };
+  }
 
   if (!gateStatus.nextPhase) {
-    throw new Error('Already at terminal phase — cannot advance further.');
+    return {
+      ok: false,
+      error: 'Already at terminal phase — cannot advance further.',
+      data: { terminal: true, currentPhase: gateStatus.currentPhase },
+    };
   }
 
   const useOverride = !gateStatus.allPassed;
@@ -2963,7 +2976,16 @@ export async function sbAdvancePhase(jobId, opts = {}) {
     const reason = failing.length
       ? `Gates failing: ${failing.join('; ')}`
       : (gateStatus.overrideReason ?? 'Manual override required for this transition');
-    throw new Error(`Cannot advance: ${reason}. Provide a reason to override.`);
+    return {
+      ok: false,
+      error: `Cannot advance: ${reason}. Provide a reason to override.`,
+      data: {
+        requiresOverride: true,
+        gates: gateStatus.gates,
+        currentPhase: gateStatus.currentPhase,
+        nextPhase: gateStatus.nextPhase,
+      },
+    };
   }
 
   const nowIso = new Date().toISOString();
@@ -2988,7 +3010,7 @@ export async function sbAdvancePhase(jobId, opts = {}) {
       message: advErr.message,
       resumable: true,
     }).catch(() => {});
-    throw advErr;
+    return { ok: false, error: advErr.message, data: null };
   }
 
   const { data: jobRow } = await sb.from('jobs').select('address').eq('id', jobId).single().catch(() => ({ data: null }));
@@ -3018,9 +3040,13 @@ export async function sbAdvancePhase(jobId, opts = {}) {
   }
 
   return {
-    previousPhase: gateStatus.currentPhase,
-    advancedTo: gateStatus.nextPhase,
-    overrideUsed: useOverride,
-    overrideReason: useOverride ? opts.reason.trim() : null,
+    ok: true,
+    error: null,
+    data: {
+      previousPhase: gateStatus.currentPhase,
+      advancedTo: gateStatus.nextPhase,
+      overrideUsed: useOverride,
+      overrideReason: useOverride ? opts.reason.trim() : null,
+    },
   };
 }

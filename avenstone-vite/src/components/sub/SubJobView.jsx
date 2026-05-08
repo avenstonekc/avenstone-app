@@ -163,9 +163,9 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
     if (!file || !pendingComplete) return;
     setCompleteUploading(true);
     const result = await sbPhoto(job.id, file, 'schedule_item', pendingComplete);
-    if (result) {
+    if (result.ok) {
       setCompletePhotoCounts(p => ({ ...p, [pendingComplete]: (p[pendingComplete] ?? 0) + 1 }));
-      setCompletePhotos(p => ({ ...p, [pendingComplete]: [...(p[pendingComplete] || []), result] }));
+      setCompletePhotos(p => ({ ...p, [pendingComplete]: [...(p[pendingComplete] || []), result.data] }));
     }
     setCompleteUploading(false);
     e.target.value = '';
@@ -187,7 +187,7 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const onFile = async e => {
     const files = Array.from(e.target.files); if (!files.length) return;
     setUpl(true); setUplPct(0); const res = [];
-    for (let i = 0; i < files.length; i++) { const p = await sbPhoto(job.id, files[i]); if (p) res.push(p); setUplPct(Math.round(((i + 1) / files.length) * 100)); }
+    for (let i = 0; i < files.length; i++) { const p = await sbPhoto(job.id, files[i]); if (p.ok) res.push(p.data); setUplPct(Math.round(((i + 1) / files.length) * 100)); }
     if (res.length) setPhotos(p => [...p, ...res]);
     setUpl(false); setUplPct(0);
   };

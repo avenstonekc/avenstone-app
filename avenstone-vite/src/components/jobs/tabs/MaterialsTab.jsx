@@ -78,10 +78,10 @@ export default function MaterialsTab({ job }) {
     setDeliveryUploading(true);
     const result = await sbPhoto(job.id, file, 'material_order', pendingDelivery.orderId);
     setDeliveryUploading(false);
-    if (result) {
+    if (result.ok) {
       setPendingDelivery(p => ({ ...p, photoCount: (p?.photoCount ?? 0) + 1 }));
       const oid = pendingDelivery.orderId;
-      setEntityPhotos(p => ({ ...p, [oid]: [...(p[oid] || []), result] }));
+      setEntityPhotos(p => ({ ...p, [oid]: [...(p[oid] || []), result.data] }));
     }
     e.target.value = '';
   };

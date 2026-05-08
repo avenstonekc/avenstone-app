@@ -395,9 +395,9 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     setUploading(true);
     const result = await sbPhoto(job.id, file, 'schedule_item', item.id);
     setUploading(false);
-    if (result) {
+    if (result.ok) {
       setEntityPhotoCount(c => c + 1);
-      setEntityPhotos(p => [...p, result]);
+      setEntityPhotos(p => [...p, result.data]);
     }
     e.target.value = '';
   };

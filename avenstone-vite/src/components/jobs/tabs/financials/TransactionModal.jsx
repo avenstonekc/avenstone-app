@@ -86,14 +86,20 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
       phase_id:            form.phase_id             || null,
       notes:               form.notes                || null,
     };
-    const result = isNew
-      ? await sbCreateTransaction(payload)
-      : await sbUpdateTransaction(tx.id, payload);
-    if (result.error) {
-      const msg = result.error.message || 'Save failed';
-      setErr(msg); setSaving(false);
-      if (isNew) captureFailedIntent({ kind: 'transaction_save', payload: { ...form }, jobId: job.id, message: msg }).catch(() => {});
-      return;
+    if (isNew) {
+      const r = await sbCreateTransaction(payload);
+      if (!r.ok) {
+        const msg = r.error || 'Save failed';
+        setErr(msg); setSaving(false);
+        captureFailedIntent({ kind: 'transaction_save', payload: { ...form }, jobId: job.id, message: msg }).catch(() => {});
+        return;
+      }
+    } else {
+      const { error } = await sbUpdateTransaction(tx.id, payload);
+      if (error) {
+        setErr(error.message || 'Save failed'); setSaving(false);
+        return;
+      }
     }
     onSaved();
   };

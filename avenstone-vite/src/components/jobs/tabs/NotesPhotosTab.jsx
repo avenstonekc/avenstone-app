@@ -66,7 +66,7 @@ export function PhotosTab({ job, upd }) {
     const res = [];
     for (let i = 0; i < files.length; i++) {
       const p = await sbPhoto(job.id, files[i]);
-      if (p) res.push(p);
+      if (p.ok) res.push(p.data);
       setUplPct(Math.round(((i + 1) / files.length) * 100));
     }
     if (res.length) upd({ photos: [...(job.photos || []), ...res] });
