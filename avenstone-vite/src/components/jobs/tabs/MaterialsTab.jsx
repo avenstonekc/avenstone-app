@@ -65,9 +65,9 @@ export default function MaterialsTab({ job }) {
     const file = e.target.files?.[0];
     if (!file || !pendingDelivery) return;
     setDeliveryUploading(true);
-    await sbPhoto(job.id, file, 'material_order', pendingDelivery.orderId);
+    const result = await sbPhoto(job.id, file, 'material_order', pendingDelivery.orderId);
     setDeliveryUploading(false);
-    setPendingDelivery(p => ({ ...p, photoCount: (p?.photoCount ?? 0) + 1 }));
+    if (result) setPendingDelivery(p => ({ ...p, photoCount: (p?.photoCount ?? 0) + 1 }));
     e.target.value = '';
   };
 

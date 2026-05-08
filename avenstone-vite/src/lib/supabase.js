@@ -161,7 +161,8 @@ export const sbPhoto = async (jid, file, entityType, entityId) => {
       ...(entityType ? { related_entity_type: entityType } : {}),
       ...(entityId   ? { related_entity_id:   entityId }   : {}),
     };
-    const { data: inserted } = await sb.from('photos').insert(row).select('id').single();
+    const { data: inserted, error: ie } = await sb.from('photos').insert(row).select('id').single();
+    if (ie) { console.error('[sbPhoto] insert failed:', ie.message); return null; }
     return { id: inserted?.id, type: row.type, url, name: file.name };
   } catch (e) { console.error(e); return null; }
 };

@@ -671,3 +671,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Root cause: migration apply discipline gap (commit ≠ applied) + helpers written to throw pattern while components were written to expect `{ ok, error, data }` pattern.
 - Symptom index additions: "column X does not exist" on new schema columns → check migration applied, not just committed. "Saving... stuck forever" in modal → helper is throwing and modal has no try/catch, or setSaving(false) unreachable.
 - Open: Kalin to verify /todos loads + saves, Materials tab loads + AddQuoteModal saves cleanly.
+
+[LOG — 2026-05-08]
+- Action: Repair — Mark Delivered and sub Mark Complete photo upload loop. Root cause: sbPhoto correctly passed entity linkage params at all gated call sites (MaterialsTab line 68, SubJobView line 164, ScheduleTab line 394). The actual bug was sbPhoto silently swallowing DB insert errors — storage upload succeeded but photos row insert failure was undetected; both callers incremented photo counts regardless, causing gate countPhotosForEntity to return 0. Fixed sbPhoto to check insert error and return null on failure. Fixed MaterialsTab.handleDeliveryPhoto and SubJobView.handleCompletePhoto to gate counter increment on non-null result.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/MaterialsTab.jsx, avenstone-vite/src/components/sub/SubJobView.jsx, CLAUDE_MEMORY.md
+- Decision: entity linkage params were already correct in all gated call sites — spec diagnosis was wrong about the cause but right about the symptom. The fix is at sbPhoto error propagation, not at the call sites.
+- Symptom index addition: "photo gate returns 0 after upload succeeds" → sbPhoto storage succeeds but DB insert silently fails; caller increments counter regardless. Check sbPhoto for insert error check.

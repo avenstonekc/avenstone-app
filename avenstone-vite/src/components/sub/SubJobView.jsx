@@ -161,8 +161,8 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
     const file = e.target.files?.[0];
     if (!file || !pendingComplete) return;
     setCompleteUploading(true);
-    await sbPhoto(job.id, file, 'schedule_item', pendingComplete);
-    setCompletePhotoCounts(p => ({ ...p, [pendingComplete]: (p[pendingComplete] ?? 0) + 1 }));
+    const result = await sbPhoto(job.id, file, 'schedule_item', pendingComplete);
+    if (result) setCompletePhotoCounts(p => ({ ...p, [pendingComplete]: (p[pendingComplete] ?? 0) + 1 }));
     setCompleteUploading(false);
     e.target.value = '';
   };
