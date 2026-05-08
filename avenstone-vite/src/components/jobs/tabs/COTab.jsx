@@ -24,7 +24,7 @@ export default function COTab({ job, upd, profile }) {
     setSavCO(true);
     setCoErr('');
     const num = `CO-${String((job.change_orders || []).length + 1).padStart(3, '0')}`;
-    const co = { job_id: job.id, co_number: num, description: cod.trim(), reason: cor.trim(), amount: Number(coa), status: 'pending', created_at: new Date().toISOString(), submitted_by_id: AV_USER_ID, submitted_by_role: profile?.role || 'project_manager' };
+    const co = { job_id: job.id, co_number: num, description: cod.trim(), reason: cor.trim(), amount: Number(coa), status: 'pending', created_at: new Date().toISOString(), submitted_by: AV_USER_ID };
     const s = await sbCO(co);
     if (s.ok) {
       upd({ change_orders: [s.data, ...(job.change_orders || [])] });
@@ -44,7 +44,7 @@ export default function COTab({ job, upd, profile }) {
     const co = (job.change_orders || []).find(c => c.id === id);
     if (co) {
       sbNotify('co_approved', `CO approved on ${job.address}`, `${co.co_number} (${f$(co.amount)}) has been approved`, job.id, AV_USER_ID);
-      if (co.submitted_by_id && co.submitted_by_id !== AV_USER_ID) sbNotifyUser(co.submitted_by_id, 'co_approved', 'Your change order was approved', `${co.co_number} (${f$(co.amount)}) on ${job.address}`, job.id);
+      if (co.submitted_by && co.submitted_by !== AV_USER_ID) sbNotifyUser(co.submitted_by, 'co_approved', 'Your change order was approved', `${co.co_number} (${f$(co.amount)}) on ${job.address}`, job.id);
     }
   };
 
@@ -54,7 +54,7 @@ export default function COTab({ job, upd, profile }) {
     const co = (job.change_orders || []).find(c => c.id === id);
     if (co) {
       sbNotify('co_rejected', `CO rejected on ${job.address}`, `${co.co_number} has been rejected`, job.id, AV_USER_ID);
-      if (co.submitted_by_id && co.submitted_by_id !== AV_USER_ID) sbNotifyUser(co.submitted_by_id, 'co_rejected', 'Your change order was rejected', `${co.co_number} (${f$(co.amount)}) on ${job.address}`, job.id);
+      if (co.submitted_by && co.submitted_by !== AV_USER_ID) sbNotifyUser(co.submitted_by, 'co_rejected', 'Your change order was rejected', `${co.co_number} (${f$(co.amount)}) on ${job.address}`, job.id);
     }
   };
 

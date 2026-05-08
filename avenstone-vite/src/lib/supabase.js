@@ -679,7 +679,7 @@ export const sbSubSubmitCO = async ({ job_id, tenant_id, description, amount }) 
       co_number, description,
       amount: amount ? Number(amount) : 0,
       status: 'pending', created_at: new Date().toISOString(),
-      submitted_by_id: AV_USER_ID, submitted_by_role: 'sub',
+      submitted_by: AV_USER_ID,
     }).select().single();
     if (error) {
       captureFailedIntent({ kind: 'sub_co_submit', payload: { description, amount }, jobId: job_id, message: error.message, resumable: false }).catch(() => {});
