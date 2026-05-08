@@ -11,6 +11,82 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
+// ── Canonical phase model — mirrored from src/lib/phaseGates.js ──────────────
+// Edge fn can't import frontend code; keep this in sync if PHASE_ORDER ever changes.
+const PHASE_ORDER = ["lead", "proposal", "contract", "in_progress", "final_touches", "complete"];
+const PHASE_LABELS: Record<string, string> = {
+  lead: "Lead", proposal: "Proposal", contract: "Contract",
+  in_progress: "In Progress", final_touches: "Final Touches", complete: "Complete",
+};
+const MANUAL_ONLY_PHASES = new Set(["proposal→contract", "final_touches→complete"]);
+
+function getNextPhase(current: string): string | null {
+  const idx = PHASE_ORDER.indexOf(current);
+  if (idx < 0 || idx >= PHASE_ORDER.length - 1) return null;
+  return PHASE_ORDER[idx + 1];
+}
+
+async function runGatesForTransition(jobId: string, fromPhase: string, toPhase: string, sb: any) {
+  const key = `${fromPhase}→${toPhase}`;
+  if (MANUAL_ONLY_PHASES.has(key)) {
+    return { gates: [], allPassed: false, requiresOverride: true };
+  }
+  const checks: Array<() => Promise<{ key: string; label: string; passed: boolean }>> = [];
+  if (key === "lead→proposal") {
+    checks.push(async () => {
+      const { count } = await sb.from("job_room_scopes").select("*", { count: "exact", head: true }).eq("job_id", jobId);
+      return { key: "scope_tagged", label: "Scope tagged on at least one room", passed: (count ?? 0) > 0 };
+    });
+    checks.push(async () => {
+      const { count } = await sb.from("consultation_sessions").select("*", { count: "exact", head: true }).eq("job_id", jobId);
+      return { key: "consultation_logged", label: "Consultation session logged", passed: (count ?? 0) > 0 };
+    });
+  } else if (key === "contract→in_progress") {
+    checks.push(async () => {
+      const { data } = await sb.from("jobs").select("contract_signed").eq("id", jobId).single();
+      return { key: "contract_signed", label: "Contract signed", passed: !!data?.contract_signed };
+    });
+    checks.push(async () => {
+      const { count } = await sb.from("job_transactions").select("*", { count: "exact", head: true })
+        .eq("job_id", jobId).eq("type", "client_payment").eq("direction", "in").eq("status", "paid");
+      return { key: "deposit_paid", label: "Client payment received", passed: (count ?? 0) > 0 };
+    });
+  } else if (key === "in_progress→final_touches") {
+    checks.push(async () => {
+      const { count } = await sb.from("schedule_items").select("*", { count: "exact", head: true })
+        .eq("job_id", jobId).eq("type", "sub_start").neq("status", "complete").neq("status", "cancelled");
+      return { key: "all_sub_starts_complete", label: "All sub start schedule items complete", passed: (count ?? 0) === 0 };
+    });
+  } else {
+    return { gates: [], allPassed: true, requiresOverride: false };
+  }
+  const gates = await Promise.all(checks.map((fn) => fn()));
+  const allPassed = gates.every((g) => g.passed);
+  return { gates, allPassed, requiresOverride: !allPassed };
+}
+
+// ── Notification helper — mirrors sbNotify in src/lib/supabase.js ────────────
+async function notifyTenantStaff(sb: any, tenantId: string, excludeId: string, payload: {
+  type: string; title: string; body: string; jobId?: string;
+}) {
+  try {
+    const { data } = await sb.from("profiles").select("id")
+      .eq("tenant_id", tenantId).in("role", ["owner", "project_manager", "sales_rep"]);
+    const targets = (data || []).map((p: any) => p.id).filter((id: string) => id !== excludeId);
+    if (!targets.length) return;
+    await sb.from("notifications").insert(
+      targets.map((uid: string) => ({
+        tenant_id: tenantId, user_id: uid, job_id: payload.jobId ?? null,
+        type: payload.type, title: payload.title, body: payload.body,
+        read: false, email_sent: false, sms_sent: false,
+      })),
+    );
+  } catch (e) { console.error("[ai-master-agent notify]", e); }
+}
+
+// Confirmation whitelist — money verbs require explicit user confirmation.
+const CONFIRM_TOOLS = new Set(["log_payment", "log_receipt", "submit_change_order"]);
+
 // ─── Tool definitions (Claude tool use schema) ────────────────────────────────
 
 const TOOLS = [
@@ -20,7 +96,7 @@ const TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        status: { type: "string", description: "Filter by job status: lead, bid_sent, active, demo, framing, rough_mep, drywall, finish, punch, complete, on_hold. Omit for all." },
+        status: { type: "string", description: "Filter by job lifecycle status: lead, proposal, contract, in_progress, final_touches, complete, on_hold. Omit for all." },
         limit: { type: "number", description: "Max results (default 30)" },
       },
     },
@@ -126,7 +202,7 @@ const TOOLS = [
   },
   {
     name: "add_note",
-    description: "Add a note to a job.",
+    description: "Add a note to a job. Auto-applies (no confirmation).",
     input_schema: {
       type: "object",
       properties: {
@@ -137,24 +213,20 @@ const TOOLS = [
     },
   },
   {
-    name: "create_phase",
-    description: "Add a schedule phase to a job.",
+    name: "advance_phase",
+    description: "Advance a job to the next lifecycle phase (lead → proposal → contract → in_progress → final_touches → complete). Checks gates; returns failing gates if not passed. Auto-applies when gates pass.",
     input_schema: {
       type: "object",
       properties: {
         job_id: { type: "string" },
-        name: { type: "string", description: "Phase name, e.g. 'Framing', 'Drywall', 'Final inspection'" },
-        start_date: { type: "string", description: "YYYY-MM-DD" },
-        end_date: { type: "string", description: "YYYY-MM-DD" },
-        assigned_sub_id: { type: "string", description: "UUID of sub to assign (optional)" },
-        description: { type: "string" },
+        override_reason: { type: "string", description: "Required only when gates fail and the user agreed to override." },
       },
-      required: ["job_id", "name"],
+      required: ["job_id"],
     },
   },
   {
     name: "update_phase",
-    description: "Update an existing schedule phase — status, dates, notes.",
+    description: "Update an existing trade-phase row (Demo, Framing, etc.) on a job — status, dates, notes. This is for trade phases, not the job lifecycle.",
     input_schema: {
       type: "object",
       properties: {
@@ -165,30 +237,42 @@ const TOOLS = [
     },
   },
   {
-    name: "create_change_order",
-    description: "Create a change order on a job.",
+    name: "submit_change_order",
+    description: "Submit a change order on a job. Requires confirmation.",
     input_schema: {
       type: "object",
       properties: {
         job_id: { type: "string" },
-        title: { type: "string" },
         description: { type: "string" },
         amount: { type: "number", description: "Dollar amount. Negative for credits." },
       },
-      required: ["job_id", "title", "amount"],
+      required: ["job_id", "description", "amount"],
     },
   },
   {
-    name: "create_payment",
-    description: "Add a payment draw / milestone to a job's payment schedule.",
+    name: "log_payment",
+    description: "Record an inbound client payment for a job (deposit, draw, final). Requires confirmation.",
     input_schema: {
       type: "object",
       properties: {
         job_id: { type: "string" },
         amount: { type: "number" },
-        description: { type: "string", description: "e.g. 'Foundation draw', 'Final payment'" },
-        due_date: { type: "string", description: "YYYY-MM-DD" },
-        direction: { type: "string", enum: ["in", "out"], description: "Money direction. 'in' = money received from client (default). 'out' = money paid out (sub payout, expense)." },
+        description: { type: "string", description: "e.g. 'Deposit', 'Draw 2', 'Final payment'" },
+        payment_method: { type: "string", description: "check, ach, card, cash, wire, other" },
+      },
+      required: ["job_id", "amount"],
+    },
+  },
+  {
+    name: "log_receipt",
+    description: "Record an outbound expense (material purchase, sub payout, misc). Creates transaction only — photo attachment is added later in Financials. Requires confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id: { type: "string" },
+        amount: { type: "number" },
+        description: { type: "string", description: "What was purchased / who was paid" },
+        vendor: { type: "string", description: "Vendor or payee name" },
       },
       required: ["job_id", "amount", "description"],
     },
@@ -383,33 +467,62 @@ async function executeTool(
       }
 
       case "add_note": {
+        // Mirrors sbCreateNote contract: insert via author (text) + fire note_posted notification.
+        const { data: prof } = await sb.from("profiles").select("full_name").eq("id", userId).single();
+        const author = (prof as any)?.full_name || "Master Agent";
         const { data, error } = await sb.from("job_notes").insert({
           tenant_id: tenantId,
           job_id: input.job_id,
           content: input.content,
-          author_id: userId,
+          author,
           created_at: new Date().toISOString(),
         }).select().single();
         if (error) return { error: error.message };
-        return { success: true, note_id: data.id };
+        const { data: jrow } = await sb.from("jobs").select("address").eq("id", input.job_id).single();
+        const title = (jrow as any)?.address ? `Note on ${(jrow as any).address}` : "New job note";
+        notifyTenantStaff(sb, tenantId, userId, {
+          type: "note_posted", title, body: String(input.content).slice(0, 120), jobId: String(input.job_id),
+        }).catch(() => {});
+        return { success: true, note_id: (data as any).id };
       }
 
-      case "create_phase": {
-        const { data: existing } = await sb.from("job_phases").select("phase_order").eq("job_id", input.job_id).order("phase_order", { ascending: false }).limit(1).single();
-        const nextOrder = (existing?.phase_order || 0) + 1;
-        const { data, error } = await sb.from("job_phases").insert({
-          tenant_id: tenantId,
-          job_id: input.job_id,
-          name: input.name,
-          start_date: input.start_date || null,
-          end_date: input.end_date || null,
-          assigned_sub_id: input.assigned_sub_id || null,
-          description: input.description || null,
-          status: "pending",
-          phase_order: nextOrder,
-        }).select().single();
+      case "advance_phase": {
+        // Mirrors sbAdvancePhase contract: writes to jobs.status, gate-fail without reason returns requiresOverride payload.
+        const { data: job } = await sb.from("jobs").select("id, status").eq("id", input.job_id).single();
+        if (!job) return { error: "Job not found." };
+        const currentPhase = (job as any).status as string;
+        const nextPhase = getNextPhase(currentPhase);
+        if (!nextPhase) {
+          return { error: `${PHASE_LABELS[currentPhase] || currentPhase} is the final phase.`, terminal: true };
+        }
+        const { gates, allPassed, requiresOverride } = await runGatesForTransition(String(input.job_id), currentPhase, nextPhase, sb);
+        const useOverride = !allPassed;
+        const overrideReason = (input.override_reason as string | undefined)?.trim();
+        if (useOverride && !overrideReason) {
+          const failing = gates.filter((g) => !g.passed).map((g) => g.label);
+          return {
+            error: `Cannot advance: gates failing — ${failing.join("; ") || "manual override required"}.`,
+            requires_override: true,
+            failing_gates: failing,
+            current_phase: PHASE_LABELS[currentPhase] || currentPhase,
+            next_phase: PHASE_LABELS[nextPhase] || nextPhase,
+          };
+        }
+        const nowIso = new Date().toISOString();
+        const { error } = await sb.from("jobs").update({
+          status: nextPhase,
+          phase_override_used: useOverride,
+          phase_override_reason: useOverride ? overrideReason : null,
+          phase_override_at: useOverride ? nowIso : null,
+          phase_override_by_id: useOverride ? userId : null,
+        }).eq("id", input.job_id);
         if (error) return { error: error.message };
-        return { success: true, phase_id: data.id, name: data.name };
+        return {
+          success: true,
+          from_phase: PHASE_LABELS[currentPhase] || currentPhase,
+          to_phase: PHASE_LABELS[nextPhase] || nextPhase,
+          override: useOverride,
+        };
       }
 
       case "update_phase": {
@@ -423,38 +536,66 @@ async function executeTool(
         return { success: true, updated: Object.keys(update) };
       }
 
-      case "create_change_order": {
+      case "submit_change_order": {
+        // Mirrors sbCreateChangeOrder contract: auto co_number + sbNotify('co_submitted').
+        const { count } = await sb.from("change_orders").select("id", { count: "exact", head: true }).eq("job_id", input.job_id);
+        const coNumber = `CO-${String((count || 0) + 1).padStart(3, "0")}`;
         const { data, error } = await sb.from("change_orders").insert({
           tenant_id: tenantId,
           job_id: input.job_id,
-          title: input.title,
-          description: input.description || null,
-          amount: input.amount,
+          co_number: coNumber,
+          description: input.description,
+          amount: Number(input.amount),
           status: "pending",
+          created_at: new Date().toISOString(),
+        }).select().single();
+        if (error) return { error: error.message };
+        const { data: jrow } = await sb.from("jobs").select("address").eq("id", input.job_id).single();
+        const title = (jrow as any)?.address ? `New CO on ${(jrow as any).address}` : `New change order ${coNumber}`;
+        const body = `${coNumber}: ${input.description} — $${Number(input.amount).toLocaleString()}`;
+        notifyTenantStaff(sb, tenantId, userId, { type: "co_submitted", title, body, jobId: String(input.job_id) }).catch(() => {});
+        return { success: true, co_id: (data as any).id, co_number: coNumber, amount: (data as any).amount };
+      }
+
+      case "log_payment": {
+        const { data, error } = await sb.from("job_transactions").insert({
+          tenant_id: tenantId,
+          job_id: input.job_id,
+          direction: "in",
+          type: "client_payment",
+          amount: Number(input.amount),
+          description: input.description || null,
+          payment_method: input.payment_method || null,
+          status: "paid",
+          date_paid: new Date().toISOString().slice(0, 10),
           created_by: userId,
           created_at: new Date().toISOString(),
         }).select().single();
         if (error) return { error: error.message };
-        // Update job co_total
-        const { data: job } = await sb.from("jobs").select("co_total").eq("id", input.job_id).single();
-        await sb.from("jobs").update({ co_total: (Number(job?.co_total) || 0) + Number(input.amount) }).eq("id", input.job_id);
-        return { success: true, co_id: data.id, amount: data.amount };
+        return { success: true, transaction_id: (data as any).id, amount: (data as any).amount };
       }
 
-      case "create_payment": {
+      case "log_receipt": {
         const { data, error } = await sb.from("job_transactions").insert({
           tenant_id: tenantId,
           job_id: input.job_id,
-          amount: input.amount,
+          direction: "out",
+          type: "expense",
+          amount: Number(input.amount),
           description: input.description,
-          due_date: input.due_date || null,
-          direction: String(input.direction || "in"),
-          type: "payment",
-          status: "pending",
+          payer_or_payee_name: input.vendor || null,
+          status: "paid",
+          date_paid: new Date().toISOString().slice(0, 10),
+          created_by: userId,
           created_at: new Date().toISOString(),
         }).select().single();
         if (error) return { error: error.message };
-        return { success: true, payment_id: data.id, amount: data.amount };
+        return {
+          success: true,
+          transaction_id: (data as any).id,
+          amount: (data as any).amount,
+          note: "Open Financials, tap the transaction, and upload the receipt photo.",
+        };
       }
 
       case "assign_sub": {
@@ -517,6 +658,19 @@ async function executeTool(
 
 // ─── Agentic loop ─────────────────────────────────────────────────────────────
 
+function describeConfirmAction(tool: string, input: any): string {
+  switch (tool) {
+    case "log_payment":
+      return `Log $${Number(input.amount).toLocaleString()} client payment${input.description ? ` — ${input.description}` : ""}.`;
+    case "log_receipt":
+      return `Log $${Number(input.amount).toLocaleString()} expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ""}.`;
+    case "submit_change_order":
+      return `Submit $${Number(input.amount).toLocaleString()} change order — ${input.description}.`;
+    default:
+      return "Perform this action.";
+  }
+}
+
 async function runAgentLoop(
   sb: ReturnType<typeof createClient>,
   tenantId: string,
@@ -524,8 +678,12 @@ async function runAgentLoop(
   userRole: string,
   userName: string,
   messages: Array<{ role: string; content: unknown }>,
-  maxIterations = 6
-): Promise<{ response: string; actions: Array<{ tool: string; input: unknown; result: unknown }> }> {
+  maxIterations = 3
+): Promise<{
+  response: string;
+  actions: Array<{ tool: string; input: unknown; result: unknown }>;
+  pending_action?: { tool: string; input: unknown; description: string };
+}> {
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const systemPrompt = `You are the Avenstone Master Agent — the AI that controls the entire Avenstone construction management platform. You have direct access to the database and take real actions, not suggestions.
@@ -536,7 +694,7 @@ Tenant: ${tenantId}
 
 WHAT YOU CAN DO:
 - Read: jobs, team, dashboard snapshot, job details
-- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, create phases, update phases, create change orders, add payment draws, assign subs, send notifications, write to knowledge base
+- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, assign subs, send notifications, write to knowledge base
 
 HOW TO BEHAVE:
 - Act immediately. Don't ask "should I do X?" — just do it and tell them what you did.
@@ -544,6 +702,8 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
+- For money tools (log_payment, log_receipt, submit_change_order): your text response should describe what's about to happen in one plain sentence. The system will pause for user confirmation; do not assume the action ran.
+- For advance_phase: if gates fail and the user did not give an override reason, do NOT pass override_reason. The tool result will list failing gates; relay them and ask if the user wants to override.
 - Never mention Claude or Anthropic.
 - You are the operating system of this business. Act like it.`;
 
@@ -560,7 +720,7 @@ HOW TO BEHAVE:
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 4096,
+        max_tokens: 2048,
         system: systemPrompt,
         tools: TOOLS,
         messages: currentMessages,
@@ -583,9 +743,23 @@ HOW TO BEHAVE:
     }
 
     if (data.stop_reason === "tool_use") {
+      // Money verbs require user confirmation. If any pending block is a confirm-tool,
+      // break out of the agent loop and surface a pending_action to the client.
+      const blocks = data.content as Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown>; text?: string }>;
+      const confirmBlock = blocks.find((b) => b.type === "tool_use" && b.name && CONFIRM_TOOLS.has(b.name));
+      if (confirmBlock && confirmBlock.name) {
+        const description = describeConfirmAction(confirmBlock.name, confirmBlock.input || {});
+        const text = blocks.find((b) => b.type === "text")?.text ?? `${description} Confirm to run.`;
+        return {
+          response: text,
+          actions,
+          pending_action: { tool: confirmBlock.name, input: confirmBlock.input || {}, description },
+        };
+      }
+
       const toolResults: Array<{ type: string; tool_use_id: string; content: string }> = [];
 
-      for (const block of (data.content as Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }>)) {
+      for (const block of blocks) {
         if (block.type === "tool_use" && block.name && block.id) {
           const result = await executeTool(sb, tenantId, userId, block.name, block.input || {});
           actions.push({ tool: block.name, input: block.input, result });
@@ -614,15 +788,34 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { user_id, tenant_id, role, full_name, message, conversation_history } = await req.json();
+    const { user_id, tenant_id, role, full_name, message, conversation_history, pending_action, confirmed } = await req.json();
 
-    if (!user_id || !tenant_id || !message) {
-      return new Response(JSON.stringify({ error: "Missing user_id, tenant_id, or message" }), {
+    if (!user_id || !tenant_id) {
+      return new Response(JSON.stringify({ error: "Missing user_id or tenant_id" }), {
         status: 400, headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    // ── Confirmed action path: skip Claude, run executor directly ─────────────
+    if (confirmed && pending_action?.tool) {
+      const result = await executeTool(sb, tenant_id, user_id, pending_action.tool, pending_action.input || {});
+      const action = { tool: pending_action.tool, input: pending_action.input, result };
+      const response = (result as any)?.error
+        ? `${pending_action.description || pending_action.tool}: failed — ${(result as any).error}`
+        : `Done. ${pending_action.description || ""}`.trim();
+      return new Response(
+        JSON.stringify({ response, actions: [action] }),
+        { headers: { ...CORS, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (!message) {
+      return new Response(JSON.stringify({ error: "Missing message" }), {
+        status: 400, headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
 
     // Build message history
     const history = (conversation_history || []).slice(-20);
@@ -631,13 +824,13 @@ Deno.serve(async (req) => {
       { role: "user", content: message },
     ];
 
-    const { response, actions } = await runAgentLoop(
-      sb, tenant_id, user_id, role || "owner", full_name || "User", messages
+    const { response, actions, pending_action: pa } = await runAgentLoop(
+      sb, tenant_id, user_id, role || "owner", full_name || "User", messages,
     );
 
     return new Response(
-      JSON.stringify({ response, actions }),
-      { headers: { ...CORS, "Content-Type": "application/json" } }
+      JSON.stringify({ response, actions, pending_action: pa }),
+      { headers: { ...CORS, "Content-Type": "application/json" } },
     );
 
   } catch (err) {

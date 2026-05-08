@@ -125,6 +125,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [conversationHistory, setConversationHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showPulse, setShowPulse] = useState(true);
+  const [pendingConfirm, setPendingConfirm] = useState(null);
   const threadRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -169,18 +170,8 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     }
   }, [messages, loading]);
 
-  const sendMessage = async (text) => {
-    const trimmed = (text || input).trim();
-    if (!trimmed || loading) return;
-
-    const userMsg = { role: 'user', content: trimmed };
-    const newHistory = [...conversationHistory, userMsg];
-
-    setMessages((prev) => [...prev, { type: 'user', text: trimmed }]);
-    setConversationHistory(newHistory);
-    setInput('');
+  const callMaster = async (body, userMessageText) => {
     setLoading(true);
-
     try {
       const res = await fetch(AI_MASTER_URL, {
         method: 'POST',
@@ -188,14 +179,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           Authorization: `Bearer ${ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          user_id: profile?.id,
-          tenant_id: profile?.tenant_id,
-          role: profile?.role,
-          full_name: profile?.full_name,
-          message: trimmed,
-          conversation_history: newHistory,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -206,7 +190,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         if (action.result?.error) {
           captureFailedIntent({
             kind: 'master_agent_tool_call',
-            payload: { tool_name: action.tool, error_message: action.result.error, user_message: trimmed },
+            payload: { tool_name: action.tool, error_message: action.result.error, user_message: userMessageText },
             message: action.result.error,
           }).catch(() => {});
         }
@@ -220,14 +204,62 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         ...prev,
         { role: 'assistant', content: aiText },
       ]);
+      setPendingConfirm(data.pending_action || null);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
         { type: 'ai', text: 'Something went wrong. Please try again.', actions: [] },
       ]);
+      setPendingConfirm(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  const sendMessage = async (text) => {
+    const trimmed = (text || input).trim();
+    if (!trimmed || loading) return;
+    if (pendingConfirm) setPendingConfirm(null);
+
+    const userMsg = { role: 'user', content: trimmed };
+    const newHistory = [...conversationHistory, userMsg];
+
+    setMessages((prev) => [...prev, { type: 'user', text: trimmed }]);
+    setConversationHistory(newHistory);
+    setInput('');
+
+    await callMaster({
+      user_id: profile?.id,
+      tenant_id: profile?.tenant_id,
+      role: profile?.role,
+      full_name: profile?.full_name,
+      message: trimmed,
+      conversation_history: newHistory,
+    }, trimmed);
+  };
+
+  const confirmPending = async () => {
+    if (!pendingConfirm || loading) return;
+    const action = pendingConfirm;
+    setPendingConfirm(null);
+    setMessages((prev) => [...prev, { type: 'user', text: 'Confirmed.' }]);
+    await callMaster({
+      user_id: profile?.id,
+      tenant_id: profile?.tenant_id,
+      role: profile?.role,
+      full_name: profile?.full_name,
+      pending_action: action,
+      confirmed: true,
+    }, action.description || action.tool);
+  };
+
+  const cancelPending = () => {
+    if (!pendingConfirm) return;
+    setPendingConfirm(null);
+    setMessages((prev) => [
+      ...prev,
+      { type: 'ai', text: 'Cancelled. Nothing was saved.', actions: [] },
+    ]);
   };
 
   const handleKeyDown = (e) => {
@@ -517,6 +549,82 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 }}
               >
                 <TypingDots />
+              </div>
+            </div>
+          )}
+
+          {pendingConfirm && !loading && (
+            <div
+              style={{
+                marginTop: 4,
+                background: 'rgba(201,168,76,0.12)',
+                border: '1px solid rgba(201,168,76,0.45)',
+                borderRadius: 12,
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'DM Sans, sans-serif',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: 1.2,
+                  color: '#C9A84C',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Confirm action
+              </div>
+              <div
+                style={{
+                  fontFamily: 'DM Sans, sans-serif',
+                  fontSize: 14,
+                  color: '#F7F5F0',
+                  lineHeight: 1.5,
+                }}
+              >
+                {pendingConfirm.description || `Run ${formatToolName(pendingConfirm.tool)}?`}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={confirmPending}
+                  disabled={loading}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: '#C9A84C',
+                    color: '#0A1F44',
+                    border: 'none',
+                    fontFamily: 'DM Sans, sans-serif',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Confirm
+                </button>
+                <button
+                  onClick={cancelPending}
+                  disabled={loading}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: 'transparent',
+                    color: 'rgba(247,245,240,0.75)',
+                    border: '1px solid rgba(247,245,240,0.25)',
+                    fontFamily: 'DM Sans, sans-serif',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           )}
