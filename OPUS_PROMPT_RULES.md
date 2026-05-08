@@ -42,6 +42,8 @@ writes must follow these.
 
 9. **Trade-aware check (when relevant)** — if the prompt touches schema, AI prompts, or features that vary by trade, explicitly require Claude Code to confirm the change is tenant-scoped + trade-aware (or call out that it's intentionally Avenstone-only with reason). No hardcoded GC assumptions sneaking into platform code.
 
+10. **Migration verification is mandatory.** Every prompt that includes a database migration must require a post-apply schema verification step (SELECT against `information_schema` for the expected columns, `pg_policies` for RLS, `pg_indexes` for indexes) as canonical proof of landing — not the apply-script success message. The session of 2026-05-06 burned 4+ hours across 4 separate bug-fix detours because "applied" reports were trusted without verification. Verification SQL goes in the closing tasks of any migration-bearing prompt and must run against the live DB before the prompt declares the migration shipped.
+
 ## Rules Opus follows when writing
 
 - Ground every fix in evidence. If the user sent a screenshot or

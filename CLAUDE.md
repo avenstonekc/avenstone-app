@@ -456,13 +456,13 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 >
 > **If the current model is Opus:** the dispatch rules below apply.
 
-That's the rule. Kalin runs Opus directly inside Claude Code; Opus is ~5× the cost of Sonnet. The retired `/opus` relay is dead — don't reference it.
+That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus vs Sonnet:** ~1.7× per-token base rate (Opus $5/$25 per MTok vs Sonnet $3/$15 per MTok, verified May 2026). Opus 4.7's tokenizer can produce up to 35% more tokens for code/JSON/structured content, so effective cost runs ~2-2.25× in practice. Budget ~2× when dispatching architectural-judgment slices on Opus vs Sonnet. (Was previously ~5× under Opus 4/4.1 pricing — stale; updated.) The retired `/opus` relay is dead — don't reference it.
 
 **Solutions (Opus stays):** diagnose crashes, design schema/architecture, decide tradeoffs, plan multi-step features, write specs, multi-tenant / cost / real-money calls.
 
 **Coding (Opus dispatches to Sonnet):** file edits, component scaffolding, wire-ups, mechanical refactors, boilerplate (`sb*` helper, edge fn URL export, screen scaffold), running commands, applying migrations, deploys, test-fix loops, doc updates.
 
-**When in doubt → dispatch.** The cost ratio is ~5×. Erring toward Sonnet is the cheaper mistake.
+**When in doubt → dispatch.** The cost ratio is ~2× effective. Erring toward Sonnet is the cheaper mistake.
 
 **Trigger words from Kalin (Opus-only — dispatch immediately, no debate):**
 - "easy" / "easy task" / "easy fix"
