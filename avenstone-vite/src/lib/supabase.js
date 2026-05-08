@@ -171,6 +171,15 @@ export const sbCountPhotosForEntity = async (entityType, entityId) => {
   return countPhotosForEntity(sb, entityType, entityId);
 };
 
+export const sbLoadPhotosForEntity = async (entityType, entityId) => {
+  const { data } = await sb.from('photos')
+    .select('id, url, name, type, created_at')
+    .eq('related_entity_type', entityType)
+    .eq('related_entity_id', entityId)
+    .order('created_at', { ascending: true });
+  return data || [];
+};
+
 export const sbLabelPhoto = async (jobId, photoId, label) => {
   try {
     if (label) await sb.from('photos').update({ label: null }).eq('job_id', jobId).eq('label', label).neq('id', photoId);

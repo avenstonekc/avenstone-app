@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID, sbUpdateScheduleItem, sbCountPhotosForEntity } from '../../lib/supabase';
+import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID, sbUpdateScheduleItem, sbCountPhotosForEntity, sbLoadPhotosForEntity } from '../../lib/supabase';
 import { Ic, sc, sl, fD, fDT, f$ } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 
@@ -51,6 +51,7 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const [coSaving, setCoSaving] = useState(false);
   const [pendingComplete, setPendingComplete] = useState(null); // item id awaiting photo + confirm
   const [completePhotoCounts, setCompletePhotoCounts] = useState({}); // { [itemId]: count }
+  const [completePhotos, setCompletePhotos] = useState({}); // { [itemId]: [{ id, url }] }
   const [completeUploading, setCompleteUploading] = useState(false);
   const [completeWorking, setCompleteWorking] = useState(null);
   const [completeErr, setCompleteErr] = useState(null);
@@ -162,7 +163,10 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
     if (!file || !pendingComplete) return;
     setCompleteUploading(true);
     const result = await sbPhoto(job.id, file, 'schedule_item', pendingComplete);
-    if (result) setCompletePhotoCounts(p => ({ ...p, [pendingComplete]: (p[pendingComplete] ?? 0) + 1 }));
+    if (result) {
+      setCompletePhotoCounts(p => ({ ...p, [pendingComplete]: (p[pendingComplete] ?? 0) + 1 }));
+      setCompletePhotos(p => ({ ...p, [pendingComplete]: [...(p[pendingComplete] || []), result] }));
+    }
     setCompleteUploading(false);
     e.target.value = '';
   };
@@ -304,6 +308,15 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
                         >
                           {completeUploading ? t('Uploading…', lang) : t('📷 Add Photo', lang)}
                         </button>
+                        {(completePhotos[item.id] || []).length > 0 && (
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                            {(completePhotos[item.id] || []).map(p => (
+                              <a key={p.id} href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', flexShrink: 0 }}>
+                                <img src={p.url} alt="photo" style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 4, border: '1px solid #D1D5DB' }} />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: 8 }}>

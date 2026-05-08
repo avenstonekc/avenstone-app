@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadMaterialOrdersForJob, sbUpdateMaterialOrder, sbLoadActiveTradeStrings, sbPhoto } from '../../../lib/supabase';
+import { sbLoadMaterialOrdersForJob, sbUpdateMaterialOrder, sbLoadActiveTradeStrings, sbPhoto, sbLoadPhotosForEntity } from '../../../lib/supabase';
 import { f$, fD } from '../../../lib/utils';
 import AddQuoteModal from '../../modals/AddQuoteModal';
 
@@ -25,6 +25,7 @@ export default function MaterialsTab({ job }) {
   const [confirmAction, setConfirmAction] = useState(null); // { id, action, label }
   const [pendingDelivery, setPendingDelivery] = useState(null); // { orderId, photoCount }
   const [deliveryUploading, setDeliveryUploading] = useState(false);
+  const [entityPhotos, setEntityPhotos] = useState({}); // { [orderId]: [{ id, url }] }
   const deliveryPhotoRef = useRef();
 
   const load = async () => {
@@ -35,8 +36,18 @@ export default function MaterialsTab({ job }) {
         sbLoadMaterialOrdersForJob(job.id),
         sbLoadActiveTradeStrings(),
       ]);
-      if (ordRes.ok) setOrders(ordRes.data);
-      else setError(ordRes.error || 'Failed to load orders');
+      if (ordRes.ok) {
+        setOrders(ordRes.data);
+        const photoableOrders = ordRes.data.filter(o => ['delivered', 'installed'].includes(o.status));
+        if (photoableOrders.length > 0) {
+          const photoResults = await Promise.all(
+            photoableOrders.map(o => sbLoadPhotosForEntity('material_order', o.id).then(photos => [o.id, photos]))
+          );
+          setEntityPhotos(Object.fromEntries(photoResults));
+        }
+      } else {
+        setError(ordRes.error || 'Failed to load orders');
+      }
       setTradeOptions(tradeStrings || []);
     } catch {
       setError('Failed to load materials');
@@ -67,7 +78,11 @@ export default function MaterialsTab({ job }) {
     setDeliveryUploading(true);
     const result = await sbPhoto(job.id, file, 'material_order', pendingDelivery.orderId);
     setDeliveryUploading(false);
-    if (result) setPendingDelivery(p => ({ ...p, photoCount: (p?.photoCount ?? 0) + 1 }));
+    if (result) {
+      setPendingDelivery(p => ({ ...p, photoCount: (p?.photoCount ?? 0) + 1 }));
+      const oid = pendingDelivery.orderId;
+      setEntityPhotos(p => ({ ...p, [oid]: [...(p[oid] || []), result] }));
+    }
     e.target.value = '';
   };
 
@@ -163,6 +178,20 @@ export default function MaterialsTab({ job }) {
     );
   };
 
+  const renderPhotoStrip = (orderId) => {
+    const photos = entityPhotos[orderId];
+    if (!photos?.length) return null;
+    return (
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px solid #1f2937' }}>
+        {photos.map(p => (
+          <a key={p.id} href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', flexShrink: 0 }}>
+            <img src={p.url} alt={p.name || 'photo'} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 4, border: '1px solid #374151' }} />
+          </a>
+        ))}
+      </div>
+    );
+  };
+
   const renderOrder = (order) => {
     const meta = STATUS_META[order.status] || STATUS_META.planned;
     const mats = Array.isArray(order.materials) ? order.materials : [];
@@ -213,6 +242,8 @@ export default function MaterialsTab({ job }) {
         {order.notes && (
           <div style={{ marginTop: 8, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>{order.notes}</div>
         )}
+
+        {['delivered', 'installed'].includes(order.status) && renderPhotoStrip(order.id)}
 
         {!['installed', 'cancelled'].includes(order.status) && renderActions(order)}
       </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity, sbCreateChecklistFromTemplate, sbLoadChecklistForScheduleItem } from '../../../lib/supabase';
+import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity, sbLoadPhotosForEntity, sbCreateChecklistFromTemplate, sbLoadChecklistForScheduleItem } from '../../../lib/supabase';
 import { getTemplateOptions } from '../../../lib/siteVisitTemplates';
 import SiteVisitChecklist from '../SiteVisitChecklist';
 import { Ic, fD } from '../../../lib/utils';
@@ -364,6 +364,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
   const [trades, setTrades]             = useState([]);
   const [subs, setSubs]                 = useState([]);
   const [entityPhotoCount, setEntityPhotoCount] = useState(0);
+  const [entityPhotos, setEntityPhotos] = useState([]);
   const [uploading, setUploading]       = useState(false);
   const photoRef                        = useRef();
   const [selectedTemplate, setSelectedTemplate] = useState('');
@@ -379,6 +380,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     });
     if (!isNew && PHOTO_GATE_TYPES.includes(item.type)) {
       sbCountPhotosForEntity('schedule_item', item.id).then(setEntityPhotoCount);
+      sbLoadPhotosForEntity('schedule_item', item.id).then(setEntityPhotos);
     }
     if (!isNew && item.type === 'site_visit') {
       sbLoadChecklistForScheduleItem(item.id).then(rows => setHasChecklist(rows.length > 0)).catch(() => {});
@@ -393,7 +395,10 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     setUploading(true);
     const result = await sbPhoto(job.id, file, 'schedule_item', item.id);
     setUploading(false);
-    if (result) setEntityPhotoCount(c => c + 1);
+    if (result) {
+      setEntityPhotoCount(c => c + 1);
+      setEntityPhotos(p => [...p, result]);
+    }
     e.target.value = '';
   };
 
@@ -606,6 +611,15 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
               </button>
             </div>
             <input ref={photoRef} type="file" accept="image/*" capture="environment" onChange={handleEntityPhoto} style={{ display: 'none' }} />
+            {entityPhotos.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                {entityPhotos.map(p => (
+                  <a key={p.id} href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', flexShrink: 0 }}>
+                    <img src={p.url} alt={p.name || 'photo'} style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 4, border: '1px solid #D1D5DB' }} />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
