@@ -5,6 +5,7 @@ import { checkAndCreateSubStart } from './scheduleAutoCreate.js';
 import { checkAndAutoInvoice } from './autoInvoice.js';
 import { countPhotosForEntity } from './photoGate.js';
 import { getTemplateItems } from './siteVisitTemplates.js';
+import { captureTradeActualsForJob } from './tradeActuals.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -3003,6 +3004,18 @@ export async function sbAdvancePhase(jobId, opts = {}) {
     jobId, newPhase: gateStatus.nextPhase,
   }).then(fired => fired.forEach(f => fireTodoEvent('invoice.auto_drafted', { jobId, invoiceId: f.invoiceId, drawId: f.drawId, triggerLabel: f.triggerLabel }).catch(() => {})))
     .catch(err => console.warn('[autoInvoice] sbAdvancePhase hook failed:', err?.message));
+
+  if (gateStatus.nextPhase === 'complete') {
+    captureTradeActualsForJob(sb, AV_TENANT, jobId)
+      .then(result => {
+        if (result.captured > 0) {
+          console.log(`[tradeActuals] captured ${result.captured} trades for job ${jobId}`);
+        } else if (result.error) {
+          console.warn(`[tradeActuals] no capture for job ${jobId}:`, result.error);
+        }
+      })
+      .catch(err => console.warn('[tradeActuals] capture failed:', err?.message));
+  }
 
   return {
     previousPhase: gateStatus.currentPhase,

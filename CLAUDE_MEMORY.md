@@ -677,3 +677,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/MaterialsTab.jsx, avenstone-vite/src/components/sub/SubJobView.jsx, CLAUDE_MEMORY.md
 - Decision: entity linkage params were already correct in all gated call sites — spec diagnosis was wrong about the cause but right about the symptom. The fix is at sbPhoto error propagation, not at the call sites.
 - Symptom index addition: "photo gate returns 0 after upload succeeds" → sbPhoto storage succeeds but DB insert silently fails; caller increments counter regardless. Check sbPhoto for insert error check.
+
+[LOG — 2026-05-08]
+- Action: EXECUTION_ARC Phase 9a — actuals capture layer. New trade_actuals table + captureTradeActualsForJob helper. Auto-fires from sbAdvancePhase when status flips to 'complete'. Best-available proxy data: labor_cost from sum of accepted (is_current=true AND accepted_at IS NOT NULL) engagement bid totals via job_sub_engagements join, material_cost from sum of material_order quote_totals (excluding cancelled). Captures provenance (labor_source, material_source, bid_count, material_order_count). Trades with zero signal skipped. Idempotent via UNIQUE (tenant_id, job_id, trade) + upsert.
+- Files: supabase/migrations/20260508120000_trade_actuals.sql, avenstone-vite/src/lib/tradeActuals.js (new), avenstone-vite/src/lib/supabase.js, CLAUDE_MEMORY.md
+- Schema reality: trade_actuals EXISTS — verified post-apply (1 table, 4 RLS policies, 4 indexes incl. PK, ~17 columns, GENERATED total_cost). Hook fires from sbAdvancePhase after autoInvoice block.
+- Spec deviations: (1) spec assumed `engagements` table — real table is `job_sub_engagements`; (2) spec assumed `current_bid_id` FK — real shape is engagement_bids.engagement_id pointing back, "accepted" determined by accepted_at + is_current; (3) spec referenced `jobs.completion_date` — column does not exist, used new Date().toISOString().slice(0,10) at capture time as proxy.
+- Decision: ship capture layer now, defer application (rollups, UI, estimate seeding) to future LEARNING_LOOP_ARC. Without capture, completed jobs from now to that arc lose their actuals silently.
+- Open: future LEARNING_LOOP_ARC builds on this; sbBackfillTradeActuals exported for manual console use.
