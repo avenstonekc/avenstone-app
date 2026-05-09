@@ -86,8 +86,16 @@ async function notifyTenantStaff(sb: any, tenantId: string, excludeId: string, p
   } catch (e) { console.error("[ai-master-agent notify]", e); }
 }
 
-// Confirmation whitelist — money verbs require explicit user confirmation.
-const CONFIRM_TOOLS = new Set(["log_payment", "log_receipt", "submit_change_order"]);
+// Confirmation whitelist — every write verb that creates a row or moves money
+// goes through the Confirm card. The card IS the chokepoint; the agent never
+// writes silently. Read tools (get_*) are excluded by definition.
+const CONFIRM_TOOLS = new Set([
+  "log_payment",
+  "log_receipt",
+  "submit_change_order",
+  "add_todo",
+  "create_job",
+]);
 
 // ─── Tool definitions (Claude tool use schema) ────────────────────────────────
 
@@ -312,7 +320,7 @@ const TOOLS = [
   },
   {
     name: "add_todo",
-    description: "Add a todo (action item) for a user. Use this for any 'remind me', 'don't forget', 'follow up', 'call back', 'schedule', or other action-item intent. Distinct from add_note — todos are tracked tasks with due dates and priorities; notes are passive context. If the user says 'add a todo' / 'add to my todo list' / 'remind me to X', ALWAYS pick this tool, not add_note. Auto-applies (no confirmation card).",
+    description: "Add a todo (action item) for a user. Use this for any 'remind me', 'don't forget', 'follow up', 'call back', 'schedule', or other action-item intent. Distinct from add_note — todos are tracked tasks with due dates and priorities; notes are passive context. If the user says 'add a todo' / 'add to my todo list' / 'remind me to X', ALWAYS pick this tool, not add_note.",
     input_schema: {
       type: "object",
       properties: {
@@ -769,14 +777,72 @@ function fmtMoney(n: unknown): string {
   return `$${Number(n ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Currency words — VOICE_AGENT money-safety read-back. Ported from the retired
+// avenstone-vite/src/lib/labelParser.js (deleted in ee5e3c0). Confirm cards for
+// money verbs render the digit form AND the spelled-out form so a misheard or
+// fat-fingered amount surfaces before the row is written.
+const _ONES = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+const _TEENS = ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const _TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+function _under1000(n: number): string {
+  let out = "";
+  if (n >= 100) {
+    out += _ONES[Math.floor(n / 100)] + " hundred";
+    n %= 100;
+    if (n > 0) out += " ";
+  }
+  if (n >= 20) {
+    out += _TENS[Math.floor(n / 10)];
+    if (n % 10 > 0) out += "-" + _ONES[n % 10];
+  } else if (n >= 10) {
+    out += _TEENS[n - 10];
+  } else if (n > 0) {
+    out += _ONES[n];
+  }
+  return out;
+}
+
+function amountToWords(amt: unknown): string {
+  const num = Number(amt);
+  if (amt == null || Number.isNaN(num)) return "";
+  const n = Math.floor(Math.abs(num));
+  const cents = Math.round((Math.abs(num) - n) * 100);
+  if (n === 0 && cents === 0) return "zero dollars";
+  const parts: string[] = [];
+  if (n >= 1_000_000) parts.push(_under1000(Math.floor(n / 1_000_000)) + " million");
+  if ((n % 1_000_000) >= 1_000) parts.push(_under1000(Math.floor((n % 1_000_000) / 1_000)) + " thousand");
+  if (n % 1_000 > 0) parts.push(_under1000(n % 1_000));
+  let words = parts.join(" ").replace(/\s+/g, " ").trim();
+  if (!words) words = "zero";
+  words += n === 1 ? " dollar" : " dollars";
+  if (cents > 0) words += " and " + (cents < 10 ? "oh " : "") + _under1000(cents) + (cents === 1 ? " cent" : " cents");
+  return words;
+}
+
+// Money verbs append the spelled-out amount inline so a wrong digit reads
+// obviously wrong on the Confirm card. Non-money verbs get a plain summary.
 function describeConfirmAction(tool: string, input: any): string {
   switch (tool) {
     case "log_payment":
-      return `Log ${fmtMoney(input.amount)} client payment${input.description ? ` — ${input.description}` : ""}.`;
+      return `Log ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) client payment${input.description ? ` — ${input.description}` : ""}.`;
     case "log_receipt":
-      return `Log ${fmtMoney(input.amount)} expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ""}.`;
+      return `Log ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ""}.`;
     case "submit_change_order":
-      return `Submit ${fmtMoney(input.amount)} change order — ${input.description}.`;
+      return `Submit ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) change order — ${input.description}.`;
+    case "add_todo": {
+      const bits: string[] = [`Add todo: "${input.title}"`];
+      if (input.due_date) bits.push(`due ${input.due_date}`);
+      if (input.priority) bits.push(`${input.priority} priority`);
+      return bits.join(" · ") + ".";
+    }
+    case "create_job": {
+      const bits: string[] = [`Create job at ${input.address}`];
+      if (input.client_name) bits.push(`client ${input.client_name}`);
+      if (input.scope) bits.push(`scope: ${input.scope}`);
+      if (input.contract_value) bits.push(`${fmtMoney(input.contract_value)} contract`);
+      return bits.join(" · ") + ".";
+    }
     default:
       return "Perform this action.";
   }
@@ -813,7 +879,7 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
-- For money tools (log_payment, log_receipt, submit_change_order): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
+- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result. If the user's freeform message lacks fields the tool requires (e.g. amount, address, title), ask one clarifying question before calling the tool — never invent values.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: if gates fail and the user did not give an override reason, do NOT pass override_reason. The tool result will list failing gates; relay them and ask if the user wants to override.
 - TODO vs NOTE: an action item ("call back X", "follow up", "remind me", "don't forget", "schedule Y", "todo") goes to add_todo. Passive context attached to a job ("FYI…", "the client said…", "noted that…", "for the record…") goes to add_note. When in doubt and the user said "todo", pick add_todo. After writing a todo, the success message should say "Todo added" — never "Note added."
