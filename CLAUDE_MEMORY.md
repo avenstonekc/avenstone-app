@@ -167,6 +167,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - "phase status reverts after page reload despite UI confirming save" → write rejected, error swallowed by helper. See `rls-sweep-2026-05-02 · 2026-05-02`.
 - "Silent error swallow on Supabase queries" → helper/handler returns empty array or null when row should exist; no error surfaced. Cause: helper destructures `{ data }` without checking `error`. Examples: `sbPhoto` storage upload succeeded but DB insert error swallowed (2026-05-08); `get_jobs` returned `[]` because `start_date` column was missing from schema (2026-05-09). Fix pattern: destructure `{ data, error }` and return structured `{ ok, error, data }` shape.
 - "Migration drift — column in code, missing from live DB" → PostgREST error "Could not find the 'X' column of 'Y' in the schema cache." Cause: either migration file committed but never applied, OR code references a dropped/renamed column. Examples: `change_orders.submitted_by_id` (2026-05-08), `jobs.start_date` (2026-05-09), `ai_knowledge.created_by` (2026-05-09). Fix pattern: query `information_schema` for actual columns; apply missing migration OR redirect code to the canonical column.
+- "TEXT-id pollution on jobs / FK children" → legacy `jobs.id` rows like `1775938002546` (a `Date.now().toString()`) coexist with proper UUIDs. Cause: pre-UUID create path; `jobs.id` is TEXT type, so the column accepts both shapes. Examples: id `1775938002546` (created 2026-04-11) wiped 2026-05-09. Audit pattern: `SELECT id FROM jobs WHERE id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND id !~ '^test-';` Future schema audit candidate: enforce UUID at the app layer before flipping to a CHECK constraint.
 
 ---
 
@@ -779,3 +780,18 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/functions/ai-master-agent/index.ts (system prompt only — no tool registrations or handler logic touched). ai-field-agent untouched per scope.
 - Decision: Master only for now. Field agent answers in voice/short text — diagnostic report drift isn't a Field problem. Revisit if Field starts handling longer audits.
 - Open: behavior change is prompt-only; no automated test catches "agent reverted to consultant style." Watch the next few audit prompts manually; if the style discipline lapses, tighten the language or move to a hard system instruction.
+
+[LOG — 2026-05-09]
+- Action: Test/legacy jobs wipe. Deleted 7 jobs from `jobs`; kept `test-flow-001` as canonical smoke fixture. CASCADE handled all heavy children atomically; SET NULL nulled job_id on contacts/notifications/owner_escalations/sub_reviews; sub_ratings (NO ACTION) had no rows for the wipe set.
+- Wiped jobs (id · address · po · created):
+  - `1775938002546` · 14001 Dunham Rd, Grandview MO · 26-001 · 2026-04-11 (TEXT-id legacy — `Date.now()` create path)
+  - `f8b08860-…` · 8617 Houston St, Lenexa KS (no comma) · 26-003 · 2026-04-18 (lead, $0)
+  - `b2d3648c-…` · 8617 Houston St, Lenexa, KS · 26-004 · 2026-04-22 (proposal, $97488 — duplicate of above)
+  - `67d9a793-…` · 5010 E Pony Creek Rd, Cleveland MO · 26-005 · 2026-05-01
+  - `592eeece-…` · 6119 e 113th Kansas city, MO · 26-006 · 2026-05-01
+  - `13ae4443-…` · 1206 W Lucy Webb Rd, Raymore MO · 26-007 · 2026-05-02 (in_progress, $0)
+  - `8d3463da-…` · 1206 Lucy Webb Rd, Raymore MO · 26-008 · 2026-05-05 (lead, $5000 — likely duplicate of 26-007)
+- Cascade collateral (cleared): 1 schedule_item, 3 job_transactions, 40 job_phases, 1 job_note, 3 job_estimates, 31 estimate_line_items, 20 job_room_scopes. 0 orphans across CASCADE child tables post-delete. 0 dangling job_id references in SET NULL tables. test-flow-001 children intact: 2 COs, 14 transactions, 7 notes, 1 schedule_item.
+- Symptom index: added "TEXT-id pollution on jobs / FK children" entry — `jobs.id` is TEXT and accepts both UUIDs and `Date.now()` strings. Future schema audit candidate: enforce UUID at the app layer, then flip to CHECK constraint.
+- Decision: single parent DELETE (vs per-child deletes first). FK map showed every behavior-impacting child as CASCADE; SET NULL targets intentionally survive job deletion (notifications etc. can outlive their job). Atomic single-statement delete is cleaner than ordered child cleanup when CASCADE topology is sound.
+- Open: 8617 Houston has TWO rows in the wipe set with near-identical addresses (formatting differences only) and 1206 Lucy Webb has the same pattern — duplicate-detection-on-create would have caught both. Already on backlog under "Duplicate person detection on invite (#4 from Master diagnostic)." Extend that backlog item to cover duplicate-job-on-create when it ships.
