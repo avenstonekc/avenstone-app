@@ -54,6 +54,54 @@ const QUICK_TILES = [
 // PendingTaskList — delegates to real component (imported above)
 function PendingTaskList({ onResume }) { return <PendingTaskListReal onResume={onResume} />; }
 
+// TodoQuickAdd — single-step inline form for the 'todo' verb. No chip flow, no
+// pending_tasks queue. Title-only. Priority / due / notes are an edit-later
+// concern in MyTodosScreen — putting a half-filled todo through a separate
+// queue is friction. If it's incomplete, that's what the todo list shows.
+function TodoQuickAdd({ profile, onComplete, onBack }) {
+  const [label, setLabel] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const canProceed = label.trim().length >= 3;
+
+  const handleAdd = async () => {
+    if (!canProceed) return;
+    setSaving(true);
+    setError('');
+    try {
+      await sbCreateUserTodo({
+        title: label.trim(),
+        notes: null,
+        jobId: null,
+        assignedToUserId: profile?.id,
+        dueDate: null,
+        priority: null,
+      });
+      onComplete('Todo added ✓');
+    } catch (e) {
+      setError(`Failed: ${e.message || e}`);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ background: 'rgba(247,245,240,0.08)', border: '1px solid rgba(201,168,76,0.3)', borderRadius: 10, padding: 16, fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: 'rgba(247,245,240,0.9)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontWeight: 500 }}>What is this todo?</div>
+      <input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Min 3 characters..." autoFocus
+        onKeyDown={e => { if (e.key === 'Enter' && canProceed && !saving) handleAdd(); }}
+        style={{ border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none' }} />
+      {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
+      <button disabled={!canProceed || saving} onClick={handleAdd}
+        style={{ padding: '10px 12px', borderRadius: 8, background: canProceed ? '#C9A84C' : 'rgba(201,168,76,0.3)', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: canProceed && !saving ? 'pointer' : 'default' }}>
+        {saving ? 'Adding…' : 'Add todo'}
+      </button>
+      <div style={{ fontSize: 11, color: 'rgba(247,245,240,0.45)' }}>Priority, due date, and notes can be edited later from the Todos screen.</div>
+      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.45)', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left' }}>← Back</button>
+    </div>
+  );
+}
+
 // QuickCapture — per-verb quick capture step shown after tile tap
 function QuickCapture({ verb, profile, captureContext, setCaptureContext, captureLabel, setCaptureLabel, captureWorking, setCaptureWorking, captureErr, setCaptureErr, onSaveForLater, onContinueNow, onBack }) {
   const [labelInput, setLabelInput] = useState('');
@@ -1359,19 +1407,17 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   onBack={() => { setFlowActive(false); }}
                 />
               )}
-              {verb && flowActive && verb === 'todo' && (
-                <TodoFlow
+              {/* Todo: direct-write inline form, no chip flow, no pending_tasks queue. */}
+              {verb === 'todo' && (
+                <TodoQuickAdd
                   profile={profile}
-                  initContext={captureContext}
-                  initLabel={captureLabel}
-                  pendingTaskId={pendingTaskId}
                   onComplete={(msg) => {
                     setVerb(null); setFlowActive(false); setPendingTaskId(null);
                     setCaptureContext({}); setCaptureLabel('');
                     setCaptureToast(msg || 'Done');
                     setTimeout(() => setCaptureToast(''), 4000);
                   }}
-                  onBack={() => setFlowActive(false)}
+                  onBack={() => { setVerb(null); setFlowActive(false); setCaptureContext({}); setCaptureLabel(''); setCaptureErr(''); }}
                 />
               )}
               {verb && flowActive && verb === 'lead' && (
@@ -1421,7 +1467,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               )}
 
               {/* Quick-capture step */}
-              {verb && !flowActive && <QuickCapture
+              {verb && verb !== 'todo' && !flowActive && <QuickCapture
                 verb={verb}
                 profile={profile}
                 captureContext={captureContext}
