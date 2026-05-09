@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { AI_MASTER_URL, ANON_KEY, captureFailedIntent } from '../../lib/supabase';
-import { pushBreadcrumb } from '../../lib/bugContext';
+import { AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt } from '../../lib/supabase';
+import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
+import { sbCreatePendingTask, sbUpdatePendingTask, sbCompletePendingTask } from '../../lib/pendingTasks';
 
 // Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
 const MAX_EDGE = 1024;
@@ -49,6 +50,132 @@ const QUICK_TILES = [
 
 // Stub PendingTaskList — real component built in commit 7
 function PendingTaskList() { return null; }
+
+// QuickCapture — per-verb quick capture step shown after tile tap
+function QuickCapture({ verb, profile, captureContext, setCaptureContext, captureLabel, setCaptureLabel, captureWorking, setCaptureWorking, captureErr, setCaptureErr, onSaveForLater, onContinueNow, onBack }) {
+  const [labelInput, setLabelInput] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const fileRef = useRef(null);
+
+  const cardStyle = {
+    background: 'rgba(247,245,240,0.08)',
+    border: '1px solid rgba(201,168,76,0.3)',
+    borderRadius: 10,
+    padding: 16,
+    fontFamily: 'DM Sans, sans-serif',
+    fontSize: 14,
+    color: 'rgba(247,245,240,0.9)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  };
+
+  const handleReceiptPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPhotoUploading(true);
+    const result = await sbUploadReceipt(file, null);
+    setPhotoUploading(false);
+    if (result.error) {
+      setCaptureErr(result.error);
+      return;
+    }
+    setPhotoPreview(result.signedUrl);
+    setCaptureContext(ctx => ({ ...ctx, photo_url: result.signedUrl, photo_path: result.path }));
+  };
+
+  const getContextAndLabel = () => {
+    if (verb === 'receipt') {
+      const ctx = captureContext;
+      const label = captureLabel || (ctx.photo_path ? 'Receipt photo' : labelInput.trim());
+      return { ctx, label };
+    }
+    if (verb === 'bug') {
+      return { ctx: captureContext, label: 'Bug report' };
+    }
+    return { ctx: captureContext, label: labelInput.trim() };
+  };
+
+  const canProceed = () => {
+    if (verb === 'receipt') return !!(captureContext.photo_path || labelInput.trim().length >= 3);
+    if (verb === 'bug') return true; // bug context captured at tile-tap
+    return labelInput.trim().length >= 3;
+  };
+
+  const promptText = {
+    receipt: 'Snap a photo of the receipt',
+    todo: 'What is this todo?',
+    lead: 'What is this lead?',
+    change_order: 'What is this change order?',
+    bug: null,
+  }[verb];
+
+  if (verb === 'bug') {
+    return (
+      <div style={cardStyle}>
+        <div style={{ color: 'rgba(247,245,240,0.6)', fontSize: 13 }}>
+          Bug context captured. Click Continue to describe the issue.
+        </div>
+        {captureErr && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{captureErr}</div>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button disabled={captureWorking} onClick={() => { const { ctx, label } = getContextAndLabel(); onContinueNow(ctx, label); }}
+            style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            Continue now
+          </button>
+          <button disabled={captureWorking} onClick={() => { const { ctx, label } = getContextAndLabel(); onSaveForLater(ctx, label); }}
+            style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
+            Save for later
+          </button>
+        </div>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.45)', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left' }}>← Back</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={cardStyle}>
+      {promptText && <div style={{ fontWeight: 500 }}>{promptText}</div>}
+      {verb === 'receipt' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleReceiptPhoto} style={{ display: 'none' }} />
+          {!photoPreview && (
+            <button onClick={() => fileRef.current?.click()} disabled={photoUploading}
+              style={{ padding: '10px 16px', borderRadius: 8, background: '#0A1F44', color: '#C9A84C', border: '1px solid #C9A84C', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+              {photoUploading ? 'Uploading…' : '📷 Take photo'}
+            </button>
+          )}
+          {photoPreview && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <img src={photoPreview} alt="receipt" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid rgba(201,168,76,0.4)' }} />
+              <span style={{ fontSize: 12, color: 'rgba(247,245,240,0.6)' }}>Photo attached</span>
+            </div>
+          )}
+          <div style={{ fontSize: 12, color: 'rgba(247,245,240,0.45)' }}>Or type a 1-line label</div>
+          <input type="text" value={labelInput} onChange={e => setLabelInput(e.target.value)} placeholder="e.g. Home Depot — lumber"
+            style={{ border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none' }} />
+        </div>
+      )}
+      {verb !== 'receipt' && (
+        <input type="text" value={labelInput} onChange={e => setLabelInput(e.target.value)} placeholder="Min 3 characters..."
+          style={{ border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none' }} />
+      )}
+      {captureErr && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{captureErr}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button disabled={captureWorking || !canProceed()} onClick={() => { const { ctx, label } = getContextAndLabel(); onContinueNow(ctx, label); }}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: canProceed() ? '#C9A84C' : 'rgba(201,168,76,0.3)', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: canProceed() ? 'pointer' : 'default' }}>
+          Continue now
+        </button>
+        <button disabled={captureWorking || !canProceed()} onClick={() => { const { ctx } = getContextAndLabel(); const label = labelInput.trim() || (captureContext.photo_path ? 'Receipt photo' : ''); onSaveForLater(ctx, label); }}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: canProceed() ? 'pointer' : 'default' }}>
+          Save for later
+        </button>
+      </div>
+      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.45)', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left' }}>← Back</button>
+    </div>
+  );
+}
 
 function formatToolName(tool) {
   if (!tool) return tool;
@@ -163,6 +290,13 @@ function ActionsPanel({ actions }) {
 export default function MasterAgent({ profile, pendingAction, clearPendingAction }) {
   const [open, setOpen] = useState(false);
   const [verb, setVerb] = useState(null);
+  const [captureContext, setCaptureContext] = useState({});
+  const [captureLabel, setCaptureLabel] = useState('');
+  const [pendingTaskId, setPendingTaskId] = useState(null);
+  const [captureStep, setCaptureStep] = useState('init'); // 'init' | 'done'
+  const [captureWorking, setCaptureWorking] = useState(false);
+  const [captureErr, setCaptureErr] = useState('');
+  const [captureToast, setCaptureToast] = useState('');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
   const [conversationHistory, setConversationHistory] = useState([]);
@@ -570,7 +704,14 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                       key={tile.verb}
                       onClick={() => {
                         setVerb(tile.verb);
+                        setCaptureContext({});
+                        setCaptureLabel('');
+                        setCaptureErr('');
                         pushBreadcrumb({ type: 'tap', label: `tile:${tile.verb}`, route: 'master-agent' });
+                        if (tile.verb === 'bug') {
+                          const snap = getSnapshot();
+                          setCaptureContext({ ...snap });
+                        }
                       }}
                       style={{
                         background: '#fff',
@@ -594,26 +735,40 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 </div>
               )}
 
-              {/* Verb stub — replaced commits 6–11 */}
-              {verb && (
-                <div style={{
-                  background: 'rgba(247,245,240,0.08)',
-                  border: '1px solid rgba(201,168,76,0.3)',
-                  borderRadius: 10,
-                  padding: 16,
-                  fontFamily: 'DM Sans, sans-serif',
-                  fontSize: 14,
-                  color: 'rgba(247,245,240,0.75)',
-                }}>
-                  <div style={{ marginBottom: 10 }}>Wired in next commit — verb: <strong style={{ color: '#C9A84C' }}>{verb}</strong></div>
-                  <button
-                    onClick={() => setVerb(null)}
-                    style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, padding: '6px 12px', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer' }}
-                  >
-                    ← Back
-                  </button>
-                </div>
-              )}
+              {/* Quick-capture step */}
+              {verb && <QuickCapture
+                verb={verb}
+                profile={profile}
+                captureContext={captureContext}
+                setCaptureContext={setCaptureContext}
+                captureLabel={captureLabel}
+                setCaptureLabel={setCaptureLabel}
+                captureWorking={captureWorking}
+                setCaptureWorking={setCaptureWorking}
+                captureErr={captureErr}
+                setCaptureErr={setCaptureErr}
+                onSaveForLater={async (ctx, label) => {
+                  const result = await sbCreatePendingTask({ verb, quickLabel: label, context: ctx });
+                  if (result.ok) {
+                    setVerb(null); setCaptureContext({}); setCaptureLabel('');
+                    setCaptureToast('Saved for later');
+                    setTimeout(() => setCaptureToast(''), 4000);
+                  } else {
+                    setCaptureErr(result.error || 'Failed to save');
+                  }
+                }}
+                onContinueNow={async (ctx, label) => {
+                  const result = await sbCreatePendingTask({ verb, quickLabel: label, context: ctx });
+                  if (!result.ok) { setCaptureErr(result.error || 'Failed'); return; }
+                  const taskId = result.data.id;
+                  setPendingTaskId(taskId);
+                  await sbUpdatePendingTask(taskId, { status: 'in_progress' });
+                  // Verb flows wired in commits 8–11; stub for now
+                  setCaptureToast(`Resume flow not yet wired for ${verb}`);
+                  setTimeout(() => setCaptureToast(''), 5000);
+                }}
+                onBack={() => { setVerb(null); setCaptureContext({}); setCaptureLabel(''); setCaptureErr(''); }}
+              />}
             </div>
           )}
 
@@ -743,6 +898,13 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             </div>
           )}
         </div>
+
+        {/* Capture toast */}
+        {captureToast && (
+          <div style={{ margin: '0 16px 8px', padding: '10px 14px', background: '#D1FAE5', border: '1px solid #22c55e', borderRadius: 8, fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: '#166534' }}>
+            {captureToast}
+          </div>
+        )}
 
         {/* Helper hint — shown when no messages */}
         {!hasMessages && !loading && (
