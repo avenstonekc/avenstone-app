@@ -773,3 +773,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: CLAUDE_MEMORY.md, avenstone-vite/src/lib/phaseGates.js, supabase/functions/ai-master-agent/index.ts, supabase/functions/ai-field-agent/index.ts.
 - Decision: Backlog and Future architecture stay separate sections — Backlog is "things to ship," Future architecture is "design-only, not building yet." Different intent, different review cadence.
 - Open: none — pure docs/comments pass, no logic touched.
+
+[LOG — 2026-05-09]
+- Action: Master agent system prompt gained a `DIAGNOSTIC REPORTING STYLE` section to fix consultant-report drift in audit/inspect responses. Six rules: separate OBSERVED from INFERRED, attach confidence labels (VERIFIED / OBSERVED / INFERRED / UNKNOWN), frame recs as questions not prescriptions, plain prose (no "Diagnostic Report" titles or structured "Rec:" blocks), explicitly flag missing context, default to underconfidence.
+- Files: supabase/functions/ai-master-agent/index.ts (system prompt only — no tool registrations or handler logic touched). ai-field-agent untouched per scope.
+- Decision: Master only for now. Field agent answers in voice/short text — diagnostic report drift isn't a Field problem. Revisit if Field starts handling longer audits.
+- Open: behavior change is prompt-only; no automated test catches "agent reverted to consultant style." Watch the next few audit prompts manually; if the style discipline lapses, tighten the language or move to a hard system instruction.

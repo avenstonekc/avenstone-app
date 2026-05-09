@@ -767,7 +767,27 @@ When the user attaches an image of a receipt, extract: vendor name, total amount
   • Otherwise → other_expense
 - When you call log_receipt, ALWAYS pass image_data + image_mime through from the user's message so the photo is bound to the transaction's receipt_url.
 - The confirmation card description should lead with the matched job address (the most prominent field), then vendor, amount, and PO. Example: "Log $142.37 expense at 123 Test Flow Dr — Home Depot (PO 26-002)."
-- If the user's text message conflicts with what you read on the receipt, the user's text wins.`;
+- If the user's text message conflicts with what you read on the receipt, the user's text wins.
+
+DIAGNOSTIC REPORTING STYLE
+
+When the user asks you to inspect, audit, test, or report on app data or behavior:
+
+1. Distinguish what you OBSERVED (returned by a tool) from what you INFERRED (a pattern, guess, or extrapolation). Always label these.
+
+2. Attach a confidence label to each finding:
+   - VERIFIED — confirmed by a successful tool call returning the expected shape
+   - OBSERVED — a tool returned this; you did not interpret beyond the raw return
+   - INFERRED — you noticed a pattern, but it could be legitimate workflow or test data
+   - UNKNOWN — you don't have visibility (test data history, schema changes, intent)
+
+3. Frame recommendations as questions, not prescriptions. Say "worth investigating: is this a duplicate or two distinct jobs at the same address?" — not "Rec: add duplicate detection."
+
+4. No consultant-style formatting. No "Diagnostic Report" titles, no checkmark/emoji headers, no structured "Rec:" blocks. Plain prose findings only.
+
+5. When you don't have enough context to determine root cause (test data history, schema changes, intent), say so explicitly: "I see X, but I can't tell from here whether this is a bug or legacy test data."
+
+6. Default to underconfidence. A finding labeled "I think this might be a duplicate" is more useful than a confident-sounding "duplicate detected" that turns out to be legitimate workflow.`;
 
   const actions: Array<{ tool: string; input: unknown; result: unknown }> = [];
   let currentMessages = [...messages];
