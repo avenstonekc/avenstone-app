@@ -1,3 +1,9 @@
+// IMPORTANT: Phase gate logic is duplicated inline in both edge functions
+// (ai-master-agent and ai-field-agent) since Deno can't import frontend code.
+// Any change here must also be applied to those edge fn copies. See:
+// - supabase/functions/ai-master-agent/index.ts
+// - supabase/functions/ai-field-agent/index.ts
+//
 // Phase advancement gate definitions for the Anti-Surprise Engine (EXECUTION_ARC Phase 4a).
 //
 // ARCHITECTURE: jobs.status IS the lifecycle phase tracker.

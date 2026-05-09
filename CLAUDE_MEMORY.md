@@ -105,6 +105,27 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring
 - `MaterialSelectionScr.jsx` — built, landing surface decision outstanding
 
+---
+
+## Backlog
+
+*Deferred work to ship eventually — not a frozen list, add/remove as arcs land. Lives here so it survives conversation resets.*
+
+- VOICE_AGENT v1.5: verb 5b (`complete_schedule_item` with photo gate) — gates AGENT_CARDS_ARC Phase 5
+- AGENT_CARDS_ARC build (planning doc shipped 2026-05-08; build deferred)
+- Master out-of-v1 tools cleanup arc (13 broken/stale read tools per Phase 1 audit)
+- Helper-shape sweep beyond v1 (`sbUpdateTransaction`, etc.)
+- Trade-neutral system prompts (Field still mentions "residential construction")
+- CO surface in client portal (no CO tab today)
+- Tenant-configurable vendor → type mapping for receipt extraction (Avenstone-only v1)
+- Tool description tightening from 2026-05-09 receipt-fix LOG
+- Auto-escalation on overdue draws (#7 from Master diagnostic)
+- `phase_pct_complete` rollup audit (#8 from Master diagnostic)
+- Duplicate person detection on invite (#4 from Master diagnostic)
+- VOICE_AGENT Phase 3+ (native iOS STT/TTS/hands-free)
+
+---
+
 ### Future architecture (design-only, not building yet)
 
 - **RAG-based archive retrieval** — Embed archive entries to Supabase pgvector, retrieve top 3-5 relevant on session start instead of static load. Per-session tokens drop from ~3K to ~500-2000. Trigger to build: archive >50K tokens, first non-Avenstone tenant, or first session where missing context bites. Estimated 2-3 days. Captured 2026-05-03 — review before building.
@@ -144,6 +165,8 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - "empty string sent to DATE column rejected silently" → uncoalesced date input. See `date-sweep-2 · 2026-05-02`.
 - "icon renders huge or fills viewport" → unconstrained SVG, default 300×150. See `schedule-rebuild · 2026-05-02–03`.
 - "phase status reverts after page reload despite UI confirming save" → write rejected, error swallowed by helper. See `rls-sweep-2026-05-02 · 2026-05-02`.
+- "Silent error swallow on Supabase queries" → helper/handler returns empty array or null when row should exist; no error surfaced. Cause: helper destructures `{ data }` without checking `error`. Examples: `sbPhoto` storage upload succeeded but DB insert error swallowed (2026-05-08); `get_jobs` returned `[]` because `start_date` column was missing from schema (2026-05-09). Fix pattern: destructure `{ data, error }` and return structured `{ ok, error, data }` shape.
+- "Migration drift — column in code, missing from live DB" → PostgREST error "Could not find the 'X' column of 'Y' in the schema cache." Cause: either migration file committed but never applied, OR code references a dropped/renamed column. Examples: `change_orders.submitted_by_id` (2026-05-08), `jobs.start_date` (2026-05-09), `ai_knowledge.created_by` (2026-05-09). Fix pattern: query `information_schema` for actual columns; apply missing migration OR redirect code to the canonical column.
 
 ---
 
@@ -741,3 +764,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
   - Trigger race: `set_job_po_number()` uses `COUNT(*) + 1` which can theoretically collide on concurrent inserts. UNIQUE index `jobs_po_number_tenant_unique` catches it; rare-enough volume for Avenstone; documented tradeoff.
 - Smoke test: open Master, attach receipt photo (Home Depot, $X with PO 26-002 visible), no text → agent should extract vendor + amount, call get_jobs(po='26-002'), match 123 Test Flow Dr, surface confirmation card "Log $X expense at 123 Test Flow Dr — Home Depot (PO 26-002)." Confirm → row in job_transactions with type=material_purchase, receipt_url set, photo renders in TransactionModal's Receipt slot.
 - Open: (1) Vendor→type mapping is hardcoded; needs to become tenant_config-driven before v4 trade tenants onboard. (2) Phase 6 of AGENT_CARDS_ARC will let users override extracted PO/category via a structured card instead of plain confirmation. (3) get_jobs by PO returns whole jobs list — could narrow to id/address/po only for token economy on the round-trip, low priority.
+
+[LOG — 2026-05-09]
+- Action: Memory hygiene + cross-pointer comments + backlog capture pass.
+- Action: Symptom index gained two entries — "Silent error swallow on Supabase queries" (cause: helper destructures `{ data }` without `error` check; fix: structured `{ ok, error, data }` shape) and "Migration drift — column in code, missing from live DB" (cause: migration committed but unapplied, or code references dropped/renamed column; fix: query `information_schema` and reconcile).
+- Action: Cross-pointer comments added so any future edit to phase gate logic catches both copies. Top of `phaseGates.js` now lists both edge fn paths; existing "mirrored from src/lib/phaseGates.js" headers in `ai-master-agent/index.ts` and `ai-field-agent/index.ts` extended with reciprocal pointers.
+- Action: New `## Backlog` section in CLAUDE_MEMORY.md between Active open items and Future architecture. 12 initial entries covering deferred VOICE_AGENT verbs, AGENT_CARDS_ARC build, Master out-of-v1 tools cleanup, helper sweep, trade-neutral prompts, CO client portal, tenant vendor→type config, tool description cleanup, three Master diagnostic follow-ups (auto-escalation, phase_pct_complete rollup, duplicate person on invite), and VOICE_AGENT Phase 3+. Explicitly not a frozen list.
+- Files: CLAUDE_MEMORY.md, avenstone-vite/src/lib/phaseGates.js, supabase/functions/ai-master-agent/index.ts, supabase/functions/ai-field-agent/index.ts.
+- Decision: Backlog and Future architecture stay separate sections — Backlog is "things to ship," Future architecture is "design-only, not building yet." Different intent, different review cadence.
+- Open: none — pure docs/comments pass, no logic touched.

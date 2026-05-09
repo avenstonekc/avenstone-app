@@ -7,6 +7,8 @@ const CORS = {
 };
 
 // ── Canonical phase model — mirrored from src/lib/phaseGates.js ──────────────
+// IMPORTANT: this gate logic is a port of avenstone-vite/src/lib/phaseGates.js.
+// Both copies must stay in sync. Same comment in ai-master-agent/index.ts.
 // Edge fn can't import frontend code; keep this in sync if PHASE_ORDER ever changes.
 const PHASE_ORDER = ['lead', 'proposal', 'contract', 'in_progress', 'final_touches', 'complete'];
 const PHASE_LABELS: Record<string, string> = {
