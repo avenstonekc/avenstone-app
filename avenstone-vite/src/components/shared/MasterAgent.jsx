@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt, sbCreateTransaction, AV_TENANT } from '../../lib/supabase';
+import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt, sbCreateTransaction, sbCreateUserTodo, AV_TENANT } from '../../lib/supabase';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
 import { sbCreatePendingTask, sbUpdatePendingTask, sbCompletePendingTask } from '../../lib/pendingTasks';
@@ -318,6 +318,146 @@ function ReceiptFlow({ profile, initContext, pendingTaskId, onComplete, onBack }
           {saving ? 'Saving…' : 'Confirm'}
         </button>
         <button onClick={() => setStep('project')} disabled={saving}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
+          Edit
+        </button>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
+const PRIORITY_CHIPS = [
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high', label: 'High' },
+];
+
+const DUE_DATE_CHIPS = [
+  { id: 'today', label: 'Today' },
+  { id: 'tomorrow', label: 'Tomorrow' },
+  { id: 'this_week', label: 'This week' },
+  { id: 'no_due_date', label: 'No due date' },
+  { id: 'pick_date', label: 'Pick a date' },
+];
+
+function resolveDueDate(chipId, customDate) {
+  if (chipId === 'no_due_date' || !chipId) return null;
+  if (chipId === 'pick_date') return customDate || null;
+  const d = new Date();
+  if (chipId === 'today') return d.toISOString().slice(0, 10);
+  if (chipId === 'tomorrow') { d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); }
+  if (chipId === 'this_week') { d.setDate(d.getDate() + (7 - d.getDay())); return d.toISOString().slice(0, 10); }
+  return null;
+}
+
+function TodoFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, onBack }) {
+  const [step, setStep] = useState('project');
+  const [jobId, setJobId] = useState(null);
+  const [jobLabel, setJobLabel] = useState('');
+  const [isPersonal, setIsPersonal] = useState(false);
+  const [priority, setPriority] = useState('medium');
+  const [dueDateChip, setDueDateChip] = useState('no_due_date');
+  const [customDate, setCustomDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const labelStyle = { fontSize: 13, fontWeight: 600, color: 'rgba(247,245,240,0.85)', marginBottom: 4, fontFamily: 'DM Sans, sans-serif' };
+  const containerStyle = { display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'DM Sans, sans-serif' };
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    setError('');
+    const dueDate = resolveDueDate(dueDateChip, customDate);
+    try {
+      const data = await sbCreateUserTodo({
+        title: initLabel || 'New todo',
+        notes: notes.trim() || null,
+        jobId: isPersonal ? null : (jobId || null),
+        assignedToUserId: profile?.id,
+        dueDate,
+        priority,
+      });
+      if (pendingTaskId) await sbCompletePendingTask(pendingTaskId, { resultingEntityType: 'todo', resultingEntityId: data?.id });
+      onComplete('Todo added ✓');
+    } catch (e) {
+      setError(`Failed: ${e.message || e}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (step === 'project') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Which project? (or Personal)</div>
+      <JobChipPicker includePersonal={true} onSelect={s => {
+        setIsPersonal(s.isPersonal);
+        setJobId(s.isPersonal ? null : s.jobId);
+        setJobLabel(s.isPersonal ? 'Personal' : s.jobLabel);
+        setStep('priority');
+      }} />
+      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'priority') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Priority</div>
+      <ChipPicker chips={PRIORITY_CHIPS} allowOther={false} onSelect={c => { setPriority(c.id); setStep('due'); }} />
+      <button onClick={() => setStep('project')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'due') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Due date</div>
+      <ChipPicker chips={DUE_DATE_CHIPS} allowOther={false} onSelect={c => {
+        setDueDateChip(c.id);
+        if (c.id === 'pick_date') { setStep('pick_date'); } else { setStep('notes'); }
+      }} />
+      <button onClick={() => setStep('priority')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'pick_date') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Choose a date</div>
+      <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)}
+        style={{ border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none' }} />
+      <button onClick={() => setStep('notes')} disabled={!customDate}
+        className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
+      <button onClick={() => setStep('due')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'notes') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Notes (optional)</div>
+      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Add context..."
+        style={{ border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none', resize: 'none' }} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={() => setStep('confirm')} className="btn btn-navy" style={{ fontSize: 13, flex: 1 }}>Next →</button>
+        <button onClick={() => setStep('confirm')} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>Skip</button>
+      </div>
+      <button onClick={() => setStep('due')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'confirm') return (
+    <div style={containerStyle}>
+      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, fontSize: 14, color: 'rgba(247,245,240,0.85)', lineHeight: 1.6 }}>
+        Adding todo: <strong>{initLabel}</strong><br />
+        Project: <strong>{jobLabel || 'None'}</strong> · Priority: <strong>{priority}</strong> · Due: <strong>{resolveDueDate(dueDateChip, customDate) || 'None'}</strong>
+      </div>
+      {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={handleConfirm} disabled={saving}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          {saving ? 'Saving…' : 'Confirm'}
+        </button>
+        <button onClick={() => setStep('notes')} disabled={saving}
           style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
           Edit
         </button>
@@ -909,7 +1049,22 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   onBack={() => { setFlowActive(false); }}
                 />
               )}
-              {verb && flowActive && verb !== 'receipt' && (
+              {verb && flowActive && verb === 'todo' && (
+                <TodoFlow
+                  profile={profile}
+                  initContext={captureContext}
+                  initLabel={captureLabel}
+                  pendingTaskId={pendingTaskId}
+                  onComplete={(msg) => {
+                    setVerb(null); setFlowActive(false); setPendingTaskId(null);
+                    setCaptureContext({}); setCaptureLabel('');
+                    setCaptureToast(msg || 'Done');
+                    setTimeout(() => setCaptureToast(''), 4000);
+                  }}
+                  onBack={() => setFlowActive(false)}
+                />
+              )}
+              {verb && flowActive && !['receipt','todo'].includes(verb) && (
                 <div style={{ background: 'rgba(247,245,240,0.08)', border: '1px solid rgba(201,168,76,0.3)', borderRadius: 10, padding: 16, fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: 'rgba(247,245,240,0.75)' }}>
                   <div style={{ marginBottom: 10 }}>Resume flow wired in next commit — verb: <strong style={{ color: '#C9A84C' }}>{verb}</strong></div>
                   <button onClick={() => { setVerb(null); setFlowActive(false); }} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, padding: '6px 12px', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer' }}>← Back</button>
