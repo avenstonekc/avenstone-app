@@ -150,7 +150,7 @@ Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
 
 **Storage buckets:** `job-photos` (public), `job-documents` (private), `bid-quotes` (private), `bug-screenshots` (private — 1-year signed URLs via submit-bug-report edge fn)
 
-**v1 additions:** `pending_tasks` (user-owned queue, owner/PM read), `bug_reports` (tenant read + platform_owner cross-tenant). `profiles.is_platform_owner BOOLEAN` — cross-tenant bug_reports access. `tenants.notification_rules JSONB` — pending task alert thresholds (cron alerting deferred to v2).
+**v1/v2 additions:** `bug_reports` (tenant read + platform_owner cross-tenant). `profiles.is_platform_owner BOOLEAN` — cross-tenant bug_reports access. `tenants.notification_rules JSONB` — kept for future use (cron alerting deferred). The v1 `pending_tasks` queue table was dropped in migration `20260509180000` when Master Agent v2 retired the queue layer (chat-first architecture). `PendingTaskOwnerScr`, `PendingTaskList`, `lib/pendingTasks.js`, and `lib/labelParser.js` were deleted in the same arc.
 
 **RLS helpers:** `get_my_role()`, `get_my_tenant_id()`, `can_access_job(job_id)`
 
@@ -309,36 +309,68 @@ This is Avenstone's core competitive advantage. Six surfaces:
 | `AiSetupWizard` | `components/ai/AiSetupWizard.jsx` | 7-question onboarding wizard. Opens via manual button on AiKnowledgeScr. |
 | `AiFieldAgent` | `components/ai/AiFieldAgent.jsx` | Field-facing AI agent. |
 | `AiHomeScr` | `components/ai/AiHomeScr.jsx` | AI home screen / dashboard. |
-| `MasterAgent` | `components/shared/MasterAgent.jsx` | Greeting + 5 tile capture-now/save-for-later flow + chip-driven verb capture (receipt/todo/lead/CO/bug). |
-| `ChipPicker` | `components/shared/ChipPicker.jsx` | Reusable chip-select with optional free-text fallback. |
-| `JobChipPicker` | `components/shared/JobChipPicker.jsx` | Job selector: loads top 8 active jobs + typeahead fallback. |
-| `PendingTaskList` | `components/shared/PendingTaskList.jsx` | Horizontally-scrollable pending tasks card row above tile grid. |
+| `MasterAgent` | `components/shared/MasterAgent.jsx` | Persistent chat panel mounted at App.jsx top level. 5 tiles act as starter prompts (TILE_PREFIXES); the agent infers verb + fields from freeform input. Confirm card surfaces via `pending_action`. Bug submission is the inline exception — bypasses ai-master-agent and posts to submit-bug-report. |
 | `BugReportsScr` | `components/admin/BugReportsScr.jsx` | Platform-owner cross-tenant bug report dashboard. |
 | `BugReportDetailModal` | `components/admin/BugReportDetailModal.jsx` | Bug detail + Claude prompt copy + mark-fixed. |
-| `PendingTaskOwnerScr` | `components/admin/PendingTaskOwnerScr.jsx` | Owner discipline dashboard — per-rep pending aggregation + notification rules. |
 
 ---
 
-## Master Agent v1
+## Master Agent v2 (chat-first)
 
-5 quick-action tiles in `MasterAgent.jsx`: Add a receipt, Add to the todo list, Add a new lead, Submit a change order, Submit a bug. Each tile tap triggers:
-1. **Quick capture** — minimal input at tap time (photo for receipt, label for todo/lead/CO, silent snapshot for bug).
-2. **Continue now / Save for later** — creates a `pending_tasks` row. Continue now goes directly into the verb chip flow. Save for later returns to home.
-3. **Verb chip flows** — smart-parsing flows: ReceiptFlow, TodoFlow, LeadFlow, COFlow, BugFlow. On mount, each calls `parseReceiptLabel` / `parseTodoLabel` / `parseLeadLabel` / `parseCOLabel` from `lib/labelParser.js` against `pending_tasks.context.quick_label`, seeds per-field state, and asks chips ONLY for genuinely missing fields. Final step is a single Confirm card with per-field Edit buttons.
+`MasterAgent.jsx` is a single persistent chat panel that lives at the App.jsx
+top level — it survives every `pg` navigation, so the conversation thread is
+session-wide. 5 tiles render above the input but they are NOT a state machine;
+they are starter prompts.
 
-**Pending tasks lifecycle:** `pending` → `in_progress` → `complete` | `discarded`. Discard requires a reason chip (misclick / duplicate / no_longer_needed / completed_outside_app). No auto-archive — the visible queue is a discipline tool.
+**Tile contract.** Each tile click does ONE of two things:
+1. Sets the chat input to a `TILE_PREFIXES[verb]` string and focuses the input
+   with the cursor at the end. The user finishes the sentence and hits Enter.
+   The agent (ai-master-agent edge fn) infers the verb + fields from the
+   freeform message. No state machine, no chips, no per-field steps.
+2. (Bug only.) Bypasses the agent entirely. Captures `getSnapshot()` and an
+   html2canvas screenshot synchronously at click time (the screen changes
+   during chat), flips `bugMode=true`, asks the user to type a description.
+   The next message routes to `submit-bug-report`, never to ai-master-agent.
 
-**Snooze semantics:** each Resume tap after the first increments `snooze_count` + sets `last_opened_at`. Queue cards show "Snoozed N×" when count > 0.
+```js
+const TILE_PREFIXES = {
+  receipt:      'Log a receipt for ',
+  todo:         'Add a todo: ',
+  lead:         'New lead — ',
+  change_order: 'Submit a change order on ',
+  // bug is the inline exception (see above)
+};
+```
 
-**Smart-Resume contract (v1.1):** Each flow seeds state via the parser → computes `step = editingField || firstNullField || 'confirm'` → renders the matching chip / text input for that one step → on completion sets `editingField=null` and returns to Confirm. Project hint (`matchProjectHint`) substring-matches against active jobs (status IN lead/proposal/contract/in_progress/final_touches): 1 match auto-prefills, 0/many leaves the JobChipPicker rendered. Field names in `labelParser.js` output match the JS write helpers (`vendor`/`amount`/`category`/`project_hint` for receipts, `title`/`due_hint`/`project_hint` for todos, etc.) so smart-Resume seeds state with no translation. Parser is pure regex + keyword scan — no LLM call, no cost, sync.
+**Confirm card chokepoint.** ai-master-agent has a `CONFIRM_TOOLS` whitelist of 5
+write verbs: `log_payment`, `log_receipt`, `submit_change_order`, `add_todo`,
+`create_job`. When the agent calls one, the edge fn returns `pending_action`
+instead of executing the tool. The chat renders a Confirm card; on Confirm,
+the client re-sends the saved tool call and the row writes. The card IS the
+only commit point for write verbs — the agent never writes silently.
 
-**Click-first chip flow:** every chip step is a row of options. Free-text fallback via "Something else (type)" chip (allowOther=true default). Confirm card always shows the full final read-back before writing.
+**Money read-back.** Money verbs (log_payment, log_receipt, submit_change_order)
+include the spelled-out amount on the Confirm card via `amountToWords` (now
+ported into ai-master-agent/index.ts; the old `lib/labelParser.js` was
+deleted with the queue). VOICE_AGENT money-safety pattern: `$750.00
+(seven hundred fifty dollars)` reads obviously wrong if a digit was misheard.
 
-**Enter-key submit:** every text input across the agent flows submits on Enter. Single-line inputs (vendor name, amount, customer, phone, address, CO title) submit the field on Enter; textareas (notes, CO description) treat Enter as submit and Shift+Enter as newline. JobChipPicker search input picks the first result on Enter.
+**Persistent conversation.** `messages` and `conversationHistory` live in
+component state; the component is mounted at the App root, so navigation does
+not unmount it. The thread persists for the session. There is no DB-backed
+queue (`pending_tasks` was dropped in migration `20260509180000`).
 
-**BugFlow:** html2canvas screenshot captured at tile-tap (not resume time — screen changes during flow). Silent context snapshot via `getSnapshot()`. Submits to `submit-bug-report` edge fn via authenticated fetch. **Intentionally NOT smart-parsed** — bug context is a free-form description, parser would not help.
+**Receipt photo path.** The user can attach a receipt photo to a chat message.
+The agent reads the PO ("YY-NNN" format), calls `get_jobs` to match, and only
+then calls `log_receipt` — which surfaces the Confirm card. If no PO matches
+or several do, the agent asks before writing.
 
-**Money action confirm gate (CO):** explicit amber ⚠ banner above the Confirm card + Confirm button. CO Amount field reads back digits + spelled-out form (`$750 — seven hundred fifty dollars`) via `amountToWords` helper from `lib/labelParser.js` — VOICE_AGENT.md money-safety pattern.
+**No chip flow, no smart-Resume contract, no per-flow file.** v1's
+ReceiptFlow / TodoFlow / LeadFlow / COFlow / BugFlow components are gone.
+v1.1's labelParser regex bank is gone. Verb inference is now the LLM's job;
+the chat is the input surface. The trade-off: every captured intent now spends
+one Sonnet call. That is acceptable because the alternative was 5 chip-flow
+components plus a queue table plus a parser plus a smart-Resume contract.
 
 ---
 
@@ -480,10 +512,14 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 ---
 
-## Locked decisions — Master Agent v1
+## Locked decisions — Master Agent v2
 
-- **No auto-archive on pending_tasks.** Manual cleanup with reason-required discard. The visible queue is a discipline tool — intentional.
-- **html2canvas screenshot at tile-tap** — not at resume time. The screen changes during flow; snap at the moment the user decides something is broken.
+- **Chat is the input surface.** Tiles are starter prompts (`TILE_PREFIXES`), not state-machine triggers. Do not reintroduce per-verb chip flows or a queue table — v1's queue layer was overbuilt for a single-tenant tool and was retired in `20260509180000_drop_pending_tasks.sql`.
+- **Confirm card is the only commit point.** Every write verb in `CONFIRM_TOOLS` (currently 5: log_payment, log_receipt, submit_change_order, add_todo, create_job) returns `pending_action` from ai-master-agent. The agent never writes silently. New write tools must be added to this set unless deliberately excluded with a written reason.
+- **Money read-back is non-negotiable.** Money verbs include `amountToWords` output on the Confirm card so misheard digits read obviously wrong. The helper lives in ai-master-agent/index.ts (Deno-compatible). Same VOICE_AGENT money-safety pattern applies if more money verbs are added.
+- **MasterAgent mounts at App.jsx top level.** This is what makes the conversation persistent across `pg` navigation. Do not unmount it on route change. Do not move it inside a screen.
+- **Bug is the inline exception.** Bug submission does not go through ai-master-agent — html2canvas + getSnapshot fire at tile-tap (the screen changes during chat) and the description posts to submit-bug-report directly. Keep this path bypassed; it is intentionally not LLM-mediated.
+- **html2canvas screenshot at tile-tap** — not later. The screen changes during follow-up; snap at the moment the user decides something is broken.
 - **platform_owner flag not hardcoded UUID** — `is_platform_owner BOOLEAN` on profiles. Set manually via SQL UPDATE. Add Blake once email is known.
 - **paste-ready Claude prompt format** — the bug email contains a verbatim paste block. Format is locked; do not simplify into a summary without the 6-task structure.
 
