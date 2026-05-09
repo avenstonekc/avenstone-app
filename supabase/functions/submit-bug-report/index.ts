@@ -56,7 +56,6 @@ Deno.serve(async (req) => {
       console_errors = [],
       network_errors = [],
       screenshot_dataurl,
-      pending_task_id,
     } = body;
 
     if (!description) return json({ ok: false, error: "description required" }, 400);
@@ -251,20 +250,6 @@ ${screenshotHtml}
         .from("bug_reports")
         .update({ email_sent_at: new Date().toISOString() })
         .eq("id", bug_id);
-    }
-
-    // Complete pending task if provided
-    if (pending_task_id) {
-      await admin
-        .from("pending_tasks")
-        .update({
-          status: "complete",
-          resulting_entity_type: "bug_report",
-          resulting_entity_id: bug_id,
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", pending_task_id);
     }
 
     return json({ ok: true, bug_id });

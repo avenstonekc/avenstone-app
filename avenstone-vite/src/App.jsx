@@ -33,7 +33,6 @@ import AiPmDashboard from './components/dashboard/AiPmDashboard';
 import TodayScr from './components/dashboard/TodayScr';
 import MyTodosScreen from './components/todos/MyTodosScreen';
 import BugReportsScr from './components/admin/BugReportsScr';
-import PendingTaskOwnerScr from './components/admin/PendingTaskOwnerScr';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -184,7 +183,6 @@ export default function App() {
     ...(profile?.role === 'owner' ? [{ id: 'sequences', lb: 'Sequences', ic: 'bell', sec: 'Tools' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'owner-portal', lb: 'Owner Portal', ic: 'box', sec: 'Settings' }] : []),
     ...(profile?.is_platform_owner ? [{ id: 'admin-bugs', lb: 'Bug Reports', ic: 'warn', sec: 'Platform' }] : []),
-    ...((profile?.role === 'owner' || profile?.role === 'project_manager') ? [{ id: 'admin-pending', lb: 'Pending Tasks', ic: 'check', sec: 'Settings' }] : []),
   ];
 
   return (
@@ -278,7 +276,6 @@ export default function App() {
             {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
             {pg === 'sequences' && profile?.role === 'owner' && <SequencesScr profile={profile} />}
             {pg === 'admin-bugs' && profile?.is_platform_owner && <BugReportsScr profile={profile} />}
-            {pg === 'admin-pending' && (profile?.role === 'owner' || profile?.role === 'project_manager') && <PendingTaskOwnerScr profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ marginBottom: 16 }}>
