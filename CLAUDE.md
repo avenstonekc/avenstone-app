@@ -324,17 +324,21 @@ This is Avenstone's core competitive advantage. Six surfaces:
 5 quick-action tiles in `MasterAgent.jsx`: Add a receipt, Add to the todo list, Add a new lead, Submit a change order, Submit a bug. Each tile tap triggers:
 1. **Quick capture** — minimal input at tap time (photo for receipt, label for todo/lead/CO, silent snapshot for bug).
 2. **Continue now / Save for later** — creates a `pending_tasks` row. Continue now goes directly into the verb chip flow. Save for later returns to home.
-3. **Verb chip flows** (commits 8–11) — step-by-step chip-driven form: ReceiptFlow, TodoFlow, LeadFlow, COFlow, BugFlow. Each ends with an explicit Confirm step before writing.
+3. **Verb chip flows** — smart-parsing flows: ReceiptFlow, TodoFlow, LeadFlow, COFlow, BugFlow. On mount, each calls `parseReceiptLabel` / `parseTodoLabel` / `parseLeadLabel` / `parseCOLabel` from `lib/labelParser.js` against `pending_tasks.context.quick_label`, seeds per-field state, and asks chips ONLY for genuinely missing fields. Final step is a single Confirm card with per-field Edit buttons.
 
 **Pending tasks lifecycle:** `pending` → `in_progress` → `complete` | `discarded`. Discard requires a reason chip (misclick / duplicate / no_longer_needed / completed_outside_app). No auto-archive — the visible queue is a discipline tool.
 
 **Snooze semantics:** each Resume tap after the first increments `snooze_count` + sets `last_opened_at`. Queue cards show "Snoozed N×" when count > 0.
 
-**Click-first chip flow:** every step is a chip row. Free-text fallback via "Something else (type)" chip (allowOther=true default). Always read back all values in the Confirm step before writing.
+**Smart-Resume contract (v1.1):** Each flow seeds state via the parser → computes `step = editingField || firstNullField || 'confirm'` → renders the matching chip / text input for that one step → on completion sets `editingField=null` and returns to Confirm. Project hint (`matchProjectHint`) substring-matches against active jobs (status IN lead/proposal/contract/in_progress/final_touches): 1 match auto-prefills, 0/many leaves the JobChipPicker rendered. Field names in `labelParser.js` output match the JS write helpers (`vendor`/`amount`/`category`/`project_hint` for receipts, `title`/`due_hint`/`project_hint` for todos, etc.) so smart-Resume seeds state with no translation. Parser is pure regex + keyword scan — no LLM call, no cost, sync.
 
-**BugFlow:** html2canvas screenshot captured at tile-tap (not resume time — screen changes during flow). Silent context snapshot via `getSnapshot()`. Submits to `submit-bug-report` edge fn via authenticated fetch.
+**Click-first chip flow:** every chip step is a row of options. Free-text fallback via "Something else (type)" chip (allowOther=true default). Confirm card always shows the full final read-back before writing.
 
-**Money action confirm gate (CO):** explicit amber ⚠ banner + Confirm button on the final step. No auto-submit on amount entry.
+**Enter-key submit:** every text input across the agent flows submits on Enter. Single-line inputs (vendor name, amount, customer, phone, address, CO title) submit the field on Enter; textareas (notes, CO description) treat Enter as submit and Shift+Enter as newline. JobChipPicker search input picks the first result on Enter.
+
+**BugFlow:** html2canvas screenshot captured at tile-tap (not resume time — screen changes during flow). Silent context snapshot via `getSnapshot()`. Submits to `submit-bug-report` edge fn via authenticated fetch. **Intentionally NOT smart-parsed** — bug context is a free-form description, parser would not help.
+
+**Money action confirm gate (CO):** explicit amber ⚠ banner above the Confirm card + Confirm button. CO Amount field reads back digits + spelled-out form (`$750 — seven hundred fifty dollars`) via `amountToWords` helper from `lib/labelParser.js` — VOICE_AGENT.md money-safety pattern.
 
 ---
 
