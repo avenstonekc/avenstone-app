@@ -91,6 +91,12 @@ export default function JobChipPicker({
           autoFocus
           value={query}
           onChange={handleQueryChange}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && results.length > 0) {
+              e.preventDefault();
+              handleJob(results[0]);
+            }
+          }}
           placeholder="Search by address..."
           style={{
             border: '1px solid #E8E4DC',
