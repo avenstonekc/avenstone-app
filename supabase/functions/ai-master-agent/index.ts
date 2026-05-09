@@ -311,6 +311,22 @@ const TOOLS = [
     },
   },
   {
+    name: "add_todo",
+    description: "Add a todo (action item) for a user. Use this for any 'remind me', 'don't forget', 'follow up', 'call back', 'schedule', or other action-item intent. Distinct from add_note — todos are tracked tasks with due dates and priorities; notes are passive context. If the user says 'add a todo' / 'add to my todo list' / 'remind me to X', ALWAYS pick this tool, not add_note. Auto-applies (no confirmation card).",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "The todo title — what needs doing." },
+        notes: { type: "string", description: "Optional context (defaults to null)." },
+        job_id: { type: "string", description: "Associate with a job (optional). Omit for personal todos." },
+        assigned_to_user_id: { type: "string", description: "Whom to assign (optional, defaults to caller)." },
+        due_date: { type: "string", description: "Optional ISO date (YYYY-MM-DD)." },
+        priority: { type: "string", enum: ["low", "medium", "high"], description: "Optional priority." },
+      },
+      required: ["title"],
+    },
+  },
+  {
     name: "add_knowledge",
     description: "Write a new entry to the company AI knowledge base. Use this when you learn something worth remembering — a preference, policy, pricing insight, or lesson from a job.",
     input_schema: {
@@ -678,6 +694,28 @@ async function executeTool(
         return { success: true, notified: targetIds.length };
       }
 
+      case "add_todo": {
+        // Mirrors sbCreateUserTodo contract: writes to todos with type=user_task, source=manual.
+        const title = String(input.title || "").trim();
+        if (!title) return { error: "title required" };
+        const row: Record<string, unknown> = {
+          tenant_id: tenantId,
+          title,
+          notes: input.notes ? String(input.notes).trim() : null,
+          type: "user_task",
+          source: "manual",
+          status: "open",
+          job_id: input.job_id || null,
+          assigned_to_user_id: input.assigned_to_user_id || userId,
+          created_by_id: userId,
+          due_date: input.due_date || null,
+          priority: input.priority || null,
+        };
+        const { data, error } = await sb.from("todos").insert(row).select().single();
+        if (error) return { error: error.message };
+        return { success: true, todo_id: (data as any).id, title: (data as any).title };
+      }
+
       case "add_knowledge": {
         const { data, error } = await sb.from("ai_knowledge").insert({
           tenant_id: tenantId,
@@ -767,7 +805,7 @@ Tenant: ${tenantId}
 
 WHAT YOU CAN DO:
 - Read: jobs, team, dashboard snapshot, job details
-- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, assign subs, send notifications, write to knowledge base
+- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, assign subs, send notifications, write to knowledge base
 
 HOW TO BEHAVE:
 - Act immediately. Don't ask "should I do X?" — just do it and tell them what you did.
@@ -778,6 +816,7 @@ HOW TO BEHAVE:
 - For money tools (log_payment, log_receipt, submit_change_order): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: if gates fail and the user did not give an override reason, do NOT pass override_reason. The tool result will list failing gates; relay them and ask if the user wants to override.
+- TODO vs NOTE: an action item ("call back X", "follow up", "remind me", "don't forget", "schedule Y", "todo") goes to add_todo. Passive context attached to a job ("FYI…", "the client said…", "noted that…", "for the record…") goes to add_note. When in doubt and the user said "todo", pick add_todo. After writing a todo, the success message should say "Todo added" — never "Note added."
 - Never mention Claude or Anthropic.
 - You are the operating system of this business. Act like it.
 

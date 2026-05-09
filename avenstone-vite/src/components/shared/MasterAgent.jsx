@@ -1283,6 +1283,10 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 setCaptureLabel(task.quick_label || '');
                 setPendingTaskId(task.id);
                 setCaptureErr('');
+                // Resume goes straight into the verb chip flow — quick capture already happened
+                // when this task was first created. Without this, Resume re-shows QuickCapture
+                // and a second pending_tasks row gets created on Continue Now.
+                setFlowActive(true);
                 pushBreadcrumb({ type: 'tap', label: `resume:${task.verb}`, route: 'master-agent' });
               }} />
 
