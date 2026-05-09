@@ -265,7 +265,7 @@ const TOOLS = [
   },
   {
     name: "log_receipt",
-    description: "Record an outbound expense (material purchase, sub payout, misc). Creates transaction only — photo attachment is added later in Financials. Requires confirmation.",
+    description: "Record an outbound expense (material purchase, fuel, permit, sub payout, etc). When the user attached a receipt image, pass image_data and image_mime through so the receipt photo is stored alongside the transaction.",
     input_schema: {
       type: "object",
       properties: {
@@ -273,6 +273,13 @@ const TOOLS = [
         amount: { type: "number" },
         description: { type: "string", description: "What was purchased / who was paid" },
         vendor: { type: "string", description: "Vendor or payee name" },
+        type: {
+          type: "string",
+          enum: ["material_purchase", "fuel", "permit", "sub_payout", "vendor_payment", "commission", "other_expense", "equipment_rental"],
+          description: "Expense category. Default to material_purchase for home improvement stores; fuel for gas stations; permit for permit/inspection offices; otherwise other_expense.",
+        },
+        image_data: { type: "string", description: "Base64-encoded receipt image (no data: prefix). Forward whatever image the user attached." },
+        image_mime: { type: "string", description: "MIME type of the attached image, e.g. image/jpeg. Required when image_data is set." },
       },
       required: ["job_id", "amount", "description"],
     },
@@ -577,13 +584,20 @@ async function executeTool(
       }
 
       case "log_receipt": {
-        // Matches TransactionModal default for new outbound rows.
-        // Constraint job_transactions_type_check rejects 'expense'.
+        // Type from agent input or default. Constraint job_transactions_type_check
+        // restricts to: client_payment, client_deposit, client_refund, sub_payout,
+        // vendor_payment, material_purchase, equipment_rental, permit, fuel,
+        // commission, other_expense, other_income.
+        const ALLOWED_OUT = new Set([
+          "material_purchase", "fuel", "permit", "sub_payout",
+          "vendor_payment", "commission", "other_expense", "equipment_rental",
+        ]);
+        const txType = ALLOWED_OUT.has(String(input.type)) ? String(input.type) : "material_purchase";
         const { data, error } = await sb.from("job_transactions").insert({
           tenant_id: tenantId,
           job_id: input.job_id,
           direction: "out",
-          type: "material_purchase",
+          type: txType,
           amount: Number(input.amount),
           description: input.description,
           payer_or_payee_name: input.vendor || null,
@@ -593,11 +607,37 @@ async function executeTool(
           created_at: new Date().toISOString(),
         }).select().single();
         if (error) return { error: error.message };
+        const txId = (data as any).id;
+
+        // Best-effort receipt photo upload — mirrors sbUploadReceipt path/bucket
+        // shape so TransactionModal renders it in the existing Receipt slot.
+        let receiptPath: string | null = null;
+        let receiptError: string | null = null;
+        if (input.image_data && input.image_mime) {
+          try {
+            const mime = String(input.image_mime);
+            const ext = (mime.split("/")[1] || "jpg").toLowerCase();
+            const path = `${input.job_id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+            const bytes = Uint8Array.from(atob(String(input.image_data)), (c) => c.charCodeAt(0));
+            const { error: upErr } = await sb.storage.from("job-receipts").upload(path, bytes, { contentType: mime, upsert: false });
+            if (upErr) { receiptError = upErr.message; }
+            else {
+              receiptPath = path;
+              const { error: updErr } = await sb.from("job_transactions").update({ receipt_url: path }).eq("id", txId);
+              if (updErr) receiptError = updErr.message;
+            }
+          } catch (e) {
+            receiptError = String(e);
+          }
+        }
+
         return {
           success: true,
-          transaction_id: (data as any).id,
+          transaction_id: txId,
           amount: (data as any).amount,
-          note: "Open Financials, tap the transaction, and upload the receipt photo.",
+          type: txType,
+          receipt_attached: !!receiptPath,
+          receipt_error: receiptError,
         };
       }
 
@@ -708,7 +748,24 @@ HOW TO BEHAVE:
 - For money tools (log_payment, log_receipt, submit_change_order): your text response should describe what's about to happen in one plain sentence. The system will pause for user confirmation; do not assume the action ran.
 - For advance_phase: if gates fail and the user did not give an override reason, do NOT pass override_reason. The tool result will list failing gates; relay them and ask if the user wants to override.
 - Never mention Claude or Anthropic.
-- You are the operating system of this business. Act like it.`;
+- You are the operating system of this business. Act like it.
+
+RECEIPT FROM PHOTO:
+When the user attaches an image of a receipt, extract: vendor name, total amount, date, and PO number.
+- The PO on Avenstone receipts is in YY-NNN format (e.g. "26-014", "26-002"). It may be labeled "PO", "PO#", "P.O.", "Job", or "Job#".
+- ALWAYS call get_jobs with the PO to find the matching job before calling log_receipt.
+  • 0 matches → do NOT call log_receipt; ask the user which job this belongs to.
+  • 1 match → proceed with that job_id.
+  • 2+ matches → do NOT call log_receipt; list the candidates (address + PO) and ask which one.
+- If no PO is visible on the receipt, or your confidence in the PO is low, ask the user which job before calling log_receipt.
+- Vendor → transaction type inference (Avenstone GC defaults):
+  • Home Depot, Lowe's, Menards, Ace, lumber yards, plumbing supply, electrical supply → material_purchase
+  • Gas stations (Shell, BP, Phillips 66, QuikTrip, Casey's, etc.) → fuel
+  • City permit office, building department → permit
+  • Otherwise → other_expense
+- When you call log_receipt, ALWAYS pass image_data + image_mime through from the user's message so the photo is bound to the transaction's receipt_url.
+- The confirmation card description should lead with the matched job address (the most prominent field), then vendor, amount, and PO. Example: "Log $142.37 expense at 123 Test Flow Dr — Home Depot (PO 26-002)."
+- If the user's text message conflicts with what you read on the receipt, the user's text wins.`;
 
   const actions: Array<{ tool: string; input: unknown; result: unknown }> = [];
   let currentMessages = [...messages];
@@ -814,13 +871,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!message) {
+    // Allow string OR content array (multimodal: image + text blocks)
+    const hasContent =
+      (typeof message === "string" && message.trim().length > 0) ||
+      (Array.isArray(message) && message.length > 0);
+    if (!hasContent) {
       return new Response(JSON.stringify({ error: "Missing message" }), {
         status: 400, headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
 
-    // Build message history
+    // Build message history. Content can be a string or an array of blocks
+    // (text + image) — pass through unchanged so vision works.
     const history = (conversation_history || []).slice(-20);
     const messages: Array<{ role: string; content: unknown }> = [
       ...history,

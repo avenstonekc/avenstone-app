@@ -1,6 +1,42 @@
 import { useState, useEffect, useRef } from 'react';
 import { AI_MASTER_URL, ANON_KEY, captureFailedIntent } from '../../lib/supabase';
 
+// Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
+const MAX_EDGE = 1024;
+const ANTHROPIC_OK = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+async function fileToVisionPayload(file) {
+  let working = file;
+  let mime = file.type || 'image/jpeg';
+  if (/heic|heif/i.test(mime) || /\.heic$|\.heif$/i.test(file.name)) {
+    const heic2any = (await import('heic2any')).default;
+    const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+    working = blob instanceof Blob ? blob : blob[0];
+    mime = 'image/jpeg';
+  }
+  if (!ANTHROPIC_OK.has(mime)) mime = 'image/jpeg';
+  const dataUrl = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(working);
+  });
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = dataUrl;
+  });
+  const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+  const out = canvas.toDataURL('image/jpeg', 0.85);
+  return { base64: out.split(',')[1], mime: 'image/jpeg', preview: out };
+}
+
 const EXAMPLE_PROMPTS = [
   'Show me what needs attention today',
   'Create a new job at 742 Evergreen Terrace for Homer Simpson',
@@ -126,8 +162,12 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [loading, setLoading] = useState(false);
   const [showPulse, setShowPulse] = useState(true);
   const [pendingConfirm, setPendingConfirm] = useState(null);
+  const [attachment, setAttachment] = useState(null); // { base64, mime, preview }
+  const [attaching, setAttaching] = useState(false);
+  const [attachErr, setAttachErr] = useState('');
   const threadRef = useRef(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
 
   const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -218,24 +258,64 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
 
   const sendMessage = async (text) => {
     const trimmed = (text || input).trim();
-    if (!trimmed || loading) return;
+    if (loading) return;
+    if (!trimmed && !attachment) return;
     if (pendingConfirm) setPendingConfirm(null);
 
-    const userMsg = { role: 'user', content: trimmed };
+    const messageContent = attachment
+      ? [
+          { type: 'image', source: { type: 'base64', media_type: attachment.mime, data: attachment.base64 } },
+          ...(trimmed ? [{ type: 'text', text: trimmed }] : []),
+        ]
+      : trimmed;
+
+    const userMsg = { role: 'user', content: messageContent };
     const newHistory = [...conversationHistory, userMsg];
 
-    setMessages((prev) => [...prev, { type: 'user', text: trimmed }]);
+    const displayText = trimmed || (attachment ? '[image attached]' : '');
+    setMessages((prev) => [...prev, { type: 'user', text: displayText, image: attachment?.preview || null }]);
     setConversationHistory(newHistory);
     setInput('');
+    setAttachment(null);
+    setAttachErr('');
 
     await callMaster({
       user_id: profile?.id,
       tenant_id: profile?.tenant_id,
       role: profile?.role,
       full_name: profile?.full_name,
-      message: trimmed,
+      message: messageContent,
       conversation_history: newHistory,
-    }, trimmed);
+    }, displayText);
+  };
+
+  const onAttachClick = () => fileRef.current?.click();
+
+  const onFilePicked = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setAttachErr('');
+    setAttaching(true);
+    try {
+      const payload = await fileToVisionPayload(file);
+      // Anthropic 5MB ceiling per image (base64 expands ~33%); after canvas resize at 1024px JPEG-85 we're well under.
+      if (payload.base64.length > 5 * 1024 * 1024 * 1.34) {
+        setAttachErr('Image too large after compression. Try a smaller photo.');
+        setAttaching(false);
+        return;
+      }
+      setAttachment(payload);
+    } catch (err) {
+      setAttachErr('Could not read image. HEIC, JPG, PNG only.');
+    } finally {
+      setAttaching(false);
+    }
+  };
+
+  const removeAttachment = () => {
+    setAttachment(null);
+    setAttachErr('');
   };
 
   const confirmPending = async () => {
@@ -533,6 +613,13 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   wordBreak: 'break-word',
                 }}
               >
+                {msg.image && (
+                  <img
+                    src={msg.image}
+                    alt="attachment"
+                    style={{ maxWidth: '100%', borderRadius: 10, marginBottom: msg.text ? 8 : 0, display: 'block' }}
+                  />
+                )}
                 {msg.text}
                 {msg.type === 'ai' && <ActionsPanel actions={msg.actions} />}
               </div>
@@ -678,11 +765,67 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             padding: '10px 14px 16px',
             borderTop: '1px solid rgba(201,168,76,0.15)',
             display: 'flex',
-            alignItems: 'flex-end',
-            gap: 10,
+            flexDirection: 'column',
+            gap: 8,
             flexShrink: 0,
           }}
         >
+          {(attachment || attaching || attachErr) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {attaching && (
+                <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'rgba(247,245,240,0.55)' }}>Processing image…</span>
+              )}
+              {attachment && !attaching && (
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <img src={attachment.preview} alt="attachment preview" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(201,168,76,0.45)' }} />
+                  <button
+                    onClick={removeAttachment}
+                    aria-label="Remove attachment"
+                    style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#0A1F44', border: '1px solid #C9A84C', color: '#F7F5F0', fontSize: 11, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                  >×</button>
+                </div>
+              )}
+              {attachErr && (
+                <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: '#FCA5A5' }}>{attachErr}</span>
+              )}
+            </div>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,.heic,.heif"
+            capture="environment"
+            onChange={onFilePicked}
+            style={{ display: 'none' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+          <button
+            onClick={onAttachClick}
+            disabled={loading || attaching}
+            title="Attach image"
+            aria-label="Attach image"
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.07)',
+              border: '1px solid rgba(201,168,76,0.3)',
+              color: 'rgba(247,245,240,0.75)',
+              cursor: loading || attaching ? 'default' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              marginBottom: 2,
+              transition: 'background 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={(e) => { if (!loading && !attaching) e.currentTarget.style.borderColor = 'rgba(201,168,76,0.6)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(201,168,76,0.3)'; }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
           <textarea
             ref={inputRef}
             rows={2}
@@ -711,14 +854,14 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           />
           <button
             onClick={() => sendMessage()}
-            disabled={loading || !input.trim()}
+            disabled={loading || (!input.trim() && !attachment)}
             style={{
               width: 42,
               height: 42,
               borderRadius: '50%',
-              background: loading || !input.trim() ? 'rgba(201,168,76,0.3)' : '#C9A84C',
+              background: loading || (!input.trim() && !attachment) ? 'rgba(201,168,76,0.3)' : '#C9A84C',
               border: 'none',
-              cursor: loading || !input.trim() ? 'default' : 'pointer',
+              cursor: loading || (!input.trim() && !attachment) ? 'default' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -727,7 +870,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               marginBottom: 2,
             }}
             onMouseEnter={(e) => {
-              if (!loading && input.trim()) e.currentTarget.style.transform = 'scale(1.08)';
+              if (!loading && (input.trim() || attachment)) e.currentTarget.style.transform = 'scale(1.08)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.transform = 'scale(1)';
@@ -739,7 +882,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               height="18"
               viewBox="0 0 24 24"
               fill="none"
-              stroke={loading || !input.trim() ? 'rgba(10,31,68,0.5)' : '#0A1F44'}
+              stroke={loading || (!input.trim() && !attachment) ? 'rgba(10,31,68,0.5)' : '#0A1F44'}
               strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -748,6 +891,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               <polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>
           </button>
+          </div>
         </div>
       </div>
     </>
