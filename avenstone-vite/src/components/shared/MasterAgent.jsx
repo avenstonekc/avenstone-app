@@ -6,6 +6,18 @@ import { sbCreatePendingTask, sbUpdatePendingTask, sbCompletePendingTask } from 
 import PendingTaskListReal from './PendingTaskList';
 import ChipPicker from './ChipPicker';
 import JobChipPicker from './JobChipPicker';
+import { parseReceiptLabel, parseTodoLabel, parseLeadLabel, parseCOLabel, matchProjectHint, amountToWords } from '../../lib/labelParser';
+
+const ACTIVE_JOB_STATUSES = ['lead', 'proposal', 'contract', 'in_progress', 'final_touches'];
+
+async function loadActiveJobs() {
+  const { data } = await sb.from('jobs')
+    .select('id, address, status')
+    .in('status', ACTIVE_JOB_STATUSES)
+    .order('updated_at', { ascending: false })
+    .limit(50);
+  return data || [];
+}
 
 // Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
 const MAX_EDGE = 1024;
@@ -54,50 +66,15 @@ const QUICK_TILES = [
 // PendingTaskList — delegates to real component (imported above)
 function PendingTaskList({ onResume }) { return <PendingTaskListReal onResume={onResume} />; }
 
-// TodoQuickAdd — single-step inline form for the 'todo' verb. No chip flow, no
-// pending_tasks queue. Title-only. Priority / due / notes are an edit-later
-// concern in MyTodosScreen — putting a half-filled todo through a separate
-// queue is friction. If it's incomplete, that's what the todo list shows.
-function TodoQuickAdd({ profile, onComplete, onBack }) {
-  const [label, setLabel] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const canProceed = label.trim().length >= 3;
-
-  const handleAdd = async () => {
-    if (!canProceed) return;
-    setSaving(true);
-    setError('');
-    try {
-      await sbCreateUserTodo({
-        title: label.trim(),
-        notes: null,
-        jobId: null,
-        assignedToUserId: profile?.id,
-        dueDate: null,
-        priority: null,
-      });
-      onComplete('Todo added ✓');
-    } catch (e) {
-      setError(`Failed: ${e.message || e}`);
-      setSaving(false);
-    }
-  };
-
+// FieldRow — single row in the Confirm card. Label, value, Edit button.
+function FieldRow({ label, value, onEdit }) {
   return (
-    <div style={{ background: 'rgba(247,245,240,0.08)', border: '1px solid rgba(201,168,76,0.3)', borderRadius: 10, padding: 16, fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: 'rgba(247,245,240,0.9)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ fontWeight: 500 }}>What is this todo?</div>
-      <input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Min 3 characters..." autoFocus
-        onKeyDown={e => { if (e.key === 'Enter' && canProceed && !saving) handleAdd(); }}
-        style={{ border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none' }} />
-      {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
-      <button disabled={!canProceed || saving} onClick={handleAdd}
-        style={{ padding: '10px 12px', borderRadius: 8, background: canProceed ? '#C9A84C' : 'rgba(201,168,76,0.3)', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: canProceed && !saving ? 'pointer' : 'default' }}>
-        {saving ? 'Adding…' : 'Add todo'}
-      </button>
-      <div style={{ fontSize: 11, color: 'rgba(247,245,240,0.45)' }}>Priority, due date, and notes can be edited later from the Todos screen.</div>
-      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.45)', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left' }}>← Back</button>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '6px 0' }}>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: 11, color: 'rgba(247,245,240,0.55)', display: 'block', marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+        <span style={{ fontSize: 14, color: 'rgba(247,245,240,0.95)', fontWeight: 500, wordBreak: 'break-word' }}>{value || <span style={{ color: 'rgba(247,245,240,0.4)' }}>—</span>}</span>
+      </span>
+      <button onClick={onEdit} style={{ background: 'none', border: '1px solid rgba(201,168,76,0.4)', borderRadius: 6, padding: '4px 10px', color: '#C9A84C', fontSize: 12, fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', flexShrink: 0 }}>Edit</button>
     </div>
   );
 }
@@ -250,15 +227,16 @@ const CATEGORY_CHIPS = [
   { id: 'Other', label: 'Other' },
 ];
 
-function ReceiptFlow({ profile, initContext, pendingTaskId, onComplete, onBack }) {
-  const [step, setStep] = useState('vendor');
-  const [vendor, setVendor] = useState('');
+function ReceiptFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, onBack }) {
+  const [vendor, setVendor] = useState(null);
   const [vendors, setVendors] = useState([]);
-  const [loadingVendors, setLoadingVendors] = useState(true);
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('');
+  const [amount, setAmount] = useState(null);
+  const [amountInput, setAmountInput] = useState('');
+  const [category, setCategory] = useState(null);
   const [jobId, setJobId] = useState(null);
-  const [jobLabel, setJobLabel] = useState('');
+  const [jobLabel, setJobLabel] = useState(null);
+  const [editingField, setEditingField] = useState(null);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -272,26 +250,51 @@ function ReceiptFlow({ profile, initContext, pendingTaskId, onComplete, onBack }
         .gte('created_at', ago)
         .order('created_at', { ascending: false })
         .limit(50);
-      if (data) {
-        const seen = new Set();
-        const unique = [];
-        for (const r of data) {
-          if (r.payer_or_payee_name && !seen.has(r.payer_or_payee_name)) {
-            seen.add(r.payer_or_payee_name);
-            unique.push({ id: r.payer_or_payee_name, label: r.payer_or_payee_name });
-            if (unique.length >= 8) break;
-          }
+      const seen = new Set();
+      const vlist = [];
+      for (const r of (data || [])) {
+        if (r.payer_or_payee_name && !seen.has(r.payer_or_payee_name)) {
+          seen.add(r.payer_or_payee_name);
+          vlist.push({ id: r.payer_or_payee_name, label: r.payer_or_payee_name });
+          if (vlist.length >= 8) break;
         }
-        setVendors(unique);
       }
-      setLoadingVendors(false);
+      setVendors(vlist);
+
+      const activeJobs = await loadActiveJobs();
+      const recentNames = vlist.map(v => v.label);
+      const parsed = parseReceiptLabel(initLabel || '', recentNames);
+      if (parsed.vendor) setVendor(parsed.vendor);
+      if (parsed.amount != null && parsed.amount > 0) { setAmount(parsed.amount); setAmountInput(String(parsed.amount)); }
+      if (parsed.category) setCategory(parsed.category);
+      if (parsed.project_hint) {
+        const matches = matchProjectHint(parsed.project_hint, activeJobs);
+        if (matches.length === 1) { setJobId(matches[0].id); setJobLabel(matches[0].address); }
+      }
+      setLoaded(true);
     })();
   }, []);
 
   const containerStyle = { display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'DM Sans, sans-serif' };
   const labelStyle = { fontSize: 13, fontWeight: 600, color: 'rgba(247,245,240,0.85)', marginBottom: 4 };
+  const inputStyle = { border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 16, outline: 'none', width: '100%', boxSizing: 'border-box' };
+  const backStyle = { background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' };
 
-  const amtNum = parseFloat(amount.replace(/[^0-9.]/g, ''));
+  const firstMissing = () => {
+    if (!vendor) return 'vendor';
+    if (amount == null || !(amount > 0)) return 'amount';
+    if (!category) return 'category';
+    if (!jobId && jobLabel !== 'Overhead') return 'project';
+    return 'confirm';
+  };
+  const step = editingField || firstMissing();
+
+  const submitAmount = () => {
+    const n = parseFloat((amountInput || '').replace(/[^0-9.]/g, ''));
+    if (!(n > 0)) return;
+    setAmount(n);
+    setEditingField(null);
+  };
 
   const handleConfirm = async () => {
     setSaving(true);
@@ -301,7 +304,7 @@ function ReceiptFlow({ profile, initContext, pendingTaskId, onComplete, onBack }
       job_id: jobId || null,
       direction: 'out',
       type: CATEGORY_MAP[category] || 'other_expense',
-      amount: amtNum,
+      amount,
       description: `${category} — ${vendor}`,
       payer_or_payee_name: vendor,
       status: 'paid',
@@ -314,66 +317,67 @@ function ReceiptFlow({ profile, initContext, pendingTaskId, onComplete, onBack }
     onComplete('Receipt logged ✓');
   };
 
+  if (!loaded) return <div style={containerStyle}><div style={{ fontSize: 12, color: 'rgba(247,245,240,0.5)' }}>Loading…</div></div>;
+
   if (step === 'vendor') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Who did you pay?</div>
-      {loadingVendors ? <div style={{ fontSize: 12, color: 'rgba(247,245,240,0.5)' }}>Loading recent vendors…</div> : (
-        <ChipPicker chips={vendors} allowOther={true} otherLabel="New vendor (type)" onSelect={c => { setVendor(c.isOther ? c.otherText : c.label); setStep('amount'); }} />
-      )}
-      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <ChipPicker chips={vendors} allowOther={true} otherLabel="New vendor (type)" onSelect={c => { setVendor(c.isOther ? c.otherText : c.label); setEditingField(null); }} />
+      <button onClick={onBack} style={backStyle}>← Back</button>
     </div>
   );
 
   if (step === 'amount') return (
     <div style={containerStyle}>
-      <div style={labelStyle}>How much? ({vendor})</div>
+      <div style={labelStyle}>How much?{vendor ? ` (${vendor})` : ''}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ color: 'rgba(247,245,240,0.7)', fontSize: 18 }}>$</span>
-        <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" autoFocus
-          style={{ flex: 1, border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 16, outline: 'none' }} />
+        <input type="text" inputMode="decimal" value={amountInput} onChange={e => setAmountInput(e.target.value)} placeholder="0.00" autoFocus
+          onKeyDown={e => { if (e.key === 'Enter') submitAmount(); }}
+          style={{ ...inputStyle, flex: 1 }} />
       </div>
-      <button onClick={() => setStep('category')} disabled={!(amtNum > 0)}
-        className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
-      <button onClick={() => setStep('vendor')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <button onClick={submitAmount} disabled={!(parseFloat((amountInput || '').replace(/[^0-9.]/g, '')) > 0)} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
   if (step === 'category') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Category</div>
-      <ChipPicker chips={CATEGORY_CHIPS} allowOther={false} onSelect={c => { setCategory(c.label); setStep('project'); }} />
-      <button onClick={() => setStep('amount')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <ChipPicker chips={CATEGORY_CHIPS} allowOther={false} onSelect={c => { setCategory(c.label); setEditingField(null); }} />
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
   if (step === 'project') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Which project?</div>
-      <JobChipPicker includeOverhead={true} onSelect={s => { setJobId(s.isOverhead ? null : s.jobId); setJobLabel(s.jobLabel); setStep('confirm'); }} />
-      <button onClick={() => setStep('category')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <JobChipPicker includeOverhead={true} onSelect={s => {
+        if (s.isOverhead) { setJobId(null); setJobLabel('Overhead'); } else { setJobId(s.jobId); setJobLabel(s.jobLabel); }
+        setEditingField(null);
+      }} />
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
-  if (step === 'confirm') return (
+  // confirm
+  return (
     <div style={containerStyle}>
-      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, fontSize: 14, color: 'rgba(247,245,240,0.85)', lineHeight: 1.6 }}>
-        Logging <strong>${amtNum.toFixed(2)}</strong> at <strong>{vendor}</strong>, category <strong>{category}</strong>, project <strong>{jobLabel}</strong>. Confirm?
+      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, color: 'rgba(247,245,240,0.85)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontWeight: 600, color: '#C9A84C', marginBottom: 6, fontSize: 13 }}>Adding a receipt: confirm details</div>
+        <FieldRow label="Vendor" value={vendor} onEdit={() => setEditingField('vendor')} />
+        <FieldRow label="Amount" value={amount != null ? `$${amount.toFixed(2)}` : null} onEdit={() => { setAmountInput(amount != null ? String(amount) : ''); setEditingField('amount'); }} />
+        <FieldRow label="Category" value={category} onEdit={() => setEditingField('category')} />
+        <FieldRow label="Project" value={jobLabel} onEdit={() => setEditingField('project')} />
       </div>
       {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={handleConfirm} disabled={saving}
-          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-          {saving ? 'Saving…' : 'Confirm'}
-        </button>
-        <button onClick={() => setStep('project')} disabled={saving}
-          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
-          Edit
-        </button>
-      </div>
+      <button onClick={handleConfirm} disabled={saving}
+        style={{ padding: '10px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        {saving ? 'Saving…' : 'Confirm'}
+      </button>
+      <button onClick={onBack} style={backStyle}>← Back</button>
     </div>
   );
-
-  return null;
 }
 
 const PRIORITY_CHIPS = [
@@ -401,19 +405,54 @@ function resolveDueDate(chipId, customDate) {
 }
 
 function TodoFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, onBack }) {
-  const [step, setStep] = useState('project');
+  const [title, setTitle] = useState(null);
+  const [titleInput, setTitleInput] = useState('');
   const [jobId, setJobId] = useState(null);
-  const [jobLabel, setJobLabel] = useState('');
+  const [jobLabel, setJobLabel] = useState(null);
   const [isPersonal, setIsPersonal] = useState(false);
   const [priority, setPriority] = useState('medium');
-  const [dueDateChip, setDueDateChip] = useState('no_due_date');
+  const [dueDateChip, setDueDateChip] = useState(null);
   const [customDate, setCustomDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [editingField, setEditingField] = useState(null);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    (async () => {
+      const activeJobs = await loadActiveJobs();
+      const parsed = parseTodoLabel(initLabel || '');
+      if (parsed.title) { setTitle(parsed.title); setTitleInput(parsed.title); }
+      if (parsed.due_hint) setDueDateChip(parsed.due_hint);
+      if (parsed.project_hint) {
+        const matches = matchProjectHint(parsed.project_hint, activeJobs);
+        if (matches.length === 1) { setJobId(matches[0].id); setJobLabel(matches[0].address); setIsPersonal(false); }
+      }
+      setLoaded(true);
+    })();
+  }, []);
+
   const labelStyle = { fontSize: 13, fontWeight: 600, color: 'rgba(247,245,240,0.85)', marginBottom: 4, fontFamily: 'DM Sans, sans-serif' };
   const containerStyle = { display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'DM Sans, sans-serif' };
+  const inputStyle = { border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' };
+  const backStyle = { background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' };
+
+  const projectChosen = isPersonal || !!jobId;
+  const dueChosen = dueDateChip != null;
+  const firstMissing = () => {
+    if (!title || !title.trim()) return 'title';
+    if (!projectChosen) return 'project';
+    return 'confirm';
+  };
+  const step = editingField || firstMissing();
+
+  const submitTitle = () => {
+    const t = (titleInput || '').trim();
+    if (t.length < 3) return;
+    setTitle(t);
+    setEditingField(null);
+  };
 
   const handleConfirm = async () => {
     setSaving(true);
@@ -421,7 +460,7 @@ function TodoFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, 
     const dueDate = resolveDueDate(dueDateChip, customDate);
     try {
       const data = await sbCreateUserTodo({
-        title: initLabel || 'New todo',
+        title: title || initLabel || 'New todo',
         notes: notes.trim() || null,
         jobId: isPersonal ? null : (jobId || null),
         assignedToUserId: profile?.id,
@@ -437,24 +476,36 @@ function TodoFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, 
     }
   };
 
+  if (!loaded) return <div style={containerStyle}><div style={{ fontSize: 12, color: 'rgba(247,245,240,0.5)' }}>Loading…</div></div>;
+
+  if (step === 'title') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>What is this todo?</div>
+      <input type="text" value={titleInput} onChange={e => setTitleInput(e.target.value)} placeholder="Min 3 characters..." autoFocus
+        onKeyDown={e => { if (e.key === 'Enter') submitTitle(); }}
+        style={inputStyle} />
+      <button onClick={submitTitle} disabled={(titleInput || '').trim().length < 3} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
+    </div>
+  );
+
   if (step === 'project') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Which project? (or Personal)</div>
       <JobChipPicker includePersonal={true} onSelect={s => {
-        setIsPersonal(s.isPersonal);
+        setIsPersonal(!!s.isPersonal);
         setJobId(s.isPersonal ? null : s.jobId);
         setJobLabel(s.isPersonal ? 'Personal' : s.jobLabel);
-        setStep('priority');
+        setEditingField(null);
       }} />
-      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
   if (step === 'priority') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Priority</div>
-      <ChipPicker chips={PRIORITY_CHIPS} allowOther={false} onSelect={c => { setPriority(c.id); setStep('due'); }} />
-      <button onClick={() => setStep('project')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <ChipPicker chips={PRIORITY_CHIPS} allowOther={false} onSelect={c => { setPriority(c.id); setEditingField(null); }} />
     </div>
   );
 
@@ -463,20 +514,16 @@ function TodoFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, 
       <div style={labelStyle}>Due date</div>
       <ChipPicker chips={DUE_DATE_CHIPS} allowOther={false} onSelect={c => {
         setDueDateChip(c.id);
-        if (c.id === 'pick_date') { setStep('pick_date'); } else { setStep('notes'); }
+        if (c.id === 'pick_date') { setEditingField('pick_date'); } else { setEditingField(null); }
       }} />
-      <button onClick={() => setStep('priority')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
     </div>
   );
 
   if (step === 'pick_date') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Choose a date</div>
-      <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)}
-        style={{ border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none' }} />
-      <button onClick={() => setStep('notes')} disabled={!customDate}
-        className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
-      <button onClick={() => setStep('due')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} style={inputStyle} />
+      <button onClick={() => setEditingField(null)} disabled={!customDate} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
     </div>
   );
 
@@ -484,36 +531,33 @@ function TodoFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, 
     <div style={containerStyle}>
       <div style={labelStyle}>Notes (optional)</div>
       <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Add context..."
-        style={{ border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none', resize: 'none' }} />
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={() => setStep('confirm')} className="btn btn-navy" style={{ fontSize: 13, flex: 1 }}>Next →</button>
-        <button onClick={() => setStep('confirm')} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>Skip</button>
-      </div>
-      <button onClick={() => setStep('due')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setEditingField(null); } }}
+        style={{ ...inputStyle, resize: 'none' }} />
+      <button onClick={() => setEditingField(null)} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
     </div>
   );
 
-  if (step === 'confirm') return (
+  // confirm
+  const dueResolved = resolveDueDate(dueDateChip, customDate);
+  const dueDisplay = dueResolved || (dueDateChip === 'no_due_date' ? 'No due date' : null);
+  return (
     <div style={containerStyle}>
-      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, fontSize: 14, color: 'rgba(247,245,240,0.85)', lineHeight: 1.6 }}>
-        Adding todo: <strong>{initLabel}</strong><br />
-        Project: <strong>{jobLabel || 'None'}</strong> · Priority: <strong>{priority}</strong> · Due: <strong>{resolveDueDate(dueDateChip, customDate) || 'None'}</strong>
+      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, color: 'rgba(247,245,240,0.85)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontWeight: 600, color: '#C9A84C', marginBottom: 6, fontSize: 13 }}>Adding a todo: confirm details</div>
+        <FieldRow label="Title" value={title} onEdit={() => { setTitleInput(title || ''); setEditingField('title'); }} />
+        <FieldRow label="Project" value={isPersonal ? 'Personal' : jobLabel} onEdit={() => setEditingField('project')} />
+        <FieldRow label="Priority" value={priority} onEdit={() => setEditingField('priority')} />
+        <FieldRow label="Due" value={dueDisplay} onEdit={() => setEditingField('due')} />
+        <FieldRow label="Notes" value={notes ? notes : null} onEdit={() => setEditingField('notes')} />
       </div>
       {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={handleConfirm} disabled={saving}
-          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-          {saving ? 'Saving…' : 'Confirm'}
-        </button>
-        <button onClick={() => setStep('notes')} disabled={saving}
-          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
-          Edit
-        </button>
-      </div>
+      <button onClick={handleConfirm} disabled={saving}
+        style={{ padding: '10px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        {saving ? 'Saving…' : 'Confirm'}
+      </button>
+      <button onClick={onBack} style={backStyle}>← Back</button>
     </div>
   );
-
-  return null;
 }
 
 const LEAD_SOURCE_CHIPS = [
@@ -524,19 +568,74 @@ const LEAD_SOURCE_CHIPS = [
   { id: 'phone_in', label: 'Phone-in' },
 ];
 
+function formatPhone(digits) {
+  if (!digits) return digits;
+  const d = String(digits).replace(/\D/g, '');
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  return digits;
+}
+
 function LeadFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, onBack }) {
-  const [step, setStep] = useState('customer_name');
-  const [customerName, setCustomerName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [source, setSource] = useState('');
+  const [customerName, setCustomerName] = useState(null);
+  const [customerNameInput, setCustomerNameInput] = useState('');
+  const [phone, setPhone] = useState(null);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [address, setAddress] = useState(null);
+  const [addressInput, setAddressInput] = useState('');
+  const [source, setSource] = useState(null);
   const [notes, setNotes] = useState('');
+  const [editingField, setEditingField] = useState(null);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const parsed = parseLeadLabel(initLabel || '');
+    if (parsed.customer_name) { setCustomerName(parsed.customer_name); setCustomerNameInput(parsed.customer_name); }
+    if (parsed.phone) { setPhone(parsed.phone); setPhoneInput(formatPhone(parsed.phone)); }
+    if (parsed.address) { setAddress(parsed.address); setAddressInput(parsed.address); }
+    if (parsed.source) setSource(parsed.source);
+    setLoaded(true);
+  }, []);
 
   const labelStyle = { fontSize: 13, fontWeight: 600, color: 'rgba(247,245,240,0.85)', marginBottom: 4, fontFamily: 'DM Sans, sans-serif' };
   const containerStyle = { display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'DM Sans, sans-serif' };
   const inputStyle = { border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' };
+  const backStyle = { background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' };
+
+  const firstMissing = () => {
+    if (!customerName) return 'customer_name';
+    if (!phone) return 'phone';
+    if (!address) return 'address';
+    if (!source) return 'source';
+    return 'confirm';
+  };
+  const step = editingField || firstMissing();
+
+  const submitName = () => {
+    const v = (customerNameInput || '').trim();
+    if (!v) return;
+    setCustomerName(v);
+    setEditingField(null);
+  };
+  const submitPhone = () => {
+    const v = (phoneInput || '').trim();
+    if (!v) return;
+    setPhone(v);
+    setEditingField(null);
+  };
+  const submitAddress = () => {
+    const v = (addressInput || '').trim();
+    if (!v) return;
+    setAddress(v);
+    setEditingField(null);
+  };
+
+  const sourceLabel = (id) => {
+    if (!id) return null;
+    const m = LEAD_SOURCE_CHIPS.find(c => c.id === id);
+    return m ? m.label : id;
+  };
 
   const handleConfirm = async () => {
     setSaving(true);
@@ -561,94 +660,141 @@ function LeadFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, 
     onComplete('Lead added ✓');
   };
 
+  if (!loaded) return <div style={containerStyle}><div style={{ fontSize: 12, color: 'rgba(247,245,240,0.5)' }}>Loading…</div></div>;
+
   if (step === 'customer_name') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Customer name</div>
-      <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Full name" autoFocus style={inputStyle} />
-      <button onClick={() => setStep('phone')} disabled={!customerName.trim()} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
-      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <input type="text" value={customerNameInput} onChange={e => setCustomerNameInput(e.target.value)} placeholder="Full name" autoFocus
+        onKeyDown={e => { if (e.key === 'Enter') submitName(); }}
+        style={inputStyle} />
+      <button onClick={submitName} disabled={!(customerNameInput || '').trim()} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
   if (step === 'phone') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Phone number</div>
-      <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(816) 555-0100" style={inputStyle} />
-      <button onClick={() => setStep('address')} disabled={!phone.trim()} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
-      <button onClick={() => setStep('customer_name')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <input type="tel" value={phoneInput} onChange={e => setPhoneInput(e.target.value)} placeholder="(816) 555-0100" autoFocus
+        onKeyDown={e => { if (e.key === 'Enter') submitPhone(); }}
+        style={inputStyle} />
+      <button onClick={submitPhone} disabled={!(phoneInput || '').trim()} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
   if (step === 'address') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Job address</div>
-      <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St, Kansas City" style={inputStyle} />
-      <button onClick={() => setStep('source')} disabled={!address.trim()} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
-      <button onClick={() => setStep('phone')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <input type="text" value={addressInput} onChange={e => setAddressInput(e.target.value)} placeholder="123 Main St, Kansas City" autoFocus
+        onKeyDown={e => { if (e.key === 'Enter') submitAddress(); }}
+        style={inputStyle} />
+      <button onClick={submitAddress} disabled={!(addressInput || '').trim()} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
   if (step === 'source') return (
     <div style={containerStyle}>
       <div style={labelStyle}>How did they find you?</div>
-      <ChipPicker chips={LEAD_SOURCE_CHIPS} allowOther={true} otherLabel="Other" onSelect={c => { setSource(c.isOther ? c.otherText : c.id); setStep('notes'); }} />
-      <button onClick={() => setStep('address')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <ChipPicker chips={LEAD_SOURCE_CHIPS} allowOther={true} otherLabel="Other" onSelect={c => { setSource(c.isOther ? c.otherText : c.id); setEditingField(null); }} />
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
   if (step === 'notes') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Notes (optional)</div>
-      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Anything extra..." style={{ ...inputStyle, resize: 'none' }} />
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={() => setStep('confirm')} className="btn btn-navy" style={{ fontSize: 13, flex: 1 }}>Next →</button>
-        <button onClick={() => setStep('confirm')} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>Skip</button>
-      </div>
-      <button onClick={() => setStep('source')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Anything extra..."
+        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setEditingField(null); } }}
+        style={{ ...inputStyle, resize: 'none' }} />
+      <button onClick={() => setEditingField(null)} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
     </div>
   );
 
-  if (step === 'confirm') return (
+  // confirm
+  return (
     <div style={containerStyle}>
-      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, fontSize: 14, color: 'rgba(247,245,240,0.85)', lineHeight: 1.7 }}>
-        New lead:<br />
-        <strong>{customerName}</strong> · {phone}<br />
-        <strong>{address}</strong><br />
-        Source: <strong>{source}</strong>
-        {notes && <><br />Notes: {notes}</>}
+      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, color: 'rgba(247,245,240,0.85)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontWeight: 600, color: '#C9A84C', marginBottom: 6, fontSize: 13 }}>Adding a lead: confirm details</div>
+        <FieldRow label="Customer" value={customerName} onEdit={() => { setCustomerNameInput(customerName || ''); setEditingField('customer_name'); }} />
+        <FieldRow label="Phone" value={formatPhone(phone)} onEdit={() => { setPhoneInput(formatPhone(phone) || ''); setEditingField('phone'); }} />
+        <FieldRow label="Address" value={address} onEdit={() => { setAddressInput(address || ''); setEditingField('address'); }} />
+        <FieldRow label="Source" value={sourceLabel(source)} onEdit={() => setEditingField('source')} />
+        <FieldRow label="Notes" value={notes ? notes : null} onEdit={() => setEditingField('notes')} />
       </div>
       {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={handleConfirm} disabled={saving}
-          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-          {saving ? 'Saving…' : 'Confirm'}
-        </button>
-        <button onClick={() => setStep('notes')} disabled={saving}
-          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
-          Edit
-        </button>
-      </div>
+      <button onClick={handleConfirm} disabled={saving}
+        style={{ padding: '10px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        {saving ? 'Saving…' : 'Confirm'}
+      </button>
+      <button onClick={onBack} style={backStyle}>← Back</button>
     </div>
   );
-
-  return null;
 }
 
 function COFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, onBack }) {
-  const [step, setStep] = useState('project');
   const [jobId, setJobId] = useState(null);
-  const [jobLabel, setJobLabel] = useState('');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
+  const [jobLabel, setJobLabel] = useState(null);
+  const [title, setTitle] = useState(null);
+  const [titleInput, setTitleInput] = useState('');
+  const [description, setDescription] = useState(null);
+  const [descriptionInput, setDescriptionInput] = useState('');
+  const [amount, setAmount] = useState(null);
+  const [amountInput, setAmountInput] = useState('');
+  const [editingField, setEditingField] = useState(null);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const activeJobs = await loadActiveJobs();
+      const parsed = parseCOLabel(initLabel || '');
+      if (parsed.title) { setTitle(parsed.title); setTitleInput(parsed.title); }
+      if (parsed.description) { setDescription(parsed.description); setDescriptionInput(parsed.description); }
+      if (parsed.amount != null && parsed.amount > 0) { setAmount(parsed.amount); setAmountInput(String(parsed.amount)); }
+      if (parsed.project_hint) {
+        const matches = matchProjectHint(parsed.project_hint, activeJobs);
+        if (matches.length === 1) { setJobId(matches[0].id); setJobLabel(matches[0].address); }
+      }
+      setLoaded(true);
+    })();
+  }, []);
 
   const labelStyle = { fontSize: 13, fontWeight: 600, color: 'rgba(247,245,240,0.85)', marginBottom: 4, fontFamily: 'DM Sans, sans-serif' };
   const containerStyle = { display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'DM Sans, sans-serif' };
   const inputStyle = { border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' };
+  const backStyle = { background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' };
 
-  const amtNum = parseFloat(amount.replace(/[^0-9.]/g, ''));
+  const firstMissing = () => {
+    if (!jobId) return 'project';
+    if (!title || title.trim().length < 3) return 'title';
+    if (!description || description.trim().length < 10) return 'description';
+    if (amount == null || !(amount > 0)) return 'amount';
+    return 'confirm';
+  };
+  const step = editingField || firstMissing();
+
+  const submitTitle = () => {
+    const v = (titleInput || '').trim();
+    if (v.length < 3) return;
+    setTitle(v);
+    setEditingField(null);
+  };
+  const submitDescription = () => {
+    const v = (descriptionInput || '').trim();
+    if (v.length < 10) return;
+    setDescription(v);
+    setEditingField(null);
+  };
+  const submitAmount = () => {
+    const n = parseFloat((amountInput || '').replace(/[^0-9.]/g, ''));
+    if (!(n > 0)) return;
+    setAmount(n);
+    setEditingField(null);
+  };
 
   const handleConfirm = async () => {
     setSaving(true);
@@ -656,7 +802,7 @@ function COFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, on
     const result = await sbCreateChangeOrder({
       jobId,
       description: `${title}: ${description}`,
-      amount: amtNum,
+      amount,
       jobAddress: jobLabel,
       excludeUserId: profile?.id,
     });
@@ -666,29 +812,35 @@ function COFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, on
     onComplete('Change order submitted ✓');
   };
 
+  if (!loaded) return <div style={containerStyle}><div style={{ fontSize: 12, color: 'rgba(247,245,240,0.5)' }}>Loading…</div></div>;
+
   if (step === 'project') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Which project?</div>
-      <JobChipPicker onSelect={s => { setJobId(s.jobId); setJobLabel(s.jobLabel); setStep('title'); }} />
-      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <JobChipPicker onSelect={s => { setJobId(s.jobId); setJobLabel(s.jobLabel); setEditingField(null); }} />
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
   if (step === 'title') return (
     <div style={containerStyle}>
       <div style={labelStyle}>CO title (min 3 chars)</div>
-      <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Added recessed lighting" style={inputStyle} autoFocus />
-      <button onClick={() => setStep('description')} disabled={title.trim().length < 3} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
-      <button onClick={() => setStep('project')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <input type="text" value={titleInput} onChange={e => setTitleInput(e.target.value)} placeholder="e.g. Added recessed lighting" autoFocus
+        onKeyDown={e => { if (e.key === 'Enter') submitTitle(); }}
+        style={inputStyle} />
+      <button onClick={submitTitle} disabled={(titleInput || '').trim().length < 3} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
   if (step === 'description') return (
     <div style={containerStyle}>
       <div style={labelStyle}>Description (min 10 chars)</div>
-      <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} placeholder="Describe the scope change in detail..." style={{ ...inputStyle, resize: 'none' }} />
-      <button onClick={() => setStep('amount')} disabled={description.trim().length < 10} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
-      <button onClick={() => setStep('title')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <textarea value={descriptionInput} onChange={e => setDescriptionInput(e.target.value)} rows={4} placeholder="Describe the scope change in detail..."
+        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitDescription(); } }}
+        style={{ ...inputStyle, resize: 'none' }} />
+      <button onClick={submitDescription} disabled={(descriptionInput || '').trim().length < 10} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
@@ -697,14 +849,21 @@ function COFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, on
       <div style={labelStyle}>Amount</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ color: 'rgba(247,245,240,0.7)', fontSize: 18 }}>$</span>
-        <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" autoFocus style={{ ...inputStyle, flex: 1, width: 'auto' }} />
+        <input type="text" inputMode="decimal" value={amountInput} onChange={e => setAmountInput(e.target.value)} placeholder="0.00" autoFocus
+          onKeyDown={e => { if (e.key === 'Enter') submitAmount(); }}
+          style={{ ...inputStyle, flex: 1, width: 'auto' }} />
       </div>
-      <button onClick={() => setStep('confirm')} disabled={!(amtNum > 0)} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
-      <button onClick={() => setStep('description')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+      <button onClick={submitAmount} disabled={!(parseFloat((amountInput || '').replace(/[^0-9.]/g, '')) > 0)} className="btn btn-navy" style={{ fontSize: 13 }}>Save</button>
+      {editingField ? null : <button onClick={onBack} style={backStyle}>← Back</button>}
     </div>
   );
 
-  if (step === 'confirm') return (
+  // confirm
+  const amountWords = amount != null ? amountToWords(amount) : '';
+  const amountDisplay = amount != null
+    ? `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${amountWords ? ` — ${amountWords}` : ''}`
+    : null;
+  return (
     <div style={containerStyle}>
       <div style={{
         background: 'rgba(245,158,11,0.1)',
@@ -717,28 +876,24 @@ function COFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, on
         letterSpacing: 1,
         color: '#f59e0b',
         textTransform: 'uppercase',
-        marginBottom: 4,
       }}>
         ⚠ Money action — confirm before submitting
       </div>
-      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, fontSize: 14, color: 'rgba(247,245,240,0.85)', lineHeight: 1.6 }}>
-        Submitting a change order for <strong>${amtNum.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong> on <strong>{jobLabel}</strong>. Confirm?
+      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, color: 'rgba(247,245,240,0.85)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontWeight: 600, color: '#C9A84C', marginBottom: 6, fontSize: 13 }}>Adding a change order: confirm details</div>
+        <FieldRow label="Project" value={jobLabel} onEdit={() => setEditingField('project')} />
+        <FieldRow label="Title" value={title} onEdit={() => { setTitleInput(title || ''); setEditingField('title'); }} />
+        <FieldRow label="Description" value={description} onEdit={() => { setDescriptionInput(description || ''); setEditingField('description'); }} />
+        <FieldRow label="Amount" value={amountDisplay} onEdit={() => { setAmountInput(amount != null ? String(amount) : ''); setEditingField('amount'); }} />
       </div>
       {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={handleConfirm} disabled={saving}
-          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-          {saving ? 'Submitting…' : 'Confirm'}
-        </button>
-        <button onClick={() => setStep('amount')} disabled={saving}
-          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
-          Edit
-        </button>
-      </div>
+      <button onClick={handleConfirm} disabled={saving}
+        style={{ padding: '10px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        {saving ? 'Submitting…' : 'Confirm'}
+      </button>
+      <button onClick={onBack} style={backStyle}>← Back</button>
     </div>
   );
-
-  return null;
 }
 
 function BugFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, onBack }) {
@@ -1397,6 +1552,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 <ReceiptFlow
                   profile={profile}
                   initContext={captureContext}
+                  initLabel={captureLabel}
                   pendingTaskId={pendingTaskId}
                   onComplete={(msg) => {
                     setVerb(null); setFlowActive(false); setPendingTaskId(null);
@@ -1407,17 +1563,19 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   onBack={() => { setFlowActive(false); }}
                 />
               )}
-              {/* Todo: direct-write inline form, no chip flow, no pending_tasks queue. */}
-              {verb === 'todo' && (
-                <TodoQuickAdd
+              {verb && flowActive && verb === 'todo' && (
+                <TodoFlow
                   profile={profile}
+                  initContext={captureContext}
+                  initLabel={captureLabel}
+                  pendingTaskId={pendingTaskId}
                   onComplete={(msg) => {
                     setVerb(null); setFlowActive(false); setPendingTaskId(null);
                     setCaptureContext({}); setCaptureLabel('');
                     setCaptureToast(msg || 'Done');
                     setTimeout(() => setCaptureToast(''), 4000);
                   }}
-                  onBack={() => { setVerb(null); setFlowActive(false); setCaptureContext({}); setCaptureLabel(''); setCaptureErr(''); }}
+                  onBack={() => setFlowActive(false)}
                 />
               )}
               {verb && flowActive && verb === 'lead' && (
@@ -1467,7 +1625,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               )}
 
               {/* Quick-capture step */}
-              {verb && verb !== 'todo' && !flowActive && <QuickCapture
+              {verb && !flowActive && <QuickCapture
                 verb={verb}
                 profile={profile}
                 captureContext={captureContext}
