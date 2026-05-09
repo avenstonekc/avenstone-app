@@ -858,3 +858,28 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/migrations/20260509130000_po_number_lifecycle_aware.sql (new), CLAUDE_MEMORY.md (this entry + symptom-index addition).
 - Decision: kept partial unique index over `NULLS NOT DISTINCT` because the partial form makes intent explicit at read time and is robust to future PG default changes. PG's default "NULLs distinct" semantics already permit multiple NULLs, but the partial predicate is a clearer code-as-documentation choice.
 - Open: LeadFlow column-name correction (`customer_*` → `client_*`, `created` → `created_at`, drop `created_by`) deferred to next pass; not blocking lead create now since the silent drop only affects which fields land — and the missing fields aren't required.
+
+[LOG — 2026-05-09 — end of day]
+- Shipped today:
+  - Master Agent v1 — 15 commits (greeting, 5 quick-action tiles, ChipPicker + JobChipPicker, pending_tasks queue, bug_reports infra, html2canvas screenshots, submit-bug edge fn with paste-ready Claude prompt block in email, BugReportsScr + PendingTaskOwnerScr dashboards, doc consolidation: CLAUDE_ARCHIVE + CLAUDE_INDEX created, EXECUTION_ARC moved to archive, BUG_PIPELINE folded into AVENSTONE_VISION).
+  - Test 2 fix — ai-master-agent had 17 tools but no add_todo. Branch B-1 wrong-tool routing. Plus bonus Resume flowActive bug (PendingTaskList onResume set verb but not flowActive=true, so Resume re-rendered QuickCapture instead of chip flow). Commits dd655ce, 33111fb. Memory log 1952e2e.
+  - Test 3 fix — po_number unique constraint hit lead inserts. Migration `20260509130000_po_number_lifecycle_aware.sql` replaces full constraint with partial unique index `WHERE po_number IS NOT NULL` + status-aware auto-numbering trigger. Applied via Management API after fresh PAT was provided (prior PAT was stale; user revoked + needs to regenerate). Commit 40f1fe8.
+- Verified live:
+  - Test 1 Receipt — label parsing extracts vendor + amount + category; agent only asks for missing project. PASSED.
+  - Test 3 — DB-level verified (2 back-to-back leads inserted with NULL po_number; contract insert auto-numbered 26-003 from existing max 002). UX chip-flow re-test pending.
+- v1.1 backlog discovered today:
+  - Enter key doesn't submit on MasterAgent text inputs. User on Submit-a-Change-Order flow typed answer + hit Enter, nothing happened, had to click "Continue now" manually. Add `onKeyDown` Enter→submit handler to: quick-capture label input, ChipPicker "Other (type)" text input, and any other chip-flow text inputs (amount, vendor, etc.). Audit all text input call sites in MasterAgent.jsx + ChipPicker.jsx during v1.1.
+  - Receipt OCR not shipped — photo capture extracts no fields; resume still asks for vendor + amount even though receipt photo shows them. Polish in v1.1 (Haiku vision pass at confirmation step).
+  - Dual-codepath verb writes (chip flow + agent freeform tools) — Test 2 exposed the gap when chip flow worked but agent had no add_todo. Architecture note: every verb has TWO write paths; gaps create routing bugs. Audit all 5 verbs in v1.1 to confirm parity.
+  - Failed-Confirm artifact recovery — when chip flow Confirm fails (like Test 3 constraint violation), the pending_task can stick at status='in_progress'. State recovery on Confirm error needs review in v1.1.
+  - Test 2 re-test for chip flow path still pending — only the freeform path was implicitly verified by user diversion to chat earlier.
+- Hygiene TODOs for Kalin (not for Claude Code):
+  - Confirm leaked PAT is revoked (was uploaded to chat session earlier — should be revoked already).
+  - Generate fresh PAT, save to local text file, run `gh secret set SUPABASE_ACCESS_TOKEN < tokenfile.txt` from local terminal so future Claude Code sessions don't stall on auth.
+  - Set Blake's `profiles.is_platform_owner = TRUE` via SQL.
+  - Add Blake's email to `BUG_NOTIFY_EMAILS` env var in Supabase function config.
+- Resume point next session:
+  - Test 3 UX chip-flow re-test (sprakle fish lead via UI) OR skip directly to:
+  - Test 4 — Change order. Tile Submit-a-change-order, label `Smith Bath extra electrical for vanity outlets $750`, Save for later → Resume → walk chips → project = 123 Test Flow Dr → watch for money-confirm read-back ("seven hundred fifty dollars, confirm?") before write. Note pre-fills (title, amount) + confirm gate firing.
+  - Tests 5 (Bug pipeline end-to-end), 6 (Discard with reason), 7 (Continue Now skip-queue) still queued.
+- Loose: untracked migration `supabase/migrations/20260506150000_engagement_bids_line_items_default.sql` predates today's session (date stamp 2026-05-06). Left untracked deliberately — flag for next session to triage (apply / commit / discard).
