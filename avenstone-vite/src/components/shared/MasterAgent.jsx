@@ -3,6 +3,7 @@ import { AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt } from '.
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
 import { sbCreatePendingTask, sbUpdatePendingTask, sbCompletePendingTask } from '../../lib/pendingTasks';
+import PendingTaskListReal from './PendingTaskList';
 
 // Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
 const MAX_EDGE = 1024;
@@ -48,8 +49,8 @@ const QUICK_TILES = [
   { verb: 'bug',          label: 'Submit a bug',         ic: 'info' },
 ];
 
-// Stub PendingTaskList — real component built in commit 7
-function PendingTaskList() { return null; }
+// PendingTaskList — delegates to real component (imported above)
+function PendingTaskList({ onResume }) { return <PendingTaskListReal onResume={onResume} />; }
 
 // QuickCapture — per-verb quick capture step shown after tile tap
 function QuickCapture({ verb, profile, captureContext, setCaptureContext, captureLabel, setCaptureLabel, captureWorking, setCaptureWorking, captureErr, setCaptureErr, onSaveForLater, onContinueNow, onBack }) {
@@ -689,8 +690,15 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         >
           {!hasMessages && !loading && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 8 }}>
-              {/* Pending task list (built commit 7) */}
-              <PendingTaskList />
+              {/* Pending task list */}
+              <PendingTaskList onResume={(task) => {
+                setVerb(task.verb);
+                setCaptureContext(task.context || {});
+                setCaptureLabel(task.quick_label || '');
+                setPendingTaskId(task.id);
+                setCaptureErr('');
+                pushBreadcrumb({ type: 'tap', label: `resume:${task.verb}`, route: 'master-agent' });
+              }} />
 
               {/* Quick-action tile grid */}
               {!verb && (
