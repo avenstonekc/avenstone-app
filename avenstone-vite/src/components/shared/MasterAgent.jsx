@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, sbSave as sbSaveJob, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt, sbCreateTransaction, sbCreateUserTodo, AV_TENANT } from '../../lib/supabase';
+import { sb, sbSave as sbSaveJob, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt, sbCreateTransaction, sbCreateUserTodo, sbCreateChangeOrder, AV_TENANT } from '../../lib/supabase';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
 import { sbCreatePendingTask, sbUpdatePendingTask, sbCompletePendingTask } from '../../lib/pendingTasks';
@@ -576,6 +576,113 @@ function LeadFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, 
           {saving ? 'Saving…' : 'Confirm'}
         </button>
         <button onClick={() => setStep('notes')} disabled={saving}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
+          Edit
+        </button>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
+function COFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, onBack }) {
+  const [step, setStep] = useState('project');
+  const [jobId, setJobId] = useState(null);
+  const [jobLabel, setJobLabel] = useState('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const labelStyle = { fontSize: 13, fontWeight: 600, color: 'rgba(247,245,240,0.85)', marginBottom: 4, fontFamily: 'DM Sans, sans-serif' };
+  const containerStyle = { display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'DM Sans, sans-serif' };
+  const inputStyle = { border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' };
+
+  const amtNum = parseFloat(amount.replace(/[^0-9.]/g, ''));
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    setError('');
+    const result = await sbCreateChangeOrder({
+      jobId,
+      description: `${title}: ${description}`,
+      amount: amtNum,
+      jobAddress: jobLabel,
+      excludeUserId: profile?.id,
+    });
+    if (!result.ok) { setError(result.error || 'Failed to submit CO'); setSaving(false); return; }
+    if (pendingTaskId) await sbCompletePendingTask(pendingTaskId, { resultingEntityType: 'change_order', resultingEntityId: result.data?.id });
+    setSaving(false);
+    onComplete('Change order submitted ✓');
+  };
+
+  if (step === 'project') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Which project?</div>
+      <JobChipPicker onSelect={s => { setJobId(s.jobId); setJobLabel(s.jobLabel); setStep('title'); }} />
+      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'title') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>CO title (min 3 chars)</div>
+      <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Added recessed lighting" style={inputStyle} autoFocus />
+      <button onClick={() => setStep('description')} disabled={title.trim().length < 3} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
+      <button onClick={() => setStep('project')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'description') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Description (min 10 chars)</div>
+      <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} placeholder="Describe the scope change in detail..." style={{ ...inputStyle, resize: 'none' }} />
+      <button onClick={() => setStep('amount')} disabled={description.trim().length < 10} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
+      <button onClick={() => setStep('title')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'amount') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Amount</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ color: 'rgba(247,245,240,0.7)', fontSize: 18 }}>$</span>
+        <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" autoFocus style={{ ...inputStyle, flex: 1, width: 'auto' }} />
+      </div>
+      <button onClick={() => setStep('confirm')} disabled={!(amtNum > 0)} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
+      <button onClick={() => setStep('description')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'confirm') return (
+    <div style={containerStyle}>
+      <div style={{
+        background: 'rgba(245,158,11,0.1)',
+        border: '1px solid rgba(245,158,11,0.4)',
+        borderRadius: 8,
+        padding: '10px 14px',
+        fontFamily: 'DM Sans, sans-serif',
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: 1,
+        color: '#f59e0b',
+        textTransform: 'uppercase',
+        marginBottom: 4,
+      }}>
+        ⚠ Money action — confirm before submitting
+      </div>
+      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, fontSize: 14, color: 'rgba(247,245,240,0.85)', lineHeight: 1.6 }}>
+        Submitting a change order for <strong>${amtNum.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong> on <strong>{jobLabel}</strong>. Confirm?
+      </div>
+      {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={handleConfirm} disabled={saving}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          {saving ? 'Submitting…' : 'Confirm'}
+        </button>
+        <button onClick={() => setStep('amount')} disabled={saving}
           style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
           Edit
         </button>
@@ -1197,7 +1304,22 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   onBack={() => setFlowActive(false)}
                 />
               )}
-              {verb && flowActive && !['receipt','todo','lead'].includes(verb) && (
+              {verb && flowActive && verb === 'change_order' && (
+                <COFlow
+                  profile={profile}
+                  initContext={captureContext}
+                  initLabel={captureLabel}
+                  pendingTaskId={pendingTaskId}
+                  onComplete={(msg) => {
+                    setVerb(null); setFlowActive(false); setPendingTaskId(null);
+                    setCaptureContext({}); setCaptureLabel('');
+                    setCaptureToast(msg || 'Done');
+                    setTimeout(() => setCaptureToast(''), 4000);
+                  }}
+                  onBack={() => setFlowActive(false)}
+                />
+              )}
+              {verb && flowActive && !['receipt','todo','lead','change_order'].includes(verb) && (
                 <div style={{ background: 'rgba(247,245,240,0.08)', border: '1px solid rgba(201,168,76,0.3)', borderRadius: 10, padding: 16, fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: 'rgba(247,245,240,0.75)' }}>
                   <div style={{ marginBottom: 10 }}>Resume flow wired in next commit — verb: <strong style={{ color: '#C9A84C' }}>{verb}</strong></div>
                   <button onClick={() => { setVerb(null); setFlowActive(false); }} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, padding: '6px 12px', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer' }}>← Back</button>
