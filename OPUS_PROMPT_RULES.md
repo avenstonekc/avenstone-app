@@ -119,4 +119,19 @@ Slugs for wrong hypotheses, reverted experiments, dead-end audits use the suffix
 **Rule D — Three categories, ruthlessly.**
 Index categories are locked at three: function, date, failure pattern. Adding a fourth requires a deliberate decision — one new category implies one more lookup the prompt-writer must perform per ship. The discarded alternatives (type-of-work, cost impact, relationships, open-item status) are tracked elsewhere or implied by other signals and do not belong in the index.
 
+## Doc count discipline
+
+**6-MD cap on root-level planning docs.** Acceptable root docs: CLAUDE.md, CLAUDE_MEMORY.md, CLAUDE_ARCHIVE.md, CLAUDE_INDEX.md, OPUS_PROMPT_RULES.md, AVENSTONE_VISION.md. Everything else folds in or archives.
+
+**Plan docs fold into VISION, then archive.** An arc planning doc (e.g. EXECUTION_ARC.md) is a working artifact. Once the arc ships, its content moves to CLAUDE_ARCHIVE.md under a slug heading, and the original file is replaced with a single redirect line (`See CLAUDE_ARCHIVE.md § slug-name`). This keeps root-level clutter at zero without destroying history.
+
+**Once-shipped content → archive, not CLAUDE.md.** CLAUDE.md documents how things work now. It is not a decision trail. When a feature arc is complete, the design decisions move to CLAUDE_ARCHIVE.md; CLAUDE.md keeps only the runtime-relevant summary (component map entry, schema reality bullet, locked decision if it has ongoing effect).
+
+**Organic fold-in candidates (review before next arc):**
+- `VOICE_AGENT.md` — fold into AVENSTONE_VISION.md under a "Voice arc" section once the arc ships; retire original.
+- `FINANCIALS_PLAN.md` — if it exists, merge into CLAUDE_ARCHIVE.md; any live schema facts migrate to CLAUDE_MEMORY.md schema reality section.
+- Any per-arc `*_NOTIFICATIONS_*.md` or similar — fold into parent arc archive entry.
+
+**New planning doc = explicit decision.** Before creating a new root MD, declare which existing doc it folds into and when. Default: fold into AVENSTONE_VISION.md as a section, or into CLAUDE_ARCHIVE.md as a slug, after the arc ships.
+
 ## Default closing section for every prompt

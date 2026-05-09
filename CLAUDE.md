@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Primacy:** Web (avenstone-vite) is the primary codebase. Mobile (RN/Expo) parity is best-effort and lags by ~1 arc. Architectural decisions optimize for web first; mobile follows.
+
 ---
 
 ## What this app is
@@ -146,7 +148,9 @@ Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
 - `job_room_scopes` — one row per (tenant_id, job_id, room_id). Stores the rep's chosen scope_tag for each scanned room. `room_id` = `${scan.id}_${idx}`. Special tag `not_in_scope` excludes the room from takeoff entirely; `custom` uses the `custom_trades TEXT[]` column; all others filter to matching `template_scope_subsets.trades`.
 - `template_scope_subsets` — catalog of named scope variants per room_type. Platform defaults (`tenant_id=NULL`). `trades=['__all__']` = all trades; `trades=[]` = no trades (not_in_scope sentinel). Bathroom: 6 variants (not_in_scope, full_remodel, tile_only, vanity_swap, paint_and_floor, custom). Other room types: 3 variants (not_in_scope, full_scope, custom). `UNIQUE NULLS NOT DISTINCT (tenant_id, room_type, scope_tag)`.
 
-**Storage buckets:** `job-photos` (public), `job-documents` (private), `bid-quotes` (private)
+**Storage buckets:** `job-photos` (public), `job-documents` (private), `bid-quotes` (private), `bug-screenshots` (private — 1-year signed URLs via submit-bug-report edge fn)
+
+**v1 additions:** `pending_tasks` (user-owned queue, owner/PM read), `bug_reports` (tenant read + platform_owner cross-tenant). `profiles.is_platform_owner BOOLEAN` — cross-tenant bug_reports access. `tenants.notification_rules JSONB` — pending task alert thresholds (cron alerting deferred to v2).
 
 **RLS helpers:** `get_my_role()`, `get_my_tenant_id()`, `can_access_job(job_id)`
 
@@ -305,7 +309,46 @@ This is Avenstone's core competitive advantage. Six surfaces:
 | `AiSetupWizard` | `components/ai/AiSetupWizard.jsx` | 7-question onboarding wizard. Opens via manual button on AiKnowledgeScr. |
 | `AiFieldAgent` | `components/ai/AiFieldAgent.jsx` | Field-facing AI agent. |
 | `AiHomeScr` | `components/ai/AiHomeScr.jsx` | AI home screen / dashboard. |
-| `MasterAgent` | `components/shared/MasterAgent.jsx` | Master AI orchestration UI component. |
+| `MasterAgent` | `components/shared/MasterAgent.jsx` | Greeting + 5 tile capture-now/save-for-later flow + chip-driven verb capture (receipt/todo/lead/CO/bug). |
+| `ChipPicker` | `components/shared/ChipPicker.jsx` | Reusable chip-select with optional free-text fallback. |
+| `JobChipPicker` | `components/shared/JobChipPicker.jsx` | Job selector: loads top 8 active jobs + typeahead fallback. |
+| `PendingTaskList` | `components/shared/PendingTaskList.jsx` | Horizontally-scrollable pending tasks card row above tile grid. |
+| `BugReportsScr` | `components/admin/BugReportsScr.jsx` | Platform-owner cross-tenant bug report dashboard. |
+| `BugReportDetailModal` | `components/admin/BugReportDetailModal.jsx` | Bug detail + Claude prompt copy + mark-fixed. |
+| `PendingTaskOwnerScr` | `components/admin/PendingTaskOwnerScr.jsx` | Owner discipline dashboard — per-rep pending aggregation + notification rules. |
+
+---
+
+## Master Agent v1
+
+5 quick-action tiles in `MasterAgent.jsx`: Add a receipt, Add to the todo list, Add a new lead, Submit a change order, Submit a bug. Each tile tap triggers:
+1. **Quick capture** — minimal input at tap time (photo for receipt, label for todo/lead/CO, silent snapshot for bug).
+2. **Continue now / Save for later** — creates a `pending_tasks` row. Continue now goes directly into the verb chip flow. Save for later returns to home.
+3. **Verb chip flows** (commits 8–11) — step-by-step chip-driven form: ReceiptFlow, TodoFlow, LeadFlow, COFlow, BugFlow. Each ends with an explicit Confirm step before writing.
+
+**Pending tasks lifecycle:** `pending` → `in_progress` → `complete` | `discarded`. Discard requires a reason chip (misclick / duplicate / no_longer_needed / completed_outside_app). No auto-archive — the visible queue is a discipline tool.
+
+**Snooze semantics:** each Resume tap after the first increments `snooze_count` + sets `last_opened_at`. Queue cards show "Snoozed N×" when count > 0.
+
+**Click-first chip flow:** every step is a chip row. Free-text fallback via "Something else (type)" chip (allowOther=true default). Always read back all values in the Confirm step before writing.
+
+**BugFlow:** html2canvas screenshot captured at tile-tap (not resume time — screen changes during flow). Silent context snapshot via `getSnapshot()`. Submits to `submit-bug-report` edge fn via authenticated fetch.
+
+**Money action confirm gate (CO):** explicit amber ⚠ banner + Confirm button on the final step. No auto-submit on amount entry.
+
+---
+
+## Bug pipeline (v1)
+
+- **bugContext.js** — ring buffers: breadcrumbs (20), consoleErrors (10), networkErrors (10). `initBugContext()` wraps `console.error`, registers `unhandledrejection` + `error` listeners. `getSnapshot()` returns full state at any point. `pushBreadcrumb()` called on every `pg` state change + tile taps.
+- **html2canvas** — captures `document.body` at 0.5× scale at bug tile-tap. PNG dataURL stored in context.
+- **bug_reports table** — tenant-scoped, RLS: tenant members can read+insert own; `is_platform_owner` profiles can read all + update.
+- **submit-bug-report edge fn** — JWT auth, uploads screenshot to `bug-screenshots` private bucket (1-year signed URL), INSERTs bug_reports, sends email via Resend to `BUG_NOTIFY_EMAILS` env var (default `kalin@avenstonekc.com`, comma-separated). Email contains a paste-ready Claude Code prompt block.
+- **Paste-ready Claude prompt format** — includes: description, route, version, device, numbered breadcrumbs, bulleted errors, screenshot link, 6 explicit tasks (audit first → hypothesis → patch if obvious → one commit → CLAUDE_MEMORY log → mark fixed).
+- **BugReportsScr** — platform_owner gated (`is_platform_owner=TRUE`). Filter by status + tenant. Click row → BugReportDetailModal.
+- **BugReportDetailModal** — breadcrumb timeline, expandable errors, screenshot img, "Copy as Claude prompt" + "Mark fixed" buttons.
+
+**Env var to set in Supabase function secrets:** `BUG_NOTIFY_EMAILS` — comma-separated email list. Default: `kalin@avenstonekc.com`. Add Blake's email once known.
 
 ---
 
@@ -430,6 +473,15 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 - Rep: `test-salesrep@avenstonekc.com` / `TestSalesRep2026!`
 - Sub: `test-sub@avenstonekc.com` / `TestSub2026!`
 - Client: `kalinspratling@gmail.com` / `TestClient2026!`
+
+---
+
+## Locked decisions — Master Agent v1
+
+- **No auto-archive on pending_tasks.** Manual cleanup with reason-required discard. The visible queue is a discipline tool — intentional.
+- **html2canvas screenshot at tile-tap** — not at resume time. The screen changes during flow; snap at the moment the user decides something is broken.
+- **platform_owner flag not hardcoded UUID** — `is_platform_owner BOOLEAN` on profiles. Set manually via SQL UPDATE. Add Blake once email is known.
+- **paste-ready Claude prompt format** — the bug email contains a verbatim paste block. Format is locked; do not simplify into a summary without the 6-task structure.
 
 ---
 

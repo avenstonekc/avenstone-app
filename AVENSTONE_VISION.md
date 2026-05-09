@@ -418,4 +418,35 @@ earlier, regardless of which trade is using it.
 
 ---
 
-Last updated: 2026-04-25
+Last updated: 2026-05-09
+
+---
+
+## v2 — Rep scorecard arc
+
+**Dimensions (4):**
+1. **Capture discipline** — pending task volume, discard rate, snooze count per rep.
+2. **Responsiveness** — time from lead created → first contact, proposal send latency.
+3. **Pipeline velocity** — avg days per stage, stall detection.
+4. **Anti-surprise contribution** — proactive CO submissions before client asks, client-visible schedule items maintained.
+
+**Design rules:**
+- Threshold-based, not composite score. A rep is "green / yellow / red" per dimension independently. No single number that obscures a specific failure.
+- Role-specific view: rep sees own 4 tiles. Owner/PM sees all reps. No leaderboards visible to reps — no gamification pressure that produces gaming.
+- No auto-comp adjustment. No auto-firing trigger. Thresholds are discipline signals, not HR inputs.
+- **Blocked on 30 days of real Master Agent v1 data.** Scorecard without real baseline → arbitrary thresholds → ignored immediately. Build the capture layer first. Scorecard v2 is a separate arc after v1 has been live for ~30 days.
+
+---
+
+## v2 — Bug pipeline auto-fix arc
+
+**v1 (shipped 2026-05-09):** User taps bug tile → html2canvas screenshot + bugContext snapshot → submit-bug-report edge fn → bug_reports INSERT + email to Kalin with paste-ready Claude Code prompt. BugReportsScr for platform_owner dashboard.
+
+**v2 plan:** Automate the "paste into Claude Code" step.
+- **Staging Supabase project** — separate URL/keys, nightly seed reset from production snapshot. Edge fns point to staging when env=staging.
+- **Vercel preview deploys** — every PR auto-deploys to a preview URL. Preview env routes to staging Supabase project (env var override in Vercel preview settings).
+- **GitHub Actions bug-fix pipeline** — on `bug_reports INSERT` (via Supabase webhook → GH dispatch), a GH Action runs `claude -p` headless with the paste-ready prompt, constrained to the files implied by the bug's `route` + `network_errors`. Output is a PR diff, not a direct push.
+- **PR flow** — GH Action creates a draft PR with the proposed fix. Vercel preview spins automatically. Email to owners: preview URL + test login + PR link + "does this fix it?"
+- **Owner approves** — merges PR. Vercel prod auto-deploys. `UPDATE bug_reports SET status='fixed'` triggered on merge.
+- **iOS pipeline** — Codemagic builds from merged PR. Deferred until iOS RN parity catches up.
+- **Trigger:** ~30 days of v1 bug volume to understand real fix patterns before building the auto-fix pipeline. Build v2 as a separate arc prompt once volume is there.
