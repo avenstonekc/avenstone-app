@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt } from '../../lib/supabase';
+import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt, sbCreateTransaction, AV_TENANT } from '../../lib/supabase';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
 import { sbCreatePendingTask, sbUpdatePendingTask, sbCompletePendingTask } from '../../lib/pendingTasks';
 import PendingTaskListReal from './PendingTaskList';
+import ChipPicker from './ChipPicker';
+import JobChipPicker from './JobChipPicker';
 
 // Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
 const MAX_EDGE = 1024;
@@ -178,6 +180,154 @@ function QuickCapture({ verb, profile, captureContext, setCaptureContext, captur
   );
 }
 
+// ─── Verb flow components ───────────────────────────────────────────────────
+
+const CATEGORY_MAP = {
+  'Materials': 'material_purchase',
+  'Subcontractor': 'sub_payout',
+  'Permits': 'permit',
+  'Tools': 'equipment_rental',
+  'Fuel': 'fuel',
+  'Office': 'other_expense',
+  'Other': 'other_expense',
+};
+
+const CATEGORY_CHIPS = [
+  { id: 'Materials', label: 'Materials' },
+  { id: 'Subcontractor', label: 'Subcontractor' },
+  { id: 'Permits', label: 'Permits' },
+  { id: 'Tools', label: 'Tools' },
+  { id: 'Fuel', label: 'Fuel' },
+  { id: 'Office', label: 'Office' },
+  { id: 'Other', label: 'Other' },
+];
+
+function ReceiptFlow({ profile, initContext, pendingTaskId, onComplete, onBack }) {
+  const [step, setStep] = useState('vendor');
+  const [vendor, setVendor] = useState('');
+  const [vendors, setVendors] = useState([]);
+  const [loadingVendors, setLoadingVendors] = useState(true);
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState('');
+  const [jobId, setJobId] = useState(null);
+  const [jobLabel, setJobLabel] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const ago = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await sb
+        .from('job_transactions')
+        .select('payer_or_payee_name, created_at')
+        .not('payer_or_payee_name', 'is', null)
+        .gte('created_at', ago)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (data) {
+        const seen = new Set();
+        const unique = [];
+        for (const r of data) {
+          if (r.payer_or_payee_name && !seen.has(r.payer_or_payee_name)) {
+            seen.add(r.payer_or_payee_name);
+            unique.push({ id: r.payer_or_payee_name, label: r.payer_or_payee_name });
+            if (unique.length >= 8) break;
+          }
+        }
+        setVendors(unique);
+      }
+      setLoadingVendors(false);
+    })();
+  }, []);
+
+  const containerStyle = { display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'DM Sans, sans-serif' };
+  const labelStyle = { fontSize: 13, fontWeight: 600, color: 'rgba(247,245,240,0.85)', marginBottom: 4 };
+
+  const amtNum = parseFloat(amount.replace(/[^0-9.]/g, ''));
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    setError('');
+    const today = new Date().toISOString().slice(0, 10);
+    const result = await sbCreateTransaction({
+      job_id: jobId || null,
+      direction: 'out',
+      type: CATEGORY_MAP[category] || 'other_expense',
+      amount: amtNum,
+      description: `${category} — ${vendor}`,
+      payer_or_payee_name: vendor,
+      status: 'paid',
+      date_paid: today,
+      receipt_url: initContext?.photo_path || null,
+    });
+    if (!result.ok) { setError(result.error || 'Failed to save'); setSaving(false); return; }
+    if (pendingTaskId) await sbCompletePendingTask(pendingTaskId, { resultingEntityType: 'job_transaction', resultingEntityId: result.data?.id });
+    setSaving(false);
+    onComplete('Receipt logged ✓');
+  };
+
+  if (step === 'vendor') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Who did you pay?</div>
+      {loadingVendors ? <div style={{ fontSize: 12, color: 'rgba(247,245,240,0.5)' }}>Loading recent vendors…</div> : (
+        <ChipPicker chips={vendors} allowOther={true} otherLabel="New vendor (type)" onSelect={c => { setVendor(c.isOther ? c.otherText : c.label); setStep('amount'); }} />
+      )}
+      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'amount') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>How much? ({vendor})</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ color: 'rgba(247,245,240,0.7)', fontSize: 18 }}>$</span>
+        <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" autoFocus
+          style={{ flex: 1, border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 16, outline: 'none' }} />
+      </div>
+      <button onClick={() => setStep('category')} disabled={!(amtNum > 0)}
+        className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
+      <button onClick={() => setStep('vendor')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'category') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Category</div>
+      <ChipPicker chips={CATEGORY_CHIPS} allowOther={false} onSelect={c => { setCategory(c.label); setStep('project'); }} />
+      <button onClick={() => setStep('amount')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'project') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Which project?</div>
+      <JobChipPicker includeOverhead={true} onSelect={s => { setJobId(s.isOverhead ? null : s.jobId); setJobLabel(s.jobLabel); setStep('confirm'); }} />
+      <button onClick={() => setStep('category')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'confirm') return (
+    <div style={containerStyle}>
+      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, fontSize: 14, color: 'rgba(247,245,240,0.85)', lineHeight: 1.6 }}>
+        Logging <strong>${amtNum.toFixed(2)}</strong> at <strong>{vendor}</strong>, category <strong>{category}</strong>, project <strong>{jobLabel}</strong>. Confirm?
+      </div>
+      {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={handleConfirm} disabled={saving}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          {saving ? 'Saving…' : 'Confirm'}
+        </button>
+        <button onClick={() => setStep('project')} disabled={saving}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
+          Edit
+        </button>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
 function formatToolName(tool) {
   if (!tool) return tool;
   return tool
@@ -291,6 +441,7 @@ function ActionsPanel({ actions }) {
 export default function MasterAgent({ profile, pendingAction, clearPendingAction }) {
   const [open, setOpen] = useState(false);
   const [verb, setVerb] = useState(null);
+  const [flowActive, setFlowActive] = useState(false); // true = capture done, now in verb flow
   const [captureContext, setCaptureContext] = useState({});
   const [captureLabel, setCaptureLabel] = useState('');
   const [pendingTaskId, setPendingTaskId] = useState(null);
@@ -743,8 +894,30 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 </div>
               )}
 
+              {/* Verb flow (receipt/todo/lead/CO/bug) */}
+              {verb && flowActive && verb === 'receipt' && (
+                <ReceiptFlow
+                  profile={profile}
+                  initContext={captureContext}
+                  pendingTaskId={pendingTaskId}
+                  onComplete={(msg) => {
+                    setVerb(null); setFlowActive(false); setPendingTaskId(null);
+                    setCaptureContext({}); setCaptureLabel('');
+                    setCaptureToast(msg || 'Done');
+                    setTimeout(() => setCaptureToast(''), 4000);
+                  }}
+                  onBack={() => { setFlowActive(false); }}
+                />
+              )}
+              {verb && flowActive && verb !== 'receipt' && (
+                <div style={{ background: 'rgba(247,245,240,0.08)', border: '1px solid rgba(201,168,76,0.3)', borderRadius: 10, padding: 16, fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: 'rgba(247,245,240,0.75)' }}>
+                  <div style={{ marginBottom: 10 }}>Resume flow wired in next commit — verb: <strong style={{ color: '#C9A84C' }}>{verb}</strong></div>
+                  <button onClick={() => { setVerb(null); setFlowActive(false); }} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, padding: '6px 12px', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer' }}>← Back</button>
+                </div>
+              )}
+
               {/* Quick-capture step */}
-              {verb && <QuickCapture
+              {verb && !flowActive && <QuickCapture
                 verb={verb}
                 profile={profile}
                 captureContext={captureContext}
@@ -771,11 +944,11 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   const taskId = result.data.id;
                   setPendingTaskId(taskId);
                   await sbUpdatePendingTask(taskId, { status: 'in_progress' });
-                  // Verb flows wired in commits 8–11; stub for now
-                  setCaptureToast(`Resume flow not yet wired for ${verb}`);
-                  setTimeout(() => setCaptureToast(''), 5000);
+                  setCaptureContext(ctx);
+                  setCaptureLabel(label);
+                  setFlowActive(true);
                 }}
-                onBack={() => { setVerb(null); setCaptureContext({}); setCaptureLabel(''); setCaptureErr(''); }}
+                onBack={() => { setVerb(null); setFlowActive(false); setCaptureContext({}); setCaptureLabel(''); setCaptureErr(''); }}
               />}
             </div>
           )}
