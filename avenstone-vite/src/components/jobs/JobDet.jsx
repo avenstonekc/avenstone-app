@@ -121,7 +121,9 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>Projects</span>
           </button>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>Project</div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
+              Project{job.po_number && <span style={{ marginLeft: 8, color: '#C9A84C', letterSpacing: 1.2 }}>· PO {job.po_number}</span>}
+            </div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>{job.address}</div>
             {job.client_name && <div style={{ fontSize: 12, color: '#C9A84C', marginTop: 2, fontWeight: 500 }}>{job.client_name}</div>}
           </div>
