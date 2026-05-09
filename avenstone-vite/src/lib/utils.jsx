@@ -27,7 +27,9 @@ export const gcalUrl = (ph, addr) => {
 };
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
-export const f$ = n => `$${Number(n || 0).toLocaleString()}`;
+// Always two decimal places (accounting convention). Plain toLocaleString() strips
+// trailing zeros — "$542.5" / "$1,000" — which is wrong for money displays.
+export const f$ = n => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const fD = d => { try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d || ''; } };
 export const fDT = d => { try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return d || ''; } };
 

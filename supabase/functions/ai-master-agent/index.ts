@@ -724,14 +724,21 @@ function extractLatestUserImage(
   return null;
 }
 
+// Always two decimal places for currency (accounting convention). Do NOT switch
+// back to plain toLocaleString() — it strips trailing zeros ($542.5 instead of
+// $542.50) and breaks both confirmation cards and inline replies.
+function fmtMoney(n: unknown): string {
+  return `$${Number(n ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function describeConfirmAction(tool: string, input: any): string {
   switch (tool) {
     case "log_payment":
-      return `Log $${Number(input.amount).toLocaleString()} client payment${input.description ? ` — ${input.description}` : ""}.`;
+      return `Log ${fmtMoney(input.amount)} client payment${input.description ? ` — ${input.description}` : ""}.`;
     case "log_receipt":
-      return `Log $${Number(input.amount).toLocaleString()} expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ""}.`;
+      return `Log ${fmtMoney(input.amount)} expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ""}.`;
     case "submit_change_order":
-      return `Submit $${Number(input.amount).toLocaleString()} change order — ${input.description}.`;
+      return `Submit ${fmtMoney(input.amount)} change order — ${input.description}.`;
     default:
       return "Perform this action.";
   }
@@ -768,7 +775,8 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
-- For money tools (log_payment, log_receipt, submit_change_order): your text response should describe what's about to happen in one plain sentence. The system will pause for user confirmation; do not assume the action ran.
+- For money tools (log_payment, log_receipt, submit_change_order): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
+- Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: if gates fail and the user did not give an override reason, do NOT pass override_reason. The tool result will list failing gates; relay them and ask if the user wants to override.
 - Never mention Claude or Anthropic.
 - You are the operating system of this business. Act like it.
@@ -787,6 +795,7 @@ When the user attaches an image of a receipt, extract: vendor name, total amount
   • City permit office, building department → permit
   • Otherwise → other_expense
 - Do not include image_data or image_mime in your log_receipt input — the server attaches the receipt photo automatically when one was provided. Just call log_receipt with the financial fields.
+- Call log_receipt directly with the extracted fields once you've matched the job. The pending_action confirmation card surfaces automatically — the user reviews and confirms via the card. Do NOT ask the user to confirm via text first.
 - The confirmation card description should lead with the matched job address (the most prominent field), then vendor, amount, and PO. Example: "Log $142.37 expense at 123 Test Flow Dr — Home Depot (PO 26-002)."
 - If the user's text message conflicts with what you read on the receipt, the user's text wins.
 

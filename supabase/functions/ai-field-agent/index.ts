@@ -206,18 +206,25 @@ RULES — follow exactly:
 4. Never invent or assume data you weren't given.
 5. For money tools (log_payment, log_receipt, submit_change_order): your text response should confirm what you're about to do in one plain sentence ending with "Say yes to confirm."
 6. For other tools (add_note, advance_phase, create_lead, update_material_status): the action runs immediately — your text should be a short confirmation in past tense.
-7. For advance_phase: if the user did not provide an override reason and gates may be failing, do NOT pass override_reason. The system will return failing gates; you then ask the user for a reason.`;
+7. For advance_phase: if the user did not provide an override reason and gates may be failing, do NOT pass override_reason. The system will return failing gates; you then ask the user for a reason.
+8. Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to all text responses and any reference to a monetary value.`;
+}
+
+// Always two decimal places for currency (accounting convention). Do NOT switch
+// back to plain toLocaleString() — it strips trailing zeros.
+function fmtMoney(n: unknown): string {
+  return `$${Number(n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // ── Human-readable confirmation descriptions (money verbs only) ──────────────
 function describeAction(tool: string, input: any): string {
   switch (tool) {
     case 'log_payment':
-      return `Log $${Number(input.amount).toLocaleString()} client payment${input.description ? ` — ${input.description}` : ''}.`;
+      return `Log ${fmtMoney(input.amount)} client payment${input.description ? ` — ${input.description}` : ''}.`;
     case 'log_receipt':
-      return `Log $${Number(input.amount).toLocaleString()} expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ''}.`;
+      return `Log ${fmtMoney(input.amount)} expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ''}.`;
     case 'submit_change_order':
-      return `Submit $${Number(input.amount).toLocaleString()} change order — ${input.description}.`;
+      return `Submit ${fmtMoney(input.amount)} change order — ${input.description}.`;
     default:
       return 'Perform this action.';
   }
@@ -245,9 +252,9 @@ async function executeAction(sb: any, action: any, tenant_id: string, user_id: s
         }).select().single();
         if (error) throw error;
         return {
-          reply: `Logged. $${Number(input.amount).toLocaleString()} payment recorded.`,
+          reply: `Logged. ${fmtMoney(input.amount)} payment recorded.`,
           executed: true,
-          action_label: `Payment: $${Number(input.amount).toLocaleString()}`,
+          action_label: `Payment: ${fmtMoney(input.amount)}`,
           data,
         };
       }
@@ -272,7 +279,7 @@ async function executeAction(sb: any, action: any, tenant_id: string, user_id: s
         return {
           reply: `Logged. Open Financials, tap the transaction, and upload the receipt photo when you're at a screen.`,
           executed: true,
-          action_label: `Expense: $${Number(input.amount).toLocaleString()}`,
+          action_label: `Expense: ${fmtMoney(input.amount)}`,
           data,
         };
       }
@@ -349,12 +356,12 @@ async function executeAction(sb: any, action: any, tenant_id: string, user_id: s
         if (error) throw error;
         const { data: jrow } = await sb.from('jobs').select('address').eq('id', input.job_id).single();
         const title = jrow?.address ? `New CO on ${jrow.address}` : `New change order ${coNumber}`;
-        const body = `${coNumber}: ${input.description} — $${Number(input.amount).toLocaleString()}`;
+        const body = `${coNumber}: ${input.description} — ${fmtMoney(input.amount)}`;
         notify(sb, tenant_id, user_id, { type: 'co_submitted', title, body, jobId: input.job_id }).catch(() => {});
         return {
-          reply: `${coNumber} for $${Number(input.amount).toLocaleString()} submitted. Pending client approval.`,
+          reply: `${coNumber} for ${fmtMoney(input.amount)} submitted. Pending client approval.`,
           executed: true,
-          action_label: `CO: $${Number(input.amount).toLocaleString()} — ${input.description}`,
+          action_label: `CO: ${fmtMoney(input.amount)} — ${input.description}`,
           data,
         };
       }
