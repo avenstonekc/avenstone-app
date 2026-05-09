@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt, sbCreateTransaction, sbCreateUserTodo, AV_TENANT } from '../../lib/supabase';
+import { sb, sbSave as sbSaveJob, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt, sbCreateTransaction, sbCreateUserTodo, AV_TENANT } from '../../lib/supabase';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
 import { sbCreatePendingTask, sbUpdatePendingTask, sbCompletePendingTask } from '../../lib/pendingTasks';
@@ -450,6 +450,124 @@ function TodoFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, 
       <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, fontSize: 14, color: 'rgba(247,245,240,0.85)', lineHeight: 1.6 }}>
         Adding todo: <strong>{initLabel}</strong><br />
         Project: <strong>{jobLabel || 'None'}</strong> · Priority: <strong>{priority}</strong> · Due: <strong>{resolveDueDate(dueDateChip, customDate) || 'None'}</strong>
+      </div>
+      {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={handleConfirm} disabled={saving}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          {saving ? 'Saving…' : 'Confirm'}
+        </button>
+        <button onClick={() => setStep('notes')} disabled={saving}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>
+          Edit
+        </button>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
+const LEAD_SOURCE_CHIPS = [
+  { id: 'door_knock', label: 'Door knock' },
+  { id: 'referral', label: 'Referral' },
+  { id: 'website', label: 'Website' },
+  { id: 'sign', label: 'Sign' },
+  { id: 'phone_in', label: 'Phone-in' },
+];
+
+function LeadFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, onBack }) {
+  const [step, setStep] = useState('customer_name');
+  const [customerName, setCustomerName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [source, setSource] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const labelStyle = { fontSize: 13, fontWeight: 600, color: 'rgba(247,245,240,0.85)', marginBottom: 4, fontFamily: 'DM Sans, sans-serif' };
+  const containerStyle = { display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'DM Sans, sans-serif' };
+  const inputStyle = { border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' };
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    setError('');
+    const job = {
+      id: crypto.randomUUID(),
+      status: 'lead',
+      address,
+      customer_name: customerName,
+      customer_phone: phone,
+      lead_source: source,
+      notes,
+      tenant_id: profile?.tenant_id,
+      assigned_rep: profile?.full_name,
+      created_by: profile?.id,
+      created: new Date().toISOString(),
+    };
+    const result = await sbSaveJob(job);
+    if (!result.ok) { setError(result.error || 'Failed to save lead'); setSaving(false); return; }
+    if (pendingTaskId) await sbCompletePendingTask(pendingTaskId, { resultingEntityType: 'job', resultingEntityId: job.id });
+    setSaving(false);
+    onComplete('Lead added ✓');
+  };
+
+  if (step === 'customer_name') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Customer name</div>
+      <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Full name" autoFocus style={inputStyle} />
+      <button onClick={() => setStep('phone')} disabled={!customerName.trim()} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
+      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'phone') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Phone number</div>
+      <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(816) 555-0100" style={inputStyle} />
+      <button onClick={() => setStep('address')} disabled={!phone.trim()} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
+      <button onClick={() => setStep('customer_name')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'address') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Job address</div>
+      <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St, Kansas City" style={inputStyle} />
+      <button onClick={() => setStep('source')} disabled={!address.trim()} className="btn btn-navy" style={{ fontSize: 13 }}>Next →</button>
+      <button onClick={() => setStep('phone')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'source') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>How did they find you?</div>
+      <ChipPicker chips={LEAD_SOURCE_CHIPS} allowOther={true} otherLabel="Other" onSelect={c => { setSource(c.isOther ? c.otherText : c.id); setStep('notes'); }} />
+      <button onClick={() => setStep('address')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'notes') return (
+    <div style={containerStyle}>
+      <div style={labelStyle}>Notes (optional)</div>
+      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Anything extra..." style={{ ...inputStyle, resize: 'none' }} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={() => setStep('confirm')} className="btn btn-navy" style={{ fontSize: 13, flex: 1 }}>Next →</button>
+        <button onClick={() => setStep('confirm')} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: 'transparent', color: 'rgba(247,245,240,0.75)', border: '1px solid rgba(247,245,240,0.25)', fontFamily: 'DM Sans, sans-serif', fontSize: 13, cursor: 'pointer' }}>Skip</button>
+      </div>
+      <button onClick={() => setStep('source')} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+
+  if (step === 'confirm') return (
+    <div style={containerStyle}>
+      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 14, fontSize: 14, color: 'rgba(247,245,240,0.85)', lineHeight: 1.7 }}>
+        New lead:<br />
+        <strong>{customerName}</strong> · {phone}<br />
+        <strong>{address}</strong><br />
+        Source: <strong>{source}</strong>
+        {notes && <><br />Notes: {notes}</>}
       </div>
       {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
@@ -1064,7 +1182,22 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   onBack={() => setFlowActive(false)}
                 />
               )}
-              {verb && flowActive && !['receipt','todo'].includes(verb) && (
+              {verb && flowActive && verb === 'lead' && (
+                <LeadFlow
+                  profile={profile}
+                  initContext={captureContext}
+                  initLabel={captureLabel}
+                  pendingTaskId={pendingTaskId}
+                  onComplete={(msg) => {
+                    setVerb(null); setFlowActive(false); setPendingTaskId(null);
+                    setCaptureContext({}); setCaptureLabel('');
+                    setCaptureToast(msg || 'Done');
+                    setTimeout(() => setCaptureToast(''), 4000);
+                  }}
+                  onBack={() => setFlowActive(false)}
+                />
+              )}
+              {verb && flowActive && !['receipt','todo','lead'].includes(verb) && (
                 <div style={{ background: 'rgba(247,245,240,0.08)', border: '1px solid rgba(201,168,76,0.3)', borderRadius: 10, padding: 16, fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: 'rgba(247,245,240,0.75)' }}>
                   <div style={{ marginBottom: 10 }}>Resume flow wired in next commit — verb: <strong style={{ color: '#C9A84C' }}>{verb}</strong></div>
                   <button onClick={() => { setVerb(null); setFlowActive(false); }} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, padding: '6px 12px', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer' }}>← Back</button>
