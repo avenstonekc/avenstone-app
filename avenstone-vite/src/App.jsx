@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, sbCountPendingTodos, AI_PM_NIGHTLY_URL, ANON_KEY } from './lib/supabase';
+import { initBugContext, pushBreadcrumb } from './lib/bugContext';
 import { Ic, STATS, sc, sl, f$, ls, ll } from './lib/utils';
 import { IQ, IR, BQ, BR } from './lib/formData';
 import logo from './assets/logo.png';
@@ -55,6 +56,14 @@ export default function App() {
   const [jobsSelClear, setJobsSelClear] = useState(0);
   const [pendingAction, setPendingAction] = useState(null);
   const landingChecked = useRef(false);
+
+  // Initialize bug context ring buffers once on mount
+  useEffect(() => { initBugContext(); }, []);
+
+  // Track page navigation as breadcrumbs
+  useEffect(() => {
+    pushBreadcrumb({ type: 'nav', label: pg, route: pg });
+  }, [pg]);
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session: s } }) => {

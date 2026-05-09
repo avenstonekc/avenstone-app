@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AI_MASTER_URL, ANON_KEY, captureFailedIntent } from '../../lib/supabase';
+import { pushBreadcrumb } from '../../lib/bugContext';
+import { Ic } from '../../lib/utils';
 
 // Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
 const MAX_EDGE = 1024;
@@ -37,12 +39,16 @@ async function fileToVisionPayload(file) {
   return { base64: out.split(',')[1], mime: 'image/jpeg', preview: out };
 }
 
-const EXAMPLE_PROMPTS = [
-  'Show me what needs attention today',
-  'Create a new job at 742 Evergreen Terrace for Homer Simpson',
-  "What's the status of all active jobs?",
-  'Add a note to the Summit job — client requested extra outlet in master',
+const QUICK_TILES = [
+  { verb: 'receipt',      label: 'Add a receipt',       ic: 'note' },
+  { verb: 'todo',         label: 'Add to the todo list', ic: 'check' },
+  { verb: 'lead',         label: 'Add a new lead',       ic: 'plus' },
+  { verb: 'change_order', label: 'Submit a change order',ic: 'warn' },
+  { verb: 'bug',          label: 'Submit a bug',         ic: 'info' },
 ];
+
+// Stub PendingTaskList — real component built in commit 7
+function PendingTaskList() { return null; }
 
 function formatToolName(tool) {
   if (!tool) return tool;
@@ -156,6 +162,7 @@ function ActionsPanel({ actions }) {
 
 export default function MasterAgent({ profile, pendingAction, clearPendingAction }) {
   const [open, setOpen] = useState(false);
+  const [verb, setVerb] = useState(null);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
   const [conversationHistory, setConversationHistory] = useState([]);
@@ -483,22 +490,13 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             <div
               style={{
                 fontFamily: 'DM Serif Display, serif',
-                fontSize: 20,
-                color: '#C9A84C',
+                fontSize: 24,
+                color: '#F7F5F0',
                 lineHeight: 1.2,
+                marginBottom: 0,
               }}
             >
-              Avenstone AI
-            </div>
-            <div
-              style={{
-                fontFamily: 'DM Sans, sans-serif',
-                fontSize: 12,
-                color: 'rgba(247,245,240,0.45)',
-                marginTop: 2,
-              }}
-            >
-              Master Control
+              What can I help you with?
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -556,37 +554,66 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           }}
         >
           {!hasMessages && !loading && (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flex: 1,
-                gap: 8,
-                paddingTop: 24,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 36,
-                  marginBottom: 4,
-                  opacity: 0.6,
-                }}
-              >
-                ✦
-              </div>
-              <div
-                style={{
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 8 }}>
+              {/* Pending task list (built commit 7) */}
+              <PendingTaskList />
+
+              {/* Quick-action tile grid */}
+              {!verb && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  gap: 10,
+                }}>
+                  {QUICK_TILES.map(tile => (
+                    <button
+                      key={tile.verb}
+                      onClick={() => {
+                        setVerb(tile.verb);
+                        pushBreadcrumb({ type: 'tap', label: `tile:${tile.verb}`, route: 'master-agent' });
+                      }}
+                      style={{
+                        background: '#fff',
+                        border: '1px solid #E8E4DC',
+                        borderRadius: 12,
+                        padding: 16,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                        transition: 'background 0.13s, border-color 0.13s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F7F5F0'; e.currentTarget.style.borderColor = '#C9A84C'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#E8E4DC'; }}
+                    >
+                      <span style={{ width: 20, height: 20, display: 'flex', color: '#0A1F44' }}>{Ic[tile.ic]}</span>
+                      <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, fontWeight: 500, color: '#0A1F44', lineHeight: 1.3 }}>{tile.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Verb stub — replaced commits 6–11 */}
+              {verb && (
+                <div style={{
+                  background: 'rgba(247,245,240,0.08)',
+                  border: '1px solid rgba(201,168,76,0.3)',
+                  borderRadius: 10,
+                  padding: 16,
                   fontFamily: 'DM Sans, sans-serif',
-                  fontSize: 13,
-                  color: 'rgba(247,245,240,0.4)',
-                  textAlign: 'center',
-                  marginBottom: 12,
-                }}
-              >
-                What can I help you with?
-              </div>
+                  fontSize: 14,
+                  color: 'rgba(247,245,240,0.75)',
+                }}>
+                  <div style={{ marginBottom: 10 }}>Wired in next commit — verb: <strong style={{ color: '#C9A84C' }}>{verb}</strong></div>
+                  <button
+                    onClick={() => setVerb(null)}
+                    style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, padding: '6px 12px', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer' }}
+                  >
+                    ← Back
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -717,45 +744,10 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           )}
         </div>
 
-        {/* Example prompts — shown when no messages */}
+        {/* Helper hint — shown when no messages */}
         {!hasMessages && !loading && (
-          <div
-            style={{
-              padding: '0 16px 12px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 7,
-            }}
-          >
-            {EXAMPLE_PROMPTS.map((prompt, i) => (
-              <button
-                key={i}
-                onClick={() => sendMessage(prompt)}
-                style={{
-                  background: 'rgba(201,168,76,0.1)',
-                  border: '1px solid rgba(201,168,76,0.3)',
-                  borderRadius: 20,
-                  padding: '6px 12px',
-                  color: 'rgba(247,245,240,0.75)',
-                  fontFamily: 'DM Sans, sans-serif',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  transition: 'background 0.15s, color 0.15s',
-                  textAlign: 'left',
-                  lineHeight: 1.4,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(201,168,76,0.2)';
-                  e.currentTarget.style.color = '#F7F5F0';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(201,168,76,0.1)';
-                  e.currentTarget.style.color = 'rgba(247,245,240,0.75)';
-                }}
-              >
-                {prompt}
-              </button>
-            ))}
+          <div style={{ padding: '0 16px 8px', fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: '#6b7280' }}>
+            Tap an option above, or type below.
           </div>
         )}
 
