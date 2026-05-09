@@ -267,7 +267,7 @@ const TOOLS = [
   },
   {
     name: "log_receipt",
-    description: "Record an outbound expense (material purchase, fuel, permit, sub payout, etc). When the user attached a receipt image, pass image_data and image_mime through so the receipt photo is stored alongside the transaction.",
+    description: "Record an outbound expense (material purchase, fuel, permit, sub payout, etc). Do NOT include image_data or image_mime — the system attaches the receipt photo automatically when the user provided one.",
     input_schema: {
       type: "object",
       properties: {
@@ -280,8 +280,6 @@ const TOOLS = [
           enum: ["material_purchase", "fuel", "permit", "sub_payout", "vendor_payment", "commission", "other_expense", "equipment_rental"],
           description: "Expense category. Default to material_purchase for home improvement stores; fuel for gas stations; permit for permit/inspection offices; otherwise other_expense.",
         },
-        image_data: { type: "string", description: "Base64-encoded receipt image (no data: prefix). Forward whatever image the user attached." },
-        image_mime: { type: "string", description: "MIME type of the attached image, e.g. image/jpeg. Required when image_data is set." },
       },
       required: ["job_id", "amount", "description"],
     },
@@ -703,6 +701,29 @@ async function executeTool(
 
 // ─── Agentic loop ─────────────────────────────────────────────────────────────
 
+// Pull the most recent base64 image block out of the conversation. Used to stash
+// receipt photos into log_receipt's pending_action so the model never has to (and
+// can't) emit a 200KB+ base64 string through tool_use input.
+function extractLatestUserImage(
+  msgs: Array<{ role: string; content: unknown }>,
+): { data: string; mime: string } | null {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.role !== "user" || !Array.isArray(m.content)) continue;
+    for (const block of m.content as Array<any>) {
+      if (
+        block?.type === "image" &&
+        block?.source?.type === "base64" &&
+        typeof block.source.data === "string" &&
+        typeof block.source.media_type === "string"
+      ) {
+        return { data: block.source.data, mime: block.source.media_type };
+      }
+    }
+  }
+  return null;
+}
+
 function describeConfirmAction(tool: string, input: any): string {
   switch (tool) {
     case "log_payment":
@@ -765,7 +786,7 @@ When the user attaches an image of a receipt, extract: vendor name, total amount
   • Gas stations (Shell, BP, Phillips 66, QuikTrip, Casey's, etc.) → fuel
   • City permit office, building department → permit
   • Otherwise → other_expense
-- When you call log_receipt, ALWAYS pass image_data + image_mime through from the user's message so the photo is bound to the transaction's receipt_url.
+- Do not include image_data or image_mime in your log_receipt input — the server attaches the receipt photo automatically when one was provided. Just call log_receipt with the financial fields.
 - The confirmation card description should lead with the matched job address (the most prominent field), then vendor, amount, and PO. Example: "Log $142.37 expense at 123 Test Flow Dr — Home Depot (PO 26-002)."
 - If the user's text message conflicts with what you read on the receipt, the user's text wins.
 
@@ -830,12 +851,24 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
       const blocks = data.content as Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown>; text?: string }>;
       const confirmBlock = blocks.find((b) => b.type === "tool_use" && b.name && CONFIRM_TOOLS.has(b.name));
       if (confirmBlock && confirmBlock.name) {
-        const description = describeConfirmAction(confirmBlock.name, confirmBlock.input || {});
+        const inputObj: Record<string, unknown> = { ...(confirmBlock.input || {}) };
+        // log_receipt: stash the user's receipt photo server-side into pending_action.
+        // Vision content blocks aren't accessible to the model as copyable text — if we
+        // ask Claude to forward image_data through tool_use input, max_tokens truncates
+        // and the loop dies with "Max iterations reached". Inject from currentMessages.
+        if (confirmBlock.name === "log_receipt" && !inputObj.image_data) {
+          const img = extractLatestUserImage(currentMessages);
+          if (img) {
+            inputObj.image_data = img.data;
+            inputObj.image_mime = img.mime;
+          }
+        }
+        const description = describeConfirmAction(confirmBlock.name, inputObj);
         const text = blocks.find((b) => b.type === "text")?.text ?? `${description} Confirm to run.`;
         return {
           response: text,
           actions,
-          pending_action: { tool: confirmBlock.name, input: confirmBlock.input || {}, description },
+          pending_action: { tool: confirmBlock.name, input: inputObj, description },
         };
       }
 
