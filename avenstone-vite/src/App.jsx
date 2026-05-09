@@ -32,6 +32,7 @@ import SequencesScr from './components/common/SequencesScr';
 import AiPmDashboard from './components/dashboard/AiPmDashboard';
 import TodayScr from './components/dashboard/TodayScr';
 import MyTodosScreen from './components/todos/MyTodosScreen';
+import BugReportsScr from './components/admin/BugReportsScr';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -91,7 +92,7 @@ export default function App() {
   }, []);
 
   const loadProfile = async uid => {
-    const { data } = await sb.from('profiles').select('*').eq('id', uid).single();
+    const { data } = await sb.from('profiles').select('*, is_platform_owner').eq('id', uid).single();
     setProfile(data);
     setSession(data?.tenant_id, uid);
     sbLoadNotifs().then(d => setNotifs(d));
@@ -181,6 +182,7 @@ export default function App() {
     ...(profile?.role === 'owner' ? [{ id: 'ai-pm', lb: 'PM Dashboard', ic: 'bell', sec: 'Settings' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'sequences', lb: 'Sequences', ic: 'bell', sec: 'Tools' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'owner-portal', lb: 'Owner Portal', ic: 'box', sec: 'Settings' }] : []),
+    ...(profile?.is_platform_owner ? [{ id: 'admin-bugs', lb: 'Bug Reports', ic: 'warn', sec: 'Platform' }] : []),
   ];
 
   return (
@@ -273,6 +275,7 @@ export default function App() {
             {pg === 'ai-pm' && profile?.role === 'owner' && <AiPmDashboard profile={profile} />}
             {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
             {pg === 'sequences' && profile?.role === 'owner' && <SequencesScr profile={profile} />}
+            {pg === 'admin-bugs' && profile?.is_platform_owner && <BugReportsScr profile={profile} />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ marginBottom: 16 }}>
