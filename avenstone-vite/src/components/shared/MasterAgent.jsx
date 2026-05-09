@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, sbSave as sbSaveJob, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt, sbCreateTransaction, sbCreateUserTodo, sbCreateChangeOrder, AV_TENANT } from '../../lib/supabase';
+import { sb, sbSave as sbSaveJob, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbUploadReceipt, sbCreateTransaction, sbCreateUserTodo, sbCreateChangeOrder, SUBMIT_BUG_REPORT_URL, AV_TENANT } from '../../lib/supabase';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
 import { sbCreatePendingTask, sbUpdatePendingTask, sbCompletePendingTask } from '../../lib/pendingTasks';
@@ -693,6 +693,76 @@ function COFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, on
   return null;
 }
 
+function BugFlow({ profile, initContext, initLabel, pendingTaskId, onComplete, onBack }) {
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const containerStyle = { display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'DM Sans, sans-serif' };
+  const inputStyle = { border: '1px solid rgba(201,168,76,0.3)', borderRadius: 8, padding: '10px 12px', background: 'rgba(255,255,255,0.07)', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box', resize: 'none' };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const jwt = session?.access_token;
+      const ctx = initContext || {};
+      const res = await fetch(SUBMIT_BUG_REPORT_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          description,
+          route: ctx.route || 'master-agent',
+          app_version: ctx.version || '1.0.0',
+          device_info: `${ctx.device || ''} ${ctx.os || ''}`.trim(),
+          breadcrumbs: ctx.breadcrumbs || [],
+          console_errors: ctx.consoleErrors || [],
+          network_errors: ctx.networkErrors || [],
+          screenshot_dataurl: ctx.screenshot_dataurl || null,
+          pending_task_id: pendingTaskId || null,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) { setError(data.error || 'Submission failed'); setSaving(false); return; }
+      onComplete('Bug submitted ✓');
+    } catch (e) {
+      setError(e.message || 'Submission failed');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={containerStyle}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(247,245,240,0.85)' }}>
+        What were you trying to do, and what happened?
+      </div>
+      <textarea
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        rows={5}
+        placeholder="Min 10 characters..."
+        style={inputStyle}
+        autoFocus
+      />
+      {error && <div style={{ color: '#FCA5A5', fontSize: 12 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={handleSubmit}
+          disabled={saving || description.trim().length < 10}
+          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, background: description.trim().length >= 10 ? '#C9A84C' : 'rgba(201,168,76,0.3)', color: '#0A1F44', border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: description.trim().length >= 10 ? 'pointer' : 'default' }}
+        >
+          {saving ? 'Submitting…' : 'Submit bug'}
+        </button>
+      </div>
+      <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'rgba(247,245,240,0.4)', fontSize: 12, cursor: 'pointer', padding: 0, textAlign: 'left', fontFamily: 'DM Sans, sans-serif' }}>← Back</button>
+    </div>
+  );
+}
+
 function formatToolName(tool) {
   if (!tool) return tool;
   return tool
@@ -1234,7 +1304,18 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                         pushBreadcrumb({ type: 'tap', label: `tile:${tile.verb}`, route: 'master-agent' });
                         if (tile.verb === 'bug') {
                           const snap = getSnapshot();
-                          setCaptureContext({ ...snap });
+                          // Capture screenshot at tap time — screen changes during flow
+                          import('html2canvas').then(({ default: html2canvas }) => {
+                            html2canvas(document.body, { scale: 0.5, useCORS: true, logging: false }).then(canvas => {
+                              const screenshot_dataurl = canvas.toDataURL('image/png');
+                              setCaptureContext({ ...snap, screenshot_dataurl });
+                            }).catch(() => {
+                              setCaptureContext({ ...snap });
+                            });
+                          }).catch(() => {
+                            setCaptureContext({ ...snap });
+                          });
+                          setCaptureContext({ ...snap }); // set immediately, screenshot fills in async
                         }
                       }}
                       style={{
@@ -1319,11 +1400,20 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   onBack={() => setFlowActive(false)}
                 />
               )}
-              {verb && flowActive && !['receipt','todo','lead','change_order'].includes(verb) && (
-                <div style={{ background: 'rgba(247,245,240,0.08)', border: '1px solid rgba(201,168,76,0.3)', borderRadius: 10, padding: 16, fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: 'rgba(247,245,240,0.75)' }}>
-                  <div style={{ marginBottom: 10 }}>Resume flow wired in next commit — verb: <strong style={{ color: '#C9A84C' }}>{verb}</strong></div>
-                  <button onClick={() => { setVerb(null); setFlowActive(false); }} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, padding: '6px 12px', color: '#F7F5F0', fontFamily: 'DM Sans, sans-serif', fontSize: 12, cursor: 'pointer' }}>← Back</button>
-                </div>
+              {verb && flowActive && verb === 'bug' && (
+                <BugFlow
+                  profile={profile}
+                  initContext={captureContext}
+                  initLabel={captureLabel}
+                  pendingTaskId={pendingTaskId}
+                  onComplete={(msg) => {
+                    setVerb(null); setFlowActive(false); setPendingTaskId(null);
+                    setCaptureContext({}); setCaptureLabel('');
+                    setCaptureToast(msg || 'Done');
+                    setTimeout(() => setCaptureToast(''), 4000);
+                  }}
+                  onBack={() => setFlowActive(false)}
+                />
               )}
 
               {/* Quick-capture step */}

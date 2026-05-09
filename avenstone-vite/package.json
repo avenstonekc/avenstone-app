@@ -15,6 +15,7 @@
     "@capacitor/ios": "^8.3.0",
     "@supabase/supabase-js": "^2.103.0",
     "heic2any": "^0.0.4",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

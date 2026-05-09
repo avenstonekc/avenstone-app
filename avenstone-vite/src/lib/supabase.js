@@ -49,6 +49,7 @@ export const GET_CONTRACTOR_PROFILE_URL = `${FN}/get-contractor-profile`;
 export const GET_JOB_STATUS_URL         = `${FN}/get-job-status`;
 export const SUBMIT_BID_RESPONSE_URL    = `${FN}/submit-bid-response`;
 export const VIEW_ENGAGEMENT_URL        = `${FN}/view-engagement`;
+export const SUBMIT_BUG_REPORT_URL      = `${FN}/submit-bug-report`;
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 export const sbSave = async j => {
