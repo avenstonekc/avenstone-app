@@ -251,11 +251,13 @@ async function executeAction(sb: any, action: any, tenant_id: string, user_id: s
       }
 
       case 'log_receipt': {
+        // Matches TransactionModal default for new outbound rows.
+        // Constraint job_transactions_type_check rejects 'expense'.
         const { data, error } = await sb.from('job_transactions').insert({
           job_id: input.job_id,
           tenant_id,
           direction: 'out',
-          type: 'expense',
+          type: 'material_purchase',
           amount: Number(input.amount),
           description: input.description,
           payer_or_payee_name: input.vendor || null,

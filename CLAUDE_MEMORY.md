@@ -721,3 +721,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - PAT verification: pre-fix query 42703'd; post-fix query returned 8 rows including test-flow-001. Tenant 00000000-0000-0000-0000-000000000001 has 8 jobs total.
 - Decision: minimal scope — fixed get_jobs only. Did NOT touch update_job's allowed-list at line 410 (also references start_date — silent no-op there too) or the silent-empty pattern in get_job_details/get_team/get_dashboard, all of which would mask similar bugs. Scope discipline per dispatch rule.
 - Open: (1) update_job's start_date in allowed list is a stealth no-op for any caller trying to set start dates via Master — flag for follow-up Master tool sweep arc; (2) get_job_details, get_team, get_dashboard all destructure `{ data }` without checking error — same silent-empty class of bug, will mask future column drift. Same follow-up arc. (3) Auth was NOT the issue here, but service-role bypass means RLS bugs in these handlers will go undetected by manual smoke — keep this in mind when reviewing the other 12 Master tools.
+
+[LOG — 2026-05-08]
+- Action: Smoke test repair — log_receipt failed `job_transactions_type_check` on both Master and Field agents. Both handlers passed `type: 'expense'`, which is not in the constraint's allowed array. Fixed both to `material_purchase`, the canonical UI default for new outbound rows.
+- Constraint: allowed types = client_payment, client_deposit, client_refund, sub_payout, vendor_payment, material_purchase, equipment_rental, permit, fuel, commission, other_expense, other_income. No 'expense'.
+- Canonical UI value: TransactionModal.jsx:27 defaults `material_purchase` for new outbound rows. Production data confirms (3 material_purchase + 4 sub_payout + 2 other_expense + 1 commission rows in job_transactions).
+- Files: supabase/functions/ai-master-agent/index.ts (log_receipt:583), supabase/functions/ai-field-agent/index.ts (log_receipt:258), CLAUDE_MEMORY.md
+- PAT verification: insert smoke row with new shape → 201 + UUID returned; delete confirmed; leftover count = 0.
+- Decision: pin `material_purchase` rather than enriching the tool schema with an enum. The agent has no UX to disambiguate sub_payout vs vendor_payment vs material_purchase mid-conversation, and the UI itself defaults to material_purchase. Users can re-categorize in TransactionModal post-hoc.
+- Open: tool descriptions still say "material purchase, sub payout, misc" — slightly misleading now that all log_receipt rows pin to material_purchase. Tighten in a follow-up; not blocking smoke.
