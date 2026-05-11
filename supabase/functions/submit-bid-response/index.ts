@@ -124,6 +124,14 @@ Deno.serve(async (req) => {
         .update({ is_current: true })
         .eq("engagement_id", engagementId)
         .eq("revision_number", revisionNumber - 1);
+      // Postgres unique_violation on idx_engbid_one_current (or revision_number)
+      // = concurrent double-submit. The other request won the race; the partial
+      // unique index correctly prevented a second is_current=true bid from
+      // landing. Surface as 409, not 500 — behavior is right, only the
+      // response shape was wrong.
+      if ((insertErr as any)?.code === '23505') {
+        return json({ ok: false, error: 'Engagement state changed concurrently' }, 409);
+      }
       return json({ ok: false, error: insertErr?.message || "Failed to insert bid" }, 500);
     }
 

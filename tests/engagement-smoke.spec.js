@@ -331,9 +331,15 @@ test.describe.serial("Engagement pipeline smoke test", () => {
     const statuses = [r1.status, r2.status].sort();
     console.log(`  req1: ${r1.status} ok=${j1.ok}  req2: ${r2.status} ok=${j2.ok}`);
 
-    // Exactly one must succeed (200) and one must fail (409 or 400)
+    // Exactly one must succeed (200) and one must fail (409)
     expect(statuses[0]).toBeLessThan(300); // one success
-    expect(statuses[1]).toBeGreaterThanOrEqual(400); // one rejection
+    expect(statuses[1]).toBe(409); // loser is 409, not 500
+
+    // Loser body must match the canonical shape
+    const [winner, loser] = r1.status === 200 ? [j1, j2] : [j2, j1];
+    expect(winner.ok).toBe(true);
+    expect(loser.ok).toBe(false);
+    expect(loser.error).toBe('Engagement state changed concurrently');
 
     // Cleanup: delete the double-test engagement
     await admin.from("engagement_bids").delete().eq("engagement_id", doubleEngId);
