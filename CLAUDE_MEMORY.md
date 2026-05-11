@@ -103,7 +103,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - URL-based routing (`selJ` is React state — no deep-link, refresh loses position)
 - Todo push notification wiring deferred (`send-push` edge fn exists, no callers)
 - Dev auto-login removal before external testers
-- Drift detector (2026-05-10 first run; job_subs cleared 2026-05-11) surfaced 15 drift findings + 2 missing tables + 5 NOT-NULL potentials. Triage individually, do not bulk-fix. Drift sites: `change_orders.title`, `contacts.{full_name,project_type,description}`, `job_estimates.{session_id,created_by,estimate_data,oh_shit_moments,total,source}`, `job_notes.{note_type,created_by}`, `todos.{target_user_id,severity,source_table}`. Missing tables remaining: `itb_invitees`, `staff_messages`
+- Drift detector (2026-05-10 first run; job_subs cleared 2026-05-11; itb_invitees cleared 2026-05-11) surfaced 15 drift findings + 1 missing table + 5 NOT-NULL potentials. Triage individually, do not bulk-fix. Drift sites: `change_orders.title`, `contacts.{full_name,project_type,description}`, `job_estimates.{session_id,created_by,estimate_data,oh_shit_moments,total,source}`, `job_notes.{note_type,created_by}`, `todos.{target_user_id,severity,source_table}`. Missing tables remaining: `staff_messages`
 
 **Components:**
 - `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring
@@ -949,3 +949,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Action: Committed `supabase/migrations/20260506150000_engagement_bids_line_items_default.sql` — it was applied to the live DB but never tracked in git. Verified via information_schema: `engagement_bids.line_items` already has `column_default = ''[]''::jsonb`, confirming the migration ran on prod.
 - Files: `supabase/migrations/20260506150000_engagement_bids_line_items_default.sql` (newly tracked), `CLAUDE_MEMORY.md`.
 - Decision: standalone commit, separate from any code work. Applied-but-uncommitted migrations are a divergence that bites cold-clone setups months later — fix the reconciliation cleanly. Repo-wide `git status` confirmed this was the only untracked file, so apply discipline is intact going forward; no audit gap behind this one.
+
+[LOG — 2026-05-11 — send-bid-invite edge fn deleted (itb_invitees dead-table fix)]
+- Action: Deleted `supabase/functions/send-bid-invite/` (whole dir, single file `index.ts` 104 lines) and removed the orphaned `export const BID_INVITE_URL` from `avenstone-vite/src/lib/supabase.js:30`. The fn's core write at line 36 was `sb.from("itb_invitees").upsert(...)` — `itb_invitees` was DROPped in Phase 3 cleanup (2026-05-06). Any runtime call would have thrown 42P01.
+- Files: `supabase/functions/send-bid-invite/index.ts` (DELETED), `avenstone-vite/src/lib/supabase.js`, `CLAUDE_MEMORY.md`.
+- Audit findings (Sonnet, pre-delete): zero callers in `avenstone-vite/src/`, zero importers of `BID_INVITE_URL`, no cross-fn invocation, no webhook shape. Only non-src reference was frozen `index.html` (non-deployed). info_schema confirmed `itb_invitees` not present. Phase 2e LOG entries never named `send-bid-invite` as retired — confirmed Phase 2e cleanup miss.
+- Verification: re-ran `npm run audit:schema` — missing tables dropped from 2 → 1. Only `staff_messages` remaining.
+- Process learning: Phase retirement arcs (2e and 3) focused on UI + schema but did NOT audit edge fns for dead-table refs. Going forward, every Phase retirement arc should include a closing step: grep `supabase/functions/**` for every dropped table name + every retired URL/helper constant before declaring the arc complete. This single fn survived two arcs because it was advertised through `BID_INVITE_URL` but never imported anywhere — the kind of orphan that only a write-side drift audit catches. The drift detector is now that audit; it should be run as a Phase-retirement closing gate.
+- Open: triage remaining 14 drift findings + 1 missing table (`staff_messages`).

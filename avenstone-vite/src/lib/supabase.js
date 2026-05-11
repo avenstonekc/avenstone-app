@@ -27,7 +27,6 @@ export const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const FN = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1';
 export const INVITE_URL        = `${FN}/send-invite`;
 export const CLIENT_LINK_URL   = `${FN}/send-client-link`;
-export const BID_INVITE_URL    = `${FN}/send-bid-invite`;
 export const PAYMENT_LINK_URL  = `${FN}/create-payment-link`;
 export const AI_ESTIMATOR_URL  = `${FN}/ai-estimator`;
 export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
