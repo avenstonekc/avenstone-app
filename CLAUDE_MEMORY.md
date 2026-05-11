@@ -88,7 +88,6 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - `CODE_JURISDICTION_ARC.md` — jurisdiction-aware inspection checklists (KC vs Overland Park, 2018 vs 2021 IRC). Hardcoded starter set is v1; AI-seeded jurisdiction-aware templates are the real moat play.
 
 **Sub portal & financial:**
-- `submit-bid-response` returns 500 on concurrent double-submit instead of the spec'd 409 JSON `{ ok: false, error: 'Engagement state changed concurrently' }`. Behavior is correct (no double-bid created); response shape is wrong. Surfaced during 2026-05-06 smoke test edge case.
 - ConsultationTab tab retirement
 - Auto-bid generation (sub_pricing × takeoff quantity, AI sanity pass)
 - Sub password retrofit for existing magic-link-only subs
@@ -915,3 +914,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Schema correction logged in Schema reality: ai-master-agent has 19 tools, not the "17" prior memory implied. CONFIRM_TOOLS extended to 5: log_payment, log_receipt, submit_change_order, add_todo, create_job.
 - amountToWords ported from the deleted labelParser.js into ai-master-agent/index.ts. Money verbs render `$750.00 (seven hundred fifty dollars)` on the Confirm card so a misheard digit reads obviously wrong. VOICE_AGENT money-safety pattern preserved.
 - Open: visual smoke test of the chat-first flow on each of the 5 verbs is not yet done. Build green, edge fn redeploy via GitHub Actions on push will fire automatically. First end-to-end exercise (with a real Confirm card round-trip) is the next-session task.
+
+[LOG — 2026-05-10]
+- Action: submit-bid-response concurrent-double-submit 500 → 409 fix shipped (`910036d`).
+- Files: `supabase/functions/submit-bid-response/index.ts` (one new branch at the INSERT-error handler), `tests/engagement-smoke.spec.js` (tightened double-submit assertion from `>=400` to exactly 409 + body shape check).
+- Root cause of the 500: two concurrent submits both passed the `engagement.status='invited'` check at line 76. The partial unique index `idx_engbid_one_current` correctly prevented a second `is_current=true` bid from landing, so behavior was right — but the INSERT-loser fell through `insertErr` at line 121 and returned 500 with the raw Postgres error message instead of a 409 with the canonical shape.
+- Fix: detect `insertErr.code === '23505'` (Postgres unique_violation) and return `{ ok: false, error: 'Engagement state changed concurrently' }` at 409. Other insertErr causes keep returning 500 so legitimate server bugs aren't swept under the rug. The optimistic-UPDATE-race path at line ~146 was already 409 and untouched. Outer catch at line ~152 also untouched.
+- Decision: classify by Postgres SQLSTATE code (`23505`) rather than constraint-name string match. Constraint names rename more often than SQLSTATE codes do, and any unique-violation on engagement_bids during this code path is by definition a concurrency loss.
+- Verification deferred: GitHub Actions auto-deploy is in flight; once live, `npx playwright test tests/engagement-smoke.spec.js --grep "double-submit"` against the deployed fn proves the fix. Couldn't run a manual curl from here — the PAT in `tokenfile.txt` returns 401 across the Management API (rotated since yesterday), and the function needs a real sub-user JWT anyway, not a PAT.
+- Removed from active open items: the "submit-bid-response returns 500..." bullet under Sub portal & financial (line 91).
