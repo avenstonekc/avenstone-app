@@ -944,3 +944,8 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: re-ran `npm run audit:schema` — missing tables dropped from 3 → 2 (`job_subs` cleared). Drift count unchanged at 15 (job_subs was a missing-table finding, not a column drift). Remaining missing tables: `itb_invitees`, `staff_messages`.
 - Side finding (drift detector limit): the `get_job_details:382` SELECT was found by manual audit, not by the detector — reads aren't audited. Candidate enhancement (Group D-ish): extend resolver to `.select()` calls for column projections (catching e.g. `select("colA,colB")` against tables to flag both missing tables and missing columns on reads). Out of scope for this slice — logged as a future detector improvement.
 - Open: triage the remaining 14 drift findings + 2 missing tables individually.
+
+[LOG — 2026-05-11 — migration reconciliation: engagement_bids.line_items default]
+- Action: Committed `supabase/migrations/20260506150000_engagement_bids_line_items_default.sql` — it was applied to the live DB but never tracked in git. Verified via information_schema: `engagement_bids.line_items` already has `column_default = ''[]''::jsonb`, confirming the migration ran on prod.
+- Files: `supabase/migrations/20260506150000_engagement_bids_line_items_default.sql` (newly tracked), `CLAUDE_MEMORY.md`.
+- Decision: standalone commit, separate from any code work. Applied-but-uncommitted migrations are a divergence that bites cold-clone setups months later — fix the reconciliation cleanly. Repo-wide `git status` confirmed this was the only untracked file, so apply discipline is intact going forward; no audit gap behind this one.
