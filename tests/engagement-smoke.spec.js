@@ -16,8 +16,6 @@ const SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 const ANON_KEY    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ";
 const FN_BASE     = `${SB_URL}/functions/v1`;
 const TENANT_ID   = "00000000-0000-0000-0000-000000000001";
-const JOB_ID      = "8d3463da-6b0f-4a9c-9878-37e012a7f5a1"; // 1206 Lucy Webb Rd
-const JOB_ADDR    = "1206 Lucy Webb Rd, Raymore, MO";
 const SUB_ID      = "b464f266-afdf-445d-bf7a-9d9c0cd0baae"; // test-sub
 const TRADE       = "Flooring - LVP";
 const SCOPE       = "LVP flooring in living room and hallway";
@@ -29,7 +27,7 @@ const admin = createClient(SB_URL, SERVICE_KEY, {
 });
 
 // shared across test steps
-const ctx = { engagementId: null, scheduleItemIds: [] };
+const ctx = { engagementId: null, scheduleItemIds: [], jobId: null };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,11 +70,11 @@ async function navTo(page, label) {
 // ── cleanup ───────────────────────────────────────────────────────────────────
 
 async function cleanupTestEngagements() {
-  // Delete schedule items tied to test engagements
+  // The test sub is dedicated to test work, so scoping by sub_id alone is safe
+  // and doesn't depend on a specific job UUID still existing in the DB.
   const { data: engs } = await admin
     .from("job_sub_engagements")
     .select("id")
-    .eq("job_id", JOB_ID)
     .eq("sub_id", SUB_ID);
   if (engs?.length) {
     const ids = engs.map(e => e.id);
@@ -86,12 +84,26 @@ async function cleanupTestEngagements() {
   }
 }
 
+async function resolveTestJobId() {
+  // Find any existing job for the tenant. Jobs get deleted; never hardcode a UUID.
+  const { data: jobs, error } = await admin
+    .from("jobs")
+    .select("id")
+    .eq("tenant_id", TENANT_ID)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`Failed to look up test job: ${error.message}`);
+  if (!jobs || !jobs.length) throw new Error("No jobs exist in tenant — cannot seed test engagement");
+  return jobs[0].id;
+}
+
 // ── test suite ────────────────────────────────────────────────────────────────
 
 test.describe.serial("Engagement pipeline smoke test", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
   test.beforeAll(async () => {
+    ctx.jobId = await resolveTestJobId();
     await cleanupTestEngagements();
   });
 
@@ -106,7 +118,7 @@ test.describe.serial("Engagement pipeline smoke test", () => {
       .from("job_sub_engagements")
       .insert({
         tenant_id: TENANT_ID,
-        job_id: JOB_ID,
+        job_id: ctx.jobId,
         sub_id: SUB_ID,
         trade: TRADE,
         bid_type: "sub_drafted",
@@ -281,7 +293,7 @@ test.describe.serial("Engagement pipeline smoke test", () => {
       .from("job_sub_engagements")
       .insert({
         tenant_id: TENANT_ID,
-        job_id: JOB_ID,
+        job_id: ctx.jobId,
         sub_id: SUB_ID,
         trade: DOUBLE_TRADE,
         bid_type: "sub_drafted",
@@ -315,6 +327,7 @@ test.describe.serial("Engagement pipeline smoke test", () => {
       endDate: null,
       lineItems: null,
       attachedDocIds: [],
+      earliestStartDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     };
     const headers = {
       "Content-Type": "application/json",
@@ -339,7 +352,8 @@ test.describe.serial("Engagement pipeline smoke test", () => {
     const [winner, loser] = r1.status === 200 ? [j1, j2] : [j2, j1];
     expect(winner.ok).toBe(true);
     expect(loser.ok).toBe(false);
-    expect(loser.error).toBe('Engagement state changed concurrently');
+    // Edge fn has two 409 branches (INSERT-race vs UPDATE-race) — assert the canonical prefix they share.
+    expect(loser.error).toMatch(/^Engagement state changed concurrently/);
 
     // Cleanup: delete the double-test engagement
     await admin.from("engagement_bids").delete().eq("engagement_id", doubleEngId);
