@@ -600,6 +600,12 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 
 ---
 
+## Tools / Scripts
+
+- `tools/audit_schema_vs_code.js` — schema-vs-code drift detector. Run via `npm run audit:schema` from `avenstone-vite/`. Parses `.insert/.update/.upsert` call sites (with scope-aware resolution for `Identifier` args and `arr.forEach` allowlist patterns), queries `information_schema` for the referenced tables, reports columns the code writes that the DB doesn't have. Exit 0 = clean, 1 = drift found, 2 = parse/PAT/API error. Flags: `--strict` (potential issues also fail), `--table <name>`, `--json`. Use before writing a migration prompt.
+
+---
+
 ## Common Task Patterns
 
 - **"add a feature"** — build in `avenstone-vite/src/`, add CSS, add `sb*` helper, wire to NAV
