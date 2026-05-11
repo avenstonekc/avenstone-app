@@ -293,18 +293,6 @@ const TOOLS = [
     },
   },
   {
-    name: "assign_sub",
-    description: "Assign an existing subcontractor to a job.",
-    input_schema: {
-      type: "object",
-      properties: {
-        job_id: { type: "string" },
-        sub_id: { type: "string", description: "UUID of the sub from profiles table" },
-      },
-      required: ["job_id", "sub_id"],
-    },
-  },
-  {
     name: "notify_team",
     description: "Send an in-app notification to all staff on this tenant, or to a specific user.",
     input_schema: {
@@ -379,7 +367,10 @@ async function executeTool(
           sb.from("job_phases").select("*").eq("job_id", input.job_id).order("phase_order"),
           sb.from("payments").select("*").eq("job_id", input.job_id),
           sb.from("change_orders").select("*").eq("job_id", input.job_id),
-          sb.from("job_subs").select("*, profile:profiles(id,full_name,trade,phone,email)").eq("job_id", input.job_id),
+          sb.from("job_sub_engagements")
+            .select("id, trade, status, bid_type, sub:profiles!sub_id(id,full_name,trade,phone,email)")
+            .eq("job_id", input.job_id)
+            .not("status", "in", "(completed,declined,withdrawn,removed)"),
         ]);
         return {
           job: jobRes.data,
@@ -665,16 +656,6 @@ async function executeTool(
         };
       }
 
-      case "assign_sub": {
-        const { error } = await sb.from("job_subs").upsert({
-          tenant_id: tenantId,
-          job_id: input.job_id,
-          sub_id: input.sub_id,
-        }, { onConflict: "job_id,sub_id" });
-        if (error) return { error: error.message };
-        return { success: true };
-      }
-
       case "notify_team": {
         let targetIds: string[] = [];
         if (input.user_id) {
@@ -871,7 +852,7 @@ Tenant: ${tenantId}
 
 WHAT YOU CAN DO:
 - Read: jobs, team, dashboard snapshot, job details
-- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, assign subs, send notifications, write to knowledge base
+- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, send notifications, write to knowledge base
 
 HOW TO BEHAVE:
 - Act immediately. Don't ask "should I do X?" — just do it and tell them what you did.
