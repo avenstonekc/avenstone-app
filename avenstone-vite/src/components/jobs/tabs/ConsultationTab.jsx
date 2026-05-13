@@ -280,23 +280,18 @@ export default function ConsultationTab({ job, profile, setTab }) {
     try {
       const userId = AV_USER_ID || profile?.id;
       const tenantId = AV_TENANT || profile?.tenant_id;
-      const included = result.oh_shit_moments?.filter((m, i) => {
-        const dbRow = ohShitDbRows.find(r => r.condition === (m.condition || m.issue || m.title)) || ohShitDbRows[i];
-        const key = dbRow?.id ?? i;
-        return !!ohShitToggled[key];
-      }) || [];
-
-      const { data: estRow, error } = await sb.from('job_estimates').insert({
+      // Upsert keyed on job_id — coexists with Estimator chat row (writes messages only).
+      // Multi-source split deferred until Estimator produces structured iterative output.
+      // oh_shit_moments snapshot omitted — live oh_shit_moments table with included_in_proposal is truth.
+      const { data: estRow, error } = await sb.from('job_estimates').upsert({
         job_id: job.id,
         session_id: sessionIdRef.current,
         tenant_id: tenantId,
         created_by: userId,
         estimate_data: result.estimate,
-        oh_shit_moments: included,
         total: result.estimate?.total,
         source: 'ai_consultation',
-        created_at: new Date().toISOString(),
-      }).select('id').single();
+      }, { onConflict: 'job_id' }).select('id').single();
       if (error) throw error;
 
       // Persist line items for Budget vs Actual
