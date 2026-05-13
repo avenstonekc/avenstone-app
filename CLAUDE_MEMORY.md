@@ -1031,3 +1031,14 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: job_transactions_type_check constraint queried live — all 12 allowed values confirmed. ai_error_logs queried for both patterns — 0 rows returned.
 - Trade-aware: master-agent tools are platform-shared; no change made.
 - Open: drift surface stays at 0. Backlog: tool-schema-vs-payload detector enhancement; out-of-v1 tools cleanup arc (13 broken/stale read tools per Phase 1 audit).
+
+[LOG — 2026-05-12 — ai-master-agent: Rank 2 + Rank 3 closed (CMD 2 slice)]
+- Action: Aligned log_receipt type value with job_transactions enum (Rank 2 confirmed already fixed in code). Rank 3: confirmed legitimate rejection — gate was correct, no fix needed.
+- Files: supabase/functions/ai-master-agent/index.ts (read-only — no changes; both ranks were non-bugs)
+- Rank 2 root cause: Code already hardened. ALLOWED_OUT guard (index.ts:606-610) validates the 8 allowed expense type values (material_purchase, fuel, permit, sub_payout, vendor_payment, commission, other_expense, equipment_rental) and defaults to material_purchase for any out-of-enum model output. All 8 are valid subsets of the 12-value job_transactions_type_check constraint. Zero ai_error_logs failures referencing the constraint. Prior CMD 2 diagnostic was a false positive.
+- Rank 3 outcome: confirmed legitimate (gate was semantically correct — in_progress→final_touches checks for sub_start items NOT complete/cancelled; count=1 row with status=scheduled was correctly blocking the advance. No inversion. The two failures on 2026-05-08/09 for "123 Test Flow Dr" were correct rejections — the sub start for "Drywall - Hang" was still scheduled, not complete).
+- Verification: smoke tests N/A (no code deployed); ai_error_logs 7-day window for master-agent = 0 rows. job_transactions_type_check constraint queried live — 12 allowed values confirmed. schedule_items for test-flow-001 confirmed 1 sub_start row with status=scheduled at failure time.
+- Trade-aware: master-agent tools are platform-shared; both audits are tenant-agnostic.
+- Open: drift surface stays at 0 (official). Scanner-coverage-gap (identifier-arg payloads skipped) means actual surface is unknown. Backlog: tool-schema-vs-payload detector enhancement; decode identifier-arg insert payloads in audit_schema_vs_code.js; out-of-v1 master-agent tools cleanup arc.
+
+- Drift detector enhancement — decode identifier-arg insert payloads in `tools/audit_schema_vs_code.js`. The resolver currently skips 34 call sites; the 2026-05-12 todos slice proved the skipped bucket hides real, shippable drift. Until decoded, the official count is a floor, not a ceiling.
