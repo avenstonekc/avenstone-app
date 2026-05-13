@@ -1041,4 +1041,14 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Trade-aware: master-agent tools are platform-shared; both audits are tenant-agnostic.
 - Open: drift surface stays at 0 (official). Scanner-coverage-gap (identifier-arg payloads skipped) means actual surface is unknown. Backlog: tool-schema-vs-payload detector enhancement; decode identifier-arg insert payloads in audit_schema_vs_code.js; out-of-v1 master-agent tools cleanup arc.
 
-- Drift detector enhancement — decode identifier-arg insert payloads in `tools/audit_schema_vs_code.js`. The resolver currently skips 34 call sites; the 2026-05-12 todos slice proved the skipped bucket hides real, shippable drift. Until decoded, the official count is a floor, not a ceiling.
+- Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()` / `.flatMap()` callback payloads — keysFromMapCall helper in tools/audit_schema_vs_code.js). Skipped count: 34 → 15. Drift count unchanged at 0 (newly-decoded sites all write valid columns). Remaining skipped patterns deferred: identifier→none (8 — function params, need call-site analysis), LogicalExpression (5 — destructuring rest bindings), ConditionalExpression (1 — union-branch), dynamic .from() (1 — opaque by design).
+
+[LOG — 2026-05-12 — Drift detector extended (decode map/flatMap callback payloads)]
+- Action: Added keysFromMapCall helper to tools/audit_schema_vs_code.js. Wired into processWriteCall (inline CallExpression arg) and resolveIdentifierColumns (identifier initialized by CallExpression). Single commit 9c9c112.
+- Files: tools/audit_schema_vs_code.js
+- New drift findings surfaced (TRIAGE-ONLY): None. All 19 newly-resolved sites write valid DB columns. Drift stays at 0.
+- Skipped count: 34 → 15 (-19). Breakdown of resolved: 14 inline `.insert(arr.map(...))` batch inserts (notifications across 9 edge-fn sites + ai-pm-nightly todos + oh_shit_moments generate-estimate + estimate_line_items takeoff.js + ai_knowledge AiSetupWizard); 5 identifier-initialized-by-map (estimate_line_items supabase.js:873, ai_knowledge AiSetupWizard:128 + 3 more).
+- Remaining skipped (15): 8x identifier→param (init type none), 5x identifier→LogicalExpression (destructuring rest binding), 1x ConditionalExpression, 1x dynamic .from().
+- Potential: 5 → 4 (oh_shit_moments.condition resolved — decoder now sees it written by generate-estimate-from-session map callback).
+- Smoke check: notifications (all 9 batch-insert sites), oh_shit_moments, estimate_line_items, ai_knowledge, change_orders, todos — all clean, 0 drift. No regressions on previously-clean tables.
+- Open: triage remaining 15 skipped sites in their own slices. LogicalExpression (destructuring rest) and identifier→param patterns require call-site analysis — deferred. ConditionalExpression (1 site: schedule_items) is low priority.
