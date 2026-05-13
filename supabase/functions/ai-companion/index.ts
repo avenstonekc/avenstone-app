@@ -60,11 +60,10 @@ const TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        title: { type: "string", description: "Short title for the change order" },
         description: { type: "string", description: "What the change entails" },
         amount: { type: "number", description: "Dollar amount of the change order" },
       },
-      required: ["title", "amount"],
+      required: ["description", "amount"],
     },
   },
   {
@@ -141,7 +140,6 @@ async function executeTool(
       const { error } = await sb.from("change_orders").insert({
         job_id,
         tenant_id,
-        title: input.title,
         description: input.description || "",
         amount: input.amount,
         status: "pending",
@@ -152,7 +150,7 @@ async function executeTool(
       if (job) {
         await sb.from("jobs").update({ co_total: (Number(job.co_total) || 0) + Number(input.amount) }).eq("id", job_id);
       }
-      return `Change order created: "${input.title}" for $${input.amount}`;
+      return `Change order created: "${input.description}" for $${input.amount}`;
     }
 
     if (name === "notify_team") {
@@ -367,7 +365,7 @@ ${subs?.map((s: any) => {
 
 CHANGE ORDERS
 -------------
-${changeOrders?.map((co: any) => `• ${co.title ?? "N/A"}: $${(co.amount ?? 0).toLocaleString()} — ${co.status ?? "N/A"}`).join("\n") || "None"}
+${changeOrders?.map((co: any) => `• ${co.description ?? "N/A"}: $${(co.amount ?? 0).toLocaleString()} — ${co.status ?? "N/A"}`).join("\n") || "None"}
 
 MATERIALS & ORDERS
 ------------------
