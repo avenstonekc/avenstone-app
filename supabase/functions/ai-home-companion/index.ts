@@ -74,8 +74,7 @@ async function executeTool(
         job_id: input.job_id,
         tenant_id,
         content: input.content,
-        note_type: input.note_type || "general",
-        created_by: user_id,
+        author: user_id,
       });
       if (error) return `Error adding note: ${error.message}`;
       return `Note added to job.`;
@@ -109,7 +108,7 @@ async function executeTool(
       const { data: existing } = await sb
         .from("todos")
         .select("id")
-        .eq("target_user_id", user_id)
+        .eq("assigned_to_user_id", user_id)
         .eq("title", input.title)
         .eq("status", "pending")
         .maybeSingle();
@@ -117,12 +116,11 @@ async function executeTool(
 
       const { error } = await sb.from("todos").insert({
         tenant_id,
-        target_user_id: user_id,
+        assigned_to_user_id: user_id,
         job_id: input.job_id || null,
         title: input.title,
         type: "ai_suggestion",
-        severity: "low",
-        source_table: "ai_home_companion",
+        source: "ai_home_companion",
       });
       if (error) return `Error creating task: ${error.message}`;
       return `Task created: "${input.title}"`;

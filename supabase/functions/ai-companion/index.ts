@@ -117,8 +117,7 @@ async function executeTool(
         job_id,
         tenant_id,
         content: input.content,
-        note_type: input.note_type || "general",
-        created_by: user_id,
+        author: user_id,
       });
       if (error) return `Error adding note: ${error.message}`;
       return `Note added: "${input.content}"`;

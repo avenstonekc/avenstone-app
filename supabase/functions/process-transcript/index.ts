@@ -430,7 +430,6 @@ Deno.serve(async (req) => {
               job_id: session.job_id,
               tenant_id: session.tenant_id,
               content: noteContent,
-              note_type: "milestone",
             });
           }
         } catch {
