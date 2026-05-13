@@ -42,6 +42,8 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 9. **ai_error_logs ranking discipline.** When triaging ai_error_logs by volume, filter `last_seen >= NOW() - INTERVAL '30 days'`. The April 14–26 ai-home-companion billing outage left 499 stale rows that otherwise dominate every ranking. (2026-05-12)
 
+10. **Silent-failure ranking discipline.** Diagnostics rank symptoms, not bugs. Before queueing a fix slice from an ai_error_logs / failed_intents diagnostic, spend 5 minutes auditing the actual code path. The 2026-05-12 master-agent bundle dispatched a Sonnet slice that found existing guards already in place. (2026-05-12)
+
 ---
 
 ## Schema reality (verified 2026-05-05)
@@ -106,7 +108,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - URL-based routing (`selJ` is React state — no deep-link, refresh loses position)
 - Todo push notification wiring deferred (`send-push` edge fn exists, no callers)
 - Dev auto-login removal before external testers
-- Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0 (audit:schema scans JS/TS src only — ai-pm-nightly TS edge fn drift was not scanner-visible; closed manually).** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Note: ai-pm-nightly todos insert was never writing rows because function is DISABLED — but the stale payload would have silently dropped rows on any re-enable.
+- Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0 (audit:schema scans JS/TS src only — ai-pm-nightly TS edge fn drift was not scanner-visible; closed manually).** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Note: ai-pm-nightly todos insert was never writing rows because function is DISABLED — but the stale payload would have silently dropped rows on any re-enable. Detector Phase 2 shipped 2026-05-13 — skipped now 9 (was 34 at Phase 1 baseline, 15 after Phase 1). Remaining 8 skipped are function parameters (no call-site analysis), 1 is dynamic .from() (opaque). No new drift surfaced by Phase 2 extension.
 
 **Components:**
 - `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring
@@ -133,6 +135,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - `ai_knowledge` RLS pass — table has zero policies (verified 2026-05-09). Service-role from edge fns is fine; any direct client read/write is wide-open across tenants
 - Generalize the receipt-photo server-side stash (2026-05-09) if a second confirm verb needs to bind a user-uploaded artifact. Vision content blocks reach the model for reasoning but aren't accessible as text the model can quote into tool_use input — hence the `extractLatestUserImage` injection in `ai-master-agent`. If a second verb (e.g. attach signed contract image to log_payment) hits the same wall, refactor into a generic `attachUserBinaryToConfirmInput(blockType, paramKeys)` helper
 - Tool-schema vs insert-payload mismatch detector — extend `tools/audit_schema_vs_code.js` to walk edge-fn `input_schema.properties` and cross-reference against the executor's actual `.insert()` payloads. Catches the silent-LLM-token-waste class surfaced by 2026-05-12 job_notes cleanup (note_type advertised in tool schema, dropped on insert).
+- Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()`/`.flatMap()` callback payloads). Phase 2 shipped 2026-05-13 (decodes ObjectPattern-rest `const {..., ...patch} = x || {}` + ConditionalExpression branch union). Skipped: 34 → 15 → 9. Remaining patterns deferred: identifier→param/none (8 — function params, need call-site analysis), dynamic `.from()` (1 — opaque by design).
 
 ---
 
@@ -1041,7 +1044,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Trade-aware: master-agent tools are platform-shared; both audits are tenant-agnostic.
 - Open: drift surface stays at 0 (official). Scanner-coverage-gap (identifier-arg payloads skipped) means actual surface is unknown. Backlog: tool-schema-vs-payload detector enhancement; decode identifier-arg insert payloads in audit_schema_vs_code.js; out-of-v1 master-agent tools cleanup arc.
 
-- Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()` / `.flatMap()` callback payloads — keysFromMapCall helper in tools/audit_schema_vs_code.js). Skipped count: 34 → 15. Drift count unchanged at 0 (newly-decoded sites all write valid columns). Remaining skipped patterns deferred: identifier→none (8 — function params, need call-site analysis), LogicalExpression (5 — destructuring rest bindings), ConditionalExpression (1 — union-branch), dynamic .from() (1 — opaque by design).
+- Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()` / `.flatMap()` callback payloads — keysFromMapCall helper in tools/audit_schema_vs_code.js). Phase 2 shipped 2026-05-13 (decodes ObjectPattern-rest + ConditionalExpression — Cases 5 + 6 in resolveIdentifierColumns). Skipped count: 34 → 15 → 9. Drift count: 0 throughout. Remaining skipped patterns: identifier→param/none (8 — function params, need call-site analysis), dynamic .from() (1 — opaque by design).
 
 [LOG — 2026-05-12 — Drift detector extended (decode map/flatMap callback payloads)]
 - Action: Added keysFromMapCall helper to tools/audit_schema_vs_code.js. Wired into processWriteCall (inline CallExpression arg) and resolveIdentifierColumns (identifier initialized by CallExpression). Single commit 9c9c112.
@@ -1052,3 +1055,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Potential: 5 → 4 (oh_shit_moments.condition resolved — decoder now sees it written by generate-estimate-from-session map callback).
 - Smoke check: notifications (all 9 batch-insert sites), oh_shit_moments, estimate_line_items, ai_knowledge, change_orders, todos — all clean, 0 drift. No regressions on previously-clean tables.
 - Open: triage remaining 15 skipped sites in their own slices. LogicalExpression (destructuring rest) and identifier→param patterns require call-site analysis — deferred. ConditionalExpression (1 site: schedule_items) is low priority.
+
+[LOG — 2026-05-13 — Drift detector Phase 2 (decode ObjectPattern-rest + ConditionalExpression payloads)]
+- Action: Added Cases 5 + 6 to resolveIdentifierColumns in tools/audit_schema_vs_code.js. Case 5: RestElement in ObjectPattern (const { a, b, ...patch } = src || {}) — scans enclosing function for explicit patch.KEY = ... assignments; returns those keys with partial=true. Case 6: ConditionalExpression (const rows = cond ? A : B) — unions column keys from both branches, supporting ObjectExpression / ArrayExpression / .map() / Identifier branch shapes. Commit c1d5307.
+- Files: tools/audit_schema_vs_code.js
+- New drift findings surfaced (TRIAGE-ONLY): None. All 6 newly-resolved sites write valid DB columns (todos.updated_at, site_visit_checklist_items.updated_at/completed_at/completed_by_id, draw_schedules.updated_at, invoices.updated_at, material_orders.updated_at, schedule_items full column set from baseRow). Drift stays at 0.
+- Skipped count: 15 → 9 (-6). Resolved: 5x LogicalExpression/ObjectPattern-rest (todos, site_visit_checklist_items, draw_schedules, invoices, material_orders updates — all write patch.updated_at + any patch.KEY assignments); 1x ConditionalExpression (schedule_items insert at supabase.js:2311 — rows unified from both ternary branches).
+- Remaining skipped (9): 8x identifier→param/none (function parameters — change_orders, job_phases×2, job_cost_items, job_transactions, contacts, sequences, job_materials), 1x dynamic .from().
+- Smoke check: change_orders, todos, schedule_items — all clean, 0 drift. No regressions on previously-clean tables.
+- Open: remaining 8 identifier→param skipped sites require call-site analysis to decode — deferred (no resolver can infer column sets from function signatures). Dynamic .from() is opaque by design. These 9 sites are the floor for this detector phase.
