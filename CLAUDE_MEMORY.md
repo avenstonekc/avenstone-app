@@ -64,6 +64,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - **`pending_tasks` table DROPPED** (2026-05-09 via migration `20260509180000_drop_pending_tasks.sql`). Master Agent v2 retired the queue layer in favor of a persistent chat panel. 8 rows existed at drop time, all smoke-test artifacts. Resulting entities (job_transactions, change_orders, jobs, todos) live in their own tables and were unaffected — only audit metadata was intentionally lost. CASCADE removed any FK dependents. Do not recreate without explicit approval.
 - **ai-master-agent has 18 tools** (assign_sub removed 2026-05-11 — was writing to dropped `job_subs`; see Option-2 LOG): get_jobs, get_job_details, get_team, get_dashboard, create_job, update_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, update_phase, submit_change_order, log_payment, log_receipt, notify_team, add_todo, add_knowledge.
 - **`CONFIRM_TOOLS` is a 5-verb whitelist** (extended 2026-05-09 from 3 to 5): log_payment, log_receipt, submit_change_order, add_todo, create_job. Every member returns `pending_action` and surfaces a Confirm card before the row is written.
+- **`job_estimates` consultation columns EXIST** (2026-05-12 via Shape C migration). New columns: `session_id UUID → consultation_sessions(id)`, `created_by UUID → profiles(id)`, `estimate_data JSONB` (structured AI estimate output from Consultation flow, distinct from `messages` which holds Estimator chat transcript), `total NUMERIC`, `source TEXT` (currently 'ai_consultation'). UNIQUE on `job_id` retained — Estimator and Consultation upsert onto the same row, non-overlapping field sets. Multi-source split deferred.
 
 ---
 
@@ -105,7 +106,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - URL-based routing (`selJ` is React state — no deep-link, refresh loses position)
 - Todo push notification wiring deferred (`send-push` edge fn exists, no callers)
 - Dev auto-login removal before external testers
-- Drift detector (2026-05-10 first run; job_subs cleared 2026-05-11; itb_invitees cleared 2026-05-11; staff_messages cleared 2026-05-12 via migration apply; contacts 3 cleared 2026-05-13) surfaced 15 drift findings + 0 missing tables + 5 NOT-NULL potentials. Triage individually, do not bulk-fix. Drift sites remaining (11): `change_orders.title`, `job_estimates.{session_id,created_by,estimate_data,oh_shit_moments,total,source}`, `job_notes.{note_type,created_by}`, `todos.{target_user_id,severity,source_table}`. All three missing-table findings now cleared.
+- Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos 3 cleared (rename target_user_id→assigned_to_user_id, drop severity, rename source_table→source); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0.** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work.
 
 **Components:**
 - `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring
@@ -982,3 +983,21 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: pg_policies shows `jobs: owner/rep insert` (polcmd='a') with check_expr `(tenant_id = get_my_tenant_id()) AND (get_my_role() = ANY (ARRAY['owner','sales_rep']))`. SELECT COUNT(*) FROM ai_error_logs WHERE function_name='JobsScr.add' AND created_at >= '2026-05-02' = 0. SELECT COUNT(*) last 15 minutes = 0. Zero new failures in 11 days since fix.
 - Trade-aware: jobs is platform table; fix is tenant-agnostic.
 - Open: Rank 2 (log_receipt enum) + Rank 3 (advance_phase gate) — both blocked on CMD 1 landing (ai-master-agent territory). Separate slices once both CMDs land.
+
+[LOG — 2026-05-12 — job_estimates drift closed (Shape C: +5 cols, oh_shit_moments dropped from code)]
+- Action: Added session_id, created_by, estimate_data, total, source to job_estimates. ConsultationTab .insert → .upsert(onConflict:'job_id') and stopped writing oh_shit_moments snapshot.
+- Files: supabase/migrations/20260512035118_job_estimates_consultation_columns.sql (new), avenstone-vite/src/components/jobs/tabs/ConsultationTab.jsx.
+- Decisions: (1) Shape C — live oh_shit_moments table with included_in_proposal is single source of truth; a JSONB snapshot would have been stale the moment any toggle fired, with no consumer reading from it. (2) Upsert onto the existing 1-per-job row rather than splitting estimator/consultation into separate rows. Field sets are non-overlapping (Estimator: messages; Consultation: the 5 new cols). Multi-source split deferred until Estimator iterative output needs structured form.
+- Verification: information_schema confirms 5 cols + 1 index (idx_job_estimates_session_id); audit:schema drift 11 → 0.
+- Trade-aware: job_estimates is platform table; new columns are tenant-agnostic.
+- Open: Multi-source job_estimates split arc when Estimator produces structured iterative output.
+
+[LOG — 2026-05-12 — job_notes drift closed]
+- Action: Dropped dangling `note_type` from add_note tool input_schema in ai-companion and ai-home-companion. Write-site drift (insert payloads) was already fixed in commit 52a8a7e; this cleans the tool declaration layer.
+- Files: supabase/functions/ai-companion/index.ts, supabase/functions/ai-home-companion/index.ts
+- Per-column: note_type → Option A (no live DB column, no read uses, already dropped from write payload in prior commit; removed from tool schema to stop LLM being prompted with a useless parameter); created_by → already fixed in prior commit 52a8a7e (renamed to `author` in insert payloads), no further action.
+- Deferred to future ai-master-agent slice: add_note in ai-master-agent/index.ts (line 492-509) is in-scope for the bundled Ranks 2+3 master-agent slice. Write payload already correct (uses `author`); no drift to fix there. Out-of-scope by instruction.
+- Audit findings: Live job_notes schema confirmed: id, job_id, content, author, created_at, tenant_id, is_internal, client_visible — no note_type, no created_by. All write sites (sbNote in supabase.js, ClientPortal.jsx, ai-companion, ai-home-companion, ai-field-agent, ai-project-manager, ai-master-agent, process-transcript) already write only valid columns.
+- Verification: audit:schema --table job_notes → drift: 0 (before and after; write-site fix was pre-existing).
+- Trade-aware: job_notes is platform table; fix is tenant-agnostic.
+- Open: todos drift still open (separate slice). Remaining drift: 0 for job_notes.
