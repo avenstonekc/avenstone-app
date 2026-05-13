@@ -4,10 +4,10 @@ Living decision log + scope for the hands-free field AI agent. Read this
 at the start of any session that touches MasterAgent, ai-master-agent,
 ai-field-agent, or adds voice I/O.
 
-## Status as of 2026-04-24
-- Not started. Planning only.
-- Prerequisite: confirm text-to-tool path works end-to-end before
-  adding voice. See "Prerequisite audit" below.
+## Status as of 2026-05-08
+- Phase 1 audit shipped (see CLAUDE_ARCHIVE.md § voice-agent-audit-2026-05-08).
+- Phase 2 tool layer hardening shipped — both agents run the v1 verb roster through canonical helpers (commits 5f091fb, 2d586c7, dedc8c0).
+- Phase 3+ (native iOS STT/TTS, hands-free) not started.
 
 ## The goal
 
@@ -179,7 +179,3 @@ If voice breaks:
 
 No DB migrations, no deprecated tables. Low-risk layer on top of
 existing agent.
-
----
-
-Commit message: "docs: VOICE_AGENT_PLAN.md — hands-free field agent plan"
