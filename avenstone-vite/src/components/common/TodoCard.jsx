@@ -37,7 +37,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction }) {
   };
 
   const isFailedIntent = todo.type === 'failed_intent';
-  const accentColor = isFailedIntent ? AMBER : (SEV_COLOR[todo.severity] || '#C9A84C');
+  const accentColor = isFailedIntent ? AMBER : (SEV_COLOR[todo.priority] || '#C9A84C');
 
   const handleResume = () => {
     if (!setPendingAction || !todo.payload) return;
