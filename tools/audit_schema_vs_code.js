@@ -158,6 +158,37 @@ function arrayOfStringLiterals(arrayExpr) {
   return out;
 }
 
+// Handles .map(x => ({ ... })) and .flatMap(x => ({ ... })) patterns.
+// Returns { resolved: true, keys, partial } or { resolved: false }.
+// Depth guard: `seen` passed from the outer resolver prevents infinite recursion.
+function keysFromMapCall(node, scopePath, seen) {
+  if (!node || node.type !== 'CallExpression') return { resolved: false };
+  const callee = node.callee;
+  if (callee?.type !== 'MemberExpression') return { resolved: false };
+  const method = callee.property?.name;
+  if (method !== 'map' && method !== 'flatMap') return { resolved: false };
+  const cb = node.arguments?.[0];
+  if (!cb) return { resolved: false };
+  // Support arrow functions only (arrow + concise body = ObjectExpression, or arrow + block body)
+  if (cb.type !== 'ArrowFunctionExpression' && cb.type !== 'FunctionExpression') return { resolved: false };
+  let bodyObj = null;
+  if (cb.body?.type === 'ObjectExpression') {
+    // Implicit return: x => ({ key: val })
+    bodyObj = cb.body;
+  } else if (cb.body?.type === 'BlockStatement') {
+    // Explicit return: x => { return { key: val }; }
+    for (const stmt of cb.body.body || []) {
+      if (stmt.type === 'ReturnStatement' && stmt.argument?.type === 'ObjectExpression') {
+        bodyObj = stmt.argument;
+        break;
+      }
+    }
+  }
+  if (!bodyObj) return { resolved: false };
+  const { keys, partial } = keysFromObject(bodyObj, scopePath, seen);
+  return { resolved: true, keys, partial };
+}
+
 function resolveIdentifierColumns(name, callPath, seen) {
   // Returns { keys: [], partial: bool, resolved: bool, reason?: string }
   if (seen.has(name)) return { keys: [], partial: true, resolved: false, reason: 'recursive binding' };
@@ -226,6 +257,12 @@ function resolveIdentifierColumns(name, callPath, seen) {
     }
   }
 
+  // Case 4: const rows = arr.map(x => ({ ... })) or arr.flatMap(...)
+  if (init?.type === 'CallExpression') {
+    const r = keysFromMapCall(init, callPath, seen);
+    if (r.resolved) return { keys: r.keys, partial: r.partial, resolved: true };
+  }
+
   return { keys: [], partial: true, resolved: false, reason: `init type ${init?.type || 'none'}` };
 }
 
@@ -287,6 +324,14 @@ function processWriteCall(filePath, callPath) {
       opaque.push({ table, op, reason: `identifier ${arg.name} → ${r.reason || 'unresolved'}`, file: fileRel, line });
     }
     return;
+  }
+  // Inline .insert(arr.map(x => ({ ... }))) — most common batch-insert pattern
+  if (arg.type === 'CallExpression') {
+    const r = keysFromMapCall(arg, callPath, new Set());
+    if (r.resolved) {
+      writes.push({ table, op, columns: r.keys, partial: r.partial, file: fileRel, line, source: 'map-callback' });
+      return;
+    }
   }
   opaque.push({ table, op, reason: `non-literal arg (${arg.type})`, file: fileRel, line });
 }
