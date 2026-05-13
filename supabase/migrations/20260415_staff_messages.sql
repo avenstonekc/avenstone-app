@@ -1,7 +1,7 @@
 -- Staff messages: direct PM ↔ Sub chat per job (not visible to clients)
 CREATE TABLE IF NOT EXISTS staff_messages (
   id         uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
-  tenant_id  text        NOT NULL,
+  tenant_id  uuid        NOT NULL,
   job_id     text        NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
   sender_id  uuid        NOT NULL REFERENCES profiles(id),
   content    text        NOT NULL,
@@ -23,3 +23,5 @@ CREATE POLICY staff_messages_insert ON staff_messages
     auth.uid() = sender_id AND
     auth.uid() IN (SELECT id FROM profiles WHERE tenant_id = staff_messages.tenant_id)
   );
+
+NOTIFY pgrst, 'reload schema';
