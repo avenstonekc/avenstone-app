@@ -385,14 +385,17 @@ Deno.serve(async (req) => {
           await sb.from("todos").insert(
             newAlerts.map((a) => ({
               tenant_id: job.tenant_id,
-              target_user_id: a.user_id,
+              assigned_to_user_id: a.user_id,
+              created_by_id: a.user_id,
               job_id: job.id,
               type: a.type,
               title: a.title,
-              body: a.body,
-              severity: a.level,
-              source_table: a.source_table || null,
-              source_id: a.source_id || null,
+              notes: a.body,
+              priority: a.level,
+              source: "ai_pm_nightly",
+              status: "open",
+              related_entity_type: a.source_table || null,
+              related_entity_id: a.source_id || null,
             }))
           );
         }
