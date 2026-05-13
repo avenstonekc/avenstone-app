@@ -36,7 +36,6 @@ const TOOLS = [
       type: "object",
       properties: {
         content: { type: "string", description: "The note text to add" },
-        note_type: { type: "string", enum: ["general", "client", "issue", "milestone"], description: "Category of note" },
       },
       required: ["content"],
     },

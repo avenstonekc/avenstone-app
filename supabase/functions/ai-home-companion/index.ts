@@ -28,7 +28,6 @@ const TOOLS = [
       properties: {
         job_id: { type: "string", description: "The job ID to attach the note to" },
         content: { type: "string", description: "The note content" },
-        note_type: { type: "string", enum: ["general", "client", "issue", "milestone"], description: "Category of note" },
       },
       required: ["job_id", "content"],
     },
