@@ -1022,3 +1022,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: audit:schema --table todos → drift: 0 (before and after; scanner didn't surface this; drift confirmed closed by manual column-mapping audit against live information_schema).
 - Trade-aware: todos is platform table; fix is tenant-agnostic.
 - Open: Remaining drift: 0 across all audited tables. ai-pm-nightly enable-readiness: payload now correct but function is still disabled by policy — no change to that policy in this slice.
+
+[LOG — 2026-05-12 — ai-master-agent: Rank 2 + Rank 3 audited — both confirmed non-bugs, no fix needed]
+- Action: Audited log_receipt enum alignment and advance_phase gate logic. Both clean. No code changes.
+- Files: supabase/functions/ai-master-agent/index.ts (read-only)
+- Rank 2 outcome: NOT a bug. Tool schema `type` enum (8 values: material_purchase, fuel, permit, sub_payout, vendor_payment, commission, other_expense, equipment_rental) is a valid subset of job_transactions_type_check constraint (12 values). Runtime ALLOWED_OUT guard at index.ts:606-610 catches any out-of-enum model output and defaults to material_purchase. Zero ai_error_logs failures referencing job_transactions_type_check. Prior audit finding was a false positive — code was already hardened.
+- Rank 3 outcome: NOT a bug. Gate for in_progress→final_touches counts sub_start schedule items where status NOT IN (complete, cancelled); passed = (count === 0). No inversion — semantically correct. useOverride = !allPassed path is correct. Manual-only transitions (proposal→contract, final_touches→complete) correctly force override. Zero ai_error_logs failures referencing advance_phase. Prior audit finding was a false positive.
+- Verification: job_transactions_type_check constraint queried live — all 12 allowed values confirmed. ai_error_logs queried for both patterns — 0 rows returned.
+- Trade-aware: master-agent tools are platform-shared; no change made.
+- Open: drift surface stays at 0. Backlog: tool-schema-vs-payload detector enhancement; out-of-v1 tools cleanup arc (13 broken/stale read tools per Phase 1 audit).
