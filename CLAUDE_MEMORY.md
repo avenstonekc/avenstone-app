@@ -1064,3 +1064,18 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Remaining skipped (9): 8x identifier→param/none (function parameters — change_orders, job_phases×2, job_cost_items, job_transactions, contacts, sequences, job_materials), 1x dynamic .from().
 - Smoke check: change_orders, todos, schedule_items — all clean, 0 drift. No regressions on previously-clean tables.
 - Open: remaining 8 identifier→param skipped sites require call-site analysis to decode — deferred (no resolver can infer column sets from function signatures). Dynamic .from() is opaque by design. These 9 sites are the floor for this detector phase.
+
+[LOG — 2026-05-12 — Session end: drift-cleanup arc complete]
+- Drift surface: 15 → 0 (official count, all flagged columns closed).
+- Scanner-coverage gap: skipped sites 34 → 9. Remaining 9 are opaque-by-design or cross-file — diminishing returns on further resolver work.
+- Fix slices shipped today: change_orders.title (closed 2026-05-12 morning), contacts (3 cols), job_estimates Shape C (5 cols added + 1 dropped from code; ConsultationTab upsert), job_notes (tool-schema residue cleanup), todos (3 renames + 5 bonus catches + TodoCard UI bug + 2 NOT NULL backfills in ai-pm-nightly), scanner gap Phase 1 (19 arr.map sites) + Phase 2 (6 ObjectPattern-rest/ConditionalExpression sites).
+- False-positive audits documented: JobsScr.add RLS (fixed 2026-05-01 by 52a8a7e), log_receipt enum (ALLOWED_OUT guard already in place), advance_phase gate (legitimate rejection on test-flow-001 Drywall-Hang).
+- Locked principles added: #9 (ai_error_logs ranking — 30d last_seen filter), #10 (silent-failure ranking — audit code path before queueing fix slice).
+- Memory corrections: failed_intents-as-table phrasing → todos.type='failed_intent' AND payload->>'kind' (corrected in 2026-05-12 staff_messages LOG).
+- ai_error_logs surface: 0 rows in 7 days for master-agent — system operating cleanly.
+- Open / next-session candidates (rough priority):
+  - LiDAR visual work (queued — needs screenshot)
+  - ai_knowledge RLS pass (table has 0 policies; security work, well-scoped, prompt already drafted in chat history)
+  - Out-of-v1 master-agent tools cleanup (13 broken/stale read tools deferred)
+  - Tool-schema-vs-payload detector (catches LLM-token-waste class from today's job_notes work; prompt drafted in chat history)
+  - Read-side drift detection (separate detector for SELECT column projections — 2026-05-11 backlog)
