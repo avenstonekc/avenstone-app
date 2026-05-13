@@ -953,3 +953,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files edited: CLAUDE.md (OPUS_RULES reference), VOICE_AGENT.md (status + fossil), CLAUDE_MEMORY.md (this entry + dupe collapse + header date), CLAUDE_ARCHIVE.md (+2 slugs), OPUS_RULES.md (title + cap-list + trailing header)
 - Root MD count: 16 → 10 (6 canonical + 2 active arcs + 2 archive-redirect stubs).
 - Open: CLAUDE.md presence in claude.ai web project knowledge is a UI setting Kalin must handle manually — out of repo scope.
+
+[LOG — 2026-05-12 — change_orders.title drift closed (ai-companion, Option A: drop title from tool)]
+- Action: Removed `title` from the `create_change_order` tool in `supabase/functions/ai-companion/index.ts`. Tool input_schema drops `title`, makes `description` required; executor at :141 no longer writes the non-existent `title` column; success message echoes `input.description`; system prompt CHANGE ORDERS list at :368 reads `co.description` (was `co.title`, always rendered "N/A" since column didn't exist).
+- Files: `supabase/functions/ai-companion/index.ts`. Commit `bae0600`, pushed to main.
+- Audit findings: ai-companion was the sole drift site for `change_orders.title`. All 5 other CO write paths (`sbCO`, `sbCreateChangeOrder`, `sbSubSubmitCO`, `ai-field-agent:347`, `ai-master-agent:566`) already write description only — ai-companion was the outlier. `change_orders` schema: id, job_id, co_number, description, reason, amount, status, approved_by, created_at, approved_at, tenant_id, submitted_by.
+- Verification: `npm run audit:schema` confirms drift 15 → 14. Missing tables stays at 0 (job_subs, itb_invitees, staff_messages all closed earlier in session).
+- Option chosen: A (drop title from tool). Rejected B (concat title into description — added complexity for no gain) and C (add title column migration — would have left 5 other write sites populating NULL, inconsistency risk).
+- Bonus catch: `co.title ?? "N/A"` in the system prompt at :368 had been rendering "N/A" for every CO read into ai-companion context for the lifetime of the function. The LLM has been reasoning about COs with no description visibility. Fixed in the same edit.
+- Open: 14 drift findings remaining — contacts.{full_name, project_type, description}, job_estimates.{session_id, created_by, estimate_data, oh_shit_moments, total, source}, job_notes.{note_type, created_by}, todos.{target_user_id, severity, source_table}.
