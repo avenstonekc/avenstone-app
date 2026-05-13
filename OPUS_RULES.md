@@ -1,4 +1,4 @@
-# OPUS_PROMPT_RULES.md
+# OPUS_RULES.md
 
 Rules for prompts Opus writes for Claude Code to execute. Opus reads
 this at the start of every chat in this project. Every prompt Opus
@@ -121,7 +121,7 @@ Index categories are locked at three: function, date, failure pattern. Adding a 
 
 ## Doc count discipline
 
-**6-MD cap on root-level planning docs.** Acceptable root docs: CLAUDE.md, CLAUDE_MEMORY.md, CLAUDE_ARCHIVE.md, CLAUDE_INDEX.md, OPUS_PROMPT_RULES.md, AVENSTONE_VISION.md. Everything else folds in or archives.
+**6-MD cap on root-level planning docs.** Acceptable root docs: CLAUDE.md, CLAUDE_MEMORY.md, CLAUDE_ARCHIVE.md, CLAUDE_INDEX.md, OPUS_RULES.md, AVENSTONE_VISION.md. Everything else folds in or archives.
 
 **Plan docs fold into VISION, then archive.** An arc planning doc (e.g. EXECUTION_ARC.md) is a working artifact. Once the arc ships, its content moves to CLAUDE_ARCHIVE.md under a slug heading, and the original file is replaced with a single redirect line (`See CLAUDE_ARCHIVE.md § slug-name`). This keeps root-level clutter at zero without destroying history.
 
@@ -133,5 +133,3 @@ Index categories are locked at three: function, date, failure pattern. Adding a 
 - Any per-arc `*_NOTIFICATIONS_*.md` or similar — fold into parent arc archive entry.
 
 **New planning doc = explicit decision.** Before creating a new root MD, declare which existing doc it folds into and when. Default: fold into AVENSTONE_VISION.md as a section, or into CLAUDE_ARCHIVE.md as a slug, after the arc ships.
-
-## Default closing section for every prompt

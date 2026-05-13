@@ -564,7 +564,7 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 
 **Parallel tracks — two things at once.** When two tasks don't conflict, run them in parallel: Opus stays on the harder track, Kalin pastes a paste-ready prompt to CMD/Sonnet for the other. Don't parallel when files overlap or track B depends on track A's output.
 
-**How Opus dispatches:** use the Agent tool with `model: "sonnet"`. Prompt must be self-contained — include exact paths, line numbers, strings to find. See OPUS_PROMPT_RULES.md for the full dispatch template.
+**How Opus dispatches:** use the Agent tool with `model: "sonnet"`. Prompt must be self-contained — include exact paths, line numbers, strings to find. See OPUS_RULES.md for the full dispatch template.
 
 ---
 
