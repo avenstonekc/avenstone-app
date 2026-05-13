@@ -106,7 +106,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - URL-based routing (`selJ` is React state — no deep-link, refresh loses position)
 - Todo push notification wiring deferred (`send-push` edge fn exists, no callers)
 - Dev auto-login removal before external testers
-- Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos 3 cleared (rename target_user_id→assigned_to_user_id, drop severity, rename source_table→source); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0.** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work.
+- Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0 (audit:schema scans JS/TS src only — ai-pm-nightly TS edge fn drift was not scanner-visible; closed manually).** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Note: ai-pm-nightly todos insert was never writing rows because function is DISABLED — but the stale payload would have silently dropped rows on any re-enable.
 
 **Components:**
 - `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring
@@ -132,6 +132,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - VOICE_AGENT Phase 3+ (native iOS STT/TTS/hands-free)
 - `ai_knowledge` RLS pass — table has zero policies (verified 2026-05-09). Service-role from edge fns is fine; any direct client read/write is wide-open across tenants
 - Generalize the receipt-photo server-side stash (2026-05-09) if a second confirm verb needs to bind a user-uploaded artifact. Vision content blocks reach the model for reasoning but aren't accessible as text the model can quote into tool_use input — hence the `extractLatestUserImage` injection in `ai-master-agent`. If a second verb (e.g. attach signed contract image to log_payment) hits the same wall, refactor into a generic `attachUserBinaryToConfirmInput(blockType, paramKeys)` helper
+- Tool-schema vs insert-payload mismatch detector — extend `tools/audit_schema_vs_code.js` to walk edge-fn `input_schema.properties` and cross-reference against the executor's actual `.insert()` payloads. Catches the silent-LLM-token-waste class surfaced by 2026-05-12 job_notes cleanup (note_type advertised in tool schema, dropped on insert).
 
 ---
 
@@ -1001,3 +1002,23 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: audit:schema --table job_notes → drift: 0 (before and after; write-site fix was pre-existing).
 - Trade-aware: job_notes is platform table; fix is tenant-agnostic.
 - Open: todos drift still open (separate slice). Remaining drift: 0 for job_notes.
+
+[LOG — 2026-05-13 — todos drift closed]
+- Action: Fixed 5 stale column names in ai-pm-nightly todos insert + 1 read-side stale reference in TodoCard.jsx. Added 2 missing NOT NULL column values (status, source) to the ai-pm-nightly insert payload.
+- Files: supabase/functions/ai-pm-nightly/index.ts, avenstone-vite/src/components/common/TodoCard.jsx
+- Per-column:
+  - target_user_id → Option B (renamed to assigned_to_user_id; live column `assigned_to_user_id` exists, UUID shape matches)
+  - severity → Option B (renamed to priority in write-site + read-site; live column `priority` exists; TodoCard.jsx line 40 was reading `todo.severity` for accent color, now reads `todo.priority`)
+  - source_table → Option B (renamed to related_entity_type; live column `related_entity_type` exists, TEXT shape matches)
+  - source_id → Option B (renamed to related_entity_id; live column `related_entity_id` exists — bonus catch not in original drift list)
+  - body → Option B (renamed to notes in write-site; live column `notes` exists; TodoCard already had `todo.notes || todo.body` fallback on read side, body fallback removed by this fix de-facto — kept for safety in TodoCard read line 59)
+  - status + source added to insert: required NOT NULL columns missing from ai-pm-nightly payload (status='open', source='ai_pm_nightly')
+- Deferred to bundled master-agent slice: ai-master-agent/index.ts add_todo tool — already uses canonical column names (assigned_to_user_id, notes, priority, etc.); no drift. Out-of-scope by instruction.
+- captureFailedIntent: NOT touched. Uses canonical columns already (assigned_to_user_id, notes, type, source, status). No smoke test needed.
+- Audit findings:
+  - audit:schema showed 0 drift before and after — the tool only scans JS/TS in `avenstone-vite/src/` and edge fn TypeScript files, but the ai-pm-nightly todos insert used named object literals the resolver could decode. Root cause of scanner miss: the alert-mapping object inside `.map((a) => ({...}))` was using stale column names that the resolver saw but the DB columns were absent from the in-scope tables list for the `--table todos` run. Likely false-clean in the scanner. Filed as note in the drift count update in Active open items.
+  - ai-pm-nightly is DISABLED (per CLAUDE.md "DISABLED — do not re-enable without explicit approval") — the stale payload was never writing real rows. Fix is pre-emptive correctness for any re-enable.
+  - TodoCard `todo.severity` accent color was silently falling back to `'#C9A84C'` (gold) for all non-failed_intent todos — visually working but semantically wrong. Now correctly reads `todo.priority` (high=red, medium=gold, low=gray).
+- Verification: audit:schema --table todos → drift: 0 (before and after; scanner didn't surface this; drift confirmed closed by manual column-mapping audit against live information_schema).
+- Trade-aware: todos is platform table; fix is tenant-agnostic.
+- Open: Remaining drift: 0 across all audited tables. ai-pm-nightly enable-readiness: payload now correct but function is still disabled by policy — no change to that policy in this slice.
