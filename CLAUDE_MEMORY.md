@@ -6,7 +6,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 ---
 
-## Current state (2026-05-03)
+## Current state (2026-05-09)
 
 - **Repo:** github.com/avenstonekc/avenstone-app
 - **Web:** Vercel auto-deploy on push to main
@@ -260,34 +260,13 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
   - C6: END OF DAY SUMMARY "What did NOT ship" said Prompts B/C not done. Actual: both shipped 2026-04-30.
 
 [LOG — 2026-05-03]
-- Action: Archive build chunks 1-3 of 5 shipped (commits ec8f2c8, 82cc051, 543eb55). Slugs through 2026-04-28 now retrievable from CLAUDE_ARCHIVE.md.
-- Action: Three future-architecture ideas captured under "Future architecture" subsection: RAG retrieval, sub management arc, speed/cost audit candidates.
-- Open: Chunks 4-5 of archive build pending. Sub management steps 1-2 are quick-win candidates (40 lines total).
-- Decision: Stopped at end of session. Resume tomorrow with chunks 4-5, then revisit prioritization.
-
-[LOG — 2026-05-03]
 - Action: Archive build chunks 1-3 of 5 shipped (commits ec8f2c8, 82cc051, 543eb55). Archive at 584 lines.
-- Action: Five future-architecture ideas captured: RAG retrieval, sub management arc, speed/cost audit candidates, failed-attempts log, symptom index.
-- Action: Symptom index seeded with 5 entries from this session's debug history.
-- Open: Chunks 4-5 of archive build pending. Sub management steps 1-2 are quick-win candidates. Failed-attempts log + symptom index need ongoing discipline, not a one-time build.
-- Decision: Stopped at end of session for sleep. Resume tomorrow with fresh brain on chunks 4-5, then revisit prioritization.
-
-[LOG — 2026-05-03]
-- Action: Archive build chunks 1-3 of 5 shipped. Archive at 584 lines.
-- Action: Five future-architecture ideas captured: RAG retrieval, sub management arc, speed/cost candidates, failed-attempts log, CLAUDE_INDEX.md categorized lookup.
-- Action: Symptom index seeded with 5 entries from this session's debug history.
-- Action: OPUS_RULES updated with index discipline (separate commit).
-- Open: Chunks 4-5 of archive build pending. CLAUDE_INDEX.md to be built after chunks land.
-- Decision: Stopped at end of session for sleep.
-
-[LOG — 2026-05-03]
-- Action: Archive build chunks 1-3 of 5 shipped. Archive at 584 lines.
-- Action: Five future-architecture ideas captured: RAG retrieval, sub management arc, speed/cost candidates, failed-attempts log, CLAUDE_INDEX.md categorized lookup.
-- Action: Symptom index seeded with 5 entries from this session's debug history.
-- Action: OPUS_RULES updated with index discipline (separate commit) — applies only when CLAUDE_INDEX.md exists.
+- Action: 5 future-architecture ideas captured: RAG retrieval, sub management arc, speed/cost candidates, failed-attempts log, CLAUDE_INDEX.md categorized lookup.
+- Action: Symptom index seeded with 5 entries.
+- Action: OPUS_RULES updated with archive + index discipline — applies only when CLAUDE_INDEX.md exists.
 - Action: Sales approach MD captured as future doc (commit a2bc82a).
-- Open: Chunks 4-5 of archive build pending. CLAUDE_INDEX.md build deferred until friction justifies it.
-- Decision: Stopped at end of session for sleep.
+- Open: Archive chunks 4-5 deferred. CLAUDE_INDEX.md build deferred until friction justifies it.
+- Decision: End-of-session log; consolidated from 4 near-duplicate entries during 2026-05-13 doc cleanup.
 
 [LOG — 2026-05-04]
 - Action: Archive build chunks 1-3 of 5 shipped. Archive at 584 lines.
@@ -965,3 +944,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: information_schema shows all 6 columns with correct types (`id uuid NOT NULL`, `tenant_id uuid NOT NULL`, `job_id text NOT NULL`, `sender_id uuid NOT NULL`, `content text NOT NULL`, `created_at timestamptz`). pg_policies shows both `staff_messages_select` and `staff_messages_insert` as PERMISSIVE. `SELECT count(*)` returns 0 cleanly — RLS no longer throws. `NOTIFY pgrst, 'reload schema'` sent. `npm run audit:schema` confirms missing tables drops 1 → 0.
 - Process learning: this is exactly the gap the migration verification rule (CLAUDE.md, memory `feedback_migration_verification.md`) exists to prevent. A CREATE migration was written, committed, code was wired to use it — but the apply step was missed. Went a month with silent `captureFailedIntent` rows accumulating in prod. The drift detector caught it because it queries info_schema for every table the code writes to. Going forward: the drift detector should be wired into post-migration-commit verification, OR the migration apply step should be part of the commit checklist (commit ≠ shipped). Worth running the drift detector against `ai_error_logs` / `failed_intents` next to see how many other silent-fail features are masked the same way.
 - Open: triage remaining 14 drift findings. Optional follow-up — query `failed_intents` table for `kind='message_send'` rows to size the silent-failure impact for staff_messages.
+
+[LOG — 2026-05-13]
+- Action: Doc cleanup arc — 5 dead MDs deleted, 2 shipped arcs folded to ARCHIVE with redirect stubs, OPUS_PROMPT_RULES.md renamed to OPUS_RULES.md, VOICE_AGENT.md status refreshed to Phase 2, 4 duplicate 2026-05-03 LOG entries collapsed.
+- Files deleted: AVENSTONE_GHL_BUILDGUIDE.md, AVENSTONE_SPEC.md, CONSOLIDATION_PLAN.md, Notifications.md, TEST_PROMPT.md
+- Files archived (now 1-line redirects): INVOICING_ARC.md, VOICE_AGENT_AUDIT.md
+- Files renamed: OPUS_PROMPT_RULES.md → OPUS_RULES.md
+- Files edited: CLAUDE.md (OPUS_RULES reference), VOICE_AGENT.md (status + fossil), CLAUDE_MEMORY.md (this entry + dupe collapse + header date), CLAUDE_ARCHIVE.md (+2 slugs), OPUS_RULES.md (title + cap-list + trailing header)
+- Root MD count: 16 → 10 (6 canonical + 2 active arcs + 2 archive-redirect stubs).
+- Open: CLAUDE.md presence in claude.ai web project knowledge is a UI setting Kalin must handle manually — out of repo scope.
