@@ -79,11 +79,9 @@ export default function PublicProfile({ tenantId }) {
     try {
       await sb.from('contacts').insert({
         tenant_id: tenantId,
-        full_name: form.name.trim(),
+        name: form.name.trim(),
         phone: form.phone.trim(),
         email: form.email.trim(),
-        project_type: form.project_type || null,
-        description: form.description.trim() || null,
         source: 'network_profile',
       });
       setSubmitted(true);

@@ -443,7 +443,7 @@ async function executeTool(
       case "add_contact": {
         const { data, error } = await sb.from("contacts").insert({
           tenant_id: tenantId,
-          full_name: input.full_name,
+          name: input.full_name,
           email: input.email || null,
           phone: input.phone || null,
           type: input.type || "client",
@@ -452,7 +452,7 @@ async function executeTool(
           created_at: new Date().toISOString(),
         }).select().single();
         if (error) return { error: error.message };
-        return { success: true, contact_id: data.id, name: data.full_name };
+        return { success: true, contact_id: data.id, name: data.name };
       }
 
       case "send_client_portal": {
