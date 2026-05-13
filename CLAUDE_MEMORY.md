@@ -40,6 +40,8 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 8. **Two-file memory split.** CLAUDE_MEMORY.md = lean working memory. CLAUDE_ARCHIVE.md = full LOG history by slug. Established 2026-05-03 after memory bloat caused three schema claim failures.
 
+9. **ai_error_logs ranking discipline.** When triaging ai_error_logs by volume, filter `last_seen >= NOW() - INTERVAL '30 days'`. The April 14–26 ai-home-companion billing outage left 499 stale rows that otherwise dominate every ranking. (2026-05-12)
+
 ---
 
 ## Schema reality (verified 2026-05-05)
@@ -943,7 +945,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Schema bug fixed pre-apply: migration had `tenant_id text` but `profiles.tenant_id` is uuid — the RLS policy `tenant_id = staff_messages.tenant_id` would have thrown "operator does not exist: uuid = text" on every query. Changed to `tenant_id uuid NOT NULL` to match project convention. `job_id` stays `text` because `jobs.id` is `text`. Migration was never applied so editing in place was safe (no "never edit applied migrations" violation).
 - Verification: information_schema shows all 6 columns with correct types (`id uuid NOT NULL`, `tenant_id uuid NOT NULL`, `job_id text NOT NULL`, `sender_id uuid NOT NULL`, `content text NOT NULL`, `created_at timestamptz`). pg_policies shows both `staff_messages_select` and `staff_messages_insert` as PERMISSIVE. `SELECT count(*)` returns 0 cleanly — RLS no longer throws. `NOTIFY pgrst, 'reload schema'` sent. `npm run audit:schema` confirms missing tables drops 1 → 0.
 - Process learning: this is exactly the gap the migration verification rule (CLAUDE.md, memory `feedback_migration_verification.md`) exists to prevent. A CREATE migration was written, committed, code was wired to use it — but the apply step was missed. Went a month with silent `captureFailedIntent` rows accumulating in prod. The drift detector caught it because it queries info_schema for every table the code writes to. Going forward: the drift detector should be wired into post-migration-commit verification, OR the migration apply step should be part of the commit checklist (commit ≠ shipped). Worth running the drift detector against `ai_error_logs` / `failed_intents` next to see how many other silent-fail features are masked the same way.
-- Open: triage remaining 14 drift findings. Optional follow-up — query `failed_intents` table for `kind='message_send'` rows to size the silent-failure impact for staff_messages.
+- Open: triage remaining 14 drift findings. Optional follow-up — query `todos` table for `type='failed_intent' AND payload->>'kind'='message_send'` rows to size the silent-failure impact for staff_messages. [corrected 2026-05-12 — failed_intents is not a table; failed intents live in todos.type='failed_intent' with kind inside payload JSONB]
 
 [LOG — 2026-05-13]
 - Action: Doc cleanup arc — 5 dead MDs deleted, 2 shipped arcs folded to ARCHIVE with redirect stubs, OPUS_PROMPT_RULES.md renamed to OPUS_RULES.md, VOICE_AGENT.md status refreshed to Phase 2, 4 duplicate 2026-05-03 LOG entries collapsed.
@@ -971,3 +973,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: npm run audit:schema drift count 14 → 11. contacts shows 0 drift.
 - Trade-aware: contacts is a shared platform table; changes are tenant-agnostic.
 - Open: 11 drift findings remaining — change_orders.title (already closed per prior LOG), job_estimates.{session_id,created_by,estimate_data,oh_shit_moments,total,source}, job_notes.{note_type,created_by}, todos.{target_user_id,severity,source_table}.
+
+[LOG — 2026-05-12 — JobsScr.add RLS silent-fail closed]
+- Action: Audited 9 ai_error_logs rows for function_name='JobsScr.add'; confirmed fix already shipped in commit a70c8ca (2026-05-01) — sbSave switched from .upsert() to .insert(). All 9 failures predate the fix. Zero failures since 2026-05-02.
+- Files: No code changes — fix was already in avenstone-vite/src/lib/supabase.js (sbSave) and no migration needed.
+- Root cause: sbSave was calling `.upsert()` on a new-rows-only path. Postgres silently triggers UPDATE RLS evaluation on upsert even when the row is new — the UPDATE policy didn't match `owner` role correctly at the time, denying the write. Both Kalin (owner) and Blake (owner) affected. Current INSERT policy (`jobs: owner/rep insert`) correctly allows `owner` and `sales_rep`. Fix aligned the helper with locked principle #6.
+- Fix path: app — .upsert() → .insert() switch (commit a70c8ca, already in main).
+- Verification: pg_policies shows `jobs: owner/rep insert` (polcmd='a') with check_expr `(tenant_id = get_my_tenant_id()) AND (get_my_role() = ANY (ARRAY['owner','sales_rep']))`. SELECT COUNT(*) FROM ai_error_logs WHERE function_name='JobsScr.add' AND created_at >= '2026-05-02' = 0. SELECT COUNT(*) last 15 minutes = 0. Zero new failures in 11 days since fix.
+- Trade-aware: jobs is platform table; fix is tenant-agnostic.
+- Open: Rank 2 (log_receipt enum) + Rank 3 (advance_phase gate) — both blocked on CMD 1 landing (ai-master-agent territory). Separate slices once both CMDs land.
