@@ -1631,3 +1631,41 @@ These are real arcs that the EXECUTION_ARC deliberately doesn't cover. Naming th
 *No discrete LOG entry was written for this work. The following is the working-mode pattern note from CLAUDE_MEMORY.md — the only record of this shipment in either memory source.*
 
 - **Supabase helpers return `{ ok, error, data }`.** `captureFailedIntent` is fire-and-forget, never throws. `sbNotifyUser(userId, type, title, body, jobId)` for targeted single-user; `sbNotify` for broadcast.
+
+---
+
+## invoicing-arc-2026-05 · 2026-05-05–06 · Invoicing system — schema → composer → PDF + Stripe Checkout → client portal
+
+Arc shipped Phases 1–6 across 2026-05-05 to 06. Key deliverables: schema foundation (draw_schedules, invoices, invoice_line_items, job_transactions.invoice_id, next_invoice_number Postgres fn), draw CRUD helpers + Invoices sub-tab on FinancialsTab, invoice composer modal with line items from estimate/COs/manual, pdf-lib PDF generation in send-invoice edge fn, Stripe Checkout webhook reconciliation (invoice_id in metadata), ClientPortal Invoices section + regenerate-invoice-payment edge fn for 24h Stripe expiry, white-label tenant branding on PDF/email, overdue auto-derivation (display-only, no scheduled job), void+reissue flow, resend-invoice edge fn, manual mark-paid flow.
+
+**Decisions locked:** Stripe Checkout not Stripe Invoices product (full PDF control for white-label). Tax manual per invoice (tax engine deferred). Phase carried on line items (budget/actuals match). Due date hardcoded today+30 (configurable later). PDF as 30-day signed link in email body. Edit-after-send allowed in sent state; locked after paid. Void+reissue is the canonical correction path for sent invoices — credit memo via QuickBooks until that ships.
+
+**Out of scope:** sub financial visibility, lien waiver PDF, retainage, QB API, recurring invoices, tax engine, multi-currency, credit memos, late fees, white-label tenant logo (v1 hardcodes Avenstone Contracting).
+
+---
+
+## voice-agent-audit-2026-05-08 · 2026-05-08 · Voice Agent Phase 1 prerequisite audit (8 RED, 5 YELLOW)
+
+**Date:** 2026-05-08. **Mode:** Read-only. No patches. **Scope:** Confirm the text-to-tool path is sound for the 5 v1 verbs locked in VOICE_AGENT.md before voice I/O is layered on.
+
+**The 5 v1 verbs:** add note, attach photo, log change order, log payment received, mark phase complete (5a lifecycle via sbAdvancePhase, 5b schedule item via sbUpdateScheduleItem).
+
+**Edge fn host recommendation:** extend ai-field-agent (has confirmation flow, voice-optimized prompt, job_id context param). Master stays for typed PM-chat. What needs flipping on Field: model → claude-sonnet-4-6, max_tokens → 2048, conversation_history window → 20, tool roster → v1 verb roster.
+
+**Verb-by-verb findings:**
+- Verb 1 add_note: tool exists on both agents but bypasses sbNote (direct insert). RED — helper bypass, no captureFailedIntent.
+- Verb 2 photo: no tool exists on either agent. RED — verb missing. Voice cannot transmit binary; handoff dance needed.
+- Verb 3 change_order: tool exists, bypasses sbCO (direct insert). RED — helper bypass.
+- Verb 4 payment: Master has create_payment (bypasses sbCreateTransaction), Field has no payment tool. RED.
+- Verb 5a advance phase: Master writes job_phases (wrong table), Field writes jobs.status correctly but bypasses sbAdvancePhase (autoInvoice + tradeActuals hooks dead). RED.
+- Verb 5b schedule complete: no tool on either agent; photo gate dependency. RED.
+
+**Helper-shape compliance failures:** sbCreateTransaction (no ok field), sbAdvancePhase (throws on failure), sbPhoto (returns null on failure, no error message). Three of six v1 helpers non-canonical.
+
+**Model config gaps:** Master — max_tokens 4096 (should be 2048), maxIterations 6 (should be 3). Field — Haiku (should be Sonnet), max_tokens 512 (should be 2048), history slice(-8) (should be -20).
+
+**Other gaps:** Master has no confirmation flow (all writes execute immediately). Field describeAction status labels stale post-canonical-status migration. MasterAgent.jsx history stores text-only (tool_use blocks lost).
+
+**RED count:** 8. **YELLOW count:** 5.
+
+**Phase 2 work surface (critical before voice ships):** pick host + lock roster, wire each tool through canonical helper, normalize helper return shapes, flip model config, refresh stale status labels in describeAction.
