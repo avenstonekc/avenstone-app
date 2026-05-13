@@ -263,6 +263,92 @@ function resolveIdentifierColumns(name, callPath, seen) {
     if (r.resolved) return { keys: r.keys, partial: r.partial, resolved: true };
   }
 
+  // Case 5: ObjectPattern rest — const { a, b, ...patch } = source || {}
+  // `patch` is a RestElement inside an ObjectPattern declarator. We can't know
+  // which keys `source` carries, but we scan the enclosing function for explicit
+  // `patch.KEY = value` assignments (e.g. patch.updated_at = new Date().toISOString())
+  // and return those as the known-written column set (partial=true since spread remainder
+  // is call-site-dependent).
+  {
+    const idNode = decl?.id;
+    if (idNode?.type === 'ObjectPattern') {
+      const restEl = idNode.properties.find(
+        p => p.type === 'RestElement' && p.argument?.type === 'Identifier' && p.argument.name === name
+      );
+      if (restEl) {
+        const assignedKeys = new Set();
+        const funcPath = callPath.getFunctionParent() || callPath.findParent(p => p.isProgram());
+        if (funcPath) {
+          try {
+            funcPath.traverse({
+              AssignmentExpression(ap) {
+                const left = ap.node.left;
+                if (left?.type === 'MemberExpression'
+                    && !left.computed
+                    && left.object?.type === 'Identifier'
+                    && left.object.name === name
+                    && left.property?.type === 'Identifier') {
+                  assignedKeys.add(left.property.name);
+                }
+              },
+            });
+          } catch { /* guard against traverse errors in malformed AST */ }
+        }
+        // Always partial: the rest of the object content depends on the call site.
+        return { keys: [...assignedKeys], partial: true, resolved: true };
+      }
+    }
+  }
+
+  // Case 6: ConditionalExpression — const rows = cond ? consequentExpr : alternateExpr
+  // Union column keys from both branches. Both branches stay partial if either does.
+  if (init?.type === 'ConditionalExpression') {
+    const colSet = new Set();
+    let partial = false;
+    for (const branch of [init.consequent, init.alternate]) {
+      if (!branch) { partial = true; continue; }
+      // Branch is an ObjectExpression: { ... }
+      if (branch.type === 'ObjectExpression') {
+        const r = keysFromObject(branch, callPath, seen);
+        r.keys.forEach(k => colSet.add(k));
+        if (r.partial) partial = true;
+        continue;
+      }
+      // Branch is an ArrayExpression: [{ ... }, ...]
+      if (branch.type === 'ArrayExpression') {
+        for (const el of branch.elements) {
+          if (!el) { partial = true; continue; }
+          if (el.type === 'ObjectExpression') {
+            const r = keysFromObject(el, callPath, seen);
+            r.keys.forEach(k => colSet.add(k));
+            if (r.partial) partial = true;
+          } else {
+            partial = true;
+          }
+        }
+        continue;
+      }
+      // Branch is a .map() / .flatMap() call
+      if (branch.type === 'CallExpression') {
+        const r = keysFromMapCall(branch, callPath, seen);
+        if (r.resolved) { r.keys.forEach(k => colSet.add(k)); if (r.partial) partial = true; }
+        else partial = true;
+        continue;
+      }
+      // Branch is an Identifier — recurse (depth-guarded by `seen`)
+      if (branch.type === 'Identifier') {
+        const r = resolveIdentifierColumns(branch.name, callPath, seen);
+        if (r.resolved) { r.keys.forEach(k => colSet.add(k)); if (r.partial) partial = true; }
+        else partial = true;
+        continue;
+      }
+      partial = true;
+    }
+    if (colSet.size > 0) {
+      return { keys: [...colSet], partial, resolved: true };
+    }
+  }
+
   return { keys: [], partial: true, resolved: false, reason: `init type ${init?.type || 'none'}` };
 }
 
