@@ -103,7 +103,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - URL-based routing (`selJ` is React state — no deep-link, refresh loses position)
 - Todo push notification wiring deferred (`send-push` edge fn exists, no callers)
 - Dev auto-login removal before external testers
-- Drift detector (2026-05-10 first run; job_subs cleared 2026-05-11; itb_invitees cleared 2026-05-11; staff_messages cleared 2026-05-12 via migration apply) surfaced 15 drift findings + 0 missing tables + 5 NOT-NULL potentials. Triage individually, do not bulk-fix. Drift sites remaining: `change_orders.title`, `contacts.{full_name,project_type,description}`, `job_estimates.{session_id,created_by,estimate_data,oh_shit_moments,total,source}`, `job_notes.{note_type,created_by}`, `todos.{target_user_id,severity,source_table}`. All three missing-table findings now cleared.
+- Drift detector (2026-05-10 first run; job_subs cleared 2026-05-11; itb_invitees cleared 2026-05-11; staff_messages cleared 2026-05-12 via migration apply; contacts 3 cleared 2026-05-13) surfaced 15 drift findings + 0 missing tables + 5 NOT-NULL potentials. Triage individually, do not bulk-fix. Drift sites remaining (11): `change_orders.title`, `job_estimates.{session_id,created_by,estimate_data,oh_shit_moments,total,source}`, `job_notes.{note_type,created_by}`, `todos.{target_user_id,severity,source_table}`. All three missing-table findings now cleared.
 
 **Components:**
 - `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring
@@ -962,3 +962,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Option chosen: A (drop title from tool). Rejected B (concat title into description — added complexity for no gain) and C (add title column migration — would have left 5 other write sites populating NULL, inconsistency risk).
 - Bonus catch: `co.title ?? "N/A"` in the system prompt at :368 had been rendering "N/A" for every CO read into ai-companion context for the lifetime of the function. The LLM has been reasoning about COs with no description visibility. Fixed in the same edit.
 - Open: 14 drift findings remaining — contacts.{full_name, project_type, description}, job_estimates.{session_id, created_by, estimate_data, oh_shit_moments, total, source}, job_notes.{note_type, created_by}, todos.{target_user_id, severity, source_table}.
+
+[LOG — 2026-05-13 — contacts drift closed]
+- Action: Closed 3 contacts drift findings. full_name → Option B (renamed to canonical contacts.name in PublicProfile.jsx + ai-master-agent add_contact executor + read-back). project_type → Option A (dropped from PublicProfile.jsx insert). description → Option A (dropped from PublicProfile.jsx insert).
+- Files: avenstone-vite/src/components/public/PublicProfile.jsx, supabase/functions/ai-master-agent/index.ts. Commit 8c94b66, pushed to main.
+- Per-column: full_name → Option B (live DB has contacts.name NOT NULL; all callers were writing the person's full name; rename is unambiguous; ai-master-agent read-back was returning data.full_name which was undefined — now data.name). project_type → Option A (no live column, no read uses). description → Option A (no live column, no read uses; contacts.notes exists but is semantically distinct — did not merge).
+- Audit findings: ghl-webhook reads contact.full_name from the incoming GHL payload object, not from our DB — not a DB drift issue, left untouched.
+- Verification: npm run audit:schema drift count 14 → 11. contacts shows 0 drift.
+- Trade-aware: contacts is a shared platform table; changes are tenant-agnostic.
+- Open: 11 drift findings remaining — change_orders.title (already closed per prior LOG), job_estimates.{session_id,created_by,estimate_data,oh_shit_moments,total,source}, job_notes.{note_type,created_by}, todos.{target_user_id,severity,source_table}.
