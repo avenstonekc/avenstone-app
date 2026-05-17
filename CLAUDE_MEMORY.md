@@ -135,6 +135,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Generalize the receipt-photo server-side stash (2026-05-09) if a second confirm verb needs to bind a user-uploaded artifact. Vision content blocks reach the model for reasoning but aren't accessible as text the model can quote into tool_use input — hence the `extractLatestUserImage` injection in `ai-master-agent`. If a second verb (e.g. attach signed contract image to log_payment) hits the same wall, refactor into a generic `attachUserBinaryToConfirmInput(blockType, paramKeys)` helper
 - Tool-schema vs insert-payload mismatch detector — extend `tools/audit_schema_vs_code.js` to walk edge-fn `input_schema.properties` and cross-reference against the executor's actual `.insert()` payloads. Catches the silent-LLM-token-waste class surfaced by 2026-05-12 job_notes cleanup (note_type advertised in tool schema, dropped on insert).
 - Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()`/`.flatMap()` callback payloads). Phase 2 shipped 2026-05-13 (decodes ObjectPattern-rest `const {..., ...patch} = x || {}` + ConditionalExpression branch union). Skipped: 34 → 15 → 9. Remaining patterns deferred: identifier→param/none (8 — function params, need call-site analysis), dynamic `.from()` (1 — opaque by design).
+- Capture-time incomplete-scan detection — RoomPlan is returning wall-segment rings with multi-foot gaps (missing wall captures). The 2026-05-17 stitcher fix makes rendering robust, but the rep should be warned at scan time when a room's segment ring has a gap > ~3 ft so they can rescan that wall. Anti-surprise alignment — catch the bad scan in the field, not in the office PDF.
 
 ---
 
@@ -1077,6 +1078,13 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
   - Out-of-v1 master-agent tools cleanup (13 broken/stale read tools deferred)
   - Tool-schema-vs-payload detector (catches LLM-token-waste class from today's job_notes work; prompt drafted in chat history)
   - Read-side drift detection (separate detector for SELECT column projections — 2026-05-11 backlog)
+
+[LOG — 2026-05-17 — Floor plan stitcher: gap recovery in _segsToPolyPoints]
+- Action: _segsToPolyPoints now bridges segment-ring gaps instead of returning degenerate partial polygons. Added bounding-box fallback when the stitched polygon is still degenerate (<4 verts or <50% of stored sqft). sqft label now derived from the drawn polygon.
+- Root cause: greedy chain with a 2.0 ft break threshold stopped on incomplete scan rings (Garage 15.14 ft gap, Living Room 16.57 ft gap) and emitted 3-vertex triangles. Two-renderer hypothesis was refuted — single worldMode path; the legacy per-seg path is dead code for all production scans (worldX=0 always trips worldMode).
+- Files: avenstone-vite/src/lib/pdf.js
+- Verification: numeric re-stitch of scans 52b617b1 / b6050e54 / da8a4c93 — broken scans now produce closed sane polygons, Apr 27's clean 3-room scan unchanged. Visual PDF check pending Kalin.
+- Open: root cause of incomplete scans is RoomPlan missing wall captures — render-side is now robust to it, but capture-time incomplete-ring detection (warn rep to rescan a wall) is the real fix. Separate slice — see backlog.
 
 ---
 
