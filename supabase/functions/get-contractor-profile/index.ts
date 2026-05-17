@@ -52,7 +52,7 @@ Deno.serve(async (req: Request) => {
     const { data: company, error: companyErr } = await supabase
       .from("company_profiles")
       .select(
-        "company_name, city, state, phone, website, tagline, year_founded, license_number, insurance_verified, slug, tenant_id"
+        "company_name, city, state, phone, website, tagline, year_founded, license_number, insurance_verified, tenant_id"
       )
       .eq("tenant_id", tenantId)
       .single();
