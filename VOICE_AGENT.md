@@ -4,10 +4,11 @@ Living decision log + scope for the hands-free field AI agent. Read this
 at the start of any session that touches MasterAgent, ai-master-agent,
 ai-field-agent, or adds voice I/O.
 
-## Status as of 2026-05-08
+## Status as of 2026-05-17
 - Phase 1 audit shipped (see CLAUDE_ARCHIVE.md § voice-agent-audit-2026-05-08).
 - Phase 2 tool layer hardening shipped — both agents run the v1 verb roster through canonical helpers (commits 5f091fb, 2d586c7, dedc8c0).
-- Phase 3+ (native iOS STT/TTS, hands-free) not started.
+- Phase 3 **code shipped** (commits f045752, 28bb0e4) — **device verification pending** (Codemagic build → TestFlight). Hold-to-talk mic button in MasterAgent using @capgo/capacitor-speech-recognition@8.1.2. Transcript injected into chat input via setInput; user reviews and presses Send. No auto-send.
+- Phase 4+ (TTS, hands-free) not started.
 
 ## The goal
 

@@ -1148,3 +1148,17 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Trade-aware: pure geometry, no trade or tenant assumptions introduced.
 - Verification: build passes. Visual confirmation pending — Kalin needs to run a multi-room scan with at least one shared interior wall and check the summary door count matches the floor plan rendering.
 - Open: same fix likely needed for windowSegments (same shared-wall double-count pattern), but out of scope this slice.
+
+[LOG — 2026-05-17 — Voice Agent Phase 3: native iOS STT in MasterAgent (hold-to-talk mic button)]
+- Action: Phase 3 shipped. Mic button added to MasterAgent chat input — hold-to-talk via @capgo/capacitor-speech-recognition@8.1.2. Transcript injected into setInput; user reviews and presses Send. No auto-send. No TTS.
+- Files: avenstone-vite/package.json (+@capgo/capacitor-speech-recognition@8.1.2), avenstone-vite/ios/App/App/Info.plist (+NSSpeechRecognitionUsageDescription), avenstone-vite/ios/App/CapApp-SPM/Package.swift (updated by cap sync), avenstone-vite/src/components/shared/MasterAgent.jsx (+import, +5 state vars, +availability useEffect, +startMic/stopMic functions, +mic button JSX, +micError display), VOICE_AGENT.md (Phase 3 status updated), CLAUDE.md (iOS gotchas section).
+- Commits: f045752 (chore(ios): plugin + plist + cap sync), 28bb0e4 (feat(master-agent): hold-to-talk mic button)
+- Plugin decision: @capgo/capacitor-speech-recognition (NOT @capacitor-community/speech-recognition). Community plugin has no Cap-8 release; Capgo fork is the maintained Cap-8 successor with major version tracking Capacitor's. v8.1.2 is latest 8.x. SPM-only project — cap sync registered the plugin cleanly with no Podfile changes.
+- Plugin API used (from installed TS defs): available() → hide button on web; checkPermissions()/requestPermissions() → speechRecognition PermissionState; start({ language:'en-US', partialResults:true }); stop(); addListener('partialResults', evt→evt.matches?.[0]); addListener('error', evt→micError); removeAllListeners().
+- First-press behavior: if permission not yet granted, requestPermissions() fires (blocks on iOS native dialog). If denied, micError set inline. If newly granted, returns — user re-holds to record. Subsequent presses start immediately.
+- Append-vs-set: micBaseTextRef saves pre-recording input text. Partial results set input to (base + ' ' + transcript) or transcript alone when empty.
+- Listening indicator: red border + red mic icon while micListening=true. Normal state: gold border + mic outline.
+- Button gating: {micAvailable && ...} — web users see no button. Loading-disabled while agent is processing.
+- Platform-neutral: no trade/tenant assumptions. mic button is trade-agnostic text input — same as typing.
+- Verification: npm run build passes. npx cap sync ios succeeded (SPM, 1 plugin registered). On-device STT test is Kalin's after Codemagic build hits TestFlight — flag for manual test.
+- Open: on-device verification pending TestFlight build. Phase 4 (TTS — agent speaks replies) not started. windowSegments double-count (separate from this slice).

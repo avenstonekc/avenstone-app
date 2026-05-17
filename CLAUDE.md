@@ -280,6 +280,7 @@ curl -X POST -H "x-auth-token: $CODEMAGIC_PAT" \
 - **Internal TestFlight testers only.** External testers trigger Apple Beta App Review which requires filling out test info. We don't do external testing — `codemagic.yaml` publishing block has NO `beta_groups` key for this reason.
 - **Apple Developer team:** active, approved + charged 2026-04-14. Apple ID enrollment uses the same login as App Store Connect.
 - **Backup manual Mac path:** if Codemagic ever breaks, MacInCloud can still run Xcode for a manual Archive → upload. It's a last resort — the VM resets every session so you'd reinstall Xcode every time.
+- **`@capgo/capacitor-speech-recognition` (not `@capacitor-community`)** — community plugin has no Cap-8 release. Capgo fork is the Cap-8 successor; major version tracks Capacitor. Installed 8.1.2 (2026-05-17). `NSSpeechRecognitionUsageDescription` added to Info.plist. Plugin registered via SPM. Used in MasterAgent hold-to-talk mic button — `available()` / `requestPermissions()` / `start({ partialResults: true })` / `stop()` / `addListener('partialResults', ...)`.
 - **RoomPlan API — Xcode 26.2 breaking changes:** Two API renames that break the build:
   1. `CapturedRoom.ceilings` was removed — use `room.walls`, `room.floors`, `room.doors`, `room.windows`, `room.openings`, `room.objects` only. Fixed in `CaptureQualityTracker.swift` 2026-04-19.
   2. `RoomBuilder(outputOptions:)` renamed to `RoomBuilder(options:)` — always use `options:` label. Fixed in `RoomPlanPlugin.swift` 2026-04-20.
