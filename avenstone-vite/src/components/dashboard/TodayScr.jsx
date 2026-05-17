@@ -25,7 +25,7 @@ export default function TodayScr({ profile, setPendingAction }) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
-    <div style={{ padding: '0 0 40px' }}>
+    <div style={{ padding: '0 0 calc(40px + env(safe-area-inset-bottom))' }}>
       <div style={{ padding: '24px 20px 16px', borderBottom: '1px solid #F3F0EB' }}>
         <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44', marginBottom: 2 }}>Today</div>
         <div style={{ fontSize: 13, color: '#9CA3AF' }}>{today}</div>
@@ -68,7 +68,7 @@ export default function TodayScr({ profile, setPendingAction }) {
 
         <button
           onClick={load}
-          style={{ marginTop: 16, fontSize: 12, color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+          style={{ marginTop: 16, fontSize: 12, color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: '10px 0', textDecoration: 'underline' }}>
           Refresh
         </button>
       </div>
