@@ -1077,7 +1077,9 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
   - LiDAR visual work (queued — needs screenshot)
   - Out-of-v1 master-agent tools cleanup (13 broken/stale read tools deferred)
   - Tool-schema-vs-payload detector (catches LLM-token-waste class from today's job_notes work; prompt drafted in chat history)
-  - Read-side drift detection (separate detector for SELECT column projections — 2026-05-11 backlog)
+  - Read-side triage — change_orders.title selected in ai-home-companion:184 + ai-master-agent:402 (column doesn't exist in DB — likely stale after rename/drop)
+  - Read-side triage — company_profiles.slug selected in get-contractor-profile:52 (column not in DB)
+  - Read-side triage — jobs.start_date selected in ai-home-companion:149 (column was dropped previously)
 
 [LOG — 2026-05-17 — Floor plan stitcher: gap recovery in _segsToPolyPoints]
 - Action: _segsToPolyPoints now bridges segment-ring gaps instead of returning degenerate partial polygons. Added bounding-box fallback when the stitched polygon is still degenerate (<4 verts or <50% of stored sqft). sqft label now derived from the drawn polygon.
@@ -1105,3 +1107,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: grep for each tool name across index.ts confirms no dangling refs. One real bug found in get_dashboard: queries `schedule_phases` table (line 398) which doesn't exist in any migration (schema has job_phases + schedule_items). Silently returns empty overdue_phases due to `|| []` fallback — not a tool removal candidate; it's a query fix. Captured to backlog as a distinct item.
 - Trade-aware: master-agent is platform-shared; all 18 tools use tenant_id scoping. No Avenstone-specific tool was found.
 - Open: get_dashboard overdue_phases query targets `schedule_phases` (phantom table) — should query `schedule_items` with `scheduled_end_date < today AND status != 'complete'`. Fix is a targeted query update, not a tool removal. Not done in this scope.
+
+---
+
+[LOG — 2026-05-17 — Read-side drift detection shipped]
+- Action: Extended tools/audit_schema_vs_code.js with a read-side pass — flags .select() projections referencing non-existent columns. v1 scope: plain + aliased base-table columns; embeds/aggregates/variables/* skipped as opaque.
+- Files: tools/audit_schema_vs_code.js
+- Read-side findings (TRIAGE-ONLY this slice): change_orders.title (ai-home-companion:184, ai-master-agent:402), company_profiles.slug (get-contractor-profile:52), jobs.start_date (ai-home-companion:149).
+- Write-side drift unchanged (0). Read-side opaque/skipped: 35 partial (229 .select() sites total, 0 fully opaque).
+- Open: triage read-side findings in their own slices; embedded-resource (join) column checking deferred to a v2 read-side pass.
