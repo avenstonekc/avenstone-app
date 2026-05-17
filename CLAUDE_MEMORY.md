@@ -1076,7 +1076,6 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
   - LiDAR visual work (queued — needs screenshot)
   - Out-of-v1 master-agent tools cleanup (13 broken/stale read tools deferred)
   - Tool-schema-vs-payload detector (catches LLM-token-waste class from today's job_notes work; prompt drafted in chat history)
-  - company_profiles.slug column missing — get-contractor-profile's ?slug= URL routing is silently broken (line 39 .eq("slug",...) against non-existent column). Needs migration: ALTER TABLE company_profiles ADD COLUMN slug TEXT UNIQUE. Separate slice; needs go-ahead.
 
 [LOG — 2026-05-17 — Floor plan stitcher: gap recovery in _segsToPolyPoints]
 - Action: _segsToPolyPoints now bridges segment-ring gaps instead of returning degenerate partial polygons. Added bounding-box fallback when the stitched polygon is still degenerate (<4 verts or <50% of stored sqft). sqft label now derived from the drawn polygon.
@@ -1129,4 +1128,13 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Action: change_orders.title → description in select + prompt string (ai-home-companion, ai-master-agent); jobs.start_date dropped from select (ai-home-companion, was selected but never used downstream); company_profiles.slug dropped from projection (get-contractor-profile — column never existed, projection fix clears detector but slug URL routing remains broken; migration needed, surfaced to backlog).
 - Files: supabase/functions/ai-home-companion/index.ts, supabase/functions/ai-master-agent/index.ts, supabase/functions/get-contractor-profile/index.ts
 - Verification: audit:schema read-side drift 0; write-side 0; parse errors 0.
-- Open: company_profiles.slug migration (get-contractor-profile ?slug= URL routing silently broken — line 39 .eq("slug",...) against non-existent column; needs go-ahead).
+- Open: none (slug routing removed rather than fixed — belongs to future homeowner-marketplace arc).
+
+---
+
+[LOG — 2026-05-17 — removed dead ?slug= path from get-contractor-profile]
+- Action: Deleted the ?slug= routing branch — it filtered on company_profiles.slug, a column that never existed. Subs have no public profile; homeowner-facing marketplace not built. Function now resolves profiles by ID only (?tenant= param). Step comments renumbered 1–6.
+- Files: supabase/functions/get-contractor-profile/index.ts
+- Verification: audit:schema clean (write drift 0, read drift 0, parse errors 0); grep for "slug" in function returns zero hits.
+- Decision: removed rather than added the column — slug routing belongs to the future homeowner-marketplace arc, scoped to the tenant/GC entity, not bolted onto sub profiles now.
+- Open: none.
