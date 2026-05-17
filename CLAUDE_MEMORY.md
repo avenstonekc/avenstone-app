@@ -1076,9 +1076,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
   - LiDAR visual work (queued — needs screenshot)
   - Out-of-v1 master-agent tools cleanup (13 broken/stale read tools deferred)
   - Tool-schema-vs-payload detector (catches LLM-token-waste class from today's job_notes work; prompt drafted in chat history)
-  - Read-side triage — change_orders.title selected in ai-home-companion:184 + ai-master-agent:402 (column doesn't exist in DB — likely stale after rename/drop)
-  - Read-side triage — company_profiles.slug selected in get-contractor-profile:52 (column not in DB)
-  - Read-side triage — jobs.start_date selected in ai-home-companion:149 (column was dropped previously)
+  - company_profiles.slug column missing — get-contractor-profile's ?slug= URL routing is silently broken (line 39 .eq("slug",...) against non-existent column). Needs migration: ALTER TABLE company_profiles ADD COLUMN slug TEXT UNIQUE. Separate slice; needs go-ahead.
 
 [LOG — 2026-05-17 — Floor plan stitcher: gap recovery in _segsToPolyPoints]
 - Action: _segsToPolyPoints now bridges segment-ring gaps instead of returning degenerate partial polygons. Added bounding-box fallback when the stitched polygon is still degenerate (<4 verts or <50% of stored sqft). sqft label now derived from the drawn polygon.
@@ -1124,3 +1122,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: test data has no overdue items (all existing schedule_items have status='scheduled' and no past scheduled_end_date). Query confirmed clean with no 42P01 — the phantom-table error was always silent; real query now runs against actual table.
 - Trade-aware: master-agent is platform-shared; fix is tenant-agnostic, existing tenant/job scoping preserved (added .eq("tenant_id", tenantId) to overdue query — previously unscoped).
 - Open: none.
+
+---
+
+[LOG — 2026-05-17 — read-side drift cleanup: 3 findings fixed]
+- Action: change_orders.title → description in select + prompt string (ai-home-companion, ai-master-agent); jobs.start_date dropped from select (ai-home-companion, was selected but never used downstream); company_profiles.slug dropped from projection (get-contractor-profile — column never existed, projection fix clears detector but slug URL routing remains broken; migration needed, surfaced to backlog).
+- Files: supabase/functions/ai-home-companion/index.ts, supabase/functions/ai-master-agent/index.ts, supabase/functions/get-contractor-profile/index.ts
+- Verification: audit:schema read-side drift 0; write-side 0; parse errors 0.
+- Open: company_profiles.slug migration (get-contractor-profile ?slug= URL routing silently broken — line 39 .eq("slug",...) against non-existent column; needs go-ahead).
