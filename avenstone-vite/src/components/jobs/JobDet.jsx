@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, AI_PM_URL, sbNotify, authHeader } from '../../lib/supabase';
-import { Ic, sc, sl, f$, STATS } from '../../lib/utils';
+import { Ic, sc, sl, f$, STATS, isMob } from '../../lib/utils';
 import InfoTab from './tabs/InfoTab';
 import ScheduleTab from './tabs/ScheduleTab';
 import DocsTab from './tabs/DocsTab';
@@ -106,6 +106,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
     if (tab === 'docs') setDocsLoaded(false);
   }, [tab]);
 
+  const mob = isMob();
   const tabbarRef = useRef(null);
   useEffect(() => {
     const el = tabbarRef.current?.querySelector('.tab.on');
@@ -121,35 +122,70 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F7F5F0' }}>
       {/* Header */}
       <div style={{ background: '#0A1F44', padding: '16px 20px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: rev > 0 ? 10 : 0 }}>
-          <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0', flexShrink: 0 }} onClick={back}>
-            <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center' }}>{Ic.back}</span>
-            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>Projects</span>
-          </button>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
-              Project{job.po_number && <span style={{ marginLeft: 8, color: '#C9A84C', letterSpacing: 1.2 }}>· PO {job.po_number}</span>}
+        {mob ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0', flexShrink: 0 }} onClick={back}>
+                <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center' }}>{Ic.back}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>Projects</span>
+              </button>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setShowSt(true)} style={{ background: sc(job.status) + '22', border: `1px solid ${sc(job.status)}55`, color: sc(job.status), padding: '6px 12px', fontFamily: "'DM Sans',sans-serif", fontSize: 11, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                {sl(job.status)}<span style={{ width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.7 }}>{Ic.chev}</span>
+              </button>
+              {canRunAi && (
+                <button
+                  title="Run AI Analysis"
+                  disabled={analyzing}
+                  onClick={() => setShowAiPmConfirm(true)}
+                  style={{ width: 36, height: 36, borderRadius: 8, background: analyzing ? '#0d2a5e' : '#0A1F44', border: '1px solid #C9A84C55', cursor: analyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: analyzing ? 0.7 : 1 }}
+                >
+                  {analyzing
+                    ? <span style={{ width: 16, height: 16, border: '2px solid #C9A84C', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'aiSpin 0.7s linear infinite' }} />
+                    : <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9A84C' }}>{Ic.grid}</span>
+                  }
+                </button>
+              )}
             </div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>{job.address}</div>
-            {job.client_name && <div style={{ fontSize: 12, color: '#C9A84C', marginTop: 2, fontWeight: 500 }}>{job.client_name}</div>}
-          </div>
-          <button onClick={() => setShowSt(true)} style={{ background: sc(job.status) + '22', border: `1px solid ${sc(job.status)}55`, color: sc(job.status), padding: '6px 12px', fontFamily: "'DM Sans',sans-serif", fontSize: 11, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-            {sl(job.status)}<span style={{ width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.7 }}>{Ic.chev}</span>
-          </button>
-          {canRunAi && (
-            <button
-              title="Run AI Analysis"
-              disabled={analyzing}
-              onClick={() => setShowAiPmConfirm(true)}
-              style={{ width: 36, height: 36, borderRadius: 8, background: analyzing ? '#0d2a5e' : '#0A1F44', border: '1px solid #C9A84C55', cursor: analyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: analyzing ? 0.7 : 1 }}
-            >
-              {analyzing
-                ? <span style={{ width: 16, height: 16, border: '2px solid #C9A84C', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'aiSpin 0.7s linear infinite' }} />
-                : <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9A84C' }}>{Ic.grid}</span>
-              }
+            <div style={{ marginBottom: rev > 0 ? 10 : 0 }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
+                Project{job.po_number && <span style={{ marginLeft: 8, color: '#C9A84C', letterSpacing: 1.2 }}>· PO {job.po_number}</span>}
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>{job.address}</div>
+              {job.client_name && <div style={{ fontSize: 12, color: '#C9A84C', marginTop: 2, fontWeight: 500 }}>{job.client_name}</div>}
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: rev > 0 ? 10 : 0 }}>
+            <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0', flexShrink: 0 }} onClick={back}>
+              <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center' }}>{Ic.back}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>Projects</span>
             </button>
-          )}
-        </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
+                Project{job.po_number && <span style={{ marginLeft: 8, color: '#C9A84C', letterSpacing: 1.2 }}>· PO {job.po_number}</span>}
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>{job.address}</div>
+              {job.client_name && <div style={{ fontSize: 12, color: '#C9A84C', marginTop: 2, fontWeight: 500 }}>{job.client_name}</div>}
+            </div>
+            <button onClick={() => setShowSt(true)} style={{ background: sc(job.status) + '22', border: `1px solid ${sc(job.status)}55`, color: sc(job.status), padding: '6px 12px', fontFamily: "'DM Sans',sans-serif", fontSize: 11, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+              {sl(job.status)}<span style={{ width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.7 }}>{Ic.chev}</span>
+            </button>
+            {canRunAi && (
+              <button
+                title="Run AI Analysis"
+                disabled={analyzing}
+                onClick={() => setShowAiPmConfirm(true)}
+                style={{ width: 36, height: 36, borderRadius: 8, background: analyzing ? '#0d2a5e' : '#0A1F44', border: '1px solid #C9A84C55', cursor: analyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: analyzing ? 0.7 : 1 }}
+              >
+                {analyzing
+                  ? <span style={{ width: 16, height: 16, border: '2px solid #C9A84C', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'aiSpin 0.7s linear infinite' }} />
+                  : <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9A84C' }}>{Ic.grid}</span>
+                }
+              </button>
+            )}
+          </div>
+        )}
         {rev > 0 && <div className="cbar">
           <div className="cc"><div className="cc-l">Contract</div><div className="cc-v" style={{ color: '#fff' }}>{f$(cv)}</div></div>
           {coT > 0 && <div className="cc"><div className="cc-l">COs</div><div className="cc-v" style={{ color: '#f59e0b' }}>+{f$(coT)}</div></div>}

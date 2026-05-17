@@ -104,6 +104,8 @@ select option{background:#fff;color:#0A1F44}
   .tabbar{overflow-x:auto;flex-wrap:nowrap}
   .tabbar::-webkit-scrollbar{display:none}
   .tab{flex:none;padding:10px 12px;font-size:11px}
+  .cc{padding:8px 10px}
+  .cc-v{font-size:13px}
 }
 
 /* MODAL */
