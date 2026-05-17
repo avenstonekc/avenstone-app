@@ -1138,3 +1138,13 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Verification: audit:schema clean (write drift 0, read drift 0, parse errors 0); grep for "slug" in function returns zero hits.
 - Decision: removed rather than added the column — slug routing belongs to the future homeowner-marketplace arc, scoped to the tenant/GC entity, not bolted onto sub profiles now.
 - Open: none.
+
+---
+
+[LOG — 2026-05-17 — PDF summary table door double-count fixed]
+- Action: The summary table was reading raw room.doorSegments.length per room; doors on shared walls appeared in both rooms and were counted twice in floor/grand totals. Fix: flat-map all rooms' doorSegments (with worldX/worldZ offset to world space), run identical isDupDoor dedup logic (0.5 ft midpoint, 10% width ratio, 0.9 normal dot — same thresholds as _dedupFeatures), derive per-room counts and fTotDoors from the deduped set.
+- Files: avenstone-vite/src/lib/pdf.js
+- Attribution decision: lower-index room keeps the shared door — matches _dedupFeatures sequential first-wins rule. Shared door shows in one row only; floor total = unique door count.
+- Trade-aware: pure geometry, no trade or tenant assumptions introduced.
+- Verification: build passes. Visual confirmation pending — Kalin needs to run a multi-room scan with at least one shared interior wall and check the summary door count matches the floor plan rendering.
+- Open: same fix likely needed for windowSegments (same shared-wall double-count pattern), but out of scope this slice.
