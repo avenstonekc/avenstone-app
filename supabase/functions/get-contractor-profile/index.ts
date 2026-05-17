@@ -14,12 +14,11 @@ Deno.serve(async (req: Request) => {
 
   try {
     const url = new URL(req.url);
-    const tenantParam = url.searchParams.get("tenant");
-    const slugParam = url.searchParams.get("slug");
+    const tenantId = url.searchParams.get("tenant");
 
-    if (!tenantParam && !slugParam) {
+    if (!tenantId) {
       return new Response(
-        JSON.stringify({ error: "Missing required query param: tenant or slug" }),
+        JSON.stringify({ error: "Missing required query param: tenant" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -29,26 +28,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Step 1: Resolve tenant_id
-    let tenantId: string | null = tenantParam ?? null;
-
-    if (!tenantId && slugParam) {
-      const { data: slugRow, error: slugErr } = await supabase
-        .from("company_profiles")
-        .select("tenant_id")
-        .eq("slug", slugParam)
-        .single();
-
-      if (slugErr || !slugRow) {
-        return new Response(
-          JSON.stringify({ error: "No contractor profile found for that slug" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      tenantId = slugRow.tenant_id;
-    }
-
-    // Step 2: Load company_profiles row
+    // Step 1: Load company_profiles row
     const { data: company, error: companyErr } = await supabase
       .from("company_profiles")
       .select(
@@ -64,14 +44,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Step 3: Completed jobs count
+    // Step 2: Completed jobs count
     const { count: completedJobs } = await supabase
       .from("jobs")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
       .eq("status", "complete");
 
-    // Step 4: Load job_reviews (limit 10, newest first)
+    // Step 3: Load job_reviews (limit 10, newest first)
     const { data: reviews } = await supabase
       .from("job_reviews")
       .select(
@@ -83,7 +63,7 @@ Deno.serve(async (req: Request) => {
 
     const safeReviews = reviews ?? [];
 
-    // Step 5: Calculate avg_rating across ALL reviews for that tenant
+    // Step 4: Calculate avg_rating across ALL reviews for that tenant
     const { data: allReviewRatings } = await supabase
       .from("job_reviews")
       .select("rating_quality, rating_communication, rating_timeliness")
@@ -101,7 +81,7 @@ Deno.serve(async (req: Request) => {
       avgRating = Math.round((sum / totalReviews) * 100) / 100;
     }
 
-    // Step 6: Load ai_knowledge for specialties and trades
+    // Step 5: Load ai_knowledge for specialties and trades
     const { data: knowledge } = await supabase
       .from("ai_knowledge")
       .select("category, content")
@@ -117,7 +97,7 @@ Deno.serve(async (req: Request) => {
       .filter((k) => k.category === "trades")
       .map((k) => k.content as string);
 
-    // Step 7: member_since — earliest created_at from profiles for this tenant
+    // Step 6: member_since — earliest created_at from profiles for this tenant
     const { data: profileRow } = await supabase
       .from("profiles")
       .select("created_at")
