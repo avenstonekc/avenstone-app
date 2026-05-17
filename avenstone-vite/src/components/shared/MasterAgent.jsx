@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, SUBMIT_BUG_REPORT_URL } from '../../lib/supabase';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
+import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
 
 // Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
 const MAX_EDGE = 1024;
@@ -187,6 +188,11 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const threadRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
+  const [micAvailable, setMicAvailable] = useState(false);
+  const [micListening, setMicListening] = useState(false);
+  const [micError, setMicError] = useState('');
+  const micBaseTextRef = useRef('');
+  const micListenersRef = useRef([]);
 
   const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -228,6 +234,14 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       threadRef.current.scrollTop = threadRef.current.scrollHeight;
     }
   }, [messages, loading]);
+
+  useEffect(() => {
+    SpeechRecognition.available().then(({ available }) => setMicAvailable(available)).catch(() => {});
+    return () => {
+      micListenersRef.current.forEach((h) => h.remove().catch(() => {}));
+      SpeechRecognition.stop().catch(() => {});
+    };
+  }, []);
 
   const callMaster = async (body, userMessageText) => {
     setLoading(true);
@@ -415,6 +429,45 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       e.preventDefault();
       sendMessage();
     }
+  };
+
+  const startMic = async () => {
+    if (micListening || loading) return;
+    setMicError('');
+    let perm = await SpeechRecognition.checkPermissions();
+    if (perm.speechRecognition !== 'granted') {
+      perm = await SpeechRecognition.requestPermissions();
+      if (perm.speechRecognition !== 'granted') {
+        setMicError('Microphone access denied — enable in iOS Settings.');
+        return;
+      }
+      return; // Permission just granted — user re-holds to record
+    }
+    micBaseTextRef.current = input;
+    const partialHandle = await SpeechRecognition.addListener('partialResults', (evt) => {
+      const text = evt.matches?.[0] ?? '';
+      if (!text) return;
+      const base = micBaseTextRef.current;
+      setInput(base ? base + ' ' + text : text);
+    });
+    const errHandle = await SpeechRecognition.addListener('error', (evt) => {
+      setMicError(evt.message || 'Speech recognition error.');
+      setMicListening(false);
+    });
+    micListenersRef.current = [partialHandle, errHandle];
+    setMicListening(true);
+    SpeechRecognition.start({ language: 'en-US', partialResults: true }).catch((err) => {
+      setMicError(err?.message || 'Could not start recognition.');
+      setMicListening(false);
+    });
+  };
+
+  const stopMic = async () => {
+    if (!micListening) return;
+    micListenersRef.current.forEach((h) => h.remove().catch(() => {}));
+    micListenersRef.current = [];
+    setMicListening(false);
+    SpeechRecognition.stop().catch(() => {});
   };
 
   const handleTileClick = (verb) => {
@@ -839,7 +892,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             flexShrink: 0,
           }}
         >
-          {(attachment || attaching || attachErr) && (
+          {(attachment || attaching || attachErr || micError) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {attaching && (
                 <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'rgba(247,245,240,0.55)' }}>Processing image…</span>
@@ -856,6 +909,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               )}
               {attachErr && (
                 <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: '#FCA5A5' }}>{attachErr}</span>
+              )}
+              {micError && (
+                <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: '#FCA5A5' }}>{micError}</span>
               )}
             </div>
           )}
@@ -921,6 +977,48 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             onFocus={(e) => (e.target.style.borderColor = 'rgba(201,168,76,0.55)')}
             onBlur={(e) => (e.target.style.borderColor = 'rgba(201,168,76,0.2)')}
           />
+          {micAvailable && (
+            <button
+              onPointerDown={startMic}
+              onPointerUp={stopMic}
+              onPointerLeave={stopMic}
+              onContextMenu={(e) => e.preventDefault()}
+              disabled={loading}
+              title="Hold to speak"
+              aria-label="Hold to speak"
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: '50%',
+                background: micListening ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.07)',
+                border: micListening ? '1px solid rgba(239,68,68,0.7)' : '1px solid rgba(201,168,76,0.3)',
+                color: micListening ? '#FCA5A5' : 'rgba(247,245,240,0.75)',
+                cursor: loading ? 'default' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                marginBottom: 2,
+                transition: 'background 0.15s, border-color 0.15s',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                touchAction: 'none',
+              }}
+            >
+              {micListening ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="9" y="3" width="6" height="18" rx="3" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              )}
+            </button>
+          )}
           <button
             onClick={() => sendMessage()}
             disabled={loading || (!input.trim() && !attachment)}
