@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
         .limit(15) : Promise.resolve({ data: [] }),
 
       jobIds.length ? sb.from("change_orders")
-        .select("job_id, title, amount, status")
+        .select("job_id, description, amount, status")
         .in("job_id", jobIds)
         .eq("status", "pending")
         .limit(10) : Promise.resolve({ data: [] }),
@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
     ).join("\n") || "None.";
 
     const cosStr = (pendingCOs || []).map((co: any) =>
-      `• ${jobMap[co.job_id] || "unknown"}: "${co.title}" $${(co.amount || 0).toLocaleString()} — awaiting approval`
+      `• ${jobMap[co.job_id] || "unknown"}: "${co.description}" $${(co.amount || 0).toLocaleString()} — awaiting approval`
     ).join("\n") || "None.";
 
     const materialsStr = urgentMaterials.length > 0

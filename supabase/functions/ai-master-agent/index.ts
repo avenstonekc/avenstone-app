@@ -402,7 +402,7 @@ async function executeTool(
             .limit(20),
           sb.from("payments").select("job_id, amount, due_date, description")
             .eq("status", "pending").lt("due_date", today).limit(20),
-          sb.from("change_orders").select("job_id, title, amount")
+          sb.from("change_orders").select("job_id, description, amount")
             .eq("tenant_id", tenantId).eq("status", "pending").limit(20),
         ]);
         return {
