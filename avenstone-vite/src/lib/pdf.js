@@ -1058,9 +1058,9 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
 
     // ── Room fill tint ────────────────────────────────────────────────────────
     doc.setFillColor(248, 245, 240);
-    for (const { segs } of roomLayouts) {
+    for (const { room, segs } of roomLayouts) {
       if (segs.length < 3) continue;
-      const poly = _segsToPolyPoints(segs);
+      const poly = _segsToPolyPoints(segs, room.sqft);
       if (poly.length < 3) continue;
       const pts = poly.map(p => [oX + p.x * scale, oY + p.z * scale]);
       doc.lines(pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true);
@@ -1283,20 +1283,30 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
 
   for (const { room, segs, x, y, w, h } of roomLayouts) {
     let labelX, labelY;
+    let roomPoly = null;
     if (segs && segs.length >= 3) {
-      const poly = _segsToPolyPoints(segs);
-      const cent = _polyCentroid(poly);
-      if (_pointInPoly(cent.x, cent.z, poly)) {
+      roomPoly = _segsToPolyPoints(segs, room.sqft);
+      const cent = _polyCentroid(roomPoly);
+      if (_pointInPoly(cent.x, cent.z, roomPoly)) {
         labelX = oX + cent.x * scale; labelY = oY + cent.z * scale;
       } else {
-        const ip = _interiorPoint(poly, segs);
+        const ip = _interiorPoint(roomPoly, segs);
         labelX = oX + ip.x * scale; labelY = oY + ip.z * scale;
       }
     } else {
       labelX = x + w / 2; labelY = y + h / 2;
     }
+    // Derive sqft from the final drawn polygon (shoelace) — consistent regardless of bridge/fallback path.
     const sqft = (() => {
-      if (segs && segs.length >= 3) { const a = _polyAreaFromSegs(segs); if (a > 0) return Math.round(a); }
+      if (roomPoly && roomPoly.length >= 3) {
+        let a = 0;
+        for (let i = 0; i < roomPoly.length; i++) {
+          const j = (i + 1) % roomPoly.length;
+          a += roomPoly[i].x * roomPoly[j].z - roomPoly[j].x * roomPoly[i].z;
+        }
+        const computed = Math.round(Math.abs(a) / 2);
+        if (computed > 0) return computed;
+      }
       return room.sqft || 0;
     })();
     const aspect = w > 0 && h > 0 ? Math.max(w, h) / Math.min(w, h) : 1;
@@ -1307,12 +1317,11 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     const nameW = nameTxt.length * fs * 0.55, nameH = fs + 2;
 
     // Wall-margin test: if horizontal label box clips a wall, try rotated; log if neither fits.
-    if (segs && segs.length >= 3) {
-      const poly = _segsToPolyPoints(segs);
+    if (roomPoly && segs && segs.length >= 3) {
       const lw = nameW + 8, lh = 18;
       if (!narrow) {
-        if (!_labelFitsInRoom(labelX, labelY, lw, lh, poly, segs)) {
-          if (_labelFitsInRoom(labelX, labelY, lh, lw, poly, segs)) {
+        if (!_labelFitsInRoom(labelX, labelY, lw, lh, roomPoly, segs)) {
+          if (_labelFitsInRoom(labelX, labelY, lh, lw, roomPoly, segs)) {
             narrow = true; // rotated placement clears walls
           } else {
             console.log(`[LIDAR_PDF_LABEL] room "${nameTxt}" no clean placement`);
@@ -1321,8 +1330,8 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       } else {
         // Narrow (rotated) label — swap dims for the margin check.
         // If centroid clips a wall, fall back to the max-clearance interior point.
-        if (!_labelFitsInRoom(labelX, labelY, lh, lw, poly, segs)) {
-          const ip = _interiorPoint(poly, segs);
+        if (!_labelFitsInRoom(labelX, labelY, lh, lw, roomPoly, segs)) {
+          const ip = _interiorPoint(roomPoly, segs);
           labelX = oX + ip.x * scale; labelY = oY + ip.z * scale;
         }
       }
@@ -1330,8 +1339,8 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
 
     // Collision check against dim labels (only when not already rotating)
     if (!narrow && _labelCollides(labelX, labelY - 4, nameW, nameH)) {
-      if (segs && segs.length >= 3) {
-        const ip = _interiorPoint(_segsToPolyPoints(segs), segs);
+      if (roomPoly && segs && segs.length >= 3) {
+        const ip = _interiorPoint(roomPoly, segs);
         const altX = oX + ip.x * scale, altY = oY + ip.z * scale;
         if (!_labelCollides(altX, altY - 4, nameW, nameH)) { labelX = altX; labelY = altY; }
         else {
