@@ -204,6 +204,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [micAvailable, setMicAvailable] = useState(false);
   const [micListening, setMicListening] = useState(false);
   const [micError, setMicError] = useState('');
+  const [micHint, setMicHint] = useState('');
   const micBaseTextRef = useRef('');
   const micListenersRef = useRef([]);
   const [ttsEnabled, setTtsEnabled] = useState(() => {
@@ -458,6 +459,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     try { await SpeechRecognition.stop(); } catch {}
     TextToSpeech.stop().catch(() => {});
     setMicError('');
+    setMicHint('');
     let perm = await SpeechRecognition.checkPermissions();
     if (perm.speechRecognition !== 'granted') {
       perm = await SpeechRecognition.requestPermissions();
@@ -465,7 +467,8 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         setMicError('Microphone access denied — enable in iOS Settings.');
         return;
       }
-      return; // Permission just granted — user re-holds to record
+      setMicHint('Press and hold to speak.');
+      return;
     }
     micBaseTextRef.current = input;
     const partialHandle = await SpeechRecognition.addListener('partialResults', (evt) => {
@@ -935,7 +938,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             flexShrink: 0,
           }}
         >
-          {(attachment || attaching || attachErr || micError) && (
+          {(attachment || attaching || attachErr || micError || micHint) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {attaching && (
                 <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'rgba(247,245,240,0.55)' }}>Processing image…</span>
@@ -955,6 +958,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               )}
               {micError && (
                 <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: '#FCA5A5' }}>{micError}</span>
+              )}
+              {micHint && !micError && (
+                <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'rgba(247,245,240,0.55)' }}>{micHint}</span>
               )}
             </div>
           )}
