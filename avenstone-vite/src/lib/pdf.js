@@ -590,7 +590,7 @@ const _dedupFeatures = (allDoors, allWindows, allOpenings, floorIndex) => {
 };
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
-const _segsToPolyPoints = (segs) => {
+const _segsToPolyPoints = (segs, storedSqftEst) => {
   if (!segs || segs.length < 3) return (segs || []).map(s => ({ x: s.x1, z: s.z1 }));
   const rem = segs.map(s => ({ x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2 }));
   const poly = [];
@@ -605,10 +605,36 @@ const _segsToPolyPoints = (segs) => {
       if (d1 < bd) { bd = d1; bi = i; flip = false; }
       if (d2 < bd) { bd = d2; bi = i; flip = true; }
     }
-    if (bi === -1 || bd > 2.0) break;
+    if (bi === -1 || bd > 2.0) {
+      if (bi === -1 || rem.length === 0) break;
+      // Bridge gap: no segment within 2.0 ft threshold, but unconsumed segments remain — jump to nearest anyway.
+      const n = rem.splice(bi, 1)[0];
+      if (flip) { poly.push({ x: n.x2, z: n.z2 }); cx = n.x1; cz = n.z1; }
+      else { poly.push({ x: n.x1, z: n.z1 }); cx = n.x2; cz = n.z2; }
+      continue;
+    }
     const n = rem.splice(bi, 1)[0];
     if (flip) { poly.push({ x: n.x2, z: n.z2 }); cx = n.x1; cz = n.z1; }
     else { poly.push({ x: n.x1, z: n.z1 }); cx = n.x2; cz = n.z2; }
+  }
+  // Close the ring back to the first vertex once all segments are consumed.
+  if (poly.length >= 2) poly.push({ x: poly[0].x, z: poly[0].z });
+
+  // Degenerate guard: if <4 vertices or shoelace area < 50% of stored sqft estimate, fall back to bounding-box rectangle.
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const j = (i + 1) % poly.length;
+    area += poly[i].x * poly[j].z - poly[j].x * poly[i].z;
+  }
+  area = Math.abs(area) / 2;
+  const tooFewVerts = poly.length < 4;
+  const tooSmall = storedSqftEst > 0 && area < storedSqftEst * 0.5;
+  if (tooFewVerts || tooSmall) {
+    // Fallback: axis-aligned bounding box of all wall-segment endpoints.
+    const xs = segs.flatMap(s => [s.x1, s.x2]), zs = segs.flatMap(s => [s.z1, s.z2]);
+    const mnX = Math.min(...xs), mxX = Math.max(...xs), mnZ = Math.min(...zs), mxZ = Math.max(...zs);
+    console.log(`[LIDAR_PDF_FALLBACK] degenerate poly (verts=${poly.length - 1}, area=${area.toFixed(1)}, stored=${storedSqftEst || '?'}) → bbox`);
+    return [{ x: mnX, z: mnZ }, { x: mxX, z: mnZ }, { x: mxX, z: mxZ }, { x: mnX, z: mxZ }, { x: mnX, z: mnZ }];
   }
   return poly;
 };
