@@ -5,7 +5,7 @@ import TransactionModal from './financials/TransactionModal';
 import LineItemModal from './financials/LineItemModal';
 import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo } from '../../../lib/supabase';
 import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
-import { f$ } from '../../../lib/utils';
+import { f$, isMob } from '../../../lib/utils';
 
 const SUB_TABS = [
   { id: 'ledger',   lb: 'Ledger' },
@@ -24,6 +24,7 @@ const TYPE_LABELS = {
 const STATUS_COLOR = { paid: '#22c55e', pending: '#f59e0b', overdue: '#ef4444', void: '#9CA3AF', draft: '#9CA3AF', refunded: '#8b5cf6' };
 
 export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendingAction, clearPendingAction }) {
+  const mob = isMob();
   const [sub, setSub] = useState('ledger');
   const [txs, setTxs] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -139,14 +140,15 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   return (
     <div>
       {/* Sub-tab bar */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid #E8E4DC' }}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid #E8E4DC', overflowX: 'auto', flexWrap: 'nowrap' }}>
         {SUB_TABS.map(t => (
           <button key={t.id} onClick={() => setSub(t.id)} style={{
             padding: '8px 14px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
             background: 'none', borderBottom: `2px solid ${sub === t.id ? '#C9A84C' : 'transparent'}`,
             marginBottom: -2, color: sub === t.id ? '#0A1F44' : '#9CA3AF', transition: 'color 0.15s',
+            whiteSpace: 'nowrap', flexShrink: 0,
           }}>
-            {t.lb}{t.id === 'ledger' && lienCount > 0 ? ` ⚠ ${lienCount}` : ''}
+            {t.id === 'co' && mob ? 'COs' : t.lb}{t.id === 'ledger' && lienCount > 0 ? ` ⚠ ${lienCount}` : ''}
           </button>
         ))}
       </div>
@@ -180,7 +182,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             return (
               <>
                 {/* Desktop table */}
-                <div style={{ display: 'none' }} className="budget-desktop">
+                {!mob && <div className="budget-desktop">
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px 80px', gap: 8, padding: '6px 10px', background: '#0A1F44', borderRadius: '6px 6px 0 0', fontSize: 10, fontWeight: 700, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     {['Line Item', 'Budget', 'Actual', 'Variance', '% Budg', 'Status'].map(h => <div key={h}>{h}</div>)}
                   </div>
@@ -211,9 +213,9 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                     <div style={{ color: totalVariance < 0 ? '#ef4444' : '#22c55e' }}>{totalActual > 0 ? (totalVariance < 0 ? `-${f$(Math.abs(totalVariance))}` : f$(totalVariance)) : '—'}</div>
                     <div /><div />
                   </div>
-                </div>
+                </div>}
                 {/* Mobile cards */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {mob && <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {lineItems.map(li => {
                     const budget = Number(li.client_price ?? li.total_cost ?? 0);
                     const actual = Number(li.actual || 0);
@@ -249,7 +251,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                       ))}
                     </div>
                   )}
-                </div>
+                </div>}
               </>
             );
           })()}
