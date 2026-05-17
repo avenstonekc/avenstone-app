@@ -1420,9 +1420,34 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl) 
     y += 5; doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 10;
 
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(55, 65, 81);
-    let fTotFloor = 0, fTotPerim = 0, fTotWallArea = 0, fTotDoors = 0, fTotWin = 0;
+    let fTotFloor = 0, fTotPerim = 0, fTotWallArea = 0, fTotWin = 0;
 
-    for (const room of floor.rooms) {
+    // Dedupe shared-wall doors before counting — mirrors _dedupFeatures isDupDoor exactly.
+    // Doors on a shared wall appear in both adjacent rooms' doorSegments; applying each
+    // room's worldX/worldZ offset puts all doors in the same coordinate system for comparison.
+    // Thresholds: 0.5 ft midpoint, 10% width ratio, 0.9 normal dot — identical to _dedupFeatures.
+    // Attribution: first room (lower index) wins, matching _dedupFeatures dedup() first-wins rule.
+    const _flatFloorDoors = floor.rooms.flatMap((rm, ri) => {
+      const wx = rm.worldX || 0, wz = rm.worldZ || 0;
+      return (rm.doorSegments || []).map(d => ({
+        x1: wx + d.x1, z1: wz + d.z1, x2: wx + d.x2, z2: wz + d.z2,
+        nx: d.nx || 0, nz: d.nz || 0, width: d.width || 3, _ri: ri,
+      }));
+    });
+    const _keptFloorDoors = [];
+    for (const d of _flatFloorDoors) {
+      const dup = _keptFloorDoors.some(k => {
+        if (Math.hypot((d.x1+d.x2)/2-(k.x1+k.x2)/2, (d.z1+d.z2)/2-(k.z1+k.z2)/2) > 0.5) return false;
+        const aw = Math.hypot(d.x2-d.x1, d.z2-d.z1), bw = Math.hypot(k.x2-k.x1, k.z2-k.z1);
+        if (Math.abs(aw-bw) / Math.max(aw, bw, 0.01) > 0.1) return false;
+        return Math.abs(d.nx*k.nx + d.nz*k.nz) >= 0.9;
+      });
+      if (!dup) _keptFloorDoors.push(d);
+    }
+    const fTotDoors = _keptFloorDoors.length;
+
+    for (let roomIdx = 0; roomIdx < floor.rooms.length; roomIdx++) {
+      const room = floor.rooms[roomIdx];
       if (y > 720) { doc.addPage(); y = M + 10; }
       const wallSegs = room.wallSegments || [];
       const worldMode = room.worldX !== undefined && room.worldX !== null;
@@ -1437,8 +1462,9 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl) 
       else if (proc) { const p = _polyAreaFromSegs(proc.segs); if (p > 0) sqft = Math.round(p); }
       const perim = _perimeterFromSegs(wallSegs);
       const wallArea = Math.round(wallSegs.reduce((s, seg) => s + Math.hypot(seg.x2-seg.x1, seg.z2-seg.z1) * (room.height || 0), 0));
-      const doorCount = (room.doorSegments || []).length, winCount = (room.windowSegments || []).length;
-      fTotFloor += sqft; fTotPerim += perim; fTotWallArea += wallArea; fTotDoors += doorCount; fTotWin += winCount;
+      const doorCount = _keptFloorDoors.filter(d => d._ri === roomIdx).length;
+      const winCount = (room.windowSegments || []).length;
+      fTotFloor += sqft; fTotPerim += perim; fTotWallArea += wallArea; fTotWin += winCount;
       doc.text(room.name || '—', cols[0], y);
       doc.text(`${sqft.toLocaleString()} sf`, cols[1], y);
       doc.text(`${perim.toFixed(1)} ft`, cols[2], y);
