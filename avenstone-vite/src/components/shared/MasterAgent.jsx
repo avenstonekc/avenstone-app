@@ -451,7 +451,11 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   };
 
   const startMic = async () => {
-    if (micListening || loading) return;
+    if (loading) return;
+    // Self-heal any stuck state left by a prior pointercancel/touchcancel
+    micListenersRef.current.forEach((h) => h.remove().catch(() => {}));
+    micListenersRef.current = [];
+    try { await SpeechRecognition.stop(); } catch {}
     TextToSpeech.stop().catch(() => {});
     setMicError('');
     let perm = await SpeechRecognition.checkPermissions();
@@ -1018,9 +1022,12 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           />
           {micAvailable && (
             <button
-              onPointerDown={startMic}
-              onPointerUp={stopMic}
-              onPointerLeave={stopMic}
+              onTouchStart={(e) => { e.preventDefault(); startMic(); }}
+              onTouchEnd={(e) => { e.preventDefault(); stopMic(); }}
+              onTouchCancel={(e) => { e.preventDefault(); stopMic(); }}
+              onMouseDown={startMic}
+              onMouseUp={stopMic}
+              onMouseLeave={stopMic}
               onContextMenu={(e) => e.preventDefault()}
               disabled={loading}
               title="Hold to speak"
