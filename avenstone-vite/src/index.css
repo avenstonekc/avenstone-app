@@ -101,8 +101,9 @@ select option{background:#fff;color:#0A1F44}
 .tab.on{color:#0A1F44;border-bottom-color:#C9A84C}
 .tab svg{width:16px;height:16px}
 @media(max-width:767px){
-  .tabbar{display:grid;grid-template-columns:repeat(5,1fr)}
-  .tab{padding:8px 2px;font-size:9px}
+  .tabbar{overflow-x:auto;flex-wrap:nowrap}
+  .tabbar::-webkit-scrollbar{display:none}
+  .tab{flex:none;padding:10px 12px;font-size:11px}
 }
 
 /* MODAL */
