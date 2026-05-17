@@ -122,7 +122,6 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 
 - VOICE_AGENT v1.5: verb 5b (`complete_schedule_item` with photo gate) — gates AGENT_CARDS_ARC Phase 5
 - AGENT_CARDS_ARC build (planning doc shipped 2026-05-08; build deferred)
-- Master out-of-v1 tools cleanup arc (13 broken/stale read tools per Phase 1 audit)
 - Helper-shape sweep beyond v1 (`sbUpdateTransaction`, etc.)
 - Trade-neutral system prompts (Field still mentions "residential construction")
 - CO surface in client portal (no CO tab today)
@@ -136,6 +135,7 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Tool-schema vs insert-payload mismatch detector — extend `tools/audit_schema_vs_code.js` to walk edge-fn `input_schema.properties` and cross-reference against the executor's actual `.insert()` payloads. Catches the silent-LLM-token-waste class surfaced by 2026-05-12 job_notes cleanup (note_type advertised in tool schema, dropped on insert).
 - Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()`/`.flatMap()` callback payloads). Phase 2 shipped 2026-05-13 (decodes ObjectPattern-rest `const {..., ...patch} = x || {}` + ConditionalExpression branch union). Skipped: 34 → 15 → 9. Remaining patterns deferred: identifier→param/none (8 — function params, need call-site analysis), dynamic `.from()` (1 — opaque by design).
 - Capture-time incomplete-scan detection — RoomPlan is returning wall-segment rings with multi-foot gaps (missing wall captures). The 2026-05-17 stitcher fix makes rendering robust, but the rep should be warned at scan time when a room's segment ring has a gap > ~3 ft so they can rescan that wall. Anti-surprise alignment — catch the bad scan in the field, not in the office PDF.
+- get_dashboard overdue_phases query bug — queries `schedule_phases` (phantom table, doesn't exist in any migration). Should query `schedule_items` with `scheduled_end_date < today AND status != 'complete'`. Silently returns empty now due to `|| []` fallback. Targeted query fix in ai-master-agent/index.ts line 398.
 
 ---
 
@@ -1097,3 +1097,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Client callers: AiKnowledgeScr.jsx (CRUD) + AiSetupWizard.jsx (insert) — both are owner-only screens. No non-owner write callers found.
 - Edge fn callers: ai-companion, ai-master-agent, ai-home-companion, ai-consultation-gap-analyzer, get-contractor-profile, process-transcript — all service-role, unaffected by RLS.
 - Open: none related to ai_knowledge security.
+
+[LOG — 2026-05-17 — Master-agent out-of-v1 tools cleanup]
+- Action: Confirmed the cleanup already shipped — backlog was stale. No removals performed.
+- Files: supabase/functions/ai-master-agent/index.ts (read-only audit), CLAUDE_MEMORY.md
+- Audit: Phase 1 audit (voice-agent-audit-2026-05-08) did not enumerate 13 specific tool names — the count ("12-13 out-of-v1 tools") was a rough estimate from the Phase 2 LOG describing tools beyond the 5 v1 verbs. The one confirmed dead tool (assign_sub — wrote to dropped job_subs table) was already removed on 2026-05-11. Current roster: 18 tools (get_jobs, get_job_details, get_team, get_dashboard, create_job, update_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, update_phase, submit_change_order, log_payment, log_receipt, notify_team, add_todo, add_knowledge). All 18 have matching TOOLS array definitions and executor switch cases — no orphan defs or orphan cases. Tool count: was 19 → 18 (assign_sub already removed 2026-05-11). Today: 18 → 18.
+- Verification: grep for each tool name across index.ts confirms no dangling refs. One real bug found in get_dashboard: queries `schedule_phases` table (line 398) which doesn't exist in any migration (schema has job_phases + schedule_items). Silently returns empty overdue_phases due to `|| []` fallback — not a tool removal candidate; it's a query fix. Captured to backlog as a distinct item.
+- Trade-aware: master-agent is platform-shared; all 18 tools use tenant_id scoping. No Avenstone-specific tool was found.
+- Open: get_dashboard overdue_phases query targets `schedule_phases` (phantom table) — should query `schedule_items` with `scheduled_end_date < today AND status != 'complete'`. Fix is a targeted query update, not a tool removal. Not done in this scope.
