@@ -308,12 +308,12 @@ function ItemCard({ item, onEdit, onCancel }) {
       <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: 2 }}>
         <button
           className="btn btn-ghost"
-          style={{ padding: '3px 10px', fontSize: 11 }}
+          style={{ padding: '6px 12px', fontSize: 12, minHeight: 36 }}
           onClick={() => onEdit(item)}
         >Edit</button>
         <button
           className="btn btn-ghost"
-          style={{ padding: '3px 10px', fontSize: 11, color: '#6B7280' }}
+          style={{ padding: '6px 12px', fontSize: 12, minHeight: 36, color: '#6B7280' }}
           onClick={() => onCancel(item)}
         >Cancel</button>
       </div>
