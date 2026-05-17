@@ -395,8 +395,11 @@ async function executeTool(
         const [jobsRes, overdueRes, unpaidRes, pendingCOsRes] = await Promise.all([
           sb.from("jobs").select("id, address, status, contract_value").eq("tenant_id", tenantId)
             .not("status", "in", '("complete","on_hold","lead")'),
-          sb.from("schedule_phases").select("job_id, name, end_date, status")
-            .lt("end_date", today).not("status", "eq", "complete").limit(20),
+          sb.from("schedule_items").select("job_id, title, scheduled_end_date, status")
+            .eq("tenant_id", tenantId)
+            .lt("scheduled_end_date", today)
+            .not("status", "in", '("complete","cancelled")')
+            .limit(20),
           sb.from("payments").select("job_id, amount, due_date, description")
             .eq("status", "pending").lt("due_date", today).limit(20),
           sb.from("change_orders").select("job_id, title, amount")
