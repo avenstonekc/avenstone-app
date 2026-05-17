@@ -163,7 +163,10 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
                 {addrSuggestions.map((s, i) => (
                   <div key={i} onClick={() => pickAddr(s.description)} style={{ padding: '10px 14px', fontSize: 13, color: '#374151', cursor: 'pointer', borderBottom: i < addrSuggestions.length - 1 ? '1px solid #F3F0EB' : 'none' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#F7F5F0'}
-                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                    onTouchStart={e => e.currentTarget.style.background = '#F7F5F0'}
+                    onTouchEnd={e => e.currentTarget.style.background = '#fff'}
+                    onTouchCancel={e => e.currentTarget.style.background = '#fff'}>
                     {s.description}
                   </div>
                 ))}
