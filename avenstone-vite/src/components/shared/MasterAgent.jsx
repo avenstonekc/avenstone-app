@@ -3,6 +3,19 @@ import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, SUBMIT_BUG_REPORT_URL
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
 import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
+import { TextToSpeech, QueueStrategy } from '@capacitor-community/text-to-speech';
+
+function normalizeTtsText(text) {
+  return (text || '')
+    .replace(/https?:\/\/\S+/g, 'link')
+    .replace(/\*\*|__/g, '')
+    .replace(/`[^`]*`/g, '')
+    .replace(/^#+\s/gm, '')
+    .replace(/✓/g, '')
+    .replace(/·/g, ',')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 // Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
 const MAX_EDGE = 1024;
@@ -193,6 +206,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [micError, setMicError] = useState('');
   const micBaseTextRef = useRef('');
   const micListenersRef = useRef([]);
+  const [ttsEnabled, setTtsEnabled] = useState(() => {
+    try { return localStorage.getItem('av_tts_enabled') !== 'false'; } catch { return true; }
+  });
 
   const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -277,7 +293,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         ...prev,
         { role: 'assistant', content: aiText },
       ]);
-      setPendingConfirm(data.pending_action || null);
+      const pendingAction = data.pending_action || null;
+      setPendingConfirm(pendingAction);
+      ttsSpeak(aiText, pendingAction?.description);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -330,6 +348,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     const trimmed = (text || input).trim();
     if (loading) return;
     if (!trimmed && !attachment) return;
+    TextToSpeech.stop().catch(() => {});
     if (pendingConfirm) setPendingConfirm(null);
 
     // Bug submission path — bypass agent, go straight to submit-bug-report.
@@ -433,6 +452,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
 
   const startMic = async () => {
     if (micListening || loading) return;
+    TextToSpeech.stop().catch(() => {});
     setMicError('');
     let perm = await SpeechRecognition.checkPermissions();
     if (perm.speechRecognition !== 'granted') {
@@ -468,6 +488,25 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     micListenersRef.current = [];
     setMicListening(false);
     SpeechRecognition.stop().catch(() => {});
+  };
+
+  const ttsSpeak = (primary, secondary) => {
+    if (!ttsEnabled) return;
+    const t1 = normalizeTtsText(primary);
+    if (t1) TextToSpeech.speak({ text: t1, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Flush }).catch(() => {});
+    if (secondary) {
+      const t2 = normalizeTtsText(secondary);
+      if (t2) TextToSpeech.speak({ text: t2, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Add }).catch(() => {});
+    }
+  };
+
+  const toggleTts = () => {
+    setTtsEnabled((v) => {
+      const next = !v;
+      try { localStorage.setItem('av_tts_enabled', String(next)); } catch {}
+      if (!next) TextToSpeech.stop().catch(() => {});
+      return next;
+    });
   };
 
   const handleTileClick = (verb) => {
@@ -1019,6 +1058,40 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               )}
             </button>
           )}
+          <button
+            onClick={toggleTts}
+            title={ttsEnabled ? 'Mute agent voice' : 'Unmute agent voice'}
+            aria-label={ttsEnabled ? 'Mute agent voice' : 'Unmute agent voice'}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: '50%',
+              background: ttsEnabled ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
+              border: ttsEnabled ? '1px solid rgba(201,168,76,0.3)' : '1px solid rgba(247,245,240,0.15)',
+              color: ttsEnabled ? 'rgba(247,245,240,0.75)' : 'rgba(247,245,240,0.3)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              marginBottom: 2,
+              transition: 'background 0.15s, border-color 0.15s',
+            }}
+          >
+            {ttsEnabled ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <line x1="23" y1="9" x2="17" y2="15" />
+                <line x1="17" y1="9" x2="23" y2="15" />
+              </svg>
+            )}
+          </button>
           <button
             onClick={() => sendMessage()}
             disabled={loading || (!input.trim() && !attachment)}
