@@ -73,6 +73,9 @@ const writes = []; // { table, op, columns, partial, file, line, source }
 const opaque = []; // { table, op, reason, file, line }
 const parseErrors = [];
 
+const reads = [];      // { table, columns, hasOpaque, file, line }
+const readOpaque = []; // { table, reason, file, line }
+
 function parseFile(code, isTS) {
   return parser.parse(code, {
     sourceType: 'module',
@@ -422,6 +425,85 @@ function processWriteCall(filePath, callPath) {
   opaque.push({ table, op, reason: `non-literal arg (${arg.type})`, file: fileRel, line });
 }
 
+// ── select-string parsing ───────────────────────────────────────────────────
+function splitSelectTerms(str) {
+  // Split by comma but NOT inside parentheses (embedded resource args).
+  const terms = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === '(') depth++;
+    else if (str[i] === ')') depth--;
+    else if (str[i] === ',' && depth === 0) {
+      terms.push(str.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  terms.push(str.slice(start).trim());
+  return terms;
+}
+
+function parseSelectString(str) {
+  // Returns { columns: string[], hasOpaque: bool }
+  // columns = plain base-table column names to check.
+  // hasOpaque = true if any term was skipped (embed, aggregate, etc.)
+  const columns = [];
+  let hasOpaque = false;
+  for (const term of splitSelectTerms(str)) {
+    if (!term || term === '*') continue;
+    if (term.includes('(')) { hasOpaque = true; continue; } // embed / aggregate call
+    if (/^(count|sum|avg|min|max)\b/i.test(term)) { hasOpaque = true; continue; }
+    const colonIdx = term.indexOf(':');
+    if (colonIdx >= 0) {
+      // Supabase rename syntax: alias:column
+      const col = term.slice(colonIdx + 1).trim();
+      if (col && !col.includes('(')) columns.push(col);
+      else hasOpaque = true;
+    } else {
+      columns.push(term);
+    }
+  }
+  return { columns, hasOpaque };
+}
+
+function processSelectCall(filePath, callPath) {
+  const node = callPath.node;
+  const table = findFromCall(node);
+  if (table == null) return;
+  const fileRel = relPath(filePath);
+  const line = node.loc?.start.line || 0;
+
+  if (typeof table === 'object' && table.dynamic) {
+    readOpaque.push({ table: '<dynamic>', reason: 'dynamic .from() arg', file: fileRel, line });
+    return;
+  }
+  if (table.includes('.')) {
+    readOpaque.push({ table, reason: 'cross-schema (skipped)', file: fileRel, line });
+    return;
+  }
+
+  const arg = node.arguments[0];
+  if (!arg) return; // .select() with no arg = '*', skip
+
+  let strVal = null;
+  if (arg.type === 'StringLiteral') {
+    strVal = arg.value;
+  } else if (arg.type === 'TemplateLiteral' && !arg.expressions.length) {
+    strVal = arg.quasis[0]?.value?.cooked ?? null;
+  }
+
+  if (strVal !== null) {
+    if (!strVal || strVal === '*') return;
+    const { columns, hasOpaque } = parseSelectString(strVal);
+    if (columns.length > 0 || hasOpaque) {
+      reads.push({ table, columns, hasOpaque, file: fileRel, line });
+    }
+    return;
+  }
+
+  readOpaque.push({ table, reason: `variable/expression arg (${arg.type})`, file: fileRel, line });
+}
+
 for (const file of files) {
   let code;
   try { code = fs.readFileSync(file, 'utf8'); }
@@ -439,8 +521,11 @@ for (const file of files) {
         const callee = callPath.node.callee;
         if (callee?.type !== 'MemberExpression') return;
         const name = callee.property?.name;
-        if (name !== 'insert' && name !== 'update' && name !== 'upsert') return;
-        processWriteCall(file, callPath);
+        if (name === 'insert' || name === 'update' || name === 'upsert') {
+          processWriteCall(file, callPath);
+        } else if (name === 'select') {
+          processSelectCall(file, callPath);
+        }
       },
     });
   } catch (e) {
@@ -449,12 +534,12 @@ for (const file of files) {
 }
 
 // ── DB query ────────────────────────────────────────────────────────────────
-let tablesScanned = [...new Set(writes.map(w => w.table))].sort();
+let tablesScanned = [...new Set([...writes.map(w => w.table), ...reads.map(r => r.table)])].sort();
 if (TABLE_FILTER) tablesScanned = tablesScanned.filter(t => t === TABLE_FILTER);
 
 async function main() {
   if (!tablesScanned.length) {
-    console.log('No write sites found. Nothing to audit.');
+    console.log('No write or read projection sites found. Nothing to audit.');
     process.exit(0);
   }
 
@@ -508,7 +593,7 @@ async function main() {
 
   // ── diff ──────────────────────────────────────────────────────────────────
   const byTable = {};
-  for (const t of tablesScanned) byTable[t] = { dbCols: new Map(), pks: new Set(), writeSites: [] };
+  for (const t of tablesScanned) byTable[t] = { dbCols: new Map(), pks: new Set(), writeSites: [], readSites: [] };
   for (const row of dbColumns) {
     if (byTable[row.table_name]) byTable[row.table_name].dbCols.set(row.column_name, row);
   }
@@ -519,6 +604,10 @@ async function main() {
     if (TABLE_FILTER && w.table !== TABLE_FILTER) continue;
     if (byTable[w.table]) byTable[w.table].writeSites.push(w);
   }
+  for (const r of reads) {
+    if (TABLE_FILTER && r.table !== TABLE_FILTER) continue;
+    if (byTable[r.table]) byTable[r.table].readSites.push(r);
+  }
 
   const driftFindings = [];     // { table, column, sites: [...] }
   const potentialFindings = []; // { table, column }
@@ -527,7 +616,11 @@ async function main() {
   for (const table of tablesScanned) {
     const tbl = byTable[table];
     if (!tbl.dbCols.size) {
-      missingTables.push({ table, sites: tbl.writeSites.map(w => ({ file: w.file, line: w.line, op: w.op })) });
+      const sites = [
+        ...tbl.writeSites.map(w => ({ file: w.file, line: w.line, op: w.op })),
+        ...tbl.readSites.map(r => ({ file: r.file, line: r.line, op: 'select' })),
+      ];
+      missingTables.push({ table, sites });
       continue;
     }
     // A — drift
@@ -556,6 +649,23 @@ async function main() {
     }
   }
 
+  // ── read-side diff ────────────────────────────────────────────────────────
+  const readDriftFindings = []; // { table, column, sites: [...] }
+
+  for (const table of tablesScanned) {
+    const tbl = byTable[table];
+    if (!tbl.dbCols.size) continue; // already in missingTables
+    for (const r of tbl.readSites) {
+      for (const col of r.columns) {
+        if (!tbl.dbCols.has(col)) {
+          let entry = readDriftFindings.find(d => d.table === table && d.column === col);
+          if (!entry) { entry = { table, column: col, sites: [] }; readDriftFindings.push(entry); }
+          entry.sites.push({ file: r.file, line: r.line });
+        }
+      }
+    }
+  }
+
   // ── output ────────────────────────────────────────────────────────────────
   if (JSON_OUT) {
     console.log(JSON.stringify({
@@ -565,7 +675,9 @@ async function main() {
       drift: driftFindings,
       potential: potentialFindings,
       missingTables,
+      readDrift: readDriftFindings,
       skipped: opaque,
+      readSkipped: readOpaque,
       parseErrors,
     }, null, 2));
   } else {
@@ -592,7 +704,7 @@ async function main() {
     for (const p of potentialFindings) (potByTable[p.table] ||= []).push(p);
     const allTables = new Set([...Object.keys(driftByTable), ...Object.keys(potByTable)]);
 
-    if (!allTables.size && !missingTables.length) {
+    if (!allTables.size && !missingTables.length && !readDriftFindings.length) {
       console.log(C.green('✓ No drift or potential issues found.'));
     } else {
       for (const t of [...allTables].sort()) {
@@ -610,14 +722,36 @@ async function main() {
         }
         console.log('');
       }
+      if (readDriftFindings.length) {
+        const rdByTable = {};
+        for (const d of readDriftFindings) (rdByTable[d.table] ||= []).push(d);
+        console.log(C.bold('Read-side drift (SELECT projections referencing non-existent columns):'));
+        for (const t of Object.keys(rdByTable).sort()) {
+          console.log(C.bold(`── ${t} ──`));
+          console.log(C.red('  ❌ READ DRIFT — column selected in code but not in DB:'));
+          for (const d of rdByTable[t]) {
+            console.log(C.red(`    • ${d.column}`));
+            for (const s of d.sites) console.log(C.gray(`        ${s.file}:${s.line} (select)`));
+          }
+          console.log('');
+        }
+      }
     }
 
     if (opaque.length) {
-      console.log(C.gray(`Skipped (${opaque.length} call sites the resolver couldn't decode):`));
+      console.log(C.gray(`Write-side skipped (${opaque.length} call sites the resolver couldn't decode):`));
       for (const o of opaque.slice(0, 25)) {
         console.log(C.gray(`  • ${o.file}:${o.line}  ${o.table}.${o.op}()  — ${o.reason}`));
       }
       if (opaque.length > 25) console.log(C.gray(`  … ${opaque.length - 25} more`));
+      console.log('');
+    }
+    if (readOpaque.length) {
+      console.log(C.gray(`Read-side skipped (${readOpaque.length} .select() sites — variable args, embeds, aggregates, *):`));
+      for (const o of readOpaque.slice(0, 25)) {
+        console.log(C.gray(`  • ${o.file}:${o.line}  ${o.table}.select()  — ${o.reason}`));
+      }
+      if (readOpaque.length > 25) console.log(C.gray(`  … ${readOpaque.length - 25} more`));
       console.log('');
     }
     if (parseErrors.length) {
@@ -627,16 +761,21 @@ async function main() {
       console.log('');
     }
 
+    const readSelectSites = reads.length;
+    const readOpaqueCount = readOpaque.length + reads.filter(r => r.hasOpaque).length;
+
     console.log(C.bold('Summary:'));
-    console.log(`  drift:           ${driftFindings.length}`);
+    console.log(`  write drift:     ${driftFindings.length}`);
+    console.log(`  read drift:      ${readDriftFindings.length}`);
     console.log(`  potential:       ${potentialFindings.length}`);
     console.log(`  missing tables:  ${missingTables.length}`);
-    console.log(`  skipped sites:   ${opaque.length}`);
+    console.log(`  write skipped:   ${opaque.length}`);
+    console.log(`  read skipped:    ${readOpaqueCount} (${readSelectSites} .select() sites, ${readOpaque.length} fully opaque + ${reads.filter(r => r.hasOpaque).length} partial)`);
     console.log(`  parse errors:    ${parseErrors.length}`);
   }
 
   let exit = 0;
-  if (driftFindings.length || missingTables.length) exit = 1;
+  if (driftFindings.length || missingTables.length || readDriftFindings.length) exit = 1;
   if (STRICT && potentialFindings.length) exit = 1;
   process.exit(exit);
 }
