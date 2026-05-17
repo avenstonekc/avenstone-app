@@ -85,7 +85,7 @@ select option{background:#fff;color:#0A1F44}
 /* FORMS */
 .fg{margin-bottom:18px}
 .flbl{font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:1px;font-weight:600;display:block;margin-bottom:6px}
-.finp{width:100%;background:#fff;border:1.5px solid #E8E4DC;color:#0A1F44;padding:10px 14px;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color 0.2s;box-sizing:border-box}
+.finp{width:100%;background:#fff;border:1.5px solid #E8E4DC;color:#0A1F44;padding:10px 14px;font-family:'DM Sans',sans-serif;font-size:16px;outline:none;transition:border-color 0.2s;box-sizing:border-box}
 .finp:focus{border-color:#C9A84C}
 .finp.ok{border-color:rgba(10,31,68,0.2)}
 .fta{resize:vertical;line-height:1.7;min-height:100px}
