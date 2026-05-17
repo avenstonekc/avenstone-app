@@ -1188,3 +1188,18 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Build: npm run build passed both commits (571–630ms, 372–373 modules).
 - Verification: on-device retest is Kalin's after Codemagic build hits TestFlight. Test: press and hold mic → speak → release → transcript appears in input → button not stuck on subsequent presses.
 - Open: on-device verification pending. TTS audio quality check (Phase 4) still pending same build.
+
+[LOG — 2026-05-17 — Phone-first UX slice 1: 7 mobile layout fixes]
+- Action: Completed a full phone-first UX audit of TodayScr, JobsScr, JobDet, ScheduleTab, FinancialsTab, index.css. Delivered ranked punch list, then shipped all mechanical fixes in 7 commits.
+- Fix 1 (commit 612a3db): .finp font-size 14px → 16px. Stops iOS WKWebView auto-zoom on every form input app-wide.
+- Fix 2 (commit 94a6eca): JobDet tab bar (11 tabs) was grid-wrapping to 3 rows at 9px on mobile. Replaced with single-row overflow-x:auto flex at 11px. ScrollIntoView added to JobDet.jsx (tabbarRef + useEffect on tab change) so active tab always scrolls into view.
+- Fix 3 (commit c8ab553): JobDet header crammed back/address/badge/AI-button on one flex row — address truncated to 1-2 words. Mobile now renders 2 rows (actions row first, full-width address row below). Desktop unchanged. .cc/.cc-v tightened slightly on mobile.
+- Fix 4 (commit 4f41a24): FinancialsTab budget desktop table had inline display:none permanently hiding it on ALL viewports. Audited — code is complete and functional (identical data logic to mobile cards). Removed hide, now renders desktop table on desktop via isMob(), mobile cards on mobile. Sub-tab "Change Orders" → "COs" on mobile + overflowX:auto on sub-tab row to prevent overflow.
+- Fix 5 (commit 9ac3ec0): TodayScr bottom padding was flat 40px — content clips behind home indicator on iPhone X+. Changed to calc(40px + env(safe-area-inset-bottom)). Refresh button had padding:0 (~16px target) — now padding:'10px 0' for usable tap area.
+- Fix 6 (commit c54e6fb): ScheduleTab Edit/Cancel buttons were padding 3px/font 11 (~22px tall). Now 6px/12px/minHeight 36px.
+- Fix 7 (commit b2d26f3): JobsScr address suggestion dropdown had hover-only highlight (onMouseEnter/Leave). Added onTouchStart/End/Cancel for pressed-state feedback on iOS.
+- Files: index.css, JobDet.jsx, FinancialsTab.jsx, TodayScr.jsx, ScheduleTab.jsx, JobsScr.jsx, CLAUDE.md, CLAUDE_MEMORY.md
+- Budget table decision: desktop table was fully functional — NOT stale. display:none was a development oversight. Restored with isMob() guard.
+- scrollIntoView: YES added to JobDet.jsx — tabbarRef + useEffect fires on every tab change.
+- Build: npm run build passed after each commit.
+- Open: on-device verification (all 7 fixes) after next Codemagic build → TestFlight.

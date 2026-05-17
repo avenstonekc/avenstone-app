@@ -531,6 +531,13 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 
 ## Known Gotchas
 
+- **Mobile UX rules (confirmed 2026-05-17):**
+  - Form inputs must be `≥ 16px` — iOS WKWebView auto-zooms on focus for any input below 16px. Use `font-size: 16px` on `.finp` and any standalone `<input>` or `<textarea>`. Never go below this.
+  - Bottom padding must include `env(safe-area-inset-bottom)` — flat pixel values clip content behind the iPhone X+ home indicator. Use `calc(Xpx + env(safe-area-inset-bottom))`.
+  - Tap targets must be `≥ ~44px` tall — buttons with `padding: 0` or `font-size: 11` are unreliable on touch. Minimum `minHeight: 36px` + adequate padding. 44px is Apple's guideline.
+  - Tab bars and filter bars must scroll, never grid-wrap — use `overflow-x: auto; flex-wrap: nowrap; flex: none` on tab items. A grid on mobile wraps 11 tabs into 3 unreadable rows at 9px.
+  - Touch-only interaction items need pressed-state via `onTouchStart`/`onTouchEnd`/`onTouchCancel` — `onMouseEnter`/`onMouseLeave` hover highlights have zero feedback on touch devices.
+
 - **Job IDs must be valid UUIDs** — `Date.now().toString()` is silently rejected by Supabase
 - **`sbLoadSubJobs` uses `job_phases`** — subs can SELECT `job_phases` but not `job_subs`
 - **`assigned_rep` filter uses `profile.full_name`** — not email
