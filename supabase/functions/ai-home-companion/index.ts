@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
 
     // Load active jobs based on role
     let jobQuery = sb.from("jobs")
-      .select("id, address, client_name, status, contract_value, start_date, target_completion")
+      .select("id, address, client_name, status, contract_value, target_completion")
       .eq("tenant_id", tenant_id)
       .not("status", "in", '("complete","on_hold","lead")');
 
