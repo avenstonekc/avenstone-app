@@ -135,7 +135,6 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Tool-schema vs insert-payload mismatch detector — extend `tools/audit_schema_vs_code.js` to walk edge-fn `input_schema.properties` and cross-reference against the executor's actual `.insert()` payloads. Catches the silent-LLM-token-waste class surfaced by 2026-05-12 job_notes cleanup (note_type advertised in tool schema, dropped on insert).
 - Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()`/`.flatMap()` callback payloads). Phase 2 shipped 2026-05-13 (decodes ObjectPattern-rest `const {..., ...patch} = x || {}` + ConditionalExpression branch union). Skipped: 34 → 15 → 9. Remaining patterns deferred: identifier→param/none (8 — function params, need call-site analysis), dynamic `.from()` (1 — opaque by design).
 - Capture-time incomplete-scan detection — RoomPlan is returning wall-segment rings with multi-foot gaps (missing wall captures). The 2026-05-17 stitcher fix makes rendering robust, but the rep should be warned at scan time when a room's segment ring has a gap > ~3 ft so they can rescan that wall. Anti-surprise alignment — catch the bad scan in the field, not in the office PDF.
-- get_dashboard overdue_phases query bug — queries `schedule_phases` (phantom table, doesn't exist in any migration). Should query `schedule_items` with `scheduled_end_date < today AND status != 'complete'`. Silently returns empty now due to `|| []` fallback. Targeted query fix in ai-master-agent/index.ts line 398.
 
 ---
 
@@ -1116,3 +1115,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Read-side findings (TRIAGE-ONLY this slice): change_orders.title (ai-home-companion:184, ai-master-agent:402), company_profiles.slug (get-contractor-profile:52), jobs.start_date (ai-home-companion:149).
 - Write-side drift unchanged (0). Read-side opaque/skipped: 35 partial (229 .select() sites total, 0 fully opaque).
 - Open: triage read-side findings in their own slices; embedded-resource (join) column checking deferred to a v2 read-side pass.
+
+[LOG — 2026-05-17 — get_dashboard phantom-table fix]
+- Action: get_dashboard overdue query repointed from schedule_phases (phantom table, never existed) to schedule_items. Overdue = scheduled_end_date < today AND status NOT IN (complete, cancelled).
+- Field naming: kept overdue_phases — system prompt references "overdue phases" in the tool description but does not reference the response JSON key by name; the name is semantically accurate for schedule items too.
+- Files: supabase/functions/ai-master-agent/index.ts
+- Root cause: handler queried a non-existent table; the || [] fallback swallowed the 42P01 silently, so overdue work never surfaced on the dashboard. Caught by 2026-05-17 master-agent tools audit.
+- Verification: test data has no overdue items (all existing schedule_items have status='scheduled' and no past scheduled_end_date). Query confirmed clean with no 42P01 — the phantom-table error was always silent; real query now runs against actual table.
+- Trade-aware: master-agent is platform-shared; fix is tenant-agnostic, existing tenant/job scoping preserved (added .eq("tenant_id", tenantId) to overdue query — previously unscoped).
+- Open: none.
