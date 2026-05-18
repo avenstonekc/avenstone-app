@@ -190,7 +190,7 @@ export const sbCountPhotosForEntity = async (entityType, entityId) => {
 
 export const sbLoadPhotosForEntity = async (entityType, entityId) => {
   const { data } = await sb.from('photos')
-    .select('id, url, name, type, created_at')
+    .select('id, url, name, type, client_visible, created_at')
     .eq('related_entity_type', entityType)
     .eq('related_entity_id', entityId)
     .order('created_at', { ascending: true });
@@ -778,6 +778,23 @@ export const sbGenerateDailyLogDraft = async (jobId, rawNote) => {
 };
 export const sbSaveDailyLogClientMessage = async (logId, clientMessage) => {
   const { error } = await sb.from('daily_logs').update({ client_message: clientMessage }).eq('id', logId);
+  return error ? { ok: false, error: error.message } : { ok: true };
+};
+export const sbSendDailyLog = async (logId, clientMessage, job) => {
+  const { error } = await sb.from('daily_logs').update({
+    client_message: clientMessage,
+    status: 'approved',
+    approved_at: new Date().toISOString(),
+    approved_by_id: AV_USER_ID,
+  }).eq('id', logId);
+  if (error) return { ok: false, error: error.message };
+  if (job?.client_user_id) {
+    sbNotifyUser(job.client_user_id, 'daily_log_sent', `Project update — ${job.address}`, clientMessage.slice(0, 120), job.id).catch(() => {});
+  }
+  return { ok: true };
+};
+export const sbSetPhotoClientVisible = async (photoId, visible) => {
+  const { error } = await sb.from('photos').update({ client_visible: visible }).eq('id', photoId);
   return error ? { ok: false, error: error.message } : { ok: true };
 };
 
