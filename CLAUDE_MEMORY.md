@@ -1234,3 +1234,13 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: index.css, JobDet.jsx, MasterAgent.jsx, TransactionModal.jsx
 - Trade-aware: all platform UI, tenant- and trade-agnostic.
 - Open: on-device verification of all 3 fixes after next Codemagic build → TestFlight.
+
+[LOG — 2026-05-17 — Phone-first UX slice 2: 4 commits, 8 files]
+- Action: Raised inp fontSize to 16px across all financial modals (kills iOS auto-zoom), added mobile-stacked layout to InvoiceComposerModal, added safe-area-inset-bottom to ClientPortal messages compose, bumped consultation panel tap targets.
+- Commit 1 (9acc32c): fix(modals) — inp const fontSize 13→16 in TransactionModal.jsx, InvoiceComposerModal.jsx, DrawModal.jsx; inp const fontSize 14→16 in LineItemModal.jsx.
+- Commit 2 (1d34b64): fix(invoice-composer) — isMob() import added. Metadata row (invoice#/date/due): desktop stays 3-col grid, mobile becomes invoice# full-width + dates 2-col. Line items: desktop keeps 8-col fixed-width grid, mobile renders per-item card blocks (description+delete row, 3-col qty/unit/price row, 2-col total/phase row). Modal maxHeight 92vh→90vh.
+- Commit 3 (f9a1315): fix(client-portal) — messages compose div paddingBottom: 'calc(8px + env(safe-area-inset-bottom))' so iOS home indicator doesn't clip the send row.
+- Commit 4 (d46c6b1): fix(consultation) — MeasurePanel mic button 40×40→44×44. AmbientPanel Pause/Resume button style gains minHeight:44 + fontSize:14.
+- Files: TransactionModal.jsx, InvoiceComposerModal.jsx, DrawModal.jsx, LineItemModal.jsx, ClientPortal.jsx, MeasurePanel.jsx, AmbientPanel.jsx
+- Trade-aware: all platform UI, tenant- and trade-agnostic.
+- Open: on-device verification of all 4 commits after next Codemagic build → TestFlight. Slice 2 unaudited items (GapResolutionModal.jsx, ClientInvoicesTab.jsx) still out of scope.
