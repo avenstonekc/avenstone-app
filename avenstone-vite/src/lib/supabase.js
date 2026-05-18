@@ -750,7 +750,7 @@ export const sbLoadTenantReviews = async () => {
 // ─── Daily logs ───────────────────────────────────────────────────────────────
 export const WEATHER_OPTS = ['Clear','Partly Cloudy','Overcast','Rain','Heavy Rain','Snow','Wind','Extreme Heat'];
 export const sbLoadDailyLogs = async jid => {
-  const { data } = await sb.from('daily_logs').select('*,author:profiles!author_id(full_name,role)').eq('job_id', jid).order('log_date', { ascending: false });
+  const { data } = await sb.from('daily_logs').select('*,author:profiles!author_id(full_name,role)').eq('job_id', jid).order('log_date', { ascending: false }).order('created_at', { ascending: false });
   return data || [];
 };
 export const sbSubmitDailyLog = async log => {
@@ -805,7 +805,8 @@ export const sbLoadClientUpdates = async jobId => {
     .select('id, log_date, client_message, work_completed, approved_at')
     .eq('job_id', jobId)
     .eq('status', 'approved')
-    .order('log_date', { ascending: false });
+    .order('log_date', { ascending: false })
+    .order('created_at', { ascending: false });
   if (!logs?.length) return [];
   const logIds = logs.map(l => l.id);
   const { data: photos } = await sb.from('photos')
