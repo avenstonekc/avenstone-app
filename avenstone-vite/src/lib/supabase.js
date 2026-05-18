@@ -798,7 +798,7 @@ export const sbLoadJobTransactions = async (jobId, filters = {}) => {
   if (filters.date_from) q = q.gte('date_incurred', filters.date_from);
   if (filters.date_to)   q = q.lte('date_incurred', filters.date_to);
   if (filters.missing_lien_waiver) q = q.eq('lien_waiver_required', true).is('lien_waiver_url', null);
-  q = q.order('date_incurred', { ascending: false });
+  q = q.order('created_at', { ascending: false });
   const { data } = await q;
   return data || [];
 };
