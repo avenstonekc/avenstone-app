@@ -113,10 +113,13 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
 
   const uploadReceipt = async file => {
     setUploading(true);
+    setErr(null);
     const res = await sbUploadReceipt(file, job.id);
     if (!res.error && res.path) {
       if (!isNew && tx.id) await sbUpdateTransaction(tx.id, { receipt_url: res.path });
       setReceiptUrl(res.path);
+    } else if (res.error) {
+      setErr(`Receipt upload failed: ${res.error}`);
     }
     setUploading(false);
   };
@@ -303,11 +306,13 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
             <div style={{ ...fg, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ border: '1px solid #E8E4DC', borderRadius: 6, padding: '10px 12px', textAlign: 'center' }}>
                 <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 6 }}>Receipt</div>
-                {receiptUrl
-                  ? <span style={{ fontSize: 12, color: '#22c55e' }}>✓ Attached</span>
-                  : <label style={{ fontSize: 12, color: '#C9A84C', cursor: uploading ? 'not-allowed' : 'pointer' }}>
-                      Upload<input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={e => e.target.files[0] && uploadReceipt(e.target.files[0])} disabled={uploading} />
-                    </label>}
+                {uploading
+                  ? <span style={{ fontSize: 12, color: '#9CA3AF' }}>Uploading…</span>
+                  : receiptUrl
+                    ? <span style={{ fontSize: 12, color: '#22c55e' }}>✓ Attached</span>
+                    : <label style={{ fontSize: 12, color: '#C9A84C', cursor: 'pointer' }}>
+                        Upload<input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={e => e.target.files[0] && uploadReceipt(e.target.files[0])} />
+                      </label>}
               </div>
               <div style={{ border: `1px solid ${lienMissing ? '#fca5a5' : '#E8E4DC'}`, borderRadius: 6, padding: '10px 12px', textAlign: 'center', background: lienMissing ? '#FEF2F2' : '#fff' }}>
                 <div style={{ fontSize: 11, color: lienMissing ? '#991b1b' : '#9CA3AF', marginBottom: 6 }}>Lien Waiver{lienMissing ? ' ⚠' : ''}</div>
