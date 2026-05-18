@@ -678,7 +678,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '18px 20px 14px',
+            padding: isMob ? 'max(18px, calc(env(safe-area-inset-top) + 8px)) 20px 14px' : '18px 20px 14px',
             borderBottom: '1px solid rgba(201,168,76,0.2)',
             flexShrink: 0,
           }}
