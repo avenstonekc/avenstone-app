@@ -1358,3 +1358,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Builds: both ✓ (580ms, 576ms). Commits: da8edd6 (LogsTab + helper), 8bf70c5 (SubJobView).
 - Trade-aware: platform UI, tenant- and trade-agnostic. ✓
 - Open: Slice 4 (PM review + Send screen — shows capture note + photos + editable client_message, Send stamps approved/sent + notifies client). Slice 5 (client view in ClientPortal).
+
+[LOG — 2026-05-17 — Daily-log arc Slice 4: PM review + Send screen]
+- Action: Built PM review + Send modal in LogsTab and supporting schema/helpers.
+- Schema: photos.client_visible BOOLEAN NOT NULL DEFAULT true. Column pre-existed with DEFAULT false (wrong); corrective migration backfilled existing rows to true, set DEFAULT true, NOT NULL. Verified: information_schema confirms is_nullable=NO, column_default=true. Migrations: 20260517220000 (add) + 20260517230000 (fix).
+- Helpers added to supabase.js: sbSendDailyLog(logId, clientMessage, job) — saves final message, stamps status='approved'/approved_at/approved_by_id, calls sbNotifyUser on job.client_user_id if set. sbSetPhotoClientVisible(photoId, visible) — toggles photos.client_visible. sbLoadPhotosForEntity: client_visible added to select.
+- Review modal (LogsTab): draft logs show amber border + "Review & Send" button. Modal shows field note (read-only), photo curation grid (tap to toggle ✓/✕, writes DB immediately), editable client message textarea + Generate/Regenerate button, "Send to Client" button (disabled when message empty). On send: log updates to Sent in list, modal closes.
+- Sent logs: plain border, green "Sent" badge, read-only (no Review & Send button).
+- Build: ✓ 606ms. Commits: 1db188f (migrations), 1084ff4 (helpers), f83661b (LogsTab).
+- Trade-aware: platform-level, tenant- and trade-agnostic. ✓
+- Open: Slice 5 (client view in ClientPortal — shows sent logs WHERE status='approved' with curated photos WHERE client_visible=true).
