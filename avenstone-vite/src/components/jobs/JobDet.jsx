@@ -30,6 +30,7 @@ const TABS = [
 
 export default function JobDet({ job, upd, del, back, profile, pendingAction, clearPendingAction }) {
   const [tab, setTab] = useState('info');
+  const [fieldSub, setFieldSub] = useState('notes');
   const [showSt, setShowSt] = useState(false);
   const [editInf, setEditInf] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -260,7 +261,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
-        {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} />}
+        {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} sub={fieldSub} setSub={setFieldSub} />}
         {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
         {tab === 'floorplan' && <FloorPlanTab job={job} profile={profile} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} setTab={setTab} />}

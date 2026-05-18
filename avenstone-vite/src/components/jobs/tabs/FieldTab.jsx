@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { NotesTab, PhotosTab } from './NotesPhotosTab';
 import LogsTab from './LogsTab';
 import MaterialsTab from './MaterialsTab';
@@ -10,8 +9,7 @@ const SUB_TABS = [
   { id: 'materials', lb: 'Materials' },
 ];
 
-export default function FieldTab({ job, upd, profile }) {
-  const [sub, setSub] = useState('notes');
+export default function FieldTab({ job, upd, profile, sub, setSub }) {
 
   return (
     <div>
