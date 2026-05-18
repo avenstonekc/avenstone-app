@@ -44,6 +44,7 @@ export function NotesTab({ job, upd, profile }) {
 export function PhotosTab({ job, upd }) {
   const [upl, setUpl] = useState(false);
   const [uplPct, setUplPct] = useState(0);
+  const [uplErr, setUplErr] = useState(null);
   const [lbIdx, setLbIdx] = useState(null);
   const pr = useRef();   // gallery picker
   const vr = useRef();   // video gallery picker
@@ -62,15 +63,18 @@ export function PhotosTab({ job, upd }) {
   const onFile = async e => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
-    setUpl(true); setUplPct(0);
+    setUpl(true); setUplPct(0); setUplErr(null);
     const res = [];
+    let failed = 0;
     for (let i = 0; i < files.length; i++) {
       const p = await sbPhoto(job.id, files[i]);
       if (p.ok) res.push(p.data);
+      else failed++;
       setUplPct(Math.round(((i + 1) / files.length) * 100));
     }
     if (res.length) upd({ photos: [...(job.photos || []), ...res] });
     setUpl(false); setUplPct(0);
+    if (failed) setUplErr(`${failed} photo${failed > 1 ? 's' : ''} failed to save — check your connection and try again.`);
   };
 
   const delP = async id => {
@@ -119,6 +123,7 @@ export function PhotosTab({ job, upd }) {
         </button>
       </div>
       {upl && <div className="upbar"><div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Uploading to cloud</span><span style={{ fontSize: 11, color: '#C9A84C', fontWeight: 700 }}>{uplPct}%</span></div><div className="uptr"><div className="upfl" style={{ width: `${uplPct}%` }} /></div></div>}
+      {uplErr && <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#991B1B', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>{uplErr}</span><button onClick={() => setUplErr(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B', fontSize: 14, lineHeight: 1, marginLeft: 8 }}>✕</button></div>}
       {!(job.photos || []).length && !upl && <div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Tap Add Photos to get started</div></div>}
       {/* Before/After hint */}
       {(job.photos || []).length > 0 && (
