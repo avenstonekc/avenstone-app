@@ -44,6 +44,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **max_tokens** — Haiku: 1024 for simple responses, 2048 only when tools are active. Sonnet: 2048 default, 4096 only for complex reasoning. Never set higher than needed.
 - **Background automatic functions** (ai-pm-nightly, any cron) — must use Haiku only, no agentic loops
 - **Always state the cost implication** when proposing a new AI feature — "this fires on every X which means Y calls per day"
+- **Prompt caching** — standing practice for agentic/chat AI functions whose system+tools prefix clears the model cache minimum (1024 Sonnet / 2048 Haiku). Breakpoint on the system+tools prefix only, never on the rolling conversation history. 5-minute TTL. This is an optimization, not a rate-limiting safeguard — it does not substitute for any rule above. Do NOT cache one-shot or background functions: the cache-write premium does not amortize.
 
 **Model cost order (cheapest to most expensive):**
 Haiku → Sonnet → Opus. Default to Haiku for anything automatic or high-frequency.
