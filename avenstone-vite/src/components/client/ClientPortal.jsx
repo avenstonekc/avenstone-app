@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 // Note: legacy `payments` compat view is deprecated. ClientPortal reads invoices + job_transactions directly.
 // Compat view still alive in DB until verified no consumers remain. — Phase 6a, 2026-05-06
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl } from '../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
@@ -99,6 +99,7 @@ function ProgressStepper({ status }) {
 
 const BASE_CLIENT_TABS = [
   { id: 'overview',  lb: 'Overview',  ic: 'info' },
+  { id: 'updates',   lb: 'Updates',   ic: 'bell' },
   { id: 'invoices',  lb: 'Invoices',  ic: 'doc'  },
   { id: 'schedule',  lb: 'Schedule',  ic: 'sched' },
   { id: 'photos',    lb: 'Photos',    ic: 'cam'  },
@@ -126,7 +127,8 @@ export default function ClientPortal({ profile, signOut }) {
   const [payingNext, setPayingNext] = useState(false);
   const [msgs, setMsgs] = useState([]);
   const [jobSubs, setJobSubs] = useState([]);
-  const [loaded, setLoaded] = useState({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false, notes: false });
+  const [loaded, setLoaded] = useState({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false, notes: false, updates: false });
+  const [updates, setUpdates] = useState([]);
   const [msgTxt, setMsgTxt] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
@@ -168,8 +170,13 @@ export default function ClientPortal({ profile, signOut }) {
   }, [job?.id]);
 
   useEffect(() => {
-    if (!job || tab !== 'photos' || loaded.photos) return;
-    sb.from('photos').select('*').eq('job_id', job.id).order('created_at', { ascending: true }).then(({ data }) => { setPhotos(data || []); setLoaded(p => ({ ...p, photos: true })); });
+    if (!job || (tab !== 'photos' && tab !== 'updates') || loaded.updates) return;
+    sbLoadClientUpdates(job.id).then(d => {
+      setUpdates(d);
+      const allPhotos = d.flatMap(u => u.photos || []);
+      setPhotos(allPhotos);
+      setLoaded(p => ({ ...p, updates: true, photos: true }));
+    });
   }, [job?.id, tab]);
 
   useEffect(() => {
@@ -572,9 +579,32 @@ export default function ClientPortal({ profile, signOut }) {
 
           {tab === 'schedule' && <ClientScheduleView jobId={job.id} />}
 
+          {tab === 'updates' && <div>
+            {!loaded.updates && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
+            {loaded.updates && !updates.length && <div className="empty">{Ic.bell}<div className="empty-t">No updates yet</div><div>Your contractor will send project updates here</div></div>}
+            {loaded.updates && updates.map(u => (
+              <div key={u.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, padding: 16, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>{fD(u.log_date)}</div>
+                <div style={{ fontSize: 14, color: '#1F2937', lineHeight: 1.7, marginBottom: u.photos.length ? 12 : 0 }}>{u.client_message}</div>
+                {u.photos.length > 0 && (
+                  <div className="pgrid">
+                    {u.photos.map(p => (
+                      <div key={p.id} className="pcell" style={{ cursor: 'pointer' }} onClick={() => { setClbIdx(photos.findIndex(ph => ph.id === p.id)); }}>
+                        <div style={{ position: 'absolute', inset: 0 }}>
+                          {p.type === 'video' ? <video src={p.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {clbIdx !== null && <PhotoLightbox photos={photos} startIdx={clbIdx} onClose={() => setClbIdx(null)} />}
+          </div>}
+
           {tab === 'photos' && <div>
             {!loaded.photos && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
-            {loaded.photos && !photos.length && <div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Your contractor will add progress photos here</div></div>}
+            {loaded.photos && !photos.length && <div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Project photos will appear here as updates are sent</div></div>}
             {loaded.photos && photos.length > 0 && (() => {
               // Group photos by week starting Monday
               const getWeekKey = dateStr => {

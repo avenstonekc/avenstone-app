@@ -797,6 +797,26 @@ export const sbSetPhotoClientVisible = async (photoId, visible) => {
   const { error } = await sb.from('photos').update({ client_visible: visible }).eq('id', photoId);
   return error ? { ok: false, error: error.message } : { ok: true };
 };
+export const sbLoadClientUpdates = async jobId => {
+  const { data: logs } = await sb.from('daily_logs')
+    .select('id, log_date, client_message, work_completed, approved_at')
+    .eq('job_id', jobId)
+    .eq('status', 'approved')
+    .order('log_date', { ascending: false });
+  if (!logs?.length) return [];
+  const logIds = logs.map(l => l.id);
+  const { data: photos } = await sb.from('photos')
+    .select('id, url, type, related_entity_id')
+    .in('related_entity_id', logIds)
+    .eq('related_entity_type', 'daily_log')
+    .eq('client_visible', true);
+  const photosByLog = {};
+  (photos || []).forEach(p => {
+    if (!photosByLog[p.related_entity_id]) photosByLog[p.related_entity_id] = [];
+    photosByLog[p.related_entity_id].push(p);
+  });
+  return logs.map(l => ({ ...l, photos: photosByLog[l.id] || [] }));
+};
 
 // ─── AI Estimator ─────────────────────────────────────────────────────────────
 export const sbLoadEstimate = async jid => {
