@@ -750,11 +750,11 @@ export const sbLoadTenantReviews = async () => {
 // ─── Daily logs ───────────────────────────────────────────────────────────────
 export const WEATHER_OPTS = ['Clear','Partly Cloudy','Overcast','Rain','Heavy Rain','Snow','Wind','Extreme Heat'];
 export const sbLoadDailyLogs = async jid => {
-  const { data } = await sb.from('daily_logs').select('*,author:profiles(full_name,role)').eq('job_id', jid).order('log_date', { ascending: false });
+  const { data } = await sb.from('daily_logs').select('*,author:profiles!author_id(full_name,role)').eq('job_id', jid).order('log_date', { ascending: false });
   return data || [];
 };
 export const sbSubmitDailyLog = async log => {
-  const { data, error } = await sb.from('daily_logs').insert({ ...log, tenant_id: AV_TENANT, author_id: AV_USER_ID }).select('*,author:profiles(full_name,role)').single();
+  const { data, error } = await sb.from('daily_logs').insert({ ...log, tenant_id: AV_TENANT, author_id: AV_USER_ID }).select('*,author:profiles!author_id(full_name,role)').single();
   if (error) {
     captureFailedIntent({ kind: 'daily_log_save', payload: {}, jobId: log.job_id || null, message: error.message, resumable: false }).catch(() => {});
     return { ok: false, error: error.message, data: null };
