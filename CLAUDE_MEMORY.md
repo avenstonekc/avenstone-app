@@ -1284,3 +1284,15 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Commits: 1f807c9 (ai-companion), 6fb4e87 (ai-master-agent), d7d407e (ai-estimator), 7e751ac (CLAUDE.md).
 - Trade-aware: cache_control is transport-layer config, not tenant/trade-specific. Breakpoints on tools, which are platform-level. ✓
 - Open: real savings only materialize at multi-tenant scale with many concurrent users hitting the same cached prefixes. Single-tenant today = agentic-loop benefits (3-5 reads per write) + estimating chat session hits.
+
+[LOG — 2026-05-17 — tools/apply_migration.js: atomic apply + verify wrapper]
+- Action: Built apply_migration.js + npm run migrate script + updated CLAUDE.md.
+- Tool contract: node tools/apply_migration.js <path.sql> [--verify <objects>] | --selftest | --help.
+- Auto-derives expected objects from CREATE TABLE / ALTER TABLE ... ADD COLUMN / CREATE INDEX / CREATE POLICY. Explicit --verify override for exotic SQL.
+- Verification: information_schema.columns (columns/tables), pg_policies (policies), pg_indexes (indexes). NOTIFY pgrst 'reload schema' after apply.
+- Exit 0 = all objects confirmed. Exit 1 = apply fail or any missing object. Exit 2 = usage/PAT error.
+- Selftest passed: invoices.invoice_number (PASS present), _nonexistent_verify_probe (PASS absent).
+- CLAUDE.md changes: SQL Migrations section (curl → npm run migrate), "write a migration" task pattern (npm run migrate is canonical apply), Tools/Scripts section (apply_migration.js entry + MCP connector note).
+- package.json: added "migrate": "node ../tools/apply_migration.js" alongside audit:schema.
+- Commits: 45a1ab6 (tool), da935c0 (npm script), 02028cd (CLAUDE.md docs).
+- Migration apply method in CLAUDE_MEMORY line 20 is now superseded — npm run migrate is the canonical path.
