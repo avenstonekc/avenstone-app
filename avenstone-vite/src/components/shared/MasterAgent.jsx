@@ -4,6 +4,7 @@ import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
 import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
 import { TextToSpeech, QueueStrategy } from '@capacitor-community/text-to-speech';
+import { validatePendingCard, formatCardAnswers } from '../../lib/agentCards';
 
 function normalizeTtsText(text) {
   return (text || '')
@@ -184,6 +185,243 @@ function ActionsPanel({ actions }) {
   );
 }
 
+// AgentCard — renders a pending_card emitted by ai-master-agent.
+// Supports select (button group) and radio_per_item (table of rows × options).
+// Submit is disabled until every question has a complete answer.
+// Cancel reverts to plain text turns (arc guard rail).
+function AgentCard({ card, onSubmit, onCancel, loading }) {
+  const [answers, setAnswers] = useState({});
+
+  const isComplete = card.questions.every(q => {
+    if (q.type === 'select') return answers[q.id] != null;
+    if (q.type === 'radio_per_item') {
+      const perItem = answers[q.id] || {};
+      return (q.items || []).every(item => perItem[item.id] != null);
+    }
+    return false;
+  });
+
+  const setSelect = (qId, value) => setAnswers(prev => ({ ...prev, [qId]: value }));
+  const setRadioItem = (qId, itemId, value) => setAnswers(prev => ({
+    ...prev,
+    [qId]: { ...(prev[qId] || {}), [itemId]: value },
+  }));
+
+  return (
+    <div
+      style={{
+        marginTop: 4,
+        background: 'rgba(201,168,76,0.12)',
+        border: '1px solid rgba(201,168,76,0.45)',
+        borderRadius: 12,
+        padding: '12px 14px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: 'DM Sans, sans-serif',
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: 1.2,
+          color: '#C9A84C',
+          textTransform: 'uppercase',
+        }}
+      >
+        Answer required
+      </div>
+      <div
+        style={{
+          fontFamily: 'DM Sans, sans-serif',
+          fontSize: 14,
+          color: '#F7F5F0',
+          lineHeight: 1.5,
+        }}
+      >
+        {card.prompt}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {card.questions.map(q => (
+          <div key={q.id}>
+            <div
+              style={{
+                fontFamily: 'DM Sans, sans-serif',
+                fontSize: 12,
+                color: 'rgba(247,245,240,0.6)',
+                marginBottom: 7,
+              }}
+            >
+              {q.label}
+            </div>
+
+            {q.type === 'select' && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {q.options.map(opt => {
+                  const sel = answers[q.id] === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setSelect(q.id, opt.value)}
+                      style={{
+                        padding: '6px 13px',
+                        borderRadius: 20,
+                        border: sel ? '1px solid #C9A84C' : '1px solid rgba(247,245,240,0.2)',
+                        background: sel ? '#C9A84C' : 'transparent',
+                        color: sel ? '#0A1F44' : 'rgba(247,245,240,0.8)',
+                        fontFamily: 'DM Sans, sans-serif',
+                        fontSize: 13,
+                        fontWeight: sel ? 700 : 400,
+                        cursor: 'pointer',
+                        transition: 'all 0.13s',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {q.type === 'radio_per_item' && (
+              <div style={{ overflowX: 'auto' }}>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    fontFamily: 'DM Sans, sans-serif',
+                    fontSize: 12,
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th
+                        style={{
+                          textAlign: 'left',
+                          color: 'rgba(247,245,240,0.4)',
+                          padding: '3px 6px 6px',
+                          fontWeight: 500,
+                        }}
+                      >
+                        Item
+                      </th>
+                      {q.options.map(opt => (
+                        <th
+                          key={opt.value}
+                          style={{
+                            color: 'rgba(247,245,240,0.4)',
+                            padding: '3px 6px 6px',
+                            fontWeight: 500,
+                            textAlign: 'center',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {opt.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(q.items || []).map(item => {
+                      const perItem = answers[q.id] || {};
+                      return (
+                        <tr
+                          key={item.id}
+                          style={{ borderTop: '1px solid rgba(247,245,240,0.08)' }}
+                        >
+                          <td
+                            style={{
+                              color: '#F7F5F0',
+                              padding: '7px 6px',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            {item.label}
+                          </td>
+                          {q.options.map(opt => {
+                            const sel = perItem[item.id] === opt.value;
+                            return (
+                              <td
+                                key={opt.value}
+                                style={{
+                                  textAlign: 'center',
+                                  padding: '7px 6px',
+                                  verticalAlign: 'middle',
+                                }}
+                              >
+                                <button
+                                  onClick={() => setRadioItem(q.id, item.id, opt.value)}
+                                  aria-label={`${item.label}: ${opt.label}`}
+                                  style={{
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: '50%',
+                                    border: sel
+                                      ? '2px solid #C9A84C'
+                                      : '2px solid rgba(247,245,240,0.25)',
+                                    background: sel ? '#C9A84C' : 'transparent',
+                                    cursor: 'pointer',
+                                    padding: 0,
+                                    display: 'inline-block',
+                                    transition: 'all 0.13s',
+                                  }}
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={() => onSubmit(answers)}
+          disabled={!isComplete || loading}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            borderRadius: 8,
+            background: isComplete && !loading ? '#C9A84C' : 'rgba(201,168,76,0.3)',
+            color: '#0A1F44',
+            border: 'none',
+            fontFamily: 'DM Sans, sans-serif',
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: isComplete && !loading ? 'pointer' : 'default',
+          }}
+        >
+          Submit
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={loading}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            borderRadius: 8,
+            background: 'transparent',
+            color: 'rgba(247,245,240,0.75)',
+            border: '1px solid rgba(247,245,240,0.25)',
+            fontFamily: 'DM Sans, sans-serif',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function MasterAgent({ profile, pendingAction, clearPendingAction }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -192,6 +430,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [loading, setLoading] = useState(false);
   const [showPulse, setShowPulse] = useState(true);
   const [pendingConfirm, setPendingConfirm] = useState(null);
+  const [pendingCard, setPendingCard] = useState(null);
   const [attachment, setAttachment] = useState(null); // { base64, mime, preview }
   const [attaching, setAttaching] = useState(false);
   const [attachErr, setAttachErr] = useState('');
@@ -290,12 +529,25 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         ...prev,
         { type: 'ai', text: aiText, actions: aiActions },
       ]);
+      // Append the assistant turn to history for BOTH normal and pending_card
+      // responses. When a pending_card is present, this ensures the model sees
+      // [assistant: card question] → [user: formatted answers] on the next turn.
       setConversationHistory((prev) => [
         ...prev,
         { role: 'assistant', content: aiText },
       ]);
       const pendingAction = data.pending_action || null;
       setPendingConfirm(pendingAction);
+
+      // pending_card — structured question surface (separate from pending_action).
+      const rawCard = data.pending_card || null;
+      if (rawCard) {
+        const validation = validatePendingCard(rawCard);
+        setPendingCard(validation.ok ? rawCard : null);
+      } else {
+        setPendingCard(null);
+      }
+
       ttsSpeak(aiText, pendingAction?.description);
     } catch (err) {
       setMessages((prev) => [
@@ -351,6 +603,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     if (!trimmed && !attachment) return;
     TextToSpeech.stop().catch(() => {});
     if (pendingConfirm) setPendingConfirm(null);
+    if (pendingCard) setPendingCard(null);
 
     // Bug submission path — bypass agent, go straight to submit-bug-report.
     if (bugMode) {
@@ -438,6 +691,47 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const cancelPending = () => {
     if (!pendingConfirm) return;
     setPendingConfirm(null);
+    setMessages((prev) => [
+      ...prev,
+      { type: 'ai', text: 'Cancelled. Nothing was saved.', actions: [] },
+    ]);
+  };
+
+  // submitCard — send card answers back through runAgentLoop so Claude can
+  // use the structured input to call the intended tool.
+  // conversationHistory already ends with the assistant turn that prompted the
+  // card; we append the formatted answers as a user turn before sending so the
+  // model sees [assistant: question] → [user: answers].
+  const submitCard = async (answers) => {
+    if (!pendingCard || loading) return;
+    const card = pendingCard;
+    setPendingCard(null);
+
+    const answersText = formatCardAnswers(card, answers);
+    setMessages((prev) => [...prev, { type: 'user', text: 'Card submitted.' }]);
+
+    const newHistory = [
+      ...conversationHistory,
+      { role: 'user', content: answersText },
+    ];
+    setConversationHistory(newHistory);
+
+    await callMaster(
+      {
+        user_id: profile?.id,
+        tenant_id: profile?.tenant_id,
+        role: profile?.role,
+        full_name: profile?.full_name,
+        card_response: { card_id: card.id, answers },
+        conversation_history: newHistory,
+      },
+      `Card ${card.id} answered`,
+    );
+  };
+
+  const cancelCard = () => {
+    if (!pendingCard) return;
+    setPendingCard(null);
     setMessages((prev) => [
       ...prev,
       { type: 'ai', text: 'Cancelled. Nothing was saved.', actions: [] },
@@ -554,6 +848,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     setMessages([]);
     setConversationHistory([]);
     setPendingConfirm(null);
+    setPendingCard(null);
     setBugMode(false);
     bugContextRef.current = null;
   };
@@ -915,6 +1210,15 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 </button>
               </div>
             </div>
+          )}
+
+          {pendingCard && !loading && (
+            <AgentCard
+              card={pendingCard}
+              onSubmit={submitCard}
+              onCancel={cancelCard}
+              loading={loading}
+            />
           )}
         </div>
 
