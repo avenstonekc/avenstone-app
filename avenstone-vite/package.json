@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "audit:schema": "node ../tools/audit_schema_vs_code.js"
+    "audit:schema": "node ../tools/audit_schema_vs_code.js",
+    "migrate": "node ../tools/apply_migration.js"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.0",
