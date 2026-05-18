@@ -1387,3 +1387,10 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ 589ms. Commits: 25647fb (migration), 0159543 (helper hardening).
 - Files: supabase/migrations/20260518100000_daily_logs_photos_update_rls.sql, avenstone-vite/src/lib/supabase.js.
 - Trade-aware: platform tables, tenant- and trade-agnostic. ✓
+
+[LOG — 2026-05-18 — fix(notify-email): add daily_log_sent subject]
+- Action: Added daily_log_sent to SUBJECTS map in notify-email/index.ts.
+- Subject: "Project update from your contractor"
+- Context: The notification → DB trigger → notify-email → Resend pipeline was already fully wired. daily_log_sent was the only missing entry, causing client-update emails to fall through to the generic "Avenstone notification" subject fallback.
+- Files: supabase/functions/notify-email/index.ts.
+- Commit: a905680. Deploy: GitHub Actions auto-deploy on push.
