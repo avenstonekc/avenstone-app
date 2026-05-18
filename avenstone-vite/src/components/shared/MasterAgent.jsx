@@ -573,10 +573,10 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       }
     : {
         position: 'fixed',
-        top: 0,
+        top: 60,
         right: 0,
         width: 420,
-        height: '100vh',
+        height: 'calc(100vh - 60px)',
         zIndex: 9999,
         background: '#0A1F44',
         display: 'flex',
@@ -723,8 +723,13 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 color: 'rgba(247,245,240,0.6)',
                 fontSize: 20,
                 lineHeight: 1,
-                padding: '2px 4px',
-                borderRadius: 4,
+                padding: '10px 12px',
+                minWidth: 44,
+                minHeight: 44,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 6,
                 transition: 'color 0.15s',
               }}
               onMouseEnter={(e) => (e.currentTarget.style.color = '#F7F5F0')}
