@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AV_USER_ID, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, WEATHER_OPTS } from '../../../lib/supabase';
+import { AV_USER_ID, sbLoadDailyLogs, sbSubmitDailyLog, sbGenerateDailyLogDraft, sbNotify, WEATHER_OPTS } from '../../../lib/supabase';
 import { Ic, fD } from '../../../lib/utils';
 
 export default function LogsTab({ job }) {
@@ -9,6 +9,9 @@ export default function LogsTab({ job }) {
   const [logForm, setLogForm] = useState({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
   const [logSaving, setLogSaving] = useState(false);
   const [logErr, setLogErr] = useState('');
+  const [rawNote, setRawNote] = useState('');
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftErr, setDraftErr] = useState('');
 
   const ssty = { appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 };
 
@@ -16,6 +19,18 @@ export default function LogsTab({ job }) {
     if (logsLoaded) return;
     sbLoadDailyLogs(job.id).then(d => { setLogs(d); setLogsLoaded(true); });
   }, [logsLoaded]);
+
+  const generateDraft = async () => {
+    if (!rawNote.trim()) return;
+    setDraftLoading(true); setDraftErr('');
+    const res = await sbGenerateDailyLogDraft(job.id, rawNote.trim());
+    if (res.ok) {
+      setLogForm(p => ({ ...p, work_completed: res.data.work_completed || p.work_completed, materials_used: res.data.materials_used || p.materials_used, issues: res.data.issues || p.issues }));
+    } else {
+      setDraftErr(res.error || 'Draft generation failed — fill in manually.');
+    }
+    setDraftLoading(false);
+  };
 
   const submitLog = async () => {
     setLogSaving(true);
@@ -26,6 +41,7 @@ export default function LogsTab({ job }) {
       sbNotify('daily_log_submitted', `Daily log — ${job.address}`, `${logForm.log_date}: ${(logForm.work_completed || '').slice(0, 80)}`, job.id, AV_USER_ID);
       setShowLogForm(false);
       setLogForm({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
+      setRawNote(''); setDraftErr('');
     } else {
       setLogErr(d.error || 'Save failed');
     }
@@ -59,6 +75,12 @@ export default function LogsTab({ job }) {
       ))}
       {showLogForm && <div className="overlay" onClick={() => setShowLogForm(false)}><div className="modal" style={{ maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-title">Daily Field Log</div>
+        <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>✦ AI Draft Assist</div>
+          <textarea className="finp fta" rows={2} value={rawNote} onChange={e => { setRawNote(e.target.value); setDraftErr(''); }} placeholder="Quick note — what got done today? AI will fill in the form fields below..." style={{ marginBottom: 8 }} />
+          {draftErr && <div style={{ fontSize: 12, color: '#DC2626', marginBottom: 8 }}>{draftErr}</div>}
+          <button className="btn btn-gold" style={{ width: '100%', fontSize: 12 }} onClick={generateDraft} disabled={draftLoading || !rawNote.trim()}>{draftLoading ? 'Generating…' : '✦ Generate Draft'}</button>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div className="fg" style={{ marginBottom: 0 }}><label className="flbl">Date</label><input className="finp" type="date" value={logForm.log_date} onChange={e => setLogForm(p => ({ ...p, log_date: e.target.value }))} /></div>
           <div className="fg" style={{ marginBottom: 0 }}><label className="flbl">Weather</label>
@@ -74,7 +96,7 @@ export default function LogsTab({ job }) {
         <div className="fg"><label className="flbl">Issues / Delays</label><textarea className="finp fta" value={logForm.issues} onChange={e => setLogForm(p => ({ ...p, issues: e.target.value }))} placeholder="Any problems, delays, safety concerns..." rows={2} /></div>
         {logErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>{logErr}</div>}
         <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowLogForm(false)}>Cancel</button>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowLogForm(false); setRawNote(''); setDraftErr(''); }}>Cancel</button>
           <button className="btn btn-navy" style={{ flex: 1 }} onClick={submitLog} disabled={logSaving}>{logSaving ? 'Saving...' : 'Submit Log'}</button>
         </div>
       </div></div>}
