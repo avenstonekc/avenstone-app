@@ -771,7 +771,7 @@ export const sbGenerateDailyLogDraft = async (jobId, rawNote) => {
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, data: null };
     const json = await res.json();
     if (!json.ok) return { ok: false, error: json.error || 'Draft generation failed', data: null };
-    return { ok: true, error: null, data: { work_completed: json.work_completed, materials_used: json.materials_used, issues: json.issues } };
+    return { ok: true, error: null, data: { client_message: json.client_message } };
   } catch (e) {
     return { ok: false, error: String(e), data: null };
   }
