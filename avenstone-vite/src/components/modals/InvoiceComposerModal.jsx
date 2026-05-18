@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { isMob } from '../../lib/utils';
 import {
   sbGenerateInvoiceNumber,
   sbCreateInvoice,
@@ -248,7 +249,7 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 680, width: '100%', maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 680, width: '100%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -277,20 +278,39 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
               </select>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
-              <div>
-                <label style={lbl}>Invoice #</label>
-                <input style={inp} value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} />
+            {isMob() ? (
+              <div style={{ marginBottom: 14 }}>
+                <div style={fg}>
+                  <label style={lbl}>Invoice #</label>
+                  <input style={inp} value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={lbl}>Invoice Date</label>
+                    <input style={inp} type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Due Date</label>
+                    <input style={inp} type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label style={lbl}>Invoice Date</label>
-                <input style={inp} type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
+                <div>
+                  <label style={lbl}>Invoice #</label>
+                  <input style={inp} value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} />
+                </div>
+                <div>
+                  <label style={lbl}>Invoice Date</label>
+                  <input style={inp} type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
+                </div>
+                <div>
+                  <label style={lbl}>Due Date</label>
+                  <input style={inp} type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                </div>
               </div>
-              <div>
-                <label style={lbl}>Due Date</label>
-                <input style={inp} type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-              </div>
-            </div>
+            )}
 
             <div style={fg}>
               <label style={lbl}>Notes (visible to client)</label>
@@ -306,7 +326,7 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#0A1F44', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Line Items</div>
 
-              {lineItems.length > 0 && (
+              {!isMob() && lineItems.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 60px 60px 90px 90px 80px 1fr 24px', gap: 6, marginBottom: 4, padding: '0 4px' }}>
                   {['Description','Qty','Unit','Unit Price','Total','Phase','',''].map((h, i) => (
                     <div key={i} style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
@@ -314,8 +334,39 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
                 </div>
               )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {lineItems.map(li => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: isMob() ? 10 : 6 }}>
+                {lineItems.map(li => isMob() ? (
+                  <div key={li.tempId} style={{ border: '1px solid #E8E4DC', borderRadius: 6, padding: '10px 10px 8px' }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+                      <input style={{ ...ninp, flex: 1 }} placeholder="Description" value={li.description} onChange={e => updateLine(li.tempId, 'description', e.target.value)} />
+                      <button onClick={() => removeLine(li.tempId)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 18, cursor: 'pointer', padding: '0 4px', lineHeight: 1, flexShrink: 0 }}>×</button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 6 }}>
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Qty</div>
+                        <input style={ninp} type="number" min="0" step="any" value={li.quantity} onChange={e => updateLine(li.tempId, 'quantity', e.target.value)} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Unit</div>
+                        <input style={ninp} placeholder="ea" value={li.unit} onChange={e => updateLine(li.tempId, 'unit', e.target.value)} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Unit Price</div>
+                        <input style={ninp} type="number" min="0" step="0.01" placeholder="0.00" value={li.unit_price} onChange={e => updateLine(li.tempId, 'unit_price', e.target.value)} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Total</div>
+                        <input style={ninp} type="number" min="0" step="0.01" value={li.line_total} onChange={e => updateLine(li.tempId, 'line_total', e.target.value)} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Phase</div>
+                        <input style={ninp} placeholder="Framing" value={li.phase} onChange={e => updateLine(li.tempId, 'phase', e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
                   <div key={li.tempId} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 60px 90px 90px 80px 1fr 24px', gap: 6, alignItems: 'center' }}>
                     <input style={ninp} placeholder="Description" value={li.description} onChange={e => updateLine(li.tempId, 'description', e.target.value)} />
                     <input style={ninp} type="number" min="0" step="any" value={li.quantity} onChange={e => updateLine(li.tempId, 'quantity', e.target.value)} />
