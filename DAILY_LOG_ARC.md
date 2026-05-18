@@ -49,7 +49,9 @@ Field capture (sub or PM)
 
 - `ai-daily-log-draft` edge function (Phase 2 — **done**): `POST { job_id, raw_note }` → `{ ok, work_completed, materials_used, issues }`; Haiku, max_tokens 1024
 - `status` / `approved_at` / `approved_by_id` columns on `daily_logs` (Phase 1 — **done**)
-- PM photo-curation UI: link/unlink photos to a log entry via `related_entity_id` (Phase 3)
+- AI draft assist UI on both log forms (Phase 3a — **done**): quick-note textarea + "Generate Draft" button in LogsTab and SubJobView
+- PM photo-curation UI: link/unlink photos to a log entry via `related_entity_id` (Phase 3b)
+- Approve button: stamps `status='approved'`, `approved_at`, `approved_by_id` (Phase 3b)
 - Client daily log view in `ClientPortal` (Phase 4)
 - RLS / query filter: client queries filter `status = 'approved'` only
 

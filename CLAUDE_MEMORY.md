@@ -17,8 +17,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **Kalin auth ID:** 8171742a-b586-4f13-be61-744e191a1896
 - **Blake auth ID:** 066c8241-accb-490b-9f98-b8b7cb24c33b
 
-**Migration apply method:** inline node `https` script with PAT embedded via shell `${PAT}` expansion.
-PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
+**Migration apply method:** `npm run migrate <path.sql>` from `avenstone-vite/` (tools/apply_migration.js — apply + auto-verify + schema reload in one command). PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`. Not inline node https.
 
 ---
 
