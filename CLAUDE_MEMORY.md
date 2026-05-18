@@ -1251,3 +1251,15 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Decision: NotesTab and PhotosTab already existed as separate named exports from NotesPhotosTab.jsx — zero new component work. Render switch replaced the shared <> fragment with one line per sub-tab.
 - Trade-aware: platform UI, tenant- and trade-agnostic.
 - Build: passed (✓ built in 744ms).
+
+[LOG — 2026-05-17 — Daily Log Arc: Phase 1 kickoff — schema foundation]
+- Action: Created DAILY_LOG_ARC.md blueprint + applied migration for daily_logs approval columns.
+- Commit 1 (cc31a2e): docs: DAILY_LOG_ARC.md — 4-phase arc blueprint, locked decisions, reused vs net-new.
+- Commit 2 (af022f4): migration 20260517100000_daily_logs_approval.sql — adds status/approved_at/approved_by_id to daily_logs. Applied and verified live.
+- 4-phase plan: Phase 1 (done) schema; Phase 2 AI draft edge function; Phase 3 PM approval + photo curation UI; Phase 4 client-facing log view + photo gating.
+- Photo compatibility confirmed: daily_logs.id is UUID, photos.related_entity_id is UUID — type-compatible for Phase 3 linkage via related_entity_type='daily_log'.
+- Existing rows default to status='draft' — historical logs never curated, correctly invisible to client.
+- Build: passed (✓ built in 623ms).
+- Files: DAILY_LOG_ARC.md, supabase/migrations/20260517100000_daily_logs_approval.sql
+- Trade-aware: platform table, tenant- and trade-agnostic.
+- Open: Phase 2 (AI draft edge function), Phase 3 (PM approval UI), Phase 4 (client view).
