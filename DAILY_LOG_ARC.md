@@ -27,7 +27,7 @@ Field capture (sub or PM)
 | Phase | Scope | Status |
 |-------|-------|--------|
 | 1 — Schema foundation | `daily_logs` approval columns (`status`, `approved_at`, `approved_by_id`); arc doc | **Shipped** |
-| 2 — AI draft generation | Edge function: takes `job_id` + raw note/photo context, returns a prefilled `daily_logs` draft object; saves as `status='draft'` | Planned |
+| 2 — AI draft generation | `ai-daily-log-draft` edge fn: `{ job_id, raw_note }` → `{ work_completed, materials_used, issues }`; `sbGenerateDailyLogDraft` helper | **Shipped** |
 | 3 — PM approval + photo curation | UI in FieldTab → Daily Logs: review/edit draft, pick which photos attach (`related_entity_type='daily_log'`), approve | Planned |
 | 4 — Client-facing view | New tab/section in ClientPortal showing approved logs + their curated photos; replaces unfiltered gallery | Planned |
 
@@ -46,7 +46,7 @@ Field capture (sub or PM)
 
 ### Net-New (must build)
 
-- AI draft edge function (Phase 2) — takes raw field input, returns structured log object
+- `ai-daily-log-draft` edge function (Phase 2 — **done**): `POST { job_id, raw_note }` → `{ ok, work_completed, materials_used, issues }`; Haiku, max_tokens 1024
 - `status` / `approved_at` / `approved_by_id` columns on `daily_logs` (Phase 1 — **done**)
 - PM photo-curation UI: link/unlink photos to a log entry via `related_entity_id` (Phase 3)
 - Client daily log view in `ClientPortal` (Phase 4)
@@ -104,6 +104,6 @@ UPDATE photos
 
 ## Open Items
 
-- Phase 2: decide whether the AI draft fires on explicit "Draft log" button tap or auto-fires on raw-note save (explicit button preferred — avoids automatic AI calls per API cost rules).
+- Phase 2: **shipped**. Draft fires on explicit "Draft log" button tap (not automatic — per API cost rules).
 - Phase 3: decide whether photo curation is a separate modal or inline in the `LogsTab` review surface.
 - Phase 4: decide whether the client view is a new `logs` tab in `ClientPortal` or a section within an existing tab.
