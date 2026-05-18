@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbGenerateDailyLogDraft, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID, sbUpdateScheduleItem, sbCountPhotosForEntity, sbLoadPhotosForEntity } from '../../lib/supabase';
+import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbGenerateDailyLogDraft, sbSaveDailyLogClientMessage, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID, sbUpdateScheduleItem, sbCountPhotosForEntity, sbLoadPhotosForEntity } from '../../lib/supabase';
 import { Ic, sc, sl, fD, fDT, f$ } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 
-const WEATHER_OPTS_KEYS = ['Clear', 'Partly Cloudy', 'Overcast', 'Rain', 'Heavy Rain', 'Snow', 'Wind', 'Extreme Heat'];
 
 export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const SUB_TABS = [
@@ -31,11 +30,11 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const [logs, setLogs] = useState([]);
   const [logsLoaded, setLogsLoaded] = useState(false);
   const [showLogForm, setShowLogForm] = useState(false);
-  const [logForm, setLogForm] = useState({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
+  const [captureNote, setCaptureNote] = useState('');
+  const [capturePhotos, setCapturePhotos] = useState([]);
   const [logSaving, setLogSaving] = useState(false);
-  const [rawNote, setRawNote] = useState('');
-  const [draftLoading, setDraftLoading] = useState(false);
-  const [draftErr, setDraftErr] = useState('');
+  const [logErr, setLogErr] = useState('');
+  const capturePhotoRef = useRef();
   const [schedItems, setSchedItems] = useState([]);
   const [schedLoaded, setSchedLoaded] = useState(false);
   const [docs, setDocs] = useState([]);
@@ -105,28 +104,33 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
     if (staffMsgs.length && staffMsgsEndRef.current) staffMsgsEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [staffMsgs]);
 
-  const generateDraft = async () => {
-    if (!rawNote.trim()) return;
-    setDraftLoading(true); setDraftErr('');
-    const res = await sbGenerateDailyLogDraft(job.id, rawNote.trim());
-    if (res.ok) {
-      setLogForm(p => ({ ...p, work_completed: res.data.work_completed || p.work_completed, materials_used: res.data.materials_used || p.materials_used, issues: res.data.issues || p.issues }));
-    } else {
-      setDraftErr(res.error || t('Draft generation failed — fill in manually.', lang));
-    }
-    setDraftLoading(false);
-  };
+  const resetLogForm = () => { setShowLogForm(false); setCaptureNote(''); setCapturePhotos([]); setLogErr(''); };
 
   const submitLog = async () => {
-    setLogSaving(true);
-    const d = await sbSubmitDailyLog({ job_id: job.id, log_date: logForm.log_date, weather: logForm.weather, crew_count: logForm.crew_count ? Number(logForm.crew_count) : null, hours_worked: logForm.hours_worked ? Number(logForm.hours_worked) : null, work_completed: logForm.work_completed || null, materials_used: logForm.materials_used || null, issues: logForm.issues || null });
-    if (d.ok) {
-      setLogs(p => [d.data, ...p]);
-      sbNotify('daily_log_submitted', `Daily log — ${job.address}`, `${logForm.log_date}: ${(logForm.work_completed || '').slice(0, 80)}`, job.id, AV_USER_ID);
-      setShowLogForm(false);
-      setLogForm({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
-      setRawNote(''); setDraftErr('');
+    if (!captureNote.trim()) return;
+    setLogSaving(true); setLogErr('');
+
+    // 1. Create draft log — work_completed holds the raw capture note
+    const d = await sbSubmitDailyLog({ job_id: job.id, work_completed: captureNote.trim() });
+    if (!d.ok) { setLogErr(d.error || t('Save failed', lang)); setLogSaving(false); return; }
+    const logId = d.data.id;
+
+    // 2. Attach staged photos to the log
+    for (const file of capturePhotos) {
+      await sbPhoto(job.id, file, 'daily_log', logId);
     }
+
+    // 3. Generate client message — soft failure; log is valid without it
+    let patchedData = d.data;
+    const aiRes = await sbGenerateDailyLogDraft(job.id, captureNote.trim());
+    if (aiRes.ok && aiRes.data.client_message) {
+      await sbSaveDailyLogClientMessage(logId, aiRes.data.client_message);
+      patchedData = { ...d.data, client_message: aiRes.data.client_message };
+    }
+
+    setLogs(p => [patchedData, ...p]);
+    sbNotify('daily_log_submitted', `Daily log — ${job.address}`, captureNote.trim().slice(0, 80), job.id, AV_USER_ID);
+    resetLogForm();
     setLogSaving(false);
   };
 
@@ -236,35 +240,47 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
             <button className="btn btn-navy" style={{ fontSize: 12 }} onClick={() => setShowLogForm(true)}>{t('+ Add Log', lang)}</button>
           </div>
           {showLogForm && <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 16 }}>
-            <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 8, padding: 12, marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>✦ {t('AI Draft Assist', lang)}</div>
-              <textarea className="finp fta" rows={2} value={rawNote} onChange={e => { setRawNote(e.target.value); setDraftErr(''); }} placeholder={t('Quick note — what got done today? AI will fill in the form below…', lang)} style={{ marginBottom: 8 }} />
-              {draftErr && <div style={{ fontSize: 12, color: '#DC2626', marginBottom: 8 }}>{draftErr}</div>}
-              <button className="btn btn-gold" style={{ width: '100%', fontSize: 12 }} onClick={generateDraft} disabled={draftLoading || !rawNote.trim()}>{draftLoading ? t('Generating…', lang) : `✦ ${t('Generate Draft', lang)}`}</button>
+            <div className="fg">
+              <label className="flbl">{t('What happened today', lang)}</label>
+              <textarea className="finp fta" rows={5} value={captureNote} onChange={e => setCaptureNote(e.target.value)} placeholder={t('Describe what was accomplished on site today...', lang)} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div className="fg"><label className="flbl">{t('Date', lang)}</label><input className="finp" type="date" value={logForm.log_date} onChange={e => setLogForm(p => ({ ...p, log_date: e.target.value }))} /></div>
-              <div className="fg"><label className="flbl">{t('Weather', lang)}</label><select className="finp" value={logForm.weather} onChange={e => setLogForm(p => ({ ...p, weather: e.target.value }))}>{WEATHER_OPTS_KEYS.map(w => <option key={w} value={w}>{t(w, lang)}</option>)}</select></div>
-              <div className="fg"><label className="flbl">{t('Crew Count', lang)}</label><input className="finp" type="number" value={logForm.crew_count} onChange={e => setLogForm(p => ({ ...p, crew_count: e.target.value }))} placeholder={t('e.g. 4', lang)} /></div>
-              <div className="fg"><label className="flbl">{t('Hours Worked', lang)}</label><input className="finp" type="number" value={logForm.hours_worked} onChange={e => setLogForm(p => ({ ...p, hours_worked: e.target.value }))} placeholder={t('e.g. 8', lang)} /></div>
+            <input ref={capturePhotoRef} type="file" accept="image/*,video/*" multiple onChange={e => { const files = Array.from(e.target.files); if (files.length) setCapturePhotos(p => [...p, ...files]); e.target.value = ''; }} style={{ display: 'none' }} />
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{t('Photos', lang)}</div>
+              {capturePhotos.length > 0 && (
+                <div className="pgrid" style={{ marginBottom: 10 }}>
+                  {capturePhotos.map((f, i) => (
+                    <div key={i} className="pcell">
+                      <div style={{ position: 'absolute', inset: 0 }}>
+                        {f.type.startsWith('video') ? <video src={URL.createObjectURL(f)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <img src={URL.createObjectURL(f)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      </div>
+                      <button className="pdel" onClick={() => setCapturePhotos(p => p.filter((_, j) => j !== i))}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button className="btn btn-ghost" style={{ width: '100%', fontSize: 13 }} onClick={() => capturePhotoRef.current.click()}>{t('+ Add Photos', lang)}</button>
             </div>
-            <div className="fg"><label className="flbl">{t('Work Completed', lang)}</label><textarea className="finp fta" rows={2} value={logForm.work_completed} onChange={e => setLogForm(p => ({ ...p, work_completed: e.target.value }))} placeholder={t('Describe work completed today...', lang)} /></div>
-            <div className="fg"><label className="flbl">{t('Materials Used', lang)}</label><textarea className="finp fta" rows={2} value={logForm.materials_used} onChange={e => setLogForm(p => ({ ...p, materials_used: e.target.value }))} placeholder={t('List materials used...', lang)} /></div>
-            <div className="fg"><label className="flbl">{t('Issues / Delays', lang)}</label><textarea className="finp fta" rows={2} value={logForm.issues} onChange={e => setLogForm(p => ({ ...p, issues: e.target.value }))} placeholder={t('Any issues or delays...', lang)} /></div>
+            {logErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>{logErr}</div>}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowLogForm(false); setRawNote(''); setDraftErr(''); }}>{t('Cancel', lang)}</button>
-              <button className="btn btn-navy" style={{ flex: 1 }} onClick={submitLog} disabled={logSaving}>{logSaving ? t('Saving...', lang) : t('Submit Log', lang)}</button>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={resetLogForm}>{t('Cancel', lang)}</button>
+              <button className="btn btn-navy" style={{ flex: 1 }} onClick={submitLog} disabled={logSaving || !captureNote.trim()}>{logSaving ? t('Submitting...', lang) : t('Submit', lang)}</button>
             </div>
           </div>}
           {!logs.length && !showLogForm && <div className="empty">{Ic.clip}<div className="empty-t">{t('No logs yet', lang)}</div><div>{t('Submit your first daily log above', lang)}</div></div>}
           {logs.map(l => (
             <div key={l.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '12px 14px', marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{l.log_date}</div>
-                <div style={{ fontSize: 12, color: '#9CA3AF' }}>{l.weather} · {l.crew_count || 0} {t('crew', lang)} · {l.hours_worked || 0}h</div>
+                <div style={{ fontSize: 11, color: l.status === 'approved' ? '#22c55e' : '#9CA3AF', fontWeight: 600, textTransform: 'uppercase' }}>{l.status === 'approved' ? t('Sent', lang) : t('Draft', lang)}</div>
               </div>
-              {l.work_completed && <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>{l.work_completed}</div>}
-              {l.issues && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>⚠ {l.issues}</div>}
+              {l.work_completed && <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, marginBottom: l.client_message ? 8 : 0 }}>{l.work_completed}</div>}
+              {l.client_message && (
+                <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6, padding: '6px 10px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>{t('Client Update', lang)}</div>
+                  <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.6 }}>{l.client_message}</div>
+                </div>
+              )}
             </div>
           ))}
         </div>}
