@@ -1263,3 +1263,15 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: DAILY_LOG_ARC.md, supabase/migrations/20260517100000_daily_logs_approval.sql
 - Trade-aware: platform table, tenant- and trade-agnostic.
 - Open: Phase 2 (AI draft edge function), Phase 3 (PM approval UI), Phase 4 (client view).
+
+[LOG — 2026-05-17 — Daily Log Arc: Phase 2 — AI draft edge function]
+- Action: Created ai-daily-log-draft edge function + sbGenerateDailyLogDraft helper. Phase 2 of 4 shipped.
+- CHECK constraint finding: daily_logs_status_check already present (CHECK status IN ('draft','approved')) — no migration needed.
+- Edge function contract: POST { job_id, raw_note } → { ok, work_completed, materials_used, issues }. Loads current job phase for grounding. Haiku only, max_tokens: 1024. User-triggered, never automatic.
+- Smoke test: STATUS 200, clean output for a sample framing note — work_completed client-readable prose, materials_used "2x6 lumber", issues "short by 20 boards, causing early work stoppage."
+- Commit 1 (2c89c5c): feat(daily-log): ai-daily-log-draft edge function.
+- Commit 2 (9da444e): feat(daily-log): sbGenerateDailyLogDraft helper + AI_DAILY_LOG_DRAFT_URL export.
+- Build: passed (✓ built in 649ms).
+- Files: supabase/functions/ai-daily-log-draft/index.ts, avenstone-vite/src/lib/supabase.js, DAILY_LOG_ARC.md
+- Trade-aware: platform-level, tenant- and trade-agnostic.
+- Open: Phase 3 (PM approval + photo curation UI in LogsTab), Phase 4 (client-facing log view).
