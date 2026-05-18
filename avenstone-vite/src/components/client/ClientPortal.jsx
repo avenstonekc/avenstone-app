@@ -640,7 +640,7 @@ export default function ClientPortal({ profile, signOut }) {
                 })}
                 <div ref={msgsEndRef} />
               </div>
-              <div style={{ borderTop: '1px solid #E8E4DC', paddingTop: 12 }}>
+              <div style={{ borderTop: '1px solid #E8E4DC', paddingTop: 12, paddingBottom: 'calc(8px + env(safe-area-inset-bottom))' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                   <textarea className="finp fta" value={msgTxt} onChange={e => setMsgTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } }} placeholder="Message your contractor… (Enter to send)" rows={2} style={{ flex: 1, marginBottom: 0, resize: 'none' }} />
                   <button className={`btn ${msgTxt.trim() ? 'btn-navy' : 'btn-ghost'}`} style={{ padding: '10px 16px', flexShrink: 0 }} onClick={sendMsg} disabled={sendingMsg || !msgTxt.trim()}>{sendingMsg ? '...' : 'Send'}</button>
