@@ -1324,3 +1324,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commits: f7ee227 (LogsTab), 8251022 (SubJobView).
 - Cost: Haiku only, user-triggered, max_tokens 1024. Zero automatic calls. ✓
 - Open: Phase 3b (PM approval UI: review/edit, photo curation, approve button → status='approved'). Phase 4 (client log view in ClientPortal).
+- NOTE: Phase 3a (AI draft assist) is superseded by the arc re-scope below. The UI shipped but will be replaced in Phase 3 rebuild.
+
+[LOG — 2026-05-17 — Daily-log arc re-scope: corrected design + client_message column]
+- Re-scope: the entire daily-log arc was redesigned. Old design: structured 7-field form (weather, crew_count, hours_worked, materials_used, issues) + AI draft assist that prefilled internal fields. New design: one capture box (work_completed) + photos; AI generates a client-facing update message (client_message); PM reviews/edits the message, curates photos, taps Send — one action approves + notifies client.
+- Key decisions locked: capture = one box, no form; AI output = client message, not internal log; Send = approve + notify in one action; work_completed holds raw capture note; client_message holds AI message; structured columns retained in DB (not dropped), just unused in new UI.
+- New column: daily_logs.client_message TEXT (nullable, no default). Migration 20260517210000_daily_logs_client_message.sql applied and verified — information_schema confirms column present. Commit: b69e281.
+- Arc doc: DAILY_LOG_ARC.md fully rewritten — corrected flow, 5-phase plan, locked decisions, updated schema ref. Commit: 3a92648.
+- Build: ✓ built in 588ms.
+- Trade-aware: daily_logs is a platform table, tenant- and trade-agnostic. ✓
+- Open: Phase 2 (rework ai-daily-log-draft to output client_message using work_completed + schedule context). Phase 3 (one-box capture UI, remove 7-field form + AI draft assist from LogsTab and SubJobView). Phase 4 (PM review + Send screen). Phase 5 (client view + notification).
