@@ -1669,6 +1669,7 @@ export const sbLoadScheduleItems = async (jobId) => {
       .select('*, assigned_sub:profiles!assigned_sub_id(id, full_name)')
       .eq('job_id', jobId)
       .order('scheduled_date', { nullsFirst: false })
+      .order('scheduled_time', { nullsFirst: true })
       .order('created_at');
     if (error) throw error;
     return { ok: true, error: null, data: data || [] };
@@ -1685,6 +1686,7 @@ export const sbCreateScheduleItem = async (payload) => {
       created_by_id:       AV_USER_ID,
       // coalesce empty strings → null at write boundary (sweep 2 pattern)
       scheduled_date:      payload.scheduled_date      || null,
+      scheduled_time:      payload.scheduled_time      || null,
       scheduled_end_date:  payload.scheduled_end_date  || null,
       assigned_sub_id:     payload.assigned_sub_id     || null,
       trade:               payload.trade               || null,
@@ -1725,6 +1727,7 @@ export const sbUpdateScheduleItem = async (id, patch) => {
     const clean = {
       ...patch,
       scheduled_date:     patch.scheduled_date     !== undefined ? (patch.scheduled_date     || null) : undefined,
+      scheduled_time:     patch.scheduled_time     !== undefined ? (patch.scheduled_time     || null) : undefined,
       scheduled_end_date: patch.scheduled_end_date !== undefined ? (patch.scheduled_end_date || null) : undefined,
       assigned_sub_id:    patch.assigned_sub_id    !== undefined ? (patch.assigned_sub_id    || null) : undefined,
       trade:              patch.trade              !== undefined ? (patch.trade              || null) : undefined,

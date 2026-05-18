@@ -295,7 +295,7 @@ function ItemCard({ item, onEdit, onCancel }) {
         </div>
         <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ color: '#6B7280', fontWeight: 500 }}>{TYPE_LABELS[item.type]}</span>
-          {item.scheduled_date && <span>{fD(item.scheduled_date)}{item.scheduled_end_date ? ` → ${fD(item.scheduled_end_date)}` : ''}</span>}
+          {item.scheduled_date && <span>{fD(item.scheduled_date)}{item.scheduled_time ? ` ${item.scheduled_time.slice(0, 5)}` : ''}{item.scheduled_end_date ? ` → ${fD(item.scheduled_end_date)}` : ''}</span>}
           {item.trade && <span style={{ background: '#F7F5F0', padding: '1px 6px', borderRadius: 10 }}>{item.trade}</span>}
           {item.assigned_sub?.full_name && <span>→ {item.assigned_sub.full_name}</span>}
         </div>
@@ -349,6 +349,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     type:               item?.type            || 'material_delivery',
     title:              item?.title           || TYPE_SUGGESTIONS['material_delivery'],
     scheduled_date:     item?.scheduled_date  || '',
+    scheduled_time:     item?.scheduled_time  || '',
     scheduled_end_date: item?.scheduled_end_date || '',
     notes:              item?.notes           || '',
     trade:              item?.trade           || '',
@@ -477,10 +478,13 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
           <input className="finp" value={form.title} onChange={e => setField('title', e.target.value)} placeholder={TYPE_SUGGESTIONS[form.type]} />
         </div>
 
-        {/* Date */}
+        {/* Date + Time */}
         <div className="fg">
           <label className="flbl">Date{form.type !== 'delay' ? ' *' : ' (optional)'}</label>
-          <input className="finp" type="date" value={form.scheduled_date} onChange={e => setField('scheduled_date', e.target.value)} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input className="finp" type="date" value={form.scheduled_date} onChange={e => setField('scheduled_date', e.target.value)} style={{ flex: 1 }} />
+            <input className="finp" type="time" value={form.scheduled_time} onChange={e => setField('scheduled_time', e.target.value)} style={{ width: 130 }} placeholder="Time (opt.)" />
+          </div>
         </div>
 
         {/* End date toggle */}
