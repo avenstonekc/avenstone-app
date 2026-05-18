@@ -777,17 +777,20 @@ export const sbGenerateDailyLogDraft = async (jobId, rawNote) => {
   }
 };
 export const sbSaveDailyLogClientMessage = async (logId, clientMessage) => {
-  const { error } = await sb.from('daily_logs').update({ client_message: clientMessage }).eq('id', logId);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  const { data, error } = await sb.from('daily_logs').update({ client_message: clientMessage }).eq('id', logId).select('id').single();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: 'Update affected 0 rows — RLS or missing row' };
+  return { ok: true };
 };
 export const sbSendDailyLog = async (logId, clientMessage, job) => {
-  const { error } = await sb.from('daily_logs').update({
+  const { data, error } = await sb.from('daily_logs').update({
     client_message: clientMessage,
     status: 'approved',
     approved_at: new Date().toISOString(),
     approved_by_id: AV_USER_ID,
-  }).eq('id', logId);
+  }).eq('id', logId).select('id').single();
   if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: 'Update affected 0 rows — RLS or missing row' };
   if (job?.client_user_id) {
     sbNotifyUser(job.client_user_id, 'daily_log_sent', `Project update — ${job.address}`, clientMessage.slice(0, 120), job.id).catch(() => {});
   }
