@@ -40,6 +40,7 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
   const [err,       setErr]       = useState(null);
   const [uploading, setUploading] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState(tx.receipt_url     || null);
+  const [receiptSignedUrl, setReceiptSignedUrl] = useState(null);
   const [lienUrl,    setLienUrl]    = useState(tx.lien_waiver_url  || null);
   const [phases,     setPhases]     = useState([]);
   const [subs,       setSubs]       = useState([]);
@@ -51,6 +52,13 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
   useEffect(() => {
     if (form.type === 'sub_payout') sbLoadActiveSubs().then(setSubs);
   }, [form.type]);
+
+  useEffect(() => {
+    if (!receiptUrl) return;
+    sbGetReceiptUrl(receiptUrl).then(res => {
+      if (res.ok) setReceiptSignedUrl(res.data?.signedUrl || null);
+    });
+  }, [receiptUrl]);
 
   const isView   = mode === 'view';
   const set      = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -185,16 +193,9 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
               </div>
             ))}
             {receiptUrl && (
-              <button
-                onClick={async () => {
-                  const res = await sbGetReceiptUrl(receiptUrl);
-                  if (res.ok && res.data?.signedUrl) window.open(res.data.signedUrl, '_blank');
-                  else setErr('Could not load receipt — try again');
-                }}
-                style={{ marginTop: 12, fontSize: 12, color: '#3B82F6', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline', display: 'block' }}
-              >
-                📎 View receipt
-              </button>
+              receiptSignedUrl
+                ? <a href={receiptSignedUrl} target="_blank" rel="noopener noreferrer" style={{ marginTop: 12, fontSize: 12, color: '#3B82F6', display: 'block', textDecoration: 'underline' }}>📎 View receipt</a>
+                : <span style={{ marginTop: 12, fontSize: 12, color: '#9CA3AF', display: 'block' }}>📎 Receipt attached (loading…)</span>
             )}
             {lienUrl    && <div style={{ marginTop:  6, fontSize: 12, color: '#3B82F6' }}>📎 Lien waiver attached</div>}
             {tx.status !== 'void' && (
@@ -322,13 +323,7 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
                   : receiptUrl
                     ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
                         <span style={{ fontSize: 12, color: '#22c55e' }}>✓ Attached</span>
-                        <button
-                          onClick={async () => {
-                            const res = await sbGetReceiptUrl(receiptUrl);
-                            if (res.ok && res.data?.signedUrl) window.open(res.data.signedUrl, '_blank');
-                          }}
-                          style={{ fontSize: 11, color: '#3B82F6', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
-                        >View</button>
+                        {receiptSignedUrl && <a href={receiptSignedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#3B82F6', textDecoration: 'underline' }}>View</a>}
                       </div>
                     : <label style={{ fontSize: 12, color: '#C9A84C', cursor: 'pointer' }}>
                         Upload<input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={e => e.target.files[0] && uploadReceipt(e.target.files[0])} />
