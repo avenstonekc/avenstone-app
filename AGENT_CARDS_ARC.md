@@ -4,9 +4,10 @@ Living design doc for the agent-card arc. Read at the start of any
 session that touches MasterAgent.jsx, ai-master-agent, ai-field-agent,
 or adds a verb that needs structured input from the user.
 
-## Status as of 2026-05-08
-- Not started. Planning only.
-- Sibling arcs: VOICE_AGENT (Phase 2 shipped), EXECUTION_ARC (complete).
+## Status as of 2026-05-18
+- **Phase 1 — Shipped 2026-05-18.** Card schema, MasterAgent renderer, round-trip wiring. Commits: 6067a0d, 48b97d2, 0fcbab8.
+- Phase 2–5: Planned. See Roadmap below.
+- Sibling arcs: VOICE_AGENT (Phase 3+4 shipped), EXECUTION_ARC (complete).
 - Hard dependency for Phase 5 of this arc: verb 5b
   (`complete_schedule_item`) must ship from VOICE_AGENT v1.5 first.
 
@@ -102,9 +103,11 @@ flows.
 
 ## Roadmap
 
-Phase 1: Card schema + MasterAgent render scaffolding. Define the
-`pending_card` payload, build the React renderer for `select` and
-`radio_per_item`, wire round-trip back to the edge fn.
+Phase 1: Card schema + MasterAgent render scaffolding. **Shipped 2026-05-18.**
+`pending_card` / `card_response` contract defined in `avenstone-vite/src/lib/agentCards.js`.
+React renderers for `select` and `radio_per_item` in `MasterAgent.jsx`.
+Edge fn (`ai-master-agent`) wired to emit `pending_card` and receive `card_response`.
+Round-trip tested with hardcoded mock (build ✓, mock removed).
 
 Phase 2: Receipt categorization card. Easiest of the four — drops in
 cleanly, no dependencies. Validates the end-to-end pipeline.

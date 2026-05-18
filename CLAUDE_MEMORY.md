@@ -601,3 +601,31 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   - job_transactions: 3 rows (direction='out', cost_item_id set — 2 paid, 1 pending) → surfaced by job_cost_invoices view
 - Note: estimate_line_items.total_cost and client_price are GENERATED ALWAYS columns — never include them in INSERT statements.
 - Financials tab Estimate + Project Costs sections now render for test-flow-001.
+
+---
+
+[LOG — 2026-05-18 — AGENT_CARDS Phase 1 — schema + MasterAgent scaffolding + round-trip]
+- Action: AGENT_CARDS_ARC Phase 1 shipped. Plumbing only — no card-emitting tool yet.
+- Commits: 6067a0d (agentCards.js contract), 48b97d2 (edge fn wiring), 0fcbab8 (MasterAgent renderer)
+- Build status: ✓ built in 538ms (clean after mock removal)
+
+Contract — pending_card shape:
+  { id: string, prompt: string, questions: Array<{ id, type: 'select'|'radio_per_item', label, options: [{value,label}], items?: [{id,label}] }> }
+Contract — card_response shape:
+  { card_id: string, answers: { [questionId]: string | { [itemId]: string } } }
+
+Round-trip wiring (critical invariant for Phase 2):
+  1. Edge fn returns { pending_card } + assistant text response.
+  2. callMaster appends { role:'assistant', content: aiText } to conversationHistory (same as any normal turn — ensures model sees question context).
+  3. submitCard calls formatCardAnswers(card, answers) → appends { role:'user', content: answersText } to conversationHistory.
+  4. POSTs { card_response, conversation_history } — history ends with [assistant: question] → [user: answers].
+  5. Edge fn card_response path: passes history directly to runAgentLoop, no extra user message appended.
+  6. Model sees full context and calls the intended tool.
+
+Files:
+  - avenstone-vite/src/lib/agentCards.js (new — contract + validator, formatCardAnswers, validatePendingCard, validateCardResponse)
+  - supabase/functions/ai-master-agent/index.ts (PendingCard TS interfaces, runAgentLoop return type extended, card_response handler, pending_card threaded through responses)
+  - avenstone-vite/src/components/shared/MasterAgent.jsx (AgentCard component, pendingCard state, submitCard, cancelCard, clearCard on sendMessage+clearChat)
+
+Renderers: select (pill buttons) and radio_per_item (scrollable table, custom radio circles). Both confirmed compiling via mock smoke test.
+Trade-aware: platform-level agent surface, tenant/trade-agnostic. No DB changes.
