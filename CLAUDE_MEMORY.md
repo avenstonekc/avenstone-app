@@ -1406,3 +1406,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Action: Added created_at DESC as secondary sort to sbLoadDailyLogs and sbLoadClientUpdates. Primary sort log_date DESC was already correct; same-day logs had no tiebreaker so defaulted to insertion order (oldest-first within a day).
 - Neither LogsTab nor SubJobView re-sorts the result — display order comes entirely from the query.
 - Build: ✓ 588ms. Commit: f29e1a5.
+
+[LOG — 2026-05-18 — test data: seeded Financials tab data for test-flow-001]
+- Inserted into live DB (test-flow-001 only, tenant 00000000-0000-0000-0000-000000000001):
+  - estimate_line_items: 5 rows (Framing $4,830, Electrical $4,370, Drywall $6,210, Paint $3,680, Trim $2,990 — generated total_cost and client_price from quantity*unit_cost and markup_pct=15)
+  - job_cost_items: 4 rows (KC Framing Co, Metro Electric LLC, Midwest Drywall, ProPaint KC — all client_visible=true)
+  - job_transactions: 3 rows (direction='out', cost_item_id set — 2 paid, 1 pending) → surfaced by job_cost_invoices view
+- Note: estimate_line_items.total_cost and client_price are GENERATED ALWAYS columns — never include them in INSERT statements.
+- Financials tab Estimate + Project Costs sections now render for test-flow-001.
