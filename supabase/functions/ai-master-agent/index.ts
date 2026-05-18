@@ -730,6 +730,50 @@ async function executeTool(
   }
 }
 
+// ─── Agent Card types ─────────────────────────────────────────────────────────
+//
+// pending_card / card_response — structured elicitation surface.
+// See avenstone-vite/src/lib/agentCards.js for the JS-side contract and full
+// control-flow notes. The TypeScript shapes here must stay in sync with that file.
+//
+// pending_card is returned by runAgentLoop when a Phase 2+ tool signals it needs
+// structured input before it can act. Phase 1 carries the types and handler
+// wiring; no tool emits a card yet.
+//
+// card_response re-enters via the main handler BEFORE the hasContent check.
+// The client appends the formatted answers as a user turn to conversationHistory
+// BEFORE sending, so the history already ends with
+//   [assistant: card question text] → [user: formatted answers].
+// The handler passes that history to runAgentLoop unchanged — no extra user
+// message is appended. Claude sees the complete context and calls the tool.
+//
+// This path is intentionally separate from confirmed:true (which skips Claude).
+// card_response MUST go through runAgentLoop so the model can use the answers.
+
+interface CardOption {
+  value: string;
+  label: string;
+}
+
+interface CardItem {
+  id: string;
+  label: string;
+}
+
+interface CardQuestion {
+  id: string;
+  type: "select" | "radio_per_item";
+  label: string;
+  options: CardOption[];
+  items?: CardItem[]; // radio_per_item only
+}
+
+interface PendingCard {
+  id: string;
+  prompt: string;
+  questions: CardQuestion[];
+}
+
 // ─── Agentic loop ─────────────────────────────────────────────────────────────
 
 // Pull the most recent base64 image block out of the conversation. Used to stash
@@ -845,6 +889,7 @@ async function runAgentLoop(
   response: string;
   actions: Array<{ tool: string; input: unknown; result: unknown }>;
   pending_action?: { tool: string; input: unknown; description: string };
+  pending_card?: PendingCard; // Phase 2+ tools set this; Phase 1 wiring only
 }> {
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
@@ -1002,7 +1047,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { user_id, tenant_id, role, full_name, message, conversation_history, pending_action, confirmed } = await req.json();
+    const { user_id, tenant_id, role, full_name, message, conversation_history, pending_action, confirmed, card_response } = await req.json();
 
     if (!user_id || !tenant_id) {
       return new Response(JSON.stringify({ error: "Missing user_id or tenant_id" }), {
@@ -1013,6 +1058,7 @@ Deno.serve(async (req) => {
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     // ── Confirmed action path: skip Claude, run executor directly ─────────────
+    // (pending_action / confirmed — yes/no confirmation surface, unchanged)
     if (confirmed && pending_action?.tool) {
       const result = await executeTool(sb, tenant_id, user_id, pending_action.tool, pending_action.input || {});
       const action = { tool: pending_action.tool, input: pending_action.input, result };
@@ -1021,6 +1067,24 @@ Deno.serve(async (req) => {
         : `Done. ${pending_action.description || ""}`.trim();
       return new Response(
         JSON.stringify({ response, actions: [action] }),
+        { headers: { ...CORS, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── Card response path: answers already in conversation_history ───────────
+    // The client appended { role:'user', content: formatCardAnswers(...) } to
+    // conversation_history BEFORE sending, so the history already ends with
+    //   [assistant: card question text] → [user: formatted answers].
+    // Run runAgentLoop with that history unchanged — no extra user message.
+    // This path is intentionally separate from confirmed:true. The model must
+    // receive the structured answers and decide the tool call itself.
+    if (card_response && typeof card_response === "object") {
+      const history = (conversation_history || []).slice(-20);
+      const { response, actions, pending_action: pa, pending_card: pc } = await runAgentLoop(
+        sb, tenant_id, user_id, role || "owner", full_name || "User", history,
+      );
+      return new Response(
+        JSON.stringify({ response, actions, pending_action: pa, pending_card: pc }),
         { headers: { ...CORS, "Content-Type": "application/json" } },
       );
     }
@@ -1043,12 +1107,12 @@ Deno.serve(async (req) => {
       { role: "user", content: message },
     ];
 
-    const { response, actions, pending_action: pa } = await runAgentLoop(
+    const { response, actions, pending_action: pa, pending_card: pc } = await runAgentLoop(
       sb, tenant_id, user_id, role || "owner", full_name || "User", messages,
     );
 
     return new Response(
-      JSON.stringify({ response, actions, pending_action: pa }),
+      JSON.stringify({ response, actions, pending_action: pa, pending_card: pc }),
       { headers: { ...CORS, "Content-Type": "application/json" } },
     );
 
