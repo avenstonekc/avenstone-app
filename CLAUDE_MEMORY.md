@@ -1317,3 +1317,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Fix 2: Track failed count per batch. After batch completes, show dismissable red error banner with count ("N photo(s) failed to save — check your connection and try again."). uplErr state clears on dismiss or next upload.
 - Files: JobDet.jsx (fieldSub state + prop pass), FieldTab.jsx (props replace local state, removed useState import), NotesPhotosTab.jsx (uplErr state, failed counter in onFile, error banner in JSX).
 - Builds: both ✓. Commits: 3d384f9 (sub-tab lift), 8f6f148 (upload error surfacing). Trade-aware: platform UI, tenant- and trade-agnostic. ✓
+
+[LOG — 2026-05-17 — Daily-log arc Phase 3a: AI draft assist on both forms]
+- Action: Added AI draft assist section to both daily-log forms. Quick-note textarea + "Generate Draft" button at top of each form prefills work_completed, materials_used, issues via sbGenerateDailyLogDraft. Manual entry and submit path unchanged. rawNote/draftLoading/draftErr state per form. Clears on submit success and Cancel.
+- Files: avenstone-vite/src/components/jobs/tabs/LogsTab.jsx (PM form), avenstone-vite/src/components/sub/SubJobView.jsx (sub form), DAILY_LOG_ARC.md (3a/3b split).
+- DAILY_LOG_ARC.md: Phase 3 split into 3a (AI draft assist — Shipped) and 3b (PM approval + photo curation — Planned). Open Items updated accordingly.
+- Commits: f7ee227 (LogsTab), 8251022 (SubJobView).
+- Cost: Haiku only, user-triggered, max_tokens 1024. Zero automatic calls. ✓
+- Open: Phase 3b (PM approval UI: review/edit, photo curation, approve button → status='approved'). Phase 4 (client log view in ClientPortal).

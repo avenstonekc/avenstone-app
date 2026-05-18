@@ -28,7 +28,8 @@ Field capture (sub or PM)
 |-------|-------|--------|
 | 1 — Schema foundation | `daily_logs` approval columns (`status`, `approved_at`, `approved_by_id`); arc doc | **Shipped** |
 | 2 — AI draft generation | `ai-daily-log-draft` edge fn: `{ job_id, raw_note }` → `{ work_completed, materials_used, issues }`; `sbGenerateDailyLogDraft` helper | **Shipped** |
-| 3 — PM approval + photo curation | UI in FieldTab → Daily Logs: review/edit draft, pick which photos attach (`related_entity_type='daily_log'`), approve | Planned |
+| 3a — AI draft assist UI | Quick-note textarea + "Generate Draft" button at top of both daily-log forms (LogsTab PM form + SubJobView sub form); prefills work_completed, materials_used, issues via `sbGenerateDailyLogDraft` | **Shipped** |
+| 3b — PM approval + photo curation | UI in FieldTab → Daily Logs: review/edit draft, pick which photos attach (`related_entity_type='daily_log'`), approve button sets `status='approved'` | Planned |
 | 4 — Client-facing view | New tab/section in ClientPortal showing approved logs + their curated photos; replaces unfiltered gallery | Planned |
 
 ---
@@ -105,5 +106,6 @@ UPDATE photos
 ## Open Items
 
 - Phase 2: **shipped**. Draft fires on explicit "Draft log" button tap (not automatic — per API cost rules).
-- Phase 3: decide whether photo curation is a separate modal or inline in the `LogsTab` review surface.
+- Phase 3a: **shipped**. AI draft assist on both PM form (LogsTab) and sub form (SubJobView). User types a quick note, taps "Generate Draft", fields are prefilled. Manual entry path unchanged.
+- Phase 3b: decide whether photo curation is a separate modal or inline in the `LogsTab` review surface. Approve button stamps `status='approved'`, `approved_at`, `approved_by_id`.
 - Phase 4: decide whether the client view is a new `logs` tab in `ClientPortal` or a section within an existing tab.
