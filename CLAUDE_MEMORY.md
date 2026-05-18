@@ -1203,3 +1203,13 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - scrollIntoView: YES added to JobDet.jsx — tabbarRef + useEffect fires on every tab change.
 - Build: npm run build passed after each commit.
 - Open: on-device verification (all 7 fixes) after next Codemagic build → TestFlight.
+
+[LOG — 2026-05-17 — Test-feedback fixes: MasterAgent, schedule time, financials sort]
+- Action: 4 commits from post-test-pass audit. All pushed to main. Build passed each commit.
+- Commit 1 (e014263): fix(master-agent) — Desktop web panel was top:0/height:100vh, jamming close button against browser chrome/top-bar. Changed desktop branch to top:60/height:calc(100vh-60px) so panel sits below the 60px .top-bar. Close button padding enlarged from '2px 4px' to '10px 12px' + minWidth/minHeight 44px for reliable hit area on all platforms.
+- Commit 2 (851b3fb): migration — ALTER TABLE schedule_items ADD COLUMN IF NOT EXISTS scheduled_time TIME. Applied to live DB and verified: information_schema confirms column_name=scheduled_time, data_type=time without time zone.
+- Commit 3 (da3eea1): feat(schedule) — scheduled_time wired end-to-end: form state init, type="time" input alongside date, sbCreateScheduleItem writes scheduled_time||null, sbUpdateScheduleItem clean-patch coalesces it, sbLoadScheduleItems adds secondary .order('scheduled_time',{nullsFirst:true}), display shows HH:MM after date when set.
+- Commit 4 (a223ec7): fix(financials) — sbLoadJobTransactions changed from order('date_incurred',{ascending:false}) to order('created_at',{ascending:false}) so newly added transactions always land at the top.
+- Files: MasterAgent.jsx, ScheduleTab.jsx, supabase.js, supabase/migrations/20260517130000_schedule_items_add_time.sql
+- Trade-aware: schedule_items and job_transactions are platform tables — changes are tenant- and trade-agnostic.
+- Open: on-device verification (all 4 fixes) after next Codemagic build → TestFlight.
