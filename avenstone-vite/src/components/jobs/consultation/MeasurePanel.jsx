@@ -266,7 +266,7 @@ export default function MeasurePanel({
           onClick={measureListening ? stopMeasureMic : startMeasureMic}
           disabled={sendingMsg}
           style={{
-            width: 40, height: 40, flexShrink: 0,
+            width: 44, height: 44, flexShrink: 0,
             border: `1px solid ${measureListening ? '#EF4444' : BORDER}`,
             background: measureListening ? '#FEE2E2' : '#fff',
             color: measureListening ? '#EF4444' : '#6B7280',

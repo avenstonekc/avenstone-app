@@ -190,7 +190,7 @@ export default function AmbientPanel({
         </span>
         <button
           className="btn btn-ghost"
-          style={{ marginLeft: 'auto', fontSize: 13 }}
+          style={{ marginLeft: 'auto', fontSize: 14, minHeight: 44 }}
           onClick={isRecording ? stopMic : startMic}
         >
           {isRecording ? 'Pause Mic' : 'Resume Mic'}
