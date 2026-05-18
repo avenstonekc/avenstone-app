@@ -8,7 +8,8 @@ ai-field-agent, or adds voice I/O.
 - Phase 1 audit shipped (see CLAUDE_ARCHIVE.md § voice-agent-audit-2026-05-08).
 - Phase 2 tool layer hardening shipped — both agents run the v1 verb roster through canonical helpers (commits 5f091fb, 2d586c7, dedc8c0).
 - Phase 3 **code shipped** (commits f045752, 28bb0e4) — **device verification pending** (Codemagic build → TestFlight). Hold-to-talk mic button in MasterAgent using @capgo/capacitor-speech-recognition@8.1.2. Transcript injected into chat input via setInput; user reviews and presses Send. No auto-send.
-- Phase 4+ (TTS, hands-free) not started.
+- Phase 4 **code shipped** (commits 3b15050, 2a93d2e) — **device verification pending** (Codemagic build → TestFlight). Agent speaks replies via @capacitor-community/text-to-speech@8.0.0. Speaks response text, then confirmation card description (for money read-back). Speaker toggle button persists setting to localStorage. STT and TTS never overlap. On-device audio quality check required — see Known Limitations.
+- Phase 5+ (hands-free/continuous listen) not started.
 
 ## The goal
 

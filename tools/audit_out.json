@@ -1,0 +1,270 @@
+{
+  "timestamp": "2026-05-13T04:08:01.366Z",
+  "scannedFiles": 147,
+  "tablesScanned": 51,
+  "drift": [],
+  "potential": [
+    {
+      "table": "job_phases",
+      "column": "tenant_id"
+    },
+    {
+      "table": "job_phases",
+      "column": "job_id"
+    },
+    {
+      "table": "job_phases",
+      "column": "phase_name"
+    },
+    {
+      "table": "job_phases",
+      "column": "phase_order"
+    },
+    {
+      "table": "oh_shit_moments",
+      "column": "condition"
+    }
+  ],
+  "missingTables": [],
+  "skipped": [
+    {
+      "table": "ai_knowledge",
+      "op": "insert",
+      "reason": "identifier entries → init type CallExpression",
+      "file": "avenstone-vite/src/components/ai/AiSetupWizard.jsx",
+      "line": 128
+    },
+    {
+      "table": "change_orders",
+      "op": "update",
+      "reason": "identifier ch → init type none",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 262
+    },
+    {
+      "table": "job_phases",
+      "op": "upsert",
+      "reason": "identifier ph → init type none",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 282
+    },
+    {
+      "table": "job_cost_items",
+      "op": "update",
+      "reason": "identifier ch → init type none",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 395
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 503
+    },
+    {
+      "table": "job_transactions",
+      "op": "update",
+      "reason": "identifier updates → init type none",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 825
+    },
+    {
+      "table": "estimate_line_items",
+      "op": "insert",
+      "reason": "identifier rows → init type CallExpression",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 873
+    },
+    {
+      "table": "contacts",
+      "op": "update",
+      "reason": "identifier ch → init type none",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 995
+    },
+    {
+      "table": "<dynamic>",
+      "op": "update",
+      "reason": "dynamic .from() arg",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 1081
+    },
+    {
+      "table": "sequences",
+      "op": "update",
+      "reason": "identifier ch → init type none",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 1094
+    },
+    {
+      "table": "todos",
+      "op": "update",
+      "reason": "identifier patch → init type LogicalExpression",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 1172
+    },
+    {
+      "table": "job_materials",
+      "op": "update",
+      "reason": "identifier ch → init type none",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 1358
+    },
+    {
+      "table": "site_visit_checklist_items",
+      "op": "insert",
+      "reason": "identifier rows → init type CallExpression",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 1819
+    },
+    {
+      "table": "site_visit_checklist_items",
+      "op": "update",
+      "reason": "identifier patch → init type LogicalExpression",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 1852
+    },
+    {
+      "table": "job_phases",
+      "op": "update",
+      "reason": "identifier patch → init type none",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 1985
+    },
+    {
+      "table": "schedule_items",
+      "op": "insert",
+      "reason": "identifier rows → init type ConditionalExpression",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 2311
+    },
+    {
+      "table": "draw_schedules",
+      "op": "update",
+      "reason": "identifier patch → init type LogicalExpression",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 2410
+    },
+    {
+      "table": "invoices",
+      "op": "update",
+      "reason": "identifier patch → init type LogicalExpression",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 2540
+    },
+    {
+      "table": "invoice_line_items",
+      "op": "insert",
+      "reason": "identifier rows → init type CallExpression",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 2644
+    },
+    {
+      "table": "material_orders",
+      "op": "update",
+      "reason": "identifier patch → init type LogicalExpression",
+      "file": "avenstone-vite/src/lib/supabase.js",
+      "line": 2877
+    },
+    {
+      "table": "estimate_line_items",
+      "op": "insert",
+      "reason": "identifier rows → init type CallExpression",
+      "file": "avenstone-vite/src/lib/takeoff.js",
+      "line": 896
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/ai-companion/index.ts",
+      "line": 161
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/ai-companion/index.ts",
+      "line": 198
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/ai-field-agent/index.ts",
+      "line": 75
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/ai-home-companion/index.ts",
+      "line": 92
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/ai-master-agent/index.ts",
+      "line": 79
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/ai-master-agent/index.ts",
+      "line": 670
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/ai-pm-nightly/index.ts",
+      "line": 372
+    },
+    {
+      "table": "todos",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/ai-pm-nightly/index.ts",
+      "line": 385
+    },
+    {
+      "table": "oh_shit_moments",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/generate-estimate-from-session/index.ts",
+      "line": 186
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/ghl-webhook/index.ts",
+      "line": 179
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/missed-call-textback/index.ts",
+      "line": 127
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/stripe-webhook/index.ts",
+      "line": 134
+    },
+    {
+      "table": "notifications",
+      "op": "insert",
+      "reason": "non-literal arg (CallExpression)",
+      "file": "supabase/functions/stripe-webhook/index.ts",
+      "line": 259
+    }
+  ],
+  "parseErrors": []
+}
