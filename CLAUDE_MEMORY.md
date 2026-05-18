@@ -1303,3 +1303,11 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - package.json: added "migrate": "node ../tools/apply_migration.js" alongside audit:schema.
 - Commits: 45a1ab6 (tool), da935c0 (npm script), 02028cd (CLAUDE.md docs).
 - Migration apply method in CLAUDE_MEMORY line 20 is now superseded — npm run migrate is the canonical path.
+
+[LOG — 2026-05-17 — photo upload bug: sub-tab state reset + silent failures]
+- Cause 1 (split regression): FieldTab held `const [sub, setSub] = useState('notes')` locally. FieldTab unmounts whenever the user switches away from the Field main tab (JobDet renders it with `{tab === 'field' && <FieldTab .../>}`). On return, FieldTab remounts, sub resets to 'notes', and Photos sub-tab is no longer active — photos appeared gone even though they were in job.photos.
+- Fix 1: Lifted fieldSub/setFieldSub into JobDet (stays mounted across all main-tab switches). FieldTab now receives sub/setSub as props. Sub-tab persists for the lifetime of the job detail view.
+- Cause 2 (silent failure): In `onFile`, failed sbPhoto calls (ok: false) were ignored — the progress bar still completed to 100%, so a failed upload looked successful with no feedback.
+- Fix 2: Track failed count per batch. After batch completes, show dismissable red error banner with count ("N photo(s) failed to save — check your connection and try again."). uplErr state clears on dismiss or next upload.
+- Files: JobDet.jsx (fieldSub state + prop pass), FieldTab.jsx (props replace local state, removed useState import), NotesPhotosTab.jsx (uplErr state, failed counter in onFile, error banner in JSX).
+- Builds: both ✓. Commits: 3d384f9 (sub-tab lift), 8f6f148 (upload error surfacing). Trade-aware: platform UI, tenant- and trade-agnostic. ✓
