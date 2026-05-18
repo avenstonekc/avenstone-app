@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, AI_PM_URL, sbNotify, authHeader } from '../../lib/supabase';
 import { Ic, sc, sl, f$, STATS, isMob } from '../../lib/utils';
 import InfoTab from './tabs/InfoTab';
@@ -107,11 +107,6 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
   }, [tab]);
 
   const mob = isMob();
-  const tabbarRef = useRef(null);
-  useEffect(() => {
-    const el = tabbarRef.current?.querySelector('.tab.on');
-    if (el) el.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
-  }, [tab]);
 
   const coT = Number(job.co_total || 0);
   const cv = Number(job.contract_value || 0);
@@ -194,7 +189,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
       </div>
 
       {/* Tab bar */}
-      <div className="tabbar" ref={tabbarRef}>
+      <div className="tabbar">
         {TABS.filter(t => !t.pmOnly || ['owner', 'project_manager', 'sales_rep'].includes(profile?.role)).map(t => (
           <button key={t.id} className={`tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)}>
             <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Ic[t.ic] || Ic.info}</span>{t.lb}
