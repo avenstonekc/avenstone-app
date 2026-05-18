@@ -85,6 +85,7 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
       phase:               form.phase                || null,
       phase_id:            form.phase_id             || null,
       notes:               form.notes                || null,
+      receipt_url:         receiptUrl                || null,
     };
     if (isNew) {
       const r = await sbCreateTransaction(payload);
