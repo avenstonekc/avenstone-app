@@ -1224,3 +1224,13 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: TransactionModal.jsx, supabase.js, FinancialsTab.jsx
 - Trade-aware: job_transactions and job-receipts bucket are platform-level, tenant- and trade-agnostic.
 - Open: on-device verification — attach receipt to NEW expense, save, reopen — receipt present and openable via View link.
+
+[LOG — 2026-05-17 — Web test pass fixes: tab wrap, mobile close button, receipt link]
+- Action: 3 commits from web testing. All pushed to main. Build passed each.
+- Slice-2 mobile UX fixes (fix(modals) input 16px, fix(invoice-composer) layout, etc.) NOT present in git log — not yet shipped.
+- Commit 1 (aa7e34f): fix(css) — Job Detail tab bar was horizontal-scroll (slice 1). User wants all tabs visible. Mobile .tabbar override changed from overflow-x:auto/flex-wrap:nowrap to flex-wrap:wrap. .tab font-size 11px → 12px, flex:none → flex:1 so each wrapped row fills width. JobDet.jsx: removed tabbarRef, scrollIntoView useEffect, and useRef import — all dead code once scroll is gone.
+- Commit 2 (5cf9efc): fix(master-agent) — Mobile panel (position:fixed inset:0) had flat 18px top padding. On mobile-web (no Capacitor status-bar offset), close button jams against browser chrome. Header top padding now uses max(18px, calc(env(safe-area-inset-top) + 8px)) for mobile branch only. Desktop branch unchanged. On Capacitor env(safe-area-inset-top)=0 so no change there either.
+- Commit 3 (2d4adb4): fix(transaction) — View receipt did nothing on iOS Safari: window.open after an await loses the tap gesture context and gets popup-blocked. Fixed by pre-fetching the signed URL in a useEffect on receiptUrl change (modal open + after upload). Both view-mode and edit-mode links are now plain <a href> anchors — no async in tap handler.
+- Files: index.css, JobDet.jsx, MasterAgent.jsx, TransactionModal.jsx
+- Trade-aware: all platform UI, tenant- and trade-agnostic.
+- Open: on-device verification of all 3 fixes after next Codemagic build → TestFlight.
