@@ -6,7 +6,9 @@ _Living doc. Update each phase as it ships._
 
 ## Purpose
 
-Replace the current unfiltered client photo gallery with a curated, PM-approved daily log flow. Whoever is on site — a sub or the PM — captures raw field input (a quick note + photos). AI drafts a structured daily log from that input. The PM or owner reviews, edits, curates which photos attach, and approves. The client then sees approved logs and their curated photos. **Photos reach the client only through an approved daily log — no unfiltered client gallery.**
+Replace the current unfiltered client photo gallery with a curated, PM-approved daily log flow. Whoever is on site — a sub or the PM — captures what happened in one free-text box plus photos. AI drafts a client-facing update message from that note and the job's schedule. The PM reviews the message, curates photos, and sends. The client gets notified and sees the message + curated photos.
+
+**Photos reach the client only through a sent daily log — no unfiltered client gallery.**
 
 ---
 
@@ -14,10 +16,11 @@ Replace the current unfiltered client photo gallery with a curated, PM-approved 
 
 ```
 Field capture (sub or PM)
-  → raw note + photos uploaded to job
-  → AI drafts a daily log (Phase 2)
-  → PM/owner reviews, edits, curates photos, approves (Phase 3)
-  → Client sees approved log + curated photos only (Phase 4)
+  → one "what happened today" box + photos → creates draft daily_log
+  → AI drafts client_message from work_completed note + job schedule
+  → PM reviews message (editable), curates photos, taps "Send to Client"
+  → Send = approval: log marked sent/approved, client notified
+  → Client sees sent message + curated photos
 ```
 
 ---
@@ -26,11 +29,11 @@ Field capture (sub or PM)
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 1 — Schema foundation | `daily_logs` approval columns (`status`, `approved_at`, `approved_by_id`); arc doc | **Shipped** |
-| 2 — AI draft generation | `ai-daily-log-draft` edge fn: `{ job_id, raw_note }` → `{ work_completed, materials_used, issues }`; `sbGenerateDailyLogDraft` helper | **Shipped** |
-| 3a — AI draft assist UI | Quick-note textarea + "Generate Draft" button at top of both daily-log forms (LogsTab PM form + SubJobView sub form); prefills work_completed, materials_used, issues via `sbGenerateDailyLogDraft` | **Shipped** |
-| 3b — PM approval + photo curation | UI in FieldTab → Daily Logs: review/edit draft, pick which photos attach (`related_entity_type='daily_log'`), approve button sets `status='approved'` | Planned |
-| 4 — Client-facing view | New tab/section in ClientPortal showing approved logs + their curated photos; replaces unfiltered gallery | Planned |
+| 1 — Schema reset | Add `client_message TEXT` to `daily_logs`; rewrite arc doc | **Shipped** |
+| 2 — AI edge-function rework | Rework `ai-daily-log-draft` to generate a client-facing update message from `work_completed` + job schedule instead of filling internal log fields | Planned |
+| 3 — Capture rebuild | Replace current 7-field form with one-box capture (`work_completed`) + photos; remove structured fields (weather, crew_count, hours_worked, materials_used, issues) from UI | Planned |
+| 4 — PM review + Send screen | One screen: capture note + photos, editable `client_message`, photo curation, "Send to Client" button — sets `status='approved'`, `approved_at`, `approved_by_id`, fires client notification | Planned |
+| 5 — Client view + notification | Client sees sent message + curated photos; gets notified on send | Planned |
 
 ---
 
@@ -38,42 +41,43 @@ Field capture (sub or PM)
 
 ### Reused (wire up, don't rebuild)
 
-- `daily_logs` table + full schema — exists, prod-verified
-- `sbSubmitDailyLog` / `sbLoadDailyLogs` helpers in `supabase.js`
-- `LogsTab.jsx` PM form — becomes the human review/edit surface for AI drafts
-- Sub daily log form in `SubJobView.jsx` — already functional, same `sbSubmitDailyLog` call
-- `photos.related_entity_type` / `related_entity_id` columns — entity linkage already on the table; Phase 3 uses `related_entity_type='daily_log'`
-- `process-transcript` edge function — pattern template for the AI draft function
+- `daily_logs` table — exists, prod-verified; `work_completed` reused as raw capture note
+- `sbSubmitDailyLog` / `sbLoadDailyLogs` helpers — need simplification in Phase 3, not rebuild
+- `photos.related_entity_type` / `related_entity_id` columns — Phase 4 photo curation uses `related_entity_type='daily_log'`
+- `status` / `approved_at` / `approved_by_id` columns — already on table from Phase 1 schema; Send action stamps these
 
 ### Net-New (must build)
 
-- `ai-daily-log-draft` edge function (Phase 2 — **done**): `POST { job_id, raw_note }` → `{ ok, work_completed, materials_used, issues }`; Haiku, max_tokens 1024
-- `status` / `approved_at` / `approved_by_id` columns on `daily_logs` (Phase 1 — **done**)
-- AI draft assist UI on both log forms (Phase 3a — **done**): quick-note textarea + "Generate Draft" button in LogsTab and SubJobView
-- PM photo-curation UI: link/unlink photos to a log entry via `related_entity_id` (Phase 3b)
-- Approve button: stamps `status='approved'`, `approved_at`, `approved_by_id` (Phase 3b)
-- Client daily log view in `ClientPortal` (Phase 4)
-- RLS / query filter: client queries filter `status = 'approved'` only
+- `client_message TEXT` column on `daily_logs` (Phase 1 — **done**): holds the AI-drafted client-facing update
+- `ai-daily-log-draft` rework (Phase 2): new prompt — input is `work_completed` (raw note) + job schedule context; output is `client_message` (single prose paragraph for the client, not internal log fields)
+- One-box capture UI (Phase 3): replaces the 7-field form; just `work_completed` + photo upload
+- PM review + Send screen (Phase 4): message editor + photo curation + Send button
+- Client notification on send (Phase 4): fires `sbNotifyUser` / push to client
+- Client daily log view in `ClientPortal` (Phase 5): shows sent message + curated photos; filters `status = 'approved'` only
 
 ---
 
 ## Locked Decisions
 
-1. **Photos reach the client only via an approved log.** `related_entity_type='daily_log'` + `related_entity_id=<log_id>` + `status='approved'` is the gate. No unfiltered photo tab for clients.
+1. **Capture is one box + photos.** No structured form (weather, crew_count, hours_worked, materials_used, issues). Those columns remain in the table schema but are not written to or shown in the UI.
 
-2. **`daily_logs` uses a `draft → approved` status column.** All historical rows default to `'draft'` — they were never curated and must not become client-visible.
+2. **`work_completed` holds the raw capture note.** The sub or PM types what happened; this field carries it. No new column needed for capture.
 
-3. **The existing `LogsTab` PM form is the review/edit surface for AI drafts.** No new modal. The AI fills the fields; the PM edits and approves inline.
+3. **AI output is the client message.** `client_message` is the AI's output — a client-facing prose update synthesized from `work_completed` + the job's upcoming schedule. It is not an internal log summary.
 
-4. **Approval is PM or owner.** The same person who captured the data may approve. No separate approver role required.
+4. **Send and approve are one action.** Tapping "Send to Client" stamps `status='approved'`, `approved_at`, `approved_by_id`, and fires the client notification. There is no separate approve-then-notify two-step.
 
-5. **No photo schema change.** `photos.related_entity_id` is `UUID`, `daily_logs.id` is `UUID` — they are type-compatible. The link is made by writing `related_entity_type='daily_log'` and `related_entity_id=<log_id>` on the photo row in Phase 3. No migration needed for photos.
+5. **Photos reach the client only via a sent log.** `related_entity_type='daily_log'` + `related_entity_id=<log_id>` + `status='approved'` is the gate. No unfiltered photo tab for clients.
+
+6. **`daily_logs` uses a `draft → approved` status column.** Historical rows default to `'draft'` and are not client-visible until explicitly sent.
+
+7. **Structured columns stay in the DB.** `weather`, `crew_count`, `hours_worked`, `materials_used`, `issues` are not dropped — existing rows retain their values. They are simply unused by the new capture and review UI.
 
 ---
 
 ## Schema Reference
 
-### `daily_logs` (post Phase 1)
+### `daily_logs` (post Phase 1 reset)
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -82,21 +86,22 @@ Field capture (sub or PM)
 | job_id | text → jobs(id) | |
 | log_date | date | |
 | author_id | UUID → profiles(id) | Sub or PM |
-| weather | text | |
-| crew_count | integer | |
-| hours_worked | numeric | |
-| work_completed | text | |
-| materials_used | text | |
-| issues | text | |
-| **status** | text DEFAULT 'draft' | CHECK ('draft','approved') — **Phase 1 addition** |
-| **approved_at** | timestamptz | NULL until approved — **Phase 1 addition** |
-| **approved_by_id** | UUID → profiles(id) | NULL until approved — **Phase 1 addition** |
+| **work_completed** | text | Raw capture note — "what happened today" |
+| **client_message** | text | AI-drafted client-facing update — NULL until AI generates it |
+| weather | text | Legacy — retained, not used in new UI |
+| crew_count | integer | Legacy — retained, not used in new UI |
+| hours_worked | numeric | Legacy — retained, not used in new UI |
+| materials_used | text | Legacy — retained, not used in new UI |
+| issues | text | Legacy — retained, not used in new UI |
+| status | text DEFAULT 'draft' | CHECK ('draft','approved') |
+| approved_at | timestamptz | Stamped on Send |
+| approved_by_id | UUID → profiles(id) | Stamped on Send |
 | created_at | timestamptz | |
 
-### Photo → Log link (Phase 3, no migration needed)
+### Photo → Log link (Phase 4, no migration needed)
 
 ```sql
--- Linking a photo to an approved log:
+-- Linking a photo to a sent log:
 UPDATE photos
   SET related_entity_type = 'daily_log',
       related_entity_id   = '<log_uuid>'
@@ -107,7 +112,8 @@ UPDATE photos
 
 ## Open Items
 
-- Phase 2: **shipped**. Draft fires on explicit "Draft log" button tap (not automatic — per API cost rules).
-- Phase 3a: **shipped**. AI draft assist on both PM form (LogsTab) and sub form (SubJobView). User types a quick note, taps "Generate Draft", fields are prefilled. Manual entry path unchanged.
-- Phase 3b: decide whether photo curation is a separate modal or inline in the `LogsTab` review surface. Approve button stamps `status='approved'`, `approved_at`, `approved_by_id`.
-- Phase 4: decide whether the client view is a new `logs` tab in `ClientPortal` or a section within an existing tab.
+- Phase 1: **shipped**. `client_message` column added; arc doc rewritten to corrected design.
+- Phase 2: rework `ai-daily-log-draft` edge fn — new prompt, new output field (`client_message`), schedule context as input.
+- Phase 3: replace current 7-field form with one-box capture in LogsTab (PM) and SubJobView (sub). Remove structured field inputs from both UI surfaces. AI draft assist box also superseded — remove it.
+- Phase 4: PM review + Send screen design — standalone modal or inline in LogsTab? Decide before building.
+- Phase 5: client view in ClientPortal — new `logs` tab or section within existing tab? Decide before building.
