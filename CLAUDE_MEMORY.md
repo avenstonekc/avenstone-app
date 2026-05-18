@@ -1347,3 +1347,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commits: 94c171e (edge fn), adb2349 (helper).
 - Trade-aware: platform-level edge function, tenant- and trade-agnostic. ✓
 - Open: Slice 3 (rebuild capture UI — one box + photos, remove 7-field form + AI draft assist from LogsTab and SubJobView). Slice 4 (PM review + Send screen). Slice 5 (client view + notification).
+
+[LOG — 2026-05-17 — Daily-log arc Slice 3: capture modal rebuilt — one-box + photos]
+- Action: Replaced 7-field form + AI Draft Assist box in both PM (LogsTab) and sub (SubJobView) capture modals with a single "What happened today" textarea + photo staging section.
+- Submit sequence (one user action): (1) sbSubmitDailyLog with work_completed = capture note, all legacy columns null → get logId. (2) sbPhoto for each staged file with related_entity_type='daily_log', related_entity_id=logId. (3) sbGenerateDailyLogDraft → sbSaveDailyLogClientMessage to patch client_message back — failure is soft, log stays valid with client_message null.
+- New helper: sbSaveDailyLogClientMessage(logId, clientMessage) — single UPDATE on daily_logs.
+- Log list updated in both components: shows capture note (work_completed) + client_message in a "Client Update" block (cream background). Draft/Sent badge from status field.
+- WEATHER_OPTS_KEYS constant removed from SubJobView. logForm state removed from both. logErr state added to SubJobView (was missing). capturePhotoRef added alongside existing completePhotoRef in SubJobView.
+- Files: LogsTab.jsx, SubJobView.jsx, supabase.js (sbSaveDailyLogClientMessage), DAILY_LOG_ARC.md.
+- Builds: both ✓ (580ms, 576ms). Commits: da8edd6 (LogsTab + helper), 8bf70c5 (SubJobView).
+- Trade-aware: platform UI, tenant- and trade-agnostic. ✓
+- Open: Slice 4 (PM review + Send screen — shows capture note + photos + editable client_message, Send stamps approved/sent + notifies client). Slice 5 (client view in ClientPortal).

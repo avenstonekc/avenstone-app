@@ -31,7 +31,7 @@ Field capture (sub or PM)
 |-------|-------|--------|
 | 1 — Schema reset | Add `client_message TEXT` to `daily_logs`; rewrite arc doc | **Shipped** |
 | 2 — AI edge-function rework | Rework `ai-daily-log-draft` to generate a client-facing update message from `work_completed` + job schedule instead of filling internal log fields | **Shipped** |
-| 3 — Capture rebuild | Replace current 7-field form with one-box capture (`work_completed`) + photos; remove structured fields (weather, crew_count, hours_worked, materials_used, issues) from UI | Planned |
+| 3 — Capture rebuild | Replace current 7-field form with one-box capture (`work_completed`) + photos; remove structured fields (weather, crew_count, hours_worked, materials_used, issues) from UI | **Shipped** |
 | 4 — PM review + Send screen | One screen: capture note + photos, editable `client_message`, photo curation, "Send to Client" button — sets `status='approved'`, `approved_at`, `approved_by_id`, fires client notification | Planned |
 | 5 — Client view + notification | Client sees sent message + curated photos; gets notified on send | Planned |
 
@@ -50,7 +50,7 @@ Field capture (sub or PM)
 
 - `client_message TEXT` column on `daily_logs` (Phase 1 — **done**): holds the AI-drafted client-facing update
 - `ai-daily-log-draft` rework (Phase 2 — **done**): input `{ job_id, raw_note }` → loads current phase + upcoming schedule_items (next 30 days, limit 5) → outputs `{ ok, client_message }` (warm prose paragraph(s) covering what happened + what's next)
-- One-box capture UI (Phase 3): replaces the 7-field form; just `work_completed` + photo upload
+- One-box capture UI (Phase 3 — **done**): replaces the 7-field form in both LogsTab (PM) and SubJobView (sub); just `work_completed` textarea + photo staging; submit creates draft log → attaches photos (`related_entity_type='daily_log'`) → generates `client_message` (soft failure)
 - PM review + Send screen (Phase 4): message editor + photo curation + Send button
 - Client notification on send (Phase 4): fires `sbNotifyUser` / push to client
 - Client daily log view in `ClientPortal` (Phase 5): shows sent message + curated photos; filters `status = 'approved'` only
@@ -114,6 +114,6 @@ UPDATE photos
 
 - Phase 1: **shipped**. `client_message` column added; arc doc rewritten to corrected design.
 - Phase 2: **shipped**. `ai-daily-log-draft` reworked — input `{ job_id, raw_note }`, loads current phase + upcoming schedule items, outputs `{ ok, client_message }`. `sbGenerateDailyLogDraft` helper updated to return `data: { client_message }`. Haiku, max_tokens 512.
-- Phase 3: replace current 7-field form with one-box capture in LogsTab (PM) and SubJobView (sub). Remove structured field inputs from both UI surfaces. AI draft assist box also superseded — remove it.
+- Phase 3: **shipped**. One-box capture rebuilt in both LogsTab and SubJobView. 7-field form + AI Draft Assist removed. Submit sequence: create draft → attach photos → generate `client_message`. Legacy columns retained in DB, unused in UI.
 - Phase 4: PM review + Send screen design — standalone modal or inline in LogsTab? Decide before building.
 - Phase 5: client view in ClientPortal — new `logs` tab or section within existing tab? Decide before building.
