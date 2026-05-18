@@ -1275,3 +1275,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: supabase/functions/ai-daily-log-draft/index.ts, avenstone-vite/src/lib/supabase.js, DAILY_LOG_ARC.md
 - Trade-aware: platform-level, tenant- and trade-agnostic.
 - Open: Phase 3 (PM approval + photo curation UI in LogsTab), Phase 4 (client-facing log view).
+
+[LOG — 2026-05-17 — Prompt caching: 3 edge functions updated]
+- Action: Audited 9 AI edge functions for cacheability; added cache_control: ephemeral to 3 qualifying functions.
+- QUALIFIED (cache added): ai-companion (last tool: escalate_to_owner), ai-master-agent (last tool: add_knowledge), ai-estimator (system string → single-block array with cache_control).
+- SKIPPED: ai-field-agent (one-shot — FAIL c); ai-home-companion (Haiku, stable prefix ~557 tok < 2048 — FAIL b); ai-project-manager (one-shot + system ~329 tok < 1024 — FAIL b+c); ai-consultation-gap-analyzer (no system field, one-shot — FAIL b+c); process-transcript (Haiku, both modes' stable portions < 2048 — FAIL b); ai-intake (file doesn't exist).
+- Breakpoint rule: cache_control on the LAST tool definition (tools array present) or the single system block (no tools). Breakpoint sits after system+tools, before conversation/message history. History window deliberately uncached — slides every turn.
+- Commits: 1f807c9 (ai-companion), 6fb4e87 (ai-master-agent), d7d407e (ai-estimator), 7e751ac (CLAUDE.md).
+- Trade-aware: cache_control is transport-layer config, not tenant/trade-specific. Breakpoints on tools, which are platform-level. ✓
+- Open: real savings only materialize at multi-tenant scale with many concurrent users hitting the same cached prefixes. Single-tenant today = agentic-loop benefits (3-5 reads per write) + estimating chat session hits.
