@@ -1378,3 +1378,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ 582ms. Commits: 4866955 (RLS), 81e2795 (helpers + ClientPortal).
 - Trade-aware: platform-level. ✓
 - DAILY_LOG_ARC.md: Phase 5 marked Shipped. All 5 phases complete.
+
+[LOG — 2026-05-18 — Bug fix: daily-log client delivery broken — missing UPDATE RLS policies]
+- Root cause: daily_logs had no UPDATE RLS policy and photos had no UPDATE RLS policy. PostgREST silent-deny behaviour: when RLS blocks an UPDATE, Supabase returns success with 0 rows affected and no error. sbSendDailyLog and sbSaveDailyLogClientMessage both returned ok:true on every call even though nothing was written. Status never reached 'approved', client_message stayed null, Photos tab was silently failing the same way (sbSetPhotoClientVisible). All 4 test daily_log rows were permanently stuck at status='draft'.
+- Fix — migration 20260518100000: added "logs: staff update" PERMISSIVE UPDATE on daily_logs (mirrors INSERT policy: can_access_job + owner/pm/sub). Added "photos: owner/pm update" PERMISSIVE UPDATE on photos (mirrors DELETE policy: can_access_job + owner/pm). Both verified via pg_policies.
+- Fix — helper hardening: sbSendDailyLog and sbSaveDailyLogClientMessage both now add .select('id').single() after the UPDATE. If data is null (0 rows affected), they return ok:false with explicit error instead of false success. This makes RLS failures visible in the UI error banner.
+- Lesson — PostgREST silent-deny: any UPDATE/DELETE helper that only checks the error field can falsely return ok:true when RLS blocks it. Always add .select('id').single() (or check count) after writes that must affect a known row. A 0-row UPDATE is almost always a bug.
+- Build: ✓ 589ms. Commits: 25647fb (migration), 0159543 (helper hardening).
+- Files: supabase/migrations/20260518100000_daily_logs_photos_update_rls.sql, avenstone-vite/src/lib/supabase.js.
+- Trade-aware: platform tables, tenant- and trade-agnostic. ✓
