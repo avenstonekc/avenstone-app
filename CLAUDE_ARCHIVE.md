@@ -1669,3 +1669,92 @@ Arc shipped Phases 1–6 across 2026-05-05 to 06. Key deliverables: schema found
 **RED count:** 8. **YELLOW count:** 5.
 
 **Phase 2 work surface (critical before voice ships):** pick host + lock roster, wire each tool through canonical helper, normalize helper return shapes, flip model config, refresh stale status labels in describeAction.
+
+
+---
+
+## sub-engagement-arc · 2026-05-05–06 · Complete sub engagement system replacing ITB/quote_requests/job_subs
+
+**Phases 1a–3 shipped plus polish slices.** Full replacement of `itb_invitees`, `quote_requests`, `job_subs`, `bid_responses` (legacy), `bids`, `sub_pricing_changes`, `invitations_to_bid` view with `job_sub_engagements` + `engagement_bids` schema.
+
+**Phase 1a (schema):** `job_sub_engagements` + `engagement_bids` tables with full RLS. `schedule_items.engagement_id` audit FK. State machine CHECK constraint; partial unique index `idx_one_live_engagement` (one live per job/sub/trade). Table named `engagement_bids` not `bid_responses` — collision with legacy table (IF NOT EXISTS would have silently skipped).
+
+**Phase 1b (helpers):** `sbCreateEngagement`, `sbLoadEngagementsForJob/ForSub`, `sbLoadEngagementByIds`. 23505 mapped to "already engaged" error.
+
+**Phase 1c (state machine):** `sbTransitionEngagement` with `ENGAGEMENT_TRANSITIONS` legal-transitions map, optimistic concurrency. Wrappers: sbDeclineBid, sbWithdrawEngagement, sbRemoveEngagement, sbCompleteEngagement.
+
+**Phase 1d (sbAcceptBid):** transitions engagement to `active`, stamps accepted bid, auto-drafts schedule_items from bid line_items (placeholder if empty), fires sub notification. Partial-failure tolerant.
+
+**Phase 1e (sub-side edge fns):** `submit-bid-response` + `view-engagement`. Sub JWT via `sb.auth.getSession()` — canonical pattern for user-scoped edge fn calls. `view-engagement` stamps `first_viewed_at` server-side.
+
+**Phase 2a–2e (UI wiring):** `AddSubToJobModal` wired into SubDir + SubsTab. `EngagementDetailModal` with bid submission (lump-sum v1, line items Phase 2d-3). State groups: Awaiting bid / Active / Completed / Off the job. Legacy "Bid Invitations" tab retired. Quote Request + Assigned Subs sections retired. 6 live `job_subs` rows migrated (status=active, gc_drafted, trade=general, $0 placeholder bids). `EngagementActionModal` replaces window.confirm/prompt for all 5 actions.
+
+**Phase 3 (schema cleanup):** DROPped: `invitations_to_bid` view, `itb_invitees`, `quote_requests`, `bid_responses` (legacy), `bids`, `sub_pricing_changes`, `job_subs`. Replaced 3 RLS policies (job_messages_read, job_messages_insert, schedule_items_sub_select) to reference `job_sub_engagements`. NOT IN (completed,declined,withdrawn,removed) scope so subs have message + schedule access during invited/bid_submitted states.
+
+**Polish slices:** Bid line items (JSONB array in EngagementDetailModal + submit-bid-response, computed line_total). Bid availability fields (`engagement_bids.earliest_start_date` + `availability_notes` — required at submission, nullable in DB for legacy rows). Smoke test: `tests/engagement-smoke.spec.js`, 6/6 passing. submit-bid-response 500→409 on concurrent double-submit (detect Postgres 23505 SQLSTATE).
+
+**Role-guard fixes:** `send-invite` preserved staff roles instead of overwriting to sub. `send-client-link` now hard-errors 409 if target has staff role.
+
+**Schema reality (confirmed):** `job_sub_engagements`, `engagement_bids`, `engagement_bids.earliest_start_date`, `engagement_bids.availability_notes`, `schedule_items.engagement_id` all EXIST. All 7 legacy tables/views DROPPED.
+
+---
+
+## voice-agent-phase2-hardening · 2026-05-08 · Voice Agent Phase 2 tool hardening + receipt-from-photo + smoke repairs
+
+**v1 verb roster (note, CO, payment, advance_phase) hardened on both ai-field-agent and ai-master-agent.**
+
+**Helper normalization (commit 5f091fb):** sbPhoto, sbCreateTransaction, sbAdvancePhase normalized to `{ ok, error, data }`. 8 caller sites updated. New wrappers: `sbCreateNote` (insert + sbNotify) and `sbCreateChangeOrder` (auto co_number + sbNotify).
+
+**Agent updates:** Field model flipped haiku→sonnet, max_tokens 512→2048, history -8→-20. CONFIRM_TOOLS whitelist on Field (log_payment, log_receipt, submit_change_order). Master max_tokens 4096→2048, maxIterations 6→3. Master gains Confirm card (pending_action) for money verbs. Master create_phase bug fixed (wrote job_phases — wrong table; now advances jobs.status via sbAdvancePhase). Master add_note fixed (was writing nonexistent author_id; fixed to full_name as author).
+
+**Receipt-from-photo (2026-05-08):** HEIC→JPEG via heic2any (iOS exports HEIC, Anthropic rejects it), canvas resize 1024px. Agent extracts vendor + amount + PO (YY-NNN) from image, calls get_jobs to match PO to job, surfaces Confirm card with matched address. On confirm: inserts job_transactions + uploads to `job-receipts` private bucket, stamps `receipt_url`. Renders in TransactionModal Receipt slot.
+
+**Image stash pattern (architecture):** Model cannot forward base64 bytes through tool_use input — vision blocks reach model for reasoning only; bytes are not copyable into structured output. `extractLatestUserImage` scans backward for most recent user image block; injects bytes into `pending_action.input` server-side in CONFIRM_TOOLS breakout. Client round-trips ~200KB JSON payload. Pre-upload-on-breakout would orphan files on cancel. Generalizable if a second confirm verb needs user-uploaded artifact.
+
+**Smoke test repairs:** CO column `submitted_by_id` → `submitted_by` (migration committed but never applied). get_jobs silent empty — `start_date` dropped from select (PostgREST 42703 was swallowed by `{ data }` destructure without error check). log_receipt type `expense` → `material_purchase`.
+
+**UX cleanup (2026-05-09):** No redundant text-confirm before Confirm card. `fmtMoney` helper in both agents (2 decimal places). `f$` in utils.jsx updated. Master diagnostic reporting style: OBSERVED/INFERRED separation, confidence labels (VERIFIED/OBSERVED/INFERRED/UNKNOWN), recs as questions, plain prose, flag missing context, default to underconfidence.
+
+---
+
+## master-agent-v1-and-v2 · 2026-05-09 · Master Agent v1 (queue+chips) → v1.1 (smart parsing) → v2 (chat-first)
+
+**v1 (15 commits):** Ring buffer bug context (bugContext.js). ChipPicker + JobChipPicker. `pending_tasks` queue (migration 20260509004927). Bug reports infra (migration + submit-bug-report edge fn with paste-ready Claude prompt block in email). html2canvas screenshot at tile-tap. BugReportsScr + PendingTaskOwnerScr. is_platform_owner flag on profiles. 5 verb chip flows. Bug submission bypasses ai-master-agent — captures html2canvas + getSnapshot at tile-tap, posts to submit-bug-report directly.
+
+**Smoke test fixes:** add_todo was missing from ai-master-agent (todo intents routed to add_note → job_notes). Fix: add_todo tool + disambiguation rule (todo = action item vs note = passive context). PendingTaskList onResume missing `setFlowActive(true)` — Resume re-rendered QuickCapture; sbCreatePendingTask called twice creating duplicate.
+
+**po_number lifecycle fix (migration 20260509130000):** trigger `set_job_po_number` issued PO numbers for ALL inserts including leads; `COUNT(*)+1` collided after any delete. Fix: status-aware trigger (skip lead/proposal → NULL); MAX-based numbering (`COALESCE(MAX(SUBSTRING(po_number FROM 4)::INT), 0) + 1`); partial unique index `WHERE po_number IS NOT NULL`.
+
+**ai_knowledge.created_by migration (20260509120000):** Table was created out-of-band with no CREATE migration. 4 writers expected `created_by` column. Added UUID FK → profiles ON DELETE SET NULL. 3rd migration-drift incident in 2 days — triggered building drift detector.
+
+**v1.1 smart parsing:** `labelParser.js` — pure regex+keyword, no LLM. Seeds per-field state from quick-label on Resume. Returns null for unfindable fields. Confirm card with per-field Edit. Enter key on all chip flow inputs.
+
+**v2 chat-first (the important one):** 6 files deleted (~1900 LOC): PendingTaskOwnerScr, PendingTaskList, ChipPicker, JobChipPicker, pendingTasks.js, labelParser.js. MasterAgent.jsx 1258→968 LOC. `pending_tasks` table dropped (migration 20260509180000). CONFIRM_TOOLS extended 3→5 verbs (add_todo, create_job). Chat is the input surface; tiles are TILE_PREFIXES starter prompts; agent infers verb+fields from freeform text; Confirm card is the only commit point. `amountToWords` ported from deleted labelParser into ai-master-agent. Money verbs render "$750.00 (seven hundred fifty dollars)" — misheard digit reads obviously wrong. Trade-off: every intent costs one Sonnet call. Alternative was 5 chip-flow components + queue table + 302-line parser + smart-Resume contract.
+
+---
+
+## drift-cleanup-arc · 2026-05-10–13 · Schema-vs-code drift detector + all 15 findings closed + doc cleanup
+
+**Drift detector (2026-05-10):** `tools/audit_schema_vs_code.js` + `npm run audit:schema`. Parses every `.insert/.update/.upsert` off `.from(<literal>)` in src/ + edge fns. Queries information_schema in one round-trip. Reports columns code writes that DB does not have. Exit 0=clean, 1=drift, 2=PAT error. First run: 15 drift findings, 3 missing tables, 34 skipped.
+
+**Detector Phase 1 (2026-05-12):** `keysFromMapCall` decodes `.map()/.flatMap()` callbacks. Skipped 34→15. **Phase 2 (2026-05-13):** ObjectPattern-rest + ConditionalExpression. Skipped 15→9. Final floor: 8x identifier→param, 1x dynamic .from() (opaque by design).
+
+**Findings closed (15→0):**
+- assign_sub removed from ai-master-agent (wrote to dropped job_subs). get_job_details repointed to job_sub_engagements. Missing tables 3→2.
+- send-bid-invite edge fn deleted (wrote to dropped itb_invitees). BID_INVITE_URL removed from supabase.js. Missing tables 2→1.
+- staff_messages migration applied (committed 2026-04-15, never applied — all message sends were silent captureFailedIntent for a month). tenant_id TEXT corrected to UUID before apply. Missing tables 1→0.
+- change_orders.title: dropped from ai-companion tool schema (solo drift site). Bonus: co.title in system prompt was rendering "N/A" for every CO the LLM saw — fixed to co.description.
+- contacts (3 cols): full_name → name (rename), project_type dropped, description dropped.
+- job_estimates Shape C: 5 cols added (session_id, created_by, estimate_data, total, source). ConsultationTab .insert→.upsert(onConflict:job_id). oh_shit_moments snapshot dropped from code.
+- job_notes tool schema: note_type dropped from ai-companion + ai-home-companion tool declarations.
+- todos in ai-pm-nightly: 5 col renames (target_user_id→assigned_to_user_id, severity→priority, source_table→related_entity_type, source_id→related_entity_id, body→notes). 2 NOT NULL backfills. TodoCard: todo.severity→priority for accent color. ai-pm-nightly is DISABLED — fix is pre-emptive correctness.
+
+**Other fixes in this arc:**
+- submit-bid-response 500→409 on concurrent double-submit: detect Postgres 23505, return canonical { ok: false, error } at 409.
+- migration reconciliation: engagement_bids_line_items_default.sql was applied-but-uncommitted; committed standalone.
+- get_dashboard overdue_phases: handler queried `schedule_phases` (phantom table). Repointed to schedule_items with scheduled_end_date < today AND status NOT IN (complete, cancelled).
+- Read-side drift detector (2026-05-17): added .select() projection checking. Findings closed: change_orders.title in select projections, jobs.start_date in ai-home-companion select (dropped), company_profiles.slug in get-contractor-profile (column never existed — dead slug routing branch deleted).
+
+**Locked principles added:** #9 (ai_error_logs 30d last_seen filter). #10 (silent-failure ranking — audit code before queueing fix slice).
+
+**Doc cleanup arc (2026-05-13):** Deleted 5 dead MDs. Archived INVOICING_ARC.md + VOICE_AGENT_AUDIT.md (redirect stubs). OPUS_PROMPT_RULES.md → OPUS_RULES.md. Root MD count: 16→10.
