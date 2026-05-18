@@ -1394,3 +1394,10 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Context: The notification → DB trigger → notify-email → Resend pipeline was already fully wired. daily_log_sent was the only missing entry, causing client-update emails to fall through to the generic "Avenstone notification" subject fallback.
 - Files: supabase/functions/notify-email/index.ts.
 - Commit: a905680. Deploy: GitHub Actions auto-deploy on push.
+
+[LOG — 2026-05-18 — fix: notifications_type_check missing daily_log_sent]
+- Root cause: notifications.type has a CHECK constraint (notifications_type_check) listing all allowed values. daily_log_submitted was in the list but daily_log_sent was not — also missing: schedule_item_created, schedule_item_changed, bid_accepted (all emitted by supabase.js sbNotifyUser calls but silently rejected). Every sbNotifyUser call for these types was returning HTTP 400, which sbNotifyUser swallowed via catch(() => {}).
+- Fix: migration 20260518110000 — dropped and recreated notifications_type_check with all current type values including daily_log_sent and the three others.
+- Lesson: whenever adding a new notification type to supabase.js, also add it to notifications_type_check. The constraint is in supabase/migrations/20260518110000_notifications_type_daily_log_sent.sql — update this file or write a new migration.
+- Smoke test: INSERT with type='daily_log_sent' succeeds, row created.
+- Commit: 57ccaab. No app code changed.
