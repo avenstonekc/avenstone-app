@@ -1244,3 +1244,10 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: TransactionModal.jsx, InvoiceComposerModal.jsx, DrawModal.jsx, LineItemModal.jsx, ClientPortal.jsx, MeasurePanel.jsx, AmbientPanel.jsx
 - Trade-aware: all platform UI, tenant- and trade-agnostic.
 - Open: on-device verification of all 4 commits after next Codemagic build → TestFlight. Slice 2 unaudited items (GapResolutionModal.jsx, ClientInvoicesTab.jsx) still out of scope.
+
+[LOG — 2026-05-17 — FieldTab: split Notes & Photos into separate sub-tabs]
+- Action: Split "Notes & Photos" sub-tab into two discrete sub-tabs. FieldTab now has 4 sub-tabs: Notes, Photos, Daily Logs, Materials.
+- Files: FieldTab.jsx (SUB_TABS array + render switch)
+- Decision: NotesTab and PhotosTab already existed as separate named exports from NotesPhotosTab.jsx — zero new component work. Render switch replaced the shared <> fragment with one line per sub-tab.
+- Trade-aware: platform UI, tenant- and trade-agnostic.
+- Build: passed (✓ built in 744ms).

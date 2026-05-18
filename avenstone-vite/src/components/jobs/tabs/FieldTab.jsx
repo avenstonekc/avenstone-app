@@ -4,7 +4,8 @@ import LogsTab from './LogsTab';
 import MaterialsTab from './MaterialsTab';
 
 const SUB_TABS = [
-  { id: 'notes',     lb: 'Notes & Photos' },
+  { id: 'notes',     lb: 'Notes' },
+  { id: 'photos',    lb: 'Photos' },
   { id: 'logs',      lb: 'Daily Logs' },
   { id: 'materials', lb: 'Materials' },
 ];
@@ -26,12 +27,8 @@ export default function FieldTab({ job, upd, profile }) {
         ))}
       </div>
 
-      {sub === 'notes' && (
-        <>
-          <NotesTab job={job} upd={upd} profile={profile} />
-          <PhotosTab job={job} upd={upd} />
-        </>
-      )}
+      {sub === 'notes'     && <NotesTab job={job} upd={upd} profile={profile} />}
+      {sub === 'photos'    && <PhotosTab job={job} upd={upd} />}
       {sub === 'logs'      && <LogsTab job={job} />}
       {sub === 'materials' && <MaterialsTab job={job} profile={profile} />}
     </div>
