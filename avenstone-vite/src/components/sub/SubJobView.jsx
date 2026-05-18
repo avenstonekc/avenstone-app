@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID, sbUpdateScheduleItem, sbCountPhotosForEntity, sbLoadPhotosForEntity } from '../../lib/supabase';
+import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbGenerateDailyLogDraft, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID, sbUpdateScheduleItem, sbCountPhotosForEntity, sbLoadPhotosForEntity } from '../../lib/supabase';
 import { Ic, sc, sl, fD, fDT, f$ } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 
@@ -33,6 +33,9 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const [showLogForm, setShowLogForm] = useState(false);
   const [logForm, setLogForm] = useState({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
   const [logSaving, setLogSaving] = useState(false);
+  const [rawNote, setRawNote] = useState('');
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftErr, setDraftErr] = useState('');
   const [schedItems, setSchedItems] = useState([]);
   const [schedLoaded, setSchedLoaded] = useState(false);
   const [docs, setDocs] = useState([]);
@@ -102,6 +105,18 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
     if (staffMsgs.length && staffMsgsEndRef.current) staffMsgsEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [staffMsgs]);
 
+  const generateDraft = async () => {
+    if (!rawNote.trim()) return;
+    setDraftLoading(true); setDraftErr('');
+    const res = await sbGenerateDailyLogDraft(job.id, rawNote.trim());
+    if (res.ok) {
+      setLogForm(p => ({ ...p, work_completed: res.data.work_completed || p.work_completed, materials_used: res.data.materials_used || p.materials_used, issues: res.data.issues || p.issues }));
+    } else {
+      setDraftErr(res.error || t('Draft generation failed — fill in manually.', lang));
+    }
+    setDraftLoading(false);
+  };
+
   const submitLog = async () => {
     setLogSaving(true);
     const d = await sbSubmitDailyLog({ job_id: job.id, log_date: logForm.log_date, weather: logForm.weather, crew_count: logForm.crew_count ? Number(logForm.crew_count) : null, hours_worked: logForm.hours_worked ? Number(logForm.hours_worked) : null, work_completed: logForm.work_completed || null, materials_used: logForm.materials_used || null, issues: logForm.issues || null });
@@ -110,6 +125,7 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
       sbNotify('daily_log_submitted', `Daily log — ${job.address}`, `${logForm.log_date}: ${(logForm.work_completed || '').slice(0, 80)}`, job.id, AV_USER_ID);
       setShowLogForm(false);
       setLogForm({ log_date: new Date().toISOString().slice(0, 10), weather: 'Clear', crew_count: '', hours_worked: '', work_completed: '', materials_used: '', issues: '' });
+      setRawNote(''); setDraftErr('');
     }
     setLogSaving(false);
   };
@@ -220,6 +236,12 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
             <button className="btn btn-navy" style={{ fontSize: 12 }} onClick={() => setShowLogForm(true)}>{t('+ Add Log', lang)}</button>
           </div>
           {showLogForm && <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 16 }}>
+            <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>✦ {t('AI Draft Assist', lang)}</div>
+              <textarea className="finp fta" rows={2} value={rawNote} onChange={e => { setRawNote(e.target.value); setDraftErr(''); }} placeholder={t('Quick note — what got done today? AI will fill in the form below…', lang)} style={{ marginBottom: 8 }} />
+              {draftErr && <div style={{ fontSize: 12, color: '#DC2626', marginBottom: 8 }}>{draftErr}</div>}
+              <button className="btn btn-gold" style={{ width: '100%', fontSize: 12 }} onClick={generateDraft} disabled={draftLoading || !rawNote.trim()}>{draftLoading ? t('Generating…', lang) : `✦ ${t('Generate Draft', lang)}`}</button>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="fg"><label className="flbl">{t('Date', lang)}</label><input className="finp" type="date" value={logForm.log_date} onChange={e => setLogForm(p => ({ ...p, log_date: e.target.value }))} /></div>
               <div className="fg"><label className="flbl">{t('Weather', lang)}</label><select className="finp" value={logForm.weather} onChange={e => setLogForm(p => ({ ...p, weather: e.target.value }))}>{WEATHER_OPTS_KEYS.map(w => <option key={w} value={w}>{t(w, lang)}</option>)}</select></div>
@@ -230,7 +252,7 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
             <div className="fg"><label className="flbl">{t('Materials Used', lang)}</label><textarea className="finp fta" rows={2} value={logForm.materials_used} onChange={e => setLogForm(p => ({ ...p, materials_used: e.target.value }))} placeholder={t('List materials used...', lang)} /></div>
             <div className="fg"><label className="flbl">{t('Issues / Delays', lang)}</label><textarea className="finp fta" rows={2} value={logForm.issues} onChange={e => setLogForm(p => ({ ...p, issues: e.target.value }))} placeholder={t('Any issues or delays...', lang)} /></div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowLogForm(false)}>{t('Cancel', lang)}</button>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setShowLogForm(false); setRawNote(''); setDraftErr(''); }}>{t('Cancel', lang)}</button>
               <button className="btn btn-navy" style={{ flex: 1 }} onClick={submitLog} disabled={logSaving}>{logSaving ? t('Saving...', lang) : t('Submit Log', lang)}</button>
             </div>
           </div>}
