@@ -210,13 +210,21 @@ npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvj
 **Manual redeploy:** Vercel dashboard → avenstone-app → Deployments → click the failed one → "Redeploy"
 
 ### SQL Migrations
-Apply via Supabase Management API:
+Apply via `npm run migrate` from `avenstone-vite/`:
 ```bash
-curl -X POST "https://api.supabase.com/v1/projects/cbfftukmhqvvjlrlnltk/database/query" \
-  -H "Authorization: Bearer <PAT>" \
-  -H "Content-Type: application/json" \
-  -d "{\"query\": \"<sql>\"}"
+npm run migrate ../supabase/migrations/<filename>.sql
 ```
+This is a single atomic command: applies the SQL, auto-derives expected objects
+(CREATE TABLE / ADD COLUMN / CREATE INDEX / CREATE POLICY) and verifies each is
+present in the live DB, then issues `NOTIFY pgrst, 'reload schema'`. Exits non-zero
+if apply fails or any expected object is absent — green exit is proof of landing.
+
+For exotic SQL with no auto-derivable objects, pass `--verify` explicitly:
+```bash
+npm run migrate path/to/migration.sql --verify "table.column,index:idx_name"
+```
+
+Confirm the PAT is accessible first (one-time): `npm run migrate --selftest`
 
 ---
 
@@ -616,6 +624,10 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 
 - `tools/audit_schema_vs_code.js` — schema-vs-code drift detector. Run via `npm run audit:schema` from `avenstone-vite/`. Parses `.insert/.update/.upsert` call sites (with scope-aware resolution for `Identifier` args and `arr.forEach` allowlist patterns), queries `information_schema` for the referenced tables, reports columns the code writes that the DB doesn't have. Exit 0 = clean, 1 = drift found, 2 = parse/PAT/API error. Flags: `--strict` (potential issues also fail), `--table <name>`, `--json`. Use before writing a migration prompt.
 
+- `tools/apply_migration.js` — atomic apply + verify wrapper. Run via `npm run migrate <path>` from `avenstone-vite/`. Applies the SQL via Supabase Management API, auto-derives expected objects (CREATE TABLE / ADD COLUMN / CREATE INDEX / CREATE POLICY) and verifies each present in `information_schema` / `pg_policies` / `pg_indexes`, then reloads schema. Exit 0 = all objects confirmed, 1 = apply fail or missing object, 2 = usage/PAT error. Flags: `--verify <objects>` (explicit override), `--selftest` (no-write PAT + API smoke test), `--help`. PAT read from `C:/Users/Kalin/supabase-token.txt`. This is the canonical migration apply path — replace any curl-based apply with this.
+
+  **Optional:** a read-only Supabase MCP connector may be configured for ad-hoc DB inspection (e.g. checking a table schema mid-session without running a script). Read-only only — it does NOT replace `npm run migrate` for applies or `audit:schema` for drift detection. Revisit before onboarding a second tenant, as cross-tenant inspection access would need scoping.
+
 ---
 
 ## Common Task Patterns
@@ -627,7 +639,7 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 - **"wire it up"** — connect two existing pieces (button → Supabase call or edge function)
 - **"test it"** — run both Playwright suites and report results
 - **"deploy it"** — push to main, GitHub Actions handles functions, Vercel handles frontend
-- **"write a migration"** — every migration prompt closes with `information_schema` verification + `NOTIFY pgrst, 'reload schema'` + `pg_policies` check. Three incidents on 2026-05-02 established this is non-negotiable. Commit presence ≠ migration applied to live DB.
+- **"write a migration"** — write the SQL file, commit it, then apply with `npm run migrate path/to/migration.sql` (from `avenstone-vite/`). The tool applies, verifies every auto-derived object, and reloads schema in one command. Green exit = proof of landing. Commit presence ≠ applied; never declare shipped until the tool exits 0.
 
 ---
 
