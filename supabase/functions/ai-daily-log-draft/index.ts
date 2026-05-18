@@ -29,47 +29,61 @@ function logAIError(payload: {
   }).catch(() => {});
 }
 
-const SYSTEM_PROMPT = `You are a construction field documentation assistant. Turn a brief raw field note into a clean daily log entry.
+const SYSTEM_PROMPT = `You are writing a brief project update for a homeowner from their contractor.
 
-Return strict JSON with exactly these three fields:
-{
-  "work_completed": "client-readable prose describing the work completed today, written in past tense",
-  "materials_used": "concise description of materials installed or consumed, or empty string if none mentioned",
-  "issues": "any problems, delays, or blockers encountered, or empty string if none mentioned"
+Given a field note describing what happened on site today plus any upcoming scheduled work, write a warm, professional client-facing update message. Plain language — no construction jargon. Reassuring and clear.
+
+The message should:
+- Open by describing what was accomplished today (1–2 sentences)
+- If upcoming schedule info is provided, briefly mention what's coming next (1 sentence)
+- Sound like a friendly, professional contractor talking to their client — not a corporate press release
+- Be a short paragraph or two at most
+
+Return ONLY the message text. No subject line, no greeting, no signature, no markdown, no JSON. Just the message body.`;
+
+interface ScheduleItem {
+  title: string;
+  scheduled_date: string;
+  trade: string | null;
 }
-
-Rules:
-- work_completed is client-facing: professional, clear, past tense. Focus on what was accomplished.
-- Do NOT invent or guess weather, crew count, or hours worked — the PM fills those in manually.
-- Do NOT add information not present in the raw note.
-- Keep all fields concise: 1-3 sentences maximum.
-- Return only valid JSON. No markdown fences, no explanation.`;
 
 async function loadJobContext(
   sb: ReturnType<typeof createClient>,
   jobId: string
-): Promise<{ tenantId: string | null; phase: string | null }> {
+): Promise<{ tenantId: string | null; currentPhase: string | null; upcomingItems: ScheduleItem[] }> {
   const { data: job } = await sb
     .from("jobs")
     .select("tenant_id")
     .eq("id", jobId)
     .single();
 
-  if (!job) return { tenantId: null, phase: null };
+  if (!job) return { tenantId: null, currentPhase: null, upcomingItems: [] };
 
+  // Current phase
   const { data: phases } = await sb
     .from("job_phases")
     .select("phase_name, status")
     .eq("job_id", jobId)
     .order("created_at", { ascending: false });
 
-  let phase: string | null = null;
+  let currentPhase: string | null = null;
   if (phases?.length) {
     const inProgress = phases.find((p: { phase_name: string; status: string }) => p.status === "in_progress");
-    phase = inProgress?.phase_name ?? phases[0].phase_name;
+    currentPhase = inProgress?.phase_name ?? phases[0].phase_name;
   }
 
-  return { tenantId: job.tenant_id, phase };
+  // Upcoming schedule items (next 30 days)
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: items } = await sb
+    .from("schedule_items")
+    .select("title, scheduled_date, trade")
+    .eq("job_id", jobId)
+    .in("status", ["scheduled", "in_progress"])
+    .gte("scheduled_date", today)
+    .order("scheduled_date", { ascending: true })
+    .limit(5);
+
+  return { tenantId: job.tenant_id, currentPhase, upcomingItems: items || [] };
 }
 
 Deno.serve(async (req) => {
@@ -87,7 +101,7 @@ Deno.serve(async (req) => {
     }
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-    const { tenantId, phase } = await loadJobContext(sb, job_id);
+    const { tenantId, currentPhase, upcomingItems } = await loadJobContext(sb, job_id);
 
     if (!tenantId) {
       return new Response(JSON.stringify({ error: "Job not found" }), {
@@ -96,10 +110,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const userMessage = [
-      phase ? `Current job phase: ${phase}` : null,
-      `Raw field note: ${raw_note.trim()}`,
-    ].filter(Boolean).join("\n");
+    const contextLines: string[] = [];
+    if (currentPhase) contextLines.push(`Current phase: ${currentPhase}`);
+    contextLines.push(`What happened today (field note): ${raw_note.trim()}`);
+    if (upcomingItems.length) {
+      const upcoming = upcomingItems
+        .map((s: ScheduleItem) => `- ${s.title} (${s.scheduled_date})`)
+        .join("\n");
+      contextLines.push(`Upcoming scheduled work:\n${upcoming}`);
+    }
 
     const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -110,45 +129,33 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 1024,
+        max_tokens: 512,
         system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userMessage }],
+        messages: [{ role: "user", content: contextLines.join("\n\n") }],
       }),
     });
 
     const aiJson = await aiRes.json();
-    const rawText = aiJson.content?.[0]?.text ?? "{}";
+    const clientMessage = aiJson.content?.[0]?.text?.trim() ?? "";
 
-    let draft: { work_completed: string; materials_used: string; issues: string };
-    try {
-      const cleaned = rawText
-        .replace(/^```(?:json)?\s*\n?/, "")
-        .replace(/\n?```\s*$/, "")
-        .trim();
-      draft = JSON.parse(cleaned);
-    } catch {
+    if (!clientMessage) {
       logAIError({
         function_name: "ai-daily-log-draft",
-        error_type: "invalid_json",
-        error_message: "AI returned invalid JSON",
+        error_type: "empty_response",
+        error_message: "AI returned empty client message",
         user_input: raw_note,
-        ai_raw_response: rawText,
+        ai_raw_response: JSON.stringify(aiJson),
         job_id,
         tenant_id: tenantId,
       });
-      return new Response(JSON.stringify({ error: "AI returned invalid JSON", raw: rawText }), {
+      return new Response(JSON.stringify({ error: "AI returned empty response" }), {
         status: 500,
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
 
     return new Response(
-      JSON.stringify({
-        ok: true,
-        work_completed: draft.work_completed ?? "",
-        materials_used: draft.materials_used ?? "",
-        issues: draft.issues ?? "",
-      }),
+      JSON.stringify({ ok: true, client_message: clientMessage }),
       { headers: { ...CORS, "Content-Type": "application/json" } }
     );
   } catch (e) {
