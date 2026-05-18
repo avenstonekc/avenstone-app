@@ -333,6 +333,7 @@ const TOOLS = [
       },
       required: ["category", "content"],
     },
+    cache_control: { type: "ephemeral" },
   },
 ];
 
