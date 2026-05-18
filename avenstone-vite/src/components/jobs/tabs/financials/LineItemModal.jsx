@@ -3,7 +3,7 @@ import { sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadActiveTradeStri
 import { f$ } from '../../../../lib/utils';
 
 const lbl = { display: 'block', fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' };
-const inp = { width: '100%', padding: '8px 10px', border: '1px solid #E8E4DC', borderRadius: 6, fontSize: 14, fontFamily: 'DM Sans, sans-serif', color: '#0A1F44', background: '#fff', boxSizing: 'border-box' };
+const inp = { width: '100%', padding: '8px 10px', border: '1px solid #E8E4DC', borderRadius: 6, fontSize: 16, fontFamily: 'DM Sans, sans-serif', color: '#0A1F44', background: '#fff', boxSizing: 'border-box' };
 const fg = { marginBottom: 16 };
 
 export default function LineItemModal({ mode: initialMode, item = {}, job, onClose, onSaved }) {
