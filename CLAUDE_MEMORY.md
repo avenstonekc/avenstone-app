@@ -1401,3 +1401,8 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Lesson: whenever adding a new notification type to supabase.js, also add it to notifications_type_check. The constraint is in supabase/migrations/20260518110000_notifications_type_daily_log_sent.sql — update this file or write a new migration.
 - Smoke test: INSERT with type='daily_log_sent' succeeds, row created.
 - Commit: 57ccaab. No app code changed.
+
+[LOG — 2026-05-18 — fix(daily-log): list daily logs newest-first]
+- Action: Added created_at DESC as secondary sort to sbLoadDailyLogs and sbLoadClientUpdates. Primary sort log_date DESC was already correct; same-day logs had no tiebreaker so defaulted to insertion order (oldest-first within a day).
+- Neither LogsTab nor SubJobView re-sorts the result — display order comes entirely from the query.
+- Build: ✓ 588ms. Commit: f29e1a5.
