@@ -1334,3 +1334,16 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ built in 588ms.
 - Trade-aware: daily_logs is a platform table, tenant- and trade-agnostic. ✓
 - Open: Phase 2 (rework ai-daily-log-draft to output client_message using work_completed + schedule context). Phase 3 (one-box capture UI, remove 7-field form + AI draft assist from LogsTab and SubJobView). Phase 4 (PM review + Send screen). Phase 5 (client view + notification).
+
+[LOG — 2026-05-17 — Daily-log arc Slice 2: ai-daily-log-draft rework]
+- Action: Reworked ai-daily-log-draft edge function to generate a client-facing update message instead of internal log fields.
+- New contract: POST { job_id, raw_note } → { ok, client_message }. Loads current phase + upcoming schedule_items (next 30 days, status scheduled/in_progress, limit 5). Haiku, max_tokens 512 (plain prose — no JSON parsing needed).
+- Prompt: warm, professional, plain-language client update — what happened today + what's coming next. No jargon. Short paragraph(s).
+- Previous output shape { work_completed, materials_used, issues } fully replaced.
+- sbGenerateDailyLogDraft helper: return shape updated to { ok, error, data: { client_message } }.
+- Smoke test (job test-flow-001, framing note + schedule items): STATUS 200, coherent client_message covering what happened + schedule context ("Our subs are scheduled to start next Sunday..."). Clean output.
+- Build: ✓ 627ms. Deploy: GitHub Actions confirmed success.
+- Files: supabase/functions/ai-daily-log-draft/index.ts, avenstone-vite/src/lib/supabase.js, DAILY_LOG_ARC.md.
+- Commits: 94c171e (edge fn), adb2349 (helper).
+- Trade-aware: platform-level edge function, tenant- and trade-agnostic. ✓
+- Open: Slice 3 (rebuild capture UI — one box + photos, remove 7-field form + AI draft assist from LogsTab and SubJobView). Slice 4 (PM review + Send screen). Slice 5 (client view + notification).
