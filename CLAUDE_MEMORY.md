@@ -1213,3 +1213,14 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Files: MasterAgent.jsx, ScheduleTab.jsx, supabase.js, supabase/migrations/20260517130000_schedule_items_add_time.sql
 - Trade-aware: schedule_items and job_transactions are platform tables — changes are tenant- and trade-agnostic.
 - Open: on-device verification (all 4 fixes) after next Codemagic build → TestFlight.
+
+[LOG — 2026-05-17 — Receipt photo upload: 3 fixes]
+- Action: Audited and fixed the receipt/expense photo upload flow in TransactionModal. Three commits, all pushed to main. Build passed each.
+- Root cause: In uploadReceipt, DB write was guarded by `if (!isNew && tx.id)`. For new transactions, file uploaded to job-receipts storage, UI showed ✓ Attached, but receipt_url column was NULL — association lost on modal close. Edit mode worked correctly.
+- Commit 1 (cd1ed31): fix(transaction): added receipt_url: receiptUrl || null to the sbCreateTransaction payload. receipt_url TEXT column confirmed live in job_transactions (20260423_unified_financial_ledger.sql:50).
+- Commit 2 (e8644ae): fix(transaction): upload feedback — receipt box now shows "Uploading…" text while in-flight. Upload failures (previously fully silent) now call setErr with the error message.
+- Commit 3 (e4b8b05): feat(transaction): added sbGetReceiptUrl(path) helper to supabase.js (createSignedUrl on job-receipts, standard { ok, error, data } shape). View mode dead "📎 Receipt attached" text replaced with clickable "📎 View receipt" button (fetches fresh signed URL on click). Edit/create mode shows "View" link alongside "✓ Attached". FinancialsTab ledger rows show 📎 indicator on any row with receipt_url.
+- Orphan note: receipt files already in job-receipts bucket from past new-transaction uploads cannot be re-associated — receipt_url is NULL on those rows. Fix is forward-only.
+- Files: TransactionModal.jsx, supabase.js, FinancialsTab.jsx
+- Trade-aware: job_transactions and job-receipts bucket are platform-level, tenant- and trade-agnostic.
+- Open: on-device verification — attach receipt to NEW expense, save, reopen — receipt present and openable via View link.
