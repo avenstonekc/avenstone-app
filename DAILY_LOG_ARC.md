@@ -33,7 +33,7 @@ Field capture (sub or PM)
 | 2 — AI edge-function rework | Rework `ai-daily-log-draft` to generate a client-facing update message from `work_completed` + job schedule instead of filling internal log fields | **Shipped** |
 | 3 — Capture rebuild | Replace current 7-field form with one-box capture (`work_completed`) + photos; remove structured fields (weather, crew_count, hours_worked, materials_used, issues) from UI | **Shipped** |
 | 4 — PM review + Send screen | One screen: capture note + photos, editable `client_message`, photo curation, "Send to Client" button — sets `status='approved'`, `approved_at`, `approved_by_id`, fires client notification | **Shipped** |
-| 5 — Client view + notification | Client sees sent message + curated photos; gets notified on send | Planned |
+| 5 — Client view + notification | Client sees sent message + curated photos; gets notified on send | **Shipped** |
 
 ---
 
@@ -116,4 +116,4 @@ UPDATE photos
 - Phase 2: **shipped**. `ai-daily-log-draft` reworked — input `{ job_id, raw_note }`, loads current phase + upcoming schedule items, outputs `{ ok, client_message }`. `sbGenerateDailyLogDraft` helper updated to return `data: { client_message }`. Haiku, max_tokens 512.
 - Phase 3: **shipped**. One-box capture rebuilt in both LogsTab and SubJobView. 7-field form + AI Draft Assist removed. Submit sequence: create draft → attach photos → generate `client_message`. Legacy columns retained in DB, unused in UI.
 - Phase 4: **shipped**. Review modal in LogsTab: field note, photo curation, editable client message, Send to Client. `sbSendDailyLog` stamps approved + notifies client. `photos.client_visible` column live.
-- Phase 5: client view in ClientPortal — new `logs` tab or section within existing tab? Decide before building.
+- Phase 5: **shipped**. `Updates` tab added to ClientPortal (second after Overview). `sbLoadClientUpdates` loads approved logs newest-first with `client_visible=true` photos. Photos tab now sources from same gated query. RESTRICTIVE RLS policy on `daily_logs` gates clients to `status='approved'` rows only. Client notified on Send via `sbSendDailyLog` → `sbNotifyUser`.

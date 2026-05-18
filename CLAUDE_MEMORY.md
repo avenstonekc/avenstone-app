@@ -1368,3 +1368,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ 606ms. Commits: 1db188f (migrations), 1084ff4 (helpers), f83661b (LogsTab).
 - Trade-aware: platform-level, tenant- and trade-agnostic. ✓
 - Open: Slice 5 (client view in ClientPortal — shows sent logs WHERE status='approved' with curated photos WHERE client_visible=true).
+
+[LOG — 2026-05-17 — Daily-log arc Slice 5: client view + RLS gate — ARC COMPLETE]
+- Action: Built full client-facing daily log view in ClientPortal and added RESTRICTIVE RLS policy gating clients to approved logs only.
+- RLS: CREATE POLICY "daily_logs: client approved only gate" AS RESTRICTIVE FOR SELECT — clients must have status='approved' AND jobs.client_user_id = auth.uid(). Non-clients pass through unaffected. Verified via pg_policies: permissive=RESTRICTIVE, cmd=SELECT. Migration: 20260517240000.
+- Helper: sbLoadClientUpdates(jobId) — loads approved daily_logs newest-first, each entry includes photos array filtered to related_entity_type='daily_log' AND client_visible=true. Two queries: logs then photos IN (logIds).
+- ClientPortal: new "Updates" tab (second after Overview) renders each sent update — date, client_message, curated photo grid. Photos tab now sources from same sbLoadClientUpdates call (no longer queries photos directly by job_id). Both tabs share one load (loaded.updates). Photos tab empty state copy updated.
+- Client notification: fires on Send in sbSendDailyLog → sbNotifyUser(job.client_user_id, ...) already shipped in Slice 4.
+- Build: ✓ 582ms. Commits: 4866955 (RLS), 81e2795 (helpers + ClientPortal).
+- Trade-aware: platform-level. ✓
+- DAILY_LOG_ARC.md: Phase 5 marked Shipped. All 5 phases complete.
