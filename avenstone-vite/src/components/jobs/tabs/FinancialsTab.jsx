@@ -332,6 +332,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         {TYPE_LABELS[tx.type] || tx.type}
                         {lienMissing && <span style={{ fontSize: 10, background: '#FEE2E2', color: '#991b1b', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>Lien Missing</span>}
+                        {tx.receipt_url && <span style={{ fontSize: 11, color: '#3B82F6' }}>📎</span>}
                       </div>
                       <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
                         {tx.date_incurred}

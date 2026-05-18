@@ -839,6 +839,13 @@ export const sbUploadReceipt = async (file, jobId) => {
     return { path, signedUrl: data?.signedUrl || null };
   } catch (e) { return { error: e.message || 'Upload failed' }; }
 };
+export const sbGetReceiptUrl = async (path) => {
+  try {
+    const { data, error } = await sb.storage.from('job-receipts').createSignedUrl(path, 3600);
+    if (error) return { ok: false, error: error.message, data: null };
+    return { ok: true, error: null, data: { signedUrl: data?.signedUrl } };
+  } catch (e) { return { ok: false, error: e.message || 'Failed to get receipt URL', data: null }; }
+};
 export const sbUploadLienWaiverTx = async (file, jobId) => {
   try {
     const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
