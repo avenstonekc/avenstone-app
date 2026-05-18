@@ -1285,6 +1285,13 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Trade-aware: cache_control is transport-layer config, not tenant/trade-specific. Breakpoints on tools, which are platform-level. ✓
 - Open: real savings only materialize at multi-tenant scale with many concurrent users hitting the same cached prefixes. Single-tenant today = agentic-loop benefits (3-5 reads per write) + estimating chat session hits.
 
+[LOG — 2026-05-17 — daily_logs profiles embed disambiguation]
+- Root cause: Phase 1 migration added approved_by_id UUID REFERENCES profiles(id) as a second FK on daily_logs. PostgREST now sees two relationships between daily_logs and profiles (author_id and approved_by_id) and throws "could not embed because more than one relationship found."
+- Fix: Added !author_id FK hint to both queries — profiles!author_id(full_name,role). PostgREST column-name hint syntax unambiguously targets the author FK. No field selection changes.
+- Queries fixed: supabase.js:753 (sbLoadDailyLogs) and supabase.js:757 (sbSubmitDailyLog).
+- Build: ✓ built in 673ms. Commit: 53f39fd.
+- Pattern to remember: whenever a table gains a second FK to the same target table, ALL relational selects embedding that target become ambiguous and must use !column_name hint syntax.
+
 [LOG — 2026-05-17 — tools/apply_migration.js: atomic apply + verify wrapper]
 - Action: Built apply_migration.js + npm run migrate script + updated CLAUDE.md.
 - Tool contract: node tools/apply_migration.js <path.sql> [--verify <objects>] | --selftest | --help.
