@@ -100,6 +100,7 @@ const TOOLS = [
       },
       required: ["question"],
     },
+    cache_control: { type: "ephemeral" },
   },
 ];
 
