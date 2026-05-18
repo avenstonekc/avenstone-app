@@ -776,6 +776,10 @@ export const sbGenerateDailyLogDraft = async (jobId, rawNote) => {
     return { ok: false, error: String(e), data: null };
   }
 };
+export const sbSaveDailyLogClientMessage = async (logId, clientMessage) => {
+  const { error } = await sb.from('daily_logs').update({ client_message: clientMessage }).eq('id', logId);
+  return error ? { ok: false, error: error.message } : { ok: true };
+};
 
 // ─── AI Estimator ─────────────────────────────────────────────────────────────
 export const sbLoadEstimate = async jid => {
