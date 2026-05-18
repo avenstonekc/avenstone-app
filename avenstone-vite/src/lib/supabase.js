@@ -49,6 +49,7 @@ export const GET_JOB_STATUS_URL         = `${FN}/get-job-status`;
 export const SUBMIT_BID_RESPONSE_URL    = `${FN}/submit-bid-response`;
 export const VIEW_ENGAGEMENT_URL        = `${FN}/view-engagement`;
 export const SUBMIT_BUG_REPORT_URL      = `${FN}/submit-bug-report`;
+export const AI_DAILY_LOG_DRAFT_URL     = `${FN}/ai-daily-log-draft`;
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
 export const sbSave = async j => {
@@ -759,6 +760,21 @@ export const sbSubmitDailyLog = async log => {
     return { ok: false, error: error.message, data: null };
   }
   return { ok: true, error: null, data };
+};
+export const sbGenerateDailyLogDraft = async (jobId, rawNote) => {
+  try {
+    const res = await fetch(AI_DAILY_LOG_DRAFT_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: jobId, raw_note: rawNote }),
+    });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, data: null };
+    const json = await res.json();
+    if (!json.ok) return { ok: false, error: json.error || 'Draft generation failed', data: null };
+    return { ok: true, error: null, data: { work_completed: json.work_completed, materials_used: json.materials_used, issues: json.issues } };
+  } catch (e) {
+    return { ok: false, error: String(e), data: null };
+  }
 };
 
 // ─── AI Estimator ─────────────────────────────────────────────────────────────
