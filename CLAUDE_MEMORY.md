@@ -1304,6 +1304,12 @@ PAT stored at `C:/Users/Kalin/supabase-token.txt`. Not curl. Not `process.env`.
 - Commits: 45a1ab6 (tool), da935c0 (npm script), 02028cd (CLAUDE.md docs).
 - Migration apply method in CLAUDE_MEMORY line 20 is now superseded — npm run migrate is the canonical path.
 
+[LOG — 2026-05-17 — photos.id missing default]
+- Root cause: photos.id is TEXT NOT NULL with no default. Every sbPhoto insert that omits id (which is all of them) failed with "null value in column id violates not-null constraint". The column was created out-of-band without a default and no migration ever set one.
+- Fix: migration 20260517200000_photos_id_default.sql — ALTER TABLE photos ALTER COLUMN id SET DEFAULT uuid_generate_v4()::text. Kept TEXT type to avoid FK rewrites. Matches daily_logs.id pattern (which uses uuid_generate_v4()).
+- Other-tables scan: profiles.id is also uuid NOT NULL with no default — intentional, it's the Supabase auth FK (id comes from auth.users, not app-generated). photos was the only broken one.
+- Verification: information_schema confirms column_default = '(uuid_generate_v4())::text'. Smoke test insert without id returned auto-generated UUID 8161a9b9-54d7-46ea-9cc0-dac88b81429a, test row deleted. Commit: 754aaba. Trade-aware: platform table, tenant- and trade-agnostic. ✓
+
 [LOG — 2026-05-17 — photo upload bug: sub-tab state reset + silent failures]
 - Cause 1 (split regression): FieldTab held `const [sub, setSub] = useState('notes')` locally. FieldTab unmounts whenever the user switches away from the Field main tab (JobDet renders it with `{tab === 'field' && <FieldTab .../>}`). On return, FieldTab remounts, sub resets to 'notes', and Photos sub-tab is no longer active — photos appeared gone even though they were in job.photos.
 - Fix 1: Lifted fieldSub/setFieldSub into JobDet (stays mounted across all main-tab switches). FieldTab now receives sub/setSub as props. Sub-tab persists for the lifetime of the job detail view.
