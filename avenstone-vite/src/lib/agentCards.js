@@ -26,6 +26,12 @@
 //       label: string,
 //     }>,
 //   }>,
+//   meta?: Record<string, unknown>, // OPTIONAL server-side context. The client
+//                                   // echoes it back unchanged in card_response.
+//                                   // Used by Phase 5 (gate-resolution two-card
+//                                   // flow) to carry job_id + failing gates
+//                                   // between cards without round-tripping
+//                                   // through Claude. Never rendered to the user.
 // }
 //
 // card_response shape:
@@ -34,7 +40,8 @@
 //   answers: {
 //     [questionId]: string                    // select: the chosen option.value
 //              | { [itemId]: string }         // radio_per_item: option.value per item
-//   }
+//   },
+//   meta?: Record<string, unknown>, // echoed verbatim from the pending_card
 // }
 // ──────────────────────────────────────────────────────────────────────────────
 // Control flow (mirrors pending_action / confirmed, but branches on purpose):
@@ -121,6 +128,10 @@ export function validatePendingCard(card) {
   }
   if (!Array.isArray(c.questions) || c.questions.length === 0) {
     return { ok: false, error: 'pending_card.questions must be a non-empty array' };
+  }
+  // meta is optional; when present it must be a plain object (echoed back unchanged).
+  if (c.meta !== undefined && (c.meta === null || typeof c.meta !== 'object' || Array.isArray(c.meta))) {
+    return { ok: false, error: 'pending_card.meta must be an object when present' };
   }
   for (const q of c.questions) {
     if (typeof q.id !== 'string' || !q.id) {

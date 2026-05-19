@@ -124,6 +124,10 @@ interface PendingCard {
   id: string;
   prompt: string;
   questions: CardQuestion[];
+  // Optional server-side context echoed back by the client in card_response.
+  // Used by Phase 5 gate-resolution to carry job_id + failing gates between
+  // cards without round-tripping through Claude. Never rendered.
+  meta?: Record<string, unknown>;
 }
 
 // Confirmation whitelist — every write verb that creates a row or moves money

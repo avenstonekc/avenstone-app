@@ -749,7 +749,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         tenant_id: profile?.tenant_id,
         role: profile?.role,
         full_name: profile?.full_name,
-        card_response: { card_id: card.id, answers },
+        card_response: { card_id: card.id, answers, meta: card.meta || undefined },
         conversation_history: newHistory,
       },
       `Card ${card.id} answered`,
