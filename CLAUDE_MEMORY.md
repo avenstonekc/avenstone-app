@@ -657,3 +657,26 @@ Smoke test verified 2026-05-19 (edge fn called directly):
 
 Loop guard: elicitor returns null when input.type present — prevents infinite card loop on post-card re-call.
 No DB changes, no renderer changes (reuses Phase 1 AgentCard). Build: ✓ 728ms.
+
+---
+
+[LOG — 2026-05-19 — labor transaction type]
+- Action: Added 'labor' as a new job_transactions type (direct hourly-labor expenses, distinct from sub_payout).
+- Commits: 5c6a064 (migration), c42b6a7 (agent card), e796755 (frontend)
+
+Touch points:
+  - DB: job_transactions_type_check constraint extended (drop+recreate), qb_category_map row inserted (Labor / Cost of Goods Sold)
+  - Edge fn (ai-master-agent): labor added to ELICIT_TOOLS card options ("Labor (hourly)"), log_receipt tool schema enum, ALLOWED_OUT set in executor
+  - Frontend: TransactionModal TX_TYPES_OUT + TYPE_LABELS, FinancialsTab TYPE_LABELS, SettingsModal QB_TYPES, qbExport TX_LABELS
+
+Lien-waiver: NO change needed — trigger is inclusion-based (sub_payout + vendor_payment only). labor auto-exempt.
+qb_category_map scoping: all rows are per-tenant (tenant_id=Avenstone), NOT platform-null. New row follows same pattern.
+TransactionModal direction: determined by which array (TX_TYPES_IN / TX_TYPES_OUT) the type falls in. labor → TX_TYPES_OUT → direction=out.
+
+Smoke test verified 2026-05-19:
+  Receipt card path: card fired with labor option visible → picked labor → confirmed
+    Row: id=c4ca5d18-24f3-46f0-8339-15fb09d720b4, job_id=test-flow-001, amount=175.00, type=labor, direction=out, lien_waiver_required=false
+  Direct path (agent inferred from "labor expense"): confirmed
+    Row: id=9b5b5a88-6695-4138-8f8f-2b4efbccfd38, job_id=test-flow-001, amount=400.00, type=labor, direction=out, lien_waiver_required=false
+
+Trade-aware: platform-level addition, not tenant-specific. Every contractor type has direct hourly-labor cost. Build: ✓ 563ms.

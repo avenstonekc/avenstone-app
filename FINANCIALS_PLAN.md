@@ -18,6 +18,7 @@ Contents:
 - Phase 5 QuickBooks CSV export: shipped (qb_category_map table, QB Export modal in Ledger, Settings → QuickBooks mapping tab, qb_synced_at stamp, Hide Synced filter)
 - Phase 6 Field tab consolidation: shipped (Notes/Photos + Daily Logs + Materials → FieldTab wrapper, 10→8 tabs, Consultation surfaced in tab bar)
 - Phase 7 (receipt vision extraction): unscheduled
+- 2026-05-19: `labor` added to job_transactions type set — direct hourly-labor expenses, distinct from sub_payout. Lien-waiver-exempt (trigger is inclusion-based). Touches: DB constraint, qb_category_map, receipt card, TransactionModal, FinancialsTab, SettingsModal QB tab, qbExport. Platform-level (every contractor type has direct hourly cost).
 
 ## Core architectural decisions (locked)
 
