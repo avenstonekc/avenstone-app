@@ -200,6 +200,10 @@ function resolveIdentifierColumns(name, callPath, seen) {
   const binding = callPath.scope.getBinding(name);
   if (!binding) return { keys: [], partial: true, resolved: false, reason: 'no binding (param or external)' };
 
+  // Function parameters have no init node — columns are call-site-determined.
+  // Mark partial so the table is covered but no column enumeration is attempted.
+  if (binding.kind === 'param') return { keys: [], partial: true, resolved: true };
+
   const decl = binding.path.node;
   const init = decl?.init;
 
