@@ -829,3 +829,17 @@ Smoke tests verified 2026-05-19 (post-deploy):
   T4 graceful degradation: "what needs my attention today?" — model previously would have called get_dashboard; now calls get_jobs + get_team and synthesizes the answer from there. No error, response composed normally. PASS.
 
 Build: ✓ 611ms. Tool count confirmed 16 via grep of name: pattern. Trade-aware: platform-level cleanup, tenant- and trade-agnostic. No DB changes.
+
+---
+
+[LOG — 2026-05-19 — ai-master-agent drift detector: tools/audit_master_agent.js]
+- Action: Built and ran a standalone tool-schema-vs-payload drift detector for ai-master-agent. 4 checks. npm run audit:master-agent. Exit 0 = clean; exit 1 = real drift; exit 2 = parse error.
+- Commits: pending (tools/audit_master_agent.js + package.json).
+- Detector checks:
+  1. REQUIRED_FIELDS ↔ schema: each field in REQUIRED_FIELDS exists in tool's schema.properties → PASS
+  2. Schema → executor (dead params): all schema properties read by executor case → PASS
+  3. Executor → schema (undeclared reads): executor reads not in schema → 2 informational notes (image_data, image_mime on log_receipt — server-injected after schema validation, intentional)
+  4. Registry → TOOLS: CONFIRM_TOOLS + POST_EXECUTE_ELICIT names exist in TOOLS → PASS
+- Run output: 0 real drift findings. 2 informational notes (not real drift). Tool counts confirmed: 16 TOOLS, 12 REQUIRED_FIELDS tools, 5 CONFIRM_TOOLS, 2 POST_EXECUTE_ELICIT, 16 executor cases.
+- Implementation: Babel AST parse (plugins: ['typescript']) — same @babel/parser + @babel/traverse already in avenstone-vite devDependencies. requireFromVite pattern borrowed from audit_schema_vs_code.js. MemberExpression walk extracts input.X reads per switch case. Tools: tools/audit_master_agent.js. npm script: "audit:master-agent": "node ../tools/audit_master_agent.js".
+- Trade-aware: detector is dev tooling — no tenant/trade assumptions.

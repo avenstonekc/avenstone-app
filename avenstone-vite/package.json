@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "audit:schema": "node ../tools/audit_schema_vs_code.js",
+    "audit:master-agent": "node ../tools/audit_master_agent.js",
     "migrate": "node ../tools/apply_migration.js"
   },
   "dependencies": {
