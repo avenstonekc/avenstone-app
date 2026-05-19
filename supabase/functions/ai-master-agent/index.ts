@@ -162,6 +162,7 @@ const ELICIT_TOOLS: Record<string, (input: Record<string, unknown>) => PendingCa
             { value: "vendor_payment", label: "Vendor Payment" },
             { value: "commission", label: "Commission" },
             { value: "equipment_rental", label: "Equipment Rental" },
+            { value: "labor", label: "Labor (hourly)" },
             { value: "other_expense", label: "Other Expense" },
           ],
         },
@@ -358,7 +359,7 @@ const TOOLS = [
         vendor: { type: "string", description: "Vendor or payee name" },
         type: {
           type: "string",
-          enum: ["material_purchase", "fuel", "permit", "sub_payout", "vendor_payment", "commission", "other_expense", "equipment_rental"],
+          enum: ["material_purchase", "fuel", "permit", "sub_payout", "vendor_payment", "commission", "other_expense", "equipment_rental", "labor"],
           description: "Expense category. Omit when unknown — the system will prompt the user to select.",
         },
       },
@@ -679,10 +680,10 @@ async function executeTool(
         // Type from agent input or default. Constraint job_transactions_type_check
         // restricts to: client_payment, client_deposit, client_refund, sub_payout,
         // vendor_payment, material_purchase, equipment_rental, permit, fuel,
-        // commission, other_expense, other_income.
+        // commission, other_expense, other_income, labor.
         const ALLOWED_OUT = new Set([
           "material_purchase", "fuel", "permit", "sub_payout",
-          "vendor_payment", "commission", "other_expense", "equipment_rental",
+          "vendor_payment", "commission", "other_expense", "equipment_rental", "labor",
         ]);
         const rawType = String(input.type ?? "");
         if (!ALLOWED_OUT.has(rawType)) {
