@@ -629,3 +629,22 @@ Files:
 
 Renderers: select (pill buttons) and radio_per_item (scrollable table, custom radio circles). Both confirmed compiling via mock smoke test.
 Trade-aware: platform-level agent surface, tenant/trade-agnostic. No DB changes.
+
+---
+
+[LOG — 2026-05-19 — AGENT_CARDS Phase 2 — receipt categorization card]
+- Action: AGENT_CARDS_ARC Phase 2 shipped. log_receipt now always emits a category select card when type is absent.
+- Commit: 133f937
+
+What changed in ai-master-agent/index.ts:
+  - CardOption/CardItem/CardQuestion/PendingCard interfaces moved before CONFIRM_TOOLS (forward-ref cleanup)
+  - ELICIT_TOOLS registry added after CONFIRM_TOOLS: log_receipt entry emits 8-option select card; returns null (loop guard) when input.type already present
+  - runAgentLoop: elicitation check fires BEFORE confirmBlock check; on card emit returns { response, actions, pending_card }
+  - log_receipt executor: removed silent material_purchase fallback; now errors on missing/invalid type
+  - log_receipt tool description: "Omit when unknown — the system will prompt the user to select."
+  - System prompt RECEIPT FROM PHOTO: "Otherwise → omit type; the category card will prompt the user"
+
+Full flow: "log a $50 receipt" → Claude calls log_receipt(type absent) → ELICIT_TOOLS fires → pending_card returned → AgentCard renders select → user picks fuel → card_response → runAgentLoop → Claude re-calls log_receipt(type:"fuel") → elicitor returns null → confirmBlock fires → pending_action confirm card → user confirms → row written with type=fuel.
+
+Loop guard: elicitor returns null when input.type present — prevents infinite card loop on post-card re-call.
+No DB changes, no renderer changes (reuses Phase 1 AgentCard). Build: ✓ 728ms.
