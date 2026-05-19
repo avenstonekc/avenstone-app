@@ -290,6 +290,22 @@ const POST_EXECUTE_ELICIT: Record<
   string,
   (input: Record<string, unknown>, result: Record<string, unknown>) => PendingCard | null
 > = {
+  advance_phase: (input, result) => {
+    // Phase 5: when gates fail without an override_reason the executor returns
+    // requires_override + failing_gates. Surface Card A (gate resolution) so
+    // the user can redirect / leave open / override-with-structured-reason
+    // instead of seeing a raw error message.
+    if (!(result.requires_override === true)) return null;
+    const jobId = String(input.job_id || "");
+    const failing = (result.failing_gates as string[]) || [];
+    // Executor maps phase keys to labels before returning; recover the raw keys
+    // via reverse lookup so PHASE_LABELS map calls in card text are consistent.
+    const labelToKey: Record<string, string> = {};
+    for (const [k, v] of Object.entries(PHASE_LABELS)) labelToKey[v] = k;
+    const currentPhase = labelToKey[String(result.current_phase || "")] || String(result.current_phase || "");
+    const nextPhase = labelToKey[String(result.next_phase || "")] || String(result.next_phase || "");
+    return buildGateResolutionCardA(jobId, currentPhase, nextPhase, failing);
+  },
   get_jobs: (input, result) => {
     if (!input.search || typeof input.search !== "string" || !input.search.trim()) return null;
     const jobs = ((result.jobs as Array<Record<string, unknown>>) || []);
@@ -1351,28 +1367,6 @@ Deno.serve(async (req) => {
     if (confirmed && pending_action?.tool) {
       const result = await executeTool(sb, tenant_id, user_id, pending_action.tool, pending_action.input || {});
       const action = { tool: pending_action.tool, input: pending_action.input, result };
-
-      // Phase 5: advance_phase gate failure → surface gate-resolution card
-      // instead of the default "failed" text. Card A carries job_id + failing
-      // gates in meta so the card_response handler can route deterministically.
-      if (
-        pending_action.tool === "advance_phase"
-        && (result as any)?.requires_override === true
-      ) {
-        const jobId = String((pending_action.input as any)?.job_id || "");
-        const failing = ((result as any).failing_gates as string[]) || [];
-        // Re-look up current/next phase from result for accurate card text
-        // (executor returns PHASE_LABELS-mapped strings; refetch raw for meta).
-        const { data: job } = await sb.from("jobs").select("status").eq("id", jobId).single();
-        const currentPhase = (job as any)?.status as string;
-        const nextPhase = currentPhase ? (getNextPhase(currentPhase) || "") : "";
-        const card = buildGateResolutionCardA(jobId, currentPhase, nextPhase, failing);
-        return new Response(
-          JSON.stringify({ response: card.prompt, actions: [action], pending_card: card }),
-          { headers: { ...CORS, "Content-Type": "application/json" } },
-        );
-      }
-
       const response = (result as any)?.error
         ? `${pending_action.description || pending_action.tool}: failed — ${(result as any).error}`
         : `Done. ${pending_action.description || ""}`.trim();
