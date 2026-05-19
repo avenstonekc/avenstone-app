@@ -7,6 +7,7 @@ or adds a verb that needs structured input from the user.
 ## Status as of 2026-05-19
 - **Phase 1 — Shipped 2026-05-18.** Card schema, MasterAgent renderer, round-trip wiring. Commits: 6067a0d, 48b97d2, 0fcbab8.
 - **Phase 2 — Shipped 2026-05-19.** Receipt categorization card. ELICIT_TOOLS registry + log_receipt elicitor + executor hardened. Commit: 133f937.
+- **labor type added 2026-05-19.** `labor` joined the job_transactions type set (direct hourly-labor, distinct from sub_payout). Receipt card option list updated to 9 options. Commits: 5c6a064, c42b6a7, e796755.
 - Phase 3–5: Planned. See Roadmap below.
 - Sibling arcs: VOICE_AGENT (Phase 3+4 shipped), EXECUTION_ARC (complete).
 - Hard dependency for Phase 5 of this arc: verb 5b
@@ -80,12 +81,12 @@ Pick these 4 first. Each is a concrete win over current behavior.
 
 1. **Receipt categorization card** — `log_receipt` emits a select card
    when `type` is absent: `material_purchase | fuel | permit | sub_payout |
-   vendor_payment | commission | equipment_rental | other_expense`. (Arc
-   originally spec'd 7; `equipment_rental` added — it is a valid DB value per
-   `job_transactions_type_check` constraint.) Removes today's hardcoded
-   `material_purchase` workaround. High-confidence vendor inference (Home
-   Depot, gas stations, permit offices) still bypasses the card per system
-   prompt guidance — card fires for unrecognised vendors.
+   vendor_payment | commission | equipment_rental | labor | other_expense` (9
+   options). Arc originally spec'd 7; `equipment_rental` and `labor` added as
+   valid DB values per `job_transactions_type_check` constraint. Removes
+   today's hardcoded `material_purchase` workaround. High-confidence vendor
+   inference (Home Depot, gas stations, permit offices) still bypasses the
+   card — card fires for unrecognised vendors.
 
 2. **Job disambiguation card** — when `get_jobs` returns >1 match
    for an ambiguous reference ("the Smith job"), agent emits a
@@ -108,13 +109,13 @@ flows.
 
 ## Roadmap
 
-Phase 1: Card schema + MasterAgent render scaffolding. **Shipped 2026-05-18.**
+✓ Phase 1: Card schema + MasterAgent render scaffolding. **Shipped 2026-05-18.**
 `pending_card` / `card_response` contract defined in `avenstone-vite/src/lib/agentCards.js`.
 React renderers for `select` and `radio_per_item` in `MasterAgent.jsx`.
 Edge fn (`ai-master-agent`) wired to emit `pending_card` and receive `card_response`.
 Round-trip tested with hardcoded mock (build ✓, mock removed).
 
-Phase 2: Receipt categorization card. **Shipped 2026-05-19.**
+✓ Phase 2: Receipt categorization card. **Shipped 2026-05-19.**
 ELICIT_TOOLS registry (log_receipt entry), elicitor check in runAgentLoop,
 executor hardened (no silent default), tool description + system prompt updated.
 Commit: 133f937.
@@ -161,8 +162,7 @@ ships first.
 - Card response timeouts — does the conversation stall if the user
   doesn't answer? Probably no timeout for v1; sending a new prompt
   abandons the card.
-- "None of these" escape hatch on disambiguation when no match is
-  correct — Phase 3 design detail.
+- "None of these" escape hatch on disambiguation — resolved in Phase 3: explicit final option (value `__none__`), agent reverts to text-turn clarification on selection.
 
 ## Cost ceiling
 
