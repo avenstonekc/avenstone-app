@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       sb.from("job_documents").select("id, name, file_type, created_at").eq("job_id", job_id),
       sb.from("schedule_phases").select("*").eq("job_id", job_id).order("order_index"),
       sb.from("daily_logs").select("*").eq("job_id", job_id).order("log_date", { ascending: false }).limit(10),
-      sb.from("job_subs").select("*, profiles(full_name, phone, email)").eq("job_id", job_id),
+      sb.from("job_sub_engagements").select("*, profiles!sub_id(full_name, phone, email)").eq("job_id", job_id),
     ]);
 
     if (!job) return new Response("job not found", { status: 404 });
