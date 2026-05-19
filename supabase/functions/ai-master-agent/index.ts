@@ -137,39 +137,143 @@ const CONFIRM_TOOLS = new Set([
   "create_job",
 ]);
 
-// Elicitation registry — tools that emit a pending_card when required input is
-// absent from the tool call. Registry-driven (arc decision #3): the tool declares
-// when elicitation is needed; the agent doesn't decide.
-// Each entry: (input) → PendingCard | null. Returning null means input is complete;
-// fall through to CONFIRM_TOOLS. The null path is the loop guard — without it the
-// card fires again on the post-card re-call that carries the answered field.
-const ELICIT_TOOLS: Record<string, (input: Record<string, unknown>) => PendingCard | null> = {
-  log_receipt: (input) => {
-    if (input.type && typeof input.type === "string") return null; // type already present
-    return {
-      id: crypto.randomUUID(),
-      prompt: "What type of expense is this?",
-      questions: [
-        {
-          id: "type",
-          type: "select",
-          label: "Expense category",
-          options: [
-            { value: "material_purchase", label: "Materials" },
-            { value: "fuel", label: "Fuel" },
-            { value: "permit", label: "Permit / Inspection" },
-            { value: "sub_payout", label: "Sub Payout" },
-            { value: "vendor_payment", label: "Vendor Payment" },
-            { value: "commission", label: "Commission" },
-            { value: "equipment_rental", label: "Equipment Rental" },
-            { value: "labor", label: "Labor (hourly)" },
-            { value: "other_expense", label: "Other Expense" },
-          ],
-        },
-      ],
-    };
-  },
+// ── REQUIRED_FIELDS registry (Phase 4) ───────────────────────────────────────
+// Generalized pre-execution elicitation. Replaces Phase 2's bespoke ELICIT_TOOLS
+// (which had a hand-written elicitor per tool). Each write tool declares the
+// fields it needs from the user; one generic validator (validateRequiredFields)
+// inspects the tool call, collects every missing field, and emits ONE
+// pending_card (form-shape, one question per gap). Not N cards, not N text
+// turns. card_response → answers merge into tool input → tool re-called.
+//
+// type ∈ {select, text} for v1. dynamic_options='active_jobs' is expanded to
+// the user's active job list at card-emit time (label = address — client —
+// status, value = job_id) so the disambiguation card pattern works for any
+// tool that needs a job. Static options live on the field spec directly.
+type FieldSpec = {
+  field: string;        // key in tool input
+  type: "select" | "text";
+  label: string;        // shown on card
+  options?: CardOption[]; // static select options (omit for text)
+  dynamic_options?: "active_jobs";
 };
+
+const RECEIPT_TYPE_OPTIONS: CardOption[] = [
+  { value: "material_purchase", label: "Materials" },
+  { value: "fuel", label: "Fuel" },
+  { value: "permit", label: "Permit / Inspection" },
+  { value: "sub_payout", label: "Sub Payout" },
+  { value: "vendor_payment", label: "Vendor Payment" },
+  { value: "commission", label: "Commission" },
+  { value: "equipment_rental", label: "Equipment Rental" },
+  { value: "labor", label: "Labor (hourly)" },
+  { value: "other_expense", label: "Other Expense" },
+];
+
+const REQUIRED_FIELDS: Record<string, FieldSpec[]> = {
+  log_payment: [
+    { field: "amount", type: "text", label: "Amount ($)" },
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+  ],
+  log_receipt: [
+    { field: "amount", type: "text", label: "Amount ($)" },
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+    { field: "type", type: "select", label: "Expense category", options: RECEIPT_TYPE_OPTIONS },
+  ],
+  submit_change_order: [
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+    { field: "amount", type: "text", label: "Amount ($)" },
+    { field: "description", type: "text", label: "Description" },
+  ],
+  add_todo: [
+    { field: "title", type: "text", label: "What to do" },
+  ],
+  create_job: [
+    { field: "address", type: "text", label: "Job address" },
+  ],
+  add_contact: [
+    { field: "full_name", type: "text", label: "Full name" },
+  ],
+  send_client_portal: [
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+    { field: "email", type: "text", label: "Client email" },
+  ],
+  invite_person: [
+    { field: "email", type: "text", label: "Email" },
+    { field: "full_name", type: "text", label: "Full name" },
+    { field: "role", type: "select", label: "Role", options: [
+      { value: "owner", label: "Owner" },
+      { value: "project_manager", label: "Project Manager" },
+      { value: "sales_rep", label: "Sales Rep" },
+      { value: "sub", label: "Sub" },
+    ] },
+  ],
+  add_note: [
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+    { field: "content", type: "text", label: "Note" },
+  ],
+  advance_phase: [
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+  ],
+  notify_team: [
+    { field: "title", type: "text", label: "Title" },
+    { field: "body", type: "text", label: "Message" },
+  ],
+  add_knowledge: [
+    { field: "category", type: "text", label: "Category" },
+    { field: "content", type: "text", label: "Content" },
+  ],
+  // Intentionally skipped: update_job, update_phase (technical-ID + object-payload
+  // required fields — model gets these from prior tool calls, not user prompts).
+};
+
+function isMissing(v: unknown): boolean {
+  if (v === undefined || v === null) return true;
+  if (typeof v === "string" && v.trim() === "") return true;
+  return false;
+}
+
+async function validateRequiredFields(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  toolName: string,
+  input: Record<string, unknown>,
+): Promise<PendingCard | null> {
+  const spec = REQUIRED_FIELDS[toolName];
+  if (!spec) return null;
+  const gaps = spec.filter((f) => isMissing(input[f.field]));
+  if (gaps.length === 0) return null; // loop guard — every required field present
+
+  // Resolve any dynamic_options up front (one DB hit max, only if needed).
+  let activeJobOptions: CardOption[] | null = null;
+  if (gaps.some((g) => g.dynamic_options === "active_jobs")) {
+    const { data } = await sb.from("jobs")
+      .select("id, address, client_name, status")
+      .eq("tenant_id", tenantId)
+      .not("status", "in", "(complete,on_hold)")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    activeJobOptions = (data || []).map((j: any) => ({
+      value: String(j.id),
+      label: [j.address, j.client_name, j.status].filter(Boolean).join(" — "),
+    }));
+  }
+
+  const questions: CardQuestion[] = gaps.map((g) => {
+    if (g.type === "text") {
+      return { id: g.field, type: "text", label: g.label, options: [] };
+    }
+    const options = g.dynamic_options === "active_jobs"
+      ? (activeJobOptions || [])
+      : (g.options || []);
+    return { id: g.field, type: "select", label: g.label, options };
+  });
+
+  return {
+    id: crypto.randomUUID(),
+    prompt: "I need a bit more info before I can run this.",
+    questions,
+  };
+}
 
 // Post-execution elicitation registry — tools where the card is triggered by
 // inspecting the tool RESULT (not missing input). Parallel to ELICIT_TOOLS but
@@ -394,7 +498,7 @@ const TOOLS = [
         type: {
           type: "string",
           enum: ["material_purchase", "fuel", "permit", "sub_payout", "vendor_payment", "commission", "other_expense", "equipment_rental", "labor"],
-          description: "Expense category. Omit when unknown — the system will prompt the user to select.",
+          description: "Expense category. Omit when unknown — the missing-field card collects it from the user.",
         },
       },
       required: ["job_id", "amount", "description"],
@@ -981,7 +1085,8 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
-- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result. If the user's freeform message lacks fields the tool requires (e.g. amount, address, title), ask one clarifying question before calling the tool — never invent values.
+- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
+- Missing required fields: call the tool with whatever fields you have. If any required field is missing, the system surfaces a missing-field card automatically — do NOT ask in text first ("What's the amount?", "Which job?", etc.). Never invent values to fill gaps; just call the tool and let the card collect the rest.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: if gates fail and the user did not give an override reason, do NOT pass override_reason. The tool result will list failing gates; relay them and ask if the user wants to override.
 - TODO vs NOTE: an action item ("call back X", "follow up", "remind me", "don't forget", "schedule Y", "todo") goes to add_todo. Passive context attached to a job ("FYI…", "the client said…", "noted that…", "for the record…") goes to add_note. When in doubt and the user said "todo", pick add_todo. After writing a todo, the success message should say "Todo added" — never "Note added."
@@ -1000,7 +1105,7 @@ When the user attaches an image of a receipt, extract: vendor name, total amount
   • Home Depot, Lowe's, Menards, Ace, lumber yards, plumbing supply, electrical supply → material_purchase
   • Gas stations (Shell, BP, Phillips 66, QuikTrip, Casey's, etc.) → fuel
   • City permit office, building department → permit
-  • Otherwise → omit type; the category card will prompt the user
+  • Otherwise → omit type; the missing-field card prompts the user
 - Do not include image_data or image_mime in your log_receipt input — the server attaches the receipt photo automatically when one was provided. Just call log_receipt with the financial fields.
 - Call log_receipt directly with the extracted fields once you've matched the job. The pending_action confirmation card surfaces automatically — the user reviews and confirms via the card. Do NOT ask the user to confirm via text first.
 - The confirmation card description should lead with the matched job address (the most prominent field), then vendor, amount, and PO. Example: "Log $142.37 expense at 123 Test Flow Dr — Home Depot (PO 26-002)."
@@ -1064,14 +1169,15 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
     if (data.stop_reason === "tool_use") {
       const blocks = data.content as Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown>; text?: string }>;
 
-      // Elicitation check — fires BEFORE confirm so missing fields are collected
-      // first; the post-card re-call (which carries the answered field) falls
-      // through to CONFIRM_TOOLS normally. Elicitor returns null when already present.
-      const elicitBlock = blocks.find((b) => b.type === "tool_use" && b.name && b.name in ELICIT_TOOLS);
+      // Missing-field validation (Phase 4) — fires BEFORE confirm so every gap
+      // is collected first; the post-card re-call (carrying the answered fields)
+      // falls through to CONFIRM_TOOLS normally. validateRequiredFields returns
+      // null when every required field is present — the loop guard.
+      const elicitBlock = blocks.find((b) => b.type === "tool_use" && b.name && b.name in REQUIRED_FIELDS);
       if (elicitBlock && elicitBlock.name) {
-        const card = ELICIT_TOOLS[elicitBlock.name](elicitBlock.input || {});
+        const card = await validateRequiredFields(sb, tenantId, elicitBlock.name, elicitBlock.input || {});
         if (card) {
-          const text = blocks.find((b) => b.type === "text")?.text ?? "I need a bit more info before logging this.";
+          const text = blocks.find((b) => b.type === "text")?.text ?? "I need a bit more info before I can run this.";
           return { response: text, actions, pending_card: card };
         }
       }
