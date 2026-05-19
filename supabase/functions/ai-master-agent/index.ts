@@ -425,24 +425,8 @@ const TOOLS = [
     },
   },
   {
-    name: "get_job_details",
-    description: "Get full details of a specific job — notes, phases, payments, change orders, subs, photos count.",
-    input_schema: {
-      type: "object",
-      properties: {
-        job_id: { type: "string", description: "UUID of the job" },
-      },
-      required: ["job_id"],
-    },
-  },
-  {
     name: "get_team",
     description: "List all staff and subs — names, roles, trades, emails.",
-    input_schema: { type: "object", properties: {} },
-  },
-  {
-    name: "get_dashboard",
-    description: "Get a snapshot of what needs attention: overdue phases, unpaid draws, pending change orders, stale jobs.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -678,57 +662,12 @@ async function executeTool(
         return { jobs: data || [], count: (data || []).length };
       }
 
-      case "get_job_details": {
-        const [jobRes, notesRes, phasesRes, paymentsRes, cosRes, subsRes] = await Promise.all([
-          sb.from("jobs").select("*").eq("id", input.job_id).single(),
-          sb.from("job_notes").select("*").eq("job_id", input.job_id).order("created_at", { ascending: false }).limit(10),
-          sb.from("job_phases").select("*").eq("job_id", input.job_id).order("phase_order"),
-          sb.from("payments").select("*").eq("job_id", input.job_id),
-          sb.from("change_orders").select("*").eq("job_id", input.job_id),
-          sb.from("job_sub_engagements")
-            .select("id, trade, status, bid_type, sub:profiles!sub_id(id,full_name,trade,phone,email)")
-            .eq("job_id", input.job_id)
-            .not("status", "in", "(completed,declined,withdrawn,removed)"),
-        ]);
-        return {
-          job: jobRes.data,
-          notes: notesRes.data || [],
-          phases: phasesRes.data || [],
-          payments: paymentsRes.data || [],
-          change_orders: cosRes.data || [],
-          subs: subsRes.data || [],
-        };
-      }
-
       case "get_team": {
         const { data } = await sb.from("profiles")
           .select("id, full_name, role, trade, email, phone")
           .eq("tenant_id", tenantId)
           .order("role").order("full_name");
         return { team: data || [] };
-      }
-
-      case "get_dashboard": {
-        const today = new Date().toISOString().slice(0, 10);
-        const [jobsRes, overdueRes, unpaidRes, pendingCOsRes] = await Promise.all([
-          sb.from("jobs").select("id, address, status, contract_value").eq("tenant_id", tenantId)
-            .not("status", "in", '("complete","on_hold","lead")'),
-          sb.from("schedule_items").select("job_id, title, scheduled_end_date, status")
-            .eq("tenant_id", tenantId)
-            .lt("scheduled_end_date", today)
-            .not("status", "in", '("complete","cancelled")')
-            .limit(20),
-          sb.from("payments").select("job_id, amount, due_date, description")
-            .eq("status", "pending").lt("due_date", today).limit(20),
-          sb.from("change_orders").select("job_id, description, amount")
-            .eq("tenant_id", tenantId).eq("status", "pending").limit(20),
-        ]);
-        return {
-          active_jobs: jobsRes.data || [],
-          overdue_phases: overdueRes.data || [],
-          unpaid_draws: unpaidRes.data || [],
-          pending_change_orders: pendingCOsRes.data || [],
-        };
       }
 
       case "create_job": {
@@ -1177,7 +1116,7 @@ Today: ${today}
 Tenant: ${tenantId}
 
 WHAT YOU CAN DO:
-- Read: jobs, team, dashboard snapshot, job details
+- Read: jobs, team
 - Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, send notifications, write to knowledge base
 
 HOW TO BEHAVE:
