@@ -86,6 +86,46 @@ async function notifyTenantStaff(sb: any, tenantId: string, excludeId: string, p
   } catch (e) { console.error("[ai-master-agent notify]", e); }
 }
 
+// ─── Agent Card types ─────────────────────────────────────────────────────────
+//
+// pending_card / card_response — structured elicitation surface.
+// See avenstone-vite/src/lib/agentCards.js for the JS-side contract and full
+// control-flow notes. The TypeScript shapes here must stay in sync with that file.
+//
+// card_response re-enters via the main handler BEFORE the hasContent check.
+// The client appends the formatted answers as a user turn to conversationHistory
+// BEFORE sending, so the history already ends with
+//   [assistant: card question text] → [user: formatted answers].
+// The handler passes that history to runAgentLoop unchanged — no extra user
+// message is appended. Claude sees the complete context and calls the tool.
+//
+// This path is intentionally separate from confirmed:true (which skips Claude).
+// card_response MUST go through runAgentLoop so the model can use the answers.
+
+interface CardOption {
+  value: string;
+  label: string;
+}
+
+interface CardItem {
+  id: string;
+  label: string;
+}
+
+interface CardQuestion {
+  id: string;
+  type: "select" | "radio_per_item";
+  label: string;
+  options: CardOption[];
+  items?: CardItem[]; // radio_per_item only
+}
+
+interface PendingCard {
+  id: string;
+  prompt: string;
+  questions: CardQuestion[];
+}
+
 // Confirmation whitelist — every write verb that creates a row or moves money
 // goes through the Confirm card. The card IS the chokepoint; the agent never
 // writes silently. Read tools (get_*) are excluded by definition.
@@ -96,6 +136,39 @@ const CONFIRM_TOOLS = new Set([
   "add_todo",
   "create_job",
 ]);
+
+// Elicitation registry — tools that emit a pending_card when required input is
+// absent from the tool call. Registry-driven (arc decision #3): the tool declares
+// when elicitation is needed; the agent doesn't decide.
+// Each entry: (input) → PendingCard | null. Returning null means input is complete;
+// fall through to CONFIRM_TOOLS. The null path is the loop guard — without it the
+// card fires again on the post-card re-call that carries the answered field.
+const ELICIT_TOOLS: Record<string, (input: Record<string, unknown>) => PendingCard | null> = {
+  log_receipt: (input) => {
+    if (input.type && typeof input.type === "string") return null; // type already present
+    return {
+      id: crypto.randomUUID(),
+      prompt: "What type of expense is this?",
+      questions: [
+        {
+          id: "type",
+          type: "select",
+          label: "Expense category",
+          options: [
+            { value: "material_purchase", label: "Materials" },
+            { value: "fuel", label: "Fuel" },
+            { value: "permit", label: "Permit / Inspection" },
+            { value: "sub_payout", label: "Sub Payout" },
+            { value: "vendor_payment", label: "Vendor Payment" },
+            { value: "commission", label: "Commission" },
+            { value: "equipment_rental", label: "Equipment Rental" },
+            { value: "other_expense", label: "Other Expense" },
+          ],
+        },
+      ],
+    };
+  },
+};
 
 // ─── Tool definitions (Claude tool use schema) ────────────────────────────────
 
@@ -286,7 +359,7 @@ const TOOLS = [
         type: {
           type: "string",
           enum: ["material_purchase", "fuel", "permit", "sub_payout", "vendor_payment", "commission", "other_expense", "equipment_rental"],
-          description: "Expense category. Default to material_purchase for home improvement stores; fuel for gas stations; permit for permit/inspection offices; otherwise other_expense.",
+          description: "Expense category. Omit when unknown — the system will prompt the user to select.",
         },
       },
       required: ["job_id", "amount", "description"],
@@ -611,7 +684,11 @@ async function executeTool(
           "material_purchase", "fuel", "permit", "sub_payout",
           "vendor_payment", "commission", "other_expense", "equipment_rental",
         ]);
-        const txType = ALLOWED_OUT.has(String(input.type)) ? String(input.type) : "material_purchase";
+        const rawType = String(input.type ?? "");
+        if (!ALLOWED_OUT.has(rawType)) {
+          return { error: `Missing or invalid expense type "${rawType}". Category card should have collected this — check elicitation flow.` };
+        }
+        const txType = rawType;
         const { data, error } = await sb.from("job_transactions").insert({
           tenant_id: tenantId,
           job_id: input.job_id,
@@ -728,50 +805,6 @@ async function executeTool(
   } catch (e) {
     return { error: String(e) };
   }
-}
-
-// ─── Agent Card types ─────────────────────────────────────────────────────────
-//
-// pending_card / card_response — structured elicitation surface.
-// See avenstone-vite/src/lib/agentCards.js for the JS-side contract and full
-// control-flow notes. The TypeScript shapes here must stay in sync with that file.
-//
-// pending_card is returned by runAgentLoop when a Phase 2+ tool signals it needs
-// structured input before it can act. Phase 1 carries the types and handler
-// wiring; no tool emits a card yet.
-//
-// card_response re-enters via the main handler BEFORE the hasContent check.
-// The client appends the formatted answers as a user turn to conversationHistory
-// BEFORE sending, so the history already ends with
-//   [assistant: card question text] → [user: formatted answers].
-// The handler passes that history to runAgentLoop unchanged — no extra user
-// message is appended. Claude sees the complete context and calls the tool.
-//
-// This path is intentionally separate from confirmed:true (which skips Claude).
-// card_response MUST go through runAgentLoop so the model can use the answers.
-
-interface CardOption {
-  value: string;
-  label: string;
-}
-
-interface CardItem {
-  id: string;
-  label: string;
-}
-
-interface CardQuestion {
-  id: string;
-  type: "select" | "radio_per_item";
-  label: string;
-  options: CardOption[];
-  items?: CardItem[]; // radio_per_item only
-}
-
-interface PendingCard {
-  id: string;
-  prompt: string;
-  questions: CardQuestion[];
 }
 
 // ─── Agentic loop ─────────────────────────────────────────────────────────────
@@ -928,7 +961,7 @@ When the user attaches an image of a receipt, extract: vendor name, total amount
   • Home Depot, Lowe's, Menards, Ace, lumber yards, plumbing supply, electrical supply → material_purchase
   • Gas stations (Shell, BP, Phillips 66, QuikTrip, Casey's, etc.) → fuel
   • City permit office, building department → permit
-  • Otherwise → other_expense
+  • Otherwise → omit type; the category card will prompt the user
 - Do not include image_data or image_mime in your log_receipt input — the server attaches the receipt photo automatically when one was provided. Just call log_receipt with the financial fields.
 - Call log_receipt directly with the extracted fields once you've matched the job. The pending_action confirmation card surfaces automatically — the user reviews and confirms via the card. Do NOT ask the user to confirm via text first.
 - The confirmation card description should lead with the matched job address (the most prominent field), then vendor, amount, and PO. Example: "Log $142.37 expense at 123 Test Flow Dr — Home Depot (PO 26-002)."
@@ -990,9 +1023,22 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
     }
 
     if (data.stop_reason === "tool_use") {
+      const blocks = data.content as Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown>; text?: string }>;
+
+      // Elicitation check — fires BEFORE confirm so missing fields are collected
+      // first; the post-card re-call (which carries the answered field) falls
+      // through to CONFIRM_TOOLS normally. Elicitor returns null when already present.
+      const elicitBlock = blocks.find((b) => b.type === "tool_use" && b.name && b.name in ELICIT_TOOLS);
+      if (elicitBlock && elicitBlock.name) {
+        const card = ELICIT_TOOLS[elicitBlock.name](elicitBlock.input || {});
+        if (card) {
+          const text = blocks.find((b) => b.type === "text")?.text ?? "I need a bit more info before logging this.";
+          return { response: text, actions, pending_card: card };
+        }
+      }
+
       // Money verbs require user confirmation. If any pending block is a confirm-tool,
       // break out of the agent loop and surface a pending_action to the client.
-      const blocks = data.content as Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown>; text?: string }>;
       const confirmBlock = blocks.find((b) => b.type === "tool_use" && b.name && CONFIRM_TOOLS.has(b.name));
       if (confirmBlock && confirmBlock.name) {
         const inputObj: Record<string, unknown> = { ...(confirmBlock.input || {}) };
