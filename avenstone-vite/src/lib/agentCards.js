@@ -25,6 +25,7 @@
 //       id: string,
 //       label: string,
 //     }>,
+//     optional?: boolean,    // submit allowed without an answer; default false
 //   }>,
 //   meta?: Record<string, unknown>, // OPTIONAL server-side context. The client
 //                                   // echoes it back unchanged in card_response.

@@ -194,6 +194,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
   const [answers, setAnswers] = useState({});
 
   const isComplete = card.questions.every(q => {
+    if (q.optional) return true;
     if (q.type === 'select') return answers[q.id] != null;
     if (q.type === 'text') {
       const v = answers[q.id];

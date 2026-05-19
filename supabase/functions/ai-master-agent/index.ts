@@ -118,6 +118,7 @@ interface CardQuestion {
   label: string;
   options: CardOption[]; // [] for text; required for select + radio_per_item
   items?: CardItem[]; // radio_per_item only
+  optional?: boolean;  // submit allowed without an answer; default false
 }
 
 interface PendingCard {
@@ -311,6 +312,86 @@ const POST_EXECUTE_ELICIT: Record<
     };
   },
 };
+
+// ── Phase 5: gate resolution card flow (advance_phase) ───────────────────────
+// When advance_phase runs and gates fail, the agent emits a Card A with three
+// action choices (override LAST per arc guard rail). The user picks; the
+// card_response dispatches:
+//   - redirect_schedule → text turn, no advance
+//   - leave_open        → text turn, no advance
+//   - override          → emit Card B (reason select + optional detail text)
+// Card B submit → executor runs with override_reason; jobs.phase_override_*
+// audit columns are stamped via the existing write path.
+// Multi-card flow plumbing uses pending_card.meta as an opaque echo channel —
+// the client doesn't render it but does send it back unchanged in card_response.
+// This avoids a Claude round-trip on every step.
+
+const GATE_OVERRIDE_REASONS: CardOption[] = [
+  { value: "work_done_not_marked", label: "Work was done but never marked" },
+  { value: "schedule_changed",     label: "Schedule changed" },
+  { value: "client_decision",      label: "Client decision" },
+  { value: "other",                label: "Other" },
+];
+
+function buildGateResolutionCardA(
+  jobId: string,
+  currentPhase: string,
+  nextPhase: string,
+  failingGates: string[],
+): PendingCard {
+  const blockingList = failingGates.length
+    ? failingGates.map((g) => `• ${g}`).join("\n")
+    : "• Manual review required.";
+  return {
+    id: crypto.randomUUID(),
+    prompt: `Cannot advance ${PHASE_LABELS[currentPhase] || currentPhase} → ${PHASE_LABELS[nextPhase] || nextPhase}. Blocking:\n${blockingList}\n\nHow do you want to proceed?`,
+    questions: [{
+      id: "gate_action",
+      type: "select",
+      label: "Choose an action",
+      options: [
+        { value: "redirect_schedule", label: "Open the Schedule tab to mark blocking items complete" },
+        { value: "leave_open",        label: "Leave the phase open" },
+        { value: "override",          label: "Override and advance anyway" },
+      ],
+    }],
+    meta: {
+      kind: "gate_resolution",
+      job_id: jobId,
+      current_phase: currentPhase,
+      next_phase: nextPhase,
+      failing_gates: failingGates,
+    },
+  };
+}
+
+function buildGateOverrideCardB(jobId: string, currentPhase: string, nextPhase: string): PendingCard {
+  return {
+    id: crypto.randomUUID(),
+    prompt: `Override ${PHASE_LABELS[currentPhase] || currentPhase} → ${PHASE_LABELS[nextPhase] || nextPhase}. Pick a reason — this is stamped to the audit trail.`,
+    questions: [
+      {
+        id: "reason",
+        type: "select",
+        label: "Override reason",
+        options: GATE_OVERRIDE_REASONS,
+      },
+      {
+        id: "detail",
+        type: "text",
+        label: "Additional detail (optional)",
+        options: [],
+        optional: true,
+      },
+    ],
+    meta: {
+      kind: "gate_override",
+      job_id: jobId,
+      current_phase: currentPhase,
+      next_phase: nextPhase,
+    },
+  };
+}
 
 // ─── Tool definitions (Claude tool use schema) ────────────────────────────────
 
@@ -1092,7 +1173,7 @@ HOW TO BEHAVE:
 - For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
 - Missing required fields: call the tool with whatever fields you have. If any required field is missing, the system surfaces a missing-field card automatically — do NOT ask in text first ("What's the amount?", "Which job?", etc.). Never invent values to fill gaps; just call the tool and let the card collect the rest.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
-- For advance_phase: if gates fail and the user did not give an override reason, do NOT pass override_reason. The tool result will list failing gates; relay them and ask if the user wants to override.
+- For advance_phase: do NOT pass override_reason. Just call the tool with the job_id. If gates fail, the system surfaces a gate-resolution card automatically (redirect to Schedule / leave open / override-with-structured-reason). Do not ask in text whether to override — the card IS the prompt.
 - TODO vs NOTE: an action item ("call back X", "follow up", "remind me", "don't forget", "schedule Y", "todo") goes to add_todo. Passive context attached to a job ("FYI…", "the client said…", "noted that…", "for the record…") goes to add_note. When in doubt and the user said "todo", pick add_todo. After writing a todo, the success message should say "Todo added" — never "Note added."
 - Never mention Claude or Anthropic.
 - You are the operating system of this business. Act like it.
@@ -1270,6 +1351,28 @@ Deno.serve(async (req) => {
     if (confirmed && pending_action?.tool) {
       const result = await executeTool(sb, tenant_id, user_id, pending_action.tool, pending_action.input || {});
       const action = { tool: pending_action.tool, input: pending_action.input, result };
+
+      // Phase 5: advance_phase gate failure → surface gate-resolution card
+      // instead of the default "failed" text. Card A carries job_id + failing
+      // gates in meta so the card_response handler can route deterministically.
+      if (
+        pending_action.tool === "advance_phase"
+        && (result as any)?.requires_override === true
+      ) {
+        const jobId = String((pending_action.input as any)?.job_id || "");
+        const failing = ((result as any).failing_gates as string[]) || [];
+        // Re-look up current/next phase from result for accurate card text
+        // (executor returns PHASE_LABELS-mapped strings; refetch raw for meta).
+        const { data: job } = await sb.from("jobs").select("status").eq("id", jobId).single();
+        const currentPhase = (job as any)?.status as string;
+        const nextPhase = currentPhase ? (getNextPhase(currentPhase) || "") : "";
+        const card = buildGateResolutionCardA(jobId, currentPhase, nextPhase, failing);
+        return new Response(
+          JSON.stringify({ response: card.prompt, actions: [action], pending_card: card }),
+          { headers: { ...CORS, "Content-Type": "application/json" } },
+        );
+      }
+
       const response = (result as any)?.error
         ? `${pending_action.description || pending_action.tool}: failed — ${(result as any).error}`
         : `Done. ${pending_action.description || ""}`.trim();
@@ -1287,6 +1390,62 @@ Deno.serve(async (req) => {
     // This path is intentionally separate from confirmed:true. The model must
     // receive the structured answers and decide the tool call itself.
     if (card_response && typeof card_response === "object") {
+      const cr = card_response as { card_id?: string; answers?: Record<string, unknown>; meta?: Record<string, unknown> };
+      const meta = cr.meta || {};
+      const answers = cr.answers || {};
+
+      // Phase 5: gate-resolution multi-card flow. meta.kind routes the response
+      // deterministically — these branches do NOT call Claude.
+      if (meta.kind === "gate_resolution") {
+        const jobId = String(meta.job_id || "");
+        const currentPhase = String(meta.current_phase || "");
+        const nextPhase = String(meta.next_phase || "");
+        const action = String(answers.gate_action || "");
+        if (action === "redirect_schedule") {
+          return new Response(JSON.stringify({
+            response: `Open this job's Schedule tab to mark the blocking items complete, then ask me to advance the phase again. Nothing was changed.`,
+            actions: [],
+          }), { headers: { ...CORS, "Content-Type": "application/json" } });
+        }
+        if (action === "leave_open") {
+          return new Response(JSON.stringify({
+            response: `Leaving the phase at ${PHASE_LABELS[currentPhase] || currentPhase}. Nothing was changed.`,
+            actions: [],
+          }), { headers: { ...CORS, "Content-Type": "application/json" } });
+        }
+        if (action === "override") {
+          const cardB = buildGateOverrideCardB(jobId, currentPhase, nextPhase);
+          return new Response(JSON.stringify({
+            response: cardB.prompt,
+            actions: [],
+            pending_card: cardB,
+          }), { headers: { ...CORS, "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({
+          response: "I didn't recognize that action. Nothing was changed.",
+          actions: [],
+        }), { headers: { ...CORS, "Content-Type": "application/json" } });
+      }
+
+      if (meta.kind === "gate_override") {
+        const jobId = String(meta.job_id || "");
+        const reasonValue = String(answers.reason || "");
+        const reasonOpt = GATE_OVERRIDE_REASONS.find((o) => o.value === reasonValue);
+        const reasonLabel = reasonOpt ? reasonOpt.label : reasonValue || "Override";
+        const detailRaw = typeof answers.detail === "string" ? answers.detail.trim() : "";
+        const override_reason = detailRaw ? `${reasonLabel} — ${detailRaw}` : reasonLabel;
+        const result = await executeTool(sb, tenant_id, user_id, "advance_phase", {
+          job_id: jobId,
+          override_reason,
+        });
+        const action = { tool: "advance_phase", input: { job_id: jobId, override_reason }, result };
+        const response = (result as any)?.error
+          ? `Advance failed — ${(result as any).error}`
+          : `Phase advanced from ${(result as any).from_phase} to ${(result as any).to_phase} with override. Reason logged: "${override_reason}".`;
+        return new Response(JSON.stringify({ response, actions: [action] }),
+          { headers: { ...CORS, "Content-Type": "application/json" } });
+      }
+
       const history = (conversation_history || []).slice(-20);
       const { response, actions, pending_action: pa, pending_card: pc } = await runAgentLoop(
         sb, tenant_id, user_id, role || "owner", full_name || "User", history,
