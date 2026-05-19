@@ -9,7 +9,8 @@ or adds a verb that needs structured input from the user.
 - **Phase 2 — Shipped 2026-05-19.** Receipt categorization card. ELICIT_TOOLS registry + log_receipt elicitor + executor hardened. Commit: 133f937.
 - **labor type added 2026-05-19.** `labor` joined the job_transactions type set (direct hourly-labor, distinct from sub_payout). Receipt card option list updated to 9 options. Commits: 5c6a064, c42b6a7, e796755.
 - **Phase 3 — Shipped 2026-05-19.** Job disambiguation card. POST_EXECUTE_ELICIT registry + get_jobs search param + formatCardAnswers value-in-parens fix. Commits: fb02917, + agentCards.js fix.
-- Phase 4–5: Planned. See Roadmap below.
+- **Phase 4 — Shipped 2026-05-19.** Generic missing-field validator. REQUIRED_FIELDS registry (12 write tools) + validateRequiredFields. Phase 2's bespoke log_receipt elicitor absorbed. text question type added. Commits: af2c9ba, 697cbed.
+- Phase 5: Planned. See Roadmap below.
 - Sibling arcs: VOICE_AGENT (Phase 3+4 shipped), EXECUTION_ARC (complete).
 - Hard dependency for Phase 5 of this arc: verb 5b
   (`complete_schedule_item`) must ship from VOICE_AGENT v1.5 first.
@@ -128,8 +129,15 @@ Commit: 133f937.
 text clarification. `formatCardAnswers` fixed to include `(value: X)` when label
 ≠ value — required so Claude can extract UUIDs from conversation history.
 
-Phase 4: Missing-field card. Generalized pattern across all tools.
-Refactors how tool input validation works.
+✓ Phase 4: Missing-field card. **Shipped 2026-05-19.**
+Generalized pre-execution elicitation. `REQUIRED_FIELDS` registry: 12 write
+tools declare `{ field, type, label, options?|dynamic_options }` field specs.
+One async `validateRequiredFields` collects all gaps and emits ONE form-shape
+card per call (never N cards, never N text turns). New `text` question type
+in agentCards.js + MasterAgent.jsx renderer. Phase 2's bespoke log_receipt
+elicitor absorbed and removed. Phase 3's post-execution disambiguator
+untouched. Skipped: `update_job`, `update_phase` (technical-ID / object-
+payload only). Question types now: select, radio_per_item, text.
 
 Phase 5: Phase gate resolution card. Override-only first slice (no
 verb-5b dependency). Inline mark-complete arrives when verb 5b ships.

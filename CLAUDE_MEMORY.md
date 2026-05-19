@@ -713,3 +713,42 @@ Smoke tests verified 2026-05-19:
   Single match ("123 Test Flow"): → no disambiguation card, receipt type card fired directly. PASS.
 
 Trade-aware: platform-level agent surface, tenant/trade-agnostic. No DB changes. Build: ✓ 583ms.
+
+---
+
+[LOG — 2026-05-19 — AGENT_CARDS Phase 4 — generic missing-field validator]
+- Action: AGENT_CARDS_ARC Phase 4 shipped. Generalized pre-execution elicitation. Phase 2's bespoke ELICIT_TOOLS absorbed into a single registry-driven mechanism. Every write tool now declares its required fields; one async validator emits ONE form-shape card per call collecting all gaps. text question type added.
+- Commits: af2c9ba (text question type), 697cbed (Phase 4 validator).
+
+What changed in ai-master-agent/index.ts:
+  - REQUIRED_FIELDS registry (12 write tools): log_payment, log_receipt, submit_change_order, add_todo, create_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, notify_team, add_knowledge.
+    Skipped: update_job, update_phase (technical-ID + object-payload only — model gets these from prior tool calls).
+  - FieldSpec type: { field, type: 'select'|'text', label, options? | dynamic_options }.
+  - dynamic_options='active_jobs' marker: validator runs ONE jobs query (status NOT IN complete/on_hold, limit 50) and populates options with { value: id, label: 'address — client — status' } — same shape as Phase 3 disambiguation.
+  - validateRequiredFields(sb, tenantId, toolName, input): filters missing fields via isMissing (undefined/null/empty-trim), bails to null if none. Emits PendingCard with one question per gap.
+  - Tool execution loop: ELICIT_TOOLS lookup replaced with REQUIRED_FIELDS in REQUIRED_FIELDS + validateRequiredFields call. Same pre-confirm slot (before CONFIRM_TOOLS, before executor).
+  - Loop guard: REQUIRED_FIELDS filter returns null when every required field present → falls through to CONFIRM_TOOLS normally.
+
+What changed in agentCards.js + MasterAgent.jsx (commit af2c9ba):
+  - CARD_QUESTION_TYPES: added 'text'.
+  - formatCardAnswers: text emits "label: value" line.
+  - validatePendingCard: text questions skip the options-required check.
+  - AgentCard renderer: single-line input for text (16px to suppress iOS auto-zoom). isComplete requires non-empty trimmed string.
+
+System prompt changes:
+  - HOW TO BEHAVE: removed "If the user's freeform message lacks fields the tool requires, ask one clarifying question" — replaced with "call the tool with whatever fields you have; the system surfaces a missing-field card automatically".
+  - RECEIPT FROM PHOTO + log_receipt.type description: updated to reference "missing-field card" generically (was "category card").
+
+Ordering — three elicitation mechanisms confirmed in order:
+  1. PRE-execute (this phase): REQUIRED_FIELDS via validateRequiredFields. Fires when any required field missing/empty.
+  2. CONFIRM_TOOLS: pending_action surface for the 5 confirm-gated write verbs.
+  3. POST-execute (Phase 3): POST_EXECUTE_ELICIT runs after executor; currently only get_jobs disambiguation. UNTOUCHED by Phase 4.
+
+Smoke tests verified 2026-05-19:
+  T1 "log a receipt" → 3-question card (amount text, job_id select [4 active jobs], type select [9]) → fill amount=85, job=test-flow-001, type=fuel → confirm card → DB row: id=175b8cda-048a-4ba7-a9e8-079c734281b4, job_id=test-flow-001, type=fuel, amount=85.00, direction=out. PASS.
+  T2 "add a todo" → 1-question card (title text only). PASS.
+  T3 "Log a $45 fuel receipt from QuikTrip on the 123 Test Flow job" → no card, straight to confirm with all fields including model-inferred description. PASS — regression: no false-card-fires when fields present.
+  T4 "Log a $30 receipt from XYZ Supply on the 123 Test Flow job" → card asks ONLY for type (only partial gap fires only that question). PASS.
+  T5 "Log a $25 fuel receipt from Casey's on the Test Flow job" → Phase 3 disambiguation card still fires (3 options + __none__). PASS — Phase 3 post-execution path untouched.
+
+Trade-aware: platform-level agent surface; REQUIRED_FIELDS registry is tenant- and trade-agnostic. The active-jobs query scopes by tenant_id via the service-role client. Role-based options (invite_person.role) are platform-defined values, not tenant config. No DB changes. Build: ✓ 583ms.
