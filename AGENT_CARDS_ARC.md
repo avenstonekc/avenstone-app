@@ -10,10 +10,9 @@ or adds a verb that needs structured input from the user.
 - **labor type added 2026-05-19.** `labor` joined the job_transactions type set (direct hourly-labor, distinct from sub_payout). Receipt card option list updated to 9 options. Commits: 5c6a064, c42b6a7, e796755.
 - **Phase 3 — Shipped 2026-05-19.** Job disambiguation card. POST_EXECUTE_ELICIT registry + get_jobs search param + formatCardAnswers value-in-parens fix. Commits: fb02917, + agentCards.js fix.
 - **Phase 4 — Shipped 2026-05-19.** Generic missing-field validator. REQUIRED_FIELDS registry (12 write tools) + validateRequiredFields. Phase 2's bespoke log_receipt elicitor absorbed. text question type added. Commits: af2c9ba, 697cbed.
-- Phase 5: Planned. See Roadmap below.
+- **Phase 5 — Shipped 2026-05-19.** Gate resolution card. POST_EXECUTE_ELICIT entry for advance_phase emits Card A (redirect / leave open / override LAST). Card B collects structured override reason + optional detail; deterministic branch in card_response handler runs executor with combined reason. pending_card.meta echo channel + optional CardQuestion flag added. Commits: fd92fbc, 93dc605, 9bf8ad4.
+- **v1 arc complete.** Phase 6 (field voice rendering of cards) is deferred — gated on VOICE_AGENT Phase 3 (native iOS STT) shipping a hands-free path.
 - Sibling arcs: VOICE_AGENT (Phase 3+4 shipped), EXECUTION_ARC (complete).
-- Hard dependency for Phase 5 of this arc: verb 5b
-  (`complete_schedule_item`) must ship from VOICE_AGENT v1.5 first.
 
 ## The goal
 
@@ -139,8 +138,20 @@ elicitor absorbed and removed. Phase 3's post-execution disambiguator
 untouched. Skipped: `update_job`, `update_phase` (technical-ID / object-
 payload only). Question types now: select, radio_per_item, text.
 
-Phase 5: Phase gate resolution card. Override-only first slice (no
-verb-5b dependency). Inline mark-complete arrives when verb 5b ships.
+✓ Phase 5: Phase gate resolution card. **Shipped 2026-05-19.**
+Override-only first slice. POST_EXECUTE_ELICIT entry for advance_phase
+fires when the executor returns requires_override=true. Card A: select
+of three actions in order — `redirect_schedule`, `leave_open`,
+`override` (override LAST per guard rail). Card A's prompt lists the
+failing gates. Card B (only when override chosen): structured reason
+select (work_done_not_marked / schedule_changed / client_decision /
+other) + optional detail text. On submit, the card_response handler
+combines reason+detail and calls advance_phase via the existing
+executor path, stamping jobs.phase_override_used / _reason / _at /
+_by_id. Two new contract bits to support multi-card flows: pending_card.meta
+(opaque server-echo channel; client echoes back in card_response) and
+CardQuestion.optional (submit allowed without an answer). Inline
+mark-complete arrives when VOICE_AGENT verb 5b ships.
 
 Phase 6 (deferred): Field voice rendering for cards. Likely "say one
 of: A, B, C" with grammar matching. Wait until VOICE_AGENT Phase 3

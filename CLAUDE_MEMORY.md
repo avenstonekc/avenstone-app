@@ -752,3 +752,47 @@ Smoke tests verified 2026-05-19:
   T5 "Log a $25 fuel receipt from Casey's on the Test Flow job" → Phase 3 disambiguation card still fires (3 options + __none__). PASS — Phase 3 post-execution path untouched.
 
 Trade-aware: platform-level agent surface; REQUIRED_FIELDS registry is tenant- and trade-agnostic. The active-jobs query scopes by tenant_id via the service-role client. Role-based options (invite_person.role) are platform-defined values, not tenant config. No DB changes. Build: ✓ 583ms.
+
+---
+
+[LOG — 2026-05-19 — AGENT_CARDS Phase 5 — gate resolution card. v1 arc COMPLETE.]
+- Action: AGENT_CARDS_ARC Phase 5 shipped. advance_phase gate failures now surface a card flow instead of relayed-in-text errors. Override is structured (select + optional detail), never the default. Two-card flow (Card A: action; Card B: override reason) plumbed through a new pending_card.meta echo channel that avoids round-tripping through Claude on deterministic steps.
+- Commits: fd92fbc (meta channel), 93dc605 (Phase 5 flow), 9bf8ad4 (move hook to POST_EXECUTE_ELICIT).
+
+Audit findings worth keeping:
+  - advance_phase override columns live on `jobs` (NOT job_phases). Per 20260506180000 migration ARCHITECTURE NOTE: jobs.status IS the lifecycle phase tracker; job_phases rows are TRADE phases (separate system). The arc prompt mentioned "(on job_phases?)" — answered: jobs.
+  - advance_phase is NOT in CONFIRM_TOOLS. Initial Phase 5 attempt put the hook in the confirmed:true branch (dead code — that branch never reached for advance_phase). Moved to POST_EXECUTE_ELICIT, matches the Phase 3 disambiguation pattern exactly.
+  - ELICIT_TOOLS dead-code: confirmed only comment references remain (lines 141, 279). The object was cleanly removed in Phase 4. No cleanup needed.
+
+What changed in ai-master-agent/index.ts:
+  - PendingCard: added optional `meta?: Record<string, unknown>` field. Server stamps context; client echoes back in card_response.
+  - CardQuestion: added optional `optional?: boolean` flag. AgentCard isComplete skips optional questions.
+  - GATE_OVERRIDE_REASONS: 4 select options (work_done_not_marked, schedule_changed, client_decision, other).
+  - buildGateResolutionCardA(jobId, currentPhase, nextPhase, failing_gates): Card A with 3 actions — redirect_schedule, leave_open, override (LAST). Prompt lists failing gates. meta.kind='gate_resolution'.
+  - buildGateOverrideCardB(jobId, currentPhase, nextPhase): Card B with reason select + optional detail text. meta.kind='gate_override'.
+  - POST_EXECUTE_ELICIT.advance_phase: fires when result.requires_override===true. Reverse-looks PHASE_LABELS to recover raw phase keys for meta. Returns Card A.
+  - card_response handler: dispatches BEFORE runAgentLoop on meta.kind:
+      - 'gate_resolution' → text turn (redirect_schedule / leave_open) OR Card B (override). No Claude round-trip.
+      - 'gate_override' → combines reason label + (optional) detail into "Label — Detail" string, calls executeTool('advance_phase', { job_id, override_reason }) directly. No Claude round-trip.
+  - System prompt: "For advance_phase: if gates fail and the user did not give an override reason, do NOT pass override_reason. The tool result will list failing gates; relay them and ask if the user wants to override." → updated to "the card IS the prompt" — model no longer asks in text.
+
+Client changes:
+  - agentCards.js: JSDoc documents meta + optional flag. validatePendingCard accepts meta when present.
+  - MasterAgent.jsx submitCard: echoes pending card's meta in card_response. AgentCard.isComplete skips q.optional.
+
+Three elicitation mechanisms now in place:
+  1. PRE-execute (Phase 4): REQUIRED_FIELDS missing-field card.
+  2. CONFIRM_TOOLS: pending_action confirm card (money verbs).
+  3. POST-execute (Phase 3 + 5): POST_EXECUTE_ELICIT — get_jobs disambiguation + advance_phase gate resolution.
+
+Smoke tests verified 2026-05-19 (test-flow-001, two scheduled sub_starts as blocking items):
+  T1 override path: gates fail → Card A (3 opts, override LAST) → pick Override → Card B (reason+optional detail) → pick "schedule_changed" + type "Client moved final touches up two weeks" → executor runs.
+    Row: status=final_touches, phase_override_used=true, phase_override_reason="Schedule changed — Client moved final touches up two weeks", phase_override_by_id=53dc982e-93a5-4220-9c52-422f0151e4ad, phase_override_at=2026-05-19T21:07:39Z. PASS.
+  T2 leave_open: Card A → pick "Leave the phase open" → text turn, status still in_progress, no stamp. PASS.
+  T3 redirect_schedule: Card A → pick "Open the Schedule tab" → text turn mentioning Schedule, status still in_progress. PASS.
+  T4 gates pass (both sub_starts marked complete): no Card A, direct advance to final_touches, phase_override_used=false. PASS.
+  T5 regressions: Phase 4 missing-field card still fires for "log a receipt"; Phase 3 disambiguation still fires for ambiguous "Test Flow" with __none__ option. PASS.
+
+v1 arc complete. Phase 6 (field voice rendering of cards — "say one of: A, B, C" grammar matching) deferred until VOICE_AGENT Phase 3 (native iOS STT hands-free) ships.
+
+Trade-aware: platform-level — Card A actions, Card B reasons, and the override stamp are all tenant/trade-agnostic. The card text references phase labels from PHASE_LABELS (lifecycle), not trade phases. No DB changes. Build: ✓ pass after each commit.
