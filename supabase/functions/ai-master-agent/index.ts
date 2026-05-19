@@ -171,15 +171,49 @@ const ELICIT_TOOLS: Record<string, (input: Record<string, unknown>) => PendingCa
   },
 };
 
+// Post-execution elicitation registry — tools where the card is triggered by
+// inspecting the tool RESULT (not missing input). Parallel to ELICIT_TOOLS but
+// fires inside the tool-execution loop, after executeTool returns, before the
+// tool_result is fed back to Claude. Returning null means proceed normally.
+// Loop guard: the card answer re-enters as a new user turn in conversation_history
+// — on re-entry the model has the selected value and calls the next tool directly.
+const POST_EXECUTE_ELICIT: Record<
+  string,
+  (input: Record<string, unknown>, result: Record<string, unknown>) => PendingCard | null
+> = {
+  get_jobs: (input, result) => {
+    if (!input.search || typeof input.search !== "string" || !input.search.trim()) return null;
+    const jobs = ((result.jobs as Array<Record<string, unknown>>) || []);
+    if (jobs.length <= 1) return null; // 0 = not found (model handles via text); 1 = unambiguous
+    return {
+      id: crypto.randomUUID(),
+      prompt: `Multiple jobs match "${String(input.search).trim()}" — which one did you mean?`,
+      questions: [{
+        id: "job_id",
+        type: "select",
+        label: "Select a job",
+        options: [
+          ...jobs.map((j) => {
+            const parts = [j.address, j.client_name, j.status].filter(Boolean);
+            return { value: String(j.id), label: parts.join(" — ") };
+          }),
+          { value: "__none__", label: "None of these" },
+        ],
+      }],
+    };
+  },
+};
+
 // ─── Tool definitions (Claude tool use schema) ────────────────────────────────
 
 const TOOLS = [
   {
     name: "get_jobs",
-    description: "List jobs for this tenant. Optionally filter by status.",
+    description: "List jobs for this tenant. Use `search` when the user names a specific job (by address or client name) — a disambiguation card surfaces automatically when multiple matches are found. Omit `search` when browsing all jobs.",
     input_schema: {
       type: "object",
       properties: {
+        search: { type: "string", description: "Search by address or client name — use when the user names a specific job. Omit when browsing all jobs." },
         status: { type: "string", description: "Filter by job lifecycle status: lead, proposal, contract, in_progress, final_touches, complete, on_hold. Omit for all." },
         limit: { type: "number", description: "Max results (default 30)" },
       },
@@ -430,6 +464,10 @@ async function executeTool(
           .order("created_at", { ascending: false })
           .limit(Number(input.limit) || 30);
         if (input.status) q = q.eq("status", String(input.status));
+        if (input.search && typeof input.search === "string" && input.search.trim()) {
+          const term = input.search.trim().replace(/%/g, "\\%");
+          q = q.or(`address.ilike.%${term}%,client_name.ilike.%${term}%`);
+        }
         const { data, error } = await q;
         if (error) return { error: error.message, jobs: [], count: 0 };
         return { jobs: data || [], count: (data || []).length };
@@ -939,7 +977,7 @@ WHAT YOU CAN DO:
 
 HOW TO BEHAVE:
 - Act immediately. Don't ask "should I do X?" — just do it and tell them what you did.
-- If you need a job ID or sub ID to complete a task, call get_jobs or get_team first to find it.
+- If you need a job ID and the user named a specific job, call get_jobs with search=<the name or address fragment>. A disambiguation card surfaces automatically when multiple matches are found — don't ask in text. If you need a sub ID, call get_team first.
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
@@ -1069,6 +1107,19 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
         if (block.type === "tool_use" && block.name && block.id) {
           const result = await executeTool(sb, tenantId, userId, block.name, block.input || {});
           actions.push({ tool: block.name, input: block.input, result });
+
+          // Post-execution elicitation: inspect the result and emit a card if needed.
+          // Returns early — tool_result is NOT fed back to Claude. The card answer
+          // re-enters via card_response as a fresh user turn in conversation_history,
+          // so the model sees [assistant: question] → [user: answers] and proceeds.
+          if (block.name in POST_EXECUTE_ELICIT) {
+            const card = POST_EXECUTE_ELICIT[block.name](block.input || {}, result);
+            if (card) {
+              const text = blocks.find((b) => b.type === "text")?.text ?? "I found multiple matches — which one did you mean?";
+              return { response: text, actions, pending_card: card };
+            }
+          }
+
           toolResults.push({
             type: "tool_result",
             tool_use_id: block.id,
