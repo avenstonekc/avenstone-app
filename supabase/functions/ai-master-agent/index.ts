@@ -114,9 +114,9 @@ interface CardItem {
 
 interface CardQuestion {
   id: string;
-  type: "select" | "radio_per_item";
+  type: "select" | "radio_per_item" | "text";
   label: string;
-  options: CardOption[];
+  options: CardOption[]; // [] for text; required for select + radio_per_item
   items?: CardItem[]; // radio_per_item only
 }
 

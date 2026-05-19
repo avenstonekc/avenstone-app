@@ -186,7 +186,8 @@ function ActionsPanel({ actions }) {
 }
 
 // AgentCard — renders a pending_card emitted by ai-master-agent.
-// Supports select (button group) and radio_per_item (table of rows × options).
+// Supports select (button group), radio_per_item (table of rows × options),
+// and text (single-line input — used by Phase 4 missing-field form cards).
 // Submit is disabled until every question has a complete answer.
 // Cancel reverts to plain text turns (arc guard rail).
 function AgentCard({ card, onSubmit, onCancel, loading }) {
@@ -194,6 +195,10 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
 
   const isComplete = card.questions.every(q => {
     if (q.type === 'select') return answers[q.id] != null;
+    if (q.type === 'text') {
+      const v = answers[q.id];
+      return typeof v === 'string' && v.trim().length > 0;
+    }
     if (q.type === 'radio_per_item') {
       const perItem = answers[q.id] || {};
       return (q.items || []).every(item => perItem[item.id] != null);
@@ -202,6 +207,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
   });
 
   const setSelect = (qId, value) => setAnswers(prev => ({ ...prev, [qId]: value }));
+  const setText = (qId, value) => setAnswers(prev => ({ ...prev, [qId]: value }));
   const setRadioItem = (qId, itemId, value) => setAnswers(prev => ({
     ...prev,
     [qId]: { ...(prev[qId] || {}), [itemId]: value },
@@ -282,6 +288,27 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
                   );
                 })}
               </div>
+            )}
+
+            {q.type === 'text' && (
+              <input
+                type="text"
+                value={answers[q.id] || ''}
+                onChange={e => setText(q.id, e.target.value)}
+                placeholder={q.label}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(247,245,240,0.2)',
+                  background: 'rgba(247,245,240,0.06)',
+                  color: '#F7F5F0',
+                  fontFamily: 'DM Sans, sans-serif',
+                  fontSize: 16,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
             )}
 
             {q.type === 'radio_per_item' && (

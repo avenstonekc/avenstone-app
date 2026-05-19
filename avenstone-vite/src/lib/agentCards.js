@@ -14,9 +14,10 @@
 //   questions: Array<{
 //     id: string,            // unique within this card
 //     type: 'select'         // single choice from a flat option list
-//          | 'radio_per_item', // list of items, each gets one choice from the same options
+//          | 'radio_per_item' // list of items, each gets one choice from the same options
+//          | 'text',          // free-form text input (numbers come back as strings)
 //     label: string,         // displayed above the input
-//     options: Array<{       // choices for select; column headers for radio_per_item
+//     options: Array<{       // required for select + radio_per_item; absent for text
 //       value: string,
 //       label: string,
 //     }>,
@@ -59,7 +60,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 /** @type {ReadonlyArray<string>} */
-export const CARD_QUESTION_TYPES = ['select', 'radio_per_item'];
+export const CARD_QUESTION_TYPES = ['select', 'radio_per_item', 'text'];
 
 /**
  * Format card answers into a plain-text user message for conversation history.
@@ -85,6 +86,8 @@ export function formatCardAnswers(card, answers) {
       // (e.g. job UUIDs, enum keys like 'material_purchase' vs 'Materials')
       const display = label === value ? label : `${label} (value: ${value})`;
       lines.push(`${q.label}: ${display}`);
+    } else if (q.type === 'text') {
+      lines.push(`${q.label}: ${String(ans ?? '')}`);
     } else if (q.type === 'radio_per_item' && ans && typeof ans === 'object') {
       lines.push(`${q.label}:`);
       for (const item of (q.items || [])) {
@@ -129,12 +132,15 @@ export function validatePendingCard(card) {
     if (typeof q.label !== 'string') {
       return { ok: false, error: `question "${q.id}": label must be a string` };
     }
-    if (!Array.isArray(q.options) || q.options.length === 0) {
-      return { ok: false, error: `question "${q.id}": options must be a non-empty array` };
-    }
-    for (const opt of q.options) {
-      if (typeof opt.value !== 'string' || typeof opt.label !== 'string') {
-        return { ok: false, error: `question "${q.id}": each option needs value and label strings` };
+    // text questions don't need options; select + radio_per_item require them.
+    if (q.type !== 'text') {
+      if (!Array.isArray(q.options) || q.options.length === 0) {
+        return { ok: false, error: `question "${q.id}": options must be a non-empty array` };
+      }
+      for (const opt of q.options) {
+        if (typeof opt.value !== 'string' || typeof opt.label !== 'string') {
+          return { ok: false, error: `question "${q.id}": each option needs value and label strings` };
+        }
       }
     }
     if (q.type === 'radio_per_item') {
