@@ -63,7 +63,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **`job_transactions.invoice_id` column EXISTS** (Invoicing Phase 1, 2026-05-06). Nullable audit FK. Stamped on Stripe webhook reconciliation when an invoice is paid.
 - **`ai_knowledge.created_by` column EXISTS** (added 2026-05-09 via migration `20260509120000_ai_knowledge_created_by.sql`). UUID FK → profiles(id) ON DELETE SET NULL, nullable. Live columns: `id, tenant_id, category, content, active, created_at, created_by`. RLS shipped 2026-05-17 via `20260517120000_ai_knowledge_rls.sql`. 4 policies: select (tenant_id), insert/update/delete (tenant_id + owner role). Direct-client access now tenant-isolated. Service-role usage in edge fns unaffected.
 - **`pending_tasks` table DROPPED** (2026-05-09 via migration `20260509180000_drop_pending_tasks.sql`). Master Agent v2 retired the queue layer in favor of a persistent chat panel. 8 rows existed at drop time, all smoke-test artifacts. Resulting entities (job_transactions, change_orders, jobs, todos) live in their own tables and were unaffected — only audit metadata was intentionally lost. CASCADE removed any FK dependents. Do not recreate without explicit approval.
-- **ai-master-agent has 18 tools** (assign_sub removed 2026-05-11 — was writing to dropped `job_subs`; see Option-2 LOG): get_jobs, get_job_details, get_team, get_dashboard, create_job, update_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, update_phase, submit_change_order, log_payment, log_receipt, notify_team, add_todo, add_knowledge.
+- **ai-master-agent has 16 tools** (2 stale read tools removed 2026-05-19 — see read-tool cleanup LOG below): get_jobs, get_team, create_job, update_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, update_phase, submit_change_order, log_payment, log_receipt, notify_team, add_todo, add_knowledge.
 - **`CONFIRM_TOOLS` is a 5-verb whitelist** (extended 2026-05-09 from 3 to 5): log_payment, log_receipt, submit_change_order, add_todo, create_job. Every member returns `pending_action` and surfaces a Confirm card before the row is written.
 - **`job_estimates` consultation columns EXIST** (2026-05-12 via Shape C migration). New columns: `session_id UUID → consultation_sessions(id)`, `created_by UUID → profiles(id)`, `estimate_data JSONB` (structured AI estimate output from Consultation flow, distinct from `messages` which holds Estimator chat transcript), `total NUMERIC`, `source TEXT` (currently 'ai_consultation'). UNIQUE on `job_id` retained — Estimator and Consultation upsert onto the same row, non-overlapping field sets. Multi-source split deferred.
 
@@ -796,3 +796,36 @@ Smoke tests verified 2026-05-19 (test-flow-001, two scheduled sub_starts as bloc
 v1 arc complete. Phase 6 (field voice rendering of cards — "say one of: A, B, C" grammar matching) deferred until VOICE_AGENT Phase 3 (native iOS STT hands-free) ships.
 
 Trade-aware: platform-level — Card A actions, Card B reasons, and the override stamp are all tenant/trade-agnostic. The card text references phase labels from PHASE_LABELS (lifecycle), not trade phases. No DB changes. Build: ✓ pass after each commit.
+
+---
+
+[LOG — 2026-05-19 — ai-master-agent stale read-tool cleanup]
+- Action: Removed get_job_details and get_dashboard from the ai-master-agent tool registry after re-verification. Tool count: 18 → 16. Reads: 4 → 2.
+- Commit: 0360f88
+
+Prior label resolved: voice-agent-audit-2026-05-08's "~13 out-of-v1 tools" was a rough count of everything beyond CONFIRM_TOOLS (5), not a curated remove-list. The 2026-05-17 follow-up audit found no actual removals (and fixed a phantom-table bug in get_dashboard). This slice re-verified post-AGENT_CARDS and found 2 read tools genuinely unmoored from the v1 surface.
+
+Read-tool audit:
+  - get_jobs — KEEP. POST_EXECUTE_ELICIT (Phase 3 disambiguation). System prompt references for job-ID lookup + log_receipt PO match.
+  - get_team — KEEP. System prompt: "If you need a sub ID, call get_team first." Implicit consumer of add_todo.assigned_to_user_id and notify_team.user_id.
+  - get_job_details — REMOVED. No card-flow reference (REQUIRED_FIELDS / CONFIRM_TOOLS / POST_EXECUTE_ELICIT). No system-prompt reference. Comprehensive job snapshot is a general-query feature; v1 chat is verb-focused, and job-detail screens already serve this in the UI.
+  - get_dashboard — REMOVED. No card-flow reference. No system-prompt reference. Morning-brief snapshot is already served by TodayScr UI directly. The phantom-table bug fixed 2026-05-17 was cosmetic — tool was active code path but unmoored from any v1 verb.
+
+Write-tool audit (sanity): all 14 write tools appear in REQUIRED_FIELDS or CONFIRM_TOOLS (Phase 4 registry) — none stale. No write removals.
+
+What changed in ai-master-agent/index.ts:
+  - TOOLS array: get_job_details, get_dashboard entries removed.
+  - Executor switch: get_job_details + get_dashboard cases removed.
+  - System prompt WHAT YOU CAN DO line: "Read: jobs, team, dashboard snapshot, job details" → "Read: jobs, team". Drift-free.
+
+External references check: only mentions outside the registry/executor were in CLAUDE_MEMORY.md + CLAUDE_ARCHIVE.md historical LOGs. No code path elsewhere invokes these tools. (ai-master-agent uses its own inline SB queries — no shared helpers in supabase.js were orphaned by this change.)
+
+Orphan helpers: NONE. ai-master-agent writes its own SB queries per-case; no shared helper file was consumed by the removed tools. No helper sweep needed.
+
+Smoke tests verified 2026-05-19 (post-deploy):
+  T1 receipt card flow: "Log a $42 fuel receipt from QuikTrip on the 123 Test Flow job" → pending_action confirm → confirmed → row id=dea6dbc6 (log_receipt). PASS.
+  T2 get_jobs lookup: "Log a $10 fuel receipt from Casey's on the Test Flow job" → Phase 3 disambiguation card fires with 3 opts incl __none__. PASS.
+  T3 add_note write: "add a note on the 123 Test Flow job" → auto-applies (not in CONFIRM_TOOLS), row written id=97780bff. PASS.
+  T4 graceful degradation: "what needs my attention today?" — model previously would have called get_dashboard; now calls get_jobs + get_team and synthesizes the answer from there. No error, response composed normally. PASS.
+
+Build: ✓ 611ms. Tool count confirmed 16 via grep of name: pattern. Trade-aware: platform-level cleanup, tenant- and trade-agnostic. No DB changes.
