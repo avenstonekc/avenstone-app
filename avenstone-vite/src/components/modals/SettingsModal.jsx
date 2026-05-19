@@ -6,7 +6,7 @@ const QB_TYPES = [
   ['client_payment', 'Client Payment'], ['client_deposit', 'Deposit'], ['client_refund', 'Refund'],
   ['sub_payout', 'Sub Payout'], ['vendor_payment', 'Vendor Payment'], ['material_purchase', 'Materials'],
   ['equipment_rental', 'Equipment Rental'], ['permit', 'Permit'], ['fuel', 'Fuel'],
-  ['commission', 'Commission'], ['other_expense', 'Other Expense'], ['other_income', 'Other Income'],
+  ['commission', 'Commission'], ['labor', 'Labor'], ['other_expense', 'Other Expense'], ['other_income', 'Other Income'],
 ];
 
 const NOTIF_EVENTS = [

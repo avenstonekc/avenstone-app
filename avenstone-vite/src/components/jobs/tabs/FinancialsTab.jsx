@@ -18,7 +18,7 @@ const TYPE_LABELS = {
   client_payment: 'Client Payment', client_deposit: 'Deposit', client_refund: 'Refund',
   sub_payout: 'Sub Payout', vendor_payment: 'Vendor Payment', material_purchase: 'Materials',
   equipment_rental: 'Equipment Rental', permit: 'Permit', fuel: 'Fuel', commission: 'Commission',
-  other_expense: 'Other Expense', other_income: 'Other Income',
+  labor: 'Labor', other_expense: 'Other Expense', other_income: 'Other Income',
 };
 
 const STATUS_COLOR = { paid: '#22c55e', pending: '#f59e0b', overdue: '#ef4444', void: '#9CA3AF', draft: '#9CA3AF', refunded: '#8b5cf6' };

@@ -3,12 +3,12 @@ import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadRe
 import { f$ } from '../../../../lib/utils';
 
 const TX_TYPES_IN  = ['client_payment','client_deposit','client_refund','other_income'];
-const TX_TYPES_OUT = ['sub_payout','vendor_payment','material_purchase','equipment_rental','permit','fuel','commission','other_expense'];
+const TX_TYPES_OUT = ['sub_payout','vendor_payment','material_purchase','equipment_rental','permit','fuel','commission','labor','other_expense'];
 const TYPE_LABELS  = {
   client_payment: 'Client Payment', client_deposit: 'Deposit', client_refund: 'Refund',
   sub_payout: 'Sub Payout', vendor_payment: 'Vendor Payment', material_purchase: 'Materials',
   equipment_rental: 'Equipment Rental', permit: 'Permit', fuel: 'Fuel', commission: 'Commission',
-  other_expense: 'Other Expense', other_income: 'Other Income',
+  labor: 'Labor', other_expense: 'Other Expense', other_income: 'Other Income',
 };
 const ALL_STATUSES    = ['draft','pending','paid','overdue','void','refunded'];
 const SIMPLE_STATUSES = ['paid','pending','draft'];  // handled by toggle
