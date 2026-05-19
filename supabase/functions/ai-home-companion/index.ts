@@ -168,8 +168,8 @@ Deno.serve(async (req) => {
       { data: knowledge },
       { data: subPerfRaw },
     ] = await Promise.all([
-      jobIds.length ? sb.from("schedule_phases")
-        .select("job_id, name, end_date, status")
+      jobIds.length ? sb.from("job_phases")
+        .select("job_id, phase_name, end_date, status")
         .in("job_id", jobIds)
         .lt("end_date", new Date().toISOString().slice(0, 10))
         .not("status", "eq", "complete")
@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
     ).join("\n") || "No active jobs.";
 
     const overdueStr = (overduePhases || []).map((p: any) =>
-      `• ${jobMap[p.job_id] || "unknown"} [${p.job_id}]: "${p.name}" was due ${p.end_date} — still ${p.status}`
+      `• ${jobMap[p.job_id] || "unknown"} [${p.job_id}]: "${p.phase_name}" was due ${p.end_date} — still ${p.status}`
     ).join("\n") || "None.";
 
     const paymentsStr = (unpaidPayments || []).map((p: any) =>

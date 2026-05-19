@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
           { data: jobEstimates },
           { data: proposalDocs },
         ] = await Promise.all([
-          sb.from("schedule_phases").select("*").eq("job_id", job.id).order("order_index"),
+          sb.from("job_phases").select("*").eq("job_id", job.id).order("phase_order"),
           sb.from("job_transactions").select("*").eq("job_id", job.id),
           sb.from("change_orders").select("*").eq("job_id", job.id),
           sb.from("daily_logs").select("*").eq("job_id", job.id).order("log_date", { ascending: false }).limit(5),

@@ -292,7 +292,7 @@ Deno.serve(async (req) => {
       supabase.from("job_notes").select("*").eq("job_id", job_id).order("created_at", { ascending: false }).limit(10),
       supabase.from("change_orders").select("*").eq("job_id", job_id),
       supabase.from("job_transactions").select("*").eq("job_id", job_id),
-      supabase.from("schedule_phases").select("*").eq("job_id", job_id).order("start_date"),
+      supabase.from("job_phases").select("*").eq("job_id", job_id).order("start_date"),
       supabase.from("job_sub_engagements").select("*, profiles!sub_id(full_name, phone)").eq("job_id", job_id),
       supabase.from("job_materials").select("*").eq("job_id", job_id).order("created_at"),
       supabase.from("ai_knowledge").select("category, content").eq("tenant_id", tenant_id).eq("active", true).limit(20),
@@ -348,7 +348,7 @@ Description: ${job?.description ?? "N/A"}
 
 SCHEDULE PHASES
 ---------------
-${phases?.map((p: any) => `• ${p.name}: ${p.status} (${p.start_date ?? "?"} → ${p.end_date ?? "?"})`).join("\n") || "None"}
+${phases?.map((p: any) => `• ${p.phase_name}: ${p.status} (${p.start_date ?? "?"} → ${p.end_date ?? "?"})`).join("\n") || "None"}
 
 ASSIGNED SUBS
 -------------

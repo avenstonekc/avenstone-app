@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
       sb.from("change_orders").select("*").eq("job_id", job_id),
       sb.from("payments").select("*").eq("job_id", job_id),
       sb.from("job_documents").select("id, name, file_type, created_at").eq("job_id", job_id),
-      sb.from("schedule_phases").select("*").eq("job_id", job_id).order("order_index"),
+      sb.from("job_phases").select("*").eq("job_id", job_id).order("phase_order"),
       sb.from("daily_logs").select("*").eq("job_id", job_id).order("log_date", { ascending: false }).limit(10),
       sb.from("job_sub_engagements").select("*, profiles!sub_id(full_name, phone, email)").eq("job_id", job_id),
     ]);
@@ -134,7 +134,7 @@ CONTRACT SIGNED: ${job.contract_signed ? "Yes" : "No"}
 TARGET COMPLETION: ${job.target_completion || "Not set"}
 
 PHASES:
-${(phases || []).map(p => `  ${p.name}: ${p.status} | Start: ${p.start_date || "TBD"} | End: ${p.end_date || "TBD"}`).join("\n") || "  No phases set"}
+${(phases || []).map(p => `  ${p.phase_name}: ${p.status} | Start: ${p.start_date || "TBD"} | End: ${p.end_date || "TBD"}`).join("\n") || "  No phases set"}
 
 CHANGE ORDERS (${(cos || []).length} total):
 ${(cos || []).map(c => `  ${c.co_number || "CO"}: ${c.description} | $${Number(c.amount).toLocaleString()} | ${c.status}`).join("\n") || "  None"}
