@@ -78,10 +78,14 @@ not just yes/no.
 
 Pick these 4 first. Each is a concrete win over current behavior.
 
-1. **Receipt categorization card** — `log_receipt` always emits a
-   select card: `material_purchase | fuel | permit | sub_payout |
-   vendor_payment | commission | other_expense`. Removes today's
-   hardcoded `material_purchase` workaround.
+1. **Receipt categorization card** — `log_receipt` emits a select card
+   when `type` is absent: `material_purchase | fuel | permit | sub_payout |
+   vendor_payment | commission | equipment_rental | other_expense`. (Arc
+   originally spec'd 7; `equipment_rental` added — it is a valid DB value per
+   `job_transactions_type_check` constraint.) Removes today's hardcoded
+   `material_purchase` workaround. High-confidence vendor inference (Home
+   Depot, gas stations, permit offices) still bypasses the card per system
+   prompt guidance — card fires for unrecognised vendors.
 
 2. **Job disambiguation card** — when `get_jobs` returns >1 match
    for an ambiguous reference ("the Smith job"), agent emits a

@@ -633,7 +633,7 @@ Trade-aware: platform-level agent surface, tenant/trade-agnostic. No DB changes.
 ---
 
 [LOG — 2026-05-19 — AGENT_CARDS Phase 2 — receipt categorization card]
-- Action: AGENT_CARDS_ARC Phase 2 shipped. log_receipt now always emits a category select card when type is absent.
+- Action: AGENT_CARDS_ARC Phase 2 shipped. log_receipt emits a category select card when type is absent.
 - Commit: 133f937
 
 What changed in ai-master-agent/index.ts:
@@ -644,7 +644,16 @@ What changed in ai-master-agent/index.ts:
   - log_receipt tool description: "Omit when unknown — the system will prompt the user to select."
   - System prompt RECEIPT FROM PHOTO: "Otherwise → omit type; the category card will prompt the user"
 
+Category options — 8 (arc spec said 7, but equipment_rental is a valid DB value per job_transactions_type_check constraint):
+  material_purchase, fuel, permit, sub_payout, vendor_payment, commission, equipment_rental, other_expense
+  DB constraint also has: client_payment, client_deposit, client_refund, other_income — outbound expenses only; those 4 are excluded from card options correctly.
+
 Full flow: "log a $50 receipt" → Claude calls log_receipt(type absent) → ELICIT_TOOLS fires → pending_card returned → AgentCard renders select → user picks fuel → card_response → runAgentLoop → Claude re-calls log_receipt(type:"fuel") → elicitor returns null → confirmBlock fires → pending_action confirm card → user confirms → row written with type=fuel.
+
+Vendor-inference still in effect for RECEIPT FROM PHOTO path: Home Depot → material_purchase, gas → fuel, permit office → permit (high-confidence only). Unknown vendor → agent omits type → card fires.
+
+Smoke test verified 2026-05-19 (edge fn called directly):
+  Row written: id=7cd60f10-7bd7-48ba-9b70-af7b3d8a2eb0, job_id=test-flow-001, amount=50.00, type=fuel, direction=out
 
 Loop guard: elicitor returns null when input.type present — prevents infinite card loop on post-card re-call.
 No DB changes, no renderer changes (reuses Phase 1 AgentCard). Build: ✓ 728ms.
