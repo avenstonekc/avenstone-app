@@ -79,13 +79,21 @@ export function formatCardAnswers(card, answers) {
     const ans = answers[q.id];
     if (q.type === 'select') {
       const opt = (q.options || []).find(o => o.value === ans);
-      lines.push(`${q.label}: ${opt ? opt.label : String(ans ?? '')}`);
+      const label = opt ? opt.label : String(ans ?? '');
+      const value = opt ? opt.value : String(ans ?? '');
+      // Include value when it differs from label so Claude can use it directly
+      // (e.g. job UUIDs, enum keys like 'material_purchase' vs 'Materials')
+      const display = label === value ? label : `${label} (value: ${value})`;
+      lines.push(`${q.label}: ${display}`);
     } else if (q.type === 'radio_per_item' && ans && typeof ans === 'object') {
       lines.push(`${q.label}:`);
       for (const item of (q.items || [])) {
         const chosen = /** @type {Record<string,string>} */ (ans)[item.id];
         const opt = (q.options || []).find(o => o.value === chosen);
-        lines.push(`  ${item.label}: ${opt ? opt.label : String(chosen ?? '')}`);
+        const chosenLabel = opt ? opt.label : String(chosen ?? '');
+        const chosenValue = opt ? opt.value : String(chosen ?? '');
+        const display = chosenLabel === chosenValue ? chosenLabel : `${chosenLabel} (value: ${chosenValue})`;
+        lines.push(`  ${item.label}: ${display}`);
       }
     }
   }
