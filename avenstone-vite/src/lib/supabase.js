@@ -1145,8 +1145,11 @@ export const sbGetContactLidarScans = async contactId => {
 };
 // Edit an existing scan's overrides (rotation, mirror, room name overrides). isJob=true → job_lidar_scans.
 export const sbUpdateScanOverrides = async (scanId, isJob, editOverrides) => {
-  const table = isJob ? 'job_lidar_scans' : 'contact_lidar_scans';
-  const { error } = await sb.from(table).update({ edit_overrides: editOverrides }).eq('id', scanId);
+  if (isJob) {
+    const { error } = await sb.from('job_lidar_scans').update({ edit_overrides: editOverrides }).eq('id', scanId);
+    return { error };
+  }
+  const { error } = await sb.from('contact_lidar_scans').update({ edit_overrides: editOverrides }).eq('id', scanId);
   return { error };
 };
 
