@@ -8,7 +8,8 @@ or adds a verb that needs structured input from the user.
 - **Phase 1 — Shipped 2026-05-18.** Card schema, MasterAgent renderer, round-trip wiring. Commits: 6067a0d, 48b97d2, 0fcbab8.
 - **Phase 2 — Shipped 2026-05-19.** Receipt categorization card. ELICIT_TOOLS registry + log_receipt elicitor + executor hardened. Commit: 133f937.
 - **labor type added 2026-05-19.** `labor` joined the job_transactions type set (direct hourly-labor, distinct from sub_payout). Receipt card option list updated to 9 options. Commits: 5c6a064, c42b6a7, e796755.
-- Phase 3–5: Planned. See Roadmap below.
+- **Phase 3 — Shipped 2026-05-19.** Job disambiguation card. POST_EXECUTE_ELICIT registry + get_jobs search param + formatCardAnswers value-in-parens fix. Commits: fb02917, + agentCards.js fix.
+- Phase 4–5: Planned. See Roadmap below.
 - Sibling arcs: VOICE_AGENT (Phase 3+4 shipped), EXECUTION_ARC (complete).
 - Hard dependency for Phase 5 of this arc: verb 5b
   (`complete_schedule_item`) must ship from VOICE_AGENT v1.5 first.
@@ -120,8 +121,12 @@ ELICIT_TOOLS registry (log_receipt entry), elicitor check in runAgentLoop,
 executor hardened (no silent default), tool description + system prompt updated.
 Commit: 133f937.
 
-Phase 3: Job disambiguation card. Builds on Phase 2 machinery, adds
-the `get_jobs` modification to surface ambiguity.
+✓ Phase 3: Job disambiguation card. **Shipped 2026-05-19.**
+`POST_EXECUTE_ELICIT` registry with `get_jobs` entry. `search` param added to
+`get_jobs` tool schema + executor (ILIKE on address + client_name). Fires when
+`get_jobs` called with search AND returns >1 job. `__none__` option reverts to
+text clarification. `formatCardAnswers` fixed to include `(value: X)` when label
+≠ value — required so Claude can extract UUIDs from conversation history.
 
 Phase 4: Missing-field card. Generalized pattern across all tools.
 Refactors how tool input validation works.

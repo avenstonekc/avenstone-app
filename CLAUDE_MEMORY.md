@@ -680,3 +680,36 @@ Smoke test verified 2026-05-19:
     Row: id=9b5b5a88-6695-4138-8f8f-2b4efbccfd38, job_id=test-flow-001, amount=400.00, type=labor, direction=out, lien_waiver_required=false
 
 Trade-aware: platform-level addition, not tenant-specific. Every contractor type has direct hourly-labor cost. Build: ✓ 563ms.
+
+---
+
+[LOG — 2026-05-19 — AGENT_CARDS Phase 3 — job disambiguation card]
+- Action: AGENT_CARDS_ARC Phase 3 shipped. post-execution elicitor fires when get_jobs returns >1 match for a named search.
+- Commits: fb02917 (Phase 3 implementation), + agentCards.js formatCardAnswers fix (this session)
+
+What changed in ai-master-agent/index.ts:
+  - POST_EXECUTE_ELICIT registry added: get_jobs entry fires when search param present AND result.jobs.length > 1.
+    Returns select card listing address — client_name — status for each match + "None of these" (value: __none__) as final option.
+    Loop guard: returns null when no search param (browsing) or 0-1 matches.
+  - get_jobs tool schema: added search param (ILIKE on address + client_name via .or()). Executor applies filter when search present.
+  - Tool execution loop: post-execution check added after executeTool returns, before toolResults.push. If POST_EXECUTE_ELICIT fires → return early with pending_card (does NOT push tool_result, no orphaned tool_use blocks in history).
+  - System prompt HOW TO BEHAVE: "If you need a job ID and the user named a specific job, call get_jobs with search=<the name or address fragment>. A disambiguation card surfaces automatically when multiple matches are found — don't ask in text."
+
+What changed in avenstone-vite/src/lib/agentCards.js:
+  - formatCardAnswers: select answers now include (value: X) when label ≠ value.
+    Example: "456 Test Flow Ave... (value: ebe370cf-...)" — gives Claude the UUID directly in conversation history.
+    Without this fix: Claude couldn't extract job_id UUID from the label text and either invented a UUID or called get_jobs again.
+    Also applies to receipt type: "Fuel (value: fuel)" — unambiguous even if Claude can't infer the enum key from label alone.
+    Same fix applied to radio_per_item items.
+
+Disambiguation flow:
+  "Log receipt on Test Flow job" → get_jobs(search="Test Flow") → 2 results → POST_EXECUTE_ELICIT fires → select card with 2 options + None of these.
+  User picks → formatCardAnswers produces "[label] (value: [UUID])" → card_response → runAgentLoop sees UUID → calls log_receipt(job_id=ebe370cf-...) → ELICIT_TOOLS fires receipt card (type absent) → user selects fuel → confirm card → row written.
+
+Smoke tests verified 2026-05-19:
+  Chained flow: disambiguation card → receipt card → confirm → DB row confirmed:
+    id=f5276673-1315-4804-84de-9a2804445d96, job_id=ebe370cf-76cc-4912-aaf1-d2d2d0eee413, type=fuel, amount=120.00, direction=out
+  None of these: → text clarification "Could you give me a bit more detail about the job?", no write, no crash.
+  Single match ("123 Test Flow"): → no disambiguation card, receipt type card fired directly. PASS.
+
+Trade-aware: platform-level agent surface, tenant/trade-agnostic. No DB changes. Build: ✓ 583ms.
