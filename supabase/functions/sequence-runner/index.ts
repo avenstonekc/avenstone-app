@@ -48,15 +48,15 @@ Deno.serve(async (req) => {
 
       for (const sub of (allSubs || [])) {
         const { data: latestBid } = await sb
-          .from("bid_responses")
-          .select("submitted_at")
+          .from("job_sub_engagements")
+          .select("bid_submitted_at")
           .eq("sub_id", sub.id)
-          .order("submitted_at", { ascending: false })
+          .order("bid_submitted_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
         const inactive = latestBid
-          ? latestBid.submitted_at < sixtyDaysAgo
+          ? latestBid.bid_submitted_at < sixtyDaysAgo
           : sub.created_at < sixtyDaysAgo;
 
         if (!inactive) continue;
