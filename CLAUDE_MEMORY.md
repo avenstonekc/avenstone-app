@@ -66,6 +66,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **ai-master-agent has 16 tools** (2 stale read tools removed 2026-05-19 — see read-tool cleanup LOG below): get_jobs, get_team, create_job, update_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, update_phase, submit_change_order, log_payment, log_receipt, notify_team, add_todo, add_knowledge.
 - **`CONFIRM_TOOLS` is a 5-verb whitelist** (extended 2026-05-09 from 3 to 5): log_payment, log_receipt, submit_change_order, add_todo, create_job. Every member returns `pending_action` and surfaces a Confirm card before the row is written.
 - **`job_estimates` consultation columns EXIST** (2026-05-12 via Shape C migration). New columns: `session_id UUID → consultation_sessions(id)`, `created_by UUID → profiles(id)`, `estimate_data JSONB` (structured AI estimate output from Consultation flow, distinct from `messages` which holds Estimator chat transcript), `total NUMERIC`, `source TEXT` (currently 'ai_consultation'). UNIQUE on `job_id` retained — Estimator and Consultation upsert onto the same row, non-overlapping field sets. Multi-source split deferred.
+- **`scheduled_actions` table EXISTS** (AGENT_OPS Phase 1.1, 2026-05-20). Agent's own todo list — reminders, self-followups, watchdog detections. 21 columns: id, tenant_id, kind (reminder/followup/watchdog), status (scheduled/fired/cancelled/failed), priority (low/normal/high/urgent), fire_at, fired_at, cancelled_at, retry_count (INTEGER DEFAULT 0), created_by_id (NOT NULL FK→profiles), target_user_id (nullable FK→profiles), related_job_id (nullable TEXT FK→jobs), related_todo_id (nullable UUID FK→todos), related_entity_type, related_entity_id, payload (JSONB DEFAULT '{}'), result, rule_key, source (agent/watchdog_cron/system DEFAULT agent), created_at, updated_at. 4 indexes (2 partial). 3 RLS policies — no DELETE policy (use status='cancelled'). Migration: 20260520100000_scheduled_actions.sql. Helpers: sbCreateScheduledAction, sbListScheduledActionsForUser, sbCancelScheduledAction.
 
 ---
 
@@ -1241,3 +1242,28 @@ Build status: ✓ all 5 builds passed. AGENT_CARDS_ARC.md Phase 7 marked SHIPPED
 - Key guard rails: set_followup cannot target other users (structural — no target_user_id in tool spec); watchdog fires to role-on-job, never named person; role-gated delegation (owner/pm → anyone, rep → self/PM, sub → self); once-per-day-per-rule-per-recipient-per-job ceiling.
 - Phase 1 next: schema foundation (2-3 Sonnet prompts). Phase 2 ends at first dogfoodable state.
 - Open: pg_cron availability must be verified in Phase 3.0 audit before building cron infrastructure.
+
+---
+
+[LOG — 2026-05-20 — AGENT_OPS Phase 1.1: scheduled_actions schema + helpers. SHIPPED.]
+- Migration: supabase/migrations/20260520100000_scheduled_actions.sql. Commit: 1523265.
+- Helpers commit: same commit (1523265) — sbCreateScheduledAction, sbListScheduledActionsForUser, sbCancelScheduledAction in supabase.js.
+
+Verified live (information_schema + pg_policies + pg_indexes):
+  Columns: 21 — id, tenant_id, kind, status, priority, fire_at, fired_at, cancelled_at, retry_count, created_by_id, target_user_id, related_job_id, related_todo_id, related_entity_type, related_entity_id, payload, result, rule_key, source, created_at, updated_at. All types and nullability match spec.
+  CHECK constraints: scheduled_actions_kind_check (reminder/followup/watchdog), _status_check (scheduled/fired/cancelled/failed), _priority_check (low/normal/high/urgent), _source_check (agent/watchdog_cron/system). All 4 present.
+  RLS policies: sched_act_select (SELECT), sched_act_insert (INSERT), sched_act_update (UPDATE). No DELETE policy — audit trail enforced. All 3 present.
+  Indexes: idx_sched_act_ripe (partial: WHERE status='scheduled' on fire_at), idx_sched_act_target_status (tenant_id, target_user_id, status), idx_sched_act_job_status (related_job_id, status), idx_sched_act_watchdog_dedup (partial: WHERE status='scheduled' AND kind='watchdog' on rule_key+related_job_id). All 4 present.
+  Trigger: scheduled_actions_updated_at → EXECUTE FUNCTION set_updated_at(). Present.
+
+Smoke tests (all PASS — service-role SQL via Management API):
+  T1: INSERT 3 rows (reminder/followup/watchdog) → 3 rows with correct defaults (status='scheduled', retry_count=0, source as passed). PASS.
+  T2: SELECT back → 3 rows, ordered fire_at ASC. PASS.
+  T3: Cancel one row → status='cancelled', cancelled_at populated. PASS.
+  T4: Remaining scheduled after cancel = 2 (correct). PASS.
+  T5: Cleanup DELETE → 3 rows deleted, table empty of smoke data. PASS.
+
+Pre-flight finding surfaced for Phase 1.2: todos.priority CHECK is ('low', 'medium', 'high') — NOT ('low', 'normal', 'high', 'urgent'). Enum conflict must be resolved in 1.2 before extending add_todo. Flagged in AGENT_OPS_ARC.md status block.
+
+Trade-aware: platform table — tenant_id scoped, tenant- and trade-agnostic. rule_key strings (watchdog rule names) are the only trade-adjacent bits; they live in payloads and index values, not in schema columns. No DB changes beyond this table.
+Build: ✓ 789ms.

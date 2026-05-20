@@ -6,8 +6,13 @@ delegation cards, or the daily-log followup flow.
 
 ## Status as of 2026-05-20
 
-- **Phase 0 — drafting.** This doc.
-- Phase 1-6 not started. Build sequence locked below.
+- **Phase 0 — shipped 2026-05-20.** Arc doc committed. Commit: 376e4a0.
+- **Phase 1 — in progress (1.1 done, 1.2 next).**
+  - **Phase 1.1 — shipped 2026-05-20.** `scheduled_actions` table, 4 indexes, 3 RLS policies, `set_updated_at` trigger, 3 sb helpers. Commit: 1523265.
+  - Phase 1.2 — not started. (daily_logs extensions, todos extensions, trade_material_lead_times.)
+- Phase 2-6 not started. Build sequence locked below.
+
+**Phase 1.2 pre-flight note:** `todos.priority` CHECK constraint uses `('low', 'medium', 'high')` — NOT `('low', 'normal', 'high', 'urgent')`. The AGENT_OPS spec adds `assignee_id` and `priority` to `add_todo`; if the priority enum must match scheduled_actions, a migration must reconcile these. Verify before writing 1.2 migration.
 
 ## What this arc is
 
