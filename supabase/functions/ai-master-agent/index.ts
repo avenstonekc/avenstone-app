@@ -614,9 +614,9 @@ const TOOLS = [
         title: { type: "string", description: "The todo title — what needs doing." },
         notes: { type: "string", description: "Optional context (defaults to null)." },
         job_id: { type: "string", description: "Associate with a job (optional). Omit for personal todos." },
-        assigned_to_user_id: { type: "string", description: "Whom to assign (optional, defaults to caller)." },
+        assignee_id: { type: "string", description: "UUID of the team member to assign this todo to; omit to assign to yourself." },
         due_date: { type: "string", description: "Optional ISO date (YYYY-MM-DD)." },
-        priority: { type: "string", enum: ["low", "medium", "high"], description: "Optional priority." },
+        priority: { type: "string", enum: ["low", "medium", "high"], description: "Priority level; defaults to medium." },
       },
       required: ["title"],
     },
@@ -953,6 +953,25 @@ async function executeTool(
         // Mirrors sbCreateUserTodo contract: writes to todos with type=user_task, source=manual.
         const title = String(input.title || "").trim();
         if (!title) return { error: "title required" };
+        const assigneeId = input.assignee_id ? String(input.assignee_id) : userId;
+        const priority = (input.priority && ["low", "medium", "high"].includes(String(input.priority)))
+          ? String(input.priority) : "medium";
+
+        // Role gate: owner/pm can assign to anyone; rep/sub cannot cross-assign (no
+        // assigned_pm_id mapping in profiles schema — Phase 2.2 flag).
+        let callerName = "";
+        if (assigneeId !== userId) {
+          const { data: caller } = await sb.from("profiles").select("role, full_name").eq("id", userId).single();
+          const callerRole = (caller as any)?.role ?? "";
+          callerName = (caller as any)?.full_name ?? "Your team";
+          if (callerRole !== "owner" && callerRole !== "project_manager") {
+            if (callerRole === "sales_rep") {
+              return { error: "Rep-to-PM delegation requires an assigned_pm_id mapping in profiles, which isn't configured yet. Assign this todo to yourself, or ask your owner or PM to delegate it." };
+            }
+            return { error: "You don't have permission to assign todos to other people." };
+          }
+        }
+
         const row: Record<string, unknown> = {
           tenant_id: tenantId,
           title,
@@ -961,13 +980,28 @@ async function executeTool(
           source: "manual",
           status: "open",
           job_id: input.job_id || null,
-          assigned_to_user_id: input.assigned_to_user_id || userId,
+          assigned_to_user_id: assigneeId,
           created_by_id: userId,
           due_date: input.due_date || null,
-          priority: input.priority || null,
+          priority,
         };
         const { data, error } = await sb.from("todos").insert(row).select().single();
         if (error) return { error: error.message };
+
+        // Notify assignee when delegated to another person.
+        if (assigneeId !== userId) {
+          await sb.from("notifications").insert({
+            tenant_id: tenantId,
+            user_id: assigneeId,
+            type: "todo_delegated",
+            title: "New todo assigned to you",
+            body: `${callerName} assigned you: "${title}"`,
+            job_id: input.job_id ? String(input.job_id) : null,
+            read: false,
+            email_sent: false,
+          }).catch(() => {});
+        }
+
         return { success: true, todo_id: (data as any).id, title: (data as any).title };
       }
 
@@ -1076,9 +1110,12 @@ function describeConfirmAction(tool: string, input: any): string {
     case "submit_change_order":
       return `Submit ${fmtMoney(input.amount)} change order — ${input.description}.`;
     case "add_todo": {
-      const bits: string[] = [`Add todo: "${input.title}"`];
+      const prefix = input._assignee_name
+        ? `Add todo for ${input._assignee_name}: "${input.title}"`
+        : `Add todo: "${input.title}"`;
+      const prio = String(input.priority || "medium");
+      const bits: string[] = [prefix, `${prio} priority`];
       if (input.due_date) bits.push(`due ${input.due_date}`);
-      if (input.priority) bits.push(`${input.priority} priority`);
       return bits.join(" · ") + ".";
     }
     case "create_job": {
@@ -1262,6 +1299,11 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
             inputObj.image_data = img.data;
             inputObj.image_mime = img.mime;
           }
+        }
+        // add_todo: pre-fetch assignee name so Confirm card readback shows "Add todo for [Name]".
+        if (confirmBlock.name === "add_todo" && inputObj.assignee_id && String(inputObj.assignee_id) !== userId) {
+          const { data: ap } = await sb.from("profiles").select("full_name").eq("id", String(inputObj.assignee_id)).maybeSingle();
+          if (ap) inputObj._assignee_name = (ap as any).full_name;
         }
         const description = describeConfirmAction(confirmBlock.name, inputObj);
         const text = blocks.find((b) => b.type === "text")?.text ?? `${description} Confirm to run.`;
