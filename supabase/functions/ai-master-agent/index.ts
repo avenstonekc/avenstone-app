@@ -1098,7 +1098,9 @@ async function runAgentLoop(
   userRole: string,
   userName: string,
   messages: Array<{ role: string; content: unknown }>,
-  maxIterations = 3
+  maxIterations = 3,
+  contextJobId = "",
+  contextJobLabel = "",
 ): Promise<{
   response: string;
   actions: Array<{ tool: string; input: unknown; result: unknown }>;
@@ -1107,11 +1109,14 @@ async function runAgentLoop(
 }> {
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const contextLine = contextJobId
+    ? `\nContext job: ${contextJobLabel || contextJobId} (id: ${contextJobId})`
+    : "";
   const systemPrompt = `You are the Avenstone Master Agent — the AI that controls the entire Avenstone construction management platform. You have direct access to the database and take real actions, not suggestions.
 
 User: ${userName} (${userRole})
 Today: ${today}
-Tenant: ${tenantId}
+Tenant: ${tenantId}${contextLine}
 
 WHAT YOU CAN DO:
 - Read: jobs, team
@@ -1128,6 +1133,7 @@ HOW TO BEHAVE:
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: do NOT pass override_reason. Just call the tool with the job_id. If gates fail, the system surfaces a gate-resolution card automatically (redirect to Schedule / leave open / override-with-structured-reason). Do not ask in text whether to override — the card IS the prompt.
 - TODO vs NOTE: an action item ("call back X", "follow up", "remind me", "don't forget", "schedule Y", "todo") goes to add_todo. Passive context attached to a job ("FYI…", "the client said…", "noted that…", "for the record…") goes to add_note. When in doubt and the user said "todo", pick add_todo. After writing a todo, the success message should say "Todo added" — never "Note added."
+- If a context job is set (shown in the header above), treat it as the implicit default job for any tool that needs a job_id, unless the user explicitly names a different job. The system pre-fills job_id automatically — do not ask for it when context is set.
 - Never mention Claude or Anthropic.
 - You are the operating system of this business. Act like it.
 
@@ -1289,7 +1295,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { user_id, tenant_id, role, full_name, message, conversation_history, pending_action, confirmed, card_response } = await req.json();
+    const { user_id, tenant_id, role, full_name, message, conversation_history, pending_action, confirmed, card_response, context_job_id } = await req.json();
 
     if (!user_id || !tenant_id) {
       return new Response(JSON.stringify({ error: "Missing user_id or tenant_id" }), {
@@ -1298,6 +1304,22 @@ Deno.serve(async (req) => {
     }
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    // Resolve context job once — used by both runAgentLoop call sites below.
+    // Silently dropped if the job doesn't exist or belongs to a different tenant.
+    let ctxJobId = "";
+    let ctxJobLabel = "";
+    if (context_job_id && typeof context_job_id === "string" && context_job_id.length > 0) {
+      const { data: ctxJob } = await sb.from("jobs")
+        .select("address, client_name")
+        .eq("id", context_job_id)
+        .eq("tenant_id", tenant_id)
+        .maybeSingle();
+      if (ctxJob) {
+        ctxJobId = context_job_id;
+        ctxJobLabel = [ctxJob.address, ctxJob.client_name].filter(Boolean).join(" — ");
+      }
+    }
 
     // ── Confirmed action path: skip Claude, run executor directly ─────────────
     // (pending_action / confirmed — yes/no confirmation surface, unchanged)
@@ -1379,7 +1401,7 @@ Deno.serve(async (req) => {
 
       const history = (conversation_history || []).slice(-20);
       const { response, actions, pending_action: pa, pending_card: pc } = await runAgentLoop(
-        sb, tenant_id, user_id, role || "owner", full_name || "User", history,
+        sb, tenant_id, user_id, role || "owner", full_name || "User", history, 3, ctxJobId, ctxJobLabel,
       );
       return new Response(
         JSON.stringify({ response, actions, pending_action: pa, pending_card: pc }),
@@ -1406,7 +1428,7 @@ Deno.serve(async (req) => {
     ];
 
     const { response, actions, pending_action: pa, pending_card: pc } = await runAgentLoop(
-      sb, tenant_id, user_id, role || "owner", full_name || "User", messages,
+      sb, tenant_id, user_id, role || "owner", full_name || "User", messages, 3, ctxJobId, ctxJobLabel,
     );
 
     return new Response(
