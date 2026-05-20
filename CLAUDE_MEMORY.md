@@ -1191,3 +1191,42 @@ Validated, no work needed yet:
 Smaller hygiene items surfaced:
 - Generic "something went wrong, please try again" toast hides real errors — future error-surface hygiene slice.
 - CLAUDE.md hold-to-talk iOS gotcha remains valid (touch events required for WKWebView); the mic BUTTON changed to tap-to-toggle, but the gotcha documents why touch handlers are used in the voice-confirm path and other touch-event patterns elsewhere.
+
+---
+
+[LOG — 2026-05-20 — Phase B: Contextual Job Context (AGENT_CARDS Phase 7). SHIPPED.]
+
+5 commits, all pushed to main. Build passed after each.
+
+Commits:
+  - d614ecd: feat(phase-b): lift viewportJobId state from JobsScr to App — sel state lifted via onJobOpen/onJobClose callbacks; unmount useEffect clears on screen nav
+  - 412cd44: feat(phase-b): MasterAgent opening context-confirm card — contextJobId state, declinedForJobRef/shownForJobRef refs, client-side pending_card (no edge fn call), submitCard/cancelCard context_confirm branch, clearChat resets all three
+  - 708545c: feat(phase-b): client sends context_job_id in agent requests — callMaster enriches body with context_job_id when contextJobId set; all callMaster paths (normal message, card_response, confirmed action) inherit automatically
+  - aab3a78: feat(phase-b): edge fn anchors context_job_id in system prompt — context resolution block fetches job addr, injects "Context job: <addr> (id: <uuid>)" into system prompt, HOW TO BEHAVE note added
+  - 9dd8c68: feat(phase-b): pre-fill job_id from context in REQUIRED_FIELDS validator — block-level pre-fill at top of tool_use branch (BEFORE validateRequiredFields AND executeTool/confirmBlock); mutates block.input directly so all three paths see filled job_id
+
+Files touched:
+  - avenstone-vite/src/App.jsx (viewportJobId state, onJobOpen/onJobClose props to JobsScr, suggestedJobId+jobs props to MasterAgent)
+  - avenstone-vite/src/components/jobs/JobsScr.jsx (onJobOpen/onJobClose props, 2 useEffects: sel changes + unmount cleanup)
+  - avenstone-vite/src/components/shared/MasterAgent.jsx (contextJobId state, 2 refs, useEffect for card, callMaster enrichment, submitCard/cancelCard branches, clearChat reset)
+  - supabase/functions/ai-master-agent/index.ts (context_job_id body param, context resolution block, runAgentLoop signature, system prompt injection, HOW TO BEHAVE note, block-level pre-fill, validateRequiredFields contextJobId param)
+  - AGENT_CARDS_ARC.md (Status block + Phase 7 section fully documented as SHIPPED with design note correction)
+
+Design decisions locked:
+  - OPTION A (conversation-context-wins-over-viewport): Once contextJobId is confirmed, navigating to a new job fires a new context card. User must confirm to switch. Declining keeps existing context. This was the explicit choice over Option B (viewport-always-wins). Rationale: prevents surprise mid-conversation context switches.
+  - Client-side card emission (no edge fn call): all job data is in client's jobs prop; avoids cold-start latency on first open.
+  - Block-level pre-fill (not validateRequiredFields-level): mutating block.input before any check ensures all three downstream paths (elicitation skip, confirm card, executor) see the filled job_id. validateRequiredFields-level pre-fill was tried first and rejected — it prevents the REQUIRED_FIELDS card from firing but the original block.input still reaches executeTool/confirmBlock unfilled.
+  - Three-ref system to prevent card re-fire: contextJobId (confirmed), declinedForJobRef (declined this session), shownForJobRef (already shown this job). useEffect deps [suggestedJobId, contextJobId] only — pendingCard excluded to avoid infinite loops.
+  - MasterAgent stays mounted at App.jsx top level (pre-existing locked decision — Phase B does not move it).
+  - add_todo has no job_id in REQUIRED_FIELDS (only title field — lines 192-194 of index.ts). Block-level pre-fill correctly skips it. Job-less todos are valid and intentional.
+
+Smoke tests (all PASS — code trace):
+  T1: Open in job, confirm → next tool call → job_id pre-filled, REQUIRED_FIELDS asks only for other missing fields, Confirm card shows correct job. PASS.
+  T2: Open in job, confirm context A → mention Smith → disambiguation card fires (explicit mention wins), row written with Smith id. PASS.
+  T3: Open outside job → no suggestedJobId → no card, REQUIRED_FIELDS elicits normally. PASS.
+  T4: Open outside job, mention job → no context card, disambiguation handles it. PASS.
+  T5: Switch jobs mid-session: new context_confirm card fires for B. No → context stays A. Yes → context switches to B, history preserved. PASS both branches.
+
+Trade-aware: platform UI and agent surface — context job wiring is tenant-scoped (server fetches job with .eq("tenant_id", tenant_id) guard), tenant- and trade-agnostic. No DB changes. No agentCards.js contract changes. No CONFIRM_TOOLS/POST_EXECUTE_ELICIT/REQUIRED_FIELDS registry modifications.
+
+Build status: ✓ all 5 builds passed. AGENT_CARDS_ARC.md Phase 7 marked SHIPPED 2026-05-20. v1 arc complete.
