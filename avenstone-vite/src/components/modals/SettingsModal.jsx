@@ -1,6 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { sb, AV_TENANT, sbLoadQbCategoryMap, sbUpsertQbCategoryMap } from '../../lib/supabase';
 import PushEnableButton from '../shared/PushEnableButton';
+import { TextToSpeech, QueueStrategy } from '@capacitor-community/text-to-speech';
 
 const QB_TYPES = [
   ['client_payment', 'Client Payment'], ['client_deposit', 'Deposit'], ['client_refund', 'Refund'],
@@ -37,6 +38,21 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
   const [profileUrl, setProfileUrl] = useState('');
   const [qbMap, setQbMap] = useState({});
   const [qbSaving, setQbSaving] = useState(null);
+  const [allVoices, setAllVoices] = useState([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
+  const [selectedVoiceUri, setSelectedVoiceUri] = useState(() => {
+    try { return localStorage.getItem('av_tts_voice_uri') || ''; } catch { return ''; }
+  });
+  const [testingVoice, setTestingVoice] = useState(null);
+
+  useEffect(() => {
+    if (tab !== 'voice') return;
+    setVoicesLoading(true);
+    TextToSpeech.getSupportedVoices()
+      .then(({ voices }) => setAllVoices(voices || []))
+      .catch(() => setAllVoices([]))
+      .finally(() => setVoicesLoading(false));
+  }, [tab]);
 
   useEffect(() => {
     if (tab !== 'quickbooks' || profile?.role !== 'owner') return;
@@ -108,7 +124,7 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18, lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ display: 'flex', border: '1px solid #E8E4DC', borderRadius: 4, overflow: 'hidden', marginBottom: 16 }}>
-          {[['profile', 'Profile'], ['notifs', 'Notifications'], ['security', 'Security'], ...(profile?.role === 'owner' ? [['company', 'My Profile'], ['quickbooks', 'QuickBooks']] : [])].map(([v, lb]) => (
+          {[['profile', 'Profile'], ['notifs', 'Notifications'], ['security', 'Security'], ['voice', 'Voice'], ...(profile?.role === 'owner' ? [['company', 'My Profile'], ['quickbooks', 'QuickBooks']] : [])].map(([v, lb]) => (
             <button key={v} onClick={() => setTab(v)} style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', background: tab === v ? '#0A1F44' : 'transparent', color: tab === v ? '#C9A84C' : '#9CA3AF' }}>{lb}</button>
           ))}
         </div>
@@ -185,6 +201,72 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
           <div className="fg"><label className="flbl">Confirm Password</label><input className="finp" type="password" value={pwForm.confirmPw} onChange={e => setPwForm(p => ({ ...p, confirmPw: e.target.value }))} placeholder="Re-enter new password" /></div>
           <button className="btn btn-navy" style={{ width: '100%' }} onClick={changePassword} disabled={pwSaving || !pwForm.newPw || !pwForm.confirmPw}>{pwSaving ? 'Updating...' : 'Update Password'}</button>
         </>}
+
+        {tab === 'voice' && (() => {
+          const enVoices = allVoices.map((v, i) => ({ ...v, originalIndex: i })).filter(v => v.lang.startsWith('en'));
+          return (
+            <>
+              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 12, lineHeight: 1.6 }}>
+                Choose the AI agent voice. Tap Test to preview. Changes take effect on the next spoken response.
+              </div>
+              {voicesLoading ? (
+                <div style={{ textAlign: 'center', color: '#9CA3AF', padding: 24, fontSize: 13 }}>Loading voices…</div>
+              ) : enVoices.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#9CA3AF', padding: 24, fontSize: 13, lineHeight: 1.6 }}>
+                  No English voices found.<br />Check iOS Settings → Accessibility → Spoken Content → Voices.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
+                  {enVoices.map((voice) => {
+                    const isSelected = voice.voiceURI === selectedVoiceUri;
+                    const isTesting  = testingVoice === voice.voiceURI;
+                    return (
+                      <div
+                        key={voice.voiceURI}
+                        onClick={() => {
+                          setSelectedVoiceUri(voice.voiceURI);
+                          try { localStorage.setItem('av_tts_voice_uri', voice.voiceURI); } catch {}
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                          border: `1px solid ${isSelected ? '#C9A84C' : '#E8E4DC'}`,
+                          background: isSelected ? 'rgba(201,168,76,0.08)' : '#fff',
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{voice.name}</div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{voice.lang}</div>
+                        </div>
+                        {isSelected && <div style={{ fontSize: 12, color: '#C9A84C', fontWeight: 700, flexShrink: 0 }}>✓</div>}
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (isTesting) return;
+                            setTestingVoice(voice.voiceURI);
+                            TextToSpeech.speak({
+                              text: 'Logging twenty five hundred dollars, confirm?',
+                              lang: 'en-US', rate: 1.0, category: 'playback',
+                              queueStrategy: QueueStrategy.Flush,
+                              voice: voice.originalIndex,
+                            }).catch(() => {}).finally(() => setTestingVoice(null));
+                          }}
+                          style={{
+                            background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6,
+                            padding: '5px 10px', fontSize: 11, fontWeight: 600, color: '#0A1F44',
+                            cursor: isTesting ? 'default' : 'pointer', flexShrink: 0,
+                          }}
+                        >
+                          {isTesting ? '…' : 'Test'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {tab === 'quickbooks' && profile?.role === 'owner' && <>
           <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 12, lineHeight: 1.6 }}>Map each transaction type to a QuickBooks account and class. Changes save on blur.</div>
