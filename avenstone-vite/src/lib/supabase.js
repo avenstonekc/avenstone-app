@@ -3281,3 +3281,32 @@ export async function sbCancelScheduledAction(id) {
   if (!data) return { ok: false, error: 'Row not found or not authorized', data: null };
   return { ok: true, error: null, data: { id: data.id } };
 }
+
+// ─── trade_material_lead_times helper (AGENT_OPS Phase 1.2) ──────────────────
+
+export async function sbGetTradeLeadDays(trade) {
+  if (!trade) return { ok: false, error: 'trade required', data: null };
+
+  // 1. Tenant-specific override
+  const { data: tenantRow, error: tenantErr } = await sb
+    .from('trade_material_lead_times')
+    .select('lead_days')
+    .eq('tenant_id', AV_TENANT)
+    .eq('trade', trade)
+    .maybeSingle();
+  if (tenantErr) return { ok: false, error: tenantErr.message, data: null };
+  if (tenantRow) return { ok: true, error: null, data: tenantRow.lead_days };
+
+  // 2. Platform default (tenant_id IS NULL)
+  const { data: platformRow, error: platformErr } = await sb
+    .from('trade_material_lead_times')
+    .select('lead_days')
+    .is('tenant_id', null)
+    .eq('trade', trade)
+    .maybeSingle();
+  if (platformErr) return { ok: false, error: platformErr.message, data: null };
+  if (platformRow) return { ok: true, error: null, data: platformRow.lead_days };
+
+  // 3. Hardcoded fallback
+  return { ok: true, error: null, data: 7 };
+}
