@@ -3185,3 +3185,99 @@ export async function sbAdvancePhase(jobId, opts = {}) {
     },
   };
 }
+
+// ─── scheduled_actions helpers (AGENT_OPS Phase 1.1) ─────────────────────────
+
+export async function sbCreateScheduledAction({
+  kind,
+  fire_at,
+  priority,
+  target_user_id,
+  related_job_id,
+  related_todo_id,
+  related_entity_type,
+  related_entity_id,
+  payload,
+  rule_key,
+  source,
+} = {}) {
+  if (!kind) return { ok: false, error: 'kind required', data: null };
+  if (!fire_at) return { ok: false, error: 'fire_at required', data: null };
+
+  const row = {
+    tenant_id: AV_TENANT,
+    created_by_id: AV_USER_ID,
+    kind,
+    fire_at,
+    priority: priority ?? 'normal',
+    source: source ?? 'agent',
+    target_user_id: target_user_id ?? null,
+    related_job_id: related_job_id ?? null,
+    related_todo_id: related_todo_id ?? null,
+    related_entity_type: related_entity_type ?? null,
+    related_entity_id: related_entity_id ?? null,
+    payload: payload ?? {},
+    rule_key: rule_key ?? null,
+  };
+
+  const { data, error } = await sb
+    .from('scheduled_actions')
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data };
+}
+
+export async function sbListScheduledActionsForUser({
+  window: win = 'today',
+  include_completed = false,
+  target_user_id,
+} = {}) {
+  const uid = target_user_id ?? AV_USER_ID;
+
+  let q = sb
+    .from('scheduled_actions')
+    .select('*')
+    .eq('target_user_id', uid)
+    .order('fire_at', { ascending: true });
+
+  if (!include_completed) {
+    q = q.eq('status', 'scheduled');
+  }
+
+  if (win === 'today') {
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setUTCHours(23, 59, 59, 999);
+    q = q.gte('fire_at', start.toISOString()).lte('fire_at', end.toISOString());
+  } else if (win === 'this_week') {
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 7);
+    q = q.gte('fire_at', start.toISOString()).lte('fire_at', end.toISOString());
+  }
+  // win === 'all': no date filter
+
+  const { data, error } = await q;
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || [] };
+}
+
+export async function sbCancelScheduledAction(id) {
+  if (!id) return { ok: false, error: 'id required', data: null };
+
+  const { data, error } = await sb
+    .from('scheduled_actions')
+    .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) return { ok: false, error: error.message, data: null };
+  if (!data) return { ok: false, error: 'Row not found or not authorized', data: null };
+  return { ok: true, error: null, data: { id: data.id } };
+}
