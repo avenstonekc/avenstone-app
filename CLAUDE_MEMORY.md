@@ -69,6 +69,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **`scheduled_actions` table EXISTS** (AGENT_OPS Phase 1.1, 2026-05-20). Agent's own todo list — reminders, self-followups, watchdog detections. 21 columns: id, tenant_id, kind (reminder/followup/watchdog), status (scheduled/fired/cancelled/failed), priority (low/medium/high — Phase 1.2 migrated from 4-level spec to match todos canonical enum), fire_at, fired_at, cancelled_at, retry_count (INTEGER DEFAULT 0), created_by_id (NOT NULL FK→profiles), target_user_id (nullable FK→profiles), related_job_id (nullable TEXT FK→jobs), related_todo_id (nullable UUID FK→todos), related_entity_type, related_entity_id, payload (JSONB DEFAULT '{}'), result, rule_key, source (agent/watchdog_cron/system DEFAULT agent), created_at, updated_at. 4 indexes (2 partial). 3 RLS policies — no DELETE policy (use status='cancelled'). Migrations: 20260520100000_scheduled_actions.sql (create), 20260520110000_scheduled_actions_priority_3level.sql (enum fix). Helpers: sbCreateScheduledAction, sbListScheduledActionsForUser, sbCancelScheduledAction.
 - **`daily_logs` has 3 AGENT_OPS columns** (Phase 1.2, 2026-05-20): `phase_on_schedule BOOLEAN`, `delay_days INTEGER`, `issues_flagged TEXT` — all nullable, backward-compatible. Patched by daily-log conversation hook in Phase 6. Migration: 20260520120000_daily_logs_agent_ops_columns.sql.
 - **`trade_material_lead_times` table EXISTS** (AGENT_OPS Phase 1.2, 2026-05-20). Per-trade material lead time thresholds. Tenant override → platform default (tenant_id NULL) → fallback 7 days. 4 Avenstone seed rows (canonical trade strings verified against trade_phase_map: 'Cabinets / vanities - Install' 21d, 'Tile - Floor' 14d, 'Tile - Wall / shower' 14d, 'Plumbing - Finish / fixtures' 14d). Migration: 20260520130000_trade_material_lead_times.sql. Helper: sbGetTradeLeadDays.
+- **notifications_type_check extended with 'todo_delegated'** (AGENT_OPS Phase 2.1, 2026-05-20). Migration: 20260520140000_notifications_type_todo_delegated.sql. notify-email SUBJECTS map updated with subject "You've been assigned a new todo".
 
 ---
 
@@ -1306,3 +1307,44 @@ Smoke tests (service-role SQL via Management API):
 
 CLAUDE.md: no changes needed.
 Build: ✓ passed.
+
+---
+
+[LOG — 2026-05-20 — AGENT_OPS Phase 2.1: add_todo delegation. SHIPPED.]
+
+Commit: ae2b781. Migration: 20260520140000_notifications_type_todo_delegated.sql (applied + verified).
+
+Changes to ai-master-agent/index.ts:
+  - Tool schema: renamed field `assigned_to_user_id` → `assignee_id` (natural language clarity; executor maps back to DB column)
+  - Tool schema: priority description updated to "defaults to medium"
+  - add_todo executor: role gate added (owner/pm → delegate to anyone; rep/sub → deny with clean error)
+  - add_todo executor: priority defaults to 'medium' instead of null when omitted
+  - add_todo executor: maps assignee_id → assigned_to_user_id on INSERT
+  - add_todo executor: inserts todo_delegated notification for assignee when cross-assigned
+  - describeConfirmAction: shows "Add todo for [Name]: '[title]', [priority] priority." when cross-assigned
+  - describeConfirmAction: always shows priority (even medium — user must see what they're confirming)
+  - confirmBlock handling: pre-fetches assignee full_name from profiles, injects as _assignee_name into inputObj before describeConfirmAction
+
+notify-email: SUBJECTS['todo_delegated'] = "You've been assigned a new todo"
+
+Role gate semantics (locked):
+  - Self-assign (assignee_id omitted or == caller): always allowed; no gate check; no notification
+  - owner/pm → can delegate to any tenant member; allowed
+  - sales_rep → denied: "Rep-to-PM delegation requires assigned_pm_id in profiles, not configured yet." DEFERRED to Phase 2.2 or future profiles schema slice.
+  - sub/other → denied: "You don't have permission to assign todos to other people."
+
+Notification type used: 'todo_delegated' (new, added via migration this prompt).
+Email behavior: all cross-user todo_delegated notifications insert with email_sent=false → DB trigger sends email regardless of priority. Priority-gated email (high only) is a v2 enhancement requiring notify-email trigger logic changes.
+
+Smoke tests (DB-level, Management API service role):
+  T1: Self-assign, priority='medium' → row: assigned_to=Kalin, priority=medium, created_by=Kalin. PASS. Row id: ac61b587.
+  T2: Self-assign, priority='high' → row priority='high'. PASS.
+  T3: Cross-assign Kalin→Blake, priority='high' → row: assigned_to=Blake, created_by=Kalin, priority=high. PASS.
+  T3b: todo_delegated notification INSERT → type='todo_delegated' accepted. PASS.
+  T4: Cross-assign, priority='medium' → row priority='medium'. PASS.
+  T5: Invalid notification type INSERT → HTTP 400, constraint 23514 violated. CHECK constraint enforcing. PASS.
+  T6 (code trace): Self-assign confirm card → _assignee_name not set → "Add todo: '[title]', medium priority." PASS.
+  T5-role-gate (code trace): sub role → falls through to "You don't have permission" deny path. PASS.
+
+Trade-aware: todos table is platform-level — tenant_id scoped, tenant- and trade-agnostic. Role gate values ('owner','project_manager','sales_rep','sub') are platform-defined, not tenant config. No trade-specific assumptions introduced.
+Build: ✓ 530ms.
