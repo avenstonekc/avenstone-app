@@ -483,6 +483,8 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [pendingCard, setPendingCard] = useState(null);
   const [attachment, setAttachment] = useState(null); // { base64, mime, preview }
   const [attaching, setAttaching] = useState(false);
+  const [libraryAttachments, setLibraryAttachments] = useState([]); // [{ base64, mime, preview }]
+  const [attachingLibrary, setAttachingLibrary] = useState(false);
   const [attachErr, setAttachErr] = useState('');
   const [toast, setToast] = useState('');
   const [bugMode, setBugMode] = useState(false);
@@ -490,6 +492,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const threadRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
+  const libraryRef = useRef(null);
   const [micAvailable, setMicAvailable] = useState(false);
   const [micListening, setMicListening] = useState(false);
   const [micError, setMicError] = useState('');
@@ -672,7 +675,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const sendMessage = async (text) => {
     const trimmed = (text || input).trim();
     if (loading) return;
-    if (!trimmed && !attachment) return;
+    if (!trimmed && !attachment && !libraryAttachments.length) return;
     TextToSpeech.stop().catch(() => {});
     stopVoiceConfirm();
     if (pendingConfirm) setPendingConfirm(null);
@@ -690,9 +693,13 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       return;
     }
 
-    const messageContent = attachment
+    const allImages = [
+      ...(attachment ? [attachment] : []),
+      ...libraryAttachments,
+    ];
+    const messageContent = allImages.length > 0
       ? [
-          { type: 'image', source: { type: 'base64', media_type: attachment.mime, data: attachment.base64 } },
+          ...allImages.map(a => ({ type: 'image', source: { type: 'base64', media_type: a.mime, data: a.base64 } })),
           ...(trimmed ? [{ type: 'text', text: trimmed }] : []),
         ]
       : trimmed;
@@ -700,11 +707,13 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     const userMsg = { role: 'user', content: messageContent };
     const newHistory = [...conversationHistory, userMsg];
 
-    const displayText = trimmed || (attachment ? '[image attached]' : '');
-    setMessages((prev) => [...prev, { type: 'user', text: displayText, image: attachment?.preview || null }]);
+    const imageCount = allImages.length;
+    const displayText = trimmed || (imageCount > 1 ? `[${imageCount} images attached]` : imageCount === 1 ? '[image attached]' : '');
+    setMessages((prev) => [...prev, { type: 'user', text: displayText, image: allImages[0]?.preview || null }]);
     setConversationHistory(newHistory);
     setInput('');
     setAttachment(null);
+    setLibraryAttachments([]);
     setAttachErr('');
 
     await callMaster({
@@ -718,6 +727,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   };
 
   const onAttachClick = () => fileRef.current?.click();
+  const onLibraryClick = () => libraryRef.current?.click();
 
   const onFilePicked = async (e) => {
     const file = e.target.files?.[0];
@@ -741,9 +751,33 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     }
   };
 
+  const onLibraryPicked = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    setAttachErr('');
+    setAttachingLibrary(true);
+    try {
+      const payloads = await Promise.all(files.map(fileToVisionPayload));
+      const valid = payloads.filter(p => p.base64.length <= 5 * 1024 * 1024 * 1.34);
+      if (valid.length < payloads.length) {
+        setAttachErr(`${payloads.length - valid.length} image(s) too large after compression.`);
+      }
+      if (valid.length > 0) setLibraryAttachments(prev => [...prev, ...valid]);
+    } catch {
+      setAttachErr('Could not read image(s). HEIC, JPG, PNG only.');
+    } finally {
+      setAttachingLibrary(false);
+    }
+  };
+
   const removeAttachment = () => {
     setAttachment(null);
     setAttachErr('');
+  };
+
+  const removeLibraryAttachment = (idx) => {
+    setLibraryAttachments(prev => prev.filter((_, i) => i !== idx));
   };
 
   const confirmPending = async () => {
@@ -995,6 +1029,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     setPendingCard(null);
     setBugMode(false);
     bugContextRef.current = null;
+    setAttachment(null);
+    setLibraryAttachments([]);
+    setAttachErr('');
   };
 
   const panelVisible = open;
@@ -1409,9 +1446,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             flexShrink: 0,
           }}
         >
-          {(attachment || attaching || attachErr || micError || micHint) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {attaching && (
+          {(attachment || attaching || attachingLibrary || libraryAttachments.length > 0 || attachErr || micError || micHint) && (
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+              {(attaching || attachingLibrary) && (
                 <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'rgba(247,245,240,0.55)' }}>Processing image…</span>
               )}
               {attachment && !attaching && (
@@ -1424,6 +1461,16 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   >×</button>
                 </div>
               )}
+              {libraryAttachments.map((a, i) => (
+                <div key={i} style={{ position: 'relative', display: 'inline-block' }}>
+                  <img src={a.preview} alt={`library attachment ${i + 1}`} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(201,168,76,0.45)' }} />
+                  <button
+                    onClick={() => removeLibraryAttachment(i)}
+                    aria-label={`Remove image ${i + 1}`}
+                    style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#0A1F44', border: '1px solid #C9A84C', color: '#F7F5F0', fontSize: 11, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                  >×</button>
+                </div>
+              ))}
               {attachErr && (
                 <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: '#FCA5A5' }}>{attachErr}</span>
               )}
@@ -1441,6 +1488,14 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             accept="image/*,.heic,.heif"
             capture="environment"
             onChange={onFilePicked}
+            style={{ display: 'none' }}
+          />
+          <input
+            ref={libraryRef}
+            type="file"
+            accept="image/*,.heic,.heif"
+            multiple
+            onChange={onLibraryPicked}
             style={{ display: 'none' }}
           />
           <textarea
@@ -1473,6 +1528,30 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           />
           {/* Button row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={onLibraryClick}
+              disabled={loading || attachingLibrary}
+              title="Photo library"
+              aria-label="Photo library"
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.07)',
+                border: '1px solid rgba(201,168,76,0.3)',
+                color: 'rgba(247,245,240,0.75)',
+                cursor: loading || attachingLibrary ? 'default' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'background 0.15s, border-color 0.15s',
+              }}
+              onMouseEnter={(e) => { if (!loading && !attachingLibrary) e.currentTarget.style.borderColor = 'rgba(201,168,76,0.6)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(201,168,76,0.3)'; }}
+            >
+              <span style={{ width: 18, height: 18, display: 'flex' }}>{Ic.folder}</span>
+            </button>
             <button
               onClick={onAttachClick}
               disabled={loading || attaching}
@@ -1571,14 +1650,14 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             <div style={{ flex: 1 }} />
             <button
               onClick={() => submit(input)}
-              disabled={loading || (!input.trim() && !attachment)}
+              disabled={loading || (!input.trim() && !attachment && !libraryAttachments.length)}
               style={{
                 width: 42,
                 height: 42,
                 borderRadius: '50%',
-                background: loading || (!input.trim() && !attachment) ? 'rgba(201,168,76,0.3)' : '#C9A84C',
+                background: loading || (!input.trim() && !attachment && !libraryAttachments.length) ? 'rgba(201,168,76,0.3)' : '#C9A84C',
                 border: 'none',
-                cursor: loading || (!input.trim() && !attachment) ? 'default' : 'pointer',
+                cursor: loading || (!input.trim() && !attachment && !libraryAttachments.length) ? 'default' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1586,7 +1665,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 transition: 'background 0.15s, transform 0.1s',
               }}
               onMouseEnter={(e) => {
-                if (!loading && (input.trim() || attachment)) e.currentTarget.style.transform = 'scale(1.08)';
+                if (!loading && (input.trim() || attachment || libraryAttachments.length)) e.currentTarget.style.transform = 'scale(1.08)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'scale(1)';
@@ -1598,7 +1677,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 height="18"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke={loading || (!input.trim() && !attachment) ? 'rgba(10,31,68,0.5)' : '#0A1F44'}
+                stroke={loading || (!input.trim() && !attachment && !libraryAttachments.length) ? 'rgba(10,31,68,0.5)' : '#0A1F44'}
                 strokeWidth="2.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
