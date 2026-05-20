@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, SUBMIT_BUG_REPORT_URL } from '../../lib/supabase';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
@@ -470,6 +470,8 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
   );
 }
 
+const MAX_TEXTAREA_H = 140; // 5 lines × (16px × 1.5 line-height) + 20px vertical padding
+
 export default function MasterAgent({ profile, pendingAction, clearPendingAction }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -544,6 +546,13 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       threadRef.current.scrollTop = threadRef.current.scrollHeight;
     }
   }, [messages, loading]);
+
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, MAX_TEXTAREA_H) + 'px';
+  }, [input]);
 
   useEffect(() => {
     SpeechRecognition.available().then(({ available }) => setMicAvailable(available)).catch(() => {});
@@ -1463,7 +1472,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           </button>
           <textarea
             ref={inputRef}
-            rows={2}
+            rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -1478,9 +1487,10 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               padding: '10px 12px',
               color: '#F7F5F0',
               fontFamily: 'DM Sans, sans-serif',
-              fontSize: 14,
+              fontSize: 16,
               lineHeight: 1.5,
               outline: 'none',
+              overflowY: 'auto',
               transition: 'border-color 0.15s',
               scrollbarWidth: 'none',
             }}
