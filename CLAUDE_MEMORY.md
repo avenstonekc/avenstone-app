@@ -950,6 +950,37 @@ Smoke verification: all 3 deploy runs = success. FK constraint verified via info
 
 ---
 
+[LOG — 2026-05-19 — legacy jobs.status value cleanup: 5 sites across 4 files]
+- Action: Replaced all legacy jobs.status lifecycle values in frontend code with canonical values from jobs_status_canonical_check (migration 20260506200000). All DIRECT-RENAME. Build ✓ 641ms.
+- Commits: 75606ab, 987dc6a, 3f28f9d. All pushed to main.
+
+Sites fixed (all DIRECT-RENAME):
+  1. ClientPortal.jsx:505 — `['complete', 'punch']` → `['complete', 'final_touches']`
+     Context: gates client review panel (show existing review or review form). Was invisible for any job in final_touches status.
+  2. ClientPortal.jsx:552 — `['complete', 'punch']` → `['complete', 'final_touches']`
+     Context: gates "Rate Our Team" sub-rating panel. Same silent failure.
+  3. InfoTab.jsx:141 — `['complete', 'punch']` → `['complete', 'final_touches']`
+     Context: gates "Completion Sign-off" button for owner/pm/rep. Was invisible on final_touches jobs.
+  4. Reports.jsx:68 — `['signed','demo','framing','rough_mep','drywall','finish','punch']` → `['contract','in_progress','final_touches']`
+     Context: myCommPending filter for dollar-based commission reps. Old array was 7 construction-phase values that replaced jobs.status in v1 lifecycle. Filter returned 0 for all current-lifecycle jobs → pending commission always showed $0.
+  5. DashScr.jsx:11 (additional grep find) — `j.status === 'signed'` → `j.status === 'contract'`
+     Context: "Signed This Month" dashboard stat. `signed` was the old name for `contract`. Stat showed 0 for all current jobs.
+
+No SEMANTIC-DRIFT findings. No VESTIGIAL findings (all 5 are actively rendered UI logic that should work).
+
+Grep sweep findings (NOT jobs.status — confirmed safe):
+  - `active` in SequencesScr/ConsultationTab/SubPortal/SubsTab/InfoTab/scheduleAutoCreate: all are job_sub_engagements.status, sequences.status, or consultation_sessions.status — separate tables, unaffected by jobs_status_canonical_check.
+  - `active` boolean column in supabase.js/takeoff.js/ScopeTab: DB boolean column, not jobs.status.
+  - `demo/framing/finish` in supabase.js:1984-1992: JOB_PHASE_TO_TMAP values — trade_phase_map.phase_name keys, not jobs.status.
+
+Smoke code-trace:
+  - ClientPortal: `final_touches` is a valid canonical status → gate will open for jobs approaching completion. Review/rate-team panels now visible on final_touches jobs.
+  - InfoTab: Same — sign-off button now visible on final_touches jobs (staff side).
+  - Reports: `['contract','in_progress','final_touches']` correctly captures all contracted-but-not-complete jobs. Dollar commission pending now reflects actual in-flight work.
+  - DashScr: `contract` status count matches jobs that have a signed contract and haven't started work yet. "Signed This Month" stat now non-zero for current-lifecycle jobs.
+
+---
+
 [LOG — 2026-05-19 — Voice-confirm for pending_action cards (VOICE_AGENT decision #7)]
 - Action: Implemented auto voice-confirm on pending_action confirm cards. After TTS reads the money readback, mic auto-opens for a 5s listen window. Strict grammar match → confirm or cancel. Timeout/no-match closes silently. Tap still works.
 - Commit: 932a0c2. VOICE_AGENT.md updated (decision #7 marked implemented + Phase 4.5 status line).
