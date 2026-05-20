@@ -472,7 +472,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
 
 const MAX_TEXTAREA_H = 140; // 5 lines × (16px × 1.5 line-height) + 20px vertical padding
 
-export default function MasterAgent({ profile, pendingAction, clearPendingAction }) {
+export default function MasterAgent({ profile, pendingAction, clearPendingAction, suggestedJobId, jobs }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -481,6 +481,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [showPulse, setShowPulse] = useState(true);
   const [pendingConfirm, setPendingConfirm] = useState(null);
   const [pendingCard, setPendingCard] = useState(null);
+  const [contextJobId, setContextJobId] = useState(null);
+  const declinedForJobRef = useRef(null); // jobId user declined context for this session
+  const shownForJobRef = useRef(null);   // jobId for which the context card was last emitted
   const [attachment, setAttachment] = useState(null); // { base64, mime, preview }
   const [attaching, setAttaching] = useState(false);
   const [libraryAttachments, setLibraryAttachments] = useState([]); // [{ base64, mime, preview }]
@@ -556,6 +559,30 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, MAX_TEXTAREA_H) + 'px';
   }, [input]);
+
+  // Emit a client-side context-confirm card when the viewport job changes.
+  // Fires when suggestedJobId is truthy, differs from the confirmed contextJobId,
+  // and hasn't already been shown or declined this session.
+  useEffect(() => {
+    if (!suggestedJobId) { shownForJobRef.current = null; return; }
+    if (suggestedJobId === contextJobId) return;
+    if (suggestedJobId === declinedForJobRef.current) return;
+    if (suggestedJobId === shownForJobRef.current) return;
+    shownForJobRef.current = suggestedJobId;
+    const job = jobs?.find(j => j.id === suggestedJobId);
+    const addr = job?.address || job?.client_name || 'this project';
+    setPendingCard({
+      id: `context-confirm-${suggestedJobId}`,
+      prompt: `Are we working on ${addr}?`,
+      meta: { kind: 'context_confirm', candidate_job_id: suggestedJobId },
+      questions: [{
+        id: 'confirm',
+        type: 'select',
+        label: '',
+        options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }],
+      }],
+    });
+  }, [suggestedJobId, contextJobId]);
 
   useEffect(() => {
     SpeechRecognition.available().then(({ available }) => setMicAvailable(available)).catch(() => {});
@@ -814,6 +841,21 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     const card = pendingCard;
     setPendingCard(null);
 
+    // Context confirm card — handled entirely client-side, no edge fn call.
+    if (card.meta?.kind === 'context_confirm') {
+      const candidateJobId = String(card.meta.candidate_job_id || '');
+      if (answers.confirm === 'yes') {
+        setContextJobId(candidateJobId);
+        declinedForJobRef.current = null;
+        const job = jobs?.find(j => j.id === candidateJobId);
+        const addr = job?.address || job?.client_name || 'this project';
+        setMessages(prev => [...prev, { type: 'ai', text: `Working on ${addr}. What would you like to do?`, actions: [] }]);
+      } else {
+        declinedForJobRef.current = candidateJobId;
+      }
+      return;
+    }
+
     const answersText = formatCardAnswers(card, answers);
     setMessages((prev) => [...prev, { type: 'user', text: 'Card submitted.' }]);
 
@@ -838,7 +880,12 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
 
   const cancelCard = () => {
     if (!pendingCard) return;
+    const card = pendingCard;
     setPendingCard(null);
+    if (card.meta?.kind === 'context_confirm') {
+      declinedForJobRef.current = String(card.meta?.candidate_job_id || '');
+      return;
+    }
     setMessages((prev) => [
       ...prev,
       { type: 'ai', text: 'Cancelled. Nothing was saved.', actions: [] },
@@ -1032,6 +1079,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     setAttachment(null);
     setLibraryAttachments([]);
     setAttachErr('');
+    setContextJobId(null);
+    declinedForJobRef.current = null;
+    shownForJobRef.current = null;
   };
 
   const panelVisible = open;
