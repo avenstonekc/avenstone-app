@@ -4,9 +4,8 @@ import { getTemplateOptions } from '../../../lib/siteVisitTemplates';
 import SiteVisitChecklist from '../SiteVisitChecklist';
 import { Ic, fD } from '../../../lib/utils';
 
-// Phase display config
-const PHASE_ORDER  = ['demo', 'framing', 'rough_mep', 'drywall', 'finish', 'punch'];
-const PHASE_LABELS = { demo: 'Demo', framing: 'Framing', rough_mep: 'Rough MEP', drywall: 'Drywall', finish: 'Finish', punch: 'Punch' };
+// Phase display config — title-case keys match job_phases.phase_name in DB
+const PHASE_ORDER = ['Demo', 'Framing', 'Rough MEP', 'Insulation', 'Drywall', 'Paint', 'Flooring', 'Trim', 'Fixtures', 'Punch List'];
 const PILL_COLOR   = { not_started: '#9CA3AF', pending: '#9CA3AF', in_progress: '#C9A84C', complete: '#22c55e', blocked: '#ef4444' };
 
 // Schedule item config
@@ -162,7 +161,7 @@ export default function ScheduleTab({ job }) {
               return (
                 <div key={ph.id} style={{ textAlign: 'center', display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div style={{ background: col + '20', border: `1.5px solid ${col}`, borderRadius: 20, padding: '4px 12px', fontSize: 11, fontWeight: 700, color: col, whiteSpace: 'nowrap', lineHeight: 1.4 }}>
-                    {PHASE_LABELS[ph.phase_name] || ph.phase_name}
+                    {ph.phase_name}
                   </div>
                   {ph.status === 'in_progress' && ph.started_at && (
                     <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 3 }}>Started {fD(ph.started_at)}</div>
