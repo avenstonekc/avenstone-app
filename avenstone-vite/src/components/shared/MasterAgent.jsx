@@ -18,6 +18,9 @@ function normalizeTtsText(text) {
     .trim();
 }
 
+const VC_AFFIRMATIVE = new Set(['yes', 'yeah', 'yep', 'confirm', 'do it', 'go ahead', 'sure', 'ok', 'okay']);
+const VC_NEGATIVE    = new Set(['no', 'nope', 'cancel', "don't", 'stop']);
+
 // Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
 const MAX_EDGE = 1024;
 const ANTHROPIC_OK = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
@@ -477,6 +480,10 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [ttsEnabled, setTtsEnabled] = useState(() => {
     try { return localStorage.getItem('av_tts_enabled') !== 'false'; } catch { return true; }
   });
+  const [vcListening, setVcListening] = useState(false);
+  const vcTimerRef      = useRef(null);
+  const vcListenersRef  = useRef([]);
+  const vcPendingRef    = useRef(null); // action held for STT callback
 
   const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -523,6 +530,8 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     SpeechRecognition.available().then(({ available }) => setMicAvailable(available)).catch(() => {});
     return () => {
       micListenersRef.current.forEach((h) => h.remove().catch(() => {}));
+      vcListenersRef.current.forEach((h) => h.remove().catch(() => {}));
+      if (vcTimerRef.current) clearTimeout(vcTimerRef.current);
       SpeechRecognition.stop().catch(() => {});
     };
   }, []);
@@ -576,7 +585,12 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         setPendingCard(null);
       }
 
-      ttsSpeak(aiText, pendingAction?.description);
+      if (pendingAction && ttsEnabled) {
+        vcPendingRef.current = pendingAction;
+        ttsSpeak(aiText, pendingAction.description).then(() => startVoiceConfirm(pendingAction));
+      } else {
+        ttsSpeak(aiText, null);
+      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -630,6 +644,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     if (loading) return;
     if (!trimmed && !attachment) return;
     TextToSpeech.stop().catch(() => {});
+    stopVoiceConfirm();
     if (pendingConfirm) setPendingConfirm(null);
     if (pendingCard) setPendingCard(null);
 
@@ -819,13 +834,61 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     SpeechRecognition.stop().catch(() => {});
   };
 
-  const ttsSpeak = (primary, secondary) => {
+  const stopVoiceConfirm = () => {
+    if (vcTimerRef.current) { clearTimeout(vcTimerRef.current); vcTimerRef.current = null; }
+    vcListenersRef.current.forEach((h) => h.remove().catch(() => {}));
+    vcListenersRef.current = [];
+    vcPendingRef.current = null;
+    setVcListening(false);
+    SpeechRecognition.stop().catch(() => {});
+  };
+
+  const ttsSpeak = async (primary, secondary) => {
     if (!ttsEnabled) return;
     const t1 = normalizeTtsText(primary);
-    if (t1) TextToSpeech.speak({ text: t1, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Flush }).catch(() => {});
+    if (t1) await TextToSpeech.speak({ text: t1, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Flush }).catch(() => {});
     if (secondary) {
       const t2 = normalizeTtsText(secondary);
-      if (t2) TextToSpeech.speak({ text: t2, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Add }).catch(() => {});
+      if (t2) await TextToSpeech.speak({ text: t2, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Add }).catch(() => {});
+    }
+  };
+
+  const startVoiceConfirm = async (action) => {
+    if (!action || !ttsEnabled || !micAvailable) return;
+    await new Promise((r) => setTimeout(r, 500));
+    if (!vcPendingRef.current) return; // cleared during cooldown (user tapped or new message)
+    try {
+      setVcListening(true);
+      const partialHandle = await SpeechRecognition.addListener('partialResults', ({ matches }) => {
+        if (!matches || matches.length === 0) return;
+        const raw = matches[0].toLowerCase().trim();
+        if (VC_AFFIRMATIVE.has(raw)) {
+          const a = vcPendingRef.current;
+          if (!a) return;
+          stopVoiceConfirm();
+          setPendingConfirm(null);
+          setMessages((prev) => [...prev, { type: 'user', text: 'Confirmed.' }]);
+          callMaster({
+            user_id: profile?.id,
+            tenant_id: profile?.tenant_id,
+            role: profile?.role,
+            full_name: profile?.full_name,
+            pending_action: a,
+            confirmed: true,
+          }, a.description || a.tool);
+        } else if (VC_NEGATIVE.has(raw)) {
+          if (!vcPendingRef.current) return;
+          stopVoiceConfirm();
+          setPendingConfirm(null);
+          setMessages((prev) => [...prev, { type: 'ai', text: 'Cancelled. Nothing was saved.', actions: [] }]);
+        }
+      });
+      vcListenersRef.current.push(partialHandle);
+      await SpeechRecognition.start({ partialResults: true, popup: false }).catch(() => {});
+      vcTimerRef.current = setTimeout(() => stopVoiceConfirm(), 5000);
+    } catch {
+      setVcListening(false);
+      vcPendingRef.current = null;
     }
   };
 
@@ -1199,9 +1262,26 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               >
                 {pendingConfirm.description || `Run ${formatToolName(pendingConfirm.tool)}?`}
               </div>
+              {vcListening && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: '#C9A84C',
+                    animation: 'masterAgentBounce 1.2s infinite',
+                  }} />
+                  <span style={{
+                    fontFamily: 'DM Sans, sans-serif',
+                    fontSize: 11,
+                    color: 'rgba(201,168,76,0.85)',
+                    fontStyle: 'italic',
+                  }}>
+                    Listening… say yes or no
+                  </span>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
-                  onClick={confirmPending}
+                  onClick={() => { stopVoiceConfirm(); confirmPending(); }}
                   disabled={loading}
                   style={{
                     flex: 1,
@@ -1219,7 +1299,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   Confirm
                 </button>
                 <button
-                  onClick={cancelPending}
+                  onClick={() => { stopVoiceConfirm(); cancelPending(); }}
                   disabled={loading}
                   style={{
                     flex: 1,
