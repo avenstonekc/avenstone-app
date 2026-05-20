@@ -1400,7 +1400,8 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         {/* Input Bar */}
         <div
           style={{
-            padding: '10px 14px 16px',
+            padding: '10px 14px',
+            paddingBottom: 'calc(16px + env(safe-area-inset-bottom))',
             borderTop: '1px solid rgba(201,168,76,0.15)',
             display: 'flex',
             flexDirection: 'column',
@@ -1442,34 +1443,6 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             onChange={onFilePicked}
             style={{ display: 'none' }}
           />
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-          <button
-            onClick={onAttachClick}
-            disabled={loading || attaching}
-            title="Attach image"
-            aria-label="Attach image"
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.07)',
-              border: '1px solid rgba(201,168,76,0.3)',
-              color: 'rgba(247,245,240,0.75)',
-              cursor: loading || attaching ? 'default' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              marginBottom: 2,
-              transition: 'background 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={(e) => { if (!loading && !attaching) e.currentTarget.style.borderColor = 'rgba(201,168,76,0.6)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(201,168,76,0.3)'; }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-            </svg>
-          </button>
           <textarea
             ref={inputRef}
             rows={1}
@@ -1479,7 +1452,8 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             placeholder={bugMode ? 'Describe the bug (min 10 characters)…' : 'Tell me what to do...'}
             disabled={loading}
             style={{
-              flex: 1,
+              width: '100%',
+              boxSizing: 'border-box',
               resize: 'none',
               background: 'rgba(255,255,255,0.07)',
               border: '1px solid rgba(201,168,76,0.2)',
@@ -1497,116 +1471,142 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             onFocus={(e) => (e.target.style.borderColor = 'rgba(201,168,76,0.55)')}
             onBlur={(e) => (e.target.style.borderColor = 'rgba(201,168,76,0.2)')}
           />
-          {micAvailable && (
+          {/* Button row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
-              onClick={() => micListening ? stopMic() : startMic()}
-              onContextMenu={(e) => e.preventDefault()}
-              disabled={loading}
-              title={micListening ? 'Tap to stop' : 'Tap to speak'}
-              aria-label={micListening ? 'Tap to stop' : 'Tap to speak'}
+              onClick={onAttachClick}
+              disabled={loading || attaching}
+              title="Take photo"
+              aria-label="Take photo"
               style={{
                 width: 42,
                 height: 42,
                 borderRadius: '50%',
-                background: micListening ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.07)',
-                border: micListening ? '1px solid rgba(239,68,68,0.7)' : '1px solid rgba(201,168,76,0.3)',
-                color: micListening ? '#FCA5A5' : 'rgba(247,245,240,0.75)',
-                cursor: loading ? 'default' : 'pointer',
+                background: 'rgba(255,255,255,0.07)',
+                border: '1px solid rgba(201,168,76,0.3)',
+                color: 'rgba(247,245,240,0.75)',
+                cursor: loading || attaching ? 'default' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
-                marginBottom: 2,
+                transition: 'background 0.15s, border-color 0.15s',
+              }}
+              onMouseEnter={(e) => { if (!loading && !attaching) e.currentTarget.style.borderColor = 'rgba(201,168,76,0.6)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(201,168,76,0.3)'; }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
+            {micAvailable && (
+              <button
+                onClick={() => micListening ? stopMic() : startMic()}
+                onContextMenu={(e) => e.preventDefault()}
+                disabled={loading}
+                title={micListening ? 'Tap to stop' : 'Tap to speak'}
+                aria-label={micListening ? 'Tap to stop' : 'Tap to speak'}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: '50%',
+                  background: micListening ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.07)',
+                  border: micListening ? '1px solid rgba(239,68,68,0.7)' : '1px solid rgba(201,168,76,0.3)',
+                  color: micListening ? '#FCA5A5' : 'rgba(247,245,240,0.75)',
+                  cursor: loading ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  transition: 'background 0.15s, border-color 0.15s',
+                }}
+              >
+                {micListening ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="9" y="3" width="6" height="18" rx="3" />
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                )}
+              </button>
+            )}
+            <button
+              onClick={toggleTts}
+              title={ttsEnabled ? 'Mute agent voice' : 'Unmute agent voice'}
+              aria-label={ttsEnabled ? 'Mute agent voice' : 'Unmute agent voice'}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: '50%',
+                background: ttsEnabled ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
+                border: ttsEnabled ? '1px solid rgba(201,168,76,0.3)' : '1px solid rgba(247,245,240,0.15)',
+                color: ttsEnabled ? 'rgba(247,245,240,0.75)' : 'rgba(247,245,240,0.3)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
                 transition: 'background 0.15s, border-color 0.15s',
               }}
             >
-              {micListening ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="9" y="3" width="6" height="18" rx="3" />
+              {ttsEnabled ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
                 </svg>
               ) : (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="23" />
-                  <line x1="8" y1="23" x2="16" y2="23" />
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <line x1="23" y1="9" x2="17" y2="15" />
+                  <line x1="17" y1="9" x2="23" y2="15" />
                 </svg>
               )}
             </button>
-          )}
-          <button
-            onClick={toggleTts}
-            title={ttsEnabled ? 'Mute agent voice' : 'Unmute agent voice'}
-            aria-label={ttsEnabled ? 'Mute agent voice' : 'Unmute agent voice'}
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: '50%',
-              background: ttsEnabled ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
-              border: ttsEnabled ? '1px solid rgba(201,168,76,0.3)' : '1px solid rgba(247,245,240,0.15)',
-              color: ttsEnabled ? 'rgba(247,245,240,0.75)' : 'rgba(247,245,240,0.3)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              marginBottom: 2,
-              transition: 'background 0.15s, border-color 0.15s',
-            }}
-          >
-            {ttsEnabled ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                <line x1="23" y1="9" x2="17" y2="15" />
-                <line x1="17" y1="9" x2="23" y2="15" />
-              </svg>
-            )}
-          </button>
-          <button
-            onClick={() => submit(input)}
-            disabled={loading || (!input.trim() && !attachment)}
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: '50%',
-              background: loading || (!input.trim() && !attachment) ? 'rgba(201,168,76,0.3)' : '#C9A84C',
-              border: 'none',
-              cursor: loading || (!input.trim() && !attachment) ? 'default' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              transition: 'background 0.15s, transform 0.1s',
-              marginBottom: 2,
-            }}
-            onMouseEnter={(e) => {
-              if (!loading && (input.trim() || attachment)) e.currentTarget.style.transform = 'scale(1.08)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-            aria-label="Send"
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={loading || (!input.trim() && !attachment) ? 'rgba(10,31,68,0.5)' : '#0A1F44'}
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={() => submit(input)}
+              disabled={loading || (!input.trim() && !attachment)}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: '50%',
+                background: loading || (!input.trim() && !attachment) ? 'rgba(201,168,76,0.3)' : '#C9A84C',
+                border: 'none',
+                cursor: loading || (!input.trim() && !attachment) ? 'default' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'background 0.15s, transform 0.1s',
+              }}
+              onMouseEnter={(e) => {
+                if (!loading && (input.trim() || attachment)) e.currentTarget.style.transform = 'scale(1.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              aria-label="Send"
             >
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </button>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={loading || (!input.trim() && !attachment) ? 'rgba(10,31,68,0.5)' : '#0A1F44'}
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
