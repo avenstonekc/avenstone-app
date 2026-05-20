@@ -9,6 +9,7 @@ ai-field-agent, or adds voice I/O.
 - Phase 2 tool layer hardening shipped — both agents run the v1 verb roster through canonical helpers (commits 5f091fb, 2d586c7, dedc8c0).
 - Phase 3 **code shipped** (commits f045752, 28bb0e4) — **device verification pending** (Codemagic build → TestFlight). Hold-to-talk mic button in MasterAgent using @capgo/capacitor-speech-recognition@8.1.2. Transcript injected into chat input via setInput; user reviews and presses Send. No auto-send.
 - Phase 4 **code shipped** (commits 3b15050, 2a93d2e) — **device verification pending** (Codemagic build → TestFlight). Agent speaks replies via @capacitor-community/text-to-speech@8.0.0. Speaks response text, then confirmation card description (for money read-back). Speaker toggle button persists setting to localStorage. STT and TTS never overlap. On-device audio quality check required — see Known Limitations.
+- Phase 4.5 **code shipped** (commit 932a0c2) — **device verification pending** (Codemagic build → TestFlight). Voice-confirm for pending_action cards: after TTS reads the money readback, mic auto-opens 5s window, strict yes/no grammar fires confirmPending/cancelPending. Listening pill shown on card. Decision #7 fully implemented.
 - Phase 5+ (hands-free/continuous listen) not started.
 
 ## The goal
@@ -61,6 +62,11 @@ CLAUDE.md made literal.
 7. **Visual confirmation card before writes.** Proposed action renders
    on-screen (dollar amount, job, category) while the agent reads it
    back. User can tap Confirm or say yes. Either works.
+   **IMPLEMENTED 2026-05-19** — After TTS reads the card description,
+   the mic auto-opens for 5s. Strict grammar: yes/yeah/yep/confirm/do it/
+   go ahead/sure/ok/okay → confirm; no/nope/cancel/don't/stop → cancel.
+   Timeout or no-match → closes silently, tap still works. Listening
+   pill shown on card during the window. Commit 932a0c2.
 
 8. **Fail loud on network drops.** Truck in a basement. If the tool
    call fails, the agent says so — never silently swallow a write.

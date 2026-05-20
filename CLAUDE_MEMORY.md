@@ -947,3 +947,31 @@ Classifications:
 
 Scanner final state: missing tables 4 → 1 (quote_requests only, ai-pm-nightly disabled). Write drift 0, read drift 0, write skipped 0.
 Smoke verification: all 3 deploy runs = success. FK constraint verified via information_schema. User-auth smoke test not possible from this session (no JWT); functions were already broken (returning null) before fix — net change is improvement, not regression.
+
+---
+
+[LOG — 2026-05-19 — Voice-confirm for pending_action cards (VOICE_AGENT decision #7)]
+- Action: Implemented auto voice-confirm on pending_action confirm cards. After TTS reads the money readback, mic auto-opens for a 5s listen window. Strict grammar match → confirm or cancel. Timeout/no-match closes silently. Tap still works.
+- Commit: 932a0c2. VOICE_AGENT.md updated (decision #7 marked implemented + Phase 4.5 status line).
+- Build: ✓ 592ms.
+
+What changed in MasterAgent.jsx:
+  - Grammar constants at module level: VC_AFFIRMATIVE (yes/yeah/yep/confirm/do it/go ahead/sure/ok/okay), VC_NEGATIVE (no/nope/cancel/don't/stop).
+  - 4 new state/refs: vcListening (boolean — drives listening pill), vcTimerRef (5s timeout), vcListenersRef (STT listener handles), vcPendingRef (holds action for STT callback — bypasses closure staleness).
+  - stopVoiceConfirm(): clears timer, removes listeners, nulls vcPendingRef, sets vcListening=false, stops STT.
+  - ttsSpeak refactored async: was fire-and-forget; now awaits each speak() call sequentially so the returned Promise resolves only after all speech completes.
+  - startVoiceConfirm(action): 500ms cooldown → if vcPendingRef still set → setVcListening(true) → addListener('partialResults', ...) → SpeechRecognition.start() → 5s timeout. STT callback: strict grammar match → stopVoiceConfirm() + direct state calls (setPendingConfirm null + setMessages + callMaster/setMessages).
+  - Call site (post-callMaster): if pendingAction + ttsEnabled → vcPendingRef set + ttsSpeak().then(() => startVoiceConfirm(pendingAction)) — fire-and-forget chain (loading=false doesn't wait on TTS). Non-confirm path: ttsSpeak(aiText, null) as before.
+  - sendMessage: added stopVoiceConfirm() alongside existing TextToSpeech.stop().
+  - Confirm/Cancel buttons: onClick now calls stopVoiceConfirm() before confirmPending/cancelPending so tap during voice-listen stops the mic cleanly.
+  - Listening pill: "Listening… say yes or no" with bouncing dot shown on pendingConfirm card when vcListening.
+  - Cleanup effect: vcListenersRef + vcTimerRef added to unmount cleanup.
+
+Design notes:
+  - vcPendingRef avoids React closure staleness: STT callback reads from ref, not closure. confirmPending/cancelPending replaced by direct state calls from the callback.
+  - Activation gate: pendingAction present + ttsEnabled + micAvailable. All three must be true.
+  - Guard: vcPendingRef checked after 500ms cooldown (user may have tapped during cooldown — guard clears cleanly).
+  - Scope fence: voice-confirm only for CONFIRM_TOOLS (pending_action). Not for pending_card (AgentCard form cards).
+
+Verification: device test required after Codemagic build → TestFlight.
+  Test: trigger a money confirm card → TTS reads → mic opens → say "yes" → confirmed. Also: say "no" → cancelled. Also: timeout (say nothing) → closes, tap still works.
