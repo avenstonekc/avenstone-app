@@ -832,6 +832,82 @@ Build: ✓ 611ms. Tool count confirmed 16 via grep of name: pattern. Trade-aware
 
 ---
 
+[LOG — 2026-05-19 — Write-side drift scanner: skipped 9 → 0]
+- Action: Resolved all 9 write-side skipped call sites in tools/audit_schema_vs_code.js.
+- Fix 1 (8 sites): Added `binding.kind === 'param'` early return in resolveIdentifierColumns — function parameters have no init node; marked partial:true, resolved:true instead of falling through to "init type none". Commit: 23753a0.
+- Fix 2 (1 site): Refactored sbUpdateScanOverrides from dynamic .from(table) to explicit if/else branches with static string literals (job_lidar_scans / contact_lidar_scans). Runtime behavior identical. Commit: 48b09dc.
+- Files: tools/audit_schema_vs_code.js, avenstone-vite/src/lib/supabase.js
+- Result: write skipped 9 → 0. Write drift unchanged at 0.
+
+[LOG — 2026-05-19 — Edge fn missing-tables: 4 findings → 1 STOP]
+- Action: Investigated 4 phantom-table findings from read-side scanner's edge-function bucket. Fixed 3, STOP on 1.
+- bid_responses (sequence-runner): NEVER-CREATED. Renamed to job_sub_engagements + bid_submitted_at. Commit: 2651fea.
+- job_subs (ai-companion, ai-project-manager): DROPPED. Renamed to job_sub_engagements with !sub_id FK hint (table has 5 FKs to profiles). Commits: 821b02d (job_subs rename), 93cd697 (schedule_phases across 4 edge fns).
+- schedule_phases (ai-companion, ai-project-manager, ai-home-companion, ai-pm-nightly): NEVER-CREATED. Real table is job_phases. Renamed + order_index → phase_order + p.name → p.phase_name in templates.
+- quote_requests in ai-pm-nightly: STOP. Used in rules 9/10/11 with embedded bid_responses. Substantive remapping to job_sub_engagements + engagement_bids. ai-pm-nightly is DISABLED — deferred to re-enable slice.
+- Files: supabase/functions/sequence-runner/index.ts, supabase/functions/ai-companion/index.ts, supabase/functions/ai-project-manager/index.ts, supabase/functions/ai-home-companion/index.ts, supabase/functions/ai-pm-nightly/index.ts
+- Scanner missing-tables: 4 → 1 (quote_requests in disabled ai-pm-nightly only).
+
+[LOG — 2026-05-19 — phase name canonical alignment: title-case 10-phase model]
+- Action: Aligned code-side phase constants and lookups to canonical DB model (title case, 10 phases). Restored derivePhaseStatus and ScheduleTab phase progress bar to functional state.
+- Commits: 7a34350 (supabase.js), 211341c (ScheduleTab.jsx). Pushed to main.
+- Build: ✓ 808ms.
+
+Consumer audit (2 files, 1 non-trivial — within scope fence):
+  ScheduleTab.jsx:8-9 — PHASE_ORDER was ['demo','framing','rough_mep','drywall','finish','punch'] (6 lowercase). Updated to ['Demo','Framing','Rough MEP','Insulation','Drywall','Paint','Flooring','Trim','Fixtures','Punch List'] (10 title-case). Removed PHASE_LABELS (redundant — title-case names are display-ready). Display line updated to ph.phase_name directly.
+  supabase.js:2022 — phaseToTrades keyed by trade_phase_map.phase_name (lowercase: demo, framing, rough_mep, drywall, finish). Added JOB_PHASE_TO_TMAP constant bridging title-case job_phases.phase_name → lowercase tmap key. Lookup changed from phaseToTrades[phase.phase_name] to phaseToTrades[JOB_PHASE_TO_TMAP[phase.phase_name]].
+
+JOB_PHASE_TO_TMAP design decisions:
+  - Demo→demo, Framing→framing, Rough MEP→rough_mep, Drywall→drywall: 1:1 mappings
+  - Paint/Flooring/Trim/Fixtures→finish: all 4 map to 'finish' tmap key. Any finish trade completing (Paint - Interior, Tile - Floor, Tile - Wall/shower, Cabinets/vanities - Install) advances all 4 job_phases rows simultaneously. Limitation of current trade_phase_map schema — no DB changes.
+  - Insulation, Punch List: no tmap entry → null → never auto-advance. Manually advanced only.
+
+Out-of-scope findings flagged (separate bugs, NOT fixed):
+  - Reports.jsx:68 — ['signed','demo','framing','rough_mep','drywall','finish','punch'].includes(j.status): uses legacy jobs.status values (old lifecycle names). Canonical statuses are now: lead, proposal, contract, in_progress, final_touches, complete. This filter always returns 0 jobs for pending commissions.
+  - ClientPortal.jsx:505,552 and InfoTab.jsx:141 — ['complete','punch'].includes(job.status): 'punch' is a legacy jobs.status value. Should be ['complete','final_touches'].
+
+Smoke test — derivePhaseStatus end-to-end (test-flow-001):
+  Before: Demo=not_started, Drywall=not_started (all 10 phases)
+  Inserted schedule_item: type='sub_start', trade='Demo', status='complete'
+  Existing item: trade='Drywall - Hang', status='scheduled', scheduled_date='2026-05-06' (overdue)
+  After derivePhaseStatus: Demo=complete, Drywall=in_progress — CORRECT
+  Cleanup: test item deleted, phases reset to not_started.
+
+ScheduleTab verification:
+  orderedPhases.length: 10 (was 0 before fix). Phase progress bar now renders all 10 phases.
+  PILL_COLOR unchanged — not_started/in_progress/complete/blocked colors apply correctly.
+
+jobs.phase_pct_complete note: dead stored column — trigger maintains it, nothing reads it. Out of scope per prior audit. Separate cleanup when and if the column is ever wired to a consumer.
+
+[LOG — 2026-05-19 — phase_pct_complete rollup audit — STOP findings, no fixes]
+- Action: Audited phase_pct_complete rollup for data correctness. All findings are STOP — no commits made.
+- Sample: test-flow-001 (only job with job_phases rows). All 10 phases = not_started. 0 sub_start schedule items.
+  Stored pct: 0% = Recomputed: 0% — CLEAN numerically but structurally broken.
+
+Rollup mechanisms identified:
+  1. DB trigger update_job_phase_pct (AFTER INSERT/UPDATE/DELETE on job_phases): maintains jobs.phase_pct_complete. Formula: ROUND((done/total)*100). ORPHANED — no frontend or edge fn ever reads jobs.phase_pct_complete.
+  2. derivePhaseStatus (supabase.js:1975): JS function updates job_phases.status from sub_start schedule items. Called from sbCreate/Update/DeleteScheduleItem. COMPLETELY NON-FUNCTIONAL — see naming mismatch below.
+  3. ScheduleTab phase progress bar: colored pills derived from orderedPhases. ALWAYS HIDDEN — see naming mismatch below.
+  4. StatusPage (client portal): inline done/total*100 from get-job-status edge fn response (remaps phase_name→name). Not gated on naming convention — still functional but shows 0 phases because nothing can advance.
+
+CRITICAL FINDING — Naming convention mismatch (STOP):
+  - trade_phase_map.phase_name (DB): lowercase snake_case — demo, framing, rough_mep, drywall, finish, punch (6 condensed)
+  - ScheduleTab PHASE_ORDER (code): lowercase snake_case — ['demo', 'framing', 'rough_mep', 'drywall', 'finish', 'punch'] (matches trade_phase_map)
+  - job_phases.phase_name (DB, test-flow-001): title case, 10 granular — Demo, Framing, Rough MEP, Insulation, Drywall, Paint, Flooring, Trim, Fixtures, Punch List (matches DEFAULT_PHASES)
+  - DEFAULT_PHASES in supabase.js (line 277): title case, 10 phases — DEFINED BUT NEVER IMPORTED ANYWHERE
+
+Consequences:
+  - ScheduleTab: phaseMap['demo'] = undefined (DB has 'Demo') → orderedPhases = [] → section guarded by {orderedPhases.length > 0} never renders
+  - derivePhaseStatus: phaseToTrades['Demo'] = undefined (trade_phase_map has 'demo') → all if (!trades?.length) continue → phases never advance
+
+Decision needed: which naming convention is canonical?
+  Option A (6 lowercase — RECOMMENDED): migrate job_phases.phase_name values (Demo→demo etc.), delete DEFAULT_PHASES dead export. Code already correct for this side.
+  Option B (10 title case): update PHASE_ORDER/PHASE_LABELS/trade_phase_map to title-case + expand to 10. More DB changes.
+- Files: (read-only audit) supabase.js, ScheduleTab.jsx, StatusPage.jsx, get-job-status/index.ts, phaseGates.js
+- No commits. Open: schema decision required before any fix.
+
+---
+
 [LOG — 2026-05-19 — ai-master-agent drift detector: tools/audit_master_agent.js]
 - Action: Built and ran a standalone tool-schema-vs-payload drift detector for ai-master-agent. 4 checks. npm run audit:master-agent. Exit 0 = clean; exit 1 = real drift; exit 2 = parse error.
 - Commits: pending (tools/audit_master_agent.js + package.json).
