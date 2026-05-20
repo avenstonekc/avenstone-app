@@ -1065,16 +1065,14 @@ function amountToWords(amt: unknown): string {
   return words;
 }
 
-// Money verbs append the spelled-out amount inline so a wrong digit reads
-// obviously wrong on the Confirm card. Non-money verbs get a plain summary.
 function describeConfirmAction(tool: string, input: any): string {
   switch (tool) {
     case "log_payment":
-      return `Log ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) client payment${input.description ? ` — ${input.description}` : ""}.`;
+      return `Log ${fmtMoney(input.amount)} client payment${input.description ? ` — ${input.description}` : ""}.`;
     case "log_receipt":
-      return `Log ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ""}.`;
+      return `Log ${fmtMoney(input.amount)} expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ""}.`;
     case "submit_change_order":
-      return `Submit ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) change order — ${input.description}.`;
+      return `Submit ${fmtMoney(input.amount)} change order — ${input.description}.`;
     case "add_todo": {
       const bits: string[] = [`Add todo: "${input.title}"`];
       if (input.due_date) bits.push(`due ${input.due_date}`);
