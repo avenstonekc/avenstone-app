@@ -597,13 +597,14 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const callMaster = async (body, userMessageText) => {
     setLoading(true);
     try {
+      const enrichedBody = contextJobId ? { ...body, context_job_id: contextJobId } : body;
       const res = await fetch(AI_MASTER_URL, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(enrichedBody),
       });
 
       const data = await res.json();
