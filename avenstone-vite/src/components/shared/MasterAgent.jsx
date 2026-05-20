@@ -21,6 +21,23 @@ function normalizeTtsText(text) {
 const VC_AFFIRMATIVE = new Set(['yes', 'yeah', 'yep', 'confirm', 'do it', 'go ahead', 'sure', 'ok', 'okay']);
 const VC_NEGATIVE    = new Set(['no', 'nope', 'cancel', "don't", 'stop']);
 
+function getStoredVoiceUri() {
+  try { return localStorage.getItem('av_tts_voice_uri') || ''; } catch { return ''; }
+}
+
+// Returns the index into the full getSupportedVoices() array for the stored voice,
+// falling back to the best Enhanced/Premium en-US voice, then any en-US, then any en-*.
+function pickVoiceIndex(voices, storedUri) {
+  if (storedUri) {
+    const idx = voices.findIndex(v => v.voiceURI === storedUri);
+    if (idx >= 0) return idx;
+  }
+  let best = voices.findIndex(v => v.lang === 'en-US' && /(enhanced|premium)/i.test(v.name));
+  if (best < 0) best = voices.findIndex(v => v.lang === 'en-US');
+  if (best < 0) best = voices.findIndex(v => v.lang.startsWith('en'));
+  return best >= 0 ? best : undefined;
+}
+
 // Anthropic vision: jpeg/png/gif/webp only. iOS exports HEIC by default.
 const MAX_EDGE = 1024;
 const ANTHROPIC_OK = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
@@ -484,6 +501,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const vcTimerRef      = useRef(null);
   const vcListenersRef  = useRef([]);
   const vcPendingRef    = useRef(null); // action held for STT callback
+  const voicesCacheRef  = useRef(null); // full getSupportedVoices() array, loaded on first speak
 
   const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -587,7 +605,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
 
       if (pendingAction && ttsEnabled) {
         vcPendingRef.current = pendingAction;
-        ttsSpeak(aiText, pendingAction.description).then(() => startVoiceConfirm(pendingAction));
+        // Suppress response text — card description carries the canonical money readback.
+        // Speaking both would say the amount twice.
+        ttsSpeak(null, pendingAction.description).then(() => startVoiceConfirm(pendingAction));
       } else {
         ttsSpeak(aiText, null);
       }
@@ -845,11 +865,17 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
 
   const ttsSpeak = async (primary, secondary) => {
     if (!ttsEnabled) return;
+    if (!voicesCacheRef.current) {
+      const { voices } = await TextToSpeech.getSupportedVoices().catch(() => ({ voices: [] }));
+      voicesCacheRef.current = voices || [];
+    }
+    const voiceIdx = pickVoiceIndex(voicesCacheRef.current, getStoredVoiceUri());
+    const voiceParam = voiceIdx !== undefined ? { voice: voiceIdx } : {};
     const t1 = normalizeTtsText(primary);
-    if (t1) await TextToSpeech.speak({ text: t1, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Flush }).catch(() => {});
+    if (t1) await TextToSpeech.speak({ text: t1, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Flush, ...voiceParam }).catch(() => {});
     if (secondary) {
       const t2 = normalizeTtsText(secondary);
-      if (t2) await TextToSpeech.speak({ text: t2, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Add }).catch(() => {});
+      if (t2) await TextToSpeech.speak({ text: t2, lang: 'en-US', rate: 1.0, category: 'playback', queueStrategy: QueueStrategy.Add, ...voiceParam }).catch(() => {});
     }
   };
 
