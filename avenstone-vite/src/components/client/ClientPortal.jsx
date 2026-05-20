@@ -502,7 +502,7 @@ export default function ClientPortal({ profile, signOut }) {
               );
             })()}
 
-            {['complete', 'punch'].includes(job.status) && jobReview !== null && (jobReview ?
+            {['complete', 'final_touches'].includes(job.status) && jobReview !== null && (jobReview ?
               <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: 20, marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                   <div style={{ width: 36, height: 36, background: '#22c55e', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, flexShrink: 0 }}>✓</div>
@@ -549,7 +549,7 @@ export default function ClientPortal({ profile, signOut }) {
               )
             )}
 
-            {['complete', 'punch'].includes(job.status) && loaded.subs && jobSubs.length > 0 && <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
+            {['complete', 'final_touches'].includes(job.status) && loaded.subs && jobSubs.length > 0 && <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Rate Our Team</div>
               <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16, lineHeight: 1.6 }}>Your feedback helps us keep standards high and rewards our best crew.</div>
               {jobSubs.map(js => {

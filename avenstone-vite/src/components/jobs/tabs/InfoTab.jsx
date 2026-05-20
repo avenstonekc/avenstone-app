@@ -138,7 +138,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         </div>
       )}
 
-{['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && ['complete', 'punch'].includes(job.status) && (
+{['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && ['complete', 'final_touches'].includes(job.status) && (
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginTop: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
