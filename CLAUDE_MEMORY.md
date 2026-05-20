@@ -1230,3 +1230,14 @@ Smoke tests (all PASS — code trace):
 Trade-aware: platform UI and agent surface — context job wiring is tenant-scoped (server fetches job with .eq("tenant_id", tenant_id) guard), tenant- and trade-agnostic. No DB changes. No agentCards.js contract changes. No CONFIRM_TOOLS/POST_EXECUTE_ELICIT/REQUIRED_FIELDS registry modifications.
 
 Build status: ✓ all 5 builds passed. AGENT_CARDS_ARC.md Phase 7 marked SHIPPED 2026-05-20. v1 arc complete.
+
+---
+
+[LOG — 2026-05-20 — AGENT_OPS_ARC.md: arc doc committed, Phase 0 complete]
+- Action: Committed AGENT_OPS_ARC.md. Agent operates the business with you arc. 6 phases, 5 verbs, 4 watchdog rules, daily-log hook.
+- Arc file: AGENT_OPS_ARC.md. Read at session start when touching ai-master-agent tools, scheduled_actions, watchdog detection, delegation cards, or daily-log followup flow.
+- Key schema: scheduled_actions (new), daily_logs extensions (3 cols), todos.assignee_id + priority (verify first), trade_material_lead_times (new, 5 Avenstone overrides seeded), notifications_type_check additions (5 new types).
+- Key verbs: add_todo (extended, delegation + priority), set_reminder, set_followup (self-only enforced), notify_team_member, list_my_queued_actions.
+- Key guard rails: set_followup cannot target other users (structural — no target_user_id in tool spec); watchdog fires to role-on-job, never named person; role-gated delegation (owner/pm → anyone, rep → self/PM, sub → self); once-per-day-per-rule-per-recipient-per-job ceiling.
+- Phase 1 next: schema foundation (2-3 Sonnet prompts). Phase 2 ends at first dogfoodable state.
+- Open: pg_cron availability must be verified in Phase 3.0 audit before building cron infrastructure.
