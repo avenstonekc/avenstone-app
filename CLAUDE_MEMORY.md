@@ -66,7 +66,9 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **ai-master-agent has 16 tools** (2 stale read tools removed 2026-05-19 — see read-tool cleanup LOG below): get_jobs, get_team, create_job, update_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, update_phase, submit_change_order, log_payment, log_receipt, notify_team, add_todo, add_knowledge.
 - **`CONFIRM_TOOLS` is a 5-verb whitelist** (extended 2026-05-09 from 3 to 5): log_payment, log_receipt, submit_change_order, add_todo, create_job. Every member returns `pending_action` and surfaces a Confirm card before the row is written.
 - **`job_estimates` consultation columns EXIST** (2026-05-12 via Shape C migration). New columns: `session_id UUID → consultation_sessions(id)`, `created_by UUID → profiles(id)`, `estimate_data JSONB` (structured AI estimate output from Consultation flow, distinct from `messages` which holds Estimator chat transcript), `total NUMERIC`, `source TEXT` (currently 'ai_consultation'). UNIQUE on `job_id` retained — Estimator and Consultation upsert onto the same row, non-overlapping field sets. Multi-source split deferred.
-- **`scheduled_actions` table EXISTS** (AGENT_OPS Phase 1.1, 2026-05-20). Agent's own todo list — reminders, self-followups, watchdog detections. 21 columns: id, tenant_id, kind (reminder/followup/watchdog), status (scheduled/fired/cancelled/failed), priority (low/normal/high/urgent), fire_at, fired_at, cancelled_at, retry_count (INTEGER DEFAULT 0), created_by_id (NOT NULL FK→profiles), target_user_id (nullable FK→profiles), related_job_id (nullable TEXT FK→jobs), related_todo_id (nullable UUID FK→todos), related_entity_type, related_entity_id, payload (JSONB DEFAULT '{}'), result, rule_key, source (agent/watchdog_cron/system DEFAULT agent), created_at, updated_at. 4 indexes (2 partial). 3 RLS policies — no DELETE policy (use status='cancelled'). Migration: 20260520100000_scheduled_actions.sql. Helpers: sbCreateScheduledAction, sbListScheduledActionsForUser, sbCancelScheduledAction.
+- **`scheduled_actions` table EXISTS** (AGENT_OPS Phase 1.1, 2026-05-20). Agent's own todo list — reminders, self-followups, watchdog detections. 21 columns: id, tenant_id, kind (reminder/followup/watchdog), status (scheduled/fired/cancelled/failed), priority (low/medium/high — Phase 1.2 migrated from 4-level spec to match todos canonical enum), fire_at, fired_at, cancelled_at, retry_count (INTEGER DEFAULT 0), created_by_id (NOT NULL FK→profiles), target_user_id (nullable FK→profiles), related_job_id (nullable TEXT FK→jobs), related_todo_id (nullable UUID FK→todos), related_entity_type, related_entity_id, payload (JSONB DEFAULT '{}'), result, rule_key, source (agent/watchdog_cron/system DEFAULT agent), created_at, updated_at. 4 indexes (2 partial). 3 RLS policies — no DELETE policy (use status='cancelled'). Migrations: 20260520100000_scheduled_actions.sql (create), 20260520110000_scheduled_actions_priority_3level.sql (enum fix). Helpers: sbCreateScheduledAction, sbListScheduledActionsForUser, sbCancelScheduledAction.
+- **`daily_logs` has 3 AGENT_OPS columns** (Phase 1.2, 2026-05-20): `phase_on_schedule BOOLEAN`, `delay_days INTEGER`, `issues_flagged TEXT` — all nullable, backward-compatible. Patched by daily-log conversation hook in Phase 6. Migration: 20260520120000_daily_logs_agent_ops_columns.sql.
+- **`trade_material_lead_times` table EXISTS** (AGENT_OPS Phase 1.2, 2026-05-20). Per-trade material lead time thresholds. Tenant override → platform default (tenant_id NULL) → fallback 7 days. 4 Avenstone seed rows (canonical trade strings verified against trade_phase_map: 'Cabinets / vanities - Install' 21d, 'Tile - Floor' 14d, 'Tile - Wall / shower' 14d, 'Plumbing - Finish / fixtures' 14d). Migration: 20260520130000_trade_material_lead_times.sql. Helper: sbGetTradeLeadDays.
 
 ---
 
@@ -1267,3 +1269,40 @@ Pre-flight finding surfaced for Phase 1.2: todos.priority CHECK is ('low', 'medi
 
 Trade-aware: platform table — tenant_id scoped, tenant- and trade-agnostic. rule_key strings (watchdog rule names) are the only trade-adjacent bits; they live in payloads and index values, not in schema columns. No DB changes beyond this table.
 Build: ✓ 789ms.
+
+---
+
+[LOG — 2026-05-20 — AGENT_OPS Phase 1.2: schema completions. SHIPPED.]
+
+Migrations (all applied and verified live — commit 3fb6a9f):
+  - 20260520110000_scheduled_actions_priority_3level.sql — dropped 4-level CHECK ('low','normal','high','urgent'), added 3-level ('low','medium','high'), changed DEFAULT from 'normal' to 'medium'. Table had 0 rows — no backfill.
+  - 20260520120000_daily_logs_agent_ops_columns.sql — added phase_on_schedule BOOLEAN, delay_days INTEGER, issues_flagged TEXT (all nullable). Backward-compatible — existing rows unaffected.
+  - 20260520130000_trade_material_lead_times.sql — created trade_material_lead_times table, 4 RLS policies (SELECT open to all authenticated), 1 index, 4 Avenstone seed rows (canonical trade strings).
+
+Helper (commit b8f7b1a):
+  sbGetTradeLeadDays(trade) — tenant override → platform default (tenant_id IS NULL) → hardcoded fallback 7. Added to avenstone-vite/src/lib/supabase.js.
+
+AGENT_OPS_ARC.md — updated and committed (this commit): status block Phase 1 marked Shipped, priority enum corrected throughout, seed rows corrected, todos.assignee_id section rewritten, "Locked enum reconciliation" section added.
+
+Locked decision — priority enum (Option A):
+  todos.priority is canonical 3-level ('low','medium','high'). AGENT_OPS conforms.
+  scheduled_actions.priority migrated to match. All 5 verbs and watchdog rules default to 'medium' (was 'normal'). Email gate: priority='high' only (was 'high'+'urgent').
+  todos.assignee_id NOT added — existing column is assigned_to_user_id. Phase 2 executor MUST use assigned_to_user_id.
+
+Trade string correction (STOP finding during build):
+  AGENT_OPS_ARC.md spec had 3 incorrect trade strings. Corrected against live trade_phase_map before seeding:
+  'Cabinets - Install' + 'Cabinets/vanities - Install' → single row 'Cabinets / vanities - Install' (21d)
+  'Tile - Wall/shower' → 'Tile - Wall / shower' (14d)
+  'Plumbing - Fixtures' → 'Plumbing - Finish / fixtures' (14d)
+  5 spec rows → 4 canonical rows.
+
+Smoke tests (service-role SQL via Management API):
+  T1: INSERT row with priority='medium' → success. PASS.
+  T2: INSERT row with priority='urgent' → HTTP 400, constraint 23514 violated, 0 rows inserted. CHECK constraint working. PASS. (Test script showed "FAIL" due to Management API error format — j.message not j.error — not a real failure. Verified via HTTP status + DB count.)
+  T3: daily_logs columns verified present in information_schema. PASS.
+  T4: trade_material_lead_times table verified, 4 seed rows confirmed. PASS.
+  T5: sbGetTradeLeadDays('Tile - Floor') → 14 (tenant override). PASS.
+  T6: sbGetTradeLeadDays('Unknown Trade') → 7 (fallback). PASS.
+
+CLAUDE.md: no changes needed.
+Build: ✓ passed.

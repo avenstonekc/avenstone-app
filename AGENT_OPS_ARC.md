@@ -7,12 +7,10 @@ delegation cards, or the daily-log followup flow.
 ## Status as of 2026-05-20
 
 - **Phase 0 — shipped 2026-05-20.** Arc doc committed. Commit: 376e4a0.
-- **Phase 1 — in progress (1.1 done, 1.2 next).**
+- **Phase 1 — shipped 2026-05-20.**
   - **Phase 1.1 — shipped 2026-05-20.** `scheduled_actions` table, 4 indexes, 3 RLS policies, `set_updated_at` trigger, 3 sb helpers. Commit: 1523265.
-  - Phase 1.2 — not started. (daily_logs extensions, todos extensions, trade_material_lead_times.)
-- Phase 2-6 not started. Build sequence locked below.
-
-**Phase 1.2 pre-flight note:** `todos.priority` CHECK constraint uses `('low', 'medium', 'high')` — NOT `('low', 'normal', 'high', 'urgent')`. The AGENT_OPS spec adds `assignee_id` and `priority` to `add_todo`; if the priority enum must match scheduled_actions, a migration must reconcile these. Verify before writing 1.2 migration.
+  - **Phase 1.2 — shipped 2026-05-20.** Priority enum reconciled (3-level), `daily_logs` extended, `trade_material_lead_times` seeded. Commits: 3fb6a9f (migrations), b8f7b1a (helper). See "Locked enum reconciliation" in Schema section.
+- Phase 2 next. Phase 3-6 not started.
 
 ## What this arc is
 
@@ -109,8 +107,8 @@ CREATE TABLE scheduled_actions (
   kind TEXT NOT NULL CHECK (kind IN ('reminder', 'followup', 'watchdog')),
   status TEXT NOT NULL DEFAULT 'scheduled'
     CHECK (status IN ('scheduled', 'fired', 'cancelled', 'failed')),
-  priority TEXT NOT NULL DEFAULT 'normal'
-    CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+  priority TEXT NOT NULL DEFAULT 'medium'
+    CHECK (priority IN ('low', 'medium', 'high')),
 
   fire_at TIMESTAMPTZ NOT NULL,
   fired_at TIMESTAMPTZ,
@@ -177,8 +175,9 @@ ALTER TABLE daily_logs
 
 - `assignee_id UUID REFERENCES profiles(id)` — may already exist.
   Verify before adding.
-- `priority TEXT` with CHECK ('low', 'normal', 'high', 'urgent') —
-  verify what's there. Adjust enum if exists with different values.
+- `priority TEXT` — NOT added. Existing `todos.priority` CHECK is
+  `('low', 'medium', 'high')`. Phase 2 executor uses `assigned_to_user_id`
+  (the existing assignee column — see Locked enum reconciliation below).
 
 ### `trade_material_lead_times` (new)
 
@@ -195,14 +194,15 @@ CREATE TABLE trade_material_lead_times (
   UNIQUE (tenant_id, trade)
 );
 
--- Seed Avenstone-specific overrides (tenant_id = Avenstone)
+-- Seed Avenstone-specific overrides — canonical trade_phase_map strings
+-- (spec had 3 incorrect strings; corrected 2026-05-20 during Phase 1.2 build)
 INSERT INTO trade_material_lead_times (tenant_id, trade, lead_days) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'Cabinets - Install', 21),
-  ('00000000-0000-0000-0000-000000000001', 'Cabinets/vanities - Install', 21),
-  ('00000000-0000-0000-0000-000000000001', 'Tile - Floor', 14),
-  ('00000000-0000-0000-0000-000000000001', 'Tile - Wall/shower', 14),
-  ('00000000-0000-0000-0000-000000000001', 'Plumbing - Fixtures', 14);
--- Global default 7 days applies to all other trades via lookup fallback
+  ('00000000-0000-0000-0000-000000000001', 'Cabinets / vanities - Install', 21),
+  ('00000000-0000-0000-0000-000000000001', 'Tile - Floor',                  14),
+  ('00000000-0000-0000-0000-000000000001', 'Tile - Wall / shower',          14),
+  ('00000000-0000-0000-0000-000000000001', 'Plumbing - Finish / fixtures',  14);
+-- 4 rows (not 5 — 'Cabinets - Install' and 'Cabinets/vanities - Install' merged
+-- to canonical 'Cabinets / vanities - Install'; global fallback 7 days for all others)
 ```
 
 RLS: SELECT for all authenticated users (anyone can read lead times
@@ -220,6 +220,15 @@ New notification types:
 Migration adds these to the CHECK constraint. Pattern matches the
 2026-05-18 daily_log_sent constraint addition.
 
+### Locked enum reconciliation (2026-05-20, Phase 1.2)
+
+`todos.priority` is the canonical 3-level enum: `('low', 'medium', 'high')`.
+`scheduled_actions.priority` was spec'd as 4-level ('low','normal','high','urgent');
+migrated to 3-level in Phase 1.2 (migration 20260520110000) to match. All verbs
+and watchdog rules default to 'medium' where previously 'normal'. Email gate
+changed from 'high'+'urgent' to 'high' only. `todos.assignee_id` was NOT added —
+the existing column is `assigned_to_user_id`; Phase 2 executor MUST use that column.
+
 ## Agent verbs (5 total)
 
 ### Verb 1 — `add_todo` (extended)
@@ -230,7 +239,7 @@ Already in CONFIRM_TOOLS. Stays there. Two new fields:
 {
   title: string,           // required
   assignee_id?: string,    // dynamic_options=active_team; defaults to caller
-  priority?: 'low'|'normal'|'high'|'urgent',  // defaults to 'normal'
+  priority?: 'low'|'medium'|'high',  // defaults to 'medium'
   due_at?: timestamptz,    // optional (verify column exists)
   job_id?: string,         // already supported; optional
   description?: string,    // already supported
@@ -254,7 +263,7 @@ Confirm card readback: "Add todo for Blake: 'call plumber for Test
 Flow', high priority. Confirm?"
 
 Firing behavior: insert `todos` row + insert `notifications` row for
-assignee. Email if priority in ('high', 'urgent').
+assignee. Email if priority = 'high'.
 
 ### Verb 2 — `set_reminder`
 
@@ -265,7 +274,7 @@ New verb. CONFIRM_TOOLS.
   title: string,                 // required
   fire_at: string,               // required, natural language parsed server-side
   target_user_id?: string,       // defaults to caller; role-gated if other
-  priority?: 'low'|'normal'|'high'|'urgent',  // defaults to 'normal'
+  priority?: 'low'|'medium'|'high',  // defaults to 'medium'
   related_job_id?: string,
 }
 ```
@@ -289,7 +298,7 @@ New verb. CONFIRM_TOOLS. **Self-only enforced.**
   check_what: 'todo_completed' | 'daily_log_submitted' | 'schedule_item_status',
   related_entity_id: string,     // required
   fire_at: string,               // required, natural language parsed
-  priority?: 'low'|'normal'|'high'|'urgent',  // defaults to 'normal'
+  priority?: 'low'|'medium'|'high',  // defaults to 'medium'
 }
 // No target_user_id field — implicit caller
 ```
@@ -314,7 +323,7 @@ immediately on confirm.
   target_user_id?: string,       // OR target_role_on_job
   target_role_on_job?: 'pm' | 'owner' | 'assigned_sub',
   related_job_id?: string,       // required if target_role_on_job set
-  priority?: 'low'|'normal'|'high'|'urgent',  // defaults to 'high'
+  priority?: 'low'|'medium'|'high',  // defaults to 'high'
   also_create_todo?: boolean,    // defaults to false
 }
 ```
