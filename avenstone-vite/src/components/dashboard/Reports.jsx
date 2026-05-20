@@ -65,7 +65,7 @@ export default function Reports({ jobs, profile }) {
   const myCommDollar = Number(repProfiles.find(p => p.id === profile?.id)?.commission_dollar || 0);
   const myCollected = payments.filter(p => { const j = myJobs.find(jj => jj.id === p.job_id); return !!j; }).reduce((a, p) => a + Number(p.amount || 0), 0);
   const myCommEarned = myCommDollar > 0 ? (myJobs.filter(j => j.status === 'complete').length * myCommDollar) : (myCollected * (myCommPct / 100));
-  const myCommPending = myCommDollar > 0 ? (myJobs.filter(j => ['signed', 'demo', 'framing', 'rough_mep', 'drywall', 'finish', 'punch'].includes(j.status)).length * myCommDollar) : (totalOutstanding * (myCommPct / 100));
+  const myCommPending = myCommDollar > 0 ? (myJobs.filter(j => ['contract', 'in_progress', 'final_touches'].includes(j.status)).length * myCommDollar) : (totalOutstanding * (myCommPct / 100));
 
   const Stat = ({ label, value, sub, color }) => (
     <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '18px 20px' }}>
