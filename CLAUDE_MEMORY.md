@@ -1136,6 +1136,55 @@ Queued for next session:
 In flight (CMD report awaited):
 - Notifications/email audit — 4 surfaces: kalin@kcenergysavers.com rejection, agent notify_team not sending email, notifications screen broken handlers, missed schedule-change notification. Audit-only.
 
+---
+
+[LOG — 2026-05-20 — Phase A: MasterAgent input row + library button]
+
+3 commits, all pushed to main. Build passed after each.
+
+Commits:
+  - 7793551: feat(MasterAgent): auto-expanding textarea — rows=1, useLayoutEffect auto-resize to MAX 140px (5 lines), font-size 14→16px (iOS zoom prevention), overflowY:auto
+  - ae33b10: feat(MasterAgent): split input area — textarea full-width own row, button row below, safe-area-inset-bottom padding, removed marginBottom:2 from buttons
+  - 7392f3c: feat(MasterAgent): photo library button — hidden <input type="file" multiple>, Ic.folder icon, onLibraryPicked reuses fileToVisionPayload pipeline, multi-select attaches all N images as separate image blocks in one message
+
+Files touched:
+  - avenstone-vite/src/components/shared/MasterAgent.jsx (+226 lines net — all three commits)
+
+Behavior preserved (locked list, confirmed each):
+  - submit(text) unified helper (Send + Enter + mic-stop all route through it) — PRESERVED UNCHANGED
+  - mic tap-to-toggle (micListening, liveTranscriptRef, partialResults listener) — PRESERVED UNCHANGED
+  - voice-confirm 5s auto-listen on pendingAction (startVoiceConfirm/stopVoiceConfirm) — PRESERVED UNCHANGED
+  - mic visual states (red border/icon while listening, mic↔stop icon toggle) — PRESERVED UNCHANGED
+  - pendingCard (AgentCard) rendering above input area — PRESERVED UNCHANGED
+  - pendingAction (Confirm card) rendering above input area — PRESERVED UNCHANGED
+  - existing receipt-from-photo flow (HEIC→JPEG, 1024px resize, base64) — REUSED for library; camera path unchanged
+  - MasterAgent stays mounted at App.jsx top level — UNTOUCHED
+
+Out-of-scope items confirmed untouched:
+  - Phase B (job context card on open from JobDet) — not started
+  - Phase C (multi-shot in-app camera capture) — not started
+  - Agent-side changes (tool schemas, system prompts, REQUIRED_FIELDS, CONFIRM_TOOLS) — not touched
+  - AgentCard / pendingCard rendering — unchanged
+  - Voice-confirm path — unchanged
+  - TTS / speaker toggle / Settings Voice tab — unchanged
+
+Trade-aware: platform UI — MasterAgent is tenant- and trade-agnostic. No Avenstone-specific assumptions introduced.
+
+Build status: ✓ all three builds passed (~600-710ms, standard chunk-size warning only).
+
+On-device verification list (Codemagic build → TestFlight):
+  - Textarea grows to 5 lines then scrolls internally (no visible scrollbar)
+  - Shift+Enter inserts newline instead of submitting
+  - Enter submits (unchanged)
+  - After submit, textarea collapses back to 1-line height
+  - Library button (folder icon, leftmost) opens iOS photo library with multi-select
+  - Selecting 3 photos → all 3 attach as thumbnails → Send fires one message with 3 image blocks
+  - Camera button (paperclip icon) still opens camera single-shot — unchanged
+  - Mic button, voice-confirm, Send button, Enter key all unchanged
+  - Image-only message (no text) still sends (camera or library path)
+
+No CLAUDE.md changes needed.
+
 Validated, no work needed yet:
 - Material list use case via voice — works with existing infra given clear intent statement. Batch add_todo per-item confirmation may need a batch tool. Test before deciding.
 
