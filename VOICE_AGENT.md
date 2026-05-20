@@ -188,3 +188,72 @@ If voice breaks:
 
 No DB migrations, no deprecated tables. Low-risk layer on top of
 existing agent.
+
+---
+
+## Material List Use Case (validated, no new infra)
+
+Pattern: user opens mic, says "make a material list for the Smith
+remodel: a dozen 2x4s, 5 pounds of deck screws, four lengths of
+half-inch PVC" — agent parses intent + items, creates todos.
+
+**Constraints:**
+- iOS 60-second mic session limit. Long site walks need tap-restart
+  between chunks.
+- Intent must be stated ("make a material list," "add to my todos,"
+  "shopping list for"). Pure stream-of-consciousness without a
+  directive won't auto-trigger.
+- If `add_todo` is a CONFIRM_TOOL with per-item confirmation, batch
+  entry creates a card per item — annoying. May need a
+  `batch_add_todos` tool or non-confirming low-stakes inserts for
+  this case. Test before deciding.
+
+Continuous ambient listening: still v2+ (parked). Native iOS Speech
+framework not built for ambient — 1-min session limits, no echo
+cancellation, jobsite noise risk.
+
+---
+
+## Enhanced Voices Guidance
+
+iOS ships compact voices by default which sound robotic. Users can
+download Enhanced voices on-device:
+
+**Settings → Accessibility → Spoken Content → Voices → English** →
+pick voices marked "(Enhanced)" (Ava, Zoe, Evan, etc.).
+
+Enhanced voices appear in the in-app voice picker once downloaded.
+Free quality bump, no code change needed.
+
+Honest ceiling: even Enhanced voices still sound like TTS. Truly
+natural voice (ChatGPT voice mode quality) requires cloud TTS.
+
+---
+
+## Cloud TTS (restated deferral)
+
+Cloud TTS (ElevenLabs, OpenAI, etc.) explicitly deferred per decision
+#5. Revisit only if Enhanced voices feel too robotic after ~1 week of
+real jobsite use.
+
+If revisited: ElevenLabs is the typical default for quality. OpenAI
+TTS is cheaper and acceptable. Either way changes the cost model and
+adds a network dependency — has to be a real product decision, not a
+casual upgrade.
+
+---
+
+## Multi-Shot Camera Capture (Phase C — parked)
+
+For walking a jobsite snapping photos that all attach to one message/job:
+- iOS native camera plugin is one-shot per session.
+- Need custom in-app capture flow: snap → preview → "Add another" /
+  "Done" → loop until Done.
+- Reusable for both MasterAgent camera attach and Photos tab batch
+  capture.
+- Estimated effort: half-day slice on its own.
+- Library multi-pick is native (iOS 14+ multi-select) — already easy
+  when Phase A's library button lands.
+
+**Status:** parked. Build as its own slice when Phase A (camera/library
+buttons in MasterAgent input row) ships.

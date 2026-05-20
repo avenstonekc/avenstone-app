@@ -157,6 +157,56 @@ Phase 6 (deferred): Field voice rendering for cards. Likely "say one
 of: A, B, C" with grammar matching. Wait until VOICE_AGENT Phase 3
 ships first.
 
+### Phase 7: Contextual Job Context (queued, audit-first)
+
+**Problem:** When MasterAgent is opened from inside a JobDet (project)
+view, the agent doesn't automatically know which job the user is
+working on. Agent has to ask via REQUIRED_FIELDS, or user has to state
+the job name in every message. Friction.
+
+**Design — opening confirm card:**
+
+- MasterAgent rendered inside JobDet receives a `suggestedJobId` prop.
+- Agent's FIRST message in the conversation is a pending_card:
+  "Are we working on [job_name]?" with yes/no options.
+- User confirms (tap or voice "yes"): context = that job_id, locked
+  for the conversation.
+- User declines: no context, agent behaves like global master agent.
+- Mid-conversation override: user can say "actually let's work on
+  Smith remodel" → agent acknowledges, switches context.
+
+**Why this beats silent prop-injection:**
+- Eliminates wrong-job-by-default bug class. User always knows the
+  agent's context because they set it themselves.
+- Eliminates stale-context-on-navigation. Context is fixed by
+  conversation start, not viewport.
+- Override behavior is trivially correct: explicit user mention always
+  beats existing context, no priority logic needed.
+
+**Reuses:** AGENT_CARDS pending_card infrastructure (Phases 1-5).
+Voice-confirm slice's yes/no grammar handles voice confirm of the
+opening card.
+
+**Implementation flow (when built):**
+- `suggestedJobId` prop from MasterAgent's parent (JobDet).
+- Edge function injects opening confirm pending_card as first assistant
+  message if `suggestedJobId` is present and conversation is new.
+- Conversation state stores confirmed `contextJobId` after user yes.
+- REQUIRED_FIELDS checks contextJobId before eliciting a job_id field.
+- Tool calls that need job_id pre-fill from contextJobId.
+
+**Smoke test cases (locked):**
+1. Open agent in job, no job mention → uses contextual job after user confirms.
+2. Open agent in job, mention different job → uses mentioned job (override works).
+3. Open agent outside any job, no mention → REQUIRED_FIELDS elicits normally.
+4. Open agent outside job, mention job → uses mentioned job.
+5. Switch jobs mid-conversation → defined behavior: explicit re-state required;
+   navigation alone does not switch context.
+
+**Status:** queued; audit-first before build (current job_id handling
+in ai-master-agent is unknown — needs map of where job_id is resolved,
+defaulted, or left blank).
+
 ## Guard rails (non-negotiable)
 
 - Override is never the first option in a gate-resolution card

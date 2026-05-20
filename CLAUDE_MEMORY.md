@@ -1109,3 +1109,36 @@ Fix — unified submit(text) helper (MasterAgent.jsx):
   - stopMic() simplified to: if (!micListening) return; submit(liveTranscriptRef.current).
   - Send button onClick → submit(input). Enter key (handleKeyDown) → submit(input).
   - All three paths (Send, Enter, mic-stop) are now atomic: mic off + input cleared + message fired in one call.
+
+---
+
+[LOG — 2026-05-19 — voice arc complete + tomorrow's queue]
+
+Shipped today (2026-05-19):
+- AGENT_CARDS v1 (Phases 1-5, all three elicitation mechanisms: PRE-execute missing-field, CONFIRM_TOOLS money confirm, POST-execute disambiguation + gate resolution)
+- Labor expense type (new job_transactions type, DB + edge fn + frontend)
+- Master-agent stale-tool cleanup (phantom "13 tools" myth resolved: get_job_details + get_dashboard removed, 18→16)
+- Tool-schema-vs-payload detector (tools/audit_master_agent.js — clean, 0 real drift)
+- Write-side scanner skipped sites: 9→0 (param binding fix + sbUpdateScanOverrides static refactor)
+- Edge function missing-tables: 3 active bugs fixed via remap (bid_responses, job_subs, schedule_phases), 1 STOPped (quote_requests in disabled ai-pm-nightly)
+- Phase canonical alignment (resurrected silently-dead trade phase subsystem — derivePhaseStatus + ScheduleTab both broken, now functional)
+- Voice-confirm for pending_action (auto-listen 5s after TTS, yes/no grammar, commit 932a0c2)
+- Legacy lifecycle status cleanup (5 sites, all DIRECT-RENAME — ClientPortal, InfoTab, Reports, DashScr)
+- TTS polish (amountToWords duplicate removed from describeConfirmAction, voice picker in Settings Voice tab)
+- Voice UX polish (mic hold→tap, auto-send on stop, junk filter — commits 946f92d, ea3c2f9)
+- Unified submit (Send + Mic-stop atomic via submit() helper, leftover-text double-fire closed — commit 08dfe8a)
+
+Queued for next session:
+- **Phase A:** MasterAgent chat layout — auto-expanding textarea, buttons-below input row, photo/library split button. UI only, no agent changes. Dispatchable to Sonnet immediately.
+- **Phase B:** Contextual Job Context — opening confirm card when MasterAgent opened from JobDet. Audit-first (see AGENT_CARDS_ARC.md Phase 7 for full design).
+- **Phase C:** Multi-shot camera capture (see VOICE_AGENT.md). Parked, half-day slice when prioritized.
+
+In flight (CMD report awaited):
+- Notifications/email audit — 4 surfaces: kalin@kcenergysavers.com rejection, agent notify_team not sending email, notifications screen broken handlers, missed schedule-change notification. Audit-only.
+
+Validated, no work needed yet:
+- Material list use case via voice — works with existing infra given clear intent statement. Batch add_todo per-item confirmation may need a batch tool. Test before deciding.
+
+Smaller hygiene items surfaced:
+- Generic "something went wrong, please try again" toast hides real errors — future error-surface hygiene slice.
+- CLAUDE.md hold-to-talk iOS gotcha remains valid (touch events required for WKWebView); the mic BUTTON changed to tap-to-toggle, but the gotcha documents why touch handlers are used in the voice-confirm path and other touch-event patterns elsewhere.
