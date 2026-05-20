@@ -1088,3 +1088,24 @@ VOICE_AGENT.md updated: Phase 3 status line corrected (hold-to-talk → tap-to-s
 
 Verification: device test required after Codemagic build → TestFlight.
   Test: tap mic → speak → tap again → transcript auto-sends (no Send button needed). Also: tap mic → tap immediately (nothing spoken) → input clears. Also: tap mic → speak → iOS 60s timeout → auto-sends transcript.
+
+---
+
+[LOG — 2026-05-19 — Send + Mic-stop unified submit]
+- Action: Fixed double-fire bug where Send while mic was running left the mic alive with stale liveTranscriptRef — subsequent mic-stop re-sent the same transcript.
+- Commit: 08dfe8a. Build: ✓ 614ms. Pushed to main.
+
+Bug root cause:
+  - Send button called sendMessage() directly without stopping the mic.
+  - sendMessage() calls setInput('') so the UI cleared, but mic listeners stayed active.
+  - liveTranscriptRef.current still held the old transcript.
+  - Subsequent mic-stop → stopMic() → submit(liveTranscriptRef.current) → double-fire.
+
+Fix — unified submit(text) helper (MasterAgent.jsx):
+  - If micListening: removes listeners, setMicListening(false), SpeechRecognition.stop(), clears liveTranscriptRef.
+  - Always clears liveTranscriptRef.current.
+  - Junk filter: empty / <2 chars / punctuation-only → setInput(''), return.
+  - Valid: sendMessage(trimmed). (sendMessage itself also calls setInput('').)
+  - stopMic() simplified to: if (!micListening) return; submit(liveTranscriptRef.current).
+  - Send button onClick → submit(input). Enter key (handleKeyDown) → submit(input).
+  - All three paths (Send, Enter, mic-stop) are now atomic: mic off + input cleared + message fired in one call.
