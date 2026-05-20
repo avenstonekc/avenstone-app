@@ -494,6 +494,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [micHint, setMicHint] = useState('');
   const micBaseTextRef = useRef('');
   const micListenersRef = useRef([]);
+  const liveTranscriptRef = useRef('');
   const [ttsEnabled, setTtsEnabled] = useState(() => {
     try { return localStorage.getItem('av_tts_enabled') !== 'false'; } catch { return true; }
   });
@@ -828,11 +829,14 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       return;
     }
     micBaseTextRef.current = input;
+    liveTranscriptRef.current = input;
     const partialHandle = await SpeechRecognition.addListener('partialResults', (evt) => {
       const text = evt.matches?.[0] ?? '';
       if (!text) return;
       const base = micBaseTextRef.current;
-      setInput(base ? base + ' ' + text : text);
+      const full = base ? base + ' ' + text : text;
+      liveTranscriptRef.current = full;
+      setInput(full);
     });
     const errHandle = await SpeechRecognition.addListener('error', (evt) => {
       setMicError(evt.message || 'Speech recognition error.');
@@ -852,6 +856,14 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     micListenersRef.current = [];
     setMicListening(false);
     SpeechRecognition.stop().catch(() => {});
+    const transcript = liveTranscriptRef.current.trim();
+    liveTranscriptRef.current = '';
+    const isJunk = !transcript || transcript.length < 2 || /^[^a-zA-Z0-9]+$/.test(transcript);
+    if (isJunk) {
+      setInput('');
+    } else {
+      sendMessage(transcript);
+    }
   };
 
   const stopVoiceConfirm = () => {
@@ -1471,16 +1483,11 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           />
           {micAvailable && (
             <button
-              onTouchStart={(e) => { e.preventDefault(); startMic(); }}
-              onTouchEnd={(e) => { e.preventDefault(); stopMic(); }}
-              onTouchCancel={(e) => { e.preventDefault(); stopMic(); }}
-              onMouseDown={startMic}
-              onMouseUp={stopMic}
-              onMouseLeave={stopMic}
+              onClick={() => micListening ? stopMic() : startMic()}
               onContextMenu={(e) => e.preventDefault()}
               disabled={loading}
-              title="Hold to speak"
-              aria-label="Hold to speak"
+              title={micListening ? 'Tap to stop' : 'Tap to speak'}
+              aria-label={micListening ? 'Tap to stop' : 'Tap to speak'}
               style={{
                 width: 42,
                 height: 42,
@@ -1495,9 +1502,6 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 flexShrink: 0,
                 marginBottom: 2,
                 transition: 'background 0.15s, border-color 0.15s',
-                userSelect: 'none',
-                WebkitUserSelect: 'none',
-                touchAction: 'none',
               }}
             >
               {micListening ? (
