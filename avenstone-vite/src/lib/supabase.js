@@ -1977,6 +1977,21 @@ export const sbLoadScheduleItemsForSub = async (subId) => {
 // Asymmetry (by design): phases never decrement. A phase at 'complete' stays
 // 'complete' even if its driver sub_start item is later cancelled.
 // Idempotent: calling twice in a row is a no-op.
+
+// Maps job_phases.phase_name (title-case, 10 granular) → trade_phase_map.phase_name (lowercase, 5 condensed).
+// Multiple job_phases can map to the same tmap key (e.g. Paint/Flooring/Trim/Fixtures → 'finish').
+// Insulation and Punch List have no trade driver — they never auto-advance.
+const JOB_PHASE_TO_TMAP = {
+  'Demo':      'demo',
+  'Framing':   'framing',
+  'Rough MEP': 'rough_mep',
+  'Drywall':   'drywall',
+  'Paint':     'finish',
+  'Flooring':  'finish',
+  'Trim':      'finish',
+  'Fixtures':  'finish',
+};
+
 export const derivePhaseStatus = async (jobId, tenantId) => {
   if (!jobId) return;
   const today = new Date().toISOString().slice(0, 10);
@@ -2019,7 +2034,8 @@ export const derivePhaseStatus = async (jobId, tenantId) => {
     // Never decrement from complete
     if (phase.status === 'complete') continue;
 
-    const trades = phaseToTrades[phase.phase_name];
+    const tmapKey = JOB_PHASE_TO_TMAP[phase.phase_name];
+    const trades  = tmapKey ? phaseToTrades[tmapKey] : null;
     if (!trades?.length) continue;
 
     const relevant = items.filter(i => trades.includes(i.trade));
