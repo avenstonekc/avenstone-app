@@ -242,9 +242,11 @@ async function validateRequiredFields(
   tenantId: string,
   toolName: string,
   input: Record<string, unknown>,
+  contextJobId = "",
 ): Promise<PendingCard | null> {
   const spec = REQUIRED_FIELDS[toolName];
   if (!spec) return null;
+
   const gaps = spec.filter((f) => isMissing(input[f.field]));
   if (gaps.length === 0) return null; // loop guard — every required field present
 
@@ -1213,13 +1215,32 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
     if (data.stop_reason === "tool_use") {
       const blocks = data.content as Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown>; text?: string }>;
 
+      // Pre-fill job_id from context in any tool block whose REQUIRED_FIELDS spec
+      // declares job_id with dynamic_options:"active_jobs" and the field is missing.
+      // Must happen before validateRequiredFields AND executeTool/confirmBlock so all
+      // three paths (elicitation skip, confirm card, executor) see the same filled input.
+      // add_todo has no job_id field spec → correctly skipped (job-less todos valid).
+      if (contextJobId) {
+        for (const block of blocks) {
+          if (block.type === "tool_use" && block.name && block.id) {
+            const fieldSpec = REQUIRED_FIELDS[block.name];
+            if (
+              fieldSpec?.some((f) => f.field === "job_id" && f.dynamic_options === "active_jobs") &&
+              isMissing((block.input || {} as any).job_id)
+            ) {
+              block.input = { ...(block.input || {}), job_id: contextJobId };
+            }
+          }
+        }
+      }
+
       // Missing-field validation (Phase 4) — fires BEFORE confirm so every gap
       // is collected first; the post-card re-call (carrying the answered fields)
       // falls through to CONFIRM_TOOLS normally. validateRequiredFields returns
       // null when every required field is present — the loop guard.
       const elicitBlock = blocks.find((b) => b.type === "tool_use" && b.name && b.name in REQUIRED_FIELDS);
       if (elicitBlock && elicitBlock.name) {
-        const card = await validateRequiredFields(sb, tenantId, elicitBlock.name, elicitBlock.input || {});
+        const card = await validateRequiredFields(sb, tenantId, elicitBlock.name, elicitBlock.input || {}, contextJobId);
         if (card) {
           const text = blocks.find((b) => b.type === "text")?.text ?? "I need a bit more info before I can run this.";
           return { response: text, actions, pending_card: card };
