@@ -981,6 +981,52 @@ Smoke code-trace:
 
 ---
 
+[LOG — 2026-05-19 — TTS repetition fix + voice picker]
+- Action: Fixed double-amount readback on pending_action confirms. Added voice selection in Settings (Voice tab). Wire voice_id into all ttsSpeak calls.
+- Commits: 9ae58d8 (MasterAgent repetition fix + voice selection logic), 7327fb2 (Settings voice picker). Both pushed to main.
+- Build: ✓ 560ms, ✓ 576ms.
+
+Repetition root cause:
+  `ttsSpeak(aiText, pendingAction.description)` queued two speak() calls when pendingAction was present:
+  1. `aiText` — agent's conversational response, e.g. "I'll log a payment of $2,500 from the client…"
+  2. `pendingAction.description` — canonical card readback with amountToWords, e.g. "Payment from client: $2,500 (two thousand five hundred dollars)"
+  Amount spoken twice in a row.
+
+Repetition fix (MasterAgent.jsx call site):
+  `ttsSpeak(null, pendingAction.description)` — null primary → `normalizeTtsText(null)` → '' → falsy → skipped.
+  Only the card description (secondary) is spoken. Agent response text still visible on screen.
+
+Voice selection (MasterAgent.jsx):
+  - Module-level `getStoredVoiceUri()` — reads `av_tts_voice_uri` from localStorage (fresh on every speak).
+  - Module-level `pickVoiceIndex(voices, storedUri)` — finds index in full getSupportedVoices() array:
+    1. Match by voiceURI if stored (user preference)
+    2. Fallback: Enhanced/Premium en-US (/(enhanced|premium)/i test on name)
+    3. Fallback: any en-US
+    4. Fallback: any en-*
+    5. Returns undefined if no English voice → plugin picks device default
+  - `voicesCacheRef` — lazy-loads full voices array on first ttsSpeak call, cached for session.
+  - `ttsSpeak`: loads cache, calls pickVoiceIndex, spreads `{ voice: voiceIdx }` into each speak() call.
+
+Voice persistence key: `av_tts_voice_uri` (voiceURI string — stable across iOS updates, unlike index which can shift).
+Voice param in speak(): `voice` is the INDEX into the full getSupportedVoices() array (number). Must use originalIndex from full array, not filtered-English index.
+
+Settings Voice tab (SettingsModal.jsx):
+  - New 'voice' tab visible to all roles, placed after Security before owner tabs.
+  - Loads `getSupportedVoices()` when tab activates (fresh load each open — catches newly downloaded voices).
+  - Displays: English voices only (lang.startsWith('en')), each row shows name + lang tag.
+  - Test button: speaks "Logging twenty five hundred dollars, confirm?" in that voice. Disables during playback (testingVoice state).
+  - Selection: click row → sets selectedVoiceUri state + writes voiceURI to localStorage immediately.
+  - Empty state: iOS Settings → Accessibility → Spoken Content → Voices guidance.
+
+On-device verification required (Codemagic build → TestFlight):
+  - Money confirm: amount spoken ONCE (card readback only), not twice.
+  - Settings → Voice: English voices list loads. Test button speaks in each voice.
+  - Pick a voice → agent uses it on next confirm.
+  - Kill/reopen → voice persists.
+  - Fresh install → fallback Enhanced en-US plays (no silent failure).
+
+---
+
 [LOG — 2026-05-19 — Voice-confirm for pending_action cards (VOICE_AGENT decision #7)]
 - Action: Implemented auto voice-confirm on pending_action confirm cards. After TTS reads the money readback, mic auto-opens for a 5s listen window. Strict grammar match → confirm or cancel. Timeout/no-match closes silently. Tap still works.
 - Commit: 932a0c2. VOICE_AGENT.md updated (decision #7 marked implemented + Phase 4.5 status line).
