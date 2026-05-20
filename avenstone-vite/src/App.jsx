@@ -56,6 +56,7 @@ export default function App() {
   const [pendingNew, setPendingNew] = useState(false);
   const [jobsSelClear, setJobsSelClear] = useState(0);
   const [pendingAction, setPendingAction] = useState(null);
+  const [viewportJobId, setViewportJobId] = useState(null);
   const landingChecked = useRef(false);
 
   // Initialize bug context ring buffers once on mount
@@ -264,7 +265,7 @@ export default function App() {
             {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}
             {pg === 'dashboard' && <AiHomeScr profile={profile} jobs={jobs} nav={setPg} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
-            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('dashboard')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} />}
+            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('dashboard')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} onJobOpen={(id) => setViewportJobId(id)} onJobClose={() => setViewportJobId(null)} />}
             {pg === 'subs' && isStaff && <SubDir profile={profile} />}
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
@@ -315,7 +316,7 @@ export default function App() {
 
       {showNotif && <NotifPanel notifs={notifs} onClose={() => setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif} />}
       {showSettings && <SettingsModal profile={profile} setProfile={setProfile} onClose={() => setShowSettings(false)} />}
-      {profile?.role === 'owner' && <MasterAgent profile={profile} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} />}
+      {profile?.role === 'owner' && <MasterAgent profile={profile} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} suggestedJobId={viewportJobId} jobs={jobs} />}
     </>
   );
 }

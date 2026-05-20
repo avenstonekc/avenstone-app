@@ -30,7 +30,7 @@ function ErrorBoundary({ back, children }) {
   }
 }
 
-export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew, clearSel, pendingAction, clearPendingAction }) {
+export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew, clearSel, pendingAction, clearPendingAction, onJobOpen, onJobClose }) {
   const [sel, setSel] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
@@ -72,6 +72,8 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   }, []);
 
   useEffect(() => { if (pendingJobId && !loading) { setSel(pendingJobId); clearPendingJobId(); } }, [pendingJobId, loading]);
+  useEffect(() => { if (sel) { onJobOpen?.(sel); } else { onJobClose?.(); } }, [sel]);
+  useEffect(() => { return () => onJobClose?.(); }, []);
   useEffect(() => { if (openNew) { setShowNew(true); clearOpenNew && clearOpenNew(); } }, [openNew]);
   useEffect(() => { if (clearSel) setSel(null); }, [clearSel]);
   useEffect(() => {
