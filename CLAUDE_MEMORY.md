@@ -1052,3 +1052,39 @@ Design notes:
 
 Verification: device test required after Codemagic build → TestFlight.
   Test: trigger a money confirm card → TTS reads → mic opens → say "yes" → confirmed. Also: say "no" → cancelled. Also: timeout (say nothing) → closes, tap still works.
+
+---
+
+[LOG — 2026-05-19 — Voice UX polish: card readback trim + mic tap-to-toggle + auto-send]
+- Action: 3 UX fixes shipped across 2 commits. All pushed to main. Build ✓.
+- Commits: 946f92d (edge fn — Fix 1), ea3c2f9 (MasterAgent — Fixes 2 + 3).
+
+Fix 1 — Card readback amount trim (supabase/functions/ai-master-agent/index.ts):
+  describeConfirmAction log_payment/log_receipt/submit_change_order cases: removed `(${amountToWords(input.amount)})` parenthetical.
+  Before: "Log $2,500.00 (two thousand five hundred dollars) client payment…"
+  After:  "Log $2,500.00 client payment…"
+  Rationale: TTS engine reads "$2,500.00" as words correctly. amountToWords was added for visual display (visual readback safety) but TTS doubles the amount when both are spoken. Now one mention in the card description → one spoken amount.
+  Also deleted the comment "Money verbs append the spelled-out amount inline so a wrong digit reads obviously wrong on the Confirm card" (no longer accurate; visual safety achieved by the dollar string alone).
+  Edge function auto-deploys on push via GitHub Actions.
+
+Fix 2 — Mic tap-to-toggle (MasterAgent.jsx):
+  Replaced onTouchStart/onTouchEnd/onTouchCancel + onMouseDown/Up/Leave hold-to-talk handlers with a single onClick toggle.
+  State machine: idle (tap) → listening (tap) → idle.
+  Removed userSelect:none + touchAction:none from button style (hold-specific properties).
+  Updated title/aria-label: "Tap to speak" / "Tap to stop".
+  CLAUDE.md iOS gotcha about hold-to-talk + touch events NOT updated (that note is still accurate for the voice-confirm path which still uses the partialResults listener pattern; the mic button UI change doesn't affect the gotcha's validity).
+
+Fix 3 — Auto-send on mic stop (MasterAgent.jsx):
+  Added `liveTranscriptRef` (useRef) to track latest transcript alongside setInput in the partialResults listener.
+  stopMic: after stopping STT, reads liveTranscriptRef.current, clears it, applies junk filter (empty / <2 chars / punctuation-only → setInput('')), valid text → sendMessage(transcript).
+  sendMessage already accepts optional text param — uses it directly, bypasses stale-closure risk on input state.
+  micBaseTextRef.current initialized to `input` on startMic (unchanged) + liveTranscriptRef.current initialized to `input` so a pre-existing draft isn't counted as junk if the user taps mic without speaking.
+
+Scope preserved:
+  - Voice-confirm window (5s auto-open after TTS) UNTOUCHED — separate startVoiceConfirm() path.
+  - All existing visual states (red border/icon while listening, mic icon/stop icon toggle) UNCHANGED.
+
+VOICE_AGENT.md updated: Phase 3 status line corrected (hold-to-talk → tap-to-start + auto-send), Phase 3 phases section corrected.
+
+Verification: device test required after Codemagic build → TestFlight.
+  Test: tap mic → speak → tap again → transcript auto-sends (no Send button needed). Also: tap mic → tap immediately (nothing spoken) → input clears. Also: tap mic → speak → iOS 60s timeout → auto-sends transcript.

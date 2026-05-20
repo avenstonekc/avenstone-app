@@ -4,12 +4,13 @@ Living decision log + scope for the hands-free field AI agent. Read this
 at the start of any session that touches MasterAgent, ai-master-agent,
 ai-field-agent, or adds voice I/O.
 
-## Status as of 2026-05-17
+## Status as of 2026-05-19
 - Phase 1 audit shipped (see CLAUDE_ARCHIVE.md § voice-agent-audit-2026-05-08).
 - Phase 2 tool layer hardening shipped — both agents run the v1 verb roster through canonical helpers (commits 5f091fb, 2d586c7, dedc8c0).
-- Phase 3 **code shipped** (commits f045752, 28bb0e4) — **device verification pending** (Codemagic build → TestFlight). Hold-to-talk mic button in MasterAgent using @capgo/capacitor-speech-recognition@8.1.2. Transcript injected into chat input via setInput; user reviews and presses Send. No auto-send.
-- Phase 4 **code shipped** (commits 3b15050, 2a93d2e) — **device verification pending** (Codemagic build → TestFlight). Agent speaks replies via @capacitor-community/text-to-speech@8.0.0. Speaks response text, then confirmation card description (for money read-back). Speaker toggle button persists setting to localStorage. STT and TTS never overlap. On-device audio quality check required — see Known Limitations.
+- Phase 3 **code shipped** (commits f045752, 28bb0e4) — **device verification pending** (Codemagic build → TestFlight). ~~Hold-to-talk~~ Tap-to-start mic button in MasterAgent using @capgo/capacitor-speech-recognition@8.1.2. On stop (tap or iOS auto-timeout), transcript passes junk filter; valid text fires sendMessage() directly. No separate Send tap required.
+- Phase 4 **code shipped** (commits 3b15050, 2a93d2e) — **device verification pending** (Codemagic build → TestFlight). Agent speaks replies via @capacitor-community/text-to-speech@8.0.0. Speaks confirmation card description only for money read-back (response text suppressed when pendingAction present). Speaker toggle button persists setting to localStorage. STT and TTS never overlap. On-device audio quality check required — see Known Limitations.
 - Phase 4.5 **code shipped** (commit 932a0c2) — **device verification pending** (Codemagic build → TestFlight). Voice-confirm for pending_action cards: after TTS reads the money readback, mic auto-opens 5s window, strict yes/no grammar fires confirmPending/cancelPending. Listening pill shown on card. Decision #7 fully implemented.
+- Voice UX polish **code shipped** (commits 946f92d, ea3c2f9) — **device verification pending**. (1) Card readback amount spoken once — removed amountToWords parenthetical from describeConfirmAction. (2) Mic tap-to-toggle replaces hold-to-talk. (3) Auto-send on mic stop with junk filter.
 - Phase 5+ (hands-free/continuous listen) not started.
 
 ## The goal
@@ -128,8 +129,8 @@ verbs. No voice yet.
 Phase 2: Tool layer hardening — any verb that fails the audit gets
 its tool written/fixed. Still text only.
 
-Phase 3: Native iOS STT — mic icon in MasterAgent, hold-to-talk,
-transcription goes into the existing chat input. User still reads
+Phase 3: Native iOS STT — mic icon in MasterAgent, tap-to-start,
+transcript auto-sends on stop (junk filter applied). User still reads
 replies on screen.
 
 Phase 4: Native iOS TTS — agent speaks replies. Still shows
