@@ -805,7 +805,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      submit(input);
     }
   };
 
@@ -850,20 +850,26 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     });
   };
 
-  const stopMic = async () => {
-    if (!micListening) return;
-    micListenersRef.current.forEach((h) => h.remove().catch(() => {}));
-    micListenersRef.current = [];
-    setMicListening(false);
-    SpeechRecognition.stop().catch(() => {});
-    const transcript = liveTranscriptRef.current.trim();
+  const submit = (text) => {
+    if (micListening) {
+      micListenersRef.current.forEach((h) => h.remove().catch(() => {}));
+      micListenersRef.current = [];
+      setMicListening(false);
+      SpeechRecognition.stop().catch(() => {});
+    }
     liveTranscriptRef.current = '';
-    const isJunk = !transcript || transcript.length < 2 || /^[^a-zA-Z0-9]+$/.test(transcript);
+    const trimmed = (text || '').trim();
+    const isJunk = !trimmed || trimmed.length < 2 || /^[^a-zA-Z0-9]+$/.test(trimmed);
     if (isJunk) {
       setInput('');
-    } else {
-      sendMessage(transcript);
+      return;
     }
+    sendMessage(trimmed);
+  };
+
+  const stopMic = () => {
+    if (!micListening) return;
+    submit(liveTranscriptRef.current);
   };
 
   const stopVoiceConfirm = () => {
@@ -1553,7 +1559,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             )}
           </button>
           <button
-            onClick={() => sendMessage()}
+            onClick={() => submit(input)}
             disabled={loading || (!input.trim() && !attachment)}
             style={{
               width: 42,
