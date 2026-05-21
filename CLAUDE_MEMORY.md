@@ -70,6 +70,10 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **`daily_logs` has 3 AGENT_OPS columns** (Phase 1.2, 2026-05-20): `phase_on_schedule BOOLEAN`, `delay_days INTEGER`, `issues_flagged TEXT` — all nullable, backward-compatible. Patched by daily-log conversation hook in Phase 6. Migration: 20260520120000_daily_logs_agent_ops_columns.sql.
 - **`trade_material_lead_times` table EXISTS** (AGENT_OPS Phase 1.2, 2026-05-20). Per-trade material lead time thresholds. Tenant override → platform default (tenant_id NULL) → fallback 7 days. 4 Avenstone seed rows (canonical trade strings verified against trade_phase_map: 'Cabinets / vanities - Install' 21d, 'Tile - Floor' 14d, 'Tile - Wall / shower' 14d, 'Plumbing - Finish / fixtures' 14d). Migration: 20260520130000_trade_material_lead_times.sql. Helper: sbGetTradeLeadDays.
 - **notifications_type_check extended with 'todo_delegated'** (AGENT_OPS Phase 2.1, 2026-05-20). Migration: 20260520140000_notifications_type_todo_delegated.sql. notify-email SUBJECTS map updated with subject "You've been assigned a new todo".
+- **notifications_type_check extended with 'team_alert' and 'master_agent' reinstated** (AGENT_OPS Phase 2.2, 2026-05-20). Migration: 20260520150000_notifications_type_team_alert.sql. `master_agent` was inadvertently dropped in Phase 2.1's migration — reinstated. `team_alert` is the type for `notify_team_member` verb.
+- **on_notification_insert trigger now has priority gate** (AGENT_OPS Phase 2.2, 2026-05-20). Migration: 20260520160000_notification_email_trigger_priority_gate.sql. Trigger recreated with `WHEN (NEW.email_sent IS NOT TRUE)`. Priority gate contract: executor sets `email_sent = priority !== 'high'` at INSERT time — high priority emails; medium/low do not. Verified in pg_trigger via `pg_get_triggerdef`.
+- **ai-master-agent has 17 tools** (Phase 2.2, 2026-05-20): added `notify_team_member` (CONFIRM_TOOLS). Total: get_jobs, get_team, create_job, update_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, update_phase, submit_change_order, log_payment, log_receipt, notify_team, add_todo, notify_team_member, add_knowledge.
+- **CONFIRM_TOOLS now has 6 verbs** (Phase 2.2, 2026-05-20): log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member.
 
 ---
 
@@ -1345,6 +1349,48 @@ Smoke tests (DB-level, Management API service role):
   T5: Invalid notification type INSERT → HTTP 400, constraint 23514 violated. CHECK constraint enforcing. PASS.
   T6 (code trace): Self-assign confirm card → _assignee_name not set → "Add todo: '[title]', medium priority." PASS.
   T5-role-gate (code trace): sub role → falls through to "You don't have permission" deny path. PASS.
+
+---
+
+[LOG — 2026-05-20 — AGENT_OPS Phase 2.2: notify_team_member verb + priority-email gate. SHIPPED.]
+
+Commit: a214cdb. Migrations applied and verified.
+
+Changes to ai-master-agent/index.ts:
+  - CONFIRM_TOOLS extended from 5 → 6 verbs: added notify_team_member
+  - notify_team_member tool schema: message (required), target_user_id, target_role_on_job ('pm'|'owner'), related_job_id, priority (defaults 'high'), also_create_todo (boolean)
+  - notify_team_member executor: role gate (owner/pm → anyone; rep → denied; sub → active engagement on job + target must be assigned PM); resolves target from _resolved_target_id (pre-fetch) or target_user_id or target_role_on_job at exec time; inserts team_alert notification; if also_create_todo=true, also inserts todos row
+  - notify_team_member describeConfirmAction: "Notify [Name]: '[message truncated]' · [priority] priority [· re: job_address] [· also creates todo]."
+  - confirmBlock pre-fetch for notify_team_member: resolves _resolved_target_id from target_role_on_job lookup, fetches _target_name, fetches _job_address — all injected into inputObj before describeConfirmAction
+  - add_todo executor priority gate fix: email_sent: false → email_sent: priority !== "high" (high = email fires; medium/low = skipped)
+
+Migrations:
+  - 20260520150000_notifications_type_team_alert.sql — extended notifications_type_check with 'team_alert'; reinstated 'master_agent' (dropped in Phase 2.1, broke notify_team executor)
+  - 20260520160000_notification_email_trigger_priority_gate.sql — DROP + CREATE TRIGGER on_notification_insert with WHEN (NEW.email_sent IS NOT TRUE). Trigger function trigger_notify_email() unchanged.
+
+notify-email: SUBJECTS['team_alert'] = "Message from your team"
+
+Priority-email gate (locked — in effect for all notification types):
+  - Executor sets email_sent = priority !== 'high' at INSERT time
+  - Trigger WHEN (NEW.email_sent IS NOT TRUE) gates the net.http_post call
+  - high priority: email_sent=FALSE → trigger fires → Resend sends email
+  - medium/low: email_sent=TRUE → trigger silenced → no email
+
+Role gate (notify_team_member):
+  - owner/pm: can notify anyone in tenant
+  - sales_rep: denied — "Sales reps cannot send direct team alerts."
+  - sub: must have active engagement on related_job_id; target must be jobs.assigned_pm
+
+Smoke tests (T1-T7, all PASS):
+  T1: team_alert high-prio INSERT → email_sent=false (trigger fires). DB INSERT accepted. PASS.
+  T2: team_alert medium-prio INSERT → email_sent=true (trigger silenced). DB INSERT accepted. PASS.
+  T3 (code trace): rep caller → "Sales reps cannot send direct team alerts." deny path. PASS.
+  T4 (code trace): also_create_todo=true → todos INSERT after notification. PASS.
+  T5: trigger WHEN clause confirmed: pg_get_triggerdef shows WHEN ((new.email_sent IS NOT TRUE)). PASS.
+  T6: todo_delegated high-prio INSERT (priority gate fix verification) → email_sent=false. PASS.
+  T7 (regression): master_agent type INSERT → DB accepted (constraint reinstated). PASS.
+
+Open: rep→PM delegation for notify_team_member (rep is denied for now — same gap as add_todo; no assigned_pm_id in profiles).
 
 Trade-aware: todos table is platform-level — tenant_id scoped, tenant- and trade-agnostic. Role gate values ('owner','project_manager','sales_rep','sub') are platform-defined, not tenant config. No trade-specific assumptions introduced.
 Build: ✓ 530ms.

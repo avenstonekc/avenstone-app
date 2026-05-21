@@ -10,9 +10,9 @@ delegation cards, or the daily-log followup flow.
 - **Phase 1 — shipped 2026-05-20.**
   - **Phase 1.1 — shipped 2026-05-20.** `scheduled_actions` table, 4 indexes, 3 RLS policies, `set_updated_at` trigger, 3 sb helpers. Commit: 1523265.
   - **Phase 1.2 — shipped 2026-05-20.** Priority enum reconciled (3-level), `daily_logs` extended, `trade_material_lead_times` seeded. Commits: 3fb6a9f (migrations), b8f7b1a (helper). See "Locked enum reconciliation" in Schema section.
-- **Phase 2 — in progress.**
+- **Phase 2 — shipped 2026-05-20.**
   - **Phase 2.1 — shipped 2026-05-20.** `add_todo` delegation: role gate (owner/pm → anyone; rep/sub denied), assignee name on Confirm card, `todo_delegated` notification + email. Commit: ae2b781. Open: rep→PM mapping deferred (no `assigned_pm_id` in profiles).
-  - Phase 2.2 next: `notify_team_member` verb.
+  - **Phase 2.2 — shipped 2026-05-20.** `notify_team_member` new CONFIRM_TOOLS verb. Direct in-app alert to a specific team member. Role gate: owner/pm → anyone; rep → denied; sub → active engagement + target is job PM. Priority-email gate fixed: trigger now has `WHEN (NEW.email_sent IS NOT TRUE)`; executor sets `email_sent = priority !== 'high'`. Also fixes `todo_delegated` email gating from Phase 2.1 (was unconditional). `master_agent` notification type reinstated in constraint (dropped in Phase 2.1 — broke notify_team tool). Commit: a214cdb.
 - Phase 3-6 not started.
 
 ## What this arc is
