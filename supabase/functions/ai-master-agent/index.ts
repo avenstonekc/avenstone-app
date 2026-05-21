@@ -633,7 +633,7 @@ const TOOLS = [
         target_role_on_job: { type: "string", enum: ["pm", "owner"], description: "Notify by role on a job: 'pm' = the job's assigned PM, 'owner' = the tenant owner. Requires related_job_id when 'pm'." },
         related_job_id: { type: "string", description: "Associate with a specific job. Required when target_role_on_job='pm'." },
         priority: { type: "string", enum: ["low", "medium", "high"], description: "Priority level. Defaults to 'high'. High priority also sends an email." },
-        also_create_todo: { type: "boolean", description: "Also create a todo for the recipient as a follow-up action item." },
+        also_create_todo: { type: "boolean", description: "Also create a todo for the recipient as a follow-up action item. You MUST still identify the recipient via target_user_id or target_role_on_job — these fields are required even when also_create_todo is true." },
       },
       required: ["message"],
     },
@@ -1007,16 +1007,21 @@ async function executeTool(
 
         // Notify assignee when delegated to another person.
         if (assigneeId !== userId) {
-          await sb.from("notifications").insert({
-            tenant_id: tenantId,
-            user_id: assigneeId,
-            type: "todo_delegated",
-            title: "New todo assigned to you",
-            body: `${callerName} assigned you: "${title}"`,
-            job_id: input.job_id ? String(input.job_id) : null,
-            read: false,
-            email_sent: priority !== "high",  // high = email fires; medium/low = skipped
-          }).catch(() => {});
+          try {
+            const { error: delegateNotifErr } = await sb.from("notifications").insert({
+              tenant_id: tenantId,
+              user_id: assigneeId,
+              type: "todo_delegated",
+              title: "New todo assigned to you",
+              body: `${callerName} assigned you: "${title}"`,
+              job_id: input.job_id ? String(input.job_id) : null,
+              read: false,
+              email_sent: priority !== "high",  // high = email fires; medium/low = skipped
+            });
+            if (delegateNotifErr) console.error("[add_todo] delegation notification failed:", assigneeId, delegateNotifErr.message);
+          } catch (e) {
+            console.error("[add_todo] delegation notification error:", assigneeId, e);
+          }
         }
 
         return { success: true, todo_id: (data as any).id, title: (data as any).title };
@@ -1090,18 +1095,23 @@ async function executeTool(
         if (notifErr) return { error: notifErr.message };
 
         if (input.also_create_todo) {
-          await sb.from("todos").insert({
-            tenant_id: tenantId,
-            title: message.slice(0, 200),
-            notes: `Alert from ${callerName}`,
-            type: "user_task",
-            source: "manual",
-            status: "open",
-            job_id: input.related_job_id || null,
-            assigned_to_user_id: targetId,
-            created_by_id: userId,
-            priority,
-          }).catch(() => {});
+          try {
+            const { error: todoErr } = await sb.from("todos").insert({
+              tenant_id: tenantId,
+              title: message.slice(0, 200),
+              notes: `Alert from ${callerName}`,
+              type: "user_task",
+              source: "manual",
+              status: "open",
+              job_id: input.related_job_id || null,
+              assigned_to_user_id: targetId,
+              created_by_id: userId,
+              priority,
+            });
+            if (todoErr) console.error("[notify_team_member] also_create_todo failed:", targetId, todoErr.message);
+          } catch (e) {
+            console.error("[notify_team_member] also_create_todo error:", targetId, e);
+          }
         }
 
         return { success: true, notified_user_id: targetId };
