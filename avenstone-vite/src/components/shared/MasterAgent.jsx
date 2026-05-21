@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, SUBMIT_BUG_REPORT_URL } from '../../lib/supabase';
+import MasterAgentErrorCard from './MasterAgentErrorCard';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
 import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
@@ -594,7 +595,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     };
   }, []);
 
-  const callMaster = async (body, userMessageText) => {
+  const callMaster = async (body, userMessageText, isConfirmedAction = false) => {
     setLoading(true);
     try {
       const enrichedBody = contextJobId ? { ...body, context_job_id: contextJobId } : body;
@@ -621,10 +622,25 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         }
       });
 
-      setMessages((prev) => [
-        ...prev,
-        { type: 'ai', text: aiText, actions: aiActions },
-      ]);
+      const firstFailedAction = isConfirmedAction ? aiActions.find(a => a.result?.error) : null;
+      if (firstFailedAction) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: 'ai_error',
+            text: aiText,
+            actions: aiActions,
+            toolName: firstFailedAction.tool,
+            errorMessage: firstFailedAction.result.error,
+            retryAction: body.pending_action,
+          },
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { type: 'ai', text: aiText, actions: aiActions },
+        ]);
+      }
       // Append the assistant turn to history for BOTH normal and pending_card
       // responses. When a pending_card is present, this ensures the model sees
       // [assistant: card question] → [user: formatted answers] on the next turn.
@@ -820,7 +836,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       full_name: profile?.full_name,
       pending_action: action,
       confirmed: true,
-    }, action.description || action.tool);
+    }, action.description || action.tool, true);
   };
 
   const cancelPending = () => {
@@ -1010,7 +1026,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             full_name: profile?.full_name,
             pending_action: a,
             confirmed: true,
-          }, a.description || a.tool);
+          }, a.description || a.tool, true);
         } else if (VC_NEGATIVE.has(raw)) {
           if (!vcPendingRef.current) return;
           stopVoiceConfirm();
@@ -1327,30 +1343,39 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 alignItems: msg.type === 'user' ? 'flex-end' : 'flex-start',
               }}
             >
-              <div
-                style={{
-                  maxWidth: '82%',
-                  padding: '10px 14px',
-                  borderRadius: msg.type === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                  background: msg.type === 'user' ? '#C9A84C' : '#0F2A5C',
-                  color: msg.type === 'user' ? '#0A1F44' : '#F7F5F0',
-                  fontFamily: 'DM Sans, sans-serif',
-                  fontSize: 14,
-                  lineHeight: 1.55,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {msg.image && (
-                  <img
-                    src={msg.image}
-                    alt="attachment"
-                    style={{ maxWidth: '100%', borderRadius: 10, marginBottom: msg.text ? 8 : 0, display: 'block' }}
-                  />
-                )}
-                {msg.text}
-                {msg.type === 'ai' && <ActionsPanel actions={msg.actions} />}
-              </div>
+              {msg.type === 'ai_error' ? (
+                <MasterAgentErrorCard
+                  toolName={msg.toolName}
+                  errorMessage={msg.errorMessage}
+                  onRetry={() => setPendingConfirm(msg.retryAction)}
+                  onReport={() => submitBug(`Action failed: ${msg.toolName} — ${msg.errorMessage}`)}
+                />
+              ) : (
+                <div
+                  style={{
+                    maxWidth: '82%',
+                    padding: '10px 14px',
+                    borderRadius: msg.type === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                    background: msg.type === 'user' ? '#C9A84C' : '#0F2A5C',
+                    color: msg.type === 'user' ? '#0A1F44' : '#F7F5F0',
+                    fontFamily: 'DM Sans, sans-serif',
+                    fontSize: 14,
+                    lineHeight: 1.55,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {msg.image && (
+                    <img
+                      src={msg.image}
+                      alt="attachment"
+                      style={{ maxWidth: '100%', borderRadius: 10, marginBottom: msg.text ? 8 : 0, display: 'block' }}
+                    />
+                  )}
+                  {msg.text}
+                  {msg.type === 'ai' && <ActionsPanel actions={msg.actions} />}
+                </div>
+              )}
             </div>
           ))}
 
