@@ -117,6 +117,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Dev auto-login removal before external testers
 - Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0 (audit:schema scans JS/TS src only — ai-pm-nightly TS edge fn drift was not scanner-visible; closed manually).** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Note: ai-pm-nightly todos insert was never writing rows because function is DISABLED — but the stale payload would have silently dropped rows on any re-enable. Detector Phase 2 shipped 2026-05-13 — skipped now 9 (was 34 at Phase 1 baseline, 15 after Phase 1). Remaining 8 skipped are function parameters (no call-site analysis), 1 is dynamic .from() (opaque). No new drift surfaced by Phase 2 extension. Missing-tables arc 2026-05-19: 4 findings → 1 STOP (see LOG). Scanner missing-tables now: 1 (quote_requests in ai-pm-nightly — DISABLED, deferred until re-enable). Write/read drift 0, write skipped 0.
 
+- **Tool-payload drift detector refinement (Path B)** — Detector shipped 2026-05-21 in commit 94708e1. Initial run: 14 advertised-not-written findings, all expected false positives in 3 categories:
+  1. WHERE-clause keys (e.g. update_job.job_id used in .eq() not .update payload)
+  2. Key aliases (e.g. notify_team_member.message written to body column)
+  3. Meta-fields / control flow (e.g. also_create_todo controls logic, never written)
+  Refinement needed for signal-to-noise at multi-tenant scale. Scope: teach scanner to recognize Patterns 1 + 2 via AST (Phase A); add x-meta schema annotation for Pattern 3 (Phase B only if Phase A leaves residual noise). Estimated 1-2 prompts. Trigger to ship: when noise list grows past ~25, OR when a real finding gets buried in the noise, OR next fresh session if Kalin wants to close the loop.
+
 **Components:**
 - `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring
 - `MaterialSelectionScr.jsx` — built, landing surface decision outstanding
