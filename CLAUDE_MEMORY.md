@@ -1614,3 +1614,9 @@ Build: ✓ 912ms.
 - Initial findings: 14 advertised-not-written across 8 tools. All are expected patterns: key-mapping aliases (full_name→name, vendor→payer_or_payee_name, assignee_id→assigned_to_user_id), WHERE-clause keys (job_id in advance_phase/update_job), resolution-only fields (target_user_id/target_role_on_job), control-flow (also_create_todo). No true note_type-style silent drops found in current code.
 - Known limitations: update_job/update_phase use for...of allowlist-loop (payload keys unresolvable → appear as empty payload). send_client_portal/invite_person delegate to edge fns (explicitly skipped).
 - Commit: 94708e1
+
+[LOG — 2026-05-21 — Sweep #2 'todo' → 'to-do' display strings beyond Slice A. 16 additional display strings updated.]
+- Action: Swept all remaining user-facing 'todo' display strings outside the MasterAgent surfaces covered by Slice A (commit 698f1ae).
+- Files: App.jsx (nav + bottom-nav labels), MyTodosScreen.jsx (screen title, button, filter option, empty state, error msg), AiPmDashboard.jsx (failed-saves caption), AiHomeScr.jsx (link text), JobTodosBlock.jsx (section label, button, empty state), TodoCreateEditModal.jsx (modal title), scheduleAutoCreate.js (schedule item notes text), supabase.js (KIND_LABEL entries 'Create Todo'/'Update Todo' → generates todo title prefix), notify-email/index.ts (todo_delegated email subject).
+- Commit: a98c463
+- All internal identifiers (function names, variables, table names, tool keys, route IDs, component names) left unchanged. Verified grep: all remaining 'todo' hits are INTERNAL. Build passed.
