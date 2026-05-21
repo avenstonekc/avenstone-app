@@ -98,6 +98,57 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - `VOICE_AGENT_ARC.md` — voice as first-class interface for in-field PM workflows. Reads EXECUTION_ARC data (checklists, todos, schedule items, phase context). See existing VOICE_AGENT.md.
 - `SALES_PIPELINE_ARC.md` — leads → qualified → consultations scheduled → proposals → contracts. Currently jobs start at `lead` phase; lead-handling is outside the platform. Open question whether platform should own this.
 - `CODE_JURISDICTION_ARC.md` — jurisdiction-aware inspection checklists (KC vs Overland Park, 2018 vs 2021 IRC). Hardcoded starter set is v1; AI-seeded jurisdiction-aware templates are the real moat play.
+- `AUTO_FIX_ARC.md` — Dev-loop accelerator for the 2-user phase (Kalin + Blake). Gets ripped out before public launch — strictly internal tool, not a product feature.
+
+  **The loop:**
+  1. User hits action → action fails → existing error path runs (captureFailedIntent writes amber Resume todo, bug_reports row created, MasterAgentErrorCard renders).
+  2. User hits "Report bug" on the error card → bug_reports row marked status='reported'.
+  3. n8n scenario fires on the new row.
+  4. **Opus call (Anthropic API)** reads error context, classifies: backend/edge-fn/DB-safe vs frontend vs iOS vs unsafe-path (auth/RLS/payments). Outputs Sonnet prompt OR "needs human" verdict.
+  5. If eligible: **Sonnet call (Anthropic API with GitHub MCP tools)** executes the fix — commits to main via GitHub API. Single attempt only. No retry loop.
+  6. n8n polls Vercel build status. Green → mark bug_reports.status='auto_fixed'. Red → revert the commit via GitHub API, mark status='needs_human', notify Kalin.
+  7. The failed-intent todo updates dynamically based on bug_reports.status — "attempting" (yellow spinner), "auto_fixed" (green check + Try Again button), "needs_human" (amber + "Reported to Kalin").
+  8. User comes back when ready — could be 2 min, could be next day. Taps the Resume todo, action re-fires from stored payload, succeeds.
+
+  **Locked architecture decisions:**
+  - Option A: fully cloud — Anthropic API + GitHub API + Supabase API. No local Claude Code. No machine dependency.
+  - Orchestrator: n8n self-hosted on a $5/mo DigitalOcean droplet. Chosen over Make.com for cost ($0/op vs $9/mo), data ownership, JS flexibility.
+  - One-try rule: ONE auto-fix attempt per bug_reports row, ever. Failed attempts escalate to Kalin. No retry loops.
+  - Spinner UX REMOVED: user doesn't wait on screen. Fix happens in background; user notified via todo state change + push notification when ready.
+  - Reuse existing infrastructure: captureFailedIntent + Resume todos + bug_reports + bugContext snapshots. Net-new code is minimal app-side.
+
+  **Locked safety gates:**
+  - File allowlist for Sonnet's GitHub commits: supabase/functions/*, avenstone-vite/src/lib/supabase.js, supabase/migrations/* (with extra scrutiny). DENY: auth code, RLS migrations, payments logic, Stripe keys, anything under tools/.
+  - Post-commit Vercel build check: red build → automatic revert + Kalin alert.
+  - Classifier defaults to "needs human" when uncertain. Bias toward escalation.
+  - Audit log table (auto_fix_attempts) records every dispatch: bug_id, opus_prompt, sonnet_response, commit_hash, vercel_status, outcome, timestamp.
+
+  **Net-new app-side work (small):**
+  - TodoCard.jsx enhancement: read linked bug_reports.status, render correct state (attempting/auto_fixed/needs_human).
+  - Push notification trigger on bug_reports.status change → 'auto_fixed' or 'needs_human'.
+  - Resume button re-fires from failed-intent payload (pattern already exists from 2026-05-02 arc — just wire it to this new entry point).
+
+  **Net-new infrastructure work (medium):**
+  - n8n droplet setup (DigitalOcean Ubuntu, Docker, n8n via docker-compose, Caddy for SSL).
+  - n8n scenario: Supabase webhook → classifier → Anthropic API (Opus) → Anthropic API (Sonnet w/ GitHub MCP) → Vercel status poll → bug_reports update.
+  - Anthropic API key + GitHub PAT (scoped: contents.write on this repo only) + Supabase service-role key → all stored in n8n credentials, never in repo.
+
+  **Estimated scope:** 5-8 prompts after infrastructure is up.
+  Phase A: n8n setup + credentials wiring (1 prompt + manual DO + Docker work, ~3 hrs).
+  Phase B: Blueprint MD with full design + system prompts for Opus/Sonnet roles + classifier logic (1 prompt).
+  Phase C: First scenario — happy path only, backend bug, single safe path (1-2 prompts).
+  Phase D: Vercel build check + revert logic (1 prompt).
+  Phase E: App-side TodoCard wiring + push notification trigger (1-2 prompts).
+  Phase F: Audit log table + dashboard (1 prompt).
+
+  **Triggers to START building:**
+  - Kalin has 3-4 hours fresh + uninterrupted for Phase A
+  - DigitalOcean account ready
+  - Anthropic API billing confirmed (will incur usage costs separate from Claude.ai subscription)
+
+  **Do NOT start with anything else queued blocking it.** This is a deep-focus arc, not a between-other-things slice. Path B drift detector refinement (also queued) is independent — can ship before or after this.
+
+  **Rip-out plan:** Before public launch, remove the n8n scenario, drop the auto_fix_attempts table, revert TodoCard.jsx to the simpler failed-intent-only flow. Bug reports continue to land in bug_reports table — just no auto-fix attempts. Public users get the standard "Report bug → Kalin reviews" loop.
 
 **Sub portal & financial:**
 - ConsultationTab tab retirement
