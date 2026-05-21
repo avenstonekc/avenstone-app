@@ -131,7 +131,7 @@ export default function AiPmDashboard({ profile }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>Failed saves (7 days)</div>
-            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>Silent write failures captured as Resume todos</div>
+            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>Silent write failures captured as Resume to-dos</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 22, fontWeight: 700, color: fiColor }}>{fiLabel}</span>

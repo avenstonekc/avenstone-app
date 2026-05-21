@@ -18,7 +18,7 @@ const SUBJECTS: Record<string, string> = {
   daily_log_sent:       "Project update from your contractor",
   assigned_to_job:      "You've been assigned to a project",
   phase_overdue:        "Phase overdue",
-  todo_delegated:       "You've been assigned a new todo",
+  todo_delegated:       "You've been assigned a new to-do",
   team_alert:           "Message from your team",
 };
 

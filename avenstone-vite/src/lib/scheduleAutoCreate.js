@@ -93,7 +93,7 @@ export async function checkAndCreateSubStart(sb, AV_TENANT, AV_USER_ID, jobId, t
     status: 'scheduled',
     notify_client: true,
     notify_sub: true,
-    notes: `Auto-created from accepted bid + quoted delivery (${order.quoted_delivery_date}). Review the start date and buffer — adjust if needed, then resolve the todo to confirm.`,
+    notes: `Auto-created from accepted bid + quoted delivery (${order.quoted_delivery_date}). Review the start date and buffer — adjust if needed, then resolve the to-do to confirm.`,
     auto_created: true,
     auto_created_from_engagement_id: eng.id,
     auto_created_from_material_order_id: order.id,

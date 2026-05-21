@@ -1361,7 +1361,7 @@ const KIND_LABEL = {
   material_save: 'Save Material', material_update: 'Update Material', material_delete: 'Delete Material',
   lidar_scan_save: 'Save Scan', room_scope_save: 'Save Room Scope', room_scope_delete: 'Delete Room Scope',
   photo_label: 'Label Photo',
-  create_user_todo: 'Create Todo', update_todo: 'Update Todo',
+  create_user_todo: 'Create To-do', update_todo: 'Update To-do',
 };
 export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, message = '', resumable = true }) => {
   try {

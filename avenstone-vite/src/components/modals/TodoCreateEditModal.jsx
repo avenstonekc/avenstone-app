@@ -59,7 +59,7 @@ export default function TodoCreateEditModal({ todo, defaultJobId, tenantJobs, on
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 480, width: '100%' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div className="modal-title" style={{ margin: 0 }}>{todo ? 'Edit Todo' : 'New Todo'}</div>
+          <div className="modal-title" style={{ margin: 0 }}>{todo ? 'Edit To-do' : 'New To-do'}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 

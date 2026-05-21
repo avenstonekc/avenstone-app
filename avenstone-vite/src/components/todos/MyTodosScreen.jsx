@@ -19,7 +19,7 @@ export default function MyTodosScreen({ profile, jobs }) {
     try {
       const data = await sbLoadMyTodos({ status: statusFilter === 'all' ? null : statusFilter });
       setTodos(data || []);
-    } catch (e) { setError(e.message || 'Failed to load todos'); }
+    } catch (e) { setError(e.message || 'Failed to load to-dos'); }
     setLoading(false);
   };
   useEffect(() => { load(); }, [statusFilter]);
@@ -44,10 +44,10 @@ export default function MyTodosScreen({ profile, jobs }) {
     <div style={{ padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44' }}>Todos</div>
+          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44' }}>To-dos</div>
           <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 2 }}>{profile?.full_name}'s tasks across all jobs and personal work</div>
         </div>
-        <button className="btn btn-navy" style={{ flexShrink: 0 }} onClick={() => setCreateOpen(true)}>+ New Todo</button>
+        <button className="btn btn-navy" style={{ flexShrink: 0 }} onClick={() => setCreateOpen(true)}>+ New To-do</button>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -59,7 +59,7 @@ export default function MyTodosScreen({ profile, jobs }) {
         </select>
         <select className="finp" style={{ width: 'auto', minWidth: 130 }} value={scopeFilter} onChange={e => setScopeFilter(e.target.value)}>
           <option value="all">All scopes</option>
-          <option value="job_scoped">Job todos only</option>
+          <option value="job_scoped">Job to-dos only</option>
           <option value="unscoped">Personal only</option>
         </select>
         <select className="finp" style={{ width: 'auto', minWidth: 110 }} value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}>
@@ -74,7 +74,7 @@ export default function MyTodosScreen({ profile, jobs }) {
       {error && <div style={{ background: '#FEE2E2', color: '#991b1b', padding: '10px 14px', borderRadius: 6, marginBottom: 12 }}>{error}</div>}
       {!loading && !error && filtered.length === 0 && (
         <div style={{ textAlign: 'center', color: '#9CA3AF', marginTop: 40 }}>
-          No {statusFilter === 'open' ? 'open' : statusFilter} todos.
+          No {statusFilter === 'open' ? 'open' : statusFilter} to-dos.
         </div>
       )}
       {!loading && !error && filtered.map(t => (

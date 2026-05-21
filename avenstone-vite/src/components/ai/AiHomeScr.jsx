@@ -198,7 +198,7 @@ export default function AiHomeScr({ profile, jobs, nav, onOpenJob }) {
               cursor: 'pointer', fontWeight: 600, borderRadius: 8,
               fontFamily: "'DM Sans', sans-serif",
             }}>
-              View your todos →
+              View your to-dos →
             </button>
           </div>
         )}

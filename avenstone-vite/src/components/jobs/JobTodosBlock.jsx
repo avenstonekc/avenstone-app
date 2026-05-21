@@ -21,14 +21,14 @@ export default function JobTodosBlock({ job, profile }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Job Todos</div>
-        <button className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }} onClick={() => setCreateOpen(true)}>+ Add Todo</button>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Job To-dos</div>
+        <button className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }} onClick={() => setCreateOpen(true)}>+ Add To-do</button>
       </div>
 
       {loading && <div style={{ fontSize: 13, color: '#9CA3AF' }}>Loading…</div>}
 
       {!loading && !todos.length && (
-        <div style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', padding: '12px 0' }}>No open todos for this job.</div>
+        <div style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', padding: '12px 0' }}>No open to-dos for this job.</div>
       )}
 
       {!loading && todos.map(t => (

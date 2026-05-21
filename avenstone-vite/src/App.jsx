@@ -173,7 +173,7 @@ export default function App() {
     { id: 'today', lb: 'Today', ic: 'check', sec: 'Main' },
     { id: 'dashboard', lb: 'AI Home', ic: 'grid', sec: 'Main' },
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
-    ...(isStaff ? [{ id: 'todos', lb: 'Todos', ic: 'check', sec: 'Main' }] : []),
+    ...(isStaff ? [{ id: 'todos', lb: 'To-dos', ic: 'check', sec: 'Main' }] : []),
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
     ...(isOwnerOrRep ? [{ id: 'leads', lb: 'Leads', ic: 'doc', sec: 'Sales' }, { id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }, { id: 'stats', lb: 'Stats', ic: 'box', sec: 'Sales' }] : []),
     ...(isStaff ? [{ id: 'field-agent', lb: 'Field Agent', ic: 'grid', sec: 'AI' }] : []),
@@ -301,7 +301,7 @@ export default function App() {
               { id: 'today', ic: 'check', lb: 'Today' },
               { id: 'dashboard', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
-              ...(isStaff ? [{ id: 'todos', ic: 'check', lb: 'Todos' }] : []),
+              ...(isStaff ? [{ id: 'todos', ic: 'check', lb: 'To-dos' }] : []),
               ...(isStaff ? [{ id: 'field-agent', ic: 'grid', lb: '⚡ Agent' }] : []),
               ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
             ].map(t => (
