@@ -1452,3 +1452,9 @@ Confirm-success response (Fix 2):
   Failure path unchanged: "[description]: failed — [error]"
 
 Build: ✓ 912ms.
+
+[LOG — 2026-05-20]
+- Action: MasterAgent error surface — structured amber error card on confirmed-action failures
+- Files: avenstone-vite/src/components/shared/MasterAgentErrorCard.jsx (new), avenstone-vite/src/components/shared/MasterAgent.jsx, CLAUDE.md (AI Component Map)
+- Decision: callMaster gains isConfirmedAction=false param; on confirmed failure pushes ai_error message shape with toolName/errorMessage/retryAction. Render loop branches on ai_error → MasterAgentErrorCard. Try again re-surfaces confirm card via setPendingConfirm; Report bug calls submitBug. captureFailedIntent still fires on all tool failures (unchanged path). Path A (confirmed action failure) now shows structured card. Path B (non-confirmed Claude failure) still natural language. Path C (network catch) still generic message.
+- Commit: 8e102ac

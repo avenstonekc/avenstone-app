@@ -323,6 +323,7 @@ This is Avenstone's core competitive advantage. Six surfaces:
 | `AiFieldAgent` | `components/ai/AiFieldAgent.jsx` | Field-facing AI agent. |
 | `AiHomeScr` | `components/ai/AiHomeScr.jsx` | AI home screen / dashboard. |
 | `MasterAgent` | `components/shared/MasterAgent.jsx` | Persistent chat panel mounted at App.jsx top level. 5 tiles act as starter prompts (TILE_PREFIXES); the agent infers verb + fields from freeform input. Confirm card surfaces via `pending_action`. Bug submission is the inline exception — bypasses ai-master-agent and posts to submit-bug-report. |
+| `MasterAgentErrorCard` | `components/shared/MasterAgentErrorCard.jsx` | Amber error card rendered in chat when a confirmed tool execution fails. "Try again" re-surfaces the confirm card; "Report bug" calls submitBug. Reuses captureFailedIntent (fires on all tool failures) and submit-bug-report. |
 | `BugReportsScr` | `components/admin/BugReportsScr.jsx` | Platform-owner cross-tenant bug report dashboard. |
 | `BugReportDetailModal` | `components/admin/BugReportDetailModal.jsx` | Bug detail + Claude prompt copy + mark-fixed. |
 
