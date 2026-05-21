@@ -644,6 +644,12 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 
 ---
 
+## Dev environment
+
+Claude Code on Kalin's dev machine runs in bypassPermissions mode by default. Configured via ~/.claude/settings.json. Tradeoffs and rationale: zero confirmation tax, Kalin has never said no, guardrails come from locked principles + structured prompts + git history + single-tenant blast radius. New machines or new dev environments must set this explicitly or accept the prompt tax.
+
+---
+
 ## Memory system
 
 **Two-file split (established 2026-05-03):**
