@@ -1421,6 +1421,15 @@ Build: not applicable (Deno edge fn, auto-deploys via GitHub Actions on push).
 
 ---
 
+[LOG — 2026-05-20 — Session-start GitHub state sync adopted. SHIPPED.]
+- Action: Adopted raw-GitHub fetch as session-start state sync for web-chat. URL form: refs/heads/main (the /main/ form is CDN-cached and serves stale content). OPUS_RULES.md updated with mandatory session-start fetch rule.
+- Files: OPUS_RULES.md (new section added), SYNC_TEST.md (deleted — capability test artifact).
+- Decision: Project knowledge .md uploads no longer required for CLAUDE_MEMORY/CLAUDE/OPUS_RULES. They can be dropped from project knowledge; GitHub is canonical. Tested via 3-round sync test: round 1+2 confirmed /main/ CDN-cached (stale); round 3 confirmed refs/heads/main returns live content.
+- Open: Kalin to re-upload OPUS_RULES.md to project knowledge ONE final time so the new session-start rule is present. After that, fast-moving .md files can be removed from project knowledge entirely.
+- Commits: 2164b8e (cleanup: remove sync test file), 46dda9a (rules: add session-start GitHub state sync).
+
+---
+
 [LOG — 2026-05-20 — MasterAgent display polish: 'todo' → 'to-do' + tightened confirm-success response. SHIPPED.]
 
 Commit: 698f1ae.
