@@ -19,6 +19,7 @@ const SUBJECTS: Record<string, string> = {
   assigned_to_job:      "You've been assigned to a project",
   phase_overdue:        "Phase overdue",
   todo_delegated:       "You've been assigned a new todo",
+  team_alert:           "Message from your team",
 };
 
 Deno.serve(async (req) => {

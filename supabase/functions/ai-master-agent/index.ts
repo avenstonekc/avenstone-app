@@ -140,6 +140,7 @@ const CONFIRM_TOOLS = new Set([
   "submit_change_order",
   "add_todo",
   "create_job",
+  "notify_team_member",
 ]);
 
 // ── REQUIRED_FIELDS registry (Phase 4) ───────────────────────────────────────
@@ -622,6 +623,22 @@ const TOOLS = [
     },
   },
   {
+    name: "notify_team_member",
+    description: "Send a direct in-app alert to a specific team member right now. Use for urgent internal messages: 'tell the PM we have a leak', 'let the owner know the inspector arrived'. Internal only — does not reach clients or subs who aren't engaged on a job. Single recipient per call; call multiple times for multiple people.",
+    input_schema: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "The message text to send." },
+        target_user_id: { type: "string", description: "UUID of the specific team member to notify. Use this when you know the person." },
+        target_role_on_job: { type: "string", enum: ["pm", "owner"], description: "Notify by role on a job: 'pm' = the job's assigned PM, 'owner' = the tenant owner. Requires related_job_id when 'pm'." },
+        related_job_id: { type: "string", description: "Associate with a specific job. Required when target_role_on_job='pm'." },
+        priority: { type: "string", enum: ["low", "medium", "high"], description: "Priority level. Defaults to 'high'. High priority also sends an email." },
+        also_create_todo: { type: "boolean", description: "Also create a todo for the recipient as a follow-up action item." },
+      },
+      required: ["message"],
+    },
+  },
+  {
     name: "add_knowledge",
     description: "Write a new entry to the company AI knowledge base. Use this when you learn something worth remembering — a preference, policy, pricing insight, or lesson from a job.",
     input_schema: {
@@ -998,11 +1015,96 @@ async function executeTool(
             body: `${callerName} assigned you: "${title}"`,
             job_id: input.job_id ? String(input.job_id) : null,
             read: false,
-            email_sent: false,
+            email_sent: priority !== "high",  // high = email fires; medium/low = skipped
           }).catch(() => {});
         }
 
         return { success: true, todo_id: (data as any).id, title: (data as any).title };
+      }
+
+      case "notify_team_member": {
+        const message = String(input.message || "").trim();
+        if (!message) return { error: "message required" };
+
+        const priority = (input.priority && ["low", "medium", "high"].includes(String(input.priority)))
+          ? String(input.priority) : "high";
+
+        const { data: caller } = await sb.from("profiles").select("role, full_name").eq("id", userId).single();
+        const callerRole = (caller as any)?.role ?? "";
+        const callerName = (caller as any)?.full_name ?? "Your team";
+
+        if (callerRole === "sales_rep") {
+          return { error: "Sales reps cannot send direct team alerts. Ask your PM or owner to send this message." };
+        }
+
+        // Resolve target — pre-fetch injected _resolved_target_id on confirm path;
+        // fall back to target_user_id or role resolution for direct executor calls.
+        let targetId: string | null = input._resolved_target_id
+          ? String(input._resolved_target_id)
+          : (input.target_user_id ? String(input.target_user_id) : null);
+
+        if (!targetId && input.target_role_on_job) {
+          const roleOnJob = String(input.target_role_on_job);
+          if (roleOnJob === "pm" && input.related_job_id) {
+            const { data: jb } = await sb.from("jobs").select("assigned_pm").eq("id", String(input.related_job_id)).maybeSingle();
+            targetId = (jb as any)?.assigned_pm ?? null;
+          } else if (roleOnJob === "owner") {
+            const { data: op } = await sb.from("profiles").select("id").eq("tenant_id", tenantId).eq("role", "owner").limit(1).maybeSingle();
+            targetId = (op as any)?.id ?? null;
+          }
+        }
+
+        if (!targetId) {
+          return { error: "Could not resolve recipient. Provide target_user_id or target_role_on_job (with related_job_id for 'pm')." };
+        }
+
+        // Sub gate: must have active engagement on the job; target must be the job's PM.
+        if (callerRole === "sub") {
+          if (!input.related_job_id) {
+            return { error: "Subs can only alert the PM on a specific job. Provide related_job_id." };
+          }
+          const { count } = await sb.from("job_sub_engagements")
+            .select("*", { count: "exact", head: true })
+            .eq("job_id", String(input.related_job_id))
+            .eq("sub_id", userId)
+            .eq("status", "active");
+          if (!count || count === 0) {
+            return { error: "You don't have an active engagement on this job." };
+          }
+          const { data: jb } = await sb.from("jobs").select("assigned_pm").eq("id", String(input.related_job_id)).maybeSingle();
+          const pmId = (jb as any)?.assigned_pm;
+          if (!pmId) return { error: "This job has no assigned PM to notify." };
+          if (targetId !== pmId) return { error: "Subs can only alert the assigned PM on a job." };
+        }
+
+        const { error: notifErr } = await sb.from("notifications").insert({
+          tenant_id: tenantId,
+          user_id: targetId,
+          type: "team_alert",
+          title: `Message from ${callerName}`,
+          body: message,
+          job_id: input.related_job_id ? String(input.related_job_id) : null,
+          read: false,
+          email_sent: priority !== "high",  // high = email fires; medium/low = skipped
+        });
+        if (notifErr) return { error: notifErr.message };
+
+        if (input.also_create_todo) {
+          await sb.from("todos").insert({
+            tenant_id: tenantId,
+            title: message.slice(0, 200),
+            notes: `Alert from ${callerName}`,
+            type: "user_task",
+            source: "manual",
+            status: "open",
+            job_id: input.related_job_id || null,
+            assigned_to_user_id: targetId,
+            created_by_id: userId,
+            priority,
+          }).catch(() => {});
+        }
+
+        return { success: true, notified_user_id: targetId };
       }
 
       case "add_knowledge": {
@@ -1123,6 +1225,16 @@ function describeConfirmAction(tool: string, input: any): string {
       if (input.client_name) bits.push(`client ${input.client_name}`);
       if (input.scope) bits.push(`scope: ${input.scope}`);
       if (input.contract_value) bits.push(`${fmtMoney(input.contract_value)} contract`);
+      return bits.join(" · ") + ".";
+    }
+    case "notify_team_member": {
+      const target = input._target_name ? String(input._target_name) : "team member";
+      const prio = String(input.priority || "high");
+      const msg = String(input.message || "").slice(0, 60);
+      const bits: string[] = [`Notify ${target}: "${msg}"`];
+      bits.push(`${prio} priority`);
+      if (input._job_address) bits.push(`re: ${input._job_address}`);
+      if (input.also_create_todo) bits.push("also creates todo");
       return bits.join(" · ") + ".";
     }
     default:
@@ -1304,6 +1416,29 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
         if (confirmBlock.name === "add_todo" && inputObj.assignee_id && String(inputObj.assignee_id) !== userId) {
           const { data: ap } = await sb.from("profiles").select("full_name").eq("id", String(inputObj.assignee_id)).maybeSingle();
           if (ap) inputObj._assignee_name = (ap as any).full_name;
+        }
+        // notify_team_member: resolve _resolved_target_id, _target_name, _job_address for Confirm card.
+        if (confirmBlock.name === "notify_team_member") {
+          let resolvedTargetId = inputObj.target_user_id ? String(inputObj.target_user_id) : null;
+          if (!resolvedTargetId && inputObj.target_role_on_job) {
+            const roleOnJob = String(inputObj.target_role_on_job);
+            if (roleOnJob === "pm" && inputObj.related_job_id) {
+              const { data: jb } = await sb.from("jobs").select("assigned_pm").eq("id", String(inputObj.related_job_id)).maybeSingle();
+              resolvedTargetId = (jb as any)?.assigned_pm ?? null;
+            } else if (roleOnJob === "owner") {
+              const { data: op } = await sb.from("profiles").select("id").eq("tenant_id", tenantId).eq("role", "owner").limit(1).maybeSingle();
+              resolvedTargetId = (op as any)?.id ?? null;
+            }
+          }
+          if (resolvedTargetId) {
+            inputObj._resolved_target_id = resolvedTargetId;
+            const { data: tp } = await sb.from("profiles").select("full_name").eq("id", resolvedTargetId).maybeSingle();
+            if (tp) inputObj._target_name = (tp as any).full_name;
+          }
+          if (inputObj.related_job_id) {
+            const { data: jr } = await sb.from("jobs").select("address").eq("id", String(inputObj.related_job_id)).maybeSingle();
+            if (jr) inputObj._job_address = (jr as any).address;
+          }
         }
         const description = describeConfirmAction(confirmBlock.name, inputObj);
         const text = blocks.find((b) => b.type === "text")?.text ?? `${description} Confirm to run.`;
