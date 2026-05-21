@@ -103,52 +103,79 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   **The loop:**
   1. User hits action → action fails → existing error path runs (captureFailedIntent writes amber Resume todo, bug_reports row created, MasterAgentErrorCard renders).
   2. User hits "Report bug" on the error card → bug_reports row marked status='reported'.
-  3. n8n scenario fires on the new row.
-  4. **Opus call (Anthropic API)** reads error context, classifies: backend/edge-fn/DB-safe vs frontend vs iOS vs unsafe-path (auth/RLS/payments). Outputs Sonnet prompt OR "needs human" verdict.
-  5. If eligible: **Sonnet call (Anthropic API with GitHub MCP tools)** executes the fix — commits to main via GitHub API. Single attempt only. No retry loop.
-  6. n8n polls Vercel build status. Green → mark bug_reports.status='auto_fixed'. Red → revert the commit via GitHub API, mark status='needs_human', notify Kalin.
-  7. The failed-intent todo updates dynamically based on bug_reports.status — "attempting" (yellow spinner), "auto_fixed" (green check + Try Again button), "needs_human" (amber + "Reported to Kalin").
-  8. User comes back when ready — could be 2 min, could be next day. Taps the Resume todo, action re-fires from stored payload, succeeds.
+  3. **MasterAgent edge fn (ai-master-agent) extended with new path:** Supabase webhook on bug_reports.status='reported' fires the edge fn (or new sibling fn ai-auto-fix-dispatcher).
+  4. **Edge fn fetches MDs from raw GitHub URLs** (refs/heads/main pattern): CLAUDE_MEMORY.md, CLAUDE.md, OPUS_RULES.md. Embedded in system prompt as <project_context>.
+  5. **Anthropic API Claude call (Opus or Sonnet, decide in blueprint)** reads error context + project context, classifies: backend/edge-fn/DB-safe vs frontend vs iOS vs unsafe-path. Outputs either a fix-ready Sonnet prompt (matching OPUS_RULES.md structure) OR a "needs human" verdict.
+  6. If eligible: edge fn POSTs the prompt to Claude Code VM webhook listener.
+  7. **Cloud VM runs Claude Code in headless mode** (`claude -p "<prompt>" --dangerously-skip-permissions`). Claude Code auto-loads CLAUDE.md + CLAUDE_MEMORY.md from the cloned repo on the VM. Does iterative audit + fix + build verify + commit + push.
+  8. Vercel auto-deploys.
+  9. n8n (or edge fn polling) checks Vercel build status. Green → mark bug_reports.status='auto_fixed'. Red → revert commit via GitHub API, mark status='needs_human', notify Kalin.
+  10. Linked failed-intent todo updates state: attempting → auto_fixed (green check + Try Again) | needs_human (amber + "Reported to Kalin").
+  11. User comes back when ready — 2 min or next day. Taps Resume todo, action re-fires from stored payload, succeeds.
+
+  **Why MasterAgent writes the prompt (not Claude Code's responsibility):**
+  Claude Code Sonnet is smart on the codebase but expensive per attempt (iterative tool use, multi-turn). Sending it a generic prompt wastes context. MasterAgent has full project state via fetched MDs and can write a tight, informed, OPUS_RULES-structured prompt that includes scope, audit step, locked-principle reminders, file paths to read first. Claude Code receives a Sonnet-grade prompt and executes — same workflow as Kalin pasting in CMD today, but automated. Expected fix success rate: 60-80% (vs 30-60% for API-Sonnet-only).
 
   **Locked architecture decisions:**
-  - Option A: fully cloud — Anthropic API + GitHub API + Supabase API. No local Claude Code. No machine dependency.
-  - Orchestrator: n8n self-hosted on a $5/mo DigitalOcean droplet. Chosen over Make.com for cost ($0/op vs $9/mo), data ownership, JS flexibility.
+  - Two-layer split: MasterAgent edge fn = informed prompt writer. Claude Code on cloud VM = smart executor. No middle hop.
+  - Cloud VM (NOT Kalin's PC): DigitalOcean basic droplet or Hetzner CPX11, ~$10-20/mo. Multi-tenant SaaS shouldn't depend on dev machine uptime.
+  - VM stack: Ubuntu 22.04, Node 20+, Claude Code installed + auth'd, repo cloned + git credentials wired (GitHub PAT scoped to contents:write on this repo only), PM2 keeping webhook listener alive, Cloudflare Tunnel OR direct public IP with firewall rules.
+  - VM webhook listener: tiny Node Express app (~50 lines). Receives prompt + bug_id, invokes `claude -p` headless, writes back status to bug_reports via Supabase service-role key, exits.
   - One-try rule: ONE auto-fix attempt per bug_reports row, ever. Failed attempts escalate to Kalin. No retry loops.
+  - n8n: still useful as orchestration layer for Vercel polling + Slack/notification dispatch, but no longer the executor. Optional — could be replaced by Supabase Edge function cron OR a tiny side process on the VM. Decide in blueprint.
   - Spinner UX REMOVED: user doesn't wait on screen. Fix happens in background; user notified via todo state change + push notification when ready.
   - Reuse existing infrastructure: captureFailedIntent + Resume todos + bug_reports + bugContext snapshots. Net-new code is minimal app-side.
 
   **Locked safety gates:**
-  - File allowlist for Sonnet's GitHub commits: supabase/functions/*, avenstone-vite/src/lib/supabase.js, supabase/migrations/* (with extra scrutiny). DENY: auth code, RLS migrations, payments logic, Stripe keys, anything under tools/.
-  - Post-commit Vercel build check: red build → automatic revert + Kalin alert.
+  - File allowlist for Claude Code commits: supabase/functions/*, avenstone-vite/src/lib/supabase.js, supabase/migrations/* (extra scrutiny — migrations should require human gate even in auto-mode). DENY: auth code, RLS policy migrations without flag, payments logic, Stripe keys, anything under tools/.
+  - Post-commit Vercel build check: red build → automatic revert via GitHub API + Kalin alert.
   - Classifier defaults to "needs human" when uncertain. Bias toward escalation.
-  - Audit log table (auto_fix_attempts) records every dispatch: bug_id, opus_prompt, sonnet_response, commit_hash, vercel_status, outcome, timestamp.
+  - VM-side: Claude Code's `--dangerously-skip-permissions` flag is required for headless. Hard cap in webhook listener: max 5 auto-fix attempts per hour, max 20 per day. Breached → listener returns 429 to edge fn, edge fn escalates to Kalin.
+  - GitHub PAT scope: contents:write on avenstonekc/avenstone-app ONLY. No org-level, no other repos, no admin. Token stored in VM env, never committed.
+  - Audit log table (auto_fix_attempts): bug_id, opus_or_sonnet_prompt, claude_code_output, commit_hash, vercel_status, outcome, timestamp. Weekly review checklist for Kalin: pass-rate, regressions caught, regressions missed, API spend.
+  - Kill switch: env var on VM (AUTO_FIX_ENABLED=false) instantly disables auto-dispatch. Listener still receives webhooks but returns 503. Bug reports continue normal "needs Kalin" path.
 
   **Net-new app-side work (small):**
   - TodoCard.jsx enhancement: read linked bug_reports.status, render correct state (attempting/auto_fixed/needs_human).
   - Push notification trigger on bug_reports.status change → 'auto_fixed' or 'needs_human'.
-  - Resume button re-fires from failed-intent payload (pattern already exists from 2026-05-02 arc — just wire it to this new entry point).
+  - Resume button re-fires from failed-intent payload (pattern exists from 2026-05-02 arc — wire to this new entry point).
 
   **Net-new infrastructure work (medium):**
-  - n8n droplet setup (DigitalOcean Ubuntu, Docker, n8n via docker-compose, Caddy for SSL).
-  - n8n scenario: Supabase webhook → classifier → Anthropic API (Opus) → Anthropic API (Sonnet w/ GitHub MCP) → Vercel status poll → bug_reports update.
-  - Anthropic API key + GitHub PAT (scoped: contents.write on this repo only) + Supabase service-role key → all stored in n8n credentials, never in repo.
+  - **Phase A (manual, ~4-6 hours first time, less if Kalin's done VPS work before):**
+    - DigitalOcean/Hetzner account + payment + droplet provisioning
+    - Ubuntu hardening (non-root user, ufw firewall, fail2ban, SSH key only no password, automatic security updates)
+    - Install Node 20+, git, Claude Code
+    - Authenticate Claude Code (interactive step — has to be done once via SSH)
+    - Clone repo, configure git with the scoped GitHub PAT, test a commit + push end-to-end manually
+    - Cloudflare Tunnel OR public listener with SSL via Caddy
+    - Write webhook listener Node app, wire to Supabase service-role key, install PM2, configure auto-restart on boot
+    - End-to-end manual test: curl the webhook with a synthetic prompt → confirm Claude Code runs → confirm commit lands → confirm Vercel deploys
+  - **Phase B (1 prompt):** Blueprint AUTO_FIX_ARC.md with full design, system prompts for the dispatcher Claude call, classifier rules, file allowlist definitions.
+  - **Phase C (1-2 prompts):** ai-auto-fix-dispatcher edge fn + MD fetch logic + dispatcher Claude call + webhook POST to VM.
+  - **Phase D (1 prompt):** Vercel build check polling + revert logic.
+  - **Phase E (1-2 prompts):** App-side TodoCard wiring + push notification trigger.
+  - **Phase F (1 prompt):** auto_fix_attempts table + simple admin view in BugReportsScr.
 
-  **Estimated scope:** 5-8 prompts after infrastructure is up.
-  Phase A: n8n setup + credentials wiring (1 prompt + manual DO + Docker work, ~3 hrs).
-  Phase B: Blueprint MD with full design + system prompts for Opus/Sonnet roles + classifier logic (1 prompt).
-  Phase C: First scenario — happy path only, backend bug, single safe path (1-2 prompts).
-  Phase D: Vercel build check + revert logic (1 prompt).
-  Phase E: App-side TodoCard wiring + push notification trigger (1-2 prompts).
-  Phase F: Audit log table + dashboard (1 prompt).
+  **Estimated total scope after Phase A infrastructure:** 5-7 prompts.
 
   **Triggers to START building:**
-  - Kalin has 3-4 hours fresh + uninterrupted for Phase A
-  - DigitalOcean account ready
-  - Anthropic API billing confirmed (will incur usage costs separate from Claude.ai subscription)
+  - Kalin has 4-6 hours fresh + uninterrupted for Phase A VM setup
+  - DigitalOcean or Hetzner account ready
+  - Anthropic API billing confirmed (will incur usage costs separate from Claude.ai subscription — both the dispatcher Claude calls AND Claude Code's API calls are billed)
+  - GitHub PAT generated, scoped to contents:write on avenstonekc/avenstone-app only
+  - Kalin has fresh-brain energy — production infrastructure work, not late-night fiddling
 
   **Do NOT start with anything else queued blocking it.** This is a deep-focus arc, not a between-other-things slice. Path B drift detector refinement (also queued) is independent — can ship before or after this.
 
-  **Rip-out plan:** Before public launch, remove the n8n scenario, drop the auto_fix_attempts table, revert TodoCard.jsx to the simpler failed-intent-only flow. Bug reports continue to land in bug_reports table — just no auto-fix attempts. Public users get the standard "Report bug → Kalin reviews" loop.
+  **Rip-out plan (before public launch):**
+  - Set AUTO_FIX_ENABLED=false on VM (instant disable, no code change)
+  - Drop ai-auto-fix-dispatcher edge fn
+  - Drop auto_fix_attempts table
+  - Revert TodoCard.jsx to simpler failed-intent-only render
+  - Decommission VM (~5 min on DigitalOcean dashboard)
+  - Bug reports continue to land in bug_reports table — just no auto-fix attempts. Public users get the standard "Report bug → Kalin reviews" loop.
+
+  **Architecture evolved from earlier-tonight Option A (API Sonnet w/ GitHub MCP) → final design above. The earlier API-Sonnet-only approach is REJECTED — fix quality too low. Do not revisit unless cloud VM proves infeasible for a reason not yet known.**
 
 **Sub portal & financial:**
 - ConsultationTab tab retirement
@@ -217,6 +244,70 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **Sales approach MD (white-label positioning)** — Frame the platform as the operations equivalent of what the dot-com era did for reach: 100× cheaper and easier to manage a contracting business and limit mistakes. Anti-Surprise Engine as the core promise. White-label tenant pitch lives here. Trigger to write: when platform has shippable second-tenant capability AND Kalin has 2-3 hours fresh to draft with real customer voice. Captured 2026-05-03.
 
 - **Blueprint-first workflow for new features** — When starting something new: discuss → produce a small per-feature blueprint file (not a whole-app design doc) → prompts get written off that blueprint with audits as needed. Goal: less memory drift, less "we lose hard work mid-session," more cross-session continuity through documented design intent. NOT a locked rule yet — brainstorm whether this should be the standard pattern or stay informal. Trigger to revisit: when starting the next feature arc fresh (invoicing, voice agent, etc.), test the pattern there and decide. Captured 2026-05-05.
+
+- **GOD_MASTER_AGENT (working name)** — Platform-level meta-agent that lives ABOVE Avenstone. Avenstone-for-GC is the first tenant; painter/tile/roofer/others are tenants the GOD agent provisions via interview-driven configuration. Captured 2026-05-20 in late-session brainstorm. Framing LOCKED below; architecture decisions deferred to a dedicated blueprint session AFTER the build sequence below completes.
+
+  **Locked framing:**
+
+  1. **The GOD agent is NOT inside Avenstone.** It lives above. Avenstone-for-GC is the first instance. Other trades are future instances the GOD agent provisions.
+
+  2. **Avenstone-the-app is a feature catalog.** Every feature shipped becomes a tile the GOD agent can offer or withhold per tenant.
+
+  3. **The interview IS the config engine.** Don't pre-build hand-tuned configs for each trade. The GOD agent conducts a deep interview (trade, team size, workflow, oh-shit moments, financial preferences, branding). Interview answers map to feature flags + AI tier + trade-specific phase configs. AI generates the tenant config from the answers. New trade arriving? Same interview, different answers, different config. No new per-trade engineering required.
+
+  4. **The interview can be conducted by AI OR by a human salesperson.** Self-serve: prospect clicks a link, talks to the GOD agent directly. Sales-assisted: Kalin (or future salespeople) get the questions from the agent and ask them on a call, feed answers back. Same intake, different conduit. Sales motion flexes by deal size.
+
+  5. **Prospect gets a working preview tenant.** Dumbed-down version with sample data, real configured features. They play before they pay. Convert to paid → demo data archived or migrated, real data begins.
+
+  6. **Pricing is per-feature AND per-AI-tier.** Some tenants want manual CRM with no AI (cheap). Some want maxed-out MasterAgent (premium). Same codebase, different feature flags + AI capability + token allowance per tenant. Token cost flows through to tenant pricing (Anthropic charges Kalin per token; tenant pays through tiered pricing that includes margin on those tokens).
+
+  **Why this design works (Kalin's strategic insight):**
+  This is the AVENSTONE_VISION v4+ white-label play arriving via AI rather than manual sales. Combined with interview-driven config generation, the moat is: (a) AI-as-a-feature (gating intelligence levels, not just UI), and (b) zero per-trade engineering (interview generates configs, no hand-tuning per trade).
+
+  **Locked sequencing (HONOR THIS ORDER):**
+
+  STAGE 1 (next): **AUTO_FIX_ARC ships.** Bug killer runs while Kalin tests + finishes Avenstone-for-GC. Auto-fix catches backend bugs silently; frontend bugs route to Kalin. Two birds: bug killer gets battle-tested AND Avenstone-for-GC converges faster because Kalin isn't the bottleneck on every backend fix. See AUTO_FIX_ARC queue entry (separate, already locked).
+
+  STAGE 2: **Finish Avenstone-for-GC.** Ship to a real paying customer (beyond Kalin + Blake). Every feature shipped is one more tile the GOD agent can offer at intake. Every locked principle is one more constraint the GOD agent respects.
+
+  STAGE 3: **GOD_MASTER_AGENT arc kicks off.** First blueprint session scopes ONLY the feature catalog data model (how features are defined, gated, surfaced to the interview engine). Everything else nests under that foundation.
+
+  **What stays unresolved (decide in blueprint, NOT tonight):**
+  - Feature catalog data model — table schema, metadata, gating mechanism
+  - AI tier model — Haiku/Sonnet/Opus per tenant, token allowances, overage handling, fallback behavior
+  - Pricing economics — does per-feature × per-tier math support API + infra costs at scale?
+  - Interview design — length, depth, branching, when to stop, how to recover from bad answers, how to surface trade-off questions clearly
+  - Config generation prompt design — how the AI translates interview answers into trade_phase_map + trade_taxonomy + ai_knowledge seeds + module visibility + branding
+  - Demo data synthesis — realistic fake jobs per trade (AI-generated from interview context, time-limited)
+  - Preview-to-paid lifecycle — billing trigger, data retention if no conversion, upgrade UX
+  - Multi-tenant hardening — RLS audit, isolation testing — ships BEFORE prospects touch live system
+  - Marketing surface — where the link lives (separate marketing site? In-product? Both?)
+  - Sales pipeline integration — prospect → qualified → signed → activated (overlaps SALES_PIPELINE_ARC in backlog)
+  - Relationship to AUTO_FIX_ARC at production scale — auto-fix during preview is dangerous (bugs visible to prospects, cross-tenant blast radius). File allowlist becomes much stricter than the dev-tool version. Per-tenant feature flags may need to gate auto-fix scope.
+
+  **Honest scale assessment:**
+  - Multi-month build after Avenstone-for-GC is shippable
+  - Likely 6-12 months of focused effort layered over GC stability
+  - Multiple nested arcs (TENANT_PROVISIONING, FEATURE_CATALOG, AI_TIER, DEMO_DATA, TENANT_LIFECYCLE, MULTI_TENANT_HARDENING, MARKETING_SITE, the GOD agent itself)
+
+  **AUTO_FIX_ARC relationship:**
+  AUTO_FIX_ARC stays AS-IS scoped (dev tool for Kalin + Blake during Avenstone-for-GC build). It will likely EVOLVE into a production safety net during GOD-driven onboarding, but that's a future merge decision under Stage 3 blueprinting — not assumed now.
+
+  **Trigger to start STAGE 3 (the GOD agent itself):**
+  When ALL of these are true:
+  (a) Avenstone-for-GC ships to a real paying customer beyond Kalin + Blake
+  (b) AUTO_FIX_ARC has been running long enough to have a real success-rate track record (4+ weeks of data)
+  (c) Kalin has 2-4 fresh dedicated sessions for foundational blueprinting
+  (d) Financial model for per-feature × per-AI-tier pricing has been sketched on paper
+
+  **What to do between now and Stage 3:**
+  Build Avenstone for GC. Ship it. Every feature you finish makes Stage 3 simpler. The cleaner Avenstone-for-GC becomes, the more obvious the feature catalog data model will look in retrospect.
+
+  **First blueprint session priorities (when Stage 3 triggers):**
+  1. Feature catalog data model (foundation — everything else nests under this)
+  2. Interview design (the second-load-bearing piece — bad interview = bad config = broken tenant)
+  3. AI tier model + pricing economics (the business model has to work or none of it matters)
+  Everything else (demo data, lifecycle, marketing surface, etc.) sequences after those three are solid.
 
 ---
 
