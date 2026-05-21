@@ -537,6 +537,201 @@ for (const file of files) {
   }
 }
 
+// ── Tool-payload drift (ai-master-agent) ─────────────────────────────────────
+// For each tool in the TOOLS array, compare input_schema.properties keys against
+// the actual .insert()/.update() payload keys in the executor switch case.
+//
+// Findings:
+//   advertised-not-written — schema key never appears in any executor payload
+//     (the bug class: model spends tokens on a field that silently disappears)
+//   written-not-advertised — executor writes a key the model schema doesn't declare
+//     (less critical: auto-set internal fields, key-mapping aliases, WHERE-clause keys)
+//   opaque — handler uses an unresolvable payload pattern (allowlist-loop, etc.)
+//
+// Limitations (by design, not bugs):
+//   update_job / update_phase: allowlist-loop (for...of Object.entries) → opaque
+//   send_client_portal / invite_person: no direct DB write, delegate to edge fns → skipped
+//   get_jobs / get_team: read-only, no write payload → skipped
+//   Key-mapping aliases (full_name→name, vendor→payer_or_payee_name, etc.) appear
+//     as both advertised-not-written and written-not-advertised — these are valid
+//     patterns, not bugs. Triage each finding against this known alias list.
+
+const AGENT_FILE = path.join(REPO_ROOT, 'supabase', 'functions', 'ai-master-agent', 'index.ts');
+
+// Keys suppressed from written-not-advertised: auto-set by executor, not model-facing.
+const INTERNAL_PAYLOAD_KEYS = new Set([
+  'tenant_id', 'created_at', 'updated_at', 'id',
+  'created_by', 'created_by_id',
+  'read', 'email_sent', 'sms_sent',
+  'active', 'source', 'direction', 'date_paid',
+]);
+
+const READ_ONLY_TOOLS  = new Set(['get_jobs', 'get_team']);
+const DELEGATE_TOOLS   = new Set(['send_client_portal', 'invite_person']);
+
+function runToolPayloadDriftCheck() {
+  let agentCode;
+  try { agentCode = fs.readFileSync(AGENT_FILE, 'utf8'); }
+  catch (e) { return { error: `Cannot read ${relPath(AGENT_FILE)}: ${e.message}`, results: [], toolCount: 0 }; }
+
+  let agentAst;
+  try { agentAst = parseFile(agentCode, true); }
+  catch (e) { return { error: `Parse error in ai-master-agent/index.ts: ${e.message.split('\n')[0]}`, results: [], toolCount: 0 }; }
+
+  // ── Step 1: extract TOOLS array ─────────────────────────────────────────────
+  // Map: toolName -> Set<string> of input_schema.properties keys
+  const toolDefs = new Map();
+  try {
+    traverse(agentAst, {
+      VariableDeclarator(vp) {
+        if (vp.node.id?.name !== 'TOOLS') return;
+        if (vp.node.init?.type !== 'ArrayExpression') return;
+        for (const elem of vp.node.init.elements) {
+          if (!elem || elem.type !== 'ObjectExpression') continue;
+          let toolName = null;
+          let propsObj = null;
+          for (const prop of elem.properties) {
+            if (prop.type === 'SpreadElement' || prop.type === 'ObjectMethod') continue;
+            const k = prop.key?.name ?? prop.key?.value;
+            if (k === 'name' && prop.value?.type === 'StringLiteral') toolName = prop.value.value;
+            if (k === 'input_schema' && prop.value?.type === 'ObjectExpression') {
+              for (const sp of prop.value.properties) {
+                if (sp.type === 'SpreadElement' || sp.type === 'ObjectMethod') continue;
+                const sk = sp.key?.name ?? sp.key?.value;
+                if (sk === 'properties' && sp.value?.type === 'ObjectExpression') propsObj = sp.value;
+              }
+            }
+          }
+          if (!toolName) continue;
+          const propKeys = new Set();
+          if (propsObj) {
+            for (const pp of propsObj.properties) {
+              if (pp.type === 'SpreadElement' || pp.type === 'ObjectMethod') continue;
+              const k = pp.key?.name ?? pp.key?.value;
+              if (k) propKeys.add(k);
+            }
+          }
+          toolDefs.set(toolName, propKeys);
+        }
+        vp.stop();
+      },
+    });
+  } catch (e) {
+    return { error: `TOOLS extraction failed: ${e.message}`, results: [], toolCount: 0 };
+  }
+
+  if (!toolDefs.size) return { error: 'TOOLS array not found or empty in ai-master-agent/index.ts', results: [], toolCount: 0 };
+
+  // ── Step 2: traverse executeTool, collect write payload keys per case ────────
+  // Uses full @babel/traverse so resolveIdentifierColumns has scope access (handles
+  // patterns like `const row = {...}; insert(row)` in add_todo).
+  const caseWriteSites  = new Map(); // toolName -> [{ table, method, keys, partial }]
+  const caseOpaqueList  = new Map(); // toolName -> string[]
+
+  let inExecuteTool = false;
+  let currentCase   = null;
+
+  try {
+    traverse(agentAst, {
+      FunctionDeclaration: {
+        enter(fp) { if (fp.node.id?.name === 'executeTool') inExecuteTool = true; },
+        exit(fp)  { if (fp.node.id?.name === 'executeTool') { inExecuteTool = false; currentCase = null; } },
+      },
+      SwitchCase: {
+        enter(sp) {
+          if (!inExecuteTool) return;
+          currentCase = sp.node.test?.type === 'StringLiteral' ? sp.node.test.value : null;
+          if (currentCase && !caseWriteSites.has(currentCase)) caseWriteSites.set(currentCase, []);
+          if (currentCase && !caseOpaqueList.has(currentCase))  caseOpaqueList.set(currentCase,  []);
+        },
+        exit(sp) { if (inExecuteTool) currentCase = null; },
+      },
+      CallExpression(cp) {
+        if (!inExecuteTool || !currentCase) return;
+        const callee = cp.node.callee;
+        if (callee?.type !== 'MemberExpression') return;
+        const method = callee.property?.name;
+        if (method !== 'insert' && method !== 'update' && method !== 'upsert') return;
+
+        const table = findFromCall(cp.node);
+        if (table === null) return;
+
+        const caseName   = currentCase; // capture — visitor is synchronous but be explicit
+        const writeList  = caseWriteSites.get(caseName) || [];
+        const opaqueList = caseOpaqueList.get(caseName)  || [];
+
+        if (typeof table === 'object' && table.dynamic) {
+          opaqueList.push('dynamic .from() arg');
+          return;
+        }
+        if (typeof table === 'string' && table.includes('.')) return; // cross-schema storage call
+
+        const arg = cp.node.arguments[0];
+        if (!arg) return;
+
+        let keys = [], partial = false;
+
+        if (arg.type === 'ObjectExpression') {
+          const r = keysFromObject(arg, cp);
+          keys = r.keys; partial = r.partial;
+        } else if (arg.type === 'Identifier') {
+          const r = resolveIdentifierColumns(arg.name, cp, new Set());
+          if (r.resolved) { keys = r.keys; partial = r.partial; }
+          else {
+            partial = true;
+            opaqueList.push(`identifier "${arg.name}" unresolved: ${r.reason || 'unknown'}`);
+          }
+        } else if (arg.type === 'CallExpression') {
+          const r = keysFromMapCall(arg, cp, new Set());
+          if (r.resolved) { keys = r.keys; partial = r.partial; }
+          else { partial = true; opaqueList.push('map-callback payload (unresolved)'); }
+        } else {
+          partial = true;
+          opaqueList.push(`non-literal arg type: ${arg?.type}`);
+        }
+
+        writeList.push({ table, method, keys, partial });
+      },
+    });
+  } catch (e) {
+    return { error: `executeTool traversal failed: ${e.message}`, results: [], toolCount: toolDefs.size };
+  }
+
+  // ── Step 3: diff per tool ────────────────────────────────────────────────────
+  const results = [];
+  for (const [toolName, schemaProps] of toolDefs) {
+    if (READ_ONLY_TOOLS.has(toolName)) {
+      results.push({ tool: toolName, skip: 'read-only-tool' }); continue;
+    }
+    if (DELEGATE_TOOLS.has(toolName)) {
+      results.push({ tool: toolName, skip: 'delegates-to-edge-fn' }); continue;
+    }
+
+    const writeSites   = caseWriteSites.get(toolName) || [];
+    const opaqueItems  = caseOpaqueList.get(toolName)  || [];
+
+    if (!writeSites.length && !opaqueItems.length) {
+      results.push({ tool: toolName, skip: 'no-writes-found' }); continue;
+    }
+
+    const payloadKeys = new Set();
+    const hasOpaque   = writeSites.some(w => w.partial) || opaqueItems.length > 0;
+    for (const site of writeSites) for (const k of site.keys) payloadKeys.add(k);
+
+    const advertisedNotWritten = [...schemaProps].filter(k => !payloadKeys.has(k));
+    const writtenNotAdvertised = [...payloadKeys].filter(k => !schemaProps.has(k) && !INTERNAL_PAYLOAD_KEYS.has(k));
+
+    results.push({ tool: toolName, advertisedNotWritten, writtenNotAdvertised, opaque: opaqueItems, hasOpaque });
+  }
+
+  return { results, toolCount: toolDefs.size };
+}
+
+const toolPayloadResult = (() => {
+  try { return runToolPayloadDriftCheck(); }
+  catch (e) { return { error: e.message, results: [], toolCount: 0 }; }
+})();
+
 // ── DB query ────────────────────────────────────────────────────────────────
 let tablesScanned = [...new Set([...writes.map(w => w.table), ...reads.map(r => r.table)])].sort();
 if (TABLE_FILTER) tablesScanned = tablesScanned.filter(t => t === TABLE_FILTER);
@@ -683,6 +878,7 @@ async function main() {
       skipped: opaque,
       readSkipped: readOpaque,
       parseErrors,
+      toolPayloadDrift: toolPayloadResult,
     }, null, 2));
   } else {
     console.log(C.bold('Schema-vs-code drift audit'));
@@ -765,22 +961,69 @@ async function main() {
       console.log('');
     }
 
+    // ── Tool-payload drift section ───────────────────────────────────────────
+    console.log(C.bold('Tool-payload drift (ai-master-agent):'));
+    if (toolPayloadResult.error) {
+      console.log(C.red(`  Error: ${toolPayloadResult.error}`));
+    } else {
+      const tpResults = toolPayloadResult.results || [];
+      const anwFindings = tpResults.filter(f => f.advertisedNotWritten?.length);
+      const wnaFindings = tpResults.filter(f => f.writtenNotAdvertised?.length);
+      const opaqueFindings = tpResults.filter(f => f.opaque?.length);
+      const skippedFindings = tpResults.filter(f => f.skip);
+
+      if (!anwFindings.length && !wnaFindings.length) {
+        console.log(C.green('  ✓ No tool-payload drift found.'));
+      } else {
+        if (anwFindings.length) {
+          console.log(C.red('  ❌ Advertised-not-written (schema key never appears in executor payload):'));
+          console.log(C.gray('     (key-mapping aliases and WHERE-clause keys appear here — triage expected)'));
+          for (const f of anwFindings) {
+            console.log(C.red(`    • ${f.tool}: ${f.advertisedNotWritten.join(', ')}`));
+          }
+        }
+        if (wnaFindings.length) {
+          console.log(C.yellow('  ⚠ Written-not-advertised (executor writes key not in tool schema):'));
+          for (const f of wnaFindings) {
+            console.log(C.yellow(`    • ${f.tool}: ${f.writtenNotAdvertised.join(', ')}`));
+          }
+        }
+      }
+      if (opaqueFindings.length) {
+        console.log(C.gray(`  Opaque handlers (payload could not be fully decoded):`));
+        for (const f of opaqueFindings) {
+          console.log(C.gray(`    • ${f.tool}: ${f.opaque.join('; ')}`));
+        }
+      }
+      if (skippedFindings.length) {
+        const skipMsg = skippedFindings.map(f => `${f.tool} (${f.skip})`).join(', ');
+        console.log(C.gray(`  Skipped: ${skipMsg}`));
+      }
+    }
+    console.log('');
+
     const readSelectSites = reads.length;
     const readOpaqueCount = readOpaque.length + reads.filter(r => r.hasOpaque).length;
 
+    const tpAnwCount = (toolPayloadResult.results || []).reduce((n, f) => n + (f.advertisedNotWritten?.length || 0), 0);
+
     console.log(C.bold('Summary:'));
-    console.log(`  write drift:     ${driftFindings.length}`);
-    console.log(`  read drift:      ${readDriftFindings.length}`);
-    console.log(`  potential:       ${potentialFindings.length}`);
-    console.log(`  missing tables:  ${missingTables.length}`);
-    console.log(`  write skipped:   ${opaque.length}`);
-    console.log(`  read skipped:    ${readOpaqueCount} (${readSelectSites} .select() sites, ${readOpaque.length} fully opaque + ${reads.filter(r => r.hasOpaque).length} partial)`);
-    console.log(`  parse errors:    ${parseErrors.length}`);
+    console.log(`  write drift:          ${driftFindings.length}`);
+    console.log(`  read drift:           ${readDriftFindings.length}`);
+    console.log(`  potential:            ${potentialFindings.length}`);
+    console.log(`  missing tables:       ${missingTables.length}`);
+    console.log(`  tool advertised-not-written: ${tpAnwCount} (across ${toolPayloadResult.toolCount || 0} tools)`);
+    console.log(`  write skipped:        ${opaque.length}`);
+    console.log(`  read skipped:         ${readOpaqueCount} (${readSelectSites} .select() sites, ${readOpaque.length} fully opaque + ${reads.filter(r => r.hasOpaque).length} partial)`);
+    console.log(`  parse errors:         ${parseErrors.length}`);
   }
 
   let exit = 0;
   if (driftFindings.length || missingTables.length || readDriftFindings.length) exit = 1;
   if (STRICT && potentialFindings.length) exit = 1;
+  // Tool-payload drift: advertised-not-written findings exit 1 (silent drop bug class)
+  const tpAnwTotal = (toolPayloadResult.results || []).reduce((n, f) => n + (f.advertisedNotWritten?.length || 0), 0);
+  if (tpAnwTotal > 0) exit = 1;
   process.exit(exit);
 }
 
