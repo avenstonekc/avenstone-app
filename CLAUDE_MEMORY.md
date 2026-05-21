@@ -1458,3 +1458,11 @@ Build: ✓ 912ms.
 - Files: avenstone-vite/src/components/shared/MasterAgentErrorCard.jsx (new), avenstone-vite/src/components/shared/MasterAgent.jsx, CLAUDE.md (AI Component Map)
 - Decision: callMaster gains isConfirmedAction=false param; on confirmed failure pushes ai_error message shape with toolName/errorMessage/retryAction. Render loop branches on ai_error → MasterAgentErrorCard. Try again re-surfaces confirm card via setPendingConfirm; Report bug calls submitBug. captureFailedIntent still fires on all tool failures (unchanged path). Path A (confirmed action failure) now shows structured card. Path B (non-confirmed Claude failure) still natural language. Path C (network catch) still generic message.
 - Commit: 8e102ac
+
+[LOG — 2026-05-21]
+- Action: Tool-payload drift detector shipped in audit_schema_vs_code.js (Phase 1: ai-master-agent only)
+- Files: tools/audit_schema_vs_code.js, CLAUDE.md (Tools/Scripts)
+- Decision: Extends existing audit:schema command (same entry point, no new npm script). Uses full @babel/traverse on ai-master-agent/index.ts — extracts TOOLS array (input_schema.properties keys) and traverses executeTool switch cases for .insert/.update payload keys. resolveIdentifierColumns has scope access so add_todo's `const row` pattern resolves cleanly.
+- Initial findings: 14 advertised-not-written across 8 tools. All are expected patterns: key-mapping aliases (full_name→name, vendor→payer_or_payee_name, assignee_id→assigned_to_user_id), WHERE-clause keys (job_id in advance_phase/update_job), resolution-only fields (target_user_id/target_role_on_job), control-flow (also_create_todo). No true note_type-style silent drops found in current code.
+- Known limitations: update_job/update_phase use for...of allowlist-loop (payload keys unresolvable → appear as empty payload). send_client_portal/invite_person delegate to edge fns (explicitly skipped).
+- Commit: 94708e1
