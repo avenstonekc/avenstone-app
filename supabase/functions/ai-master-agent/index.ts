@@ -1012,7 +1012,7 @@ async function executeTool(
               tenant_id: tenantId,
               user_id: assigneeId,
               type: "todo_delegated",
-              title: "New todo assigned to you",
+              title: "New to-do assigned to you",
               body: `${callerName} assigned you: "${title}"`,
               job_id: input.job_id ? String(input.job_id) : null,
               read: false,
@@ -1223,8 +1223,8 @@ function describeConfirmAction(tool: string, input: any): string {
       return `Submit ${fmtMoney(input.amount)} change order — ${input.description}.`;
     case "add_todo": {
       const prefix = input._assignee_name
-        ? `Add todo for ${input._assignee_name}: "${input.title}"`
-        : `Add todo: "${input.title}"`;
+        ? `Add to-do for ${input._assignee_name}: "${input.title}"`
+        : `Add to-do: "${input.title}"`;
       const prio = String(input.priority || "medium");
       const bits: string[] = [prefix, `${prio} priority`];
       if (input.due_date) bits.push(`due ${input.due_date}`);
@@ -1244,7 +1244,7 @@ function describeConfirmAction(tool: string, input: any): string {
       const bits: string[] = [`Notify ${target}: "${msg}"`];
       bits.push(`${prio} priority`);
       if (input._job_address) bits.push(`re: ${input._job_address}`);
-      if (input.also_create_todo) bits.push("also creates todo");
+      if (input.also_create_todo) bits.push("also creates to-do");
       return bits.join(" · ") + ".";
     }
     default:
@@ -1531,12 +1531,24 @@ Deno.serve(async (req) => {
 
     // ── Confirmed action path: skip Claude, run executor directly ─────────────
     // (pending_action / confirmed — yes/no confirmation surface, unchanged)
+
+    function buildDoneMessage(tool: string, input: Record<string, unknown>): string {
+      if (tool === "add_todo" && input._assignee_name) {
+        return `Done — added to ${input._assignee_name}'s list.`;
+      }
+      if (tool === "notify_team_member" && input._target_name) {
+        return `Done — ${input._target_name} notified.`;
+      }
+      return "Done.";
+    }
+
     if (confirmed && pending_action?.tool) {
       const result = await executeTool(sb, tenant_id, user_id, pending_action.tool, pending_action.input || {});
       const action = { tool: pending_action.tool, input: pending_action.input, result };
+      const confirmedInput = pending_action.input || {};
       const response = (result as any)?.error
         ? `${pending_action.description || pending_action.tool}: failed — ${(result as any).error}`
-        : `Done. ${pending_action.description || ""}`.trim();
+        : buildDoneMessage(pending_action.tool, confirmedInput);
       return new Response(
         JSON.stringify({ response, actions: [action] }),
         { headers: { ...CORS, "Content-Type": "application/json" } },

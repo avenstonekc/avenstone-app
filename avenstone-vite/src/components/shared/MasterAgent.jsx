@@ -79,7 +79,7 @@ async function fileToVisionPayload(file) {
 // input and surfaces a Confirm card via pending_action when ready to write.
 const TILE_PREFIXES = {
   receipt:      'Log a receipt for ',
-  todo:         'Add a todo: ',
+  todo:         'Add a to-do: ',
   lead:         'New lead — ',
   change_order: 'Submit a change order on ',
   // bug is the only special path: it does NOT go through ai-master-agent.
@@ -89,7 +89,7 @@ const TILE_PREFIXES = {
 
 const QUICK_TILES = [
   { verb: 'receipt',      label: 'Add a receipt',         ic: 'note' },
-  { verb: 'todo',         label: 'Add to the todo list',  ic: 'check' },
+  { verb: 'todo',         label: 'Add to the to-do list', ic: 'check' },
   { verb: 'lead',         label: 'Add a new lead',        ic: 'plus' },
   { verb: 'change_order', label: 'Submit a change order', ic: 'warn' },
   { verb: 'bug',          label: 'Submit a bug',          ic: 'info' },
