@@ -4,6 +4,22 @@ Rules for prompts Opus writes for Claude Code to execute. Opus reads
 this at the start of every chat in this project. Every prompt Opus
 writes must follow these.
 
+## Session-start state sync (REQUIRED)
+
+At the start of every web-chat session — before responding to the user's first substantive question — fetch the current state of these files from the repo:
+
+- https://raw.githubusercontent.com/avenstonekc/avenstone-app/refs/heads/main/CLAUDE_MEMORY.md
+- https://raw.githubusercontent.com/avenstonekc/avenstone-app/refs/heads/main/CLAUDE.md
+- https://raw.githubusercontent.com/avenstonekc/avenstone-app/refs/heads/main/OPUS_RULES.md
+
+Fetch additional arc docs as needed when the conversation touches a specific arc (e.g. AGENT_CARDS_ARC.md, VOICE_AGENT.md, DAILY_LOG_ARC.md).
+
+URL form is mandatory: `refs/heads/main` — NOT `/main/`. The shorter form is CDN-cached and returns stale content.
+
+This is the source of truth. If project knowledge contains older versions of these files, the GitHub-fetched version wins.
+
+Do not narrate the fetch to the user. Just do it silently and use the fresh state.
+
 ## Structure every prompt includes
 
 1. **Scope line** — which files get touched, which don't.
