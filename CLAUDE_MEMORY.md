@@ -1418,3 +1418,28 @@ Pattern to remember: PostgrestBuilder (Supabase JS v2) is PromiseLike-only — h
 
 Files: supabase/functions/ai-master-agent/index.ts
 Build: not applicable (Deno edge fn, auto-deploys via GitHub Actions on push).
+
+---
+
+[LOG — 2026-05-20 — MasterAgent display polish: 'todo' → 'to-do' + tightened confirm-success response. SHIPPED.]
+
+Commit: 698f1ae.
+
+Display strings changed (6 sites — all others classified INTERNAL and left alone):
+  - index.ts line 1015: notification title "New todo assigned to you" → "New to-do assigned to you"
+  - index.ts lines 1226-1227: confirm card "Add todo for [name]:" / "Add todo:" → "Add to-do for" / "Add to-do:"
+  - index.ts line 1247: notify_team_member confirm card bit "also creates todo" → "also creates to-do"
+  - MasterAgent.jsx line 82: tile prefix 'Add a todo: ' → 'Add a to-do: '
+  - MasterAgent.jsx line 92: tile label 'Add to the todo list' → 'Add to the to-do list'
+
+Left INTERNAL (do not change): tool names (add_todo), table names (todos), variable names (todoErr, also_create_todo), tool schema descriptions (Claude-facing), system prompt instructions, registry keys.
+
+Confirm-success response (Fix 2):
+  Added buildDoneMessage(tool, input) helper at lines ~1532-1542 (before confirmed path block):
+    - add_todo with input._assignee_name → "Done — added to [name]'s list."
+    - notify_team_member with input._target_name → "Done — [name] notified."
+    - all other CONFIRM_TOOLS → "Done."
+  Both _assignee_name and _target_name are pre-fetched in the confirmBlock pre-fetch block and carried in pending_action.input, available at confirm time.
+  Failure path unchanged: "[description]: failed — [error]"
+
+Build: ✓ 912ms.
