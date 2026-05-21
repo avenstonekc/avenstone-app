@@ -1394,3 +1394,27 @@ Open: rep→PM delegation for notify_team_member (rep is denied for now — same
 
 Trade-aware: todos table is platform-level — tenant_id scoped, tenant- and trade-agnostic. Role gate values ('owner','project_manager','sales_rep','sub') are platform-defined, not tenant config. No trade-specific assumptions introduced.
 Build: ✓ 530ms.
+
+---
+
+[LOG — 2026-05-20 — AGENT_OPS Bug fix: .catch on PostgrestBuilder + also_create_todo recipient threading. SHIPPED.]
+
+Commit: 4f16c89. No migration needed.
+
+Root causes:
+  Bug 1 — `sb.from(...).insert({...}).catch(() => {})` in two executors. Supabase JS v2 PostgrestBuilder implements PromiseLike (.then() only), NOT the full Promise interface. Calling .catch() directly throws "TypeError: .catch is not a function". Symptom: T3/T4 (cross-user todo, medium + high priority) failing with TypeError before the delegation notification INSERT.
+
+  Bug 2 — also_create_todo calls fail with "Could not resolve recipient." Code analysis showed the also_create_todo branch correctly reuses `targetId` from outer scope (assigned_to_user_id: targetId — no re-resolution). T7 failed because the model was calling notify_team_member without target_user_id or target_role_on_job when also_create_todo=true. The tool description gave no indication that target identification was still required. Root cause is model behavior driven by ambiguous description, not a code bug in the branch itself.
+
+Sites fixed:
+  1. add_todo executor (lines ~1009-1021): cross-user delegation notification INSERT. .catch(() => {}) → try { const {error} = await ...; if(error) console.error("[add_todo] delegation notification failed:", assigneeId, error.message); } catch(e) { console.error("[add_todo] delegation notification error:", assigneeId, e); }
+  2. notify_team_member executor (lines ~1092-1105): also_create_todo todo INSERT. Same pattern with "[notify_team_member] also_create_todo failed/error:" + targetId prefix.
+  3. also_create_todo field description: added "You MUST still identify the recipient via target_user_id or target_role_on_job — these fields are required even when also_create_todo is true."
+
+Audit findings (pre-implementation):
+  4 .catch() sites total. Sites 787 + 858: notifyTenantStaff().catch() — LEGITIMATE (async function returns real Promise). Sites 1019 + 1104: sb.from().insert().catch() — BROKEN (PostgrestBuilder, not a Promise). 2 broken sites — within scope fence (< 3), no stop needed.
+
+Pattern to remember: PostgrestBuilder (Supabase JS v2) is PromiseLike-only — has .then() but NOT .catch(). Always use `await` inside try/catch, never chain .catch() directly on a query builder. async functions return real Promises and .catch() is legitimate on those.
+
+Files: supabase/functions/ai-master-agent/index.ts
+Build: not applicable (Deno edge fn, auto-deploys via GitHub Actions on push).
