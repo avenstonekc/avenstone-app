@@ -1634,7 +1634,7 @@ Build: ✓ 912ms.
 - Global rate limit: 20 dispatches per 24h (counted from auto_fix_attempts.created_at). Above threshold → needs_human + logs attempt.
 - Denylist self-check: dispatcher scans its own fix_prompt output for unsafe patterns (.github/workflows/, auth/, stripe/payment/pricing/payout, tools/) before dispatching. Match → rejects to unsafe_path.
 - Status trigger: dispatcher acts on status='open' (what submit-bug-report inserts). 'reported' status value added to constraint but reserved — submit-bug-report not changed.
-- Supabase Database Webhook: configure on INSERT of bug_reports table, POST to ai-auto-fix-dispatcher function URL. Set DISPATCHER_SECRET in Supabase vault for HMAC-SHA256 verification.
+- Supabase Database Webhook: configured on INSERT of bug_reports. Trigger confirmed present in information_schema.triggers as 'autofix-dispatcher'. Signing: raw-secret equality (NOT HMAC — Supabase DB Webhooks send the key as a static header, not per-request HMAC).
 - ENV VARS needed in Supabase Vault: VM_WEBHOOK_URL, VM_WEBHOOK_SECRET, ANTHROPIC_API_KEY (likely exists), AUTO_FIX_ENABLED, DISPATCHER_SECRET.
 - Open: (1) ~~apply migrations~~ DONE; (2) ~~set env vars~~ DONE (VM_WEBHOOK_SECRET, AUTO_FIX_ENABLED, DISPATCHER_SECRET, ANTHROPIC_API_KEY all verified present); (3) ~~deploy edge fn~~ DONE (smoke test: 401 Invalid signature confirmed); (4) **configure Database Webhook** — Kalin manual step: Supabase dashboard → Project Settings → Webhooks → Create → Table: bug_reports, Events: INSERT, URL: https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-auto-fix-dispatcher, Signing key: DISPATCHER_SECRET (on clipboard from deploy step); (5) Phase D (Vercel build check + revert); (6) Phase E (TodoCard state wiring).
 
@@ -1642,4 +1642,13 @@ Build: ✓ 912ms.
 - Action: Set 3 Supabase Vault secrets (VM_WEBHOOK_SECRET retrieved via SSH from VM, DISPATCHER_SECRET generated fresh, AUTO_FIX_ENABLED=true). Deployed ai-auto-fix-dispatcher via supabase CLI. Smoke test: POST without signature → HTTP 401 {"ok":false,"error":"Invalid signature"} — signature gate confirmed live.
 - Verification: All 4 expected secrets present (VM_WEBHOOK_SECRET, AUTO_FIX_ENABLED, DISPATCHER_SECRET, ANTHROPIC_API_KEY). No secret values in this log.
 - Files: no new files (all code shipped in Phase C build commit)
-- Open: Database Webhook manual config — Kalin must configure in Supabase dashboard. DISPATCHER_SECRET was copied to clipboard during deploy; clear clipboard after pasting.
+- Open: ~~Database Webhook~~ DONE (trigger 'autofix-dispatcher' confirmed in DB). Phase D (Vercel build check + revert). Phase E (TodoCard state wiring).
+
+[LOG — 2026-05-22 — AUTO_FIX_ARC Phase C E2E — two bugs fixed, pipeline verified, Anthropic 529 blocker.]
+- Action: E2E test continued from context-summarized session. Two root-cause bugs found and fixed.
+- Bug 1 FIXED: Signature verification mismatch. Supabase DB Webhooks send raw signing key as static header value, NOT per-request HMAC. verifyHmac() always returned false → 401. Replaced with simple equality check. Deployed as function v5.
+- Bug 2 FIXED: DISPATCHER_SECRET vault/trigger mismatch. Deploy script ran twice, generating two different random secrets. Vault stored run-2 value; trigger header baked in run-1 value. Synced vault to match trigger value. Force-redeployed (v6) to pick up updated secret.
+- Verification: Direct HTTP call to edge function now passes signature check (no longer 401). Function correctly fetches GitHub context, checks one-try rule, calls Anthropic classifier.
+- Blocker: Anthropic API returning 529 (overloaded) persistently. Full classification not yet confirmed. Function handles 529 correctly: bug_reports → needs_human, no auto_fix_attempts row written (allows retry when API recovers).
+- Files: supabase/functions/ai-auto-fix-dispatcher/index.ts (signature fix, deployed v5→v6)
+- Open: Full E2E classification pass — insert a test row after Anthropic recovers and verify auto_fix_attempts row + correct classification written.
