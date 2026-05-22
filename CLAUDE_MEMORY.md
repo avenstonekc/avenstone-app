@@ -1636,4 +1636,10 @@ Build: ✓ 912ms.
 - Status trigger: dispatcher acts on status='open' (what submit-bug-report inserts). 'reported' status value added to constraint but reserved — submit-bug-report not changed.
 - Supabase Database Webhook: configure on INSERT of bug_reports table, POST to ai-auto-fix-dispatcher function URL. Set DISPATCHER_SECRET in Supabase vault for HMAC-SHA256 verification.
 - ENV VARS needed in Supabase Vault: VM_WEBHOOK_URL, VM_WEBHOOK_SECRET, ANTHROPIC_API_KEY (likely exists), AUTO_FIX_ENABLED, DISPATCHER_SECRET.
-- Open: (1) apply migrations via npm run migrate from avenstone-vite/; (2) set env vars in Supabase dashboard; (3) configure Database Webhook in Supabase dashboard → Project Settings → Webhooks → bug_reports INSERT → ai-auto-fix-dispatcher URL; (4) Phase D (Vercel build check + revert); (5) Phase E (TodoCard state wiring).
+- Open: (1) ~~apply migrations~~ DONE; (2) ~~set env vars~~ DONE (VM_WEBHOOK_SECRET, AUTO_FIX_ENABLED, DISPATCHER_SECRET, ANTHROPIC_API_KEY all verified present); (3) ~~deploy edge fn~~ DONE (smoke test: 401 Invalid signature confirmed); (4) **configure Database Webhook** — Kalin manual step: Supabase dashboard → Project Settings → Webhooks → Create → Table: bug_reports, Events: INSERT, URL: https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1/ai-auto-fix-dispatcher, Signing key: DISPATCHER_SECRET (on clipboard from deploy step); (5) Phase D (Vercel build check + revert); (6) Phase E (TodoCard state wiring).
+
+[LOG — 2026-05-21 — AUTO_FIX_ARC Phase C deploy + secrets shipped.]
+- Action: Set 3 Supabase Vault secrets (VM_WEBHOOK_SECRET retrieved via SSH from VM, DISPATCHER_SECRET generated fresh, AUTO_FIX_ENABLED=true). Deployed ai-auto-fix-dispatcher via supabase CLI. Smoke test: POST without signature → HTTP 401 {"ok":false,"error":"Invalid signature"} — signature gate confirmed live.
+- Verification: All 4 expected secrets present (VM_WEBHOOK_SECRET, AUTO_FIX_ENABLED, DISPATCHER_SECRET, ANTHROPIC_API_KEY). No secret values in this log.
+- Files: no new files (all code shipped in Phase C build commit)
+- Open: Database Webhook manual config — Kalin must configure in Supabase dashboard. DISPATCHER_SECRET was copied to clipboard during deploy; clear clipboard after pasting.
