@@ -32,15 +32,9 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-async function verifyHmac(rawBody: string, secret: string, sigHeader: string | null): Promise<boolean> {
-  if (!sigHeader) return false;
-  const key = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
-  const hex = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, "0")).join("");
-  return `sha256=${hex}` === sigHeader;
+// Supabase DB Webhooks forward the raw signing key as a static header value (not per-request HMAC).
+function verifySecret(secret: string, sigHeader: string | null): boolean {
+  return !!sigHeader && sigHeader === secret;
 }
 
 function fmtBreadcrumbs(bc: unknown[]): string {
@@ -101,8 +95,7 @@ Deno.serve(async (req) => {
 
   if (DISPATCHER_SECRET) {
     const sig = req.headers.get("x-supabase-webhook-signature");
-    const valid = await verifyHmac(rawBody, DISPATCHER_SECRET, sig);
-    if (!valid) return json({ ok: false, error: "Invalid signature" }, 401);
+    if (!verifySecret(DISPATCHER_SECRET, sig)) return json({ ok: false, error: "Invalid signature" }, 401);
   }
 
   let payload: any;
