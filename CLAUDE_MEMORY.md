@@ -1652,3 +1652,73 @@ Build: ✓ 912ms.
 - Blocker: Anthropic API returning 529 (overloaded) persistently. Full classification not yet confirmed. Function handles 529 correctly: bug_reports → needs_human, no auto_fix_attempts row written (allows retry when API recovers).
 - Files: supabase/functions/ai-auto-fix-dispatcher/index.ts (signature fix, deployed v5→v6)
 - Open: Full E2E classification pass — insert a test row after Anthropic recovers and verify auto_fix_attempts row + correct classification written.
+
+## 2026-05-22 — AUTO_FIX_ARC Phases A + C SHIPPED (pending Anthropic recovery)
+
+**Phase A (VM infrastructure) — DONE:**
+- DigitalOcean droplet at 165.22.34.72 ($6/mo, Ubuntu 24.04, NYC3)
+- VM hardened: SSH key-only auth, root login disabled, password auth disabled, ufw firewall, automatic security updates, non-root kalin user with sudo
+- Node 20.20.2 + Claude Code v2.1.147 installed and authenticated
+- bypassPermissions configured in ~/.claude/settings.json on VM
+- Repo cloned at ~/avenstone-app via scoped GitHub PAT (90-day expiration, contents+workflows+pull_requests write on avenstonekc/avenstone-app only)
+- Git identity set as "Avenstone Auto-Fix VM" / autofix-vm@avenstone.local
+- Webhook listener at ~/webhook-listener/listener.js — Express on port 3000, secret-gated auth, rate limits 5/hour 20/day, ~80 lines
+- PM2 keeping listener + tunnel + pm2-logrotate alive across reboots (pm2 startup + pm2 save configured)
+- Named Cloudflare tunnel at https://autofix.avenstonekc.com (avenstonekc.com added to Cloudflare, nameservers switched from Squarespace/Google to blair.ns + etienne.ns, DNS records imported clean including MX/SPF/DKIM/DMARC for email continuity)
+- VM reboot survival VERIFIED (manual sudo reboot test passed — all 3 PM2 processes auto-restored, tunnel reconnected, health endpoint reachable)
+- SSH keepalive added to local C:/Users/Kalin/.ssh/config (ServerAliveInterval 60)
+
+**Phase C (Dispatcher edge fn) — SHIPPED with caveat:**
+- supabase/functions/ai-auto-fix-dispatcher/index.ts deployed (303 lines)
+- Migrations applied: bug_reports.status CHECK extended (reported/attempting/auto_fixed/needs_human), auto_fix_attempts audit table created with platform-owner RLS
+- Vault secrets set: VM_WEBHOOK_SECRET (synced with VM ~/webhook-secret.txt), AUTO_FIX_ENABLED=true, DISPATCHER_SECRET, ANTHROPIC_API_KEY (existing)
+- Supabase Database Webhook configured on bug_reports INSERT → POST to dispatcher edge fn with DISPATCHER_SECRET as x-supabase-webhook-signature header
+- Two deploy-time bug fixes shipped during testing:
+  1. Signature verification was HMAC-style (GitHub pattern); Supabase actually sends raw secret as static header. Fixed to static comparison.
+  2. Two deploy-script runs put different DISPATCHER_SECRET values in vault vs webhook trigger. Synced.
+- One-try-per-bug-ever rule LOCKED (overrode earlier "max 3" drift in brief). Global 20/day rate limit at classifier-side stays.
+- File allowlist baked into dispatcher's classifier system prompt: blocks .github/workflows/, supabase/migrations/, auth/*, anything matching pricing/stripe/payment/payout, tools/*
+
+**Verified upstream of Anthropic call:**
+- Webhook fires on bug_reports INSERT ✓
+- Signature check passes ✓
+- status='open' filter passes ✓
+- One-try rule check passes ✓
+- Rate limit check passes ✓
+- GitHub raw fetch for CLAUDE_MEMORY.md + CLAUDE.md + OPUS_RULES.md works ✓
+- 529 fallback path correctly marks bug_reports.status='needs_human' without dispatching ✓
+
+**Blocked on (transient):**
+- Anthropic API returned 529 (capacity overload) persistently across this session — classifier call cannot complete
+- This is NOT a bug in our system. Graceful degradation works correctly.
+- Next session: when status.anthropic.com shows clear, insert one synthetic frontend bug_reports row, verify auto_fix_attempts gets a row with classification='frontend' and vm_dispatch_status='not_dispatched'. Then officially close Phase C.
+
+**Remaining phases (smaller than Phase A/C):**
+- Phase D — Vercel build status check + auto-revert on red build
+- Phase E — App-side TodoCard wiring + push notification on bug_reports.status change
+- Phase F — Audit dashboard surfacing auto_fix_attempts (optional polish)
+
+**Open infra items (deferred from this session):**
+- GitHub PAT renewal reminder at day 76 (option 2 from earlier — Kalin chose "email reminder + script that nags"). Token expires ~2026-08-19. Set up before then.
+- External uptime monitoring (UptimeRobot or similar) on https://autofix.avenstonekc.com/health
+- Cloudflared session cert.pem renewal (yearly, expires ~2027-05-21)
+- Claude Code auth refresh on VM (cadence unknown — likely 30-90 days, will surface when auto-fixes start failing with auth errors)
+
+**Test bug_reports rows left in DB (do not delete, historical reference):**
+- 4636a687-0d75-4c47-b81d-0f3c41246ad9 (first test, status=needs_human, Anthropic 529)
+- 9e78e70f-9b75-450c-a63c-66f3320afd07 (retry test, status=needs_human, Anthropic 529)
+- 7f79e416-b8af-4667-b88a-eddd3be4daab (direct function call test row, status=needs_human, Anthropic 529)
+
+**Other shipped today:**
+- "to-do" wording sweep #2 — 16 additional display strings across 9 files (commit landed today before AUTO_FIX work)
+- Mic desktop fallback noted in polish backlog (deferred — low value vs iOS regression risk)
+- Local Claude Code bypassPermissions mode confirmed working under load (full sweep slice + multiple Phase C iterations, zero permission prompts fired)
+
+**Open architecture / future work (no change since 2026-05-20):**
+- AUTO_FIX_ARC Phase D/E/F as listed above
+- GOD_MASTER_AGENT framing locked, not building yet
+- Path B drift detector refinement (still queued)
+- MasterAgent desktop mic backlog
+
+**Trigger to resume:**
+Check https://status.anthropic.com tomorrow morning. When green, run one synthetic INSERT to bug_reports with status='open' and any frontend-flavored description. Wait 20 seconds. Query auto_fix_attempts. If row exists with classification='frontend' → PASS, log to memory, Phase C officially closed.
