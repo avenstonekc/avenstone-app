@@ -13,12 +13,19 @@ const MAX_DAILY        = 20;
 const MODEL            = "claude-sonnet-4-6";
 const TRIGGER_STATUS   = "open"; // submit-bug-report inserts 'open'; dispatcher picks it up here
 
-// Patterns that make a fix_prompt unsafe regardless of classification
-const DENYLIST: RegExp[] = [
-  /\.github\/workflows\//,
+// Path patterns — applied only to the FILES_TO_TOUCH list when structured output is present.
+// Falls back to full-text scan when no FILES_TO_TOUCH block found.
+const DENYLIST_PATHS: RegExp[] = [
+  /\.github\/workflows\//,      // CI/CD workflow files
+  /supabase\/migrations\//,     // schema migrations — always human review
+  /\/auth/,                     // any auth-related file path segment
+  /\btools\//,                  // tools/ scripts directory
+];
+
+// Keyword patterns — always scanned against full fix_prompt text regardless of structure.
+// Financial risk is too high to narrow these to file paths only.
+const DENYLIST_KEYWORDS: RegExp[] = [
   /pricing|stripe|payment|payout/i,
-  /\/auth\//,
-  /\btools\//,
 ];
 
 const corsHeaders = {
@@ -49,8 +56,27 @@ function fmtErrors(errs: unknown[]): string {
   return errs.map((e: any) => `• [${e.ts?.slice(11, 19) || ""}] ${e.message || ""}`).join("\n");
 }
 
-function hasDenylistHit(text: string): boolean {
-  return DENYLIST.some(p => p.test(text));
+function parseTouchList(fix_prompt: string): string[] | null {
+  const m = fix_prompt.match(/FILES_TO_TOUCH:\s*\n([\s\S]*?)(?:\n\n|\n[A-Z]|$)/);
+  if (!m) return null;
+  return m[1]
+    .split("\n")
+    .map(l => l.replace(/^[-*\s]+/, "").trim())
+    .filter(Boolean);
+}
+
+function hasDenylistHit(fix_prompt: string): boolean {
+  // Financial keywords always scanned against full text — risk too high to miss
+  if (DENYLIST_KEYWORDS.some(p => p.test(fix_prompt))) return true;
+
+  // Primary: if classifier provided a FILES_TO_TOUCH block, check only those paths
+  const touchList = parseTouchList(fix_prompt);
+  if (touchList) {
+    return touchList.some(path => DENYLIST_PATHS.some(p => p.test(path)));
+  }
+
+  // Fallback: full-text path scan for unstructured output
+  return DENYLIST_PATHS.some(p => p.test(fix_prompt));
 }
 
 const CLASSIFIER_SYSTEM = `You are the AUTO_FIX_ARC dispatcher for Avenstone — a multi-tenant construction field ops platform built on Vite + React 18 + Supabase edge functions.
@@ -70,6 +96,9 @@ CLASSIFIER RULES:
 
 PROMPT STRUCTURE when backend_safe (follow OPUS_RULES.md structure exactly):
 SCOPE LINE: one sentence naming the file, function, and broken behavior.
+FILES_TO_TOUCH:
+- <exact relative file path that will be modified>
+(list ONLY files that will actually be changed — one path per line)
 AUDIT STEP: read the failing code at the specific file path. Cite lines. Do not guess.
 IMPLEMENT STEP: apply the mechanical fix. No refactor. No opportunistic cleanup. Stay in scope.
 VERIFY STEP: check edge fn logs / PostgREST schema / Supabase response shape as appropriate.
