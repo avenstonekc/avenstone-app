@@ -632,6 +632,8 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 
   **Optional:** a read-only Supabase MCP connector may be configured for ad-hoc DB inspection (e.g. checking a table schema mid-session without running a script). Read-only only — it does NOT replace `npm run migrate` for applies or `audit:schema` for drift detection. Revisit before onboarding a second tenant, as cross-tenant inspection access would need scoping.
 
+- `scripts/credential-renewal-check.js` — reads `scripts/credential-expirations.json`, exits 0 if all credentials are healthy, exits 1 with a structured warning if any credential is < 14 days from expiry or already expired. Invoked daily by `.github/workflows/credential-check.yml` (14:00 UTC); GitHub emails Kalin on failure. To add a new credential: add an entry to `credential-expirations.json` with `name`, `expires_at` (YYYY-MM-DD), and `renewal_instructions`.
+
 ---
 
 ## Common Task Patterns

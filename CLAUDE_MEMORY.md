@@ -1811,3 +1811,11 @@ Push notifications (Phase E skip):
 - FK constraint: auto_fix_attempts.bug_id is NO ACTION (not CASCADE, not SET NULL). Deleted auto_fix_attempts first, then bug_reports.
 - Verification: both tables now have 0 rows. Test-pattern query returns empty. No real user bug data existed to preserve.
 - Files changed: none.
+
+[LOG — 2026-05-23 — AUTO_FIX_ARC operational hardening shipped.]
+- Action: Uptime monitoring (Part 1) + credential expiration alerting (Part 2).
+- Part 1 (UptimeRobot): Kalin manual step — create HTTP monitor on https://autofix.avenstonekc.com/health, 5-min interval, alert after 1 failure, email to kalin@avenstonekc.com. Covers: PM2 crash, VM reboot failure, Cloudflare tunnel break, cert.pem expiry.
+- Part 2: scripts/credential-renewal-check.js reads scripts/credential-expirations.json, exits 1 when any credential is < 14 days from expiry. .github/workflows/credential-check.yml fires daily at 14:00 UTC — GitHub emails Kalin on failure.
+- Credentials tracked: GitHub PAT (2026-08-20), Vercel token (2026-08-21), Cloudflare cert.pem (2027-05-22).
+- Tested locally: green pass + exit 1 with near-expiry override both confirmed.
+- Files: scripts/credential-expirations.json (new), scripts/credential-renewal-check.js (new), .github/workflows/credential-check.yml (new). Commit: c4978f4.
