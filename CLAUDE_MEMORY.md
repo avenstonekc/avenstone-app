@@ -1734,3 +1734,11 @@ Build: ✓ 912ms.
 - Action: Fixed `.splitt` typo → `.split` on `profile.full_name` at notify-email/index.ts:45.
 - Files: supabase/functions/notify-email/index.ts
 - Decision: Edge fn was crashing with TypeError for every user with full_name set (greeting line called undefined method). Single-character typo, single-line fix, no surrounding refactor.
+
+[LOG — 2026-05-23 — AUTO_FIX_ARC FULLY OPERATIONAL. First real autonomous backend fix committed and verified.]
+- Action: Completed callback path (Part 1) + first real fix loop (Part 2). Full pipeline: bug INSERT → DB webhook → dispatcher classifies backend_safe → VM git pull → Claude Code audits + fixes → callback updates DB → status=auto_fixed.
+- Files added: scripts/auto-fix-callback.js (VM CLI tool), migrations/20260523000000 (auto_fix_commit/notes columns), migrations/20260523010000 (auto_fix_failed status), updated dispatcher CLOSING section, webhook-listener git pull step.
+- VM fix commit: 77c8708 by Avenstone Auto-Fix VM — exact one-line diff, no scope creep.
+- bug_reports bc9aab9c: status=auto_fixed, auto_fix_commit=d1f5b73, auto_fix_notes recorded.
+- Root cause of stale-read failure (first attempt): webhook listener spawned Claude Code without git pull. Fixed by adding execSync('git pull origin main') before spawn in listener.js.
+- Next: Phase D (Vercel build check + revert on broken fix), Phase E (TodoCard state wiring), Phase F (audit dashboard).
