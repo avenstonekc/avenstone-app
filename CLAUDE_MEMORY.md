@@ -1804,3 +1804,10 @@ Push notifications (Phase E skip):
   - Deferred: implement push subscription write path (PushManager.subscribe + INSERT into push_subscriptions) before send-push is useful for this flow
 
 - Next: Phase F (audit dashboard — optional). All four core AUTO_FIX_ARC phases shipped.
+
+[LOG — 2026-05-23 — Cleaned up 12 synthetic AUTO_FIX_ARC test rows from bug_reports + auto_fix_attempts.]
+- Action: Deleted all 12 synthetic test rows accumulated during Phase A–E verification (2026-05-21 through 2026-05-23). 8 linked auto_fix_attempts rows also deleted.
+- Tables affected: bug_reports (12 deleted), auto_fix_attempts (8 deleted), todos (0 touched — no live bug_report_id links existed)
+- FK constraint: auto_fix_attempts.bug_id is NO ACTION (not CASCADE, not SET NULL). Deleted auto_fix_attempts first, then bug_reports.
+- Verification: both tables now have 0 rows. Test-pattern query returns empty. No real user bug data existed to preserve.
+- Files changed: none.
