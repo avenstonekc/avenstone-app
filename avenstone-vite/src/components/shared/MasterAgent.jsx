@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, SUBMIT_BUG_REPORT_URL } from '../../lib/supabase';
+import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbLinkBugToTodo, SUBMIT_BUG_REPORT_URL } from '../../lib/supabase';
 import MasterAgentErrorCard from './MasterAgentErrorCard';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic } from '../../lib/utils';
@@ -612,17 +612,16 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       const aiText = data.response || 'No response.';
       const aiActions = data.actions || [];
 
-      aiActions.forEach(action => {
-        if (action.result?.error) {
-          captureFailedIntent({
-            kind: 'master_agent_tool_call',
-            payload: { tool_name: action.tool, error_message: action.result.error, user_message: userMessageText },
-            message: action.result.error,
-          }).catch(() => {});
-        }
-      });
+      const failedActions = aiActions.filter(a => a.result?.error);
+      const todoIds = await Promise.all(failedActions.map(action =>
+        captureFailedIntent({
+          kind: 'master_agent_tool_call',
+          payload: { tool_name: action.tool, error_message: action.result.error, user_message: userMessageText },
+          message: action.result.error,
+        }).then(r => r.ok ? r.todoId : null).catch(() => null)
+      ));
 
-      const firstFailedAction = isConfirmedAction ? aiActions.find(a => a.result?.error) : null;
+      const firstFailedAction = isConfirmedAction ? failedActions[0] : null;
       if (firstFailedAction) {
         setMessages((prev) => [
           ...prev,
@@ -633,6 +632,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             toolName: firstFailedAction.tool,
             errorMessage: firstFailedAction.result.error,
             retryAction: body.pending_action,
+            todoId: todoIds[0] || null,
           },
         ]);
       } else {
@@ -679,7 +679,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     }
   };
 
-  const submitBug = async (description) => {
+  const submitBug = async (description, todoId = null) => {
     setLoading(true);
     try {
       const { data: { session } } = await sb.auth.getSession();
@@ -703,6 +703,9 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       if (!data.ok) {
         setMessages((prev) => [...prev, { type: 'ai', text: `Bug submission failed: ${data.error || 'unknown error'}`, actions: [] }]);
       } else {
+        if (todoId && data.bug_id) {
+          sbLinkBugToTodo(todoId, data.bug_id).catch(() => {});
+        }
         setToast('Bug submitted ✓');
         setTimeout(() => setToast(''), 4000);
         setMessages((prev) => [...prev, { type: 'ai', text: 'Bug report submitted. Thanks — we\'ll look into it.', actions: [] }]);
@@ -1348,7 +1351,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   toolName={msg.toolName}
                   errorMessage={msg.errorMessage}
                   onRetry={() => setPendingConfirm(msg.retryAction)}
-                  onReport={() => submitBug(`Action failed: ${msg.toolName} — ${msg.errorMessage}`)}
+                  onReport={() => submitBug(`Action failed: ${msg.toolName} — ${msg.errorMessage}`, msg.todoId)}
                 />
               ) : (
                 <div

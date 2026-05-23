@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { sbCompleteTodo, sbSnoozeTodo, sbDismissTodo } from '../../lib/supabase';
+import { useState, useEffect } from 'react';
+import { sb, sbCompleteTodo, sbSnoozeTodo, sbDismissTodo } from '../../lib/supabase';
 
 const SEV_COLOR = { high: '#EF4444', medium: '#C9A84C', low: '#9CA3AF' };
 const AMBER = '#f59e0b';
@@ -17,6 +17,29 @@ function timeAgo(iso) {
 export default function TodoCard({ todo, onRemove, setPendingAction }) {
   const [showSnooze, setShowSnooze] = useState(false);
   const [snoozing, setSnoozing] = useState(false);
+  const [bugStatus, setBugStatus] = useState(null);
+
+  useEffect(() => {
+    if (!todo.bug_report_id) return;
+
+    // Fetch initial status
+    sb.from('bug_reports').select('status').eq('id', todo.bug_report_id).single()
+      .then(({ data }) => { if (data) setBugStatus(data.status); });
+
+    // Subscribe to status transitions
+    const channel = sb.channel(`bug-${todo.bug_report_id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'bug_reports',
+        filter: `id=eq.${todo.bug_report_id}`,
+      }, payload => {
+        if (payload.new?.status) setBugStatus(payload.new.status);
+      })
+      .subscribe();
+
+    return () => { sb.removeChannel(channel); };
+  }, [todo.bug_report_id]);
 
   const handleDone = async () => {
     onRemove(todo.id);
@@ -50,6 +73,83 @@ export default function TodoCard({ todo, onRemove, setPendingAction }) {
     color: '#6B7280', transition: 'all 0.12s',
   };
 
+  const renderResumeArea = () => {
+    if (!isFailedIntent) return null;
+
+    if (bugStatus === 'attempting') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: AMBER, fontWeight: 600 }}>
+          <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', border: `2px solid ${AMBER}`, borderTopColor: 'transparent', animation: 'aiSpin 0.8s linear infinite' }} />
+          AI fix in progress…
+        </div>
+      );
+    }
+
+    if (bugStatus === 'auto_fixed') {
+      return (
+        <>
+          <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ AI fixed it</div>
+          <button
+            style={{ ...btnBase, background: '#16a34a', border: '1px solid #16a34a', color: '#fff', fontWeight: 700 }}
+            onClick={handleResume}
+          >
+            ↩ Try again
+          </button>
+        </>
+      );
+    }
+
+    if (bugStatus === 'auto_fix_failed') {
+      return (
+        <>
+          <div style={{ fontSize: 12, color: AMBER, fontWeight: 600 }}>Fix failed — reported</div>
+          {todo.payload?.resumable !== false && (
+            <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
+              ↩ Resume
+            </button>
+          )}
+        </>
+      );
+    }
+
+    if (bugStatus === 'auto_fix_unknown') {
+      return (
+        <>
+          <div style={{ fontSize: 12, color: AMBER, fontWeight: 600 }}>Fix status unknown</div>
+          {todo.payload?.resumable !== false && (
+            <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
+              ↩ Resume
+            </button>
+          )}
+        </>
+      );
+    }
+
+    if (bugStatus === 'needs_human') {
+      return (
+        <>
+          <div style={{ fontSize: 12, color: AMBER, fontWeight: 600 }}>Reported to team</div>
+          {todo.payload?.resumable !== false && (
+            <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
+              ↩ Resume
+            </button>
+          )}
+        </>
+      );
+    }
+
+    // Default: no bug linked or open/in_progress
+    if (todo.payload?.resumable !== false) {
+      return (
+        <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
+          ↩ Resume
+        </button>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div style={{ background: isFailedIntent ? AMBER_BG : '#fff', border: `1px solid ${isFailedIntent ? '#FCD34D' : '#E8E4DC'}`, borderLeft: `3px solid ${accentColor}`, borderRadius: 8, padding: '14px 16px', marginBottom: 10, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -64,12 +164,8 @@ export default function TodoCard({ todo, onRemove, setPendingAction }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-        {isFailedIntent && todo.payload?.resumable !== false && (
-          <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
-            ↩ Resume
-          </button>
-        )}
+      <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {renderResumeArea()}
         <button style={{ ...btnBase, background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#16a34a' }} onClick={handleDone}>
           ✓ Done
         </button>

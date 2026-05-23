@@ -1363,7 +1363,7 @@ const KIND_LABEL = {
   photo_label: 'Label Photo',
   create_user_todo: 'Create To-do', update_todo: 'Update To-do',
 };
-export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, message = '', resumable = true }) => {
+export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, message = '', resumable = true, bugReportId = null }) => {
   try {
     if (!VALID_KINDS.has(kind)) return { ok: false, error: 'invalid kind' };
     const kindLabel = KIND_LABEL[kind] || kind;
@@ -1378,10 +1378,15 @@ export const captureFailedIntent = async ({ kind, payload = {}, jobId = null, me
       status: 'open',
       job_id: jobId || null,
       payload: { kind, jobId, resumable, ...payload },
+      ...(bugReportId ? { bug_report_id: bugReportId } : {}),
     }).select().single();
     if (error) return { ok: false, error: error.message };
     return { ok: true, todoId: data.id };
   } catch (e) { return { ok: false, error: e.message }; }
+};
+export const sbLinkBugToTodo = async (todoId, bugReportId) => {
+  const { error } = await sb.from('todos').update({ bug_report_id: bugReportId }).eq('id', todoId);
+  return { ok: !error, error: error?.message };
 };
 export const sbCountRecentFailedIntents = async (days = 7) => {
   const since = new Date(Date.now() - days * 86400000).toISOString();
