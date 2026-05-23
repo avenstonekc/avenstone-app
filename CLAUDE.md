@@ -326,7 +326,8 @@ This is Avenstone's core competitive advantage. Six surfaces:
 | `MasterAgentErrorCard` | `components/shared/MasterAgentErrorCard.jsx` | Amber error card rendered in chat when a confirmed tool execution fails. "Try again" re-surfaces the confirm card; "Report bug" calls submitBug. Reuses captureFailedIntent (fires on all tool failures) and submit-bug-report. |
 | `BugReportsScr` | `components/admin/BugReportsScr.jsx` | Platform-owner cross-tenant bug report dashboard. |
 | `BugReportDetailModal` | `components/admin/BugReportDetailModal.jsx` | Bug detail + Claude prompt copy + mark-fixed. |
-| `ai-auto-fix-dispatcher` | `supabase/functions/ai-auto-fix-dispatcher/index.ts` | AUTO_FIX_ARC Phase C — receives Supabase DB webhook on bug_reports INSERT, classifies bugs (backend_safe / frontend / ios / unsafe_path / ambiguous) via Sonnet, dispatches fix prompts to VM webhook if eligible. Kill switch: AUTO_FIX_ENABLED env var. |
+| `ai-auto-fix-dispatcher` | `supabase/functions/ai-auto-fix-dispatcher/index.ts` | AUTO_FIX_ARC Phase C+D — receives Supabase DB webhook on bug_reports INSERT, classifies bugs (backend_safe / frontend / ios / unsafe_path / ambiguous) via Sonnet, dispatches fix prompts to VM webhook if eligible. Kill switch: AUTO_FIX_ENABLED env var. |
+| `auto-fix-callback` | `scripts/auto-fix-callback.js` | AUTO_FIX_ARC Phase D — VM executor runs this after committing a fix. Patches bug_reports optimistically to auto_fixed, then polls Vercel /v6/deployments every 10s (up to 5min). READY → confirms auto_fixed + records vercel_deployment_id. ERROR → git revert + push + auto_fix_failed. TIMEOUT → auto_fix_unknown. Reads SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY + VERCEL_API_TOKEN from ~/avenstone-app/.env on VM. |
 
 ---
 

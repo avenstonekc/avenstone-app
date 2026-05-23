@@ -1768,3 +1768,10 @@ Build: ✓ 912ms.
 
 [LOG — 2026-05-23]
 - Action: Fixed typo in supabase/functions/notify-email/index.ts SUBJECTS.phase_overdue — "Phase overude" → "Phase overdue".
+
+[LOG — 2026-05-23 — AUTO_FIX_ARC Phase D SHIPPED. Vercel build check + auto-revert wired. Phases A+C+D verified end-to-end.]
+- Action: Added Vercel build polling + auto-revert to scripts/auto-fix-callback.js. VM now confirms Vercel READY before calling auto_fixed; reverts commit + escalates on ERROR; marks auto_fix_unknown on 5-min timeout.
+- Files changed: scripts/auto-fix-callback.js (Phase D rewrite), migrations/20260523020000 (auto_fix_unknown status + vercel_deployment_id column), dispatcher CLOSING section updated (no longer passes --status on success path).
+- E2E result: bug 1e0db7b5 — classification=backend_safe, VM fixed phase_overdue typo (commit 69daca5), Vercel build READY (dpl_9bwKVyfwTknC3CWgQNjzEKoWAcwE), bug_reports.status=auto_fixed, vercel_deployment_id populated. All assertions PASS.
+- Safety gap closed: a commit that passes Claude Code but breaks the build will now be reverted automatically before the status reaches auto_fixed.
+- Next: Phase E (TodoCard state wiring), Phase F (audit dashboard — optional). System is production-safe.
