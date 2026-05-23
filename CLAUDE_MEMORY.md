@@ -1765,3 +1765,6 @@ Build: ✓ 912ms.
 - bug_reports bc9aab9c: status=auto_fixed, auto_fix_commit=d1f5b73, auto_fix_notes recorded.
 - Root cause of stale-read failure (first attempt): webhook listener spawned Claude Code without git pull. Fixed by adding execSync('git pull origin main') before spawn in listener.js.
 - Next: Phase D (Vercel build check + revert on broken fix), Phase E (TodoCard state wiring), Phase F (audit dashboard).
+
+[LOG — 2026-05-23]
+- Action: Fixed typo in supabase/functions/notify-email/index.ts SUBJECTS.phase_overdue — "Phase overude" → "Phase overdue".
