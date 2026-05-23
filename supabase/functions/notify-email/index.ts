@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     }
 
     const subject = SUBJECTS[notif.type] ?? "Avenstone notification";
-    const greeting = profile.full_name ? `Hi ${profile.full_name.splitt(" ")[0]},` : "Hi,";
+    const greeting = profile.full_name ? `Hi ${profile.full_name.split(" ")[0]},` : "Hi,";
 
     const html = `
 <!DOCTYPE html>
