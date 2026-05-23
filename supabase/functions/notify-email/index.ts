@@ -11,7 +11,7 @@ const SUBJECTS: Record<string, string> = {
   note_posted:          "New note on your project",
   phase_complete:       "Phase complete",
   co_submitted:         "Change order submitted for review",
-  co_approved:          "Change order approved",
+  co_approved:          "Change order approvd",
   co_rejected:          "Change order rejected",
   document_uploaded:    "New document uploaded",
   daily_log_submitted:  "Daily log submitted",
