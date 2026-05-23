@@ -15,3 +15,7 @@ playwright-report/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Local secrets — never commit
+.env
+.env.*

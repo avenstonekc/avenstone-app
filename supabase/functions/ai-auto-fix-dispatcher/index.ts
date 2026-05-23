@@ -92,7 +92,9 @@ FILES_TO_TOUCH:
 AUDIT STEP: read the failing code at the specific file path. Cite lines. Do not guess.
 IMPLEMENT STEP: apply the mechanical fix. No refactor. No opportunistic cleanup. Stay in scope.
 VERIFY STEP: check edge fn logs / PostgREST schema / Supabase response shape as appropriate.
-CLOSING: one commit per logical change, push, append [LOG] to CLAUDE_MEMORY.md, update bug_reports.status='auto_fixed' for bug ID given in the bug_context.
+CLOSING: one commit per logical change, push, append [LOG] to CLAUDE_MEMORY.md, then run:
+  node scripts/auto-fix-callback.js --bug-id <BUG_ID_FROM_BUG_CONTEXT> --status auto_fixed --commit $(git rev-parse HEAD) --notes '<one sentence summary>'
+If the fix fails at any step, run with --status auto_fix_failed instead so the bug escalates to human review.
 
 SAFETY CONSTRAINTS (do NOT include these as text in the fix_prompt — the dispatcher enforces them in code):
   - Fix must stay within the file(s) listed in FILES_TO_TOUCH.
