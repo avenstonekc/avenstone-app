@@ -247,6 +247,29 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 - **Blueprint-first workflow for new features** — When starting something new: discuss → produce a small per-feature blueprint file (not a whole-app design doc) → prompts get written off that blueprint with audits as needed. Goal: less memory drift, less "we lose hard work mid-session," more cross-session continuity through documented design intent. NOT a locked rule yet — brainstorm whether this should be the standard pattern or stay informal. Trigger to revisit: when starting the next feature arc fresh (invoicing, voice agent, etc.), test the pattern there and decide. Captured 2026-05-05.
 
+- **Private repo migration plan (deferred — pre-public-launch)**
+  When avenstonekc/avenstone-app flips from public to private, two paths break:
+  1. Web-chat Opus loses `web_fetch` access to MDs (raw.githubusercontent.com 404s on private repos).
+  2. ai-auto-fix-dispatcher edge fn loses GitHub fetch of CLAUDE_MEMORY/CLAUDE.md/OPUS_RULES for classifier context.
+
+  **Migration plan when triggered:**
+  1. Update ai-auto-fix-dispatcher edge fn to use authenticated GitHub fetch — add `Authorization: Bearer <GITHUB_PAT>` header on the fetch calls. PAT already has `contents:read` scope. Code change ~10 lines.
+  2. Decide web-chat sync strategy:
+     - Option A (simplest): revert to manual project knowledge uploads. ~5 min friction per session, no infrastructure.
+     - Option B (real infrastructure): build a Cloudflare Worker that proxies GitHub API with auth. Worker URL is public, Opus fetches from the Worker, Worker fetches from private GitHub with stored PAT. Real engineering but eliminates the upload friction permanently.
+  3. Update OPUS_RULES.md "Session-start state sync" rule to reference new fetch URLs (Worker URL if Option B, or remove rule if Option A).
+  4. Update CLAUDE_MEMORY.md noting migration date and chosen strategy.
+
+  **What stays working without changes (verified 2026-05-23):**
+  - VM git pull/push (already uses PAT auth, repo visibility irrelevant)
+  - Vercel auto-deploy (GitHub integration, auth via OAuth not visibility)
+  - GitHub Actions edge fn deploys (token-based, not visibility-based)
+  - Supabase Database Webhook → dispatcher (doesn't touch GitHub)
+
+  **Trigger to act:** ~2 weeks before first paying customer signup, OR when a security review requires private repo, whichever first. Until then, public + free velocity wins.
+
+  **Out of scope for migration slice:** changing secret storage, rotating credentials, audit log redesign — all separate concerns.
+
 - **GOD_MASTER_AGENT (working name)** — Platform-level meta-agent that lives ABOVE Avenstone. Avenstone-for-GC is the first tenant; painter/tile/roofer/others are tenants the GOD agent provisions via interview-driven configuration. Captured 2026-05-20 in late-session brainstorm. Framing LOCKED below; architecture decisions deferred to a dedicated blueprint session AFTER the build sequence below completes.
 
   **Locked framing:**
