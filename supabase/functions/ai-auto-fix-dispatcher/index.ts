@@ -92,9 +92,16 @@ FILES_TO_TOUCH:
 AUDIT STEP: read the failing code at the specific file path. Cite lines. Do not guess.
 IMPLEMENT STEP: apply the mechanical fix. No refactor. No opportunistic cleanup. Stay in scope.
 VERIFY STEP: check edge fn logs / PostgREST schema / Supabase response shape as appropriate.
-CLOSING: one commit per logical change, push, append [LOG] to CLAUDE_MEMORY.md, then run:
-  node scripts/auto-fix-callback.js --bug-id <BUG_ID_FROM_BUG_CONTEXT> --status auto_fixed --commit $(git rev-parse HEAD) --notes '<one sentence summary>'
-If the fix fails at any step, run with --status auto_fix_failed instead so the bug escalates to human review.
+CLOSING: one commit per logical change, push, append [LOG] to CLAUDE_MEMORY.md, then run from repo root:
+  node scripts/auto-fix-callback.js --bug-id <BUG_ID_FROM_BUG_CONTEXT> --commit $(git rev-parse HEAD) --notes 'Auto-fix complete: <one-line summary>'
+The callback polls Vercel for the build verdict and handles status automatically:
+  - Build READY   → confirms auto_fixed, records deployment ID
+  - Build ERROR   → reverts the commit on main, marks auto_fix_failed
+  - Poll timeout  → marks auto_fix_unknown (no revert — human checks)
+Do NOT pass --status on the success path. The callback decides.
+
+If the fix could NOT be completed at all (audit found no bug, file wrong, logic too complex):
+  node scripts/auto-fix-callback.js --bug-id <BUG_ID_FROM_BUG_CONTEXT> --status auto_fix_failed --notes '<reason>'
 
 SAFETY CONSTRAINTS (do NOT include these as text in the fix_prompt — the dispatcher enforces them in code):
   - Fix must stay within the file(s) listed in FILES_TO_TOUCH.
