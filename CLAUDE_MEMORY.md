@@ -1775,3 +1775,32 @@ Build: ✓ 912ms.
 - E2E result: bug 1e0db7b5 — classification=backend_safe, VM fixed phase_overdue typo (commit 69daca5), Vercel build READY (dpl_9bwKVyfwTknC3CWgQNjzEKoWAcwE), bug_reports.status=auto_fixed, vercel_deployment_id populated. All assertions PASS.
 - Safety gap closed: a commit that passes Claude Code but breaks the build will now be reverted automatically before the status reaches auto_fixed.
 - Next: Phase E (TodoCard state wiring), Phase F (audit dashboard — optional). System is production-safe.
+
+[LOG — 2026-05-23 — AUTO_FIX_ARC Phase E SHIPPED. Failed-intent todo ↔ bug report loop closure wired.]
+- Action: Linked the failed-intent Resume todo to the bug_reports status lifecycle so users see real-time AI fix progress in TodayScr/MyTodosScreen.
+- Files: supabase/migrations/20260523030000_todos_bug_report_id.sql (new), avenstone-vite/src/lib/supabase.js (captureFailedIntent + sbLinkBugToTodo), avenstone-vite/src/components/shared/MasterAgent.jsx (captureFailedIntent→todoId plumbing, submitBug links todo), avenstone-vite/src/components/common/TodoCard.jsx (realtime subscription + 5 status states)
+- Commit: cc15cf9
+
+Schema changes:
+  - todos.bug_report_id UUID FK → bug_reports(id) ON DELETE SET NULL + sparse index
+  - bug_reports added to supabase_realtime publication (realtime subscription now works)
+
+Data flow:
+  1. Confirmed tool failure → captureFailedIntent() → todo row written, todoId returned
+  2. todoId stored in ai_error message object
+  3. User taps "Report bug" → submitBug(description, msg.todoId) → bug_report row created (data.bug_id)
+  4. sbLinkBugToTodo(todoId, bugReportId) → patches todos.bug_report_id
+  5. ai-auto-fix-dispatcher fires (status: attempting → auto_fixed | auto_fix_failed | auto_fix_unknown | needs_human)
+  6. TodoCard realtime subscription fires → UI updates inline
+
+TodoCard status states:
+  - attempting: amber spinner "AI fix in progress…"
+  - auto_fixed: green "✓ AI fixed it" + green "↩ Try again" button (re-fires handleResume)
+  - auto_fix_failed / auto_fix_unknown / needs_human: amber label + Resume button preserved
+  - No bug_report_id / default: original Resume button behavior unchanged
+
+Push notifications (Phase E skip):
+  - send-push edge fn exists but no client-side push subscription write path → users not subscribed → push won't deliver
+  - Deferred: implement push subscription write path (PushManager.subscribe + INSERT into push_subscriptions) before send-push is useful for this flow
+
+- Next: Phase F (audit dashboard — optional). All four core AUTO_FIX_ARC phases shipped.
