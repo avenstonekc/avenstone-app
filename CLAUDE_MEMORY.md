@@ -1729,3 +1729,8 @@ Build: ✓ 912ms.
 - Anthropic call succeeded on first try — API recovered from 529 capacity issue (2026-05-22).
 - VM correctly did not fire (frontend classification is ineligible for auto-dispatch).
 - Phase C ready for production traffic. Next: Phase D (Vercel build check + revert), Phase E (TodoCard state wiring), Phase F (audit dashboard — optional).
+
+[LOG — 2026-05-23]
+- Action: Fixed `.splitt` typo → `.split` on `profile.full_name` at notify-email/index.ts:45.
+- Files: supabase/functions/notify-email/index.ts
+- Decision: Edge fn was crashing with TypeError for every user with full_name set (greeting line called undefined method). Single-character typo, single-line fix, no surrounding refactor.
