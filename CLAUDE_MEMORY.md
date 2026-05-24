@@ -1857,3 +1857,11 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - PWA install prompt UX (if not present today)
 
 **No urgent action items.** Auto-fix system runs autonomously. UptimeRobot + credential cron handle vigilance. Next session can start cold with the audit.
+
+[LOG — 2026-05-23 — PUSH_NOTIFICATIONS_ARC.md blueprint created. Option B locked.]
+- Action: Created PUSH_NOTIFICATIONS_ARC.md at repo root. Dual-channel push notifications blueprint: APNs (iOS native) + Web Push (PWA), APNs ships first.
+- Files: PUSH_NOTIFICATIONS_ARC.md (new), OPUS_RULES.md (arc docs list updated), CLAUDE_MEMORY.md (this entry)
+- Decision: Option B — dual-channel designed from day one. `push_subscriptions.channel` enum ('web'|'apns') is source of truth. send-push branches per row. APNs ships as v1; Web Push (Phase 6) is a later additive slice requiring no schema or edge fn changes.
+- Audit basis: 2026-05-23 push/PWA/iOS audit. FK pre-check: zero FK references to push_subscriptions from any other table — Phase 1 migration is clean.
+- 5 phases scoped (Phase 6 deferred): Phase 1 schema, Phase 2 manifest, Phase 3 APNs iOS config, Phase 4 client registration, Phase 5 send-push APNs branch + trigger fan-out.
+- Open: Phase 1 is the trigger to start building. APNs cert config (Phase 3 manual step by Kalin) and Deno APNs lib choice (Phase 5 audit-first) are the two unresolved pre-flight questions.

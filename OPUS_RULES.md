@@ -12,7 +12,7 @@ At the start of every web-chat session — before responding to the user's first
 - https://raw.githubusercontent.com/avenstonekc/avenstone-app/refs/heads/main/CLAUDE.md
 - https://raw.githubusercontent.com/avenstonekc/avenstone-app/refs/heads/main/OPUS_RULES.md
 
-Fetch additional arc docs as needed when the conversation touches a specific arc. Currently active arc docs in the repo: AGENT_CARDS_ARC.md, AGENT_OPS_ARC.md, DAILY_LOG_ARC.md, EXECUTION_ARC.md, INVOICING_ARC.md, VOICE_AGENT.md. Future arc docs may be added — when in doubt, list the repo root with raw.githubusercontent.com or check CLAUDE_MEMORY.md's open-items section for arc names.
+Fetch additional arc docs as needed when the conversation touches a specific arc. Currently active arc docs in the repo: AGENT_CARDS_ARC.md, AGENT_OPS_ARC.md, DAILY_LOG_ARC.md, EXECUTION_ARC.md, INVOICING_ARC.md, PUSH_NOTIFICATIONS_ARC.md, VOICE_AGENT.md. Future arc docs may be added — when in doubt, list the repo root with raw.githubusercontent.com or check CLAUDE_MEMORY.md's open-items section for arc names.
 
 URL form is mandatory: `refs/heads/main` — NOT `/main/`. The shorter form is CDN-cached and returns stale content.
 
