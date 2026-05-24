@@ -76,6 +76,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **on_notification_insert trigger now has priority gate** (AGENT_OPS Phase 2.2, 2026-05-20). Migration: 20260520160000_notification_email_trigger_priority_gate.sql. Trigger recreated with `WHEN (NEW.email_sent IS NOT TRUE)`. Priority gate contract: executor sets `email_sent = priority !== 'high'` at INSERT time — high priority emails; medium/low do not. Verified in pg_trigger via `pg_get_triggerdef`.
 - **ai-master-agent has 17 tools** (Phase 2.2, 2026-05-20): added `notify_team_member` (CONFIRM_TOOLS). Total: get_jobs, get_team, create_job, update_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, update_phase, submit_change_order, log_payment, log_receipt, notify_team, add_todo, notify_team_member, add_knowledge.
 - **CONFIRM_TOOLS now has 6 verbs** (Phase 2.2, 2026-05-20): log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member.
+- **`trg_notification_push_fanout` trigger EXISTS on `notifications`** (PUSH_NOTIFICATIONS_ARC Phase 5, 2026-05-24). AFTER INSERT, calls `fn_notification_push_fanout()` which async-invokes `notification-push-fanout` edge fn via `net.http_post`. Independent from `on_notification_insert` email trigger — both fire on every INSERT. 2 other pre-existing Dashboard-created triggers also on notifications: `on_notification_insert_push`, `on_notification_insert_sms` — not in local migration files.
 - **`push_subscriptions` is now dual-channel** (PUSH_NOTIFICATIONS_ARC Phase 1, 2026-05-23). Columns: `id, user_id, channel ('web'|'apns'), endpoint, p256dh, auth, apns_token, created_at`. Two partial unique indexes: `idx_push_sub_web_unique` on (user_id, endpoint) WHERE channel='web'; `idx_push_sub_apns_unique` on (user_id, apns_token) WHERE channel='apns'. `channel_payload_check` enforces web rows have endpoint+p256dh+auth (apns_token NULL) and apns rows have apns_token only. 7 existing rows backfilled to channel='web'. Migration: 20260523100000_push_subscriptions_dual_channel.sql.
 
 ---
@@ -1931,4 +1932,18 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - 6 phases scoped: schema/RLS, read-only edge fns, Field-Opus brain (split across 2 prompts), VM dispatch wiring, client UI, polish + auth-gate smoke tests. Est 7 prompts total.
 - Files: FIELD_OPUS_ARC.md (new), CLAUDE_MEMORY.md (this entry + active arcs bullet), OPUS_RULES.md (active arc docs list).
 - Trade-aware: single-user feature gated to Kalin's auth ID. No tenant/trade concerns.
+
+[LOG — 2026-05-24 — PUSH_NOTIFICATIONS_ARC Phase 5: send-push APNs branch + push fan-out trigger shipped.]
+- Action: Phase 5 of PUSH_NOTIFICATIONS_ARC shipped. Server-side push delivery fully wired.
+- Files: supabase/functions/send-push/index.ts (refactored), supabase/functions/notification-push-fanout/index.ts (new), supabase/migrations/20260524100000_notification_push_fanout_trigger.sql (new + applied).
+- send-push: dual-channel on subscription.channel. APNs path: raw HTTP/2 fetch to api.push.apple.com, ES256 JWT via crypto.subtle (PKCS8 ECDSA P-256), 50-min JWT cache. Input contract changed from {record:{}} wrapper to flat {user_id, title, body, deep_link, priority}. Zero prior callers — breaking change safe. Web-push 410/404 stale cleanup already existed — preserved unchanged. Failures log to ai_error_logs.
+- notification-push-fanout: receives {record: <notif row>} from DB trigger. Filters to 7 existing push types. Builds per-type title + deep_link. Calls send-push. Always returns HTTP 200 (never blocks INSERT). Errors → ai_error_logs best-effort.
+- Push types wired (7 existing types — arc doc's 4 type names did not exist in notifications_type_check; mapped to actual emitted types): todo_delegated, assigned_to_job, schedule_item_created, schedule_item_changed, co_submitted, co_approved, co_rejected.
+- Trigger mechanism: pg_net.http_post — mirrors trigger_notify_email pattern exactly (anon JWT, hardcoded URL, {record: row_to_json(NEW)} body). trigger_notify_email was Supabase Dashboard-created webhook; its definition was NOT in any local migration file.
+- Audit finding: notifications table has no priority column. Push fan-out always passes priority='medium' (APNs priority 5). Acceptable for v1.
+- Audit finding: 2 pre-existing triggers on notifications not in local migration files (on_notification_insert_push, on_notification_insert_sms) — likely Dashboard Webhooks for older paths. Not touched, not in scope.
+- APNs secrets: all 4 confirmed set (APNS_KEY_ID=A79823RWQZ, APNS_TEAM_ID=5LDNZFSR2A, APNS_BUNDLE_ID=com.avenstonekc.avenstone, APNS_AUTH_KEY=.p8 contents).
+- Smoke Test 1 (non-push type): PASS. Smoke Test 2 (push type, no APNs subscription): PASS. Smoke Test 3 (push type WITH APNs subscription): skipped — no subscription registered yet (deferred to post-TestFlight on-device verification).
+- Commits: c51b4ef, 146ee7c, 1758ed6 (all pushed to main).
+- Open: On-device push verification awaits next Codemagic build → TestFlight → permission grant → apns_token registered → real notification INSERT → push arrives on device. Phase 6 (Web Push SW slice) still deferred.
 - Open: build starts 2026-05-24 morning. PUSH_NOTIFICATIONS_ARC Phase 5 + Phase 6 still pending. APNs cert checklist still pending Kalin.

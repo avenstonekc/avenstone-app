@@ -18,7 +18,7 @@ Audit basis: 2026-05-23 (see CLAUDE_MEMORY.md handoff entry). iOS native push: z
 
 5. **Tap routes to in-app target.** Every push payload includes `data.deep_link` (e.g. `/job/<id>/todos`, `/job/<id>/financials`). Tap handler reads it and navigates via existing app state. No new routing infra in v1 — uses current `selJ` setter pattern. URL-based routing is a separate backlog item.
 
-6. **Four notification types in v1.** todo_assigned (cross-user), job_assigned, schedule_item_assigned, change_order_status. All four already emit `notifications` rows today — push is an additional fan-out, not a replacement for email.
+6. **Seven notification types in v1.** Mapped to existing constraint types (audit 2026-05-24: none of the arc doc type names existed in notifications_type_check — mapped to actual emitted types instead): `todo_delegated`, `assigned_to_job`, `schedule_item_created`, `schedule_item_changed`, `co_submitted`, `co_approved`, `co_rejected`. All seven already emit `notifications` rows today — push is an additional fan-out, not a replacement for email.
 
 7. **Priority gate already exists.** `on_notification_insert` trigger has a `WHEN (NEW.email_sent IS NOT TRUE)` clause (AGENT_OPS Phase 2.2, 2026-05-20). Push fan-out lives alongside email — same trigger, new branch. High-priority notifications push AND email; medium/low push only.
 
@@ -69,14 +69,19 @@ Audit basis: 2026-05-23 (see CLAUDE_MEMORY.md handoff entry). iOS native push: z
 - No Web Push path yet — function is APNs-only with a `// TODO: Web Push slice` comment at the gate.
 - Verification: build passes, on-device TestFlight test confirms token lands in push_subscriptions.
 
-### Phase 5 — send-push APNs branch + notification trigger fan-out (1 prompt)
-- send-push edge fn: add APNs path using `apns2` Deno-compatible lib (audit available libs in prompt — fallback: raw HTTP/2 fetch to APNs endpoint with JWT auth).
-- Branch on `subscription.channel`: 'web' → existing web-push code path (preserved verbatim), 'apns' → new APNs path.
-- Payload contract (channel-agnostic input): `{ user_id, title, body, deep_link, priority }`. send-push internally fans out to all subscriptions for that user_id, branches per row.
-- APNs auth: APNS_KEY_ID, APNS_TEAM_ID, APNS_AUTH_KEY as new function secrets (Kalin sets these manually after Phase 3 cert config).
-- Wire `on_notification_insert` trigger to fan out to push for the four v1 types: todo_assigned, job_assigned, schedule_item_assigned, change_order_status. Trigger calls send-push with the notification row's user_id + type-appropriate copy + deep_link derived from related_entity.
-- Email + push co-exist: existing email path unchanged, push is added in parallel under the same trigger.
-- Verification: insert a test notification of each of the 4 types for a registered iOS user → push arrives on device → tap routes to correct screen.
+### Phase 5 — send-push APNs branch + notification trigger fan-out — ✅ SHIPPED 2026-05-24
+- send-push edge fn: dual-channel fan-out on `subscription.channel`. APNs path: raw HTTP/2 fetch to `api.push.apple.com`, ES256 JWT via `crypto.subtle` (PKCS8 PEM → DER import), 50-min JWT cache. Stale-token cleanup on 410/BadDeviceToken/Unregistered for both channels.
+- Input contract changed from `{ record: {...} }` wrapper to flat `{ user_id, title, body, deep_link, priority }`. Zero prior callers — breaking change safe.
+- New edge fn `notification-push-fanout`: receives `{ record: <notif row> }` from DB trigger, filters to 7 push types, builds per-type title + deep_link, calls send-push.
+- DB trigger: `trg_notification_push_fanout` on notifications INSERT → `fn_notification_push_fanout()`. Mirrors `trigger_notify_email` pattern (pg_net.http_post, hardcoded URL + anon JWT). Independent from email trigger — both fire on every INSERT.
+- Audit finding: trigger mechanism is pg_net (not supabase_functions.http_request as originally assumed). `trigger_notify_email` was created via Supabase Dashboard Webhooks UI — not in local migration files.
+- Audit finding: `notifications` table has no `priority` column — push fan-out always uses 'medium' priority (APNs priority 5). Acceptable for v1.
+- APNs secrets: all 4 confirmed set (APNS_KEY_ID, APNS_TEAM_ID, APNS_AUTH_KEY, APNS_BUNDLE_ID).
+- Verification A/B/C: trigger + function confirmed in pg_trigger / pg_proc. Both push + email triggers coexist on notifications. ✓
+- Smoke Test 1 (daily_log_sent — non-push type): INSERT landed, no ai_error_logs row. ✓ PASS
+- Smoke Test 2 (todo_delegated — push type, no APNs subscription): INSERT landed, send-push returned {sent:0, failed:0}, no ai_error_logs row. ✓ PASS
+- Smoke Test 3: skipped — no APNs subscription registered yet. Deferred to post-TestFlight verification (Phase 4 client code needs to run on device, user grants permission, token lands in push_subscriptions).
+- Commits: c51b4ef (send-push APNs branch), 146ee7c (notification-push-fanout edge fn), 1758ed6 (trigger migration).
 
 ### Phase 6 — Web Push slice (DEFERRED, blueprint only)
 - Triggers when: browser-based or Android distribution becomes a priority, OR there's user demand for non-iOS push.
@@ -105,20 +110,46 @@ push_subscriptions
 
 ---
 
-## send-push contract (post-Phase 5)
+## send-push contract (post-Phase 5, SHIPPED)
 
 ```
 POST /functions/v1/send-push
-Body: { user_id: UUID, title: string, body: string, deep_link: string, priority: 'high'|'medium'|'low' }
+Body: { user_id: UUID, title: string, body: string, deep_link?: string, priority?: 'high'|'medium'|'low' }
 Returns: { ok: boolean, sent: number, failed: number, errors: [{ subscription_id, channel, error }] }
 
 Behavior:
-  1. Load all push_subscriptions for user_id.
+  1. Load all push_subscriptions for user_id (select id, channel, endpoint, p256dh, auth, apns_token).
   2. For each row: branch on channel.
-     - 'web' → webpush.sendNotification(subscription, JSON.stringify(payload))
-     - 'apns' → APNs HTTP/2 POST with JWT auth, apns-topic = bundle id, payload includes aps.alert + data.deep_link
-  3. Aggregate results, log failures to ai_error_logs.
-  4. Subscription cleanup: on 410 Gone (web) or BadDeviceToken (apns) → delete the row.
+     - 'web' → webpush.sendNotification(subscription, JSON.stringify({title, body, url: deep_link||'/', tag:'avenstone'}))
+     - 'apns' → fetch('https://api.push.apple.com/3/device/<apns_token>') POST with ES256 JWT,
+                apns-topic = APNS_BUNDLE_ID, payload: { aps: { alert: {title, body}, sound:'default' }, data: { deep_link } }
+  3. Aggregate results. Log failures to ai_error_logs (function_name='send-push') if failed > 0.
+  4. Subscription cleanup: on 410 Gone / 404 (web) or status 410 / BadDeviceToken / Unregistered (apns) → delete the row.
+
+Note: notifications table has no priority column — push fan-out always passes priority='medium'.
+Direct callers (non-trigger path) can pass priority='high' for APNs priority 10 (immediate delivery).
+```
+
+## notification-push-fanout trigger chain (SHIPPED)
+
+```
+DB: INSERT INTO notifications (...)
+  → trg_notification_push_fanout (AFTER INSERT, via fn_notification_push_fanout)
+  → net.http_post → /functions/v1/notification-push-fanout
+      { record: <notif row as JSON> }
+  → if type in PUSH_TYPES: fetch /functions/v1/send-push
+      { user_id, title, body, deep_link, priority: 'medium' }
+  → fan out to all push_subscriptions for user_id
+
+PUSH_TYPES: todo_delegated, assigned_to_job, schedule_item_created,
+            schedule_item_changed, co_submitted, co_approved, co_rejected
+
+Deep links generated per type:
+  todo_delegated          → /job/<job_id>/todos  (or /today)
+  assigned_to_job         → /job/<job_id>         (or /jobs)
+  schedule_item_created   → /job/<job_id>/schedule (or /today)
+  schedule_item_changed   → /job/<job_id>/schedule (or /today)
+  co_submitted/approved/rejected → /job/<job_id>/financials (or /jobs)
 ```
 
 ---
@@ -139,4 +170,4 @@ Behavior:
 
 - Phase 1: confirm no FK references to push_subscriptions exist (audit pg_constraint). If any, account for them in the migration.
 - Phase 3: APNs cert config — Kalin needs to walk through Apple Developer Portal steps. Document in arc doc as a manual checklist before Phase 4 ships.
-- Phase 5: confirm Deno APNs lib choice (apns2 vs raw HTTP/2). If raw HTTP/2, vendor in the JWT signing logic. Audit before writing the slice.
+- Phase 5: ✅ Resolved — raw HTTP/2 via Deno fetch + crypto.subtle ES256 JWT. No external lib needed.
