@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, sbCountPendingTodos, AI_PM_NIGHTLY_URL, ANON_KEY } from './lib/supabase';
+import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, sbCountPendingTodos, AI_PM_NIGHTLY_URL, ANON_KEY, FIELD_OPUS_USER_ID } from './lib/supabase';
 import { initBugContext, pushBreadcrumb } from './lib/bugContext';
 import { registerForPush } from './lib/push';
 import { Ic, STATS, sc, sl, f$, ls, ll } from './lib/utils';
@@ -261,6 +261,9 @@ export default function App() {
               <span style={{ width: 20, height: 20, display: 'flex' }}>{Ic.bell}</span>
               {unreadCount > 0 && <span style={{ position: 'absolute', top: 0, right: 0, background: '#C9A84C', color: '#0A1F44', width: 16, height: 16, borderRadius: '50%', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{unreadCount > 9 ? '9+' : unreadCount}</span>}
             </button>
+            {profile?.id === FIELD_OPUS_USER_ID && (
+              <button onClick={() => window.dispatchEvent(new CustomEvent('field-opus:open'))} title="Field-Opus Dev Console" style={{ background: 'transparent', border: '1.5px solid #C9A84C', borderRadius: 6, cursor: 'pointer', color: '#C9A84C', fontWeight: 700, fontSize: 10, padding: '3px 7px', letterSpacing: '0.04em', lineHeight: 1, flexShrink: 0 }}>DEV</button>
+            )}
             <button onClick={() => setShowSettings(true)} title="Profile" style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%', cursor: 'pointer', color: '#fff', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               {(profile?.full_name || 'U')[0].toUpperCase()}
             </button>
@@ -280,6 +283,14 @@ export default function App() {
                 <span style={{ width: 16, height: 16, display: 'flex' }}>{Ic.bell}</span>
                 {unreadCount > 0 && <span style={{ position: 'absolute', top: -6, right: -6, background: '#C9A84C', color: '#0A1F44', width: 18, height: 18, borderRadius: '50%', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{unreadCount > 9 ? '9+' : unreadCount}</span>}
               </button>
+              {profile?.id === FIELD_OPUS_USER_ID && (
+                <button onClick={() => window.dispatchEvent(new CustomEvent('field-opus:open'))} title="Field-Opus Dev Console"
+                  style={{ background: 'transparent', border: '1px solid #C9A84C', color: '#C9A84C', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, fontWeight: 700, fontSize: 11, letterSpacing: '0.04em', transition: 'all 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(201,168,76,0.1)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  DEV
+                </button>
+              )}
             </div>
           </div>
 

@@ -313,6 +313,12 @@ export default function FieldOpusPanel({ profile }) {
     }).catch(() => setMicAvailable(false));
   }, []);
 
+  useEffect(() => {
+    const handler = () => setOpen(true);
+    window.addEventListener('field-opus:open', handler);
+    return () => window.removeEventListener('field-opus:open', handler);
+  }, []);
+
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
@@ -458,32 +464,6 @@ export default function FieldOpusPanel({ profile }) {
           30% { transform: translateY(-5px); }
         }
       `}</style>
-
-      {/* Floating trigger button */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          position: 'fixed',
-          top: 14,
-          right: 80,
-          zIndex: 9999,
-          width: 36,
-          height: 36,
-          borderRadius: 18,
-          background: '#0A1F44',
-          border: '1.5px solid #C9A84C',
-          color: '#C9A84C',
-          fontWeight: 700,
-          fontSize: 11,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          letterSpacing: '0.04em',
-        }}
-      >
-        DEV
-      </button>
 
       {/* Panel */}
       <div style={panelStyle}>
