@@ -470,7 +470,10 @@ export default function FieldOpusPanel({ profile }) {
         {/* Header */}
         <div style={{
           flexShrink: 0,
-          padding: '14px 16px',
+          paddingTop: 'calc(env(safe-area-inset-top) + 14px)',
+          paddingBottom: '14px',
+          paddingLeft: '16px',
+          paddingRight: '16px',
           borderBottom: '1px solid rgba(201,168,76,0.2)',
           display: 'flex',
           alignItems: 'center',
