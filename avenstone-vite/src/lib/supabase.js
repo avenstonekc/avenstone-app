@@ -489,8 +489,16 @@ export const sbLoadNotifs = async () => {
   return data || [];
 };
 export const sbMarkNotifsRead = async ids => {
-  if (!ids.length) return;
-  await sb.from('notifications').update({ read: true }).in('id', ids).catch(err => console.error('[sbMarkNotifsRead]', err));
+  if (!ids?.length) return;
+  try {
+    const { error } = await sb
+      .from('notifications')
+      .update({ read: true })
+      .in('id', ids);
+    if (error) console.error('[sbMarkNotifsRead]', error);
+  } catch (e) {
+    console.error('[sbMarkNotifsRead]', e);
+  }
 };
 const getTenantStaffIds = async () => {
   const { data } = await sb.from('profiles').select('id').eq('tenant_id', AV_TENANT).in('role', ['owner','project_manager','sales_rep']);
