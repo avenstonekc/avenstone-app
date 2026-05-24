@@ -255,6 +255,7 @@ export default function FieldOpusPanel({ profile }) {
   const inputRef = useRef(null);
   const micHandlersRef = useRef([]);
   const realtimeRef = useRef(null);
+  const dispatchTimeoutRef = useRef(null);
 
   const isMobile = isMob();
 
@@ -274,6 +275,10 @@ export default function FieldOpusPanel({ profile }) {
         table: 'field_opus_messages',
         filter: `thread_id=eq.${FIELD_OPUS_THREAD_ID}`,
       }, (payload) => {
+        if (payload.new.role === 'dispatch_result') {
+          if (dispatchTimeoutRef.current) clearTimeout(dispatchTimeoutRef.current);
+          setDispatchingId(null);
+        }
         setMessages(prev => {
           if (prev.some(m => m.id === payload.new.id)) return prev;
           const filtered = payload.new.role === 'user'
@@ -316,7 +321,10 @@ export default function FieldOpusPanel({ profile }) {
   useEffect(() => {
     const handler = () => setOpen(true);
     window.addEventListener('field-opus:open', handler);
-    return () => window.removeEventListener('field-opus:open', handler);
+    return () => {
+      window.removeEventListener('field-opus:open', handler);
+      if (dispatchTimeoutRef.current) clearTimeout(dispatchTimeoutRef.current);
+    };
   }, []);
 
   // -------------------------------------------------------------------------
@@ -359,6 +367,17 @@ export default function FieldOpusPanel({ profile }) {
 
   const dispatch = async (messageId, prompt) => {
     setDispatchingId(messageId);
+    // 10-min timeout safeguard — clears button if VM never calls back
+    if (dispatchTimeoutRef.current) clearTimeout(dispatchTimeoutRef.current);
+    dispatchTimeoutRef.current = setTimeout(() => {
+      setDispatchingId(null);
+      setMessages(prev => [...prev, {
+        id: `to-${Date.now()}`, role: 'system',
+        content: 'Dispatch timeout: no result after 10 minutes. Check VM logs.',
+        meta: {}, created_at: new Date().toISOString(),
+      }]);
+    }, 10 * 60 * 1000);
+
     try {
       const headers = await getAuthHeader();
       const res = await fetch(FIELD_OPUS_DISPATCH_URL, {
@@ -368,19 +387,25 @@ export default function FieldOpusPanel({ profile }) {
       });
       const json = await res.json();
       if (!json.ok) {
+        // Enqueue failed — clear immediately, no point waiting for realtime
+        if (dispatchTimeoutRef.current) clearTimeout(dispatchTimeoutRef.current);
+        setDispatchingId(null);
         setMessages(prev => [...prev, {
           id: `err-${Date.now()}`, role: 'system',
           content: `Dispatch: ${json.error || 'unknown error'}`, meta: {}, created_at: new Date().toISOString(),
         }]);
       }
+      // Enqueue succeeded: leave dispatchingId set.
+      // Realtime dispatch_result handler clears it when VM result arrives.
     } catch (err) {
+      if (dispatchTimeoutRef.current) clearTimeout(dispatchTimeoutRef.current);
+      setDispatchingId(null);
       setMessages(prev => [...prev, {
         id: `err-${Date.now()}`, role: 'system',
         content: `Dispatch error: ${err.message || String(err)}`, meta: {}, created_at: new Date().toISOString(),
       }]);
-    } finally {
-      setDispatchingId(null);
     }
+    // No finally — clearing handled per-case above (or by realtime on success).
   };
 
   const resetThread = async () => {
