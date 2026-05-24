@@ -1970,3 +1970,16 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Trade-aware: dev-tool surface, no tenant/trade assumptions.
 - Commits: f829046 (fetch-file), 33c3dfc (db-query). Pushed to main.
 - Open: Phase 3 (field-opus-chat — the Opus brain — wires these two as tool_use). Phase 4 (VM dispatch). Phase 5 (client UI). Phase 6 (polish).
+
+[LOG — 2026-05-24 — FIELD_OPUS_ARC Phase 3a shipped — chat brain scaffolding]
+- Action: Phase 3a of FIELD_OPUS_ARC shipped. Edge function field-opus-chat — Opus brain scaffolding with tools registered but stubbed.
+- Model: claude-opus-4-7 via Anthropic API. max_tokens 4096. cache_control: ephemeral on system prompt (array form) + last tool (cache the tools block too). No anthropic-beta header needed (caching is GA).
+- System prompt: identity + role + tone + 4 governing docs (CLAUDE.md, CLAUDE_MEMORY.md, OPUS_RULES.md, FIELD_OPUS_ARC.md) fetched from GitHub raw at every call. 100KB truncation per doc.
+- 4 tools declared: read_source_file, query_db, draft_sonnet_prompt, note_decision. Only draft_sonnet_prompt is functional in 3a (structured output, input surfaced directly to client). Other three return stub errors — Phase 3b implements tool execution loop.
+- Thread persistence: field_opus_messages writes via service-role client. RLS bypassed (already auth-verified). Single-thread v1.
+- dispatch_result + system roles in thread converted to user-role messages for the API — interim shape until Phase 3b/4 polish.
+- Auth gate: JWT → auth.getUser() → reject if id !== Kalin UUID. 403 on failure.
+- Smoke tests: Test 1 (no auth → 403) deferred to post-deploy. Test 2 (real message) deferred to Phase 5 when client UI exists.
+- Trade-aware: dev-tool, single-user, no tenant/trade concerns.
+- Commit: b67ee95. Pushed to main.
+- Open: Phase 3b (implement 3 stubbed tool executors + tool-use loop). Phase 4 (VM dispatch wiring). Phase 5 (client UI). Phase 6 (polish).
