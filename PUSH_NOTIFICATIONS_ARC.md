@@ -48,7 +48,7 @@ Audit basis: 2026-05-23 (see CLAUDE_MEMORY.md handoff entry). iOS native push: z
 - No service worker yet. No sw.js. This phase is pure installability — "Add to Home Screen" on Chrome/Android/Safari.
 - Verify: build passes, manifest accessible at /manifest.json after Vercel deploy.
 
-### Phase 3 — APNs plugin install + iOS config (1 prompt)
+### Phase 3 — APNs plugin install + iOS config — ✅ SHIPPED 2026-05-24
 - `npm install @capacitor/push-notifications@8.x` (Cap 8 version, matching project).
 - `npx cap sync ios`.
 - Add `UIBackgroundModes` with `remote-notification` to Info.plist.

@@ -61,5 +61,9 @@
 	<string>Avenstone uses speech recognition to transcribe your voice into the assistant chat.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Avenstone tags scan locations to attach captures to the correct property.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

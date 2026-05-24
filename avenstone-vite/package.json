@@ -17,6 +17,7 @@
     "@capacitor/cli": "^8.3.0",
     "@capacitor/core": "^8.3.0",
     "@capacitor/ios": "^8.3.0",
+    "@capacitor/push-notifications": "^8.1.1",
     "@capgo/capacitor-speech-recognition": "^8.1.2",
     "@supabase/supabase-js": "^2.103.0",
     "heic2any": "^0.0.4",
