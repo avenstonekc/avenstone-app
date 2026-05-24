@@ -1819,3 +1819,41 @@ Push notifications (Phase E skip):
 - Credentials tracked: GitHub PAT (2026-08-20), Vercel token (2026-08-21), Cloudflare cert.pem (2027-05-22).
 - Tested locally: green pass + exit 1 with near-expiry override both confirmed.
 - Files: scripts/credential-expirations.json (new), scripts/credential-renewal-check.js (new), .github/workflows/credential-check.yml (new). Commit: c4978f4.
+
+---
+
+## 2026-05-23 (continued) — Session handoff for push/PWA/iOS audit
+
+**AUTO_FIX_ARC COMPLETE (this session):**
+- Phase A (VM infra), Phase C (dispatcher), Phase D (Vercel build check + revert), Phase E (TodoCard wiring + realtime) all shipped and verified end-to-end.
+- Operational watchdogs: UptimeRobot monitor on https://autofix.avenstonekc.com/health (5-min interval) + GitHub Actions daily cron at 14:00 UTC checking credential expirations (warns 14 days out).
+- Test data wiped — bug_reports and auto_fix_attempts both empty for clean production baseline.
+- System is autonomous, runs unattended. Real bugs going forward will be the live test.
+
+**Phase F (audit dashboard for auto_fix_attempts) — DEFERRED.** Not building until there's real bug data to surface. Optional polish.
+
+**Open question carried into next session — PUSH NOTIFICATIONS:**
+
+Kalin wants push notifications for four event types: todo assignments (cross-user high priority), job assignments, schedule items, change order status changes.
+
+Opus started scoping a Web Push (PWA) slice but realized mid-conversation that Avenstone has a native iOS app via Capacitor distributed via TestFlight — which uses APNs, not Web Push. The scoping was wrong. Need to audit actual state before slicing.
+
+Specific questions for fresh-session audit:
+1. Is Capacitor Push Notifications plugin already installed? If yes, is APNs cert wired? Is the iOS app already capable of receiving native pushes?
+2. Does send-push edge fn target Web Push, APNs, both? What payload shape does it produce?
+3. push_subscriptions table schema — does it have columns for both web push (endpoint, p256dh, auth) and native (apns_token, fcm_token)?
+4. PWA setup — is there a sw.js / manifest.json that supports Web Push, or is the PWA functionality limited to install/caching?
+5. What does the "install" experience look like today for a non-iOS user (Chrome desktop, Android)? Can they install as PWA?
+
+Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND iOS native app (TestFlight → eventual App Store), and push notifications should work cleanly in both contexts without being clunky. This is achievable (standard pattern — Notion/Linear/Slack/etc all do this) but requires knowing where the codebase currently is vs that target.
+
+**Trigger for next session:** Run the dedicated audit prompt (separate document) that diagnoses each of the above questions, then propose the smallest slice to close the gap.
+
+**What stays open/unsolved until that audit:**
+- Push notification subscribe path on web (PWA)
+- Push notification subscribe path on iOS native (Capacitor)
+- send-push routing logic (does it auto-detect platform per subscription?)
+- iOS deep-link handling on notification tap
+- PWA install prompt UX (if not present today)
+
+**No urgent action items.** Auto-fix system runs autonomously. UptimeRobot + credential cron handle vigilance. Next session can start cold with the audit.
