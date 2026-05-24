@@ -29,6 +29,7 @@ import CompletionPage from './components/public/CompletionPage';
 import LeadsScr from './components/leads/LeadsScr';
 import AiFieldAgent from './components/ai/AiFieldAgent';
 import MasterAgent from './components/shared/MasterAgent';
+import FieldOpusPanel from './components/shared/FieldOpusPanel';
 import SequencesScr from './components/common/SequencesScr';
 import AiPmDashboard from './components/dashboard/AiPmDashboard';
 import TodayScr from './components/dashboard/TodayScr';
@@ -339,6 +340,7 @@ export default function App() {
       {showNotif && <NotifPanel notifs={notifs} onClose={() => setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif} />}
       {showSettings && <SettingsModal profile={profile} setProfile={setProfile} onClose={() => setShowSettings(false)} />}
       {profile?.role === 'owner' && <MasterAgent profile={profile} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} suggestedJobId={viewportJobId} jobs={jobs} />}
+      <FieldOpusPanel profile={profile} />
     </>
   );
 }
