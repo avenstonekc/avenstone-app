@@ -56,7 +56,7 @@ Locked 2026-05-23. Build target: tomorrow morning.
 - Anthropic API call uses prompt caching on the system + tool block (per existing pattern in ai-master-agent).
 - Split across 2 prompts: Prompt A = scaffolding (edge fn skeleton, message handling, thread load, system prompt assembly). Prompt B = tools (read_source_file, query_db, draft_sonnet_prompt, note_decision) + Anthropic API call + response shape.
 
-### Phase 4 — VM dispatch wiring (1 prompt)
+### Phase 4 — VM dispatch wiring — ⚠️ PARTIALLY SHIPPED 2026-05-24 (Supabase side complete; VM /dispatch-interactive endpoint pending — VM source not in repo)
 - New edge function `field-opus-dispatch-to-vm`. Receives `{ prompt, thread_id, message_id }` from client (called when Kalin taps "Send to VM" on a draft_sonnet_prompt card).
 - Calls AUTO_FIX_ARC VM HTTPS endpoint with the prompt. VM runs Claude Code Sonnet. Same VM as autofix.avenstonekc.com — but a new endpoint `/dispatch-interactive` that:
   - Accepts a raw prompt (vs the bug_reports row path).
