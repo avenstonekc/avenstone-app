@@ -101,6 +101,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - `VOICE_AGENT_ARC.md` — voice as first-class interface for in-field PM workflows. Reads EXECUTION_ARC data (checklists, todos, schedule items, phase context). See existing VOICE_AGENT.md.
 - `SALES_PIPELINE_ARC.md` — leads → qualified → consultations scheduled → proposals → contracts. Currently jobs start at `lead` phase; lead-handling is outside the platform. Open question whether platform should own this.
 - `CODE_JURISDICTION_ARC.md` — jurisdiction-aware inspection checklists (KC vs Overland Park, 2018 vs 2021 IRC). Hardcoded starter set is v1; AI-seeded jurisdiction-aware templates are the real moat play.
+- `FIELD_OPUS_ARC.md` — Opus-in-the-app dev console for Kalin. Hard-gated to Kalin's auth ID. Conversation interface inside the app, dispatches Sonnet prompts to the AUTO_FIX_ARC VM. 6 phases scoped; blueprint shipped 2026-05-23. Target build: 2026-05-24 morning.
 - `AUTO_FIX_ARC.md` — Dev-loop accelerator for the 2-user phase (Kalin + Blake). Gets ripped out before public launch — strictly internal tool, not a product feature.
 
   **The loop:**
@@ -1920,3 +1921,14 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - App.jsx useEffect (gated on profile?.id): onDeepLink callback routes /job/<id> → setPendingJobId + setPg('jobs'); /todo/<id> → setPg('today'); unknown patterns no-op.
 - Build: ✓ 377 modules, 559ms. cap sync: ✓ 3 plugins confirmed.
 - Open: On-device verification after next Codemagic build → TestFlight. Phase 5 (send-push APNs branch + trigger fan-out) is next — requires APNs cert secrets in Supabase (APNS_KEY_ID, APNS_TEAM_ID, APNS_AUTH_KEY, APNS_BUNDLE_ID) before pushes can deliver.
+
+---
+
+[LOG — 2026-05-23 — FIELD_OPUS_ARC blueprint shipped — build target 2026-05-24 morning]
+- Action: Captured FIELD_OPUS_ARC.md blueprint at repo root. Documentation only — zero code, zero schema this slice.
+- Concept: Opus-quality dev console inside the app. Kalin talks to Opus in the field, Opus audits + drafts Sonnet prompts, Kalin taps Send to VM, AUTO_FIX_ARC's VM runs the slice, results stream back into the chat thread.
+- Locked decisions: hard auth-ID gate (Kalin only), confirm-before-dispatch, VM as executor (not laptop), serial dispatch with queue depth 5, persistent single thread, read access via raw.githubusercontent.com + whitelist DB queries.
+- 6 phases scoped: schema/RLS, read-only edge fns, Field-Opus brain (split across 2 prompts), VM dispatch wiring, client UI, polish + auth-gate smoke tests. Est 7 prompts total.
+- Files: FIELD_OPUS_ARC.md (new), CLAUDE_MEMORY.md (this entry + active arcs bullet), OPUS_RULES.md (active arc docs list).
+- Trade-aware: single-user feature gated to Kalin's auth ID. No tenant/trade concerns.
+- Open: build starts 2026-05-24 morning. PUSH_NOTIFICATIONS_ARC Phase 5 + Phase 6 still pending. APNs cert checklist still pending Kalin.
