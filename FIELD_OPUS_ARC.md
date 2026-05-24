@@ -45,7 +45,7 @@ Locked 2026-05-23. Build target: tomorrow morning.
 - `field-opus-db-query`: POST `{ query_kind: string, params: object }`. Whitelist of pre-defined SELECT queries (e.g. `recent_bug_reports`, `recent_auto_fix_attempts`, `failed_intents_last_24h`, `ai_error_logs_summary`, `schema_for_table`, `policy_list_for_table`). No raw SQL passthrough. Each query_kind is a named function in the edge fn. Service-role + Kalin-auth gate.
 - Both functions return structured `{ok, data, error}`. Both reject any auth ID other than Kalin's.
 
-### Phase 3 — Field-Opus edge function (the brain) (2 prompts) — Phase 3a ✅ SHIPPED 2026-05-24, Phase 3b pending
+### Phase 3 — Field-Opus edge function (the brain) — ✅ FULLY SHIPPED 2026-05-24
 - New edge function `field-opus-chat`. Receives `{ message, thread_id }` from client. Loads full thread history from field_opus_messages. Loads CLAUDE_MEMORY/CLAUDE.md/OPUS_RULES at session start (raw.githubusercontent.com — same as web Opus). Calls Anthropic API with `claude-opus-4-7` (or current Opus model string at build time) + tools:
   - `read_source_file(path)` → calls field-opus-fetch-file internally.
   - `query_db(query_kind, params)` → calls field-opus-db-query internally.

@@ -1983,3 +1983,19 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Trade-aware: dev-tool, single-user, no tenant/trade concerns.
 - Commit: b67ee95. Pushed to main.
 - Open: Phase 3b (implement 3 stubbed tool executors + tool-use loop). Phase 4 (VM dispatch wiring). Phase 5 (client UI). Phase 6 (polish).
+
+[LOG — 2026-05-24 — FIELD_OPUS_ARC Phase 3b shipped — tool loop + real implementations]
+- Action: Phase 3b of FIELD_OPUS_ARC shipped. Tool execution loop wired. 3 stubbed tools now functional. Phase 3 complete.
+- read_source_file: HTTP POST to field-opus-fetch-file with user JWT. Returns content + truncation flag + original_length.
+- query_db: HTTP POST to field-opus-db-query with user JWT. Returns whitelisted query result.
+- note_decision: appendMessage(sb, 'system', text, {kind:'note_decision'}). Surfaces as a system row in the thread.
+- draft_sonnet_prompt: structured output only — captured from tool_uses[] in the handler, ack returned to Opus, draft_prompt field in response.
+- Tool loop: MAX_ITERATIONS=10. Each iteration: call Anthropic → if tool_use blocks present, execute all → append as tool_result → call again. Breaks when no tool_use in response or cap hit.
+- Loop cap safety: if MAX_ITERATIONS reached, system note appended ('loop cap hit, N iterations') so Kalin sees runaway.
+- Tool result truncation: each tool_result truncated to 60KB before feeding back. Prevents context blowout from giant file reads.
+- Token forwarding: handler passes user JWT through to inner edge fns for defense-in-depth re-verification.
+- Assistant message persistence: meta carries stop_reason, usage, iterations, full tool_uses list, draft_prompt if any.
+- Smoke tests: deferred to Phase 5 (no JWT available without client UI).
+- Trade-aware: dev-tool, single-user, unchanged.
+- Commit: 780a713. Pushed to main.
+- Open: Phase 4 (VM dispatch wiring — when Kalin taps Send to VM on a draft_prompt card). Phase 5 (client UI panel). Phase 6 (polish + auth-gate smoke tests).
