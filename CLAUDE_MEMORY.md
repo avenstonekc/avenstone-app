@@ -1911,3 +1911,12 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Action: Replaced bare `.update(...).in(...).catch(...)` chain with `await` + try/catch in `sbMarkNotifsRead`. Supabase v2 query builder is PromiseLike, not a real Promise — `.catch()` chained on the builder caused mark-read to silently fail.
 - Files: avenstone-vite/src/lib/supabase.js (sbMarkNotifsRead body only). Also added `?.` to the `ids?.length` guard.
 - Audit follow-up: one other instance of `.catch()` chained on a query builder remains at supabase.js:3156 — `.select('address').eq('id', jobId).single().catch(() => ({ data: null }))` inside sbAdvancePhase. Same bug class but a SELECT chain, not the UPDATE pattern listed in the fix scope; left for a follow-up slice.
+
+[LOG — 2026-05-24 — PUSH_NOTIFICATIONS_ARC Phase 4: client registration shipped.]
+- Action: Phase 4 of PUSH_NOTIFICATIONS_ARC shipped. APNs token registration wired end-to-end in the React app.
+- Files: avenstone-vite/src/lib/push.js (new), avenstone-vite/src/lib/supabase.js (+sbUpsertPushSubscription), avenstone-vite/src/App.jsx (+import + useEffect). Commit: e886ee0.
+- push.js: registerForPush({userId, onDeepLink}) — Capacitor.isNativePlatform() gate (web = no-op, channel:'none'). On native: checkPermissions → requestPermissions if needed → attach 4 listeners once → PushNotifications.register(). Module-level idempotency via registered + listenersAttached flags.
+- sbUpsertPushSubscription: read-then-write pattern (Supabase JS can't target partial unique indexes via onConflict). Validates channel payload shape. Returns {ok, error, data}.
+- App.jsx useEffect (gated on profile?.id): onDeepLink callback routes /job/<id> → setPendingJobId + setPg('jobs'); /todo/<id> → setPg('today'); unknown patterns no-op.
+- Build: ✓ 377 modules, 559ms. cap sync: ✓ 3 plugins confirmed.
+- Open: On-device verification after next Codemagic build → TestFlight. Phase 5 (send-push APNs branch + trigger fan-out) is next — requires APNs cert secrets in Supabase (APNS_KEY_ID, APNS_TEAM_ID, APNS_AUTH_KEY, APNS_BUNDLE_ID) before pushes can deliver.

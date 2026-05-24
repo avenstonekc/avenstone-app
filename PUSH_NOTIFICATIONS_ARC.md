@@ -58,7 +58,7 @@ Audit basis: 2026-05-23 (see CLAUDE_MEMORY.md handoff entry). iOS native push: z
 - No JS changes this phase. iOS plumbing only.
 - Verification: `npx cap sync` succeeds, no Xcode errors on next Codemagic build.
 
-### Phase 4 — Client registration (1 prompt)
+### Phase 4 — Client registration — ✅ SHIPPED 2026-05-24
 - New file `avenstone-vite/src/lib/push.js`: `registerForPush()` function. Gated by `Capacitor.isNativePlatform()`. On native:
   - `PushNotifications.requestPermissions()` → if granted, `register()`.
   - Listener on `registration` → grab token, upsert into push_subscriptions with `channel='apns'`, `apns_token=<token>`, `user_id=<auth user id>`. Use sbHelper pattern `{ok, error, data}`.
