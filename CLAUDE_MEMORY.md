@@ -78,6 +78,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **CONFIRM_TOOLS now has 6 verbs** (Phase 2.2, 2026-05-20): log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member.
 - **`trg_notification_push_fanout` trigger EXISTS on `notifications`** (PUSH_NOTIFICATIONS_ARC Phase 5, 2026-05-24). AFTER INSERT, calls `fn_notification_push_fanout()` which async-invokes `notification-push-fanout` edge fn via `net.http_post`. Independent from `on_notification_insert` email trigger — both fire on every INSERT. 2 other pre-existing Dashboard-created triggers also on notifications: `on_notification_insert_push`, `on_notification_insert_sms` — not in local migration files.
 - **`push_subscriptions` is now dual-channel** (PUSH_NOTIFICATIONS_ARC Phase 1, 2026-05-23). Columns: `id, user_id, channel ('web'|'apns'), endpoint, p256dh, auth, apns_token, created_at`. Two partial unique indexes: `idx_push_sub_web_unique` on (user_id, endpoint) WHERE channel='web'; `idx_push_sub_apns_unique` on (user_id, apns_token) WHERE channel='apns'. `channel_payload_check` enforces web rows have endpoint+p256dh+auth (apns_token NULL) and apns rows have apns_token only. 7 existing rows backfilled to channel='web'. Migration: 20260523100000_push_subscriptions_dual_channel.sql.
+- **`field_opus_messages` table EXISTS** (FIELD_OPUS_ARC Phase 1, 2026-05-24). Columns: id UUID PK, thread_id UUID NOT NULL, role TEXT CHECK (user/assistant/system/dispatch_result), content TEXT NOT NULL, meta JSONB DEFAULT '{}', created_at TIMESTAMPTZ. Single index on (thread_id, created_at). 4 RLS policies all gated by auth.uid() = Kalin's UUID literal (8171742a-b586-4f13-be61-744e191a1896). v1 uses a single hardcoded thread_id (11111111-1111-1111-1111-111111111111) — multi-thread deferred. Migration: 20260524110000_field_opus_messages.sql.
 
 ---
 
@@ -1947,3 +1948,15 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Commits: c51b4ef, 146ee7c, 1758ed6 (all pushed to main).
 - Open: On-device push verification awaits next Codemagic build → TestFlight → permission grant → apns_token registered → real notification INSERT → push arrives on device. Phase 6 (Web Push SW slice) still deferred.
 - Open: build starts 2026-05-24 morning. PUSH_NOTIFICATIONS_ARC Phase 5 + Phase 6 still pending. APNs cert checklist still pending Kalin.
+
+[LOG — 2026-05-24 — FIELD_OPUS_ARC Phase 1 schema shipped]
+- Action: Phase 1 of FIELD_OPUS_ARC shipped. Schema foundation + 4 RLS policies + 3 client helpers.
+- Migration: 20260524110000_field_opus_messages.sql.
+- Table: field_opus_messages (id UUID PK, thread_id UUID NOT NULL, role TEXT CHECK in (user/assistant/system/dispatch_result), content TEXT, meta JSONB, created_at TIMESTAMPTZ). Index on (thread_id, created_at).
+- RLS: 4 policies (SELECT/INSERT/UPDATE/DELETE) all gated by auth.uid() = Kalin's UUID literal. Service role unaffected.
+- Client helpers: sbLoadFieldOpusThread, sbAppendFieldOpusMessage, sbResetFieldOpusThread. All check auth.uid() === FIELD_OPUS_USER_ID before touching DB (defense-in-depth — RLS is the actual gate). All return {ok, error, data}.
+- Constants: FIELD_OPUS_USER_ID (Kalin's auth UUID), FIELD_OPUS_THREAD_ID (single hardcoded thread UUID for v1, multi-thread deferred).
+- Verification: schema + 4 policies + index + relrowsecurity=true. Role-check smoke: invalid role rejected. PASS.
+- Trade-aware: single-user feature, no tenant or trade concerns.
+- Commits: 468c755 (migration), c39c37d (helpers). Pushed to main.
+- Open: Phase 2 (read-only edge fns — field-opus-fetch-file + field-opus-db-query). Phase 3 (field-opus-chat edge fn — the Opus brain). Phase 4 (VM dispatch wiring). Phase 5 (client UI panel). Phase 6 (polish + auth-gate smoke tests).

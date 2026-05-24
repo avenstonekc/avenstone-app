@@ -34,7 +34,7 @@ Locked 2026-05-23. Build target: tomorrow morning.
 
 ## Phases
 
-### Phase 1 — Schema + RLS foundation (1 prompt)
+### Phase 1 — Schema + RLS foundation — ✅ SHIPPED 2026-05-24
 - New table `field_opus_messages`: id (UUID), thread_id (UUID — v1 always single thread per user, but column ready for multi), role ('user' | 'assistant' | 'system' | 'dispatch_result'), content (TEXT), meta (JSONB — holds dispatch metadata: prompt sent, model used, commit hash returned, status), created_at.
 - RLS: all access gated to `auth.uid() = '8171742a-b586-4f13-be61-744e191a1896'`. Service role unaffected.
 - Helper: `sbLoadFieldOpusThread()`, `sbAppendFieldOpusMessage()`. Both gated client-side AND DB-side.
