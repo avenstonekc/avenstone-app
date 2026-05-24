@@ -10,7 +10,7 @@ const MAX_IN_FLIGHT = 5;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ANON_KEY = Deno.env.get('PROJECT_ANON_KEY') ?? '';
+
 
 // VM_WEBHOOK_SECRET is already set for the auto-fix path — reuse for Field-Opus.
 const VM_SECRET = Deno.env.get('VM_WEBHOOK_SECRET');
@@ -37,10 +37,8 @@ async function verifyKalinAuth(req: Request): Promise<{ ok: boolean; error?: str
   }
   const token = authHeader.slice('Bearer '.length);
 
-  const sb = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { authorization: `Bearer ${token}` } },
-  });
-  const { data: { user }, error } = await sb.auth.getUser();
+  const sb = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: { user }, error } = await sb.auth.getUser(token);
   if (error || !user) return { ok: false, error: 'invalid token' };
   if (user.id !== KALIN_USER_ID) return { ok: false, error: 'forbidden' };
   return { ok: true };

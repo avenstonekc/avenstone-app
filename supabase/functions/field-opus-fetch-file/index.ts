@@ -54,12 +54,9 @@ async function verifyKalinAuth(req: Request): Promise<{ ok: boolean; error?: str
   const token = authHeader.slice('Bearer '.length);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const anonKey = Deno.env.get('PROJECT_ANON_KEY')!;
-  const sb = createClient(supabaseUrl, anonKey, {
-    global: { headers: { authorization: `Bearer ${token}` } },
-  });
-
-  const { data: { user }, error } = await sb.auth.getUser();
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const sb = createClient(supabaseUrl, serviceKey);
+  const { data: { user }, error } = await sb.auth.getUser(token);
   if (error || !user) {
     return { ok: false, error: 'invalid token' };
   }
