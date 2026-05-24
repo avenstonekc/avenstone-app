@@ -15,7 +15,7 @@ const ANTHROPIC_VERSION = '2023-06-01';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+const ANON_KEY = Deno.env.get('PROJECT_ANON_KEY') ?? '';
 
 const REPO_RAW_BASE = 'https://raw.githubusercontent.com/avenstonekc/avenstone-app/refs/heads/main/';
 
