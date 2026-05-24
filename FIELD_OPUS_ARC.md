@@ -40,7 +40,7 @@ Locked 2026-05-23. Build target: tomorrow morning.
 - Helper: `sbLoadFieldOpusThread()`, `sbAppendFieldOpusMessage()`. Both gated client-side AND DB-side.
 - Migration verification: information_schema confirms columns + types, pg_policies confirms RLS gate references the auth ID literal.
 
-### Phase 2 — Read-only edge functions (1 prompt)
+### Phase 2 — Read-only edge functions — ✅ SHIPPED 2026-05-24
 - `field-opus-fetch-file`: POST `{ path: string }`. Validates path is within `avenstone-vite/src/` or `supabase/functions/` or repo-root MD files. Fetches from raw.githubusercontent.com. Returns `{ ok, content, error }`. Service-role + Kalin-auth gate.
 - `field-opus-db-query`: POST `{ query_kind: string, params: object }`. Whitelist of pre-defined SELECT queries (e.g. `recent_bug_reports`, `recent_auto_fix_attempts`, `failed_intents_last_24h`, `ai_error_logs_summary`, `schema_for_table`, `policy_list_for_table`). No raw SQL passthrough. Each query_kind is a named function in the edge fn. Service-role + Kalin-auth gate.
 - Both functions return structured `{ok, data, error}`. Both reject any auth ID other than Kalin's.

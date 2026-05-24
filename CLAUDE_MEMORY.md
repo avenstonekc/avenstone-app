@@ -1960,3 +1960,13 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Trade-aware: single-user feature, no tenant or trade concerns.
 - Commits: 468c755 (migration), c39c37d (helpers). Pushed to main.
 - Open: Phase 2 (read-only edge fns — field-opus-fetch-file + field-opus-db-query). Phase 3 (field-opus-chat edge fn — the Opus brain). Phase 4 (VM dispatch wiring). Phase 5 (client UI panel). Phase 6 (polish + auth-gate smoke tests).
+
+[LOG — 2026-05-24 — FIELD_OPUS_ARC Phase 2 shipped]
+- Action: Phase 2 of FIELD_OPUS_ARC shipped. Two read-only edge fns, both Kalin-auth-gated.
+- field-opus-fetch-file: proxies raw.githubusercontent.com for the repo. Path whitelist: 6 prefixes (avenstone-vite/src/, avenstone-vite/ios/, avenstone-vite/public/, supabase/functions/, supabase/migrations/, tools/) + root MD files allow list. Rejects path traversal (..), absolute paths, null bytes. 250KB truncation guard.
+- field-opus-db-query: 9 whitelisted query_kinds (recent_bug_reports, recent_auto_fix_attempts, ai_error_logs_summary, failed_intents_last_24h, schema_for_table, policies_for_table, recent_notifications, push_subscriptions_overview, jobs_by_status). No raw SQL pass-through. Service-role client used internally; auth gate is the JWT verification layer. Note: ai_error_logs columns corrected to actual schema (function_name, error_message, user_id, created_at, metadata); notifications query dropped non-existent priority column.
+- Both functions verify auth.uid() = '8171742a...' via JWT before any work. Reject everything else with 403. Import style: npm:@supabase/supabase-js@2 (matches ai-master-agent).
+- Smoke tests: deferred to Phase 3 first call (functions are read-only; failure means Phase 3 tool_use errors, not data corruption).
+- Trade-aware: dev-tool surface, no tenant/trade assumptions.
+- Commits: f829046 (fetch-file), 33c3dfc (db-query). Pushed to main.
+- Open: Phase 3 (field-opus-chat — the Opus brain — wires these two as tool_use). Phase 4 (VM dispatch). Phase 5 (client UI). Phase 6 (polish).
