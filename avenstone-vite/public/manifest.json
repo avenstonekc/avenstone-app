@@ -1,0 +1,19 @@
+{
+  "name": "Avenstone",
+  "short_name": "Avenstone",
+  "description": "Construction management for general contractors and trades.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0A1F44",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
