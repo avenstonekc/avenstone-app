@@ -1883,6 +1883,15 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Trade-aware: push_subscriptions is a platform table (no tenant_id). channel enum is platform-level. No tenant or trade assumptions.
 - Open: Phase 2 (manifest.json + index.html link), Phase 3 (APNs plugin + iOS config), Phase 4 (client registration), Phase 5 (send-push APNs branch + trigger fan-out).
 
+[LOG — 2026-05-23 — PUSH_NOTIFICATIONS_ARC Phase 2: PWA manifest shipped. "Add to Home Screen" enabled.]
+- Action: Created avenstone-vite/public/manifest.json + added <link rel="manifest"> to index.html. Enables browser PWA install prompt on Chrome/Android/Safari.
+- Files: avenstone-vite/public/manifest.json (new), avenstone-vite/index.html (manifest link tag added). Commit: e659f77.
+- Manifest: name="Avenstone", display=standalone, theme_color=#0A1F44 (matched from existing meta), background_color=#ffffff. Single icon entry: /favicon.svg, sizes="any", type="image/svg+xml", purpose="any". SVG icon used — Chrome 87+ accepts SVG manifest icons and will trigger install prompt. PNG icons not present in public/ (only favicon.svg and icons.svg exist).
+- Build: ✓ 652ms. dist/manifest.json confirmed present. dist/index.html confirmed contains <link rel="manifest" href="/manifest.json" />.
+- cap sync ios: clean (0.143s). WKWebView ignores manifest — zero iOS app impact.
+- Open: (1) On-device verification after next Vercel deploy: Chrome desktop → install prompt in address bar, Android Chrome → install banner, iOS Safari → Add to Home Screen (note: iOS uses apple-touch-icon not manifest, so icon will fall back to favicon). (2) PNG icon generation deferred as separate polish slice — produce 192×192 and 512×512 PNGs from logo source, add to public/, update manifest. (3) apple-touch-icon meta tag missing — separate polish slice. (4) Multi-tenant white-label will need per-tenant dynamic manifest endpoint at v4+ — out of scope for v1.
+- No DB changes, no edge fn changes, no Capacitor config changes.
+
 [LOG — 2026-05-23 — PUSH_NOTIFICATIONS_ARC.md blueprint created. Option B locked.]
 - Action: Created PUSH_NOTIFICATIONS_ARC.md at repo root. Dual-channel push notifications blueprint: APNs (iOS native) + Web Push (PWA), APNs ships first.
 - Files: PUSH_NOTIFICATIONS_ARC.md (new), OPUS_RULES.md (arc docs list updated), CLAUDE_MEMORY.md (this entry)
