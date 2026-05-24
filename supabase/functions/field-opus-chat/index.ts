@@ -1,9 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // ============================================================
-// FIELD_OPUS_ARC Phase 3a — chat brain scaffolding.
+// FIELD_OPUS_ARC Phase 3 — chat brain (3a scaffolding + 3b tool execution loop).
 // Hard-gated to Kalin's auth ID. Calls Anthropic Opus.
-// Tools registered but stubbed — Phase 3b implements.
+// 4 tools: read_source_file, query_db, draft_sonnet_prompt, note_decision.
 // ============================================================
 
 const KALIN_USER_ID = '8171742a-b586-4f13-be61-744e191a1896';
@@ -184,7 +184,7 @@ ${fieldOpusArcMd}
 }
 
 // ============================================================
-// Tools (declared here; implementations stubbed for Phase 3a — Phase 3b fills in)
+// Tools
 // ============================================================
 const TOOLS = [
   {
@@ -265,16 +265,109 @@ const TOOLS = [
   },
 ];
 
-// Phase 3a stub: tool execution returns "not implemented" — Phase 3b wires the actual calls.
+// ============================================================
+// Tool execution — Phase 3b implementations.
+// read_source_file + query_db forward to inner edge fns with user JWT (defense-in-depth).
+// draft_sonnet_prompt is structured output only — handler captures input, returns ack.
+// note_decision writes directly to the thread via appendMessage.
+// ============================================================
 async function executeTool(
   name: string,
-  _input: Record<string, unknown>,
-  _token: string,
+  input: Record<string, unknown>,
+  userToken: string,
+  sb: ReturnType<typeof createClient>,
 ): Promise<{ ok: boolean; error?: string; data?: unknown }> {
-  return {
-    ok: false,
-    error: `Tool '${name}' is registered but execution lands in Phase 3b. This is the Phase 3a scaffolding.`,
-  };
+  switch (name) {
+    case 'read_source_file': {
+      const path = typeof input.path === 'string' ? input.path : '';
+      if (!path) return { ok: false, error: 'path required' };
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/field-opus-fetch-file`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${userToken}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ path }),
+        });
+        const body = await res.json();
+        if (!res.ok || !body.ok) {
+          return { ok: false, error: body.error || `fetch-file ${res.status}` };
+        }
+        return {
+          ok: true,
+          data: {
+            path: body.path,
+            content: body.content,
+            truncated: body.truncated,
+            original_length: body.original_length,
+          },
+        };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    case 'query_db': {
+      const queryKind = typeof input.query_kind === 'string' ? input.query_kind : '';
+      if (!queryKind) return { ok: false, error: 'query_kind required' };
+      const params = (input.params && typeof input.params === 'object')
+        ? input.params as Record<string, unknown>
+        : {};
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/field-opus-db-query`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${userToken}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ query_kind: queryKind, params }),
+        });
+        const body = await res.json();
+        if (!res.ok || !body.ok) {
+          return {
+            ok: false,
+            error: body.error || `db-query ${res.status}`,
+            data: body.available ? { available_query_kinds: body.available } : undefined,
+          };
+        }
+        return { ok: true, data: body.data };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    case 'draft_sonnet_prompt': {
+      const scopeLine = typeof input.scope_line === 'string' ? input.scope_line : '';
+      const promptText = typeof input.prompt_text === 'string' ? input.prompt_text : '';
+      const model = input.model === 'opus' ? 'opus' : 'sonnet';
+      if (!scopeLine || !promptText) {
+        return { ok: false, error: 'scope_line and prompt_text required' };
+      }
+      return {
+        ok: true,
+        data: {
+          drafted: true,
+          model,
+          message: 'Draft card rendered for Kalin. Awaiting his Send to VM tap.',
+        },
+      };
+    }
+
+    case 'note_decision': {
+      const text = typeof input.text === 'string' ? input.text.trim() : '';
+      if (!text) return { ok: false, error: 'text required' };
+      try {
+        await appendMessage(sb, 'system', text, { kind: 'note_decision' });
+        return { ok: true, data: { recorded: true, message: 'Decision noted in thread.' } };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    default:
+      return { ok: false, error: `unknown tool: ${name}` };
+  }
 }
 
 // ============================================================
@@ -400,44 +493,103 @@ Deno.serve(async (req) => {
     const systemPrompt = await buildSystemPrompt();
 
     // 4. Convert thread to API messages
-    const apiMessages = threadToApiMessages(thread);
+    const apiMessages: Array<{ role: 'user' | 'assistant'; content: string | AnthropicContentBlock[] }> =
+      threadToApiMessages(thread);
 
-    // 5. Single-turn call to Anthropic.
-    //    Tool execution loop is Phase 3b — for now we surface whatever the first response is.
-    const apiResp = await callAnthropic(systemPrompt, apiMessages);
+    // 5. Tool-use loop. Opus calls tools → backend executes → result feeds back.
+    //    Cap at 10 iterations to prevent runaway.
 
-    // 6. Extract assistant text + any tool_use blocks
-    const textBlocks = apiResp.content.filter((b) => b.type === 'text').map((b) => b.text || '');
-    const toolUses = apiResp.content.filter((b) => b.type === 'tool_use');
-
-    const assistantText = textBlocks.join('\n\n').trim() || '[empty response]';
-
-    // draft_sonnet_prompt is a structured-output tool — surface its input directly.
-    // No backend execution needed; the card renders from the tool input.
+    const MAX_ITERATIONS = 10;
+    let finalResponse: AnthropicResponse | null = null;
+    let allToolUses: AnthropicContentBlock[] = [];
     let draftPromptCard: null | {
       scope_line: string;
       prompt_text: string;
       model: 'sonnet' | 'opus';
     } = null;
+    let iterations = 0;
 
-    for (const tu of toolUses) {
-      if (tu.name === 'draft_sonnet_prompt') {
-        const input = tu.input || {};
-        draftPromptCard = {
-          scope_line: String(input.scope_line || ''),
-          prompt_text: String(input.prompt_text || ''),
-          model: input.model === 'opus' ? 'opus' : 'sonnet',
-        };
+    while (iterations < MAX_ITERATIONS) {
+      iterations++;
+      const apiResp = await callAnthropic(systemPrompt, apiMessages);
+      finalResponse = apiResp;
+
+      const toolUseBlocks = apiResp.content.filter((b) => b.type === 'tool_use');
+
+      if (toolUseBlocks.length === 0) {
+        break;
       }
+
+      allToolUses = allToolUses.concat(toolUseBlocks);
+
+      // Append the assistant's full turn (text + tool_use blocks) to messages
+      apiMessages.push({ role: 'assistant', content: apiResp.content });
+
+      // Execute each tool_use and build a tool_result block for each
+      const toolResultBlocks: AnthropicContentBlock[] = [];
+      for (const tu of toolUseBlocks) {
+        const toolName = tu.name || '';
+        const toolInput = tu.input || {};
+        const toolId = tu.id || '';
+
+        if (toolName === 'draft_sonnet_prompt') {
+          draftPromptCard = {
+            scope_line: String(toolInput.scope_line || ''),
+            prompt_text: String(toolInput.prompt_text || ''),
+            model: (toolInput.model === 'opus' ? 'opus' : 'sonnet') as 'sonnet' | 'opus',
+          };
+        }
+
+        const execResult = await executeTool(toolName, toolInput, userToken, sb);
+
+        const resultText = execResult.ok
+          ? JSON.stringify(execResult.data ?? { ok: true })
+          : `ERROR: ${execResult.error || 'unknown error'}`;
+
+        // Truncate per-result to 60KB to keep context tractable
+        const maxResultBytes = 60_000;
+        const finalText = resultText.length > maxResultBytes
+          ? resultText.slice(0, maxResultBytes) + `\n\n[TRUNCATED at ${maxResultBytes} bytes]`
+          : resultText;
+
+        toolResultBlocks.push({
+          type: 'tool_result',
+          tool_use_id: toolId,
+          content: finalText,
+          is_error: !execResult.ok,
+        });
+      }
+
+      apiMessages.push({ role: 'user', content: toolResultBlocks });
     }
 
-    // 7. Persist assistant message
+    if (!finalResponse) {
+      throw new Error('Anthropic loop produced no response');
+    }
+
+    if (iterations >= MAX_ITERATIONS) {
+      await appendMessage(
+        sb,
+        'system',
+        `[Loop cap hit] Field-Opus made ${MAX_ITERATIONS} tool calls without resolving. Last response captured.`,
+        { iterations, kind: 'loop_cap' },
+      );
+    }
+
+    // 6. Extract final assistant text
+    const textBlocks = finalResponse.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text || '');
+    const assistantText = textBlocks.join('\n\n').trim() || '[empty response]';
+
+    // 7. Persist final assistant message
     const assistantMeta: Record<string, unknown> = {
-      stop_reason: apiResp.stop_reason,
-      usage: apiResp.usage,
+      stop_reason: finalResponse.stop_reason,
+      usage: finalResponse.usage,
+      iterations,
     };
-    if (toolUses.length > 0) {
-      assistantMeta.tool_uses = toolUses.map((t) => ({ name: t.name, input: t.input }));
+    if (allToolUses.length > 0) {
+      assistantMeta.tool_uses = allToolUses.map((t) => ({ name: t.name, input: t.input }));
     }
     if (draftPromptCard) {
       assistantMeta.draft_prompt = draftPromptCard;
@@ -449,11 +601,9 @@ Deno.serve(async (req) => {
       ok: true,
       assistant_text: assistantText,
       draft_prompt: draftPromptCard,
-      stop_reason: apiResp.stop_reason,
-      tool_uses: toolUses.map((t) => ({ name: t.name, input: t.input })),
-      note: toolUses.some((t) => t.name !== 'draft_sonnet_prompt')
-        ? 'Phase 3a: read_source_file / query_db / note_decision are stubbed. Phase 3b implements.'
-        : undefined,
+      stop_reason: finalResponse.stop_reason,
+      tool_uses: allToolUses.map((t) => ({ name: t.name, input: t.input })),
+      iterations,
     });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -464,5 +614,3 @@ Deno.serve(async (req) => {
   }
 });
 
-// executeTool is declared but only wired in Phase 3b.
-void executeTool;
