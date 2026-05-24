@@ -3377,3 +3377,85 @@ export async function sbUpsertPushSubscription(sub) {
     return { ok: false, error: err?.message || String(err) };
   }
 }
+
+// ─── FIELD_OPUS_ARC ───────────────────────────────────────────────────────────
+
+// Hard auth-ID gate. Field-Opus surface is visible only to this user.
+// Both client-side gating AND DB RLS enforce this. Defense-in-depth.
+export const FIELD_OPUS_USER_ID = '8171742a-b586-4f13-be61-744e191a1896';
+
+// Single-thread-per-user v1. Stable thread ID derived from user ID
+// so all Kalin's devices/sessions share one thread. Multi-thread deferred.
+export const FIELD_OPUS_THREAD_ID = '11111111-1111-1111-1111-111111111111';
+
+export async function sbLoadFieldOpusThread() {
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (user?.id !== FIELD_OPUS_USER_ID) {
+      return { ok: false, error: 'forbidden' };
+    }
+
+    const { data, error } = await sb
+      .from('field_opus_messages')
+      .select('id, thread_id, role, content, meta, created_at')
+      .eq('thread_id', FIELD_OPUS_THREAD_ID)
+      .order('created_at', { ascending: true });
+
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, data: data || [] };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+export async function sbAppendFieldOpusMessage({ role, content, meta }) {
+  if (!role || !content) {
+    return { ok: false, error: 'role and content required' };
+  }
+  if (!['user', 'assistant', 'system', 'dispatch_result'].includes(role)) {
+    return { ok: false, error: `invalid role: ${role}` };
+  }
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (user?.id !== FIELD_OPUS_USER_ID) {
+      return { ok: false, error: 'forbidden' };
+    }
+
+    const { data, error } = await sb
+      .from('field_opus_messages')
+      .insert({
+        thread_id: FIELD_OPUS_THREAD_ID,
+        role,
+        content,
+        meta: meta || {},
+      })
+      .select('id, thread_id, role, content, meta, created_at')
+      .single();
+
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+export async function sbResetFieldOpusThread() {
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (user?.id !== FIELD_OPUS_USER_ID) {
+      return { ok: false, error: 'forbidden' };
+    }
+
+    const { data, error } = await sb
+      .from('field_opus_messages')
+      .delete()
+      .eq('thread_id', FIELD_OPUS_THREAD_ID)
+      .select('id');
+
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, data: { deleted: (data || []).length } };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
