@@ -76,6 +76,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **on_notification_insert trigger now has priority gate** (AGENT_OPS Phase 2.2, 2026-05-20). Migration: 20260520160000_notification_email_trigger_priority_gate.sql. Trigger recreated with `WHEN (NEW.email_sent IS NOT TRUE)`. Priority gate contract: executor sets `email_sent = priority !== 'high'` at INSERT time — high priority emails; medium/low do not. Verified in pg_trigger via `pg_get_triggerdef`.
 - **ai-master-agent has 17 tools** (Phase 2.2, 2026-05-20): added `notify_team_member` (CONFIRM_TOOLS). Total: get_jobs, get_team, create_job, update_job, add_contact, send_client_portal, invite_person, add_note, advance_phase, update_phase, submit_change_order, log_payment, log_receipt, notify_team, add_todo, notify_team_member, add_knowledge.
 - **CONFIRM_TOOLS now has 6 verbs** (Phase 2.2, 2026-05-20): log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member.
+- **`push_subscriptions` is now dual-channel** (PUSH_NOTIFICATIONS_ARC Phase 1, 2026-05-23). Columns: `id, user_id, channel ('web'|'apns'), endpoint, p256dh, auth, apns_token, created_at`. Two partial unique indexes: `idx_push_sub_web_unique` on (user_id, endpoint) WHERE channel='web'; `idx_push_sub_apns_unique` on (user_id, apns_token) WHERE channel='apns'. `channel_payload_check` enforces web rows have endpoint+p256dh+auth (apns_token NULL) and apns rows have apns_token only. 7 existing rows backfilled to channel='web'. Migration: 20260523100000_push_subscriptions_dual_channel.sql.
 
 ---
 
@@ -1857,6 +1858,30 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - PWA install prompt UX (if not present today)
 
 **No urgent action items.** Auto-fix system runs autonomously. UptimeRobot + credential cron handle vigilance. Next session can start cold with the audit.
+
+[LOG — 2026-05-23 — PUSH_NOTIFICATIONS_ARC Phase 1: dual-channel push_subscriptions schema SHIPPED.]
+- Action: Migration 20260523100000_push_subscriptions_dual_channel.sql applied and verified. push_subscriptions extended for dual-channel (web + apns).
+- Files: supabase/migrations/20260523100000_push_subscriptions_dual_channel.sql (new). Commit: f6b4c95.
+- Schema changes: channel TEXT NOT NULL (channel_check: 'web'|'apns'), apns_token TEXT NULL, endpoint/p256dh/auth dropped NOT NULL. Old unique constraint push_subscriptions_user_id_endpoint_key dropped. Two partial unique indexes added: idx_push_sub_web_unique (user_id, endpoint WHERE channel='web'), idx_push_sub_apns_unique (user_id, apns_token WHERE channel='apns'). channel_payload_check ensures field exclusivity per channel. 7 existing rows backfilled to channel='web'.
+- Verification (all 8 queries PASS):
+  A. channel: TEXT, NOT NULL, no default. ✓
+  B. apns_token: TEXT, nullable. ✓
+  C. endpoint/p256dh/auth: all nullable. ✓
+  D. Both partial indexes present with correct WHERE clauses. ✓
+  E. Both CHECK constraints present (channel_check + channel_payload_check). ✓
+  F. Zero unique constraints remaining (old (user_id,endpoint) unique dropped). ✓
+  G. All 7 rows = channel='web', zero NULL channel. ✓
+  H. All 7 web rows pass payload check (endpoint/p256dh/auth NOT NULL, apns_token NULL). ✓
+- Smoke tests (all 6 PASS):
+  1. Valid web insert → succeeded, id returned. ✓
+  2. Valid apns insert → succeeded, id returned. ✓
+  3. web + apns_token set → channel_payload_check fired. ✓
+  4. apns missing token → channel_payload_check fired. ✓
+  5. channel='fcm' → channel_check fired. ✓
+  6. Duplicate apns token for same user → idx_push_sub_apns_unique fired. ✓
+- Pre-migration audit findings: unique constraint push_subscriptions_user_id_endpoint_key confirmed (exact DROP name used). All 4 RLS policies reference only user_id = auth.uid() — unaffected. All 7 rows had endpoint/p256dh/auth NOT NULL (all Web Push dev subs, clean backfill).
+- Trade-aware: push_subscriptions is a platform table (no tenant_id). channel enum is platform-level. No tenant or trade assumptions.
+- Open: Phase 2 (manifest.json + index.html link), Phase 3 (APNs plugin + iOS config), Phase 4 (client registration), Phase 5 (send-push APNs branch + trigger fan-out).
 
 [LOG — 2026-05-23 — PUSH_NOTIFICATIONS_ARC.md blueprint created. Option B locked.]
 - Action: Created PUSH_NOTIFICATIONS_ARC.md at repo root. Dual-channel push notifications blueprint: APNs (iOS native) + Web Push (PWA), APNs ships first.
