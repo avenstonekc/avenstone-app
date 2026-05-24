@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, sbCountPendingTodos, AI_PM_NIGHTLY_URL, ANON_KEY } from './lib/supabase';
 import { initBugContext, pushBreadcrumb } from './lib/bugContext';
+import { registerForPush } from './lib/push';
 import { Ic, STATS, sc, sl, f$, ls, ll } from './lib/utils';
 import { IQ, IR, BQ, BR } from './lib/formData';
 import logo from './assets/logo.png';
@@ -129,6 +130,27 @@ export default function App() {
         payload => setNotifs(p => [payload.new, ...p]))
       .subscribe();
     return () => sb.removeChannel(ch);
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    registerForPush({
+      userId: profile.id,
+      onDeepLink: (deepLink) => {
+        if (!deepLink || typeof deepLink !== 'string') return;
+        // /job/<jobId> or /job/<jobId>/<tab>
+        const jobMatch = deepLink.match(/^\/job\/([^/]+)(?:\/(.+))?$/);
+        if (jobMatch) {
+          setPendingJobId(jobMatch[1]);
+          setPg('jobs');
+          return;
+        }
+        // /todo/<todoId> — no dedicated detail view yet, navigate to today screen
+        if (deepLink.match(/^\/todo\/[^/]+$/)) {
+          setPg('today');
+        }
+      },
+    });
   }, [profile?.id]);
 
   const unreadCount = notifs.filter(n => !n.read).length;

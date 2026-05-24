@@ -3323,3 +3323,57 @@ export async function sbGetTradeLeadDays(trade) {
   // 3. Hardcoded fallback
   return { ok: true, error: null, data: 7 };
 }
+
+// ─── push_subscriptions helper (PUSH_NOTIFICATIONS_ARC Phase 4) ──────────────
+
+export async function sbUpsertPushSubscription(sub) {
+  if (!sub?.user_id || !sub?.channel) {
+    return { ok: false, error: 'user_id and channel required' };
+  }
+
+  if (sub.channel === 'apns' && !sub.apns_token) {
+    return { ok: false, error: 'apns_token required for channel=apns' };
+  }
+  if (sub.channel === 'web' && (!sub.endpoint || !sub.p256dh || !sub.auth)) {
+    return { ok: false, error: 'endpoint+p256dh+auth required for channel=web' };
+  }
+
+  try {
+    // Supabase JS upsert can't target partial unique indexes — read-then-write instead.
+    let query = sb
+      .from('push_subscriptions')
+      .select('id')
+      .eq('user_id', sub.user_id)
+      .eq('channel', sub.channel);
+
+    if (sub.channel === 'apns') {
+      query = query.eq('apns_token', sub.apns_token);
+    } else {
+      query = query.eq('endpoint', sub.endpoint);
+    }
+
+    const { data: existing, error: selErr } = await query.maybeSingle();
+    if (selErr) return { ok: false, error: selErr.message };
+    if (existing?.id) return { ok: true, data: existing };
+
+    const payload = { user_id: sub.user_id, channel: sub.channel };
+    if (sub.channel === 'apns') {
+      payload.apns_token = sub.apns_token;
+    } else {
+      payload.endpoint = sub.endpoint;
+      payload.p256dh = sub.p256dh;
+      payload.auth = sub.auth;
+    }
+
+    const { data, error } = await sb
+      .from('push_subscriptions')
+      .insert(payload)
+      .select('id')
+      .single();
+
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
