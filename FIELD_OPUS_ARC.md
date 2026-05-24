@@ -65,7 +65,7 @@ Locked 2026-05-23. Build target: tomorrow morning.
 - Serial enforcement: VM rejects with 429 if already busy. Edge function surfaces this to the chat thread as a system message.
 - Queue depth 5: enforced at the edge function level via a `field_opus_dispatch_queue` table. If queue full, reject before even calling VM.
 
-### Phase 5 — Client UI (1 prompt)
+### Phase 5 — Client UI — ✅ SHIPPED 2026-05-24
 - New component `FieldOpusPanel.jsx`. Mounted at App.jsx top-level, gated by `profile?.id === KALIN_AUTH_ID`. Renders a floating top-right button on mobile (and desktop — same surface, but the field use case is mobile).
 - Tap button → slides in panel from the right (similar to MasterAgent panel pattern). Chat-style UI: messages list, input box (textarea + mic + send), STT via same Capacitor plugin pattern.
 - Renders three message types: user (right-aligned), assistant text (left-aligned), draft_sonnet_prompt card (full-width with "Send to VM" + "Edit" + "Cancel" buttons), dispatch_result (full-width, commit hash + status + collapsible stdout).

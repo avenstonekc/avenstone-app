@@ -2011,3 +2011,15 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - FIELD_OPUS_VM_URL env var (optional): defaults to https://autofix.avenstonekc.com/dispatch-interactive. Set in Supabase fn secrets if VM URL differs.
 - Commits: 4d64d5f (migration), 595a996 (edge fns). Pushed to main.
 - Open: VM /dispatch-interactive endpoint (Kalin SSH). Phase 5 (client UI panel). Phase 6 (polish).
+
+[LOG — 2026-05-24 — FIELD_OPUS_ARC Phase 5 shipped — client UI panel]
+- Action: FieldOpusPanel.jsx shipped. All of Phase 5 complete.
+- Files: avenstone-vite/src/components/shared/FieldOpusPanel.jsx (new, 630 lines), App.jsx (import + mount), supabase.js (FIELD_OPUS_CHAT_URL + FIELD_OPUS_DISPATCH_URL exports).
+- Key: Auth guard placed AFTER all hook calls (useState/useRef/useEffect). profile.id !== FIELD_OPUS_USER_ID → returns null. Effect on open also guards on profile.id.
+- DEV button: fixed, top: 14, right: 80 (avoids MasterAgent's bottom-right position).
+- Panel: navy, slides from right (desktop 420px; mobile full-screen).
+- Realtime: subscribes to field_opus_messages INSERT on open, unsubscribes on close. Deduplicates optimistic user messages when real insert arrives.
+- Dispatch flow: draft_sonnet_prompt card in assistant messages. "Send to VM" → field-opus-dispatch-to-vm. VM result arrives via realtime as dispatch_result row.
+- STT: @capgo/capacitor-speech-recognition (same as MasterAgent). Hold-to-talk with touchstart/touchend/touchcancel + mousedown/mouseup fallback.
+- Commit: dababa8. Pushed to main.
+- Open: Phase 6 (polish + auth-gate smoke tests). VM /dispatch-interactive (Phase 4 VM side — Kalin SSH).
