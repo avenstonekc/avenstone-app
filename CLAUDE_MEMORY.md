@@ -2032,3 +2032,10 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Decision: cold-start redirect removed — todos are now the third section of the Home dashboard, so the landing is always correct.
 - Build: ✓ 377 modules. Commits: 2723f88 (HomeScr + helper), 73c21e1 (App.jsx rewire + deletes). Pushed to main.
 - Open: None — HomeScr ships complete. FIELD_OPUS_ARC Phase 6 still pending.
+
+[LOG — 2026-05-25 — Removed duplicate AiCompanionChat floating button from JobDet]
+- Action: Removed the per-job sparkle AiCompanionChat mount from JobDet — MasterAgent (App.jsx top level) is now the sole persistent agent surface. Resolves "one floating button max per screen" violation.
+- Files: avenstone-vite/src/components/jobs/JobDet.jsx (import + JSX mount removed).
+- Decision: kept avenstone-vite/src/components/shared/AiCompanionChat.jsx in repo, only unmounted. Old companion logic preserved in case Kalin wants to revive it later.
+- Build: ✓ 376 modules. Commit: afd398a. Pushed to main.
+- Open: None.
