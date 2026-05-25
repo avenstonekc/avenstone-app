@@ -6,7 +6,6 @@ import ScheduleTab from './tabs/ScheduleTab';
 import DocsTab from './tabs/DocsTab';
 import MessagesTab from './tabs/MessagesTab';
 import ConsultationTab from './tabs/ConsultationTab';
-import FloorPlanTab from './tabs/FloorPlanTab';
 import FinancialsTab from './tabs/FinancialsTab';
 import FieldTab from './tabs/FieldTab';
 import EstimateTab from './tabs/EstimateTab';
@@ -23,7 +22,6 @@ const TABS = [
   { id: 'field',      lb: 'Field',        ic: 'clip' },
   { id: 'msgs',       lb: 'Messages',     ic: 'note' },
   { id: 'docs',       lb: 'Documents',    ic: 'folder' },
-  { id: 'floorplan',  lb: 'Scanner',      ic: 'doc' },
   { id: 'session',    lb: 'Consultation', ic: 'eye' },
 ];
 
@@ -262,7 +260,6 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} sub={fieldSub} setSub={setFieldSub} />}
         {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
-        {tab === 'floorplan' && <FloorPlanTab job={job} profile={profile} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} setTab={setTab} />}
       </div>
 
