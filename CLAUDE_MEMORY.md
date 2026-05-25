@@ -2053,3 +2053,10 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Files: FinancialsTab.jsx (added import + SUB_TABS entry + render), JobDet.jsx (removed import + TABS entry + mount).
 - Tab count: JobDet TABS 10 → 9.
 - Open: MaterialsTab dark theme (#111827) clashes with FinancialsTab cream theme — visual polish deferred. Role-gating on Financials access (vs. old pmOnly Materials gate) — verify or flag. Also: FieldTab already exposes Materials as a sub-tab; pre-existing, not introduced by this change. Materials is now reachable via both Field→Materials and Financials→Materials — may want to consolidate later.
+
+[LOG — 2026-05-25 — AiIntakeWizard close button cleared from iPhone status bar]
+- Action: Added safe-area-inset-top to AiIntakeWizard header padding so the × close button sits below the iPhone notch/Dynamic Island/status bar. Header padding changed from '14px 18px' to 'calc(14px + env(safe-area-inset-top)) 18px 14px 18px'. No-op on devices that don't need it.
+- Bug: Fullscreen overlay (position: fixed, inset: 0) gave the header no safe-area handling — header sat behind the status bar/Dynamic Island, making the × unreachable on iPhone.
+- Files: avenstone-vite/src/components/ai/AiIntakeWizard.jsx (single line — header div padding only).
+- Scope: Platform UI fix, trade-agnostic. Other wizard/modal headers in app NOT audited — separate slice if needed.
+- Build: ✓ 375 modules.

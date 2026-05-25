@@ -111,7 +111,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
     >
       {/* Header */}
       <div style={{
-        flexShrink: 0, padding: '14px 18px', background: NAVY, color: '#fff',
+        flexShrink: 0, padding: 'calc(14px + env(safe-area-inset-top)) 18px 14px 18px', background: NAVY, color: '#fff',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         borderBottom: `3px solid ${GOLD}`,
       }}>
