@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, sbCountPendingTodos, AI_PM_NIGHTLY_URL, ANON_KEY, FIELD_OPUS_USER_ID } from './lib/supabase';
+import { sb, setSession, sbLoadNotifs, sbMarkNotifsRead, sbSave, sbUpd, setGlobalJobs, AI_PM_NIGHTLY_URL, ANON_KEY, FIELD_OPUS_USER_ID } from './lib/supabase';
 import { initBugContext, pushBreadcrumb } from './lib/bugContext';
 import { registerForPush } from './lib/push';
 import { Ic, STATS, sc, sl, f$, ls, ll } from './lib/utils';
@@ -22,7 +22,7 @@ import NotifPanel from './components/shared/NotifPanel';
 import SettingsModal from './components/modals/SettingsModal';
 import AiKnowledgeScr from './components/ai/AiKnowledgeScr';
 import OwnerPortal from './components/owner/OwnerPortal';
-import AiHomeScr from './components/ai/AiHomeScr';
+import HomeScr from './components/home/HomeScr';
 import PublicProfile from './components/public/PublicProfile';
 import ReviewPage from './components/public/ReviewPage';
 import CompletionPage from './components/public/CompletionPage';
@@ -32,7 +32,6 @@ import MasterAgent from './components/shared/MasterAgent';
 import FieldOpusPanel from './components/shared/FieldOpusPanel';
 import SequencesScr from './components/common/SequencesScr';
 import AiPmDashboard from './components/dashboard/AiPmDashboard';
-import TodayScr from './components/dashboard/TodayScr';
 import MyTodosScreen from './components/todos/MyTodosScreen';
 import BugReportsScr from './components/admin/BugReportsScr';
 
@@ -49,7 +48,7 @@ export default function App() {
   const [session, setSessionState] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [pg, setPg] = useState('dashboard');
+  const [pg, setPg] = useState('home');
   const [jobs, setJobs] = useState(() => ll('av_j', []));
   const [notifs, setNotifs] = useState([]);
   const [showNotif, setShowNotif] = useState(false);
@@ -59,7 +58,6 @@ export default function App() {
   const [jobsSelClear, setJobsSelClear] = useState(0);
   const [pendingAction, setPendingAction] = useState(null);
   const [viewportJobId, setViewportJobId] = useState(null);
-  const landingChecked = useRef(false);
 
   // Initialize bug context ring buffers once on mount
   useEffect(() => { initBugContext(); }, []);
@@ -110,16 +108,6 @@ export default function App() {
 
   useEffect(() => { setGlobalJobs(jobs); }, [jobs]);
 
-  // Cold-start landing: redirect to Today if user has pending todos
-  useEffect(() => {
-    if (!profile?.id || landingChecked.current) return;
-    landingChecked.current = true;
-    if (pg !== 'dashboard') return;
-    const today = new Date().toISOString().slice(0, 10);
-    if (localStorage.getItem('av_landing_date') === today) return;
-    localStorage.setItem('av_landing_date', today);
-    sbCountPendingTodos().then(count => { if (count > 0) setPg('today'); });
-  }, [profile?.id]);
 
   const saveJob = async j => { const u = [j, ...jobs]; setJobs(u); ls('av_j', u); await sbSave(j); };
   const signOut = async () => { await sb.auth.signOut(); ls('av_j', []); setJobs([]); setNotifs([]); };
@@ -146,9 +134,9 @@ export default function App() {
           setPg('jobs');
           return;
         }
-        // /todo/<todoId> — no dedicated detail view yet, navigate to today screen
+        // /todo/<todoId> — navigate to todos screen
         if (deepLink.match(/^\/todo\/[^/]+$/)) {
-          setPg('today');
+          setPg('todos');
         }
       },
     });
@@ -193,8 +181,7 @@ export default function App() {
   const roleLabel = { owner: 'Owner', sales_rep: 'Sales Rep', project_manager: 'Project Manager', sub: 'Contractor' }[profile?.role] || 'User';
 
   const NAV = [
-    { id: 'today', lb: 'Today', ic: 'check', sec: 'Main' },
-    { id: 'dashboard', lb: 'AI Home', ic: 'grid', sec: 'Main' },
+    { id: 'home', lb: 'Home', ic: 'grid', sec: 'Main' },
     { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
     ...(isStaff ? [{ id: 'todos', lb: 'To-dos', ic: 'check', sec: 'Main' }] : []),
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
@@ -213,7 +200,7 @@ export default function App() {
     <>
       <div className="app">
         <div className="sidebar">
-          <div className="sb-logo" onClick={() => setPg('dashboard')} style={{ cursor: 'pointer' }}>
+          <div className="sb-logo" onClick={() => setPg('home')} style={{ cursor: 'pointer' }}>
             <img src={logo} alt="Avenstone" />
           </div>
           <nav className="sb-nav">
@@ -252,7 +239,7 @@ export default function App() {
 
         <div className="main">
           <div className="mob-hdr">
-            <img src={logo} alt="Avenstone" style={{ width: 44, height: 44, objectFit: 'contain', cursor: 'pointer' }} onClick={() => setPg('dashboard')} />
+            <img src={logo} alt="Avenstone" style={{ width: 44, height: 44, objectFit: 'contain', cursor: 'pointer' }} onClick={() => setPg('home')} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 8, color: '#C9A84C', letterSpacing: 4, textTransform: 'uppercase' }}>Avenstone Group</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', letterSpacing: 0.5 }}>Field Estimator</div>
@@ -271,7 +258,7 @@ export default function App() {
 
           <div className="top-bar">
             <div style={{ fontSize: 13, color: '#9CA3AF' }}>
-              <strong style={{ color: '#0A1F44' }}>{NAV.find(n => n.id === pg)?.lb || 'Dashboard'}</strong>&nbsp;·&nbsp;
+              <strong style={{ color: '#0A1F44' }}>{NAV.find(n => n.id === pg)?.lb || 'Home'}</strong>&nbsp;·&nbsp;
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -295,11 +282,10 @@ export default function App() {
           </div>
 
           <div className="pg-wrap">
-            {pg === 'today' && <TodayScr profile={profile} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { /* MasterAgent reads pendingAction directly */ } }} />}
+            {pg === 'home' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}
-            {pg === 'dashboard' && <AiHomeScr profile={profile} jobs={jobs} nav={setPg} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
-            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('dashboard')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} onJobOpen={(id) => setViewportJobId(id)} onJobClose={() => setViewportJobId(null)} />}
+            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('home')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} onJobOpen={(id) => setViewportJobId(id)} onJobClose={() => setViewportJobId(null)} />}
             {pg === 'subs' && isStaff && <SubDir profile={profile} />}
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
@@ -332,11 +318,9 @@ export default function App() {
 
           <div className="bot-nav">
             {[
-              { id: 'today', ic: 'check', lb: 'Today' },
-              { id: 'dashboard', ic: 'grid', lb: 'Home' },
+              { id: 'home', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
               ...(isStaff ? [{ id: 'todos', ic: 'check', lb: 'To-dos' }] : []),
-              ...(isStaff ? [{ id: 'field-agent', ic: 'grid', lb: '⚡ Agent' }] : []),
               ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
