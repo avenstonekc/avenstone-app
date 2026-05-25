@@ -2046,3 +2046,10 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Decision: avenstone-vite/src/components/jobs/tabs/FloorPlanTab.jsx left in place as orphaned dead code (not deleted) per spec — may be revived later. Tab count 11 → 10.
 - Build: ✓ 375 modules. Commits: 41ca02d (ConsultationTab), 5d994f3 (JobDet). Pushed to main.
 - Open: None.
+
+[LOG — 2026-05-24 — Materials tab merged into Financials as sub-tab]
+- Action: Materials removed from JobDet top-level tabs; rendered as 5th sub-tab inside Financials (ledger / budget / COs / invoices / materials).
+- Reason: Tab pressure on mobile (10 tabs wrapping). Materials is spend data — natural fit under Financials.
+- Files: FinancialsTab.jsx (added import + SUB_TABS entry + render), JobDet.jsx (removed import + TABS entry + mount).
+- Tab count: JobDet TABS 10 → 9.
+- Open: MaterialsTab dark theme (#111827) clashes with FinancialsTab cream theme — visual polish deferred. Role-gating on Financials access (vs. old pmOnly Materials gate) — verify or flag. Also: FieldTab already exposes Materials as a sub-tab; pre-existing, not introduced by this change. Materials is now reachable via both Field→Materials and Financials→Materials — may want to consolidate later.
