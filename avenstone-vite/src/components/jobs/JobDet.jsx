@@ -6,7 +6,6 @@ import ScheduleTab from './tabs/ScheduleTab';
 import DocsTab from './tabs/DocsTab';
 import MessagesTab from './tabs/MessagesTab';
 import ConsultationTab from './tabs/ConsultationTab';
-import AiCompanionChat from '../shared/AiCompanionChat';
 import FloorPlanTab from './tabs/FloorPlanTab';
 import FinancialsTab from './tabs/FinancialsTab';
 import FieldTab from './tabs/FieldTab';
@@ -266,8 +265,6 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'floorplan' && <FloorPlanTab job={job} profile={profile} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} setTab={setTab} />}
       </div>
-
-      <AiCompanionChat job={job} profile={profile} />
 
       {/* Status picker modal */}
       {showSt && <div className="overlay" onClick={() => setShowSt(false)}><div className="modal" onClick={e => e.stopPropagation()}>
