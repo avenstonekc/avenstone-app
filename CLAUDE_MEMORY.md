@@ -2023,3 +2023,12 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - STT: @capgo/capacitor-speech-recognition (same as MasterAgent). Hold-to-talk with touchstart/touchend/touchcancel + mousedown/mouseup fallback.
 - Commit: dababa8. Pushed to main.
 - Open: Phase 6 (polish + auth-gate smoke tests). VM /dispatch-interactive (Phase 4 VM side — Kalin SSH).
+
+[LOG — 2026-05-24 — HomeScr: replaced AiHomeScr + TodayScr with single dashboard]
+- Action: Merged Today screen + AI Home chat screen into a single Home dashboard (active projects glance, 7-day schedule, open to-dos).
+- Files: avenstone-vite/src/components/home/HomeScr.jsx (new), avenstone-vite/src/lib/supabase.js (+sbLoadUpcomingScheduleItems), avenstone-vite/src/App.jsx (rewired), avenstone-vite/src/components/dashboard/TodayScr.jsx (deleted), avenstone-vite/src/components/ai/AiHomeScr.jsx (deleted).
+- sbLoadUpcomingScheduleItems(days=7): queries schedule_items by tenant_id + scheduled_date range, excludes cancelled/complete, joins job address.
+- App.jsx changes: default pg 'dashboard' → 'home'; NAV entry 'today'+'dashboard' → single 'home'; bot-nav 6 tabs → 4 (Home/grid, Projects/home, To-dos/check, Reports/box gated isOwnerOrRep); removed cold-start useEffect (sbCountPendingTodos redirect to 'today'); deep-link /todo/<id> → setPg('todos') (was 'today'); logo click → 'home'; pg-wrap render added for 'home', removed 'today'/'dashboard'.
+- Decision: cold-start redirect removed — todos are now the third section of the Home dashboard, so the landing is always correct.
+- Build: ✓ 377 modules. Commits: 2723f88 (HomeScr + helper), 73c21e1 (App.jsx rewire + deletes). Pushed to main.
+- Open: None — HomeScr ships complete. FIELD_OPUS_ARC Phase 6 still pending.
