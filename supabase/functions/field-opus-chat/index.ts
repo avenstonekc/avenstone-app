@@ -144,6 +144,7 @@ You think like the web-version Opus he talks to at home. Same brain. Same rules.
 - Never draft a Sonnet prompt without first reading the files it will touch.
 - Never bury contradictions with prior session decisions. Surface them directly.
 - Never opportunistically refactor. If Kalin asks for X, prompt for X, not X+Y.
+- NEVER claim you drafted a prompt without calling draft_sonnet_prompt in the same turn. If you find yourself typing "Drafted" or "Card's up" — STOP. Call the tool first. Then output your minimal confirmation.
 
 ## Tone
 
@@ -155,7 +156,7 @@ When he curses or rants, don't pearl-clutch. Acknowledge briefly, fix the proble
 
 - read_source_file(path): fetch repo source. Use for audits before drafting.
 - query_db(query_kind, params): run a whitelisted read-only DB query. Use for live state checks.
-- draft_sonnet_prompt(scope_line, prompt_text, model): render a Sonnet prompt as a tappable card in the chat. Kalin reviews + taps Send to VM. THIS DOES NOT DISPATCH — drafting only.
+- draft_sonnet_prompt(scope_line, prompt_text, model): render a Sonnet prompt as a tappable card in Kalin's chat. THIS IS A TOOL CALL — you MUST invoke it for the card to appear. The word "drafted" or "card's up" in your text response means NOTHING if you didn't call this tool. If you intend to draft, call the tool. If you call the tool, do not also say "drafted" — the card appearing IS the confirmation. If you didn't call the tool, do not claim you did. There is no card without a tool call.
 - note_decision(text): append a system note to the thread for future-session continuity.
 
 ## Governing documents
@@ -440,15 +441,33 @@ async function callAnthropic(
 function threadToApiMessages(
   thread: ThreadMessage[],
 ): Array<{ role: 'user' | 'assistant'; content: string }> {
-  // Skip the message we just appended (last item) — it's the current user turn, already the last message.
   // dispatch_result + system roles serialized as user messages for API compatibility.
-  // Phase 3b/4 polish will handle proper tool_result threading.
+  // auto_reflection_trigger pairs (Phase 6c) get wrapped so Opus sees them as closed
+  // historical artifacts, not the active conversation — prevents context mode-confusion.
   const out: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   for (const msg of thread) {
     if (msg.role === 'user') {
-      out.push({ role: 'user', content: msg.content });
+      if (msg.meta?.kind === 'auto_reflection_trigger') {
+        out.push({
+          role: 'user',
+          content: `[Historical: VM dispatch auto-reflection trigger from past turn — closed]\n${msg.content}`,
+        });
+      } else {
+        out.push({ role: 'user', content: msg.content });
+      }
     } else if (msg.role === 'assistant') {
-      out.push({ role: 'assistant', content: msg.content });
+      const prev = out[out.length - 1];
+      const prevWasReflection = prev &&
+        prev.role === 'user' &&
+        prev.content.startsWith('[Historical: VM dispatch auto-reflection trigger');
+      if (prevWasReflection) {
+        out.push({
+          role: 'assistant',
+          content: `[Historical reflection — closed]\n${msg.content}`,
+        });
+      } else {
+        out.push({ role: 'assistant', content: msg.content });
+      }
     } else if (msg.role === 'dispatch_result') {
       out.push({ role: 'user', content: `[VM dispatch result]\n${msg.content}` });
     } else if (msg.role === 'system') {
