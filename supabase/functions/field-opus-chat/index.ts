@@ -15,6 +15,7 @@ const ANTHROPIC_VERSION = '2023-06-01';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const WEBHOOK_SECRET = Deno.env.get('VM_WEBHOOK_SECRET') ?? '';
 
 
 const REPO_RAW_BASE = 'https://raw.githubusercontent.com/avenstonekc/avenstone-app/refs/heads/main/';
@@ -36,9 +37,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 // ============================================================
-// Auth: verify caller is Kalin
+// Auth: verify caller is Kalin or system (webhook)
 // ============================================================
-async function verifyKalinAuth(req: Request): Promise<{ ok: boolean; error?: string; token?: string }> {
+type CallerCheck = { ok: boolean; error?: string; token?: string; isSystem?: boolean };
+
+async function verifyCaller(req: Request): Promise<CallerCheck> {
+  const webhookHeader = req.headers.get('x-field-opus-webhook-secret');
+  if (webhookHeader && WEBHOOK_SECRET && webhookHeader === WEBHOOK_SECRET) {
+    return { ok: true, isSystem: true };
+  }
+
   const authHeader = req.headers.get('authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return { ok: false, error: 'missing authorization header' };
@@ -264,16 +272,19 @@ const TOOLS = [
 
 // ============================================================
 // Tool execution — Phase 3b implementations.
-// read_source_file + query_db forward to inner edge fns with user JWT (defense-in-depth).
+// read_source_file + query_db forward to inner edge fns with user JWT or webhook secret.
 // draft_sonnet_prompt is structured output only — handler captures input, returns ack.
 // note_decision writes directly to the thread via appendMessage.
 // ============================================================
 async function executeTool(
   name: string,
   input: Record<string, unknown>,
-  userToken: string,
+  userToken: string | undefined,
   sb: ReturnType<typeof createClient>,
 ): Promise<{ ok: boolean; error?: string; data?: unknown }> {
+  const innerAuthHeaders: Record<string, string> = userToken
+    ? { authorization: `Bearer ${userToken}` }
+    : { 'x-field-opus-webhook-secret': WEBHOOK_SECRET };
   switch (name) {
     case 'read_source_file': {
       const path = typeof input.path === 'string' ? input.path : '';
@@ -282,8 +293,8 @@ async function executeTool(
         const res = await fetch(`${SUPABASE_URL}/functions/v1/field-opus-fetch-file`, {
           method: 'POST',
           headers: {
-            authorization: `Bearer ${userToken}`,
             'content-type': 'application/json',
+            ...innerAuthHeaders,
           },
           body: JSON.stringify({ path }),
         });
@@ -315,8 +326,8 @@ async function executeTool(
         const res = await fetch(`${SUPABASE_URL}/functions/v1/field-opus-db-query`, {
           method: 'POST',
           headers: {
-            authorization: `Bearer ${userToken}`,
             'content-type': 'application/json',
+            ...innerAuthHeaders,
           },
           body: JSON.stringify({ query_kind: queryKind, params }),
         });
@@ -458,13 +469,14 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'POST required' }, 405);
   }
 
-  const authCheck = await verifyKalinAuth(req);
+  const authCheck = await verifyCaller(req);
   if (!authCheck.ok) {
     return jsonResponse({ ok: false, error: authCheck.error }, 403);
   }
-  const userToken = authCheck.token!;
+  const userToken = authCheck.token;
+  const isSystem = authCheck.isSystem === true;
 
-  let body: { message?: string };
+  let body: { message?: string; system_invocation?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -480,8 +492,11 @@ Deno.serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
   try {
-    // 1. Persist user message
-    await appendMessage(sb, 'user', userMessage);
+    // 1. Persist user message (skipped for system invocations — webhook already inserted it)
+    const skipPersist = isSystem && body.system_invocation === true;
+    if (!skipPersist) {
+      await appendMessage(sb, 'user', userMessage);
+    }
 
     // 2. Load full thread (includes the message we just appended)
     const thread = await loadThreadHistory(sb);

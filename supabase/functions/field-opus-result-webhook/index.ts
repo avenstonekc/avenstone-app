@@ -117,6 +117,38 @@ Deno.serve(async (req) => {
     console.error('field-opus-result-webhook push fanout failed:', pushErr);
   }
 
+  // Auto-fire an Opus reflection turn so the thread has a response ready when Kalin opens the app.
+  try {
+    const reflectionMessage = isSuccess
+      ? `[System] VM dispatch ${queueId} completed${body.commit_hash ? ` at commit ${body.commit_hash.slice(0, 7)}` : ''}. Summarize what shipped in 1-3 sentences. If anything in the result looks like it needs follow-up work, flag it but do NOT auto-draft a prompt — wait for Kalin's go-ahead.`
+      : `[System] VM dispatch ${queueId} FAILED. Diagnose the failure from the result text: identify the root cause and propose a concrete next slice. Be specific about file/line/symptom.`;
+
+    await sb.from('field_opus_messages').insert({
+      thread_id: KALIN_THREAD_ID,
+      role: 'user',
+      content: reflectionMessage,
+      meta: { kind: 'auto_reflection_trigger', queue_id: queueId },
+    });
+
+    const chatRes = await fetch(`${SUPABASE_URL}/functions/v1/field-opus-chat`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-field-opus-webhook-secret': VM_SECRET!,
+      },
+      body: JSON.stringify({ message: reflectionMessage, system_invocation: true }),
+    });
+
+    if (!chatRes.ok) {
+      const errBody = await chatRes.text();
+      console.error(`field-opus-chat system call failed (${chatRes.status}): ${errBody.slice(0, 300)}`);
+    } else {
+      console.log(`field-opus-chat system call succeeded for queue_id=${queueId}`);
+    }
+  } catch (autoErr) {
+    console.error('auto-reflection chat invocation exception:', autoErr);
+  }
+
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
     headers: { 'content-type': 'application/json' },

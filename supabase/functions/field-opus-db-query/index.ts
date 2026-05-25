@@ -5,8 +5,14 @@ import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 // No raw SQL surface. Brain (Phase 3) calls via tool_use.
 
 const KALIN_USER_ID = '8171742a-b586-4f13-be61-744e191a1896';
+const WEBHOOK_SECRET = Deno.env.get('VM_WEBHOOK_SECRET') ?? '';
 
-async function verifyKalinAuth(req: Request): Promise<{ ok: boolean; error?: string }> {
+async function verifyCaller(req: Request): Promise<{ ok: boolean; error?: string }> {
+  const webhookHeader = req.headers.get('x-field-opus-webhook-secret');
+  if (webhookHeader && WEBHOOK_SECRET && webhookHeader === WEBHOOK_SECRET) {
+    return { ok: true };
+  }
+
   const authHeader = req.headers.get('authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return { ok: false, error: 'missing authorization header' };
@@ -161,7 +167,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: false, error: 'POST required' }), { status: 405 });
   }
 
-  const authCheck = await verifyKalinAuth(req);
+  const authCheck = await verifyCaller(req);
   if (!authCheck.ok) {
     return new Response(JSON.stringify({ ok: false, error: authCheck.error }), {
       status: 403,
