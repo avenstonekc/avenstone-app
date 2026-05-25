@@ -1764,6 +1764,24 @@ export const sbLoadScheduleItems = async (jobId) => {
   }
 };
 
+export const sbLoadUpcomingScheduleItems = async (days = 7) => {
+  if (!AV_TENANT) return { ok: true, data: [] };
+  const today = new Date().toISOString().slice(0, 10);
+  const end = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const { data, error } = await sb
+    .from('schedule_items')
+    .select('*, job:jobs!job_id(id, address)')
+    .eq('tenant_id', AV_TENANT)
+    .gte('scheduled_date', today)
+    .lte('scheduled_date', end)
+    .neq('status', 'cancelled')
+    .neq('status', 'complete')
+    .order('scheduled_date', { nullsFirst: false })
+    .order('scheduled_time', { nullsFirst: true });
+  if (error) return { ok: false, error: error.message, data: [] };
+  return { ok: true, data: data || [] };
+};
+
 export const sbCreateScheduleItem = async (payload) => {
   try {
     const row = {
