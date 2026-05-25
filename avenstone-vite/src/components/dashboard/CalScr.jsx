@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react';
-import { sb, sbLoadUpcomingScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem } from '../../lib/supabase';
+import {
+  sb, AV_USER_ID,
+  sbLoadUpcomingScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem,
+  sbLoadScheduleInvitees, sbAddScheduleInvitee, sbRemoveScheduleInvitee,
+  sbLoadTeam, sbLoadActiveSubs,
+} from '../../lib/supabase';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -21,6 +26,10 @@ const TYPE_SUGGESTIONS = {
   milestone:         'Milestone',
   delay:             'Schedule delay',
 };
+
+function inviteStatusColor(status) {
+  return { invited:'#888', accepted:'#22c55e', declined:'#EF4444', tentative:'#C9A84C' }[status] || '#888';
+}
 
 export default function CalScr({ jobs, profile, onSelectJob }) {
   const [view, setView] = useState('month');
@@ -239,8 +248,20 @@ function EventModal({ item, jobs, onClose, onSaved }) {
     job_id:         item?.job_id         || '',
     notes:          item?.notes          || '',
   });
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState(null);
+  const [saving, setSaving]           = useState(false);
+  const [deleting, setDeleting]       = useState(false);
+  const [err, setErr]                 = useState(null);
+  const [invitees, setInvitees]       = useState([]);
+  const [pendingInvId, setPendingInvId] = useState('');
+  const [staff, setStaff]             = useState([]);
+
+  useEffect(() => {
+    if (!item?.id) return;
+    sbLoadScheduleInvitees(item.id).then(r => { if (r?.ok) setInvitees(r.data || []); });
+    Promise.all([sbLoadTeam(), sbLoadActiveSubs()]).then(([teamData, subsData]) => {
+      setStaff([...(teamData || []), ...(subsData || [])]);
+    });
+  }, [item?.id]);
 
   const setField = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -250,13 +271,14 @@ function EventModal({ item, jobs, onClose, onSaved }) {
   };
 
   const activeJobs = jobs.filter(j => j.status !== 'complete' && j.status !== 'on_hold');
+  const invitedIds = new Set(invitees.map(inv => inv.invitee_user_id));
+  const availableStaff = staff.filter(p => p.id !== AV_USER_ID && !invitedIds.has(p.id));
 
   const save = async () => {
     if (!form.title.trim()) { setErr('Title is required'); return; }
     if (!form.scheduled_date) { setErr('Date is required'); return; }
     if (!form.job_id) { setErr('Job is required'); return; }
     setSaving(true); setErr(null);
-
     const payload = {
       type:           form.type,
       title:          form.title.trim(),
@@ -265,14 +287,42 @@ function EventModal({ item, jobs, onClose, onSaved }) {
       job_id:         form.job_id,
       notes:          form.notes.trim() || null,
     };
-
     const result = isNew
       ? await sbCreateScheduleItem(payload)
       : await sbUpdateScheduleItem(item.id, payload);
-
     setSaving(false);
     if (!result.ok) { setErr(result.error || 'Save failed'); return; }
     onSaved();
+  };
+
+  const handleDelete = async () => {
+    if (!item?.id) return;
+    if (!window.confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
+    setDeleting(true); setErr(null);
+    const result = await sbDeleteScheduleItem(item.id);
+    setDeleting(false);
+    if (!result.ok) { setErr(result.error || 'Delete failed'); return; }
+    onSaved();
+  };
+
+  const addInvitee = async () => {
+    if (!pendingInvId || !item?.id) return;
+    const r = await sbAddScheduleInvitee({ scheduleItemId: item.id, inviteeUserId: pendingInvId, scheduleItem: item });
+    if (r?.ok) {
+      setPendingInvId('');
+      sbLoadScheduleInvitees(item.id).then(r2 => { if (r2?.ok) setInvitees(r2.data || []); });
+    } else {
+      setErr(r.error || 'Could not add invitee');
+    }
+  };
+
+  const removeInvitee = async (inviteeRowId) => {
+    const r = await sbRemoveScheduleInvitee(inviteeRowId);
+    if (r?.ok) {
+      sbLoadScheduleInvitees(item.id).then(r2 => { if (r2?.ok) setInvitees(r2.data || []); });
+    } else {
+      setErr(r.error || 'Could not remove invitee');
+    }
   };
 
   return (
@@ -321,9 +371,49 @@ function EventModal({ item, jobs, onClose, onSaved }) {
           <textarea className="finp" rows={3} value={form.notes} onChange={e => setField('notes', e.target.value)} style={{ resize: 'vertical' }} />
         </div>
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-          <button onClick={save} disabled={saving} className="btn btn-navy">{saving ? 'Saving…' : isNew ? 'Add Event' : 'Save'}</button>
+        {!isNew && (
+          <div className="fg" style={{ marginTop: 4 }}>
+            <label className="flbl">Invitees</label>
+            {invitees.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                {invitees.map(inv => (
+                  <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(10,31,68,0.05)', borderRadius: 6 }}>
+                    <span style={{ flex: 1, fontSize: 13, color: '#374151' }}>
+                      {inv.profile?.full_name || inv.profile?.email || 'Unknown'}
+                      {inv.profile?.role && <span style={{ marginLeft: 6, fontSize: 10, color: '#9CA3AF', textTransform: 'capitalize' }}>({inv.profile.role.replace(/_/g, ' ')})</span>}
+                    </span>
+                    <span style={{ fontSize: 10, textTransform: 'uppercase', color: inviteStatusColor(inv.status), fontWeight: 700 }}>{inv.status}</span>
+                    <button onClick={() => removeInvitee(inv.id)} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px' }} title="Remove">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {availableStaff.length > 0 && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select className="finp" style={{ ...ssty, flex: 1 }} value={pendingInvId} onChange={e => setPendingInvId(e.target.value)}>
+                  <option value="">Add person…</option>
+                  {availableStaff.map(p => (
+                    <option key={p.id} value={p.id}>{p.full_name || p.email} ({(p.role || '').replace(/_/g, ' ')})</option>
+                  ))}
+                </select>
+                <button onClick={addInvitee} disabled={!pendingInvId} className="btn btn-navy" style={{ opacity: pendingInvId ? 1 : 0.4, flexShrink: 0 }}>Add</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', marginTop: 16, alignItems: 'center' }}>
+          <div>
+            {!isNew && (
+              <button onClick={handleDelete} disabled={deleting} style={{ background: 'none', border: '1px solid #FECACA', color: '#DC2626', borderRadius: 4, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                {deleting ? 'Deleting…' : 'Delete event'}
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+            <button onClick={save} disabled={saving} className="btn btn-navy">{saving ? 'Saving…' : isNew ? 'Add Event' : 'Save'}</button>
+          </div>
         </div>
       </div>
     </div>
