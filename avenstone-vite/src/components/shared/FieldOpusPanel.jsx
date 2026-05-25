@@ -24,6 +24,13 @@ const ghostBtn = {
   fontSize: 13,
 };
 
+function formatElapsed(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
+}
+
 // ---------------------------------------------------------------------------
 // MessageBubble
 // ---------------------------------------------------------------------------
@@ -250,6 +257,8 @@ export default function FieldOpusPanel({ profile }) {
   const [resetConfirm, setResetConfirm] = useState(false);
   const [dispatchingId, setDispatchingId] = useState(null);
   const [editingPrompt, setEditingPrompt] = useState(null);
+  const [opusThinking, setOpusThinking] = useState(false);
+  const [activeDispatch, setActiveDispatch] = useState(null);
 
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -275,9 +284,13 @@ export default function FieldOpusPanel({ profile }) {
         table: 'field_opus_messages',
         filter: `thread_id=eq.${FIELD_OPUS_THREAD_ID}`,
       }, (payload) => {
+        if (payload.new.role === 'assistant') {
+          setOpusThinking(false);
+        }
         if (payload.new.role === 'dispatch_result') {
           if (dispatchTimeoutRef.current) clearTimeout(dispatchTimeoutRef.current);
           setDispatchingId(null);
+          setActiveDispatch(null);
         }
         setMessages(prev => {
           if (prev.some(m => m.id === payload.new.id)) return prev;
@@ -310,7 +323,7 @@ export default function FieldOpusPanel({ profile }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, opusThinking]);
 
   useEffect(() => {
     SpeechRecognition.available().then(res => {
@@ -340,6 +353,7 @@ export default function FieldOpusPanel({ profile }) {
     setMessages(prev => [...prev, {
       id: optId, role: 'user', content: text, meta: {}, created_at: new Date().toISOString(),
     }]);
+    setOpusThinking(true);
 
     try {
       const headers = await getAuthHeader();
@@ -362,6 +376,7 @@ export default function FieldOpusPanel({ profile }) {
       }]);
     } finally {
       setLoading(false);
+      setOpusThinking(false);
     }
   };
 
@@ -395,8 +410,16 @@ export default function FieldOpusPanel({ profile }) {
           content: `Dispatch: ${json.error || 'unknown error'}`, meta: {}, created_at: new Date().toISOString(),
         }]);
       }
-      // Enqueue succeeded: leave dispatchingId set.
-      // Realtime dispatch_result handler clears it when VM result arrives.
+      // Enqueue succeeded: leave dispatchingId set. Start the in-flight banner.
+      // Realtime dispatch_result handler clears both when VM result arrives.
+      if (json.ok) {
+        setActiveDispatch({
+          queue_id: json.queue_id || null,
+          message_id: messageId,
+          started_at: Date.now(),
+          elapsed_seconds: 0,
+        });
+      }
     } catch (err) {
       if (dispatchTimeoutRef.current) clearTimeout(dispatchTimeoutRef.current);
       setDispatchingId(null);
@@ -414,6 +437,18 @@ export default function FieldOpusPanel({ profile }) {
     const result = await sbResetFieldOpusThread();
     if (result.ok) setMessages([]);
   };
+
+  // Tick elapsed_seconds while a dispatch is in flight
+  useEffect(() => {
+    if (!activeDispatch) return;
+    const t = setInterval(() => {
+      setActiveDispatch(prev => prev ? {
+        ...prev,
+        elapsed_seconds: Math.floor((Date.now() - prev.started_at) / 1000),
+      } : null);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [activeDispatch?.started_at]);
 
   // -------------------------------------------------------------------------
   // STT
@@ -487,6 +522,14 @@ export default function FieldOpusPanel({ profile }) {
         @keyframes founceBounce {
           0%, 60%, 100% { transform: translateY(0); }
           30% { transform: translateY(-5px); }
+        }
+        @keyframes opusThinkingDots {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
+        }
+        @keyframes dispatchBannerPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.85); }
         }
       `}</style>
 
@@ -562,21 +605,54 @@ export default function FieldOpusPanel({ profile }) {
               setEditingPrompt={setEditingPrompt}
             />
           ))}
-          {loading && (
-            <div style={{ display: 'flex', gap: 5, padding: '8px 12px', alignSelf: 'flex-start' }}>
-              {[0, 1, 2].map(i => (
-                <span
-                  key={i}
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: '#C9A84C',
-                    display: 'inline-block',
-                    animation: `founceBounce 1s ${i * 0.2}s infinite`,
-                  }}
-                />
-              ))}
+          {activeDispatch && (
+            <div style={{
+              alignSelf: 'center',
+              width: '95%',
+              background: 'rgba(201,168,76,0.12)',
+              border: '1px solid rgba(201,168,76,0.45)',
+              borderRadius: 10,
+              padding: '10px 12px',
+              color: '#C9A84C',
+              fontSize: 12,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: 4,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: '#C9A84C', flexShrink: 0,
+                  animation: 'dispatchBannerPulse 1.5s ease-in-out infinite',
+                }} />
+                <span>VM dispatch in flight · {formatElapsed(activeDispatch.elapsed_seconds)}</span>
+              </div>
+              {activeDispatch.queue_id && (
+                <span style={{ fontSize: 10, opacity: 0.6, fontFamily: 'monospace' }}>
+                  {activeDispatch.queue_id.slice(0, 8)}
+                </span>
+              )}
+            </div>
+          )}
+          {opusThinking && (
+            <div style={{
+              alignSelf: 'flex-start',
+              maxWidth: '85%',
+              padding: '10px 14px',
+              borderRadius: 14,
+              background: 'rgba(10,31,68,0.55)',
+              border: '1px solid rgba(247,245,240,0.12)',
+              color: 'rgba(247,245,240,0.7)',
+              fontSize: 13,
+              fontStyle: 'italic',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}>
+              <span>Opus is thinking</span>
+              <span style={{ animation: 'opusThinkingDots 1.4s infinite', letterSpacing: '0.1em' }}>…</span>
             </div>
           )}
           <div ref={bottomRef} />
