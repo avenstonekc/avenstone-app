@@ -1,21 +1,50 @@
 import { useState, useEffect } from 'react';
-import { sb } from '../../lib/supabase';
+import { sb, sbLoadUpcomingScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem } from '../../lib/supabase';
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const SC = { lead: '#9CA3AF', proposal: '#f59e0b', contract: '#22c55e', in_progress: '#C9A84C', final_touches: '#3B82F6', complete: '#10B981', on_hold: '#F97316' };
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const SC = { lead:'#9CA3AF', proposal:'#f59e0b', contract:'#22c55e', in_progress:'#C9A84C', final_touches:'#3B82F6', complete:'#10B981', on_hold:'#F97316' };
+
+const TYPE_OPTIONS = [
+  { value: 'material_delivery', label: 'Material Delivery' },
+  { value: 'sub_start',         label: 'Sub Start' },
+  { value: 'site_visit',        label: 'Site Visit' },
+  { value: 'inspection',        label: 'Inspection' },
+  { value: 'milestone',         label: 'Milestone' },
+  { value: 'delay',             label: 'Delay' },
+];
+const TYPE_SUGGESTIONS = {
+  material_delivery: 'Material delivery',
+  sub_start:         'Sub starts',
+  site_visit:        'Site visit',
+  inspection:        'City inspection',
+  milestone:         'Milestone',
+  delay:             'Schedule delay',
+};
 
 export default function CalScr({ jobs, profile, onSelectJob }) {
   const [view, setView] = useState('month');
   const [cur, setCur] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [phases, setPhases] = useState([]);
+  const [scheduleItems, setScheduleItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [editingItem, setEditingItem] = useState(null);
 
   useEffect(() => {
     if (!jobs.length) { setLoading(false); return; }
-    sb.from('job_phases').select('*').in('job_id', jobs.map(j => j.id)).then(({ data }) => { setPhases(data || []); setLoading(false); });
+    sb.from('job_phases').select('*').in('job_id', jobs.map(j => j.id)).then(({ data }) => {
+      setPhases(data || []);
+      setLoading(false);
+    });
   }, []);
+
+  useEffect(() => {
+    sbLoadUpcomingScheduleItems(90).then(r => { if (r?.ok) setScheduleItems(r.data || []); });
+  }, []);
+
+  const reloadItems = () =>
+    sbLoadUpcomingScheduleItems(90).then(r => { if (r?.ok) setScheduleItems(r.data || []); });
 
   const prevMonth = () => setCur(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
   const nextMonth = () => setCur(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
@@ -43,6 +72,10 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
       return ph.start_date <= ds && ph.end_date >= ds;
     });
   };
+  const schedItemsForDay = date => {
+    const ds = toStr(date);
+    return scheduleItems.filter(si => si.scheduled_date === ds);
+  };
 
   const upcoming = () => {
     const evs = [], now = new Date(), cut = new Date(); cut.setDate(cut.getDate() + 90);
@@ -54,6 +87,11 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
       if (filter !== 'all' && job.status !== filter) return;
       if (ph.start_date) { const d = new Date(ph.start_date + 'T12:00:00'); if (d >= now && d <= cut) evs.push({ type: 'start', date: d, job, ph }); }
       if (ph.end_date) { const d = new Date(ph.end_date + 'T12:00:00'); if (d >= now && d <= cut) evs.push({ type: 'end', date: d, job, ph }); }
+    });
+    scheduleItems.forEach(si => {
+      if (!si.scheduled_date) return;
+      const d = new Date(si.scheduled_date + 'T12:00:00');
+      if (d >= now && d <= cut) evs.push({ type: 'schedule_item', date: d, si });
     });
     return evs.sort((a, b) => a.date - b.date);
   };
@@ -68,6 +106,7 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
           <button onClick={() => setCur(() => { const d = new Date(); d.setDate(1); return d; })} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #E8E4DC', borderRadius: 4, background: 'transparent', color: '#9CA3AF', cursor: 'pointer' }}>Today</button>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button onClick={() => setEditingItem({ create: true })} className="btn btn-navy" style={{ fontSize: 12, height: 32, padding: '0 14px' }}>+ Event</button>
           <select value={filter} onChange={e => setFilter(e.target.value)} style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #E8E4DC', borderRadius: 4, background: '#fff', color: '#374151' }}>
             <option value="all">All Projects</option>
             <option value="lead">Lead</option>
@@ -94,7 +133,8 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
               const isToday = ds === today;
               const dj = jobsForDay(day.date);
               const dp = phasesForDay(day.date);
-              const total = dj.length + dp.length;
+              const dsi = schedItemsForDay(day.date);
+              const total = dj.length + dp.length + dsi.length;
               return (
                 <div key={i} style={{ minHeight: 80, padding: '5px 3px', borderRight: i % 7 !== 6 ? '1px solid #F3F0EB' : 'none', borderBottom: i < 35 ? '1px solid #F3F0EB' : 'none', background: !day.in ? '#FAFAF8' : isToday ? '#FFFBF0' : '#fff' }}>
                   <div style={{ fontSize: 11, fontWeight: isToday ? 700 : 400, color: isToday ? '#C9A84C' : day.in ? '#6B7280' : '#D1D5DB', textAlign: 'right', marginBottom: 3 }}>{day.date.getDate()}</div>
@@ -108,6 +148,12 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
                       </div>
                     );
                   })}
+                  {dsi.slice(0, Math.max(0, 3 - dp.length)).map(si => (
+                    <div key={si.id} onClick={() => setEditingItem(si)} title={si.title + (si.job?.address ? ' — ' + si.job.address : '')}
+                      style={{ fontSize: 10, padding: '2px 4px', marginBottom: 2, cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', borderRadius: 3, fontWeight: 500 }}>
+                      {si.title}
+                    </div>
+                  ))}
                   {dj.slice(0, total <= 3 ? 2 : 1).map(j => (
                     <div key={j.id} onClick={() => onSelectJob(j.id)} title={j.address}
                       style={{ fontSize: 10, padding: '2px 4px', marginBottom: 2, cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: SC[j.status] + '22', color: SC[j.status], border: '1px solid ' + SC[j.status] + '44', borderRadius: 3, fontWeight: 600 }}>
@@ -126,11 +172,17 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
             <div style={{ textAlign: 'center', padding: 60, color: '#9CA3AF', fontSize: 14 }}>No upcoming events in the next 90 days.</div>
           ) : upcoming().map((ev, i) => {
             const ds = ev.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-            const icon = ev.type === 'completion' ? '⚑' : ev.type === 'start' ? '▶' : '◼';
-            const color = ev.type === 'completion' ? SC[ev.job.status] : '#3B82F6';
-            const lbl = ev.type === 'completion' ? 'Completion — ' + ev.job.address : ev.type === 'start' ? ev.ph.name + ' starts — ' + ev.job.address : ev.ph.name + ' ends — ' + ev.job.address;
+            const isSchedItem = ev.type === 'schedule_item';
+            const icon = isSchedItem ? '●' : ev.type === 'completion' ? '⚑' : ev.type === 'start' ? '▶' : '◼';
+            const color = isSchedItem ? '#D97706' : ev.type === 'completion' ? SC[ev.job.status] : '#3B82F6';
+            const lbl = isSchedItem
+              ? ev.si.title + (ev.si.job?.address ? ' — ' + ev.si.job.address.split(',')[0] : '')
+              : ev.type === 'completion' ? 'Completion — ' + ev.job.address
+              : ev.type === 'start' ? ev.ph.name + ' starts — ' + ev.job.address
+              : ev.ph.name + ' ends — ' + ev.job.address;
             return (
-              <div key={i} onClick={() => onSelectJob(ev.job.id)}
+              <div key={i}
+                onClick={() => isSchedItem ? setEditingItem(ev.si) : onSelectJob(ev.job.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: '#fff', border: '1px solid #E8E4DC', borderRadius: 6, marginBottom: 8, cursor: 'pointer', transition: 'border-color 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.borderColor = '#C9A84C'}
                 onMouseLeave={e => e.currentTarget.style.borderColor = '#E8E4DC'}>
@@ -139,8 +191,14 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{lbl}</div>
                   {ev.ph && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{ev.job.assigned_rep || ''}</div>}
+                  {isSchedItem && ev.si.notes && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{ev.si.notes}</div>}
                 </div>
-                <div style={{ fontSize: 11, padding: '3px 8px', borderRadius: 10, background: SC[ev.job.status] + '22', color: SC[ev.job.status], fontWeight: 600 }}>{ev.job.status}</div>
+                {!isSchedItem && (
+                  <div style={{ fontSize: 11, padding: '3px 8px', borderRadius: 10, background: SC[ev.job.status] + '22', color: SC[ev.job.status], fontWeight: 600 }}>{ev.job.status}</div>
+                )}
+                {isSchedItem && (
+                  <div style={{ fontSize: 11, padding: '3px 8px', borderRadius: 10, background: '#FEF3C7', color: '#D97706', fontWeight: 600 }}>{ev.si.type.replace(/_/g, ' ')}</div>
+                )}
               </div>
             );
           })}
@@ -149,9 +207,124 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
 
       <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 11, color: '#9CA3AF' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: '#DBEAFE', border: '1px solid #93C5FD', borderRadius: 2, marginRight: 4 }}></span>Phase</div>
+        <div style={{ fontSize: 11, color: '#9CA3AF' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 2, marginRight: 4 }}></span>Event</div>
         {Object.entries({ lead: 'Lead', active: 'Active', punch: 'Punch List', complete: 'Complete' }).map(([s, lb]) => (
           <div key={s} style={{ fontSize: 11, color: '#9CA3AF' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: SC[s] + '33', border: '1px solid ' + SC[s], borderRadius: 2, marginRight: 4 }}></span>{lb}</div>
         ))}
+      </div>
+
+      {editingItem && (
+        <EventModal
+          item={editingItem.create ? null : editingItem}
+          jobs={jobs}
+          onClose={() => setEditingItem(null)}
+          onSaved={() => { setEditingItem(null); reloadItems(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── EventModal ──────────────────────────────────────────────────────────────────
+
+function EventModal({ item, jobs, onClose, onSaved }) {
+  const isNew = !item;
+  const ssty = { appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 };
+
+  const [form, setForm] = useState({
+    type:           item?.type           || 'milestone',
+    title:          item?.title          || TYPE_SUGGESTIONS['milestone'],
+    scheduled_date: item?.scheduled_date || new Date().toISOString().slice(0, 10),
+    scheduled_time: item?.scheduled_time || '',
+    job_id:         item?.job_id         || '',
+    notes:          item?.notes          || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const setField = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleTypeChange = type => {
+    setField('type', type);
+    if (TYPE_SUGGESTIONS[form.type] === form.title) setField('title', TYPE_SUGGESTIONS[type]);
+  };
+
+  const activeJobs = jobs.filter(j => j.status !== 'complete' && j.status !== 'on_hold');
+
+  const save = async () => {
+    if (!form.title.trim()) { setErr('Title is required'); return; }
+    if (!form.scheduled_date) { setErr('Date is required'); return; }
+    if (!form.job_id) { setErr('Job is required'); return; }
+    setSaving(true); setErr(null);
+
+    const payload = {
+      type:           form.type,
+      title:          form.title.trim(),
+      scheduled_date: form.scheduled_date,
+      scheduled_time: form.scheduled_time || null,
+      job_id:         form.job_id,
+      notes:          form.notes.trim() || null,
+    };
+
+    const result = isNew
+      ? await sbCreateScheduleItem(payload)
+      : await sbUpdateScheduleItem(item.id, payload);
+
+    setSaving(false);
+    if (!result.ok) { setErr(result.error || 'Save failed'); return; }
+    onSaved();
+  };
+
+  return (
+    <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 460 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#0A1F44' }}>{isNew ? 'Add Event' : 'Edit Event'}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+
+        {err && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>{err}</div>}
+
+        <div className="fg">
+          <label className="flbl">Type *</label>
+          <select className="finp" style={ssty} value={form.type} onChange={e => handleTypeChange(e.target.value)}>
+            {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+
+        <div className="fg">
+          <label className="flbl">Title *</label>
+          <input className="finp" value={form.title} onChange={e => setField('title', e.target.value)} placeholder={TYPE_SUGGESTIONS[form.type]} />
+        </div>
+
+        <div className="fg">
+          <label className="flbl">Job *</label>
+          <select className="finp" style={ssty} value={form.job_id} onChange={e => setField('job_id', e.target.value)}>
+            <option value="">Select job…</option>
+            {activeJobs.map(j => <option key={j.id} value={j.id}>{j.address?.split(',')[0] || j.id}</option>)}
+          </select>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="fg">
+            <label className="flbl">Date *</label>
+            <input className="finp" type="date" value={form.scheduled_date} onChange={e => setField('scheduled_date', e.target.value)} />
+          </div>
+          <div className="fg">
+            <label className="flbl">Time</label>
+            <input className="finp" type="time" value={form.scheduled_time} onChange={e => setField('scheduled_time', e.target.value)} />
+          </div>
+        </div>
+
+        <div className="fg">
+          <label className="flbl">Notes</label>
+          <textarea className="finp" rows={3} value={form.notes} onChange={e => setField('notes', e.target.value)} style={{ resize: 'vertical' }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving} className="btn btn-navy">{saving ? 'Saving…' : isNew ? 'Add Event' : 'Save'}</button>
+        </div>
       </div>
     </div>
   );
