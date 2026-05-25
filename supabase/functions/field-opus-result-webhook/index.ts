@@ -94,6 +94,29 @@ Deno.serve(async (req) => {
     );
   }
 
+  // Best-effort push notification — never fail the webhook if this errors.
+  try {
+    const KALIN_USER_ID = '8171742a-b586-4f13-be61-744e191a1896';
+    const title = isSuccess
+      ? `Dispatch complete${body.commit_hash ? ` · ${body.commit_hash.slice(0, 7)}` : ''}`
+      : 'Dispatch failed';
+    const notifBody = isSuccess
+      ? (body.result_text?.slice(0, 140) || 'Field-Opus dispatch finished. Open to review.')
+      : (body.error_text?.slice(0, 140) || 'Field-Opus dispatch failed. Open to review.');
+    const { error: notifErr } = await sb.from('notifications').insert({
+      user_id: KALIN_USER_ID,
+      type: 'todo_delegated',
+      title,
+      body: notifBody,
+      priority: isSuccess ? 'normal' : 'high',
+    });
+    if (notifErr) {
+      console.error('field-opus-result-webhook notification insert failed:', notifErr.message);
+    }
+  } catch (pushErr) {
+    console.error('field-opus-result-webhook push fanout failed:', pushErr);
+  }
+
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
     headers: { 'content-type': 'application/json' },
