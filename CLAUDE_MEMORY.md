@@ -2039,3 +2039,10 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Decision: kept avenstone-vite/src/components/shared/AiCompanionChat.jsx in repo, only unmounted. Old companion logic preserved in case Kalin wants to revive it later.
 - Build: ✓ 376 modules. Commit: afd398a. Pushed to main.
 - Open: None.
+
+[LOG — 2026-05-25 — Merged Scanner tab into Consultation idle view]
+- Action: Removed the standalone "Scanner" tab from JobDet; folded its functionality into the Consultation tab's idle view as a new "Floor Plans" section below Past Sessions. Loads scans via sbGetJobLidarScans, renders date/sqft/FloorPlanCanvas/Export PDF per scan, "New Scan" button opens AiIntakeWizard as a full-screen overlay. Logic ported verbatim from FloorPlanTab — same helpers, same UI patterns.
+- Files: avenstone-vite/src/components/jobs/tabs/ConsultationTab.jsx (+131 lines: imports, state, loadScans, handleExportPDF, idle-view section, overlay mount), avenstone-vite/src/components/jobs/JobDet.jsx (-3 lines: import + TABS entry + render line).
+- Decision: avenstone-vite/src/components/jobs/tabs/FloorPlanTab.jsx left in place as orphaned dead code (not deleted) per spec — may be revived later. Tab count 11 → 10.
+- Build: ✓ 375 modules. Commits: 41ca02d (ConsultationTab), 5d994f3 (JobDet). Pushed to main.
+- Open: None.
