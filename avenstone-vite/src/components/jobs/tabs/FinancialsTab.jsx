@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import COTab from './COTab';
 import InvoicesSubTab from './InvoicesSubTab';
+import MaterialsTab from './MaterialsTab';
 import TransactionModal from './financials/TransactionModal';
 import LineItemModal from './financials/LineItemModal';
 import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo } from '../../../lib/supabase';
@@ -8,10 +9,11 @@ import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
 import { f$, isMob } from '../../../lib/utils';
 
 const SUB_TABS = [
-  { id: 'ledger',   lb: 'Ledger' },
-  { id: 'budget',   lb: 'Budget' },
-  { id: 'co',       lb: 'Change Orders' },
-  { id: 'invoices', lb: 'Invoices' },
+  { id: 'ledger',    lb: 'Ledger' },
+  { id: 'budget',    lb: 'Budget' },
+  { id: 'co',        lb: 'Change Orders' },
+  { id: 'invoices',  lb: 'Invoices' },
+  { id: 'materials', lb: 'Materials' },
 ];
 
 const TYPE_LABELS = {
@@ -156,6 +158,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
       {sub === 'co' && <COTab job={job} upd={upd} profile={profile} />}
 
       {sub === 'invoices' && <InvoicesSubTab job={job} profile={profile} />}
+
+      {sub === 'materials' && <MaterialsTab job={job} />}
 
       {sub === 'budget' && (
         <div>
