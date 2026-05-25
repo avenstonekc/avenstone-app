@@ -2060,3 +2060,19 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Files: avenstone-vite/src/components/ai/AiIntakeWizard.jsx (single line — header div padding only).
 - Scope: Platform UI fix, trade-agnostic. Other wizard/modal headers in app NOT audited — separate slice if needed.
 - Build: ✓ 375 modules.
+
+[LOG — 2026-05-25 — CALENDAR_ARC Phase 1 — invitees + delete + cancel]
+- Action: Added invitees system to schedule_items, plus Delete button in CalScr's EventModal. Cancel button was already present from Phase 0.
+- Migration: 20260525100000_schedule_item_invitees.sql. New table schedule_item_invitees (8 cols, 3 indexes, 4 RLS policies). Status enum: invited/accepted/declined/tentative. Unique (schedule_item_id, invitee_user_id) prevents duplicate invites.
+- Helpers added to supabase.js: sbLoadScheduleInvitees (two-query: rows + profiles batch), sbAddScheduleInvitee (inserts invite row + notifications row for push fan-out), sbRemoveScheduleInvitee, sbRespondToScheduleInvite.
+- sbAddScheduleInvitee fires notifications type=schedule_item_created — fully wired in notification-push-fanout (deep_link → job schedule tab). No fanout changes needed.
+- CalScr EventModal: Delete button (soft-cancel via sbDeleteScheduleItem, confirm prompt), Invitees section with add/remove UI (loads team + subs for dropdown, filters out already-invited + self).
+- sbDeleteScheduleItem already existed (soft-cancel, sets status=cancelled). sbLoadTeam + sbLoadActiveSubs used for invitees dropdown.
+- Trade-aware: standard tenant filtering via AV_TENANT + RLS.
+- Build: ✓. Migration: all 8 objects verified.
+
+[BACKLOG — CALENDAR_ARC Phase 2 — Google Calendar sync (DEFERRED)]
+- Two-way sync between schedule_items and Google Calendar per user.
+- Requires: Google OAuth per user (token + refresh), conflict resolution, per-user opt-in toggle, sync state tracking column on schedule_items.
+- Phase 2 prerequisites: Phase 1 invitees feature must prove out in real use first. Sync surface multiplies bug area — don't build until needed.
+- Estimated: 4-6 prompts when greenlit.
