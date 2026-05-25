@@ -367,16 +367,16 @@ export default function FieldOpusPanel({ profile }) {
 
   const dispatch = async (messageId, prompt) => {
     setDispatchingId(messageId);
-    // 10-min timeout safeguard — clears button if VM never calls back
+    // 30-min timeout safeguard — clears button if VM never calls back
     if (dispatchTimeoutRef.current) clearTimeout(dispatchTimeoutRef.current);
     dispatchTimeoutRef.current = setTimeout(() => {
       setDispatchingId(null);
       setMessages(prev => [...prev, {
         id: `to-${Date.now()}`, role: 'system',
-        content: 'Dispatch timeout: no result after 10 minutes. Check VM logs.',
+        content: 'Dispatch timeout: no result after 30 minutes. Check VM logs.',
         meta: {}, created_at: new Date().toISOString(),
       }]);
-    }, 10 * 60 * 1000);
+    }, 30 * 60 * 1000);
 
     try {
       const headers = await getAuthHeader();
