@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis, sbGetJobLidarScans, sbUploadDoc } from '../../../lib/supabase';
 import { Ic, f$, isMob } from '../../../lib/utils';
+import { buildFloorPlanPDF } from '../../../lib/pdf';
 import GapResolutionModal from '../consultation/GapResolutionModal';
 import MeasurePanel from '../consultation/MeasurePanel';
 import AmbientPanel from '../consultation/AmbientPanel';
+import AiIntakeWizard from '../../ai/AiIntakeWizard';
+import FloorPlanCanvas from '../../ai/FloorPlanCanvas';
 
 const NAV = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -82,6 +85,11 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const [gapRunning, setGapRunning] = useState(false);
   const [gapAnalysis, setGapAnalysis] = useState(null);
   const [showGapModal, setShowGapModal] = useState(false);
+  const [scans, setScans] = useState([]);
+  const [scansLoading, setScansLoading] = useState(true);
+  const [showScanner, setShowScanner] = useState(false);
+  const [exportingScanId, setExportingScanId] = useState(null);
+  const [exportedScanIds, setExportedScanIds] = useState(new Set());
 
   const sessionIdRef = useRef(null);
 
@@ -90,9 +98,10 @@ export default function ConsultationTab({ job, profile, setTab }) {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  // Load past sessions on mount
+  // Load past sessions + scans on mount
   useEffect(() => {
     loadSessions();
+    loadScans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);
 
@@ -108,6 +117,34 @@ export default function ConsultationTab({ job, profile, setTab }) {
       setSessions(data || []);
     } catch (e) {
       console.error('Failed to load sessions:', e);
+    }
+  };
+
+  const loadScans = async () => {
+    if (!job?.id) return;
+    setScansLoading(true);
+    const data = await sbGetJobLidarScans(job.id);
+    setScans(data || []);
+    setScansLoading(false);
+  };
+
+  const formatScanDate = (dateStr) => new Date(dateStr).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+  const formatScanSqft = (n) => Number(n).toLocaleString();
+
+  const handleExportPDF = async (scan) => {
+    setExportingScanId(scan.id);
+    try {
+      const doc = await buildFloorPlanPDF(scan, job);
+      const blob = doc.output('blob');
+      const date = new Date(scan.created_at || scan.scanned_at).toISOString().slice(0, 10);
+      const filename = `floor-plan-${date}.pdf`;
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      await sbUploadDoc(job.id, file, 'plan');
+      setExportedScanIds(prev => new Set(prev).add(scan.id));
+    } finally {
+      setExportingScanId(null);
     }
   };
 
@@ -425,6 +462,87 @@ export default function ConsultationTab({ job, profile, setTab }) {
           </div>
         </div>
       )}
+
+      <div style={{ marginTop: sessions.length > 0 ? 28 : 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16, color: NAV }}>
+            Floor Plans
+          </div>
+          <button className="btn btn-gold" onClick={() => setShowScanner(true)}>
+            New Scan
+          </button>
+        </div>
+
+        {scansLoading ? (
+          <p style={{ color: '#999', fontSize: 14, margin: 0 }}>Loading…</p>
+        ) : scans.length === 0 ? (
+          <p style={{ color: '#888', fontSize: 14, margin: 0 }}>
+            No scans yet — tap New Scan to capture with LiDAR
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {scans.map((scan, i) => {
+              const isExterior = scan.capture_mode === 'exterior';
+              const rooms = scan.rooms || [];
+              const totalSqft = rooms.reduce((sum, r) => sum + (r.sqft || 0), 0) || scan.total_sqft || 0;
+
+              if (isExterior) {
+                return (
+                  <div key={scan.id || i} className="card" style={{ padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 16, color: NAV }}>
+                        {formatScanDate(scan.created_at || scan.scanned_at)}
+                      </span>
+                      <span style={{ fontSize: 12, color: '#888' }}>Legacy scan · {formatScanSqft(totalSqft)} sf</span>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={scan.id || i} className="card" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <div>
+                      <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 16, color: NAV }}>
+                        {formatScanDate(scan.created_at || scan.scanned_at)}
+                      </span>
+                      {scan.height_meters == null && (
+                        <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          Height missing
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 13, color: '#666' }}>
+                      {formatScanSqft(totalSqft)} sf
+                    </span>
+                  </div>
+                  {rooms.length > 0 && (
+                    <>
+                      <FloorPlanCanvas rooms={rooms} compact={rooms.length < 3} />
+                      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                        {exportedScanIds.has(scan.id) ? (
+                          <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                            ✓ Saved to Documents
+                          </span>
+                        ) : (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 12, padding: '4px 12px', height: 28 }}
+                            disabled={exportingScanId === scan.id}
+                            onClick={() => handleExportPDF(scan)}
+                          >
+                            {exportingScanId === scan.id ? 'Exporting…' : 'Export PDF'}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -773,6 +891,15 @@ export default function ConsultationTab({ job, profile, setTab }) {
         onClose={() => setShowGapModal(false)}
         onGenerate={generateEstimate}
       />
+
+      {showScanner && (
+        <AiIntakeWizard
+          profile={profile}
+          jobId={job.id}
+          job={job}
+          onClose={() => { setShowScanner(false); loadScans(); }}
+        />
+      )}
     </>
   );
 }
