@@ -1899,6 +1899,83 @@ export const sbDeleteScheduleItem = async (id) => {
   }
 };
 
+// ─── Schedule Item Invitees (CALENDAR_ARC Phase 1) ──────────────────────────
+
+export const sbLoadScheduleInvitees = async (scheduleItemId) => {
+  if (!scheduleItemId) return { ok: false, error: 'scheduleItemId required', data: [] };
+  try {
+    const { data: rows, error } = await sb
+      .from('schedule_item_invitees')
+      .select('id, invitee_user_id, status, invited_by, invited_at, responded_at')
+      .eq('schedule_item_id', scheduleItemId)
+      .order('invited_at', { ascending: true });
+    if (error) return { ok: false, error: error.message, data: [] };
+    if (!rows?.length) return { ok: true, data: [] };
+    const userIds = rows.map(r => r.invitee_user_id);
+    const { data: profiles } = await sb
+      .from('profiles')
+      .select('id, full_name, email, role, avatar_url')
+      .in('id', userIds);
+    const pm = {};
+    (profiles || []).forEach(p => { pm[p.id] = p; });
+    return { ok: true, data: rows.map(r => ({ ...r, profile: pm[r.invitee_user_id] || null })) };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e), data: [] };
+  }
+};
+
+export const sbAddScheduleInvitee = async ({ scheduleItemId, inviteeUserId, scheduleItem }) => {
+  if (!scheduleItemId || !inviteeUserId) return { ok: false, error: 'scheduleItemId and inviteeUserId required' };
+  try {
+    const { data: inv, error: invErr } = await sb
+      .from('schedule_item_invitees')
+      .insert({ schedule_item_id: scheduleItemId, invitee_user_id: inviteeUserId, tenant_id: AV_TENANT, invited_by: AV_USER_ID })
+      .select('id')
+      .single();
+    if (invErr) return { ok: false, error: invErr.message };
+    const title = scheduleItem?.title || 'Event';
+    const dateStr = scheduleItem?.scheduled_date || '';
+    const { error: notifErr } = await sb.from('notifications').insert({
+      user_id: inviteeUserId,
+      type: 'schedule_item_created',
+      title: `Invited: ${title}`,
+      body: `You've been invited to "${title}"${dateStr ? ` on ${dateStr}` : ''}. Open the calendar to view.`,
+      priority: 'normal',
+      job_id: scheduleItem?.job_id || null,
+    });
+    if (notifErr) console.error('sbAddScheduleInvitee notification insert failed:', notifErr.message);
+    return { ok: true, data: { id: inv.id } };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+};
+
+export const sbRemoveScheduleInvitee = async (inviteeRowId) => {
+  if (!inviteeRowId) return { ok: false, error: 'inviteeRowId required' };
+  try {
+    const { error } = await sb.from('schedule_item_invitees').delete().eq('id', inviteeRowId);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+};
+
+export const sbRespondToScheduleInvite = async (inviteeRowId, status) => {
+  if (!inviteeRowId) return { ok: false, error: 'inviteeRowId required' };
+  if (!['accepted','declined','tentative'].includes(status)) return { ok: false, error: `invalid status: ${status}` };
+  try {
+    const { error } = await sb
+      .from('schedule_item_invitees')
+      .update({ status, responded_at: new Date().toISOString() })
+      .eq('id', inviteeRowId);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+};
+
 // ─── Site Visit Checklists (EXECUTION_ARC Phase 8) ──────────────────────────
 
 export async function sbCreateChecklistFromTemplate(scheduleItemId, templateKey) {
