@@ -2176,7 +2176,7 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Live preview: gold dashed polyline between placed corners, faint closing-line preview from last to first corner when ≥3 corners, corner dots (first corner 7px gold, others 4px navy).
 - Commits: abe105a (applyOverrides), 4495576 (canvas), abe2126 (editor). Pushed to main. Build: 383 modules, clean.
 - Trade-aware: pure UI + geometry. Default-name heuristic is residential-flavored — extend per trade via future options.defaultNameByArea config.
-- Open: Phase 5c-4 part 2 (snap-to-perpendicular, multi-endpoint group drag, undo-during-drag). Phase 5c-5 (merge rooms). Phase 5c-6 (undo last corner, snap-to-wall-endpoint, delete room).
+- Open: Phase 5c-4 part 2 (snap-to-perpendicular, multi-endpoint group drag, undo-during-drag). Phase 5c-6 (undo stack, delete room, snap-to-existing-endpoint).
 
 [LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-4 part 1 shipped — wall-move edit mode]
 - Action: Phase 5c-4 part 1 shipped. User can drag wall endpoint dots to reshape rooms. Adjacent walls sharing the endpoint follow automatically (shared-endpoint following via endpointKey strategy).
@@ -2187,6 +2187,18 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Commits: 9523e95 (applyOverrides), 54e8739 (canvas), 0e4101e (editor). Pushed to main. Build: clean.
 - Trade-aware: pure geometry. No trade assumptions.
 - Open: Phase 5c-4 part 2 (snap-to-perpendicular, multi-endpoint group drag, undo-during-drag). Phase 5c-5 (merge rooms). Phase 5c-6 (undo, delete room).
+
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-5 shipped — merge rooms]
+- Action: Phase 5c-5 shipped. Shift-click 2+ adjacent rooms → live gold dashed union outline appears on canvas → side panel shows "Merge N Rooms" button → click → confirm modal with editable name → confirm → walls between merged rooms removed, merged room renders, persists via Save & Regenerate.
+- New dep: polygon-clipping@0.15.7 (~14KB). Used for polygon union in initiateMerge and mergePreviewPolygon useMemo.
+- New override shape: overrides.merged_rooms = [{id, name, polygon, source_room_ids, type}]. applyOverrides processes merged_rooms AFTER wall_endpoint_overrides (so merges reference final geometry). Source rooms removed, interior walls removed, merged room added, new boundary walls synthesized for any edges not already present.
+- Interior wall detection: isWallOnRoomBoundary + isPointOnSegment helpers local to applyOverrides. Wall removed only if it touches at least one source room AND no non-source room — preserves exterior walls.
+- Live merge preview: mergePreviewPolygon useMemo in editor runs runPolygonUnion every time selection.roomIds changes while in select mode. Non-adjacent rooms (union returns MultiPolygon) silently return null → no preview, Merge button still shows but initiateMerge will surface the error.
+- Non-adjacent rooms: initiateMerge checks result.length > 1 and sets saveError with actionable message "Selected rooms are not all connected."
+- Commits: f4e1f9c (dep + applyOverrides), 87f1c8f (canvas), d3c6d79 (editor). Build: clean.
+- Kalin's basement scenario now fully covered: move wall (5c-4), add closet (5c-3), merge bathroom+closet (5c-5), add laundry (5c-3).
+- Trade-aware: pure geometry. No trade assumptions.
+- Open: Phase 5c-6 (undo stack, delete room, snap-to-existing-endpoint). Phase 5c-4 part 2 (polish — deferred).
 
 [LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-2 shipped — editor persistence pipeline]
 - Action: Phase 5c-2 shipped. Editor now holds pendingOverrides + isDirty state, supports two save modes, applies overrides to canvas in real time.
