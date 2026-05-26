@@ -3,6 +3,7 @@ import polygonClipping from 'polygon-clipping';
 import { sbLoadFloorPlan, sbUpdateFloorPlanOverrides, sbRegenerateFloorPlanPdf } from '../../lib/supabase';
 import { buildFloorPlanPDF } from '../../lib/pdf';
 import { applyOverridesToScan } from '../../lib/floorPlan/applyOverrides';
+import { parseFootInches } from '../../lib/floorPlan/parseFootInches';
 import FloorPlanCanvas from './FloorPlanCanvas';
 
 const NAVY = '#0A1F44';
@@ -40,9 +41,11 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [lastSavedVersion, setLastSavedVersion] = useState(null);
 
   // Edit mode state
-  const [mode, setMode] = useState('select'); // 'select' | 'add-room' | 'wall-move' | 'add-text'
+  const [mode, setMode] = useState('select'); // 'select' | 'add-room' | 'wall-move' | 'add-text' | 'build-walls'
   const [editingAnnotation, setEditingAnnotation] = useState(null); // { id, text } when modal open
   const [renameInputValue, setRenameInputValue] = useState(null); // null = show current name, string = editing
+  const [buildState, setBuildState] = useState(null); // { anchor, firstAnchor, accumulated } during build-walls session
+  const [lengthInput, setLengthInput] = useState(null); // { direction, length, error } when length modal is open
   const [drawingPolygon, setDrawingPolygon] = useState([]); // [[worldX, worldY], ...]
   const [pendingNewRoom, setPendingNewRoom] = useState(null); // { polygon, defaultName, name }
   const [dragState, setDragState] = useState(null); // { key, livePos: [x, y] } | null
@@ -137,6 +140,58 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     setPendingNewRoom(null);
     setDrawingPolygon([]);
     setMode('add-room');
+  }
+
+  // Build-walls (Phase 5c-9) handlers
+  const BUILD_DIRS = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+
+  function handleBuildAnchorPlaced(point) {
+    setBuildState({ anchor: point, firstAnchor: point, accumulated: [point] });
+    setLengthInput({ direction: 'N', length: '', error: null });
+  }
+
+  function confirmLengthInput() {
+    if (!lengthInput || !buildState) return;
+    const lenFt = parseFootInches(lengthInput.length);
+    if (lenFt === null || lenFt <= 0) {
+      setLengthInput(prev => ({ ...prev, error: "Invalid length. Try \"10'6\" or \"10.5\" or \"10 6\"" }));
+      return;
+    }
+    if (lenFt > 200) {
+      setLengthInput(prev => ({ ...prev, error: 'Length too large (max 200 ft)' }));
+      return;
+    }
+    const [ax, az] = buildState.anchor;
+    const [dx, dz] = BUILD_DIRS[lengthInput.direction];
+    const rawX = ax + dx * lenFt;
+    const rawZ = az + dz * lenFt;
+    const snappedX = Math.round(rawX / 0.5) * 0.5;
+    const snappedZ = Math.round(rawZ / 0.5) * 0.5;
+    const firstDist = Math.hypot(snappedX - buildState.firstAnchor[0], snappedZ - buildState.firstAnchor[1]);
+    if (buildState.accumulated.length >= 2 && firstDist < 0.5) {
+      commitBuiltPolygon(buildState.accumulated);
+      return;
+    }
+    const newAccumulated = [...buildState.accumulated, [snappedX, snappedZ]];
+    setBuildState(prev => ({ ...prev, anchor: [snappedX, snappedZ], accumulated: newAccumulated }));
+    setLengthInput({ direction: lengthInput.direction, length: '', error: null });
+  }
+
+  function cancelLengthInput() {
+    setBuildState(null);
+    setLengthInput(null);
+    setMode('select');
+  }
+
+  function commitBuiltPolygon(polygon) {
+    if (polygon.length < 3) {
+      setBuildState(null); setLengthInput(null); setMode('select');
+      return;
+    }
+    setPendingNewRoom({ polygon, defaultName: guessDefaultName(polygon), name: '' });
+    setBuildState(null);
+    setLengthInput(null);
+    setMode('select');
   }
 
   // Wall-move validation helpers
@@ -387,7 +442,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   // Keyboard handler for edit modes
   useEffect(() => {
     function onKey(e) {
-      if (pendingNewRoom || pendingMerge || editingAnnotation) return; // modal is up, don't intercept
+      if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return; // modal is up, don't intercept
       if (mode === 'add-room') {
         if (e.key === 'Escape') {
           setMode('select');
@@ -402,11 +457,17 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
         }
       } else if (mode === 'add-text') {
         if (e.key === 'Escape') setMode('select');
+      } else if (mode === 'build-walls') {
+        if (e.key === 'Escape') {
+          setMode('select');
+          setBuildState(null);
+          setLengthInput(null);
+        }
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, drawingPolygon, pendingNewRoom, pendingMerge, editingAnnotation]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, drawingPolygon, pendingNewRoom, pendingMerge, editingAnnotation, lengthInput]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveOnly = async () => {
     if (!plan || !isDirty) return;
@@ -620,6 +681,8 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             ? <>Drag endpoint dots to reshape walls<br />Adjacent walls follow · Esc to exit</>
             : mode === 'add-text'
             ? <>Click canvas to place a text label<br />Double-click label to edit · Esc to cancel</>
+            : mode === 'build-walls'
+            ? <>Click to set start point · type a length & direction<br />Walls snap to grid · Esc to cancel</>
             : <>Right-click drag to pan<br />Scroll to zoom · Click to select</>
           }
         </div>
@@ -647,6 +710,8 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             onWallEndpointMove={handleWallEndpointMove}
             mergePreviewPolygon={mergePreviewPolygon}
             onTextAnnotationsChange={handleTextAnnotationChange}
+            buildState={buildState}
+            onBuildAnchorPlaced={handleBuildAnchorPlaced}
           />
         </div>
 
@@ -904,8 +969,49 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                 {mode === 'add-text' ? 'Cancel Add Text' : 'T  Add Text Label'}
               </button>
               {mode === 'add-text' && (
-                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6 }}>
+                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6, marginBottom: 8 }}>
                   Click anywhere on the canvas to place a text label. Type a name then Save. Drag to reposition. Double-click to edit. Esc to cancel.
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  if (mode === 'build-walls') {
+                    setMode('select');
+                    setBuildState(null);
+                    setLengthInput(null);
+                  } else {
+                    setMode('build-walls');
+                    setBuildState(null);
+                    setLengthInput(null);
+                    setDrawingPolygon([]);
+                    setDragState(null);
+                    setSelection({ roomIds: [], wallIds: [], annotationIds: [] });
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 14px',
+                  background: mode === 'build-walls' ? GOLD : NAVY,
+                  color: mode === 'build-walls' ? NAVY : CREAM,
+                  border: 'none',
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  marginBottom: 8,
+                  fontFamily: "'DM Sans', sans-serif",
+                }}
+              >
+                {mode === 'build-walls' ? 'Cancel Build Walls' : '📐 Build Walls'}
+              </button>
+              {mode === 'build-walls' && !buildState && (
+                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6 }}>
+                  Click on the canvas to set the first corner. Then type each wall length and direction. Close the polygon to finish. Esc to cancel.
+                </div>
+              )}
+              {mode === 'build-walls' && buildState && (
+                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6 }}>
+                  {buildState.accumulated.length - 1} wall{buildState.accumulated.length !== 2 ? 's' : ''} drawn. Type the next length and direction in the modal. Esc to cancel.
                 </div>
               )}
             </div>
@@ -947,6 +1053,144 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
           </div>
         </div>
       </div>
+
+      {/* Length input modal — rendered during build-walls session */}
+      {lengthInput && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2300, fontFamily: "'DM Sans', sans-serif",
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            background: '#fff', padding: 24, borderRadius: 12,
+            minWidth: 340, maxWidth: '90vw',
+            boxShadow: '0 8px 40px rgba(10,31,68,0.35)',
+            pointerEvents: 'all',
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 6, color: NAVY, fontFamily: "'DM Serif Display', serif", fontSize: 18 }}>
+              Draw Wall
+            </h3>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
+              {buildState?.accumulated?.length > 1
+                ? `${buildState.accumulated.length - 1} wall${buildState.accumulated.length !== 2 ? 's' : ''} placed · click direction then type length`
+                : 'Type a length, choose a direction'}
+            </div>
+
+            {/* Direction picker — + layout */}
+            <div style={{ display: 'grid', gridTemplateColumns: '44px 44px 44px', gridTemplateRows: '44px 44px 44px', gap: 4, justifyContent: 'center', marginBottom: 16 }}>
+              {/* Row 1: [empty] [N] [empty] */}
+              <div />
+              {['N'].map(dir => (
+                <button key={dir} onClick={() => setLengthInput(prev => ({ ...prev, direction: dir, error: null }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowUp') setLengthInput(p => ({ ...p, direction: 'N', error: null }));
+                    if (e.key === 'ArrowDown') setLengthInput(p => ({ ...p, direction: 'S', error: null }));
+                    if (e.key === 'ArrowLeft') setLengthInput(p => ({ ...p, direction: 'W', error: null }));
+                    if (e.key === 'ArrowRight') setLengthInput(p => ({ ...p, direction: 'E', error: null }));
+                  }}
+                  style={{
+                    width: 44, height: 44, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14,
+                    background: lengthInput.direction === dir ? NAVY : 'rgba(10,31,68,0.08)',
+                    color: lengthInput.direction === dir ? CREAM : NAVY,
+                  }}>N</button>
+              ))}
+              <div />
+              {/* Row 2: [W] [center dot] [E] */}
+              {['W'].map(dir => (
+                <button key={dir} onClick={() => setLengthInput(prev => ({ ...prev, direction: dir, error: null }))}
+                  style={{
+                    width: 44, height: 44, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14,
+                    background: lengthInput.direction === dir ? NAVY : 'rgba(10,31,68,0.08)',
+                    color: lengthInput.direction === dir ? CREAM : NAVY,
+                  }}>W</button>
+              ))}
+              <div style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(10,31,68,0.2)' }} />
+              </div>
+              {['E'].map(dir => (
+                <button key={dir} onClick={() => setLengthInput(prev => ({ ...prev, direction: dir, error: null }))}
+                  style={{
+                    width: 44, height: 44, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14,
+                    background: lengthInput.direction === dir ? NAVY : 'rgba(10,31,68,0.08)',
+                    color: lengthInput.direction === dir ? CREAM : NAVY,
+                  }}>E</button>
+              ))}
+              {/* Row 3: [empty] [S] [empty] */}
+              <div />
+              {['S'].map(dir => (
+                <button key={dir} onClick={() => setLengthInput(prev => ({ ...prev, direction: dir, error: null }))}
+                  style={{
+                    width: 44, height: 44, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14,
+                    background: lengthInput.direction === dir ? NAVY : 'rgba(10,31,68,0.08)',
+                    color: lengthInput.direction === dir ? CREAM : NAVY,
+                  }}>S</button>
+              ))}
+              <div />
+            </div>
+
+            <input
+              type="text"
+              autoFocus
+              value={lengthInput.length}
+              onChange={(e) => setLengthInput(prev => ({ ...prev, length: e.target.value, error: null }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmLengthInput();
+                if (e.key === 'Escape') cancelLengthInput();
+                if (e.key === 'ArrowUp') { e.preventDefault(); setLengthInput(p => ({ ...p, direction: 'N', error: null })); }
+                if (e.key === 'ArrowDown') { e.preventDefault(); setLengthInput(p => ({ ...p, direction: 'S', error: null })); }
+                if (e.key === 'ArrowLeft') { e.preventDefault(); setLengthInput(p => ({ ...p, direction: 'W', error: null })); }
+                if (e.key === 'ArrowRight') { e.preventDefault(); setLengthInput(p => ({ ...p, direction: 'E', error: null })); }
+              }}
+              placeholder="e.g. 10'6  or  10.5  or  10 6"
+              style={{
+                width: '100%', padding: '10px 12px', fontSize: 15,
+                border: `1px solid ${lengthInput.error ? '#e44' : 'rgba(10,31,68,0.2)'}`, borderRadius: 6,
+                marginBottom: 6, boxSizing: 'border-box',
+                fontFamily: 'monospace', outline: 'none',
+              }}
+            />
+            {lengthInput.error && (
+              <div style={{ fontSize: 11, color: '#c44', marginBottom: 10 }}>{lengthInput.error}</div>
+            )}
+            {!lengthInput.error && (
+              <div style={{ fontSize: 10, color: '#aaa', marginBottom: 10 }}>
+                Arrow keys change direction · Enter to draw · Esc to cancel
+              </div>
+            )}
+
+            {/* Close-back hint */}
+            {buildState?.accumulated?.length >= 3 && (
+              <div style={{ fontSize: 11, color: GOLD, padding: '6px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6, marginBottom: 12 }}>
+                Polygon has {buildState.accumulated.length - 1} walls. Type a length that reaches back to the start to auto-close.
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={cancelLengthInput}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: '1px solid rgba(10,31,68,0.2)',
+                  background: '#fff', color: NAVY, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLengthInput}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: 'none',
+                  background: NAVY, color: CREAM, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700,
+                }}
+              >
+                Draw Wall →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Naming modal — rendered when polygon is closed */}
       {pendingNewRoom && (
