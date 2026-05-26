@@ -1764,6 +1764,37 @@ export const sbLoadScheduleItems = async (jobId) => {
   }
 };
 
+export async function sbLoadClientMilestones(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required' };
+  try {
+    const { data, error } = await sb
+      .from('schedule_items')
+      .select('id, title, type, trade, scheduled_date, scheduled_end_date, actual_finish_date, status, notes, duration_days, phase_id, is_milestone')
+      .eq('job_id', jobId)
+      .eq('is_milestone', true)
+      .neq('status', 'cancelled')
+      .order('scheduled_date', { ascending: true, nullsFirst: false });
+    if (error) return { ok: false, error: error.message };
+    const today = new Date().toISOString().slice(0, 10);
+    const formatted = (data || []).map(item => {
+      let computed_status = 'upcoming';
+      if (item.actual_finish_date) {
+        computed_status = item.scheduled_date && item.actual_finish_date > item.scheduled_date
+          ? 'completed_late'
+          : 'completed';
+      } else if (!item.scheduled_date) {
+        computed_status = 'unscheduled';
+      } else if (item.scheduled_date <= today) {
+        computed_status = 'in_progress';
+      }
+      return { ...item, computed_status };
+    });
+    return { ok: true, data: formatted };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
 export const sbLoadUpcomingScheduleItems = async (days = 7) => {
   if (!AV_TENANT) return { ok: true, data: [] };
   const today = new Date().toISOString().slice(0, 10);
