@@ -2165,3 +2165,13 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Commits: 76b7da7 (canvas), 0e4656b (editor screen), 6950930 (wiring). Pushed to main. Build: 382 modules, clean.
 - Trade-aware: pure UI, no trade assumptions. Color palette uses platform tokens.
 - Open: Phase 5c-2 — save layout_overrides back to DB (sbUpdateFloorPlanOverrides). Phase 5c-3+ — add room, move wall, merge rooms, delete + undo.
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-2 shipped — editor persistence pipeline]
+- Action: Phase 5c-2 shipped. Editor now holds pendingOverrides + isDirty state, supports two save modes, applies overrides to canvas in real time.
+- New file: avenstone-vite/src/lib/floorPlan/applyOverrides.js — single export applyOverridesToScan(rawScan, overrides). Deep-clones rawScan, applies room-level overrides (currently name only). Shared by canvas live preview and PDF regeneration path so they can never diverge.
+- FloorPlanEditorScr rewrite: pendingOverrides state (loaded from plan.layout_overrides on mount), isDirty flag, saving/saveError state. Two save actions: "Save" (sbUpdateFloorPlanOverrides only, no PDF rebuild), "Save & Regenerate PDF" (saves overrides → buildFloorPlanPDF with applyOverridesToScan applied → sbRegenerateFloorPlanPdf → reloads plan). Versions list in side panel (most recent 5, current highlighted in gold). Header shows "Unsaved changes" / "Saved · vN" status.
+- FloorPlanCanvas update: added effectiveScan = applyOverridesToScan(rawScan, layoutOverrides) via useMemo — normalization and rendering use the merged scan, not rawScan. fittedScanRef added to prevent fit-to-content reset on every override change (only re-fits when rawScan reference changes — i.e. new plan load).
+- Commits: 3774c8d (applyOverrides.js), bc74ca3 (FloorPlanEditorScr), 3cc5fc8 (FloorPlanCanvas). All pushed to main.
+- Build: ✓ 383 modules, clean.
+- Trade-aware: geometry + PDF path, no trade assumptions. override schema is keyed by room_id — future 5c-3+ moves add more fields per the FLOOR_PLAN_LAYOUT_ARC.md spec.
+- Open: Phase 5c-3 — first real edit move (e.g. rename room, toggle SF label). Phase 5c-6+ — add/move/delete room tools.
