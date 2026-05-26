@@ -2153,5 +2153,15 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Commits: 4187b46 (AiIntakeWizard), 1bf24db (FloorPlanTab). Both pushed to main.
 - Build: clean (379 modules).
 - Trade-aware: floor_plans is platform table; tab is job-detail tab, trade-agnostic. ✓
-- Open: Phase 5c (FloorPlanEditor UX decision + full editor wiring). Signed URL renewal on 7-day expiry (refetch via sbLoadFloorPlan when stale). Contact-path PDF generation (handleSave has no doc/blob today).
-- Phase 5b next: wire AiIntakeWizard scanner to call sbCreateFloorPlan at end of scan.
+- Open: Phase 5c-2 (persistence wiring — load → edit → save overrides). Signed URL renewal on 7-day expiry. Contact-path PDF generation (handleSave has no doc/blob today).
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-1 shipped — editor canvas foundation]
+- Action: Phase 5c-1 shipped. Desktop floor plan editor canvas live.
+- New files: avenstone-vite/src/components/floorPlan/FloorPlanCanvas.jsx (interactive SVG), avenstone-vite/src/components/floorPlan/FloorPlanEditorScr.jsx (top-level overlay screen).
+- FloorPlanCanvas: renders Phase 1 normalized geometry + Phase 2 layout-hint labels as SVG. Pan (right-click drag), zoom (scroll wheel, cursor-locked). Click-to-select rooms/walls with shift-multi-select. Transparent 10px hit-area lines over wall strokes (narrow walls are otherwise unclickable). Zoom % badge. Refs used for zoom/pan to avoid stale closures in wheel event handler.
+- FloorPlanEditorScr: fixed overlay (position:fixed inset:0 zIndex:2100) — overlay pattern, NOT a route. Matches AiIntakeWizard. Mobile guard <1024px shows "Desktop Required". Side panel shows selected room/wall names + future edit tools stub.
+- Nav deviation from spec: spec said to add a `floorPlanEditor` page id in App.jsx. No `setPg` flows through JobsScr→JobDet→FloorPlanTab, so the overlay pattern is correct. Documented deviation.
+- FloorPlanTab wiring: imports FloorPlanEditorScr, adds editingPlanId state, Edit button (btn-navy) on each saved plan row. Also wired FloorPlanTab into JobDet.jsx (was built in Phase 5b but never imported/rendered — TABS array didn't include it).
+- Commits: 76b7da7 (canvas), 0e4656b (editor screen), 6950930 (wiring). Pushed to main. Build: 382 modules, clean.
+- Trade-aware: pure UI, no trade assumptions. Color palette uses platform tokens.
+- Open: Phase 5c-2 — save layout_overrides back to DB (sbUpdateFloorPlanOverrides). Phase 5c-3+ — add room, move wall, merge rooms, delete + undo.
