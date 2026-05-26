@@ -19,6 +19,10 @@ export default function FloorPlanCanvas({
   onSelectionChange = () => {},
   width = 800,
   height = 600,
+  mode = 'select',
+  drawingPolygon = [],
+  onDrawingPolygonChange = () => {},
+  onPolygonClosed = () => {},
 }) {
   const svgRef = useRef(null);
   const panRef = useRef({ x: 0, y: 0 });
@@ -85,6 +89,16 @@ export default function FloorPlanCanvas({
     y: worldZ * PX_PER_FOOT * zoomRef.current + panRef.current.y,
   });
 
+  const toWorld = (screenX, screenY) => ({
+    x: (screenX - panRef.current.x) / (PX_PER_FOOT * zoomRef.current),
+    y: (screenY - panRef.current.y) / (PX_PER_FOOT * zoomRef.current),
+  });
+
+  const snapToGrid = (x, y, gridFt) => ({
+    x: Math.round(x / gridFt) * gridFt,
+    y: Math.round(y / gridFt) * gridFt,
+  });
+
   // Mouse handlers
   const handleMouseDown = (e) => {
     if (e.button === 1 || e.button === 2) {
@@ -129,7 +143,37 @@ export default function FloorPlanCanvas({
     return () => el.removeEventListener('wheel', onWheel);
   }, [forceUpdate]);
 
+  const handleBackgroundClick = (e) => {
+    if (mode === 'add-room') {
+      const rect = svgRef.current.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const world = toWorld(sx, sy);
+      const snapped = snapToGrid(world.x, world.y, 0.5);
+
+      // Click near first corner → close polygon
+      if (drawingPolygon.length >= 3) {
+        const first = drawingPolygon[0];
+        const screenFirst = toScreen(first[0], first[1]);
+        const distPx = Math.hypot(sx - screenFirst.x, sy - screenFirst.y);
+        if (distPx < 14) {
+          onPolygonClosed(drawingPolygon);
+          return;
+        }
+      }
+
+      onDrawingPolygonChange([...drawingPolygon, [snapped.x, snapped.y]]);
+      return;
+    }
+    onSelectionChange({ roomIds: [], wallIds: [] });
+  };
+
   const handleRoomClick = (roomId, e) => {
+    if (mode === 'add-room') {
+      // Forward to background handler so add-room clicks on room fills still place corners
+      handleBackgroundClick(e);
+      return;
+    }
     e.stopPropagation();
     const cur = selection.roomIds || [];
     const next = e.shiftKey
@@ -139,6 +183,7 @@ export default function FloorPlanCanvas({
   };
 
   const handleWallClick = (wallId, e) => {
+    if (mode === 'add-room') return;
     e.stopPropagation();
     const cur = selection.wallIds || [];
     const next = e.shiftKey
@@ -171,7 +216,7 @@ export default function FloorPlanCanvas({
       height={height}
       style={{
         background: CREAM,
-        cursor: panningRef.current ? 'grabbing' : 'default',
+        cursor: mode === 'add-room' ? 'crosshair' : panningRef.current ? 'grabbing' : 'default',
         userSelect: 'none',
         display: 'block',
         borderRadius: 8,
@@ -182,7 +227,7 @@ export default function FloorPlanCanvas({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onContextMenu={(e) => e.preventDefault()}
-      onClick={() => onSelectionChange({ roomIds: [], wallIds: [] })}
+      onClick={handleBackgroundClick}
     >
       {/* Room fills */}
       {normalized.rooms.map(room => {
@@ -308,6 +353,55 @@ export default function FloorPlanCanvas({
           </g>
         );
       })}
+
+      {/* Add-room mode: in-progress polygon live preview */}
+      {mode === 'add-room' && drawingPolygon.length > 0 && (
+        <g pointerEvents="none">
+          {drawingPolygon.length >= 2 && (
+            <polyline
+              points={drawingPolygon.map(([x, y]) => {
+                const s = toScreen(x, y);
+                return `${s.x},${s.y}`;
+              }).join(' ')}
+              fill="none"
+              stroke={GOLD}
+              strokeWidth={2}
+              strokeDasharray="6 4"
+            />
+          )}
+          {drawingPolygon.length >= 3 && (() => {
+            const last = toScreen(
+              drawingPolygon[drawingPolygon.length - 1][0],
+              drawingPolygon[drawingPolygon.length - 1][1],
+            );
+            const first = toScreen(drawingPolygon[0][0], drawingPolygon[0][1]);
+            return (
+              <line
+                x1={last.x} y1={last.y}
+                x2={first.x} y2={first.y}
+                stroke={GOLD}
+                strokeWidth={1.5}
+                strokeDasharray="3 5"
+                opacity={0.5}
+              />
+            );
+          })()}
+          {drawingPolygon.map(([x, y], i) => {
+            const s = toScreen(x, y);
+            return (
+              <circle
+                key={`corner-${i}`}
+                cx={s.x}
+                cy={s.y}
+                r={i === 0 ? 7 : 4}
+                fill={i === 0 ? GOLD : NAVY}
+                stroke="#fff"
+                strokeWidth={1.5}
+              />
+            );
+          })}
+        </g>
+      )}
 
       {/* Zoom badge */}
       <g pointerEvents="none">
