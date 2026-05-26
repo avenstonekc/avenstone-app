@@ -2233,3 +2233,16 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Build: ✓ 384 modules, clean.
 - Note: pdf.js NOT touched (spec conflict — "Do NOT touch" takes precedence over Part 5 PDF rendering). PDF annotation rendering deferred.
 - Open: Phase 5c-6 (undo stack, delete room). Phase 5c-7 Part 5 (pdf.js annotation rendering — deferred). Phase 5e (versions panel + send to client).
+
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-8 shipped — editor usability pass]
+- Action: Four fixes: (1) Add Room click handler, (2) Rename Room input, (3) Show SF toggle, (4) Shift-constrain + endpoint snap on wall move.
+- Add Room bug: root cause = missing e.stopPropagation() in handleRoomClick's add-room forwarding branch. Click bubbled to SVG onClick, causing double-fire. Added stopPropagation. Extended to add-text mode. Fixed onSelectionChange in normal room click path to include annotationIds.
+- Rename: renameInputValue state (null=display, string=editing). Single-room side panel shows text input. Enter/blur commits to pendingOverrides[id].name. Esc cancels. useEffect resets on selection change.
+- SF toggle: applyOverrides passes sf_visible through. Canvas gates separate SF text via effectiveScan lookup. getSfVisible/toggleSfVisible helpers. Checkbox in single-room panel. pdf.js NOT touched per constraint — toggle is canvas-only; PDF always shows SF.
+- Shift-constrain: handleEndpointMouseDown stores connectedDirs. applyDragConstraints helper: Shift projects cursor onto longest connected wall axis, then snaps to any endpoint within 0.5 ft. Green dashed ring indicator on snap.
+- Files: FloorPlanCanvas.jsx, FloorPlanEditorScr.jsx, applyOverrides.js.
+- Commits: 89c9920 (canvas), b4ff93d (editor), 60866cb (applyOverrides). Pushed to main.
+- Build: ✓ 384 modules, clean.
+- Console.log diagnostics left in (add-room click path). Strip in 5c-9 cleanup.
+- Limitation: sf_visible toggle affects canvas only — pdf.js gate deferred.
+- Open: Phase 5c-9 — type-to-build walls. Strip console.logs in same slice. Phase 5e — versions + send.
