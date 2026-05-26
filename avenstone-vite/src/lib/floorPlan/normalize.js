@@ -32,6 +32,13 @@ const MERGE_DISTANCE_FT = 0.5;
  */
 const NORMAL_DOT_THRESHOLD = Math.cos(25 * Math.PI / 180);
 
+// ─── Wall thickness standards ─────────────────────────────────────────────────
+// Construction-standard wall thicknesses, in feet.
+// 2x6 exterior = 5.5" actual = 0.458 ft
+// 2x4 interior = 3.5" actual = 0.292 ft
+const EXTERIOR_WALL_THICKNESS_FT = 5.5 / 12;
+const INTERIOR_WALL_THICKNESS_FT = 3.5 / 12;
+
 // ─── Public helpers ───────────────────────────────────────────────────────────
 
 /**
@@ -167,6 +174,75 @@ export function dedupeDoors(rawDoors, _walls, options = {}) {
   return merged;
 }
 
+// ─── Wall classification ──────────────────────────────────────────────────────
+
+function isPointOnSegment(p, a, b, tolerance) {
+  const [px, py] = p;
+  const [ax, ay] = a;
+  const [bx, by] = b;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-9) {
+    return Math.hypot(px - ax, py - ay) <= tolerance;
+  }
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + t * dx;
+  const cy = ay + t * dy;
+  return Math.hypot(px - cx, py - cy) <= tolerance;
+}
+
+function isWallOnRoomBoundary(wall, polygon, tolerance) {
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    if (isPointOnSegment(wall.p1, a, b, tolerance) &&
+        isPointOnSegment(wall.p2, a, b, tolerance)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Phase 1 extension: classify walls as exterior or interior based on room adjacency,
+ * override thickness to construction standards.
+ *
+ * A wall is interior if 2+ rooms have it on their polygon boundary.
+ * A wall is exterior if only 1 room (or 0) claims it.
+ *
+ * Returns the walls array with .classification, .adjoining_room_ids,
+ * .thickness_ft (standardized), and .thickness_raw_ft (original scanner value).
+ *
+ * options:
+ *   exteriorWallThicknessFt  — default 5.5/12 (2x6)
+ *   interiorWallThicknessFt  — default 3.5/12 (2x4)
+ *   adjacencyToleranceFt     — default 0.05 ft (~0.6")
+ */
+export function classifyAndStandardizeWalls(walls, rooms, options = {}) {
+  const exteriorThickness = options.exteriorWallThicknessFt ?? EXTERIOR_WALL_THICKNESS_FT;
+  const interiorThickness = options.interiorWallThicknessFt ?? INTERIOR_WALL_THICKNESS_FT;
+  const adjacencyTolerance = options.adjacencyToleranceFt ?? 0.05;
+
+  return walls.map(wall => {
+    const adjoiningRoomIds = rooms
+      .filter(room => isWallOnRoomBoundary(wall, room.polygon, adjacencyTolerance))
+      .map(r => r.id);
+
+    const classification = adjoiningRoomIds.length >= 2 ? 'interior' : 'exterior';
+    const standardThickness = classification === 'interior' ? interiorThickness : exteriorThickness;
+
+    return {
+      ...wall,
+      classification,
+      adjoining_room_ids: adjoiningRoomIds,
+      thickness_ft: standardThickness,
+      thickness_raw_ft: wall.thickness ?? null,
+    };
+  });
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
@@ -235,7 +311,7 @@ function _wallSegsToPolygon(wallSegs) {
  *
  * All output coordinates are world-space (feet), snapped to 0.1 ft grid.
  */
-export function normalizeFloorPlan(rawScan) {
+export function normalizeFloorPlan(rawScan, options = {}) {
   if (!rawScan) return { ok: false, error: 'rawScan is required' };
   if (!Array.isArray(rawScan.rooms)) return { ok: false, error: 'rawScan.rooms must be an array' };
 
@@ -250,12 +326,13 @@ export function normalizeFloorPlan(rawScan) {
       const wz = room.worldZ || 0;
       const roomId = room.id || `room_${roomIdx}`;
 
-      // Wall segments → world-space
+      // Wall segments → world-space (carry scanner thickness for classification pass)
       const roomWallSegs = (room.wallSegments || []).map((s, i) => ({
         id: `wall_${roomIdx}_${i}`,
         p1: snapToGrid([wx + s.x1, wz + s.z1]),
         p2: snapToGrid([wx + s.x2, wz + s.z2]),
         room_id: roomId,
+        thickness: s.thickness ?? null,
       }));
       walls.push(...roomWallSegs);
 
@@ -313,13 +390,14 @@ export function normalizeFloorPlan(rawScan) {
     });
 
     const dedupedDoors = dedupeDoors(allDoors, walls);
+    const classifiedWalls = classifyAndStandardizeWalls(walls, rooms, options);
     const totalArea = rooms.reduce((s, r) => s + r.area_sqft, 0);
 
     return {
       ok: true,
       data: {
         rooms,
-        walls,
+        walls: classifiedWalls,
         doors: dedupedDoors,
         windows,
         metadata: {

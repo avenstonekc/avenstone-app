@@ -1,7 +1,7 @@
 // Quick smoke test for normalize.js — run with: node --input-type=module _smoke.mjs
 // Or: node avenstone-vite/src/lib/floorPlan/_smoke.mjs
 
-import { snapToGrid, polygonCentroid, polygonAreaSqft, dedupeDoors, normalizeFloorPlan } from './normalize.js';
+import { snapToGrid, polygonCentroid, polygonAreaSqft, dedupeDoors, normalizeFloorPlan, classifyAndStandardizeWalls } from './normalize.js';
 
 let passed = 0;
 let failed = 0;
@@ -160,6 +160,182 @@ console.log('\nnormalizeFloorPlan');
   assert('metadata.scanner_version set', metadata.scanner_version === 'smoke-1.0');
   assert('normalize_version = 1', metadata.normalize_version === 1);
   assert('total_area ≈ 125 sqft', approx(metadata.total_area_sqft, 125, 2));
+}
+
+// ── classifyAndStandardizeWalls ───────────────────────────────────────────────
+console.log('\nclassifyAndStandardizeWalls');
+{
+  const EXT = 5.5 / 12;
+  const INT = 3.5 / 12;
+
+  // ── Test 1: single-room — all walls exterior ────────────────────────────────
+  {
+    const scan = {
+      rooms: [{
+        id: 's1', name: 'Room', worldX: 0, worldZ: 0,
+        wallSegments: [
+          {x1:0,z1:0,x2:10,z2:0}, {x1:10,z1:0,x2:10,z2:10},
+          {x1:10,z1:10,x2:0,z2:10}, {x1:0,z1:10,x2:0,z2:0},
+        ],
+        doorSegments: [], windowSegments: [],
+      }],
+    };
+    const result = normalizeFloorPlan(scan);
+    const walls = result.data.walls;
+    assert('single room: all 4 walls exterior', walls.every(w => w.classification === 'exterior'));
+    assert('single room: thickness = 2x6 standard', walls.every(w => approx(w.thickness_ft, EXT, 0.001)));
+    assert('single room: each wall adjoins 1 room', walls.every(w => w.adjoining_room_ids.length === 1));
+  }
+
+  // ── Test 2: two adjacent rooms — shared wall interior ───────────────────────
+  {
+    const scan = {
+      rooms: [
+        {
+          id: 'r1', name: 'Room A', worldX: 0, worldZ: 0,
+          wallSegments: [
+            {x1:0,z1:0,x2:10,z2:0}, {x1:10,z1:0,x2:10,z2:10},
+            {x1:10,z1:10,x2:0,z2:10}, {x1:0,z1:10,x2:0,z2:0},
+          ],
+          doorSegments: [], windowSegments: [],
+        },
+        {
+          id: 'r2', name: 'Room B', worldX: 10, worldZ: 0,
+          wallSegments: [
+            {x1:0,z1:0,x2:5,z2:0}, {x1:5,z1:0,x2:5,z2:10},
+            {x1:5,z1:10,x2:0,z2:10}, {x1:0,z1:10,x2:0,z2:0},
+          ],
+          doorSegments: [], windowSegments: [],
+        },
+      ],
+    };
+    const result = normalizeFloorPlan(scan);
+    const walls = result.data.walls;
+    const intWalls = walls.filter(w => w.classification === 'interior');
+    const extWalls = walls.filter(w => w.classification === 'exterior');
+    assert('two rooms: 2 shared walls classified interior', intWalls.length === 2);
+    assert('two rooms: interior thickness = 2x4 standard', intWalls.every(w => approx(w.thickness_ft, INT, 0.001)));
+    assert('two rooms: interior walls each adjoin both rooms', intWalls.every(w => w.adjoining_room_ids.includes('r1') && w.adjoining_room_ids.includes('r2')));
+    assert('two rooms: 6 outer walls still exterior', extWalls.length === 6);
+  }
+
+  // ── Test 3: three rooms in a row — middle shared walls interior ─────────────
+  {
+    const scan = {
+      rooms: [
+        {
+          id: 'a', name: 'Left', worldX: 0, worldZ: 0,
+          wallSegments: [
+            {x1:0,z1:0,x2:5,z2:0}, {x1:5,z1:0,x2:5,z2:10},
+            {x1:5,z1:10,x2:0,z2:10}, {x1:0,z1:10,x2:0,z2:0},
+          ],
+          doorSegments: [], windowSegments: [],
+        },
+        {
+          id: 'b', name: 'Middle', worldX: 5, worldZ: 0,
+          wallSegments: [
+            {x1:0,z1:0,x2:5,z2:0}, {x1:5,z1:0,x2:5,z2:10},
+            {x1:5,z1:10,x2:0,z2:10}, {x1:0,z1:10,x2:0,z2:0},
+          ],
+          doorSegments: [], windowSegments: [],
+        },
+        {
+          id: 'c', name: 'Right', worldX: 10, worldZ: 0,
+          wallSegments: [
+            {x1:0,z1:0,x2:5,z2:0}, {x1:5,z1:0,x2:5,z2:10},
+            {x1:5,z1:10,x2:0,z2:10}, {x1:0,z1:10,x2:0,z2:0},
+          ],
+          doorSegments: [], windowSegments: [],
+        },
+      ],
+    };
+    const result = normalizeFloorPlan(scan);
+    const walls = result.data.walls;
+    const intWalls = walls.filter(w => w.classification === 'interior');
+    const extWalls = walls.filter(w => w.classification === 'exterior');
+    assert('3 rooms in a row: 4 interior walls (2 shared boundaries)', intWalls.length === 4);
+    assert('3 rooms in a row: 8 exterior walls', extWalls.length === 8);
+  }
+
+  // ── Test 4: raw thickness preserved ─────────────────────────────────────────
+  {
+    const scan = {
+      rooms: [{
+        id: 't1', name: 'Room', worldX: 0, worldZ: 0,
+        wallSegments: [
+          {x1:0,z1:0,x2:10,z2:0, thickness:0.7},  // noisy scanner value
+          {x1:10,z1:0,x2:10,z2:10},
+          {x1:10,z1:10,x2:0,z2:10},
+          {x1:0,z1:10,x2:0,z2:0},
+        ],
+        doorSegments: [], windowSegments: [],
+      }],
+    };
+    const result = normalizeFloorPlan(scan);
+    const wallWithRaw = result.data.walls.find(w => w.thickness_raw_ft !== null);
+    assert('raw scanner thickness preserved as thickness_raw_ft', wallWithRaw?.thickness_raw_ft === 0.7);
+    assert('standardized thickness overrides scanner value', approx(wallWithRaw?.thickness_ft, EXT, 0.001));
+  }
+
+  // ── Test 5: adjoining_room_ids count ────────────────────────────────────────
+  {
+    const rooms = [
+      { id: 'x1', polygon: [[0,0],[10,0],[10,10],[0,10]] },
+      { id: 'x2', polygon: [[10,0],[15,0],[15,10],[10,10]] },
+    ];
+    const walls = [
+      { id: 'w_shared', p1: [10,0], p2: [10,10] },
+      { id: 'w_outer',  p1: [0,0],  p2: [0,10]  },
+    ];
+    const classified = classifyAndStandardizeWalls(walls, rooms);
+    const shared = classified.find(w => w.id === 'w_shared');
+    const outer  = classified.find(w => w.id === 'w_outer');
+    assert('interior wall adjoining_room_ids length = 2', shared.adjoining_room_ids.length === 2);
+    assert('exterior wall adjoining_room_ids length = 1', outer.adjoining_room_ids.length === 1);
+  }
+
+  // ── Test 6: override options ─────────────────────────────────────────────────
+  {
+    const scan = {
+      rooms: [
+        {
+          id: 'o1', name: 'A', worldX: 0, worldZ: 0,
+          wallSegments: [
+            {x1:0,z1:0,x2:5,z2:0}, {x1:5,z1:0,x2:5,z2:5},
+            {x1:5,z1:5,x2:0,z2:5}, {x1:0,z1:5,x2:0,z2:0},
+          ],
+          doorSegments: [], windowSegments: [],
+        },
+        {
+          id: 'o2', name: 'B', worldX: 5, worldZ: 0,
+          wallSegments: [
+            {x1:0,z1:0,x2:5,z2:0}, {x1:5,z1:0,x2:5,z2:5},
+            {x1:5,z1:5,x2:0,z2:5}, {x1:0,z1:5,x2:0,z2:0},
+          ],
+          doorSegments: [], windowSegments: [],
+        },
+      ],
+    };
+    const result = normalizeFloorPlan(scan, { interiorWallThicknessFt: 0.5 });
+    const intWalls = result.data.walls.filter(w => w.classification === 'interior');
+    assert('override interiorWallThicknessFt applied', intWalls.length > 0 && intWalls.every(w => approx(w.thickness_ft, 0.5, 0.001)));
+  }
+
+  // ── Test 7: adjacency tolerance — 0.04 ft off boundary (within 0.05) ────────
+  {
+    const rooms = [{ id: 'r1', polygon: [[0,0],[10,0],[10,10],[0,10]] }];
+    const walls = [{ id: 'wt', p1: [0.04, 2], p2: [0.04, 8] }];
+    const classified = classifyAndStandardizeWalls(walls, rooms, { adjacencyToleranceFt: 0.05 });
+    assert('wall 0.04 ft off boundary adjoin within 0.05 tolerance', classified[0].adjoining_room_ids.includes('r1'));
+  }
+
+  // ── Test 8: adjacency tolerance — 0.1 ft off boundary (outside 0.05) ────────
+  {
+    const rooms = [{ id: 'r1', polygon: [[0,0],[10,0],[10,10],[0,10]] }];
+    const walls = [{ id: 'wf', p1: [0.1, 2], p2: [0.1, 8] }];
+    const classified = classifyAndStandardizeWalls(walls, rooms, { adjacencyToleranceFt: 0.05 });
+    assert('wall 0.1 ft off boundary not adjoining outside 0.05 tolerance', !classified[0].adjoining_room_ids.includes('r1'));
+  }
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
