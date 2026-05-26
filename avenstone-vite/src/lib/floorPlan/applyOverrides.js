@@ -55,6 +55,8 @@ export function applyOverridesToScan(rawScan, overrides) {
     if (!ov) continue;
     if (ov.name !== undefined) room.name = ov.name;
     if (ov.sf_visible !== undefined) room.sf_visible = ov.sf_visible;
+    if (ov.label_x !== undefined) room.label_x_override = ov.label_x;
+    if (ov.label_y !== undefined) room.label_y_override = ov.label_y;
   }
 
   // Wall endpoint overrides (Phase 5c-4)
