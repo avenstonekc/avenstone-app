@@ -981,7 +981,7 @@ const _drawTitleColumn = (doc, H, job, floorName, floorNum, totalFloors, pageNum
 };
 
 // ─── Floor page renderer ──────────────────────────────────────────────────────
-const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, totalPages, W, H, logoDataUrl, layout_hints = {}, hints_by_name = {}) => {
+const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, totalPages, W, H, logoDataUrl, layout_hints = {}, hints_by_name = {}, wallClassByRoomAndSeg = {}) => {
   const navy = [10, 31, 68];
 
   _drawTitleColumn(doc, H, job, floor.floorName, floorNum, totalFloors, pageNum, totalPages, logoDataUrl);
@@ -1022,33 +1022,42 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     const deduped = _dedupFeatures(flatDoors, flatWins, flatOps, floor.floorIndex);
     allDoors = deduped.doors; allWindows = deduped.windows; allOpenings = deduped.openings;
 
-    // Classify walls: interior = passes ALL 3 against a wall in a different room:
-    //   midpoint within 0.5 ft, lengths within 15%, direction vectors parallel (|dot| >= 0.9)
-    const flatWalls = [];
-    roomSegs.forEach((segs, ri) => segs.forEach(seg => {
-      const len = Math.hypot(seg.x2-seg.x1, seg.z2-seg.z1);
-      flatWalls.push({ seg, ri, mx: (seg.x1+seg.x2)/2, mz: (seg.z1+seg.z2)/2, len,
-        ux: len > 0.01 ? (seg.x2-seg.x1)/len : 0, uz: len > 0.01 ? (seg.z2-seg.z1)/len : 0 });
-    }));
-    for (let i = 0; i < flatWalls.length; i++) {
-      for (let j = i+1; j < flatWalls.length; j++) {
-        const a = flatWalls[i], b = flatWalls[j];
-        if (a.ri === b.ri) continue;
-        if (Math.hypot(a.mx-b.mx, a.mz-b.mz) > 0.5) continue;
-        if (Math.abs(a.len-b.len) / Math.max(a.len, b.len, 0.01) > 0.15) continue;
-        if (Math.abs(a.ux*b.ux + a.uz*b.uz) < 0.9) continue;
-        a.seg._interior = true; b.seg._interior = true;
+    // Wall classification: prefer Phase 1 classified walls (wallClassByRoomAndSeg lookup).
+    // Falls back to pairwise midpoint/length/direction heuristic when lookup unavailable.
+    const hasClassification = Object.keys(wallClassByRoomAndSeg).length > 0;
+    const isInteriorWall = (room, si, seg) => {
+      if (hasClassification) {
+        const roomClasses = wallClassByRoomAndSeg[room.id];
+        if (roomClasses && si < roomClasses.length) return roomClasses[si] === 'interior';
+      }
+      return !!seg._interior;
+    };
+    if (!hasClassification) {
+      const flatWalls = [];
+      roomSegs.forEach((segs, ri) => segs.forEach(seg => {
+        const len = Math.hypot(seg.x2-seg.x1, seg.z2-seg.z1);
+        flatWalls.push({ seg, ri, mx: (seg.x1+seg.x2)/2, mz: (seg.z1+seg.z2)/2, len,
+          ux: len > 0.01 ? (seg.x2-seg.x1)/len : 0, uz: len > 0.01 ? (seg.z2-seg.z1)/len : 0 });
+      }));
+      for (let i = 0; i < flatWalls.length; i++) {
+        for (let j = i+1; j < flatWalls.length; j++) {
+          const a = flatWalls[i], b = flatWalls[j];
+          if (a.ri === b.ri) continue;
+          if (Math.hypot(a.mx-b.mx, a.mz-b.mz) > 0.5) continue;
+          if (Math.abs(a.len-b.len) / Math.max(a.len, b.len, 0.01) > 0.15) continue;
+          if (Math.abs(a.ux*b.ux + a.uz*b.uz) < 0.9) continue;
+          a.seg._interior = true; b.seg._interior = true;
+        }
       }
     }
-    const extCnt = flatWalls.filter(w => !w.seg._interior).length;
-    const intCnt = flatWalls.filter(w => !!w.seg._interior).length;
-    console.log(`[LIDAR_DEBUG] walls: ${extCnt} exterior, ${intCnt} interior`);
-    const isInterior = (seg) => !!seg._interior;
+    const extCnt = roomSegs.reduce((c, segs, ri) => c + segs.filter((s, si) => !isInteriorWall(snappedRooms[ri], si, s)).length, 0);
+    const intCnt = roomSegs.reduce((c, segs, ri) => c + segs.filter((s, si) => isInteriorWall(snappedRooms[ri], si, s)).length, 0);
+    console.log(`[LIDAR_DEBUG] walls: ${extCnt} exterior, ${intCnt} interior (${hasClassification ? 'classified' : 'pairwise-fallback'})`);
 
     // Collect all wall segs for dim labels
     snappedRooms.forEach((room, ri) => {
       const segs = roomSegs[ri] || [];
-      segs.forEach(s => allWallSegs.push({ ...s, interior: isInterior(s) }));
+      segs.forEach((s, si) => allWallSegs.push({ ...s, interior: isInteriorWall(room, si, s) }));
     });
 
     // Build room layouts for label positioning
@@ -1070,11 +1079,11 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     }
 
     // ── Draw walls (poché) ────────────────────────────────────────────────────
-    for (const { segs } of roomLayouts) {
-      for (const seg of segs) {
-        const thick = isInterior(seg) ? 3 : 6;
+    for (const { room, segs } of roomLayouts) {
+      segs.forEach((seg, si) => {
+        const thick = isInteriorWall(room, si, seg) ? 3 : 6;
         _drawPoché(doc, oX + seg.x1 * scale, oY + seg.z1 * scale, oX + seg.x2 * scale, oY + seg.z2 * scale, thick);
-      }
+      });
     }
 
     // ── Erase openings, draw door/window symbols ──────────────────────────────
@@ -1534,11 +1543,17 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
     const logoDataUrl = await _loadLogo();
     const scan = applyEditOverrides(rawScan);
 
-    // Phase 1+2: normalize → layout hints. Falls back silently if scan is malformed.
-    let layout_hints = {}, hints_by_name = {};
+    // Phase 1+2: normalize → wall classification + layout hints. Falls back silently if malformed.
+    let layout_hints = {}, hints_by_name = {}, wallClassByRoomAndSeg = {};
     try {
       const normalized = normalizeFloorPlan(scan);
       if (normalized.ok) {
+        // Wall classification lookup: { room_id: ['exterior','interior',...] } in wall-segment order
+        for (const wall of normalized.data.walls) {
+          if (!wallClassByRoomAndSeg[wall.room_id]) wallClassByRoomAndSeg[wall.room_id] = [];
+          wallClassByRoomAndSeg[wall.room_id].push(wall.classification);
+        }
+        console.log(`[LIDAR_PDF_HINTS] wall classification loaded: ${Object.keys(wallClassByRoomAndSeg).length} rooms`);
         const hintsResult = computeLayoutHints(normalized);
         if (hintsResult.ok) {
           layout_hints = hintsResult.data.layout_hints;
@@ -1552,7 +1567,7 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
         }
       }
     } catch (e) {
-      console.warn('[LIDAR_PDF_HINTS] layout hints failed, using legacy rendering:', e.message);
+      console.warn('[LIDAR_PDF_HINTS] normalize/hints failed, using legacy rendering:', e.message);
     }
 
     const rooms = scan.rooms || [];
@@ -1574,7 +1589,7 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
       console.log(`[LIDAR_PDF_STAGE] rendering floor page ${fi + 1}/${totalFloors} — ${floor.floorName}`);
       console.log(`[LIDAR_DEBUG] page ${fi + 1} orientation: W=${W} H=${H}`);
       if (fi > 0) doc.addPage('letter', 'landscape');
-      _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H, logoDataUrl, layout_hints, hints_by_name);
+      _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H, logoDataUrl, layout_hints, hints_by_name, wallClassByRoomAndSeg);
     });
 
     console.log('[LIDAR_PDF_STAGE] rendering summary page');
