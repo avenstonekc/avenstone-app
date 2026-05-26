@@ -44,6 +44,10 @@ Layers 1, 2, 4, 5 are deterministic code. Layer 3 is the only LLM call. Most flo
 
 ### Phase 1 — Geometry normalizer + door dedupe
 
+**Status:** SHIPPED 2026-05-25
+
+**Wall thickness standardization (2026-05-25):** Phase 1 extended with classifyAndStandardizeWalls. Exterior walls = 2x6 (5.5"), interior = 2x4 (3.5"), classified by room-adjacency count. Raw thickness preserved as thickness_raw_ft. Commits 26560de (data layer) + c7e834b (pdf renderer wiring).
+
 The data layer. Doesn't render anything. Just produces clean structured input.
 
 - New module `avenstone-vite/src/lib/floorPlan/normalize.js`.
@@ -56,6 +60,8 @@ Scope: 1 Sonnet prompt.
 Ships: dedupe bug fix as a bonus, isolated module ready for Phase 2 to consume.
 
 ### Phase 2 — Layout checker (deterministic rules)
+
+**Status — Phase 2A:** SHIPPED 2026-05-25 (commit d8df8ac) · **Phase 2B:** SHIPPED 2026-05-25 (commit e05daed)
 
 The brain that doesn't need a brain. Pure geometry + rule lookup.
 
@@ -95,6 +101,8 @@ Caveat: This phase is optional. Phases 1+2+4 might be good enough on their own. 
 
 ### Phase 4 — pdf.js renderer rewrite
 
+**Status:** SHIPPED 2026-05-25 (commit a27e463)
+
 Replace today's "centroid + hope" with "consume layout_hints + render exactly what they say."
 
 - Edit current floor plan rendering location (audit will find — probably `avenstone-vite/src/lib/pdf.js`).
@@ -111,6 +119,8 @@ Floor plans become first-class persistent entities. Raw scan + layout overrides 
 Original Phase 5 (pre-submit preview) and Phase 6 (confidence scoring) are absorbed here. Confidence scoring intentionally dropped — Kalin doesn't want it.
 
 #### Phase 5a — Schema + helpers (foundation)
+
+**Status:** SHIPPED 2026-05-25 (commits 9e07592, a1fddde)
 
 New `floor_plans` table:
 - id UUID PK
@@ -151,6 +161,8 @@ Scope: 1 prompt.
 
 #### Phase 5b — Save scan path
 
+**Status:** SHIPPED 2026-05-25 (commits 4187b46, 1bf24db)
+
 Wire AiIntakeWizard (and any other scanner caller) to save a draft floor_plans row at the end of the scan instead of (or in addition to) the existing PDF-only path. The PDF is uploaded to storage, URL stored. Raw scan + layout_overrides (initially {}) saved on the row.
 
 Add a new "Floor Plans" section to the job detail screen showing draft + sent plans for that job. Each list item shows: name, status badge, last updated, "Open" button.
@@ -158,6 +170,13 @@ Add a new "Floor Plans" section to the job detail screen showing draft + sent pl
 Scope: 1 prompt.
 
 #### Phase 5c — Editor screen (list-of-rooms with per-room overrides)
+
+**Status by sub-phase:**
+- Phase 5c-1 (canvas foundation): SHIPPED 2026-05-25 (commits 76b7da7, 0e4656b, 6950930, 03227f4)
+- Phase 5c-2 (persistence pipeline): SHIPPED 2026-05-25 (commits 3774c8d, bc74ca3, 3cc5fc8, 6e01d81)
+- Phase 5c-3 (add room): SHIPPED 2026-05-25 (commits abe105a, 4495576, abe2126, 9ca2a72)
+- Phase 5c-4 (wall move): PART 1 SHIPPED 2026-05-25 (commits 9523e95, 54e8739, 0e4101e, 38b6fd7); part 2 (snap polish) deferred
+- Phase 5c-5 (merge rooms): SHIPPED 2026-05-25 (commits f4e1f9c, 87f1c8f, d3c6d79)
 
 New screen: FloorPlanEditorScr.jsx (or rewire the existing FloorPlanEditor.jsx which was flagged as built-but-not-wired). Two-pane on desktop, stacked on mobile.
 
@@ -202,54 +221,74 @@ Original Phase 6 (confidence scoring + auto-flag) DROPPED per Kalin's call 2026-
 
 If real production use surfaces a need for automated quality flags, revisit.
 
-## Sequencing
+## Sequencing (updated 2026-05-25 night)
 
 ```
-Phase 1 (norm + door dedupe)        ← shipped
+Phase 1 (norm + door dedupe + wall thickness)   ← SHIPPED
    ↓
-Phase 2 (rules engine)              ← shipped (2A + 2B)
+Phase 2A + 2B (rules engine)                    ← SHIPPED
    ↓
-Phase 4 (renderer rewrite)          ← shipped
+Phase 4 (renderer rewrite)                      ← SHIPPED
    ↓
-Phase 5a (schema + helpers)         ← editable drafts foundation
+Phase 5a (schema + helpers)                     ← SHIPPED
    ↓
-Phase 5b (save scan path)           ← scans persist as drafts
+Phase 5b (scanner saves drafts)                 ← SHIPPED
    ↓
-Phase 5c (editor — list overrides)  ← per-room edits without rescan
+Phase 5c-1 (editor canvas)                      ← SHIPPED
    ↓
-Phase 5e (versions + send)          ← send specific versions to clients
+Phase 5c-2 (persistence pipeline)               ← SHIPPED
    ↓
-Phase 5d (drag-to-reposition)       ← visual editor polish, can defer
+Phase 5c-3 (add room)                           ← SHIPPED
    ↓
-Phase 3 (Opus tiebreaker)           ← only if real ambiguity surfaces in production
+Phase 5c-4 part 1 (wall move)                   ← SHIPPED
    ↓
-Phase 6 — DROPPED (was confidence scoring)
+Phase 5c-5 (merge rooms)                        ← SHIPPED  ← basement scenario fully covered
+   ↓
+Phase 5e (versions + send to client)            ← closes the workflow loop — highest priority remaining
+   ↓
+Capture-time scan-quality warnings              ← prevent bad scans at capture time
+   ↓
+Phase 5c-6 (delete + undo + snap polish)        ← editor polish
+   ↓
+Phase 5c-4 part 2 (snap polish for wall move)   ← editor polish
+   ↓
+Phase 5d (drag-to-reposition labels in canvas)  ← editor polish
+   ↓
+Phase 3 (Opus tiebreaker)                       ← DEFERRED indefinitely — see Phase 6 note
+   ↓
+Phase 6 (confidence scoring)                    ← DROPPED
+   ↓
+Phase 7 (Opus scan review)                      ← REJECTED — see amendment 2026-05-25 night
 ```
-
-Notice 5d sits AFTER 5e — drag editing is polish on top of the working editor. If 5c list-based overrides feel sufficient in practice, 5d may never ship. That's fine.
-
-Notice Phase 3 sits AFTER all of Phase 5 — same reason as before, rules + overrides should resolve most edge cases without needing an LLM call.
 
 ## Trade-aware
 
 Floor plan layout is platform UI, not trade-specific. No tenant or trade columns needed. Rules engine reads room types from RoomPlan's existing taxonomy.
 
-## Estimated effort
+## Estimated effort (updated 2026-05-25 night)
 
-- Phase 1: 1 prompt — SHIPPED
-- Phase 2: 2 prompts — SHIPPED (2A + 2B)
-- Phase 4: 1 prompt — SHIPPED
-- Phase 5a (schema): 1 prompt
-- Phase 5b (save path): 1 prompt
-- Phase 5c (editor list overrides): 1 prompt
-- Phase 5e (versions + send): 1 prompt
-- Phase 5d (drag editor): 2 prompts (optional polish)
-- Phase 3 (Opus tiebreaker): 1 prompt (optional, only if needed)
-- Phase 6: DROPPED
+**SHIPPED (15 prompts total):**
+- Phase 1: 1 prompt + wall thickness extension (2 prompts)
+- Phase 2A: 1 prompt
+- Phase 2B: 1 prompt
+- Phase 4: 1 prompt
+- Phase 5a: 1 prompt
+- Phase 5b: 1 prompt
+- Phase 5c-1: 1 prompt
+- Phase 5c-2: 1 prompt
+- Phase 5c-3: 1 prompt
+- Phase 5c-4 part 1: 1 prompt
+- Phase 5c-5: 1 prompt
 
-Remaining minimum to ship the editable-draft workflow: **4 prompts** (5a+5b+5c+5e).
-With visual drag editor: **6 prompts**.
-Plus Opus tiebreaker if needed: **+1 prompt**.
+**REMAINING:**
+- Phase 5e (send): 1 prompt — closes the workflow
+- Capture-time warnings: 2 prompts — prevents bad data
+- Phase 5c-6 (delete + undo): 1-2 prompts — polish
+- Phase 5c-4 part 2: 1 prompt — polish
+- Phase 5d (drag labels): 2 prompts — polish
+
+Total remaining minimum (5e + capture-time): 3 prompts.
+Total remaining full polish: 7-8 prompts.
 
 ## Open questions
 
@@ -279,3 +318,9 @@ Plus Opus tiebreaker if needed: **+1 prompt**.
 ## Amendments
 
 **2026-05-25** — Phase 5 redesigned. Original Phase 5 (pre-submit preview, one-shot gate) replaced by Phase 5 multi-part editable scan drafts. Phase 6 (confidence scoring) dropped entirely per Kalin's call. Rationale: persistent editable drafts are substantially more valuable than a one-time preview gate — Kalin can fix label issues weeks after the original scan without re-scanning. Confidence scoring would have estimated quality but Kalin doesn't want it.
+
+**2026-05-25 night** — Phase 7 (Opus scan review) rejected. Considered then dropped. Reasoning: the editor + human-with-context outperforms Opus on this domain. The scanner is in the room, they know what's actually there. Opus would only see a JSON + rendered image and guess. For geometry-precision work (wall positions, room shapes, missing rooms) the human is strictly more informed and a desktop editor with precise click-and-drag beats AI suggestions every time. Opus's only real strength here would be name-suggestion based on visual context (toilet → Bathroom), which is a 10-second manual override anyway. API cost + maintenance + complexity not justified.
+
+The actual moat is the editor itself: desktop-grade floor plan editing integrated with mobile LiDAR scanning + persistent drafts + version history + automatic 2x4/2x6 wall classification. Nobody else has that integrated stack. No AI required to make it valuable.
+
+All Phase 1 through 5c-5 work is SHIPPED. Kalin's full basement scenario (move wall, add closet, merge rooms, add laundry) is end-to-end covered with manual editing. Next priorities: Phase 5e (send to client) to close the workflow loop, then capture-time warnings to catch scan problems before the office, then editor polish.
