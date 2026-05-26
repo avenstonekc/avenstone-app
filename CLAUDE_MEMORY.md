@@ -2086,3 +2086,13 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - No rendering, no components, no migrations. Data-layer only.
 - Phase 2 (planned): layout.js — polylabel for L-shape label placement, layoutCheck rules engine.
 - Phase 4 (planned): pdf.js consumes normalize.js output directly instead of raw scan.
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 2A shipped — layout rules engine + 4 rules]
+- Action: Phase 2A shipped. New module avenstone-vite/src/lib/floorPlan/layoutCheck.js. Consumes Phase 1 normalize.js output, produces { layout_hints, issues }.
+- Rules implemented: (1) label position via polylabel (fixes L-shape centroid bug), (2) abbreviation table for common room names + truncation fallback, (3) rotation for tall narrow rooms (aspect > 1.5), (4) SF badge position with inline-for-small-rooms.
+- Dependency added: polylabel@2.0.1 (~2KB).
+- Issues array surfaces label_distance_low + room_unknown_name in Phase 2A. Phase 2B adds collision detection + ambiguous severity for Phase 3 Opus tiebreaker.
+- Smoke: 51/51 tests pass via node _smoke_layout.mjs.
+- Build: clean (375 modules; polylabel tree-shaken — nothing imports layoutCheck.js yet).
+- Trade-aware: pure geometry, no trade assumptions. Abbreviation table is residential-construction-flavored — extend per trade as we white-label.
+- Open: Phase 2B (4 more rules — dim collision, door swing, adjacent label, hallway SF gate) — 1 prompt. Phase 4 (pdf.js renderer consuming layout_hints) — 1-2 prompts after 2B.
