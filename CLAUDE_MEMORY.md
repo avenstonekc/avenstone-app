@@ -2096,3 +2096,14 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Build: clean (375 modules; polylabel tree-shaken — nothing imports layoutCheck.js yet).
 - Trade-aware: pure geometry, no trade assumptions. Abbreviation table is residential-construction-flavored — extend per trade as we white-label.
 - Open: Phase 2B (4 more rules — dim collision, door swing, adjacent label, hallway SF gate) — 1 prompt. Phase 4 (pdf.js renderer consuming layout_hints) — 1-2 prompts after 2B.
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 2B shipped — 4 collision-detection rules]
+- Action: Phase 2B shipped. Extended layoutCheck.js with 4 more rules. Total rules in engine: 8.
+- New exports: detectDimensionCollisions, detectDoorSwingCollisions. Internal: _computeLabelBbox, _aabbOverlap.
+- Issue severities introduced: ambiguous — flagged for Phase 3 Opus tiebreaker. Other severities: info, warn.
+- Input contract: normalized object may now include chain_dims[], doors[], walls[]. Phase 1 already produced doors+walls. chain_dims is a future renderer responsibility — Phase 2B is a no-op for that rule when chain_dims is absent or empty.
+- Door swing simplification: circle-not-quarter-arc collision check. Over-conservative on purpose, errs safe. Single door=warn, 2+ doors=ambiguous (one issue).
+- Smoke: 83/83 tests pass.
+- Build: clean (375 modules).
+- Trade-aware: all geometric, no trade assumptions. Hallway-type recognition uses regex match against type field (hallway|hall|corridor|stairs|landing).
+- Open: Phase 4 (pdf.js renderer consuming layout_hints) — 1-2 prompts. Phase 3 (Opus tiebreaker for ambiguous issues) — only if Phase 4 surfaces real edge cases.
