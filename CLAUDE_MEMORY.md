@@ -2259,3 +2259,13 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Build: ✓ 385 modules, clean.
 - Trade-aware: pure geometry/editor tooling, no trade assumptions.
 - Open: Phase 5c-6 (undo stack, delete room). Phase 5c-7 Part 5 (pdf.js annotation rendering — deferred). Phase 5e (versions + send to client). Strip add-room console.logs.
+
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-10 shipped — editor nav polish]
+- Action: Zoom buttons (+/−/fit) in top-right overlay with live % readout. Keyboard shortcuts: + / − zoom, F fit, arrow keys pan. Space+drag = pan (Figma/Sketch convention). Right-drag and middle-drag pan preserved. Hover ? button shows keyboard hint card.
+- fitToContent() and zoomBy() extracted from inline useEffect into reusable functions (both write to refs + call forceUpdate directly, matching existing pattern).
+- input/textarea guard prevents shortcuts from hijacking text fields — arrow keys in Build Walls modal length input go to direction picker, not canvas pan.
+- SVG zoom badge removed; canvas wrapped in position:relative div to host HTML overlay.
+- Files: avenstone-vite/src/components/floorPlan/FloorPlanCanvas.jsx (+138/-8). Commit: d4140e3.
+- Build: ✓ 385 modules, clean.
+- Trade-aware: pure UI. No trade assumptions.
+- Open: Phase 5c-6 (delete + undo), Phase 5c-4 part 2 (wall move snap polish), Phase 5e (versions + send). Strip add-room console.logs.
