@@ -9,7 +9,11 @@
  *     added_rooms?: AddedRoom[],                  // manually drawn rooms (5c-3)
  *     wall_endpoint_overrides?: EndpointMoves,    // moved wall endpoints (5c-4)
  *     merged_rooms?: MergedRoom[],                // polygon-union merged rooms (5c-5)
+ *     text_annotations?: TextAnnotation[],        // freestanding text labels (5c-7)
  *   }
+ *
+ * TextAnnotation shape:
+ *   { id: string, text: string, x: number, y: number, font_size_pt?: number, rotation?: 0|90 }
  *
  * AddedRoom shape:
  *   { id: string, name: string, polygon: [number,number][], type: string, source: 'manual' }
@@ -109,6 +113,13 @@ export function applyOverridesToScan(rawScan, overrides) {
         }
       }
     }
+  }
+
+  // Text annotations (Phase 5c-7) — standalone labels not bound to any room
+  if (Array.isArray(overrides.text_annotations)) {
+    cloned.text_annotations = overrides.text_annotations.map(t => ({ ...t }));
+  } else {
+    cloned.text_annotations = cloned.text_annotations || [];
   }
 
   // Added rooms (Phase 5c-3)
