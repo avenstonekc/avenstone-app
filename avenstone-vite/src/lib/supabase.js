@@ -337,6 +337,55 @@ export async function sbLoadJobPhaseProgress(jobId) {
   }
 }
 
+export async function sbCheckLeadTime({ jobId, trade, scheduledDate }) {
+  if (!jobId || !trade || !scheduledDate) return { ok: true, warning: null };
+
+  const leadResult = await sbGetTradeLeadDays(trade);
+  if (!leadResult.ok) return { ok: true, warning: null };
+  const leadDays = leadResult.data;
+
+  const { data: orders, error } = await sb
+    .from('material_orders')
+    .select('id, created_at, quoted_delivery_date, status')
+    .eq('job_id', jobId)
+    .eq('trade', trade)
+    .neq('status', 'cancelled');
+
+  if (error) return { ok: true, warning: null };
+
+  if (!orders || orders.length === 0) {
+    return {
+      ok: true,
+      warning: {
+        message: `No ${trade} material order found. Materials may not arrive by ${scheduledDate}.`,
+        hasOrder: false,
+        daysShort: null,
+      },
+    };
+  }
+
+  for (const order of orders) {
+    const estimated = order.quoted_delivery_date
+      || _addDaysISO(order.created_at.slice(0, 10), leadDays);
+    if (estimated <= scheduledDate) return { ok: true, warning: null };
+  }
+
+  const deliveries = orders
+    .map(o => o.quoted_delivery_date || _addDaysISO(o.created_at.slice(0, 10), leadDays))
+    .sort();
+  const bestDelivery = deliveries[0];
+  const daysShort = _daysBetweenISO(scheduledDate, bestDelivery);
+
+  return {
+    ok: true,
+    warning: {
+      message: `${trade} materials may not arrive in time. Estimated delivery: ${bestDelivery} (${daysShort} day${daysShort === 1 ? '' : 's'} after scheduled date).`,
+      hasOrder: true,
+      daysShort,
+    },
+  };
+}
+
 export const sbSavePhase = async ph => {
   const { data, error } = await sb.from('job_phases').upsert(ph).select().single();
   if (error) {
