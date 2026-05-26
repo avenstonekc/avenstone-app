@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbGetJobLidarScans, sbUploadDoc, sbUpdateScanOverrides } from '../../../lib/supabase';
+import { sbGetJobLidarScans, sbUploadDoc, sbUpdateScanOverrides, sbLoadFloorPlansForJob } from '../../../lib/supabase';
 import { buildFloorPlanPDF } from '../../../lib/pdf';
 import AiIntakeWizard from '../../ai/AiIntakeWizard';
 import FloorPlanCanvas from '../../ai/FloorPlanCanvas';
@@ -7,6 +7,8 @@ import FloorPlanCanvas from '../../ai/FloorPlanCanvas';
 export default function FloorPlanTab({ job, profile }) {
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [plans, setPlans] = useState([]);
+  const [plansLoading, setPlansLoading] = useState(true);
   const [showScanner, setShowScanner] = useState(false);
   const [exportingId, setExportingId] = useState(null);
   const [exportedIds, setExportedIds] = useState(new Set());
@@ -18,8 +20,16 @@ export default function FloorPlanTab({ job, profile }) {
     setLoading(false);
   };
 
+  const loadPlans = async () => {
+    setPlansLoading(true);
+    const { ok, data } = await sbLoadFloorPlansForJob(job.id);
+    setPlans(ok ? (data || []) : []);
+    setPlansLoading(false);
+  };
+
   useEffect(() => {
     loadScans();
+    loadPlans();
   }, [job.id]);
 
   const formatDate = (dateStr) => {
@@ -47,6 +57,16 @@ export default function FloorPlanTab({ job, profile }) {
     }
   };
 
+  const statusBadge = (status) => {
+    const map = { draft: ['#6B7280', '#F3F4F6'], sent: ['#16a34a', '#D1FAE5'] };
+    const [color, bg] = map[status] || map.draft;
+    return (
+      <span style={{ fontSize: '11px', fontWeight: '600', color, background: bg, borderRadius: '20px', padding: '2px 8px', textTransform: 'capitalize', letterSpacing: '0.3px' }}>
+        {status}
+      </span>
+    );
+  };
+
   return (
     <div style={{ fontFamily: "'DM Sans', sans-serif", padding: '16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
@@ -58,6 +78,53 @@ export default function FloorPlanTab({ job, profile }) {
         </button>
       </div>
 
+      {/* Saved Plans */}
+      <p style={{ fontSize: '11px', fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 10px' }}>
+        Saved Plans
+      </p>
+      {plansLoading ? (
+        <p style={{ color: '#999', fontSize: '14px', marginBottom: '24px' }}>Loading…</p>
+      ) : plans.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: '24px', marginBottom: '24px' }}>
+          <p style={{ fontSize: '14px', color: '#888', margin: 0 }}>No saved plans yet — complete a scan to create one</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
+          {plans.map(plan => (
+            <div key={plan.id} className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: '0 0 4px', fontFamily: "'DM Serif Display', serif", fontSize: '15px', color: '#0A1F44', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {plan.name}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {statusBadge(plan.status)}
+                  <span style={{ fontSize: '12px', color: '#999' }}>v{plan.current_pdf_version}</span>
+                  <span style={{ fontSize: '12px', color: '#999' }}>·</span>
+                  <span style={{ fontSize: '12px', color: '#999' }}>{formatDate(plan.updated_at)}</span>
+                </div>
+              </div>
+              {plan.current_pdf_url ? (
+                <a
+                  href={plan.current_pdf_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-ghost"
+                  style={{ fontSize: '12px', padding: '4px 12px', height: '28px', flexShrink: 0, display: 'flex', alignItems: 'center' }}
+                >
+                  Download
+                </a>
+              ) : (
+                <span style={{ fontSize: '12px', color: '#bbb', flexShrink: 0 }}>No PDF</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Scan History */}
+      <p style={{ fontSize: '11px', fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: '0.8px', margin: '0 0 10px' }}>
+        Scan History
+      </p>
       {loading ? (
         <p style={{ color: '#999', fontSize: '14px' }}>Loading...</p>
       ) : scans.length === 0 ? (
@@ -138,7 +205,7 @@ export default function FloorPlanTab({ job, profile }) {
           profile={profile}
           jobId={job.id}
           job={job}
-          onClose={() => { setShowScanner(false); loadScans(); }}
+          onClose={() => { setShowScanner(false); loadScans(); loadPlans(); }}
         />
       )}
 
