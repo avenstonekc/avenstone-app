@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import polygonClipping from 'polygon-clipping';
 import { sbLoadFloorPlan, sbUpdateFloorPlanOverrides, sbRegenerateFloorPlanPdf } from '../../lib/supabase';
 import { buildFloorPlanPDF } from '../../lib/pdf';
@@ -33,8 +33,12 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [selection, setSelection] = useState({ roomIds: [], wallIds: [] });
   const [canvasSize, setCanvasSize] = useState({ width: 1000, height: 680 });
 
-  // Persistence state
-  const [pendingOverrides, setPendingOverrides] = useState({});
+  // Persistence state — undo/redo history stack (Phase 5c-6)
+  const MAX_HISTORY = 50;
+  const [history, setHistory] = useState({ past: [], present: {}, future: [] });
+  const pendingOverrides = history.present;
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
   const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -84,7 +88,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
       }
       setPlan(result.data.plan);
       setVersions(result.data.versions || []);
-      setPendingOverrides(result.data.plan?.layout_overrides || {});
+      setHistory({ past: [], present: result.data.plan?.layout_overrides || {}, future: [] });
       setIsDirty(false);
       setLastSavedVersion(null);
       setLoading(false);
@@ -92,11 +96,44 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     return () => { cancelled = true; };
   }, [floorPlanId]);
 
-  const updateOverrides = (newOverrides) => {
-    setPendingOverrides(newOverrides);
+  const updateOverrides = useCallback((newOverrides) => {
+    setHistory(h => {
+      const newPast = [...h.past, h.present].slice(-MAX_HISTORY);
+      return { past: newPast, present: newOverrides, future: [] };
+    });
     setIsDirty(true);
     setSaveError(null);
-  };
+  }, []); // setHistory/setIsDirty/setSaveError are stable setter refs
+
+  const undo = useCallback(() => {
+    setHistory(h => {
+      if (h.past.length === 0) return h;
+      const previous = h.past[h.past.length - 1];
+      const newPast = h.past.slice(0, -1);
+      return {
+        past: newPast,
+        present: previous,
+        future: [h.present, ...h.future].slice(0, MAX_HISTORY),
+      };
+    });
+    setIsDirty(true);
+    setSaveError(null);
+  }, []);
+
+  const redo = useCallback(() => {
+    setHistory(h => {
+      if (h.future.length === 0) return h;
+      const next = h.future[0];
+      const newFuture = h.future.slice(1);
+      return {
+        past: [...h.past, h.present].slice(-MAX_HISTORY),
+        present: next,
+        future: newFuture,
+      };
+    });
+    setIsDirty(true);
+    setSaveError(null);
+  }, []);
 
   // Add Room helpers
   function guessDefaultName(polygon) {
@@ -439,10 +476,79 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     setEditingAnnotation(null);
   }
 
-  // Keyboard handler for edit modes
+  // Delete selected rooms and/or annotations (Phase 5c-6)
+  // Cases: added_room → filter from added_rooms, merged_room → filter from merged_rooms,
+  // scanner room → push to deleted_room_ids, annotation → filter from text_annotations
+  function deleteSelected() {
+    const annIds = selection.annotationIds || [];
+    const roomIds = selection.roomIds || [];
+    if (annIds.length === 0 && roomIds.length === 0) return;
+
+    let next = { ...pendingOverrides };
+
+    if (annIds.length > 0) {
+      next.text_annotations = (next.text_annotations || []).filter(a => !annIds.includes(a.id));
+    }
+
+    for (const roomId of roomIds) {
+      if ((next.added_rooms || []).some(r => r.id === roomId)) {
+        next.added_rooms = next.added_rooms.filter(r => r.id !== roomId);
+        continue;
+      }
+      if ((next.merged_rooms || []).some(r => r.id === roomId)) {
+        next.merged_rooms = next.merged_rooms.filter(r => r.id !== roomId);
+        continue;
+      }
+      // Scanner-produced room — mark deleted so applyOverrides filters it out
+      next.deleted_room_ids = [...(next.deleted_room_ids || []), roomId];
+    }
+
+    updateOverrides(next);
+    setSelection({ roomIds: [], wallIds: [], annotationIds: [] });
+  }
+
+  // Keyboard handler — undo/redo/delete + mode-specific shortcuts (Phase 5c-6 expanded)
   useEffect(() => {
     function onKey(e) {
-      if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return; // modal is up, don't intercept
+      // Never intercept while user is typing in an input or textarea
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+
+      // Cmd-Z / Ctrl-Z = undo (Phase 5c-6)
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return;
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      // Cmd-Shift-Z / Ctrl-Y = redo (Phase 5c-6)
+      if (
+        ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z')) ||
+        ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y'))
+      ) {
+        if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return;
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      // Delete / Backspace = delete selected items (Phase 5c-6)
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return;
+        const selRooms = selection.roomIds?.length || 0;
+        const selAnns = selection.annotationIds?.length || 0;
+        if (selRooms > 0 || selAnns > 0) {
+          e.preventDefault();
+          if (window.confirm(`Delete ${selRooms + selAnns} item(s)?`)) {
+            deleteSelected();
+          }
+          return;
+        }
+      }
+
+      // Remaining mode-specific handlers — bail out if modal is up
+      if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return;
       if (mode === 'add-room') {
         if (e.key === 'Escape') {
           setMode('select');
@@ -467,7 +573,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, drawingPolygon, pendingNewRoom, pendingMerge, editingAnnotation, lengthInput]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, drawingPolygon, pendingNewRoom, pendingMerge, editingAnnotation, lengthInput, selection, pendingOverrides, undo, redo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveOnly = async () => {
     if (!plan || !isDirty) return;
@@ -480,6 +586,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
       return;
     }
     setPlan(p => ({ ...p, layout_overrides: pendingOverrides }));
+    setHistory(h => ({ past: [], present: h.present, future: [] }));
     setIsDirty(false);
   };
 
@@ -519,6 +626,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
       setVersions(reload.data.versions || []);
       setLastSavedVersion(regen.data?.version_number ?? null);
     }
+    setHistory(h => ({ past: [], present: h.present, future: [] }));
     setIsDirty(false);
   };
 
@@ -638,6 +746,42 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
 
         {/* Save controls */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Undo / Redo (Phase 5c-6) */}
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo (Cmd-Z / Ctrl-Z)"
+            style={{
+              padding: '6px 10px',
+              background: canUndo ? 'rgba(247,245,240,0.15)' : 'rgba(247,245,240,0.05)',
+              color: canUndo ? '#F7F5F0' : 'rgba(247,245,240,0.4)',
+              border: '1px solid rgba(247,245,240,0.2)',
+              borderRadius: 6,
+              cursor: canUndo ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+          >↶ Undo</button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo (Cmd-Shift-Z / Ctrl-Y)"
+            style={{
+              padding: '6px 10px',
+              background: canRedo ? 'rgba(247,245,240,0.15)' : 'rgba(247,245,240,0.05)',
+              color: canRedo ? '#F7F5F0' : 'rgba(247,245,240,0.4)',
+              border: '1px solid rgba(247,245,240,0.2)',
+              borderRadius: 6,
+              cursor: canRedo ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+          >↷ Redo</button>
+          {history.past.length > 0 && (
+            <span style={{ fontSize: 10, opacity: 0.6, fontFamily: 'monospace', color: 'rgba(247,245,240,0.8)' }}>
+              {history.past.length} undo{history.past.length === 1 ? '' : 's'}
+            </span>
+          )}
           {isDirty && (
             <span style={{ fontSize: 11, color: GOLD, fontStyle: 'italic' }}>Unsaved changes</span>
           )}
@@ -868,6 +1012,32 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                   );
                 })}
               </div>
+            )}
+
+            {/* Delete selected (Phase 5c-6) — shown when rooms or annotations are selected */}
+            {(selRoomCount > 0 || selAnnotCount > 0) && (
+              <button
+                onClick={() => {
+                  if (window.confirm(`Delete ${selRoomCount + selAnnotCount} item(s)?`)) {
+                    deleteSelected();
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  background: 'rgba(196,68,68,0.1)',
+                  color: '#c44',
+                  border: '1px solid rgba(196,68,68,0.4)',
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  marginBottom: 8,
+                  fontFamily: "'DM Sans', sans-serif",
+                }}
+              >
+                🗑 Delete {selRoomCount + selAnnotCount} item{(selRoomCount + selAnnotCount) === 1 ? '' : 's'}
+              </button>
             )}
 
             {/* Edit tools */}
