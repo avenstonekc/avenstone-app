@@ -3,6 +3,7 @@ import { sbGetJobLidarScans, sbUploadDoc, sbUpdateScanOverrides, sbLoadFloorPlan
 import { buildFloorPlanPDF } from '../../../lib/pdf';
 import AiIntakeWizard from '../../ai/AiIntakeWizard';
 import FloorPlanCanvas from '../../ai/FloorPlanCanvas';
+import FloorPlanEditorScr from '../../floorPlan/FloorPlanEditorScr';
 
 export default function FloorPlanTab({ job, profile }) {
   const [scans, setScans] = useState([]);
@@ -10,6 +11,7 @@ export default function FloorPlanTab({ job, profile }) {
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [showScanner, setShowScanner] = useState(false);
+  const [editingPlanId, setEditingPlanId] = useState(null);
   const [exportingId, setExportingId] = useState(null);
   const [exportedIds, setExportedIds] = useState(new Set());
 
@@ -103,19 +105,28 @@ export default function FloorPlanTab({ job, profile }) {
                   <span style={{ fontSize: '12px', color: '#999' }}>{formatDate(plan.updated_at)}</span>
                 </div>
               </div>
-              {plan.current_pdf_url ? (
-                <a
-                  href={plan.current_pdf_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-ghost"
-                  style={{ fontSize: '12px', padding: '4px 12px', height: '28px', flexShrink: 0, display: 'flex', alignItems: 'center' }}
+              <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
+                <button
+                  className="btn btn-navy"
+                  style={{ fontSize: '12px', padding: '4px 12px', height: '28px' }}
+                  onClick={() => setEditingPlanId(plan.id)}
                 >
-                  Download
-                </a>
-              ) : (
-                <span style={{ fontSize: '12px', color: '#bbb', flexShrink: 0 }}>No PDF</span>
-              )}
+                  Edit
+                </button>
+                {plan.current_pdf_url ? (
+                  <a
+                    href={plan.current_pdf_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-ghost"
+                    style={{ fontSize: '12px', padding: '4px 12px', height: '28px', display: 'flex', alignItems: 'center' }}
+                  >
+                    Download
+                  </a>
+                ) : (
+                  <span style={{ fontSize: '12px', color: '#bbb' }}>No PDF</span>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -206,6 +217,13 @@ export default function FloorPlanTab({ job, profile }) {
           jobId={job.id}
           job={job}
           onClose={() => { setShowScanner(false); loadScans(); loadPlans(); }}
+        />
+      )}
+
+      {editingPlanId && (
+        <FloorPlanEditorScr
+          floorPlanId={editingPlanId}
+          onBack={() => setEditingPlanId(null)}
         />
       )}
 
