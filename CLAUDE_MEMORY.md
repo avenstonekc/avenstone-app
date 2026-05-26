@@ -2145,4 +2145,13 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Fix during apply: contact_id declared UUID initially — failed FK (contacts.id is TEXT). Changed to TEXT before re-apply.
 - Storage URLs are signed (7-day expiry). Renewal strategy deferred — short-lived clients refetch via sbLoadFloorPlan.
 - Commits: 9e07592 (migration), a1fddde (helpers). Both pushed to main.
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 5b shipped — AiIntakeWizard wired + FloorPlanTab surfaced]
+- Action: Phase 5b shipped. Scan completion now creates a persistent floor_plans draft. FloorPlanTab shows saved plans.
+- AiIntakeWizard change: sbCreateFloorPlan added to import. In saveInterior, after sbUploadDoc succeeds (inside existing try/catch), calls sbCreateFloorPlan({ jobId, contactId: null, name: `Floor Plan — ${date}`, rawScan: savedScan, pdfBlob: blob }). Non-fatal — failure swallowed by existing catch. Job-path only (saveInterior). Contact path (handleSave) has no PDF generation; skipped per spec.
+- FloorPlanTab change: sbLoadFloorPlansForJob imported + plans/plansLoading state added. loadPlans() called on mount and on scanner close. "Saved Plans" section added above existing "Scan History" — each plan card shows name, status badge (draft=gray, sent=green), version, updated date, and Download link (current_pdf_url signed URL). Empty state message distinguishes from scan history.
+- Commits: 4187b46 (AiIntakeWizard), 1bf24db (FloorPlanTab). Both pushed to main.
+- Build: clean (379 modules).
+- Trade-aware: floor_plans is platform table; tab is job-detail tab, trade-agnostic. ✓
+- Open: Phase 5c (FloorPlanEditor UX decision + full editor wiring). Signed URL renewal on 7-day expiry (refetch via sbLoadFloorPlan when stale). Contact-path PDF generation (handleSave has no doc/blob today).
 - Phase 5b next: wire AiIntakeWizard scanner to call sbCreateFloorPlan at end of scan.
