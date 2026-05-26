@@ -3556,3 +3556,273 @@ export async function sbResetFieldOpusThread() {
     return { ok: false, error: err?.message || String(err) };
   }
 }
+
+// ============================================================
+// FLOOR_PLAN_LAYOUT_ARC Phase 5a — floor plan persistence + versioning
+// ============================================================
+
+/**
+ * Create a new floor plan draft. Uploads PDF to storage, writes floor_plans row,
+ * writes initial floor_plan_versions row (version 1).
+ *
+ * Caller generates pdfBlob via buildFloorPlanPDF(rawScan, job).output('blob') —
+ * pdf generation is browser-side, supabase.js cannot do it.
+ *
+ * @param {object} args
+ * @param {string|null} args.jobId
+ * @param {string|null} args.contactId
+ * @param {string} args.name
+ * @param {object} args.rawScan
+ * @param {Blob|Uint8Array} args.pdfBlob
+ * @returns {Promise<{ok, error, data?: {id, pdf_url, version_number}}>}
+ */
+export async function sbCreateFloorPlan({ jobId, contactId, name, rawScan, pdfBlob }) {
+  if (!name) return { ok: false, error: 'name required' };
+  if (!rawScan) return { ok: false, error: 'rawScan required' };
+  if (!pdfBlob) return { ok: false, error: 'pdfBlob required' };
+  if (!jobId && !contactId) return { ok: false, error: 'jobId or contactId required' };
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return { ok: false, error: 'not authenticated' };
+
+    const { data: fp, error: insErr } = await sb
+      .from('floor_plans')
+      .insert({
+        tenant_id: AV_TENANT,
+        job_id: jobId || null,
+        contact_id: contactId || null,
+        created_by: user.id,
+        name,
+        raw_scan: rawScan,
+        layout_overrides: {},
+        current_pdf_version: 1,
+        status: 'draft',
+      })
+      .select('id')
+      .single();
+    if (insErr) return { ok: false, error: insErr.message };
+
+    const fpId = fp.id;
+    const storagePath = `${AV_TENANT}/${fpId}/v1.pdf`;
+
+    const { error: upErr } = await sb.storage
+      .from('floor-plans')
+      .upload(storagePath, pdfBlob, { contentType: 'application/pdf', upsert: false });
+    if (upErr) {
+      await sb.from('floor_plans').delete().eq('id', fpId);
+      return { ok: false, error: `upload failed: ${upErr.message}` };
+    }
+
+    const { data: signed, error: signErr } = await sb.storage
+      .from('floor-plans')
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+    if (signErr) return { ok: false, error: signErr.message };
+
+    const { error: updErr } = await sb
+      .from('floor_plans')
+      .update({ current_pdf_url: signed.signedUrl })
+      .eq('id', fpId);
+    if (updErr) return { ok: false, error: updErr.message };
+
+    const { error: vErr } = await sb.from('floor_plan_versions').insert({
+      floor_plan_id: fpId,
+      tenant_id: AV_TENANT,
+      version_number: 1,
+      pdf_url: signed.signedUrl,
+      layout_overrides_snapshot: {},
+      raw_scan_snapshot: rawScan,
+      created_by: user.id,
+    });
+    if (vErr) return { ok: false, error: vErr.message };
+
+    return { ok: true, data: { id: fpId, pdf_url: signed.signedUrl, version_number: 1 } };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Load one floor plan with all its versions, newest version first.
+ */
+export async function sbLoadFloorPlan(id) {
+  if (!id) return { ok: false, error: 'id required' };
+  try {
+    const [planRes, versionsRes] = await Promise.all([
+      sb.from('floor_plans').select('*').eq('id', id).single(),
+      sb.from('floor_plan_versions')
+        .select('*')
+        .eq('floor_plan_id', id)
+        .order('version_number', { ascending: false }),
+    ]);
+    if (planRes.error) return { ok: false, error: planRes.error.message };
+    if (versionsRes.error) return { ok: false, error: versionsRes.error.message };
+    return { ok: true, data: { plan: planRes.data, versions: versionsRes.data || [] } };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Load all non-archived floor plans attached to a job, newest first.
+ */
+export async function sbLoadFloorPlansForJob(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required' };
+  try {
+    const { data, error } = await sb
+      .from('floor_plans')
+      .select('id, name, status, current_pdf_version, current_pdf_url, updated_at')
+      .eq('job_id', jobId)
+      .neq('status', 'archived')
+      .order('updated_at', { ascending: false });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, data: data || [] };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Replace layout_overrides for a floor plan. Does NOT regenerate PDF —
+ * caller triggers sbRegenerateFloorPlanPdf separately to write a new version.
+ */
+export async function sbUpdateFloorPlanOverrides(id, overrides) {
+  if (!id) return { ok: false, error: 'id required' };
+  if (typeof overrides !== 'object' || overrides === null) {
+    return { ok: false, error: 'overrides must be object' };
+  }
+  try {
+    const { error } = await sb
+      .from('floor_plans')
+      .update({ layout_overrides: overrides })
+      .eq('id', id);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Regenerate the PDF for a floor plan. Caller provides the freshly generated pdfBlob
+ * (pdf generation is browser-side). Uploads new PDF, bumps current_pdf_version,
+ * writes a floor_plan_versions row.
+ *
+ * @param {string} id
+ * @param {Blob|Uint8Array} pdfBlob
+ * @returns {Promise<{ok, error, data?: {version_number, pdf_url}}>}
+ */
+export async function sbRegenerateFloorPlanPdf(id, pdfBlob) {
+  if (!id) return { ok: false, error: 'id required' };
+  if (!pdfBlob) return { ok: false, error: 'pdfBlob required' };
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return { ok: false, error: 'not authenticated' };
+
+    const { data: plan, error: loadErr } = await sb
+      .from('floor_plans')
+      .select('id, tenant_id, current_pdf_version, raw_scan, layout_overrides')
+      .eq('id', id)
+      .single();
+    if (loadErr) return { ok: false, error: loadErr.message };
+
+    const nextVersion = (plan.current_pdf_version || 0) + 1;
+    const storagePath = `${plan.tenant_id}/${id}/v${nextVersion}.pdf`;
+
+    const { error: upErr } = await sb.storage
+      .from('floor-plans')
+      .upload(storagePath, pdfBlob, { contentType: 'application/pdf', upsert: false });
+    if (upErr) return { ok: false, error: `upload failed: ${upErr.message}` };
+
+    const { data: signed, error: signErr } = await sb.storage
+      .from('floor-plans')
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+    if (signErr) return { ok: false, error: signErr.message };
+
+    const { error: updErr } = await sb
+      .from('floor_plans')
+      .update({ current_pdf_version: nextVersion, current_pdf_url: signed.signedUrl })
+      .eq('id', id);
+    if (updErr) return { ok: false, error: updErr.message };
+
+    const { error: vErr } = await sb.from('floor_plan_versions').insert({
+      floor_plan_id: id,
+      tenant_id: plan.tenant_id,
+      version_number: nextVersion,
+      pdf_url: signed.signedUrl,
+      layout_overrides_snapshot: plan.layout_overrides || {},
+      raw_scan_snapshot: plan.raw_scan,
+      created_by: user.id,
+    });
+    if (vErr) return { ok: false, error: vErr.message };
+
+    return { ok: true, data: { version_number: nextVersion, pdf_url: signed.signedUrl } };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Mark a specific version as sent to recipients. Updates the version row's sent_to/sent_at
+ * and flips floor_plans.status to 'sent' on first send.
+ * Caller handles the actual email delivery (existing notify-email path).
+ *
+ * @param {string} planId
+ * @param {number} versionNumber
+ * @param {string[]} recipientEmails
+ */
+export async function sbSendFloorPlanVersion(planId, versionNumber, recipientEmails) {
+  if (!planId) return { ok: false, error: 'planId required' };
+  if (!Array.isArray(recipientEmails) || recipientEmails.length === 0) {
+    return { ok: false, error: 'recipientEmails required (non-empty array)' };
+  }
+  try {
+    const nowIso = new Date().toISOString();
+
+    const { data: version, error: getErr } = await sb
+      .from('floor_plan_versions')
+      .select('id, sent_to')
+      .eq('floor_plan_id', planId)
+      .eq('version_number', versionNumber)
+      .single();
+    if (getErr) return { ok: false, error: getErr.message };
+
+    const mergedRecipients = Array.from(new Set([...(version.sent_to || []), ...recipientEmails]));
+
+    const { error: vErr } = await sb
+      .from('floor_plan_versions')
+      .update({ sent_to: mergedRecipients, sent_at: nowIso })
+      .eq('id', version.id);
+    if (vErr) return { ok: false, error: vErr.message };
+
+    // Flip plan status to 'sent' only if still in draft
+    const { error: pErr } = await sb
+      .from('floor_plans')
+      .update({ status: 'sent' })
+      .eq('id', planId)
+      .eq('status', 'draft');
+    if (pErr) return { ok: false, error: pErr.message };
+
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Soft-delete a floor plan by setting status='archived'. Versions remain in DB.
+ * Hard delete is intentionally not exposed in v1 — use SQL editor if needed.
+ */
+export async function sbDeleteFloorPlan(id) {
+  if (!id) return { ok: false, error: 'id required' };
+  try {
+    const { error } = await sb
+      .from('floor_plans')
+      .update({ status: 'archived' })
+      .eq('id', id);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
