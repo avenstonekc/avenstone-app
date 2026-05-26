@@ -28,6 +28,8 @@ export default function FloorPlanCanvas({
   onWallEndpointMove = () => {},
   mergePreviewPolygon = null,
   onTextAnnotationsChange = () => {},
+  buildState = null,
+  onBuildAnchorPlaced = () => {},
 }) {
   const svgRef = useRef(null);
   const panRef = useRef({ x: 0, y: 0 });
@@ -260,6 +262,23 @@ export default function FloorPlanCanvas({
 
   const handleBackgroundClick = (e) => {
     if (mode === 'wall-move') return;
+    if (mode === 'build-walls') {
+      if (!buildState) {
+        // Place the first anchor, snapping to grid + existing endpoints
+        const rect = svgRef.current.getBoundingClientRect();
+        const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+        const snapped = snapToGrid(world.x, world.y, 0.5);
+        let finalX = snapped.x, finalY = snapped.y;
+        for (const [, ep] of Object.entries(endpointMap)) {
+          if (Math.hypot(ep.pos[0] - snapped.x, ep.pos[1] - snapped.y) < 0.5) {
+            finalX = ep.pos[0]; finalY = ep.pos[1]; break;
+          }
+        }
+        onBuildAnchorPlaced([finalX, finalY]);
+      }
+      // After anchor is placed, canvas clicks do nothing — user uses the length modal
+      return;
+    }
     if (mode === 'add-text') {
       const rect = svgRef.current.getBoundingClientRect();
       const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
@@ -295,11 +314,11 @@ export default function FloorPlanCanvas({
   };
 
   const handleRoomClick = (roomId, e) => {
-    if (mode === 'add-room' || mode === 'add-text') {
-      // In drawing modes, forward to background handler so corner/annotation placement
-      // works inside room fills. stopPropagation prevents double-fire from SVG onClick.
+    if (mode === 'add-room' || mode === 'add-text' || mode === 'build-walls') {
+      // In drawing/build modes, forward to background so placement works on room fills.
+      // stopPropagation prevents double-fire from SVG onClick.
       e.stopPropagation();
-      console.log('[add-room] room click forwarded to background, mode:', mode);
+      if (mode === 'add-room') console.log('[add-room] room click forwarded to background, mode:', mode);
       handleBackgroundClick(e);
       return;
     }
@@ -312,7 +331,7 @@ export default function FloorPlanCanvas({
   };
 
   const handleWallClick = (wallId, e) => {
-    if (mode === 'add-room') return;
+    if (mode === 'add-room' || mode === 'build-walls') return;
     e.stopPropagation();
     const cur = selection.wallIds || [];
     const next = e.shiftKey
@@ -345,7 +364,7 @@ export default function FloorPlanCanvas({
       height={height}
       style={{
         background: CREAM,
-        cursor: mode === 'add-room' || mode === 'add-text' ? 'crosshair' : mode === 'wall-move' ? 'default' : panningRef.current ? 'grabbing' : 'default',
+        cursor: mode === 'add-room' || mode === 'add-text' || mode === 'build-walls' ? 'crosshair' : mode === 'wall-move' ? 'default' : panningRef.current ? 'grabbing' : 'default',
         userSelect: 'none',
         display: 'block',
         borderRadius: 8,
@@ -551,6 +570,54 @@ export default function FloorPlanCanvas({
           </g>
         );
       })}
+
+      {/* Build-walls mode: accumulated wall segments + anchor indicators */}
+      {mode === 'build-walls' && buildState && (
+        <g pointerEvents="none">
+          {buildState.accumulated.length >= 2 && (
+            <polyline
+              points={buildState.accumulated.map(([x, y]) => {
+                const s = toScreen(x, y);
+                return `${s.x},${s.y}`;
+              }).join(' ')}
+              fill="none"
+              stroke={GOLD}
+              strokeWidth={3}
+            />
+          )}
+          {buildState.accumulated.length >= 3 && (() => {
+            const last = toScreen(buildState.anchor[0], buildState.anchor[1]);
+            const first = toScreen(buildState.firstAnchor[0], buildState.firstAnchor[1]);
+            return (
+              <line
+                x1={last.x} y1={last.y} x2={first.x} y2={first.y}
+                stroke={GOLD} strokeWidth={1.5} strokeDasharray="3 5" opacity={0.4}
+              />
+            );
+          })()}
+          {buildState.accumulated.map(([x, y], i) => {
+            const s = toScreen(x, y);
+            return (
+              <circle
+                key={`build-pt-${i}`}
+                cx={s.x} cy={s.y}
+                r={i === 0 ? 8 : 5}
+                fill={i === 0 ? GOLD : NAVY}
+                stroke="#fff" strokeWidth={2}
+              />
+            );
+          })}
+          {(() => {
+            const s = toScreen(buildState.anchor[0], buildState.anchor[1]);
+            return (
+              <circle
+                cx={s.x} cy={s.y} r={12}
+                fill="none" stroke={GOLD} strokeWidth={2} strokeDasharray="3 3"
+              />
+            );
+          })()}
+        </g>
+      )}
 
       {/* Add-room mode: in-progress polygon live preview */}
       {mode === 'add-room' && drawingPolygon.length > 0 && (
