@@ -26,6 +26,7 @@ export default function FloorPlanCanvas({
   liveWallEndpointDrag = null,
   onWallEndpointDrag = () => {},
   onWallEndpointMove = () => {},
+  mergePreviewPolygon = null,
 }) {
   const svgRef = useRef(null);
   const panRef = useRef({ x: 0, y: 0 });
@@ -298,6 +299,24 @@ export default function FloorPlanCanvas({
           />
         );
       })}
+
+      {/* Merge preview — gold dashed union outline when 2+ rooms are selected */}
+      {mergePreviewPolygon && (() => {
+        const points = mergePreviewPolygon.map(([x, y]) => {
+          const s = toScreen(x, y);
+          return `${s.x},${s.y}`;
+        }).join(' ');
+        return (
+          <polygon
+            points={points}
+            fill="rgba(201,168,76,0.12)"
+            stroke={GOLD}
+            strokeWidth={2.5}
+            strokeDasharray="8 4"
+            pointerEvents="none"
+          />
+        );
+      })()}
 
       {/* Walls — visible lines + transparent hit area */}
       {normalized.walls.map(wall => {
