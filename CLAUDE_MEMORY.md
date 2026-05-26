@@ -2419,3 +2419,8 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Decision: gated by `isOwnerOrRep` to match the render-side gate at `App.jsx:292` (`{pg === 'calendar' && isOwnerOrRep && <CalScr ... />}`) — non-rep/owner roles would tap a button that renders nothing. PMs (staff but not owner/rep) intentionally excluded for now; separate scope if needed.
 - Build incident: `npm run build` initially failed with `Rolldown failed to resolve import "polylabel" from src/lib/pdf.js`. Pre-existing — polylabel was in package.json (`^2.0.1`) but not in node_modules. Ran `npm install polylabel` to restore. Unrelated to the bot-nav edit.
 - No CSS changes. 5 items on a 390px viewport fits without overflow (visually confirmed via build, no runtime check on device).
+
+[LOG — 2026-05-26 — mobile Calendar extended to project_managers]
+- Action: Extended mobile bot-nav Calendar entry and `pg === 'calendar'` render gate from `isOwnerOrRep` to `isStaff` so PMs see Calendar in mobile nav (their primary delegated-work view). PM bot-nav now: Home → Projects → To-dos → Calendar (4 items). Owner/rep: Home → Projects → To-dos → Calendar → Reports (5 items).
+- Files: avenstone-vite/src/App.jsx (lines 292 + 324, gate swap only).
+- Open: `CalScr.jsx` filters jobs by status only; `profile` prop is unused for filtering. PMs see all company jobs on the calendar, not just delegated/assigned ones. PM-aware view (filter by `assigned_pm` or schedule_items they're invited to) is a separate slice.
