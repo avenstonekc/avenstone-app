@@ -38,6 +38,11 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [saveError, setSaveError] = useState(null);
   const [lastSavedVersion, setLastSavedVersion] = useState(null);
 
+  // Edit mode state
+  const [mode, setMode] = useState('select'); // 'select' | 'add-room'
+  const [drawingPolygon, setDrawingPolygon] = useState([]); // [[worldX, worldY], ...]
+  const [pendingNewRoom, setPendingNewRoom] = useState(null); // { polygon, defaultName, name }
+
   useEffect(() => {
     const onResize = () => setIsDesktop(window.innerWidth >= DESKTOP_MIN_WIDTH);
     window.addEventListener('resize', onResize);
@@ -79,12 +84,72 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     return () => { cancelled = true; };
   }, [floorPlanId]);
 
-  // Called by future edit tools to stage an override change
   const updateOverrides = (newOverrides) => {
     setPendingOverrides(newOverrides);
     setIsDirty(true);
     setSaveError(null);
   };
+
+  // Add Room helpers
+  function guessDefaultName(polygon) {
+    let area = 0;
+    for (let i = 0; i < polygon.length; i++) {
+      const [x1, y1] = polygon[i];
+      const [x2, y2] = polygon[(i + 1) % polygon.length];
+      area += x1 * y2 - x2 * y1;
+    }
+    area = Math.abs(area) / 2;
+    if (area < 15) return 'Closet';
+    if (area < 35) return 'Bathroom';
+    return 'Room';
+  }
+
+  function handlePolygonClosed(polygon) {
+    setPendingNewRoom({ polygon, defaultName: guessDefaultName(polygon), name: '' });
+  }
+
+  function confirmAddRoom() {
+    if (!pendingNewRoom) return;
+    const name = (pendingNewRoom.name || pendingNewRoom.defaultName || 'Room').trim();
+    if (!name) return;
+    const newRoom = {
+      id: `added-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      polygon: pendingNewRoom.polygon,
+      type: 'unknown',
+      source: 'manual',
+    };
+    updateOverrides({
+      ...pendingOverrides,
+      added_rooms: [...(pendingOverrides.added_rooms || []), newRoom],
+    });
+    setPendingNewRoom(null);
+    setDrawingPolygon([]);
+    setMode('select');
+  }
+
+  function cancelAddRoom() {
+    setPendingNewRoom(null);
+    setDrawingPolygon([]);
+    setMode('add-room');
+  }
+
+  // Keyboard handler for add-room mode
+  useEffect(() => {
+    function onKey(e) {
+      if (pendingNewRoom) return; // modal is up, don't intercept
+      if (mode === 'add-room') {
+        if (e.key === 'Escape') {
+          setMode('select');
+          setDrawingPolygon([]);
+        } else if (e.key === 'Enter' && drawingPolygon.length >= 3) {
+          handlePolygonClosed(drawingPolygon);
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mode, drawingPolygon, pendingNewRoom]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveOnly = async () => {
     if (!plan || !isDirty) return;
@@ -275,7 +340,10 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
         </div>
 
         <div style={{ fontSize: 10, opacity: 0.4, textAlign: 'right', lineHeight: 1.5, marginLeft: 4 }}>
-          Right-click drag to pan<br />Scroll to zoom · Click to select
+          {mode === 'add-room'
+            ? <>Click to place corners<br />Click first corner or Enter to close · Esc to cancel</>
+            : <>Right-click drag to pan<br />Scroll to zoom · Click to select</>
+          }
         </div>
       </div>
 
@@ -292,6 +360,10 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             onSelectionChange={setSelection}
             width={canvasSize.width}
             height={canvasSize.height}
+            mode={mode}
+            drawingPolygon={drawingPolygon}
+            onDrawingPolygonChange={setDrawingPolygon}
+            onPolygonClosed={handlePolygonClosed}
           />
         </div>
 
@@ -351,18 +423,43 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
               </div>
             )}
 
-            {/* Future edit tools stub */}
-            <div style={{
-              marginTop: selRoomCount === 0 && selWallCount === 0 ? 16 : 8,
-              padding: 14,
-              background: 'rgba(201,168,76,0.06)',
-              border: '1px dashed rgba(201,168,76,0.35)',
-              borderRadius: 8,
-            }}>
-              <div style={{ fontSize: 11, color: '#997', fontStyle: 'italic', lineHeight: 1.5 }}>
-                Edit tools coming in next slices:
-                <br />Add Room · Move Wall · Merge Rooms · Delete + Undo
+            {/* Edit tools */}
+            <div style={{ marginTop: selRoomCount === 0 && selWallCount === 0 ? 16 : 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>
+                Edit Tools
               </div>
+              <button
+                onClick={() => {
+                  if (mode === 'add-room') {
+                    setMode('select');
+                    setDrawingPolygon([]);
+                  } else {
+                    setMode('add-room');
+                    setDrawingPolygon([]);
+                    setSelection({ roomIds: [], wallIds: [] });
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 14px',
+                  background: mode === 'add-room' ? GOLD : NAVY,
+                  color: mode === 'add-room' ? NAVY : CREAM,
+                  border: 'none',
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  marginBottom: 8,
+                  fontFamily: "'DM Sans', sans-serif",
+                }}
+              >
+                {mode === 'add-room' ? 'Cancel Add Room' : '+ Add Room'}
+              </button>
+              {mode === 'add-room' && (
+                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6 }}>
+                  Click to place corners. Click the first corner (gold dot) or press Enter to close. Press Esc to cancel.
+                </div>
+              )}
             </div>
 
             {/* Versions */}
@@ -402,6 +499,65 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
           </div>
         </div>
       </div>
+
+      {/* Naming modal — rendered when polygon is closed */}
+      {pendingNewRoom && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2200, fontFamily: "'DM Sans', sans-serif",
+        }}>
+          <div style={{
+            background: '#fff', padding: 28, borderRadius: 12,
+            minWidth: 340, maxWidth: '90vw',
+            boxShadow: '0 8px 40px rgba(10,31,68,0.25)',
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, color: NAVY, fontFamily: "'DM Serif Display', serif", fontSize: 20 }}>
+              Name this room
+            </h3>
+            <input
+              type="text"
+              autoFocus
+              value={pendingNewRoom.name !== '' ? pendingNewRoom.name : pendingNewRoom.defaultName}
+              onChange={(e) => setPendingNewRoom(r => ({ ...r, name: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmAddRoom();
+                if (e.key === 'Escape') cancelAddRoom();
+              }}
+              placeholder={pendingNewRoom.defaultName}
+              style={{
+                width: '100%', padding: '10px 12px', fontSize: 15,
+                border: '1px solid rgba(10,31,68,0.2)', borderRadius: 6,
+                marginBottom: 20, boxSizing: 'border-box',
+                fontFamily: "'DM Sans', sans-serif",
+                outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={cancelAddRoom}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: '1px solid rgba(10,31,68,0.2)',
+                  background: '#fff', color: NAVY, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAddRoom}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: 'none',
+                  background: NAVY, color: CREAM, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700,
+                }}
+              >
+                Add Room
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
