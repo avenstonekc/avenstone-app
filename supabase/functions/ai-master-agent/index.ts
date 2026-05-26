@@ -141,6 +141,7 @@ const CONFIRM_TOOLS = new Set([
   "add_todo",
   "create_job",
   "notify_team_member",
+  "create_schedule_item",
 ]);
 
 // ── REQUIRED_FIELDS registry (Phase 4) ───────────────────────────────────────
@@ -639,6 +640,32 @@ const TOOLS = [
     },
   },
   {
+    name: "create_schedule_item",
+    description: "Create a scheduled event on a job's calendar. Use when the user says things like 'schedule garage door guy for Monday', 'add tile delivery next Tuesday', 'put framing inspection on Friday', or 'create a milestone for drywall complete'. Resolves dates relative to today. Can invite a sub by name (fuzzy match on team). Optionally links to a job phase.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id: { type: "string", description: "Required. Job this event belongs to. Infer from context; ask if unclear." },
+        title: { type: "string", description: "Required. Short title. E.g. 'Garage door install', 'Tile delivery', 'Framing inspection'." },
+        type: {
+          type: "string",
+          enum: ["material_delivery", "sub_start", "site_visit", "inspection", "milestone", "delay"],
+          description: "Required. sub_start = a sub starts work. material_delivery = material delivery. inspection = code inspection. milestone = phase milestone (auto-flags is_milestone). site_visit = walkthrough or meeting. delay = schedule slip note.",
+        },
+        scheduled_date: { type: "string", description: "Required. ISO date YYYY-MM-DD. Resolve relative phrases ('Monday', 'next Tuesday', 'in 3 days') to absolute dates." },
+        scheduled_end_date: { type: "string", description: "Optional. ISO date. End date for multi-day events." },
+        scheduled_time: { type: "string", description: "Optional. HH:MM 24-hour. Omit for all-day events." },
+        duration_days: { type: "integer", description: "Optional. Default 1. Working days the task takes." },
+        trade: { type: "string", description: "Optional. Trade category (e.g. 'Framing', 'Garage doors', 'Tile - Floor'). Helps phase grouping." },
+        sub_search: { type: "string", description: "Optional. If user names a sub ('garage door guy', 'John', 'ABC Tile'), pass that here — system fuzzy-matches team profiles." },
+        phase_search: { type: "string", description: "Optional. If user implies a phase ('for the framing phase', 'drywall milestone'), pass the phase name — system fuzzy-matches job_phases." },
+        is_milestone: { type: "boolean", description: "Optional. Set true to make this a client-visible milestone. Auto-set when type='milestone'." },
+        notes: { type: "string", description: "Optional. Free-text notes or instructions." },
+      },
+      required: ["job_id", "title", "type", "scheduled_date"],
+    },
+  },
+  {
     name: "add_knowledge",
     description: "Write a new entry to the company AI knowledge base. Use this when you learn something worth remembering — a preference, policy, pricing insight, or lesson from a job.",
     input_schema: {
@@ -1117,6 +1144,116 @@ async function executeTool(
         return { success: true, notified_user_id: targetId };
       }
 
+      case "create_schedule_item": {
+        const jobId = String(input.job_id || "");
+        const title = String(input.title || "");
+        const itemType = String(input.type || "site_visit");
+        const scheduledDate = String(input.scheduled_date || "");
+        const isMilestone = !!input.is_milestone || itemType === "milestone";
+
+        // Resolve phase_id from phase_search
+        let phaseId: string | null = null;
+        let phaseNote = "";
+        if (input.phase_search) {
+          const { data: phases } = await sb.from("job_phases").select("id, phase_name").eq("job_id", jobId);
+          const search = String(input.phase_search).toLowerCase();
+          const match = (phases || []).find((p: any) =>
+            (p.phase_name || "").toLowerCase().includes(search) ||
+            search.includes((p.phase_name || "").toLowerCase().slice(0, 4))
+          );
+          if (match) {
+            phaseId = (match as any).id;
+            phaseNote = ` Linked to phase '${(match as any).phase_name}'.`;
+          } else {
+            phaseNote = ` (Couldn't match phase '${input.phase_search}' — skipped.)`;
+          }
+        }
+
+        // Resolve sub from profiles (role=sub), fuzzy match on full_name
+        let assignedSubId: string | null = null;
+        let subNote = "";
+        if (input.sub_search) {
+          const { data: subs } = await sb.from("profiles").select("id, full_name").eq("tenant_id", tenantId).eq("role", "sub");
+          const search = String(input.sub_search).toLowerCase();
+          const match = (subs || []).find((s: any) => {
+            const n = (s.full_name || "").toLowerCase();
+            return n.includes(search) || search.includes(n.split(" ")[0]);
+          });
+          if (match) {
+            assignedSubId = (match as any).id;
+            subNote = ` Invited ${(match as any).full_name}.`;
+          } else {
+            subNote = ` (Couldn't find sub matching '${input.sub_search}' — created without invitee.)`;
+          }
+        }
+
+        // Build insert payload
+        const insertPayload: Record<string, unknown> = {
+          tenant_id: tenantId,
+          job_id: jobId,
+          title,
+          type: itemType,
+          scheduled_date: scheduledDate,
+          status: "scheduled",
+          is_milestone: isMilestone,
+          notify_client: isMilestone,
+          notify_sub: !!assignedSubId,
+        };
+        if (input.scheduled_end_date) insertPayload.scheduled_end_date = String(input.scheduled_end_date);
+        if (input.scheduled_time) insertPayload.scheduled_time = String(input.scheduled_time);
+        if (typeof input.duration_days === "number") insertPayload.duration_days = input.duration_days;
+        if (input.trade) insertPayload.trade = String(input.trade);
+        if (phaseId) insertPayload.phase_id = phaseId;
+        if (input.notes) insertPayload.notes = String(input.notes);
+        if (assignedSubId) insertPayload.assigned_sub_id = assignedSubId;
+
+        const { data: created, error: createErr } = await sb
+          .from("schedule_items")
+          .insert(insertPayload)
+          .select("id, title, scheduled_date")
+          .single();
+
+        if (createErr || !created) {
+          return { ok: false, error: `Failed to create schedule item: ${createErr?.message || "unknown"}` };
+        }
+
+        // Add invitee row if sub resolved
+        let inviteNote = "";
+        if (assignedSubId) {
+          const { error: invErr } = await sb.from("schedule_item_invitees").insert({
+            tenant_id: tenantId,
+            schedule_item_id: (created as any).id,
+            invitee_user_id: assignedSubId,
+            status: "invited",
+            invited_by: userId,
+          });
+          inviteNote = invErr
+            ? ` (Invite insert failed: ${invErr.message})`
+            : " Sub can accept/decline in their app.";
+        }
+
+        // Audit log
+        await sb.from("schedule_change_log").insert({
+          tenant_id: tenantId,
+          schedule_item_id: (created as any).id,
+          job_id: jobId,
+          change_kind: "created",
+          new_value: insertPayload,
+          changed_by_id: userId,
+          reason: "Master Agent create_schedule_item",
+        });
+
+        const dateStr = new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", {
+          weekday: "long", month: "short", day: "numeric",
+        });
+
+        return {
+          ok: true,
+          schedule_item_id: (created as any).id,
+          summary: `Created '${title}' for ${dateStr}.${phaseNote}${subNote}${inviteNote}`,
+        };
+      }
+
       case "add_knowledge": {
         const { data, error } = await sb.from("ai_knowledge").insert({
           tenant_id: tenantId,
@@ -1247,6 +1384,14 @@ function describeConfirmAction(tool: string, input: any): string {
       if (input.also_create_todo) bits.push("also creates to-do");
       return bits.join(" · ") + ".";
     }
+    case "create_schedule_item": {
+      const bits: string[] = [`Schedule '${String(input.title || "")}' for ${String(input.scheduled_date || "")}`];
+      if (input.trade) bits.push(String(input.trade));
+      if (input.sub_search) bits.push(`sub: ${input.sub_search}`);
+      if (input.phase_search) bits.push(`phase: ${input.phase_search}`);
+      if (input.is_milestone || input.type === "milestone") bits.push("milestone");
+      return bits.join(" · ") + ".";
+    }
     default:
       return "Perform this action.";
   }
@@ -1281,7 +1426,7 @@ Tenant: ${tenantId}${contextLine}
 
 WHAT YOU CAN DO:
 - Read: jobs, team
-- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, send notifications, write to knowledge base
+- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, send notifications, write to knowledge base, create schedule items
 
 HOW TO BEHAVE:
 - Act immediately. Don't ask "should I do X?" — just do it and tell them what you did.
@@ -1289,7 +1434,7 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
-- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
+- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, create_schedule_item): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
 - Missing required fields: call the tool with whatever fields you have. If any required field is missing, the system surfaces a missing-field card automatically — do NOT ask in text first ("What's the amount?", "Which job?", etc.). Never invent values to fill gaps; just call the tool and let the card collect the rest.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: do NOT pass override_reason. Just call the tool with the job_id. If gates fail, the system surfaces a gate-resolution card automatically (redirect to Schedule / leave open / override-with-structured-reason). Do not ask in text whether to override — the card IS the prompt.
@@ -1315,6 +1460,16 @@ When the user attaches an image of a receipt, extract: vendor name, total amount
 - Call log_receipt directly with the extracted fields once you've matched the job. The pending_action confirmation card surfaces automatically — the user reviews and confirms via the card. Do NOT ask the user to confirm via text first.
 - The confirmation card description should lead with the matched job address (the most prominent field), then vendor, amount, and PO. Example: "Log $142.37 expense at 123 Test Flow Dr — Home Depot (PO 26-002)."
 - If the user's text message conflicts with what you read on the receipt, the user's text wins.
+
+SCHEDULING
+When the user says things like "schedule [sub/event] for [day]" or "add [event] to [job]'s calendar", use create_schedule_item.
+- Resolve dates relative to today: "Monday" = next Monday, "tomorrow" = today + 1, "in 3 days" = today + 3. Always produce an ISO YYYY-MM-DD date.
+- Infer type from context: "[sub/trade] starts" or "[person] coming Monday" = sub_start. "[material] delivery" = material_delivery. "[code/city] inspection" = inspection. "Milestone" or phase-complete event = milestone. Walkthrough/meeting = site_visit. Schedule slip = delay.
+- Match the job from conversation context. If no job is clear, call get_jobs with a search term. If still ambiguous, ASK once before scheduling.
+- If the user names a sub ("garage door guy", "John", "ABC Tile"), pass it as sub_search — system fuzzy-matches team profiles.
+- If the user implies a phase ("for the framing phase", "drywall milestone"), pass it as phase_search.
+- After the confirmation card is approved, tell the user what got scheduled, including date, any sub invited, and any phase linked.
+- Do NOT call this tool speculatively — only when the user is explicitly asking for something to be scheduled.
 
 DIAGNOSTIC REPORTING STYLE
 
