@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import polygonClipping from 'polygon-clipping';
-import { sbLoadFloorPlan, sbUpdateFloorPlanOverrides, sbRegenerateFloorPlanPdf } from '../../lib/supabase';
+import { sbLoadFloorPlan, sbUpdateFloorPlanOverrides, sbRegenerateFloorPlanPdf, sbSendFloorPlanVersion, sb, SUPABASE_URL, ANON_KEY } from '../../lib/supabase';
 import { buildFloorPlanPDF } from '../../lib/pdf';
 import { applyOverridesToScan } from '../../lib/floorPlan/applyOverrides';
 import { parseFootInches } from '../../lib/floorPlan/parseFootInches';
@@ -10,6 +10,7 @@ const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
 const CREAM = '#F7F5F0';
 const DESKTOP_MIN_WIDTH = 1024;
+const SEND_FLOOR_PLAN_EMAIL_URL = `${SUPABASE_URL}/functions/v1/send-floor-plan-email`;
 
 async function buildPdfFromOverrides(rawScan, overrides, plan) {
   const merged = applyOverridesToScan(rawScan, overrides);
@@ -55,6 +56,13 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [dragState, setDragState] = useState(null); // { key, livePos: [x, y] } | null
   const [pendingMerge, setPendingMerge] = useState(null); // { source_room_ids, name, candidate_polygon, source_rooms }
 
+  // Send floor plan state (Phase 5e)
+  const [sendingVersion, setSendingVersion] = useState(null);
+  const [sendRecipient, setSendRecipient] = useState({ includeJobClient: false, freeText: '', customMessage: '' });
+  const [jobClient, setJobClient] = useState(null);
+  const [sendInFlight, setSendInFlight] = useState(false);
+  const [sendError, setSendError] = useState(null);
+
   useEffect(() => {
     const onResize = () => setIsDesktop(window.innerWidth >= DESKTOP_MIN_WIDTH);
     window.addEventListener('resize', onResize);
@@ -95,6 +103,27 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     })();
     return () => { cancelled = true; };
   }, [floorPlanId]);
+
+  // Load job client email when send modal opens (Phase 5e)
+  useEffect(() => {
+    if (!sendingVersion || !plan?.job_id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await sb.from('jobs').select('client_email,client_name').eq('id', plan.job_id).single();
+      if (cancelled) return;
+      setJobClient(data?.client_email ? { email: data.client_email, name: data.client_name || '' } : null);
+    })();
+    return () => { cancelled = true; };
+  }, [sendingVersion?.id, plan?.job_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset send form on close (Phase 5e)
+  useEffect(() => {
+    if (!sendingVersion) {
+      setSendRecipient({ includeJobClient: false, freeText: '', customMessage: '' });
+      setSendError(null);
+      setJobClient(null);
+    }
+  }, [sendingVersion?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateOverrides = useCallback((newOverrides) => {
     setHistory(h => {
@@ -647,6 +676,70 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     }
     setHistory(h => ({ past: [], present: h.present, future: [] }));
     setIsDirty(false);
+  };
+
+  // Send floor plan helpers (Phase 5e)
+  const previouslySentEmails = useMemo(() => {
+    const all = new Set();
+    for (const v of versions) {
+      for (const email of (v.sent_to || [])) all.add(email);
+    }
+    return Array.from(all);
+  }, [versions]);
+
+  function parseEmailList(text) {
+    return text.split(/[,\n;]/).map(e => e.trim().toLowerCase()).filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+  }
+
+  const resolvedRecipients = useMemo(() => {
+    const emails = [];
+    if (sendRecipient.includeJobClient && jobClient?.email) emails.push(jobClient.email.toLowerCase());
+    emails.push(...parseEmailList(sendRecipient.freeText));
+    return Array.from(new Set(emails));
+  }, [sendRecipient, jobClient]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const executeSend = async () => {
+    if (resolvedRecipients.length === 0) { setSendError('Add at least one recipient.'); return; }
+    if (!sendingVersion?.pdf_url) { setSendError('No PDF on this version — regenerate first.'); return; }
+    setSendInFlight(true);
+    setSendError(null);
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token || ANON_KEY;
+
+      const emailRes = await fetch(SEND_FLOOR_PLAN_EMAIL_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          to: resolvedRecipients,
+          plan_name: plan.name,
+          version_number: sendingVersion.version_number,
+          pdf_url: sendingVersion.pdf_url,
+          custom_message: sendRecipient.customMessage || undefined,
+        }),
+      });
+
+      if (!emailRes.ok) {
+        const txt = await emailRes.text();
+        setSendError(`Email failed: ${txt.slice(0, 200)}`);
+        setSendInFlight(false);
+        return;
+      }
+
+      const recordRes = await sbSendFloorPlanVersion(plan.id, sendingVersion.version_number, resolvedRecipients);
+      if (!recordRes.ok) setSendError(`Sent, but record failed: ${recordRes.error}`);
+
+      const reload = await sbLoadFloorPlan(plan.id);
+      if (reload?.ok) {
+        setPlan(reload.data.plan);
+        setVersions(reload.data.versions || []);
+      }
+      setSendInFlight(false);
+      setSendingVersion(null);
+    } catch (err) {
+      setSendError(`Unexpected error: ${err?.message || err}`);
+      setSendInFlight(false);
+    }
   };
 
   // Live merge preview — gold union outline shown while 2+ rooms are selected in select mode
@@ -1225,30 +1318,63 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 8 }}>
                   Versions ({versions.length})
                 </div>
-                {versions.slice(0, 5).map(v => (
-                  <div key={v.id} style={{
-                    padding: '6px 10px', fontSize: 12, borderRadius: 6, marginBottom: 4,
-                    background: v.version_number === plan.current_pdf_version
-                      ? 'rgba(201,168,76,0.12)' : 'transparent',
-                  }}>
-                    <a
-                      href={v.pdf_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ color: NAVY, textDecoration: 'none' }}
-                    >
-                      v{v.version_number} · {new Date(v.created_at).toLocaleDateString()}
-                    </a>
-                    {v.sent_at && (
-                      <div style={{ fontSize: 10, opacity: 0.55, marginTop: 2 }}>
-                        Sent {new Date(v.sent_at).toLocaleDateString()}
+                {versions.slice(0, 8).map(v => {
+                  const isCurrent = v.version_number === plan.current_pdf_version;
+                  return (
+                    <div key={v.id} style={{
+                      padding: '8px 10px', marginBottom: 6, borderRadius: 6,
+                      background: isCurrent ? 'rgba(201,168,76,0.12)' : 'rgba(10,31,68,0.04)',
+                      border: isCurrent ? '1px solid rgba(201,168,76,0.3)' : '1px solid transparent',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 12, color: NAVY }}>
+                            v{v.version_number}
+                            {isCurrent && <span style={{ marginLeft: 6, fontSize: 10, color: GOLD, fontWeight: 700 }}>CURRENT</span>}
+                          </div>
+                          <div style={{ fontSize: 10, opacity: 0.6, marginTop: 2 }}>
+                            {new Date(v.created_at).toLocaleString()}
+                          </div>
+                          {v.sent_at && (
+                            <div style={{ fontSize: 10, color: '#22a55e', marginTop: 2 }}>
+                              Sent {new Date(v.sent_at).toLocaleDateString()} · {(v.sent_to || []).length} recipient(s)
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                          {v.pdf_url && (
+                            <a
+                              href={v.pdf_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                fontSize: 10, padding: '4px 8px',
+                                background: 'rgba(10,31,68,0.08)', color: NAVY,
+                                borderRadius: 4, textDecoration: 'none', textAlign: 'center',
+                              }}
+                            >
+                              Open
+                            </a>
+                          )}
+                          <button
+                            onClick={() => setSendingVersion(v)}
+                            style={{
+                              fontSize: 10, padding: '4px 8px',
+                              background: NAVY, color: CREAM,
+                              border: 'none', borderRadius: 4,
+                              cursor: 'pointer', fontWeight: 600,
+                            }}
+                          >
+                            Send
+                          </button>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
-                {versions.length > 5 && (
+                    </div>
+                  );
+                })}
+                {versions.length > 8 && (
                   <div style={{ fontSize: 10, opacity: 0.45, paddingLeft: 10 }}>
-                    + {versions.length - 5} older
+                    + {versions.length - 8} older
                   </div>
                 )}
               </div>
@@ -1589,6 +1715,165 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                 }}
               >
                 Merge Rooms
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send floor plan modal (Phase 5e) */}
+      {sendingVersion && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2200, fontFamily: "'DM Sans', sans-serif", padding: 20,
+        }}>
+          <div style={{
+            background: '#fff', padding: 28, borderRadius: 12,
+            maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto',
+            boxShadow: '0 8px 40px rgba(10,31,68,0.3)',
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 6, color: NAVY, fontFamily: "'DM Serif Display', serif", fontSize: 20 }}>
+              Send v{sendingVersion.version_number}
+            </h3>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 20 }}>
+              {plan.name} · {new Date(sendingVersion.created_at).toLocaleDateString()}
+            </div>
+
+            {/* Job client quick-pick */}
+            {jobClient?.email && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#888', marginBottom: 6 }}>
+                  Job client
+                </label>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                  border: '1px solid rgba(10,31,68,0.12)', borderRadius: 6, cursor: 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={sendRecipient.includeJobClient}
+                    onChange={(e) => setSendRecipient(s => ({ ...s, includeJobClient: e.target.checked }))}
+                    style={{ width: 16, height: 16, flexShrink: 0 }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{jobClient.name || 'Client'}</div>
+                    <div style={{ fontSize: 11, color: '#888' }}>{jobClient.email}</div>
+                  </div>
+                </label>
+              </div>
+            )}
+
+            {/* Previously sent — quick-pick pills */}
+            {previouslySentEmails.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#888', marginBottom: 6 }}>
+                  Previously sent to
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {previouslySentEmails.map(email => {
+                    const inText = sendRecipient.freeText.toLowerCase().includes(email);
+                    return (
+                      <button
+                        key={email}
+                        onClick={() => setSendRecipient(s => {
+                          const list = parseEmailList(s.freeText).filter(e => e !== email);
+                          if (inText) return { ...s, freeText: list.join(', ') };
+                          return { ...s, freeText: s.freeText ? `${s.freeText.trimEnd()}, ${email}` : email };
+                        })}
+                        style={{
+                          fontSize: 11, padding: '4px 10px',
+                          background: inText ? GOLD : 'rgba(10,31,68,0.06)',
+                          color: NAVY, border: 'none', borderRadius: 4,
+                          cursor: 'pointer', fontWeight: 600,
+                        }}
+                      >
+                        {email}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Free-text email input */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#888', marginBottom: 6 }}>
+                Email address(es)
+              </label>
+              <input
+                type="text"
+                value={sendRecipient.freeText}
+                onChange={(e) => setSendRecipient(s => ({ ...s, freeText: e.target.value }))}
+                placeholder="client@example.com, another@example.com"
+                style={{
+                  width: '100%', padding: '10px 12px', fontSize: 14,
+                  border: '1px solid rgba(10,31,68,0.2)', borderRadius: 6,
+                  boxSizing: 'border-box', fontFamily: "'DM Sans', sans-serif", outline: 'none',
+                }}
+              />
+            </div>
+
+            {/* Custom message */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#888', marginBottom: 6 }}>
+                Message (optional)
+              </label>
+              <textarea
+                value={sendRecipient.customMessage}
+                onChange={(e) => setSendRecipient(s => ({ ...s, customMessage: e.target.value }))}
+                placeholder="Here's the updated floor plan with the changes we discussed..."
+                rows={3}
+                style={{
+                  width: '100%', padding: '10px 12px', fontSize: 14,
+                  border: '1px solid rgba(10,31,68,0.2)', borderRadius: 6,
+                  boxSizing: 'border-box', resize: 'vertical',
+                  fontFamily: "'DM Sans', sans-serif", outline: 'none',
+                }}
+              />
+            </div>
+
+            {/* Resolved recipients preview */}
+            {resolvedRecipients.length > 0 && (
+              <div style={{
+                padding: '10px 12px', background: 'rgba(201,168,76,0.08)',
+                borderRadius: 6, marginBottom: 16, fontSize: 12, color: NAVY,
+              }}>
+                <strong>Sending to {resolvedRecipients.length}:</strong>{' '}
+                {resolvedRecipients.join(', ')}
+              </div>
+            )}
+
+            {sendError && (
+              <div style={{ color: '#c44', fontSize: 12, marginBottom: 16, padding: '8px 12px', background: 'rgba(196,68,68,0.06)', borderRadius: 4 }}>
+                {sendError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setSendingVersion(null)}
+                disabled={sendInFlight}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: '1px solid rgba(10,31,68,0.2)',
+                  background: '#fff', color: NAVY, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeSend}
+                disabled={sendInFlight || resolvedRecipients.length === 0}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: 'none',
+                  background: (sendInFlight || resolvedRecipients.length === 0) ? 'rgba(10,31,68,0.3)' : NAVY,
+                  color: CREAM,
+                  cursor: (sendInFlight || resolvedRecipients.length === 0) ? 'not-allowed' : 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700,
+                }}
+              >
+                {sendInFlight ? 'Sending…' : `Send to ${resolvedRecipients.length || '—'}`}
               </button>
             </div>
           </div>
