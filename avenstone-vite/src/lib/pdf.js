@@ -1,6 +1,9 @@
 import jsPDF from 'jspdf';
 import { floorLabel as _floorLabel } from './captureTypes.js';
 import logoUrl from '../assets/logo.png';
+import polylabel from 'polylabel';
+import { normalizeFloorPlan } from './floorPlan/normalize.js';
+import { computeLayoutHints } from './floorPlan/layoutCheck.js';
 
 const _loadLogo = () => new Promise(resolve => {
   fetch(logoUrl)
@@ -978,7 +981,7 @@ const _drawTitleColumn = (doc, H, job, floorName, floorNum, totalFloors, pageNum
 };
 
 // ─── Floor page renderer ──────────────────────────────────────────────────────
-const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, totalPages, W, H, logoDataUrl) => {
+const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, totalPages, W, H, logoDataUrl, layout_hints = {}, hints_by_name = {}) => {
   const navy = [10, 31, 68];
 
   _drawTitleColumn(doc, H, job, floor.floorName, floorNum, totalFloors, pageNum, totalPages, logoDataUrl);
@@ -1282,20 +1285,26 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
   };
 
   for (const { room, segs, x, y, w, h } of roomLayouts) {
+    // Phase 2 layout hint lookup: id first, name fallback
+    const hint = layout_hints[room.id] || hints_by_name[room.name] || null;
+
     let labelX, labelY;
     let roomPoly = null;
     if (segs && segs.length >= 3) {
       roomPoly = _segsToPolyPoints(segs, room.sqft);
-      const cent = _polyCentroid(roomPoly);
-      if (_pointInPoly(cent.x, cent.z, roomPoly)) {
-        labelX = oX + cent.x * scale; labelY = oY + cent.z * scale;
+      if (roomPoly.length >= 3) {
+        // polylabel on the already-transformed polygon — same coord space as renderer
+        const ring = roomPoly.map(p => [p.x, p.z]);
+        const [plx, plz] = polylabel([ring], 0.5);
+        labelX = oX + plx * scale;
+        labelY = oY + plz * scale;
       } else {
-        const ip = _interiorPoint(roomPoly, segs);
-        labelX = oX + ip.x * scale; labelY = oY + ip.z * scale;
+        labelX = x + w / 2; labelY = y + h / 2;
       }
     } else {
       labelX = x + w / 2; labelY = y + h / 2;
     }
+
     // Derive sqft from the final drawn polygon (shoelace) — consistent regardless of bridge/fallback path.
     const sqft = (() => {
       if (roomPoly && roomPoly.length >= 3) {
@@ -1309,39 +1318,45 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       }
       return room.sqft || 0;
     })();
-    const aspect = w > 0 && h > 0 ? Math.max(w, h) / Math.min(w, h) : 1;
-    let narrow = aspect > 3;
-    let fs = Math.max(7, Math.min(11, (narrow ? h : w) / 8));
 
-    const nameTxt = room.name || '—';
+    const aspect = w > 0 && h > 0 ? Math.max(w, h) / Math.min(w, h) : 1;
+    // Phase 2 uses 1.5:1 threshold; legacy fallback is 3:1
+    let narrow = hint ? hint.label_rotation === 90 : aspect > 3;
+    // Content from hint (abbreviated, formatted) or legacy fallback
+    const nameTxt = hint ? hint.label_text : (room.name || '—');
+    const sfTxt = hint ? hint.sf_text : (sqft > 0 ? `${sqft.toLocaleString()} sq ft` : null);
+    const showSf = hint ? (!hint.sf_inline_with_label && !!sfTxt) : sqft > 0;
+
+    let fs = Math.max(7, Math.min(11, (narrow ? h : w) / 8));
     const nameW = nameTxt.length * fs * 0.55, nameH = fs + 2;
 
-    // Wall-margin test: if horizontal label box clips a wall, try rotated; log if neither fits.
+    // Wall-margin test: if label box clips a wall, try rotated; log if neither fits.
     if (roomPoly && segs && segs.length >= 3) {
       const lw = nameW + 8, lh = 18;
       if (!narrow) {
         if (!_labelFitsInRoom(labelX, labelY, lw, lh, roomPoly, segs)) {
           if (_labelFitsInRoom(labelX, labelY, lh, lw, roomPoly, segs)) {
-            narrow = true; // rotated placement clears walls
+            narrow = true;
           } else {
             console.log(`[LIDAR_PDF_LABEL] room "${nameTxt}" no clean placement`);
           }
         }
       } else {
         // Narrow (rotated) label — swap dims for the margin check.
-        // If centroid clips a wall, fall back to the max-clearance interior point.
         if (!_labelFitsInRoom(labelX, labelY, lh, lw, roomPoly, segs)) {
-          const ip = _interiorPoint(roomPoly, segs);
-          labelX = oX + ip.x * scale; labelY = oY + ip.z * scale;
+          const ring = roomPoly.map(p => [p.x, p.z]);
+          const [plx, plz] = polylabel([ring], 0.5);
+          labelX = oX + plx * scale; labelY = oY + plz * scale;
         }
       }
     }
 
-    // Collision check against dim labels (only when not already rotating)
+    // Collision check against dim labels
     if (!narrow && _labelCollides(labelX, labelY - 4, nameW, nameH)) {
       if (roomPoly && segs && segs.length >= 3) {
-        const ip = _interiorPoint(roomPoly, segs);
-        const altX = oX + ip.x * scale, altY = oY + ip.z * scale;
+        const ring = roomPoly.map(p => [p.x, p.z]);
+        const [plx, plz] = polylabel([ring], 0.5);
+        const altX = oX + plx * scale, altY = oY + plz * scale;
         if (!_labelCollides(altX, altY - 4, nameW, nameH)) { labelX = altX; labelY = altY; }
         else {
           fs = Math.max(6, fs * 0.9);
@@ -1358,9 +1373,9 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     } else {
       doc.text(nameTxt, labelX, labelY - 4, { align: 'center', baseline: 'middle' });
       existingBoxes.push({ x: labelX - nameW/2, y: labelY - 4 - nameH/2, w: nameW, h: nameH });
-      if (sqft > 0) {
+      if (showSf && sfTxt) {
         doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
-        doc.text(`${sqft.toLocaleString()} sq ft`, labelX, labelY + 7, { align: 'center', baseline: 'middle' });
+        doc.text(sfTxt, labelX, labelY + 7, { align: 'center', baseline: 'middle' });
       }
     }
   }
@@ -1518,6 +1533,28 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
     console.log('[LIDAR_PDF_STAGE] buildFloorPlanPDF start');
     const logoDataUrl = await _loadLogo();
     const scan = applyEditOverrides(rawScan);
+
+    // Phase 1+2: normalize → layout hints. Falls back silently if scan is malformed.
+    let layout_hints = {}, hints_by_name = {};
+    try {
+      const normalized = normalizeFloorPlan(scan);
+      if (normalized.ok) {
+        const hintsResult = computeLayoutHints(normalized);
+        if (hintsResult.ok) {
+          layout_hints = hintsResult.data.layout_hints;
+          for (const [, h] of Object.entries(layout_hints)) {
+            if (h.label_full_text) hints_by_name[h.label_full_text] = h;
+          }
+          const ambiguous = hintsResult.data.issues.filter(i => i.severity === 'ambiguous');
+          const warns = hintsResult.data.issues.filter(i => i.severity === 'warn');
+          if (ambiguous.length) console.warn('[LIDAR_PDF_HINTS] ambiguous layout issues (Phase 3 tiebreaker needed):', ambiguous);
+          if (warns.length) console.log('[LIDAR_PDF_HINTS] layout warnings:', warns);
+        }
+      }
+    } catch (e) {
+      console.warn('[LIDAR_PDF_HINTS] layout hints failed, using legacy rendering:', e.message);
+    }
+
     const rooms = scan.rooms || [];
     console.log('[LIDAR_DEBUG] Full rooms payload:', JSON.stringify(rooms, null, 2));
     console.log('[LIDAR_DEBUG] Names array:', rooms.map(r => r.name));
@@ -1537,7 +1574,7 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
       console.log(`[LIDAR_PDF_STAGE] rendering floor page ${fi + 1}/${totalFloors} — ${floor.floorName}`);
       console.log(`[LIDAR_DEBUG] page ${fi + 1} orientation: W=${W} H=${H}`);
       if (fi > 0) doc.addPage('letter', 'landscape');
-      _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H, logoDataUrl);
+      _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H, logoDataUrl, layout_hints, hints_by_name);
     });
 
     console.log('[LIDAR_PDF_STAGE] rendering summary page');
