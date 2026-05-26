@@ -2208,4 +2208,15 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Commits: 3774c8d (applyOverrides.js), bc74ca3 (FloorPlanEditorScr), 3cc5fc8 (FloorPlanCanvas). All pushed to main.
 - Build: ✓ 383 modules, clean.
 - Trade-aware: geometry + PDF path, no trade assumptions. override schema is keyed by room_id — future 5c-3+ moves add more fields per the FLOOR_PLAN_LAYOUT_ARC.md spec.
+
+[LOG — 2026-05-26 — Scanner extracted to own job tab + missing save path fixed]
+- Action: Scanner extracted from ConsultationTab into its own first-class job tab (renamed 'Floor Plans' → 'Scanner', id 'floorplan' → 'scanner'). FloorPlanTab already had everything: saved plans list at top with Edit + Open PDF buttons, + New Scan (AiIntakeWizard), editor overlay (FloorPlanEditorScr). No new component needed.
+- Bug fix: Kalin's 2026-05-26 scan didn't persist to floor_plans because sbCreateFloorPlan was inside the same try/catch as buildFloorPlanPDF in AiIntakeWizard.jsx. Any PDF rendering failure silently skipped the floor_plans record. Fixed: PDF generation is now best-effort (its own try/catch), sbCreateFloorPlan always fires after scan saves regardless of PDF outcome.
+- ConsultationTab: scanner trigger removed (scan list, New Scan button, AiIntakeWizard embed, handleExportPDF, loadScans, related state + imports). Replaced with a one-line note pointing to the Scanner tab. Net: -125 lines from ConsultationTab.
+- FloorPlanTab: kept as-is (it IS the scanner tab, fully wired). No separate ScannerTab needed.
+- Files: AiIntakeWizard.jsx (bug fix), JobDet.jsx (tab rename), ConsultationTab.jsx (strip scanner section).
+- Commits: 1550e6b (fix save path), 9a97954 (rename tab), ff444d8 (strip ConsultationTab). Pushed to main.
+- Build: ✓ 384 modules, clean.
+- Trade-aware: pure UI restructure + bug fix.
+- Open: Phase 5e (versions panel + send to client) closes the workflow loop after scan + edit.
 - Open: Phase 5c-3 — first real edit move (e.g. rename room, toggle SF label). Phase 5c-6+ — add/move/delete room tools.
