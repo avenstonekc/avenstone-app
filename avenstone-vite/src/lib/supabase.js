@@ -1952,6 +1952,14 @@ export const sbUpdateScheduleItem = async (id, patch) => {
       }).then(fired => fired.forEach(f => fireTodoEvent('invoice.auto_drafted', { jobId, invoiceId: f.invoiceId, drawId: f.drawId, triggerLabel: f.triggerLabel }).catch(() => {})))
         .catch(err => console.warn('[autoInvoice] sbUpdateScheduleItem hook failed:', err?.message));
     }
+    // Cascade when scheduled_date or scheduled_end_date changed
+    const dateChanged = (patch.scheduled_date !== undefined && patch.scheduled_date !== prevRow?.scheduled_date)
+      || (patch.scheduled_end_date !== undefined && patch.scheduled_end_date !== prevRow?.scheduled_end_date);
+    if (dateChanged) {
+      sbCascadeScheduleChange(id, 'rescheduled').catch(err =>
+        console.warn('[cascade] sbUpdateScheduleItem cascade failed:', err?.message)
+      );
+    }
     return { ok: true, error: null, data, prevRow: prevRow || null };
   } catch (e) {
     captureFailedIntent({ kind: 'schedule_item_update', payload: { id, patch }, jobId: patch.job_id, message: e.message }).catch(() => {});
@@ -2121,7 +2129,13 @@ export async function sbMarkScheduleItemFinished(id, finishDate = null) {
       new_value: { actual_finish_date: date },
       changed_by_id: user?.id,
     });
-    return { ok: true };
+    // Cascade to downstream items — fire-and-forget, never blocks finish return
+    const cascadeResult = await sbCascadeScheduleChange(id, `finished on ${date}`);
+    return {
+      ok: true,
+      cascade: cascadeResult.ok ? cascadeResult.data : null,
+      cascade_error: cascadeResult.ok ? null : cascadeResult.error,
+    };
   } catch (err) {
     return { ok: false, error: err?.message || String(err) };
   }
