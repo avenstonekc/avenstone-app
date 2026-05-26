@@ -2284,3 +2284,25 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Build: ✓ 385 modules, clean.
 - Deviation: spec requested 3 commits; undo stack and delete action landed in one JSX commit (14d4f1d) since they share updateOverrides and are in the same file.
 - Open: Phase 5d (drag-to-reposition labels). Phase 5c-4 part 2 (wall move snap polish). Phase 5e (versions + send). Strip add-room console.logs.
+
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5d shipped — drag-to-reposition room labels]
+- Action: Room labels in the floor plan canvas are now draggable in select mode. Drag snaps to 0.5ft grid. Override position stored as label_x/label_y in per-room overrides. Right-click label resets to auto-position. Gold indicator dot appears when override is active. SF badge follows label override at same offset from hint. Side panel shows "Reset label to auto-position" button when single selected room has label_x override.
+- Files: avenstone-vite/src/lib/floorPlan/applyOverrides.js (+2 lines per-room loop), avenstone-vite/src/components/floorPlan/FloorPlanCanvas.jsx (+labelDragState, +onLabelMove prop, +handleLabelMouseDown, labels block rewritten), avenstone-vite/src/components/floorPlan/FloorPlanEditorScr.jsx (+handleLabelMove, +onLabelMove prop, +reset button in side panel).
+- Decision: `moved` flag in drag closure prevents spurious override writes when user just clicks (no movement) a label. SF badge tracks as `(hint.sf_x - hint.label_x, hint.sf_y - hint.label_y)` offset from effective label position so it follows correctly regardless of override.
+- Commits: 0910fd5 (applyOverrides label_x/label_y), 3a1de68 (canvas drag), 2a3dce5 (editor handler + reset button). Pushed to main bcda09c..2a3dce5.
+- Open: Phase 5c-4 part 2 (wall move snap polish). Phase 5e (versions + send). Strip add-room console.logs.
+
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-4 part 2 shipped — wall move snap polish]
+- Action: Extended wall-move drag handler with 4 polish features.
+  (1) Snap-to-wall-midpoint: dragging near another wall's midpoint snaps to it. Green diamond indicator. Skips walls connected to the dragged endpoint.
+  (2) Snap-to-axis-alignment: cursor near original endpoint's horizontal/vertical axis (< 0.5 ft deviation, > 1 ft perpendicular movement) locks to that axis. Gold dashed guide line spans full canvas width/height.
+  (3) Alt+Shift perpendicular lock: applyDragConstraints accepts altKey param. Shift=parallel to wall, Alt+Shift=perpendicular (rotate constraint dir 90°).
+  (4) Live angle indicator badge: floats near cursor. Shows live wall length in ft/in + angle in degrees. Background turns green at ±0.5° of orthogonal (horizontal/vertical).
+- Snap precedence: endpoint (green ring) > midpoint (green diamond) > axis-alignment (gold dashed guide). Each has its own visual indicator computed at render time.
+- All-canvas: zero changes to editor, applyOverrides, normalize, or pdf renderer. New snaps slot into applyDragConstraints priority chain.
+- All indicators computed at render time from liveWallEndpointDrag.newPos + draggingEndpointRef.current.startPos. No new state refs needed.
+- File: FloorPlanCanvas.jsx (+191/-26). Commit: 6ad2a1f. Pushed to main.
+- Build: ✓ 385 modules, clean.
+- Trade-aware: pure geometry.
+- Deviation: Part 6 (hint text update in FloorPlanEditorScr) skipped — spec explicitly excludes FloorPlanEditorScr from this slice.
+- Open: Phase 5e (versions + send to client). Capture-time scan-quality warnings. Editor is now feature-complete for v1.
