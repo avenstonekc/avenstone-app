@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
-  sb, AV_USER_ID,
+  sb, AV_USER_ID, AV_TENANT,
   sbLoadUpcomingScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem,
   sbLoadScheduleInvitees, sbAddScheduleInvitee, sbRemoveScheduleInvitee,
-  sbLoadTeam, sbLoadActiveSubs, sbCheckResourceConflicts,
+  sbLoadTeam, sbLoadActiveSubs, sbCheckResourceConflicts, sbCheckLeadTime,
 } from '../../lib/supabase';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -246,11 +246,13 @@ function EventModal({ item, jobs, onClose, onSaved }) {
     scheduled_date: item?.scheduled_date || new Date().toISOString().slice(0, 10),
     scheduled_time: item?.scheduled_time || '',
     job_id:         item?.job_id         || '',
+    trade:          item?.trade          || '',
     notes:          item?.notes          || '',
   });
   const [saving, setSaving]           = useState(false);
   const [deleting, setDeleting]       = useState(false);
   const [err, setErr]                 = useState(null);
+  const [leadWarn, setLeadWarn]       = useState(null);
   const [invitees, setInvitees]       = useState([]);
   const [pendingInvId, setPendingInvId] = useState('');
   const [staff, setStaff]             = useState([]);
@@ -276,7 +278,7 @@ function EventModal({ item, jobs, onClose, onSaved }) {
   const invitedIds = new Set(invitees.map(inv => inv.invitee_user_id));
   const availableStaff = staff.filter(p => p.id !== AV_USER_ID && !invitedIds.has(p.id));
 
-  const save = async (override = conflictOverride) => {
+  const save = async (override = conflictOverride, forceLeadOverride = false) => {
     if (!form.title.trim()) { setErr('Title is required'); return; }
     if (!form.scheduled_date) { setErr('Date is required'); return; }
     if (!form.job_id) { setErr('Job is required'); return; }
@@ -299,7 +301,13 @@ function EventModal({ item, jobs, onClose, onSaved }) {
       }
     }
 
-    setConflictWarning(null);
+    // Lead-time check (only when trade is set and not already overridden)
+    if (!forceLeadOverride && form.trade) {
+      const ltResult = await sbCheckLeadTime({ jobId: form.job_id, trade: form.trade, scheduledDate: form.scheduled_date });
+      if (ltResult.warning) { setLeadWarn(ltResult.warning); return; }
+    }
+
+    setConflictWarning(null); setLeadWarn(null);
     setSaving(true);
     const payload = {
       type:           form.type,
@@ -307,6 +315,7 @@ function EventModal({ item, jobs, onClose, onSaved }) {
       scheduled_date: form.scheduled_date,
       scheduled_time: form.scheduled_time || null,
       job_id:         form.job_id,
+      trade:          form.trade || null,
       notes:          form.notes.trim() || null,
     };
     const result = isNew
@@ -314,6 +323,20 @@ function EventModal({ item, jobs, onClose, onSaved }) {
       : await sbUpdateScheduleItem(item.id, payload);
     setSaving(false);
     if (!result.ok) { setErr(result.error || 'Save failed'); return; }
+
+    if (forceLeadOverride && result.data?.id) {
+      sb.from('schedule_change_log').insert({
+        tenant_id:        AV_TENANT,
+        schedule_item_id: result.data.id,
+        job_id:           form.job_id,
+        change_kind:      'date_moved',
+        old_value:        { scheduled_date: form.scheduled_date, trade: form.trade },
+        new_value:        { scheduled_date: form.scheduled_date, trade: form.trade },
+        reason:           `Lead-time override: PM confirmed ${form.trade} scheduled for ${form.scheduled_date}`,
+        changed_by_id:    AV_USER_ID,
+      }).then(() => {});
+    }
+
     onSaved();
   };
 
@@ -408,6 +431,11 @@ function EventModal({ item, jobs, onClose, onSaved }) {
           <textarea className="finp" rows={3} value={form.notes} onChange={e => setField('notes', e.target.value)} style={{ resize: 'vertical' }} />
         </div>
 
+        <div className="fg">
+          <label className="flbl">Trade (optional — enables lead-time check)</label>
+          <input className="finp" value={form.trade} onChange={e => setField('trade', e.target.value)} placeholder="e.g. Tile-Floor" />
+        </div>
+
         {!isNew && (
           <div className="fg" style={{ marginTop: 4 }}>
             <label className="flbl">Invitees</label>
@@ -436,6 +464,17 @@ function EventModal({ item, jobs, onClose, onSaved }) {
                 <button onClick={addInvitee} disabled={!pendingInvId} className="btn btn-navy" style={{ opacity: pendingInvId ? 1 : 0.4, flexShrink: 0 }}>Add</button>
               </div>
             )}
+          </div>
+        )}
+
+        {leadWarn && (
+          <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 6, padding: '10px 14px', marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>Material lead-time warning</div>
+            <div style={{ fontSize: 12, color: '#92400E', marginBottom: 10 }}>{leadWarn.message}</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setLeadWarn(null)} className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}>Cancel</button>
+              <button onClick={() => save(conflictOverride, true)} className="btn btn-navy" style={{ fontSize: 12, padding: '4px 10px' }}>Override — I'll handle it</button>
+            </div>
           </div>
         )}
 
