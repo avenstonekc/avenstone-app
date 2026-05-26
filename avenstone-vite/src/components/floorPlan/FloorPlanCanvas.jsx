@@ -27,6 +27,7 @@ export default function FloorPlanCanvas({
   onWallEndpointDrag = () => {},
   onWallEndpointMove = () => {},
   mergePreviewPolygon = null,
+  onTextAnnotationsChange = () => {},
 }) {
   const svgRef = useRef(null);
   const panRef = useRef({ x: 0, y: 0 });
@@ -35,6 +36,7 @@ export default function FloorPlanCanvas({
   const panningRef = useRef(null);
   const fittedScanRef = useRef(null); // tracks which rawScan we last fit to
   const draggingEndpointRef = useRef(null); // { key, startPos } during wall-move drag
+  const [annotationDragState, setAnnotationDragState] = useState(null); // { id, x, y } live position
 
   const forceUpdate = useCallback(() => setRenderTick(t => t + 1), []);
 
@@ -186,8 +188,47 @@ export default function FloorPlanCanvas({
     onWallEndpointDrag(key, pos);
   };
 
+  const handleAnnotationMouseDown = (e, ann) => {
+    if (mode !== 'select') return;
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = svgRef.current.getBoundingClientRect();
+    const startScreenX = e.clientX - rect.left;
+    const startScreenY = e.clientY - rect.top;
+    const startAnnX = ann.x;
+    const startAnnY = ann.y;
+    onSelectionChange({ roomIds: [], wallIds: [], annotationIds: [ann.id] });
+    const onMove = (ev) => {
+      const dx = (ev.clientX - rect.left - startScreenX) / (PX_PER_FOOT * zoomRef.current);
+      const dy = (ev.clientY - rect.top - startScreenY) / (PX_PER_FOOT * zoomRef.current);
+      setAnnotationDragState({ id: ann.id, x: startAnnX + dx, y: startAnnY + dy });
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setAnnotationDragState(current => {
+        if (current) onTextAnnotationsChange({ kind: 'move', id: current.id, x: current.x, y: current.y });
+        return null;
+      });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const handleAnnotationDoubleClick = (e, ann) => {
+    e.stopPropagation();
+    onTextAnnotationsChange({ kind: 'edit_request', id: ann.id });
+  };
+
   const handleBackgroundClick = (e) => {
     if (mode === 'wall-move') return;
+    if (mode === 'add-text') {
+      const rect = svgRef.current.getBoundingClientRect();
+      const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const snapped = snapToGrid(world.x, world.y, 0.5);
+      onTextAnnotationsChange({ kind: 'create', x: snapped.x, y: snapped.y });
+      return;
+    }
     if (mode === 'add-room') {
       const rect = svgRef.current.getBoundingClientRect();
       const sx = e.clientX - rect.left;
@@ -209,7 +250,7 @@ export default function FloorPlanCanvas({
       onDrawingPolygonChange([...drawingPolygon, [snapped.x, snapped.y]]);
       return;
     }
-    onSelectionChange({ roomIds: [], wallIds: [] });
+    onSelectionChange({ roomIds: [], wallIds: [], annotationIds: [] });
   };
 
   const handleRoomClick = (roomId, e) => {
@@ -260,7 +301,7 @@ export default function FloorPlanCanvas({
       height={height}
       style={{
         background: CREAM,
-        cursor: mode === 'add-room' ? 'crosshair' : mode === 'wall-move' ? 'default' : panningRef.current ? 'grabbing' : 'default',
+        cursor: mode === 'add-room' || mode === 'add-text' ? 'crosshair' : mode === 'wall-move' ? 'default' : panningRef.current ? 'grabbing' : 'default',
         userSelect: 'none',
         display: 'block',
         borderRadius: 8,
@@ -418,6 +459,48 @@ export default function FloorPlanCanvas({
                 {hint.sf_text}
               </text>
             )}
+          </g>
+        );
+      })}
+
+      {/* Text annotations — freestanding labels, drag to reposition, double-click to edit */}
+      {(effectiveScan.text_annotations || []).map(ann => {
+        if (!ann.text) return null;
+        const isSelected = selection.annotationIds?.includes(ann.id);
+        const isDragging = annotationDragState?.id === ann.id;
+        const renderX = isDragging ? annotationDragState.x : ann.x;
+        const renderY = isDragging ? annotationDragState.y : ann.y;
+        const rp = toScreen(renderX, renderY);
+        const fontSize = Math.max(10, (ann.font_size_pt || 14) * z * 0.6);
+        return (
+          <g key={ann.id} style={{ cursor: mode === 'select' ? 'move' : 'default' }}>
+            {isSelected && (
+              <rect
+                x={rp.x - 64} y={rp.y - 14}
+                width={128} height={28}
+                fill="rgba(201,168,76,0.15)"
+                stroke={GOLD}
+                strokeWidth={1}
+                strokeDasharray="4 3"
+                rx={4}
+                pointerEvents="none"
+              />
+            )}
+            <text
+              x={rp.x} y={rp.y}
+              fill={NAVY}
+              fontSize={fontSize}
+              fontWeight={600}
+              fontFamily="'DM Sans', sans-serif"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              onMouseDown={(e) => handleAnnotationMouseDown(e, ann)}
+              onDoubleClick={(e) => handleAnnotationDoubleClick(e, ann)}
+              style={{ userSelect: 'none' }}
+              transform={ann.rotation === 90 ? `rotate(-90 ${rp.x} ${rp.y})` : undefined}
+            >
+              {ann.text}
+            </text>
           </g>
         );
       })}
