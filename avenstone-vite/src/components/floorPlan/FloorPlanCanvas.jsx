@@ -198,6 +198,41 @@ export default function FloorPlanCanvas({
     y: Math.round(y / gridFt) * gridFt,
   });
 
+  // Snap helper: nearest wall midpoint within threshold ft (Phase 5c-4 part 2)
+  // Skips walls that have the dragged endpoint as one of their endpoints.
+  const snapToNearestWallMidpoint = (target, draggedKey, walls, threshold) => {
+    let best = null;
+    let bestDist = threshold;
+    for (const wall of walls) {
+      const k1 = endpointKey(wall.p1);
+      const k2 = endpointKey(wall.p2);
+      if (k1 === draggedKey || k2 === draggedKey) continue;
+      const mx = (wall.p1[0] + wall.p2[0]) / 2;
+      const my = (wall.p1[1] + wall.p2[1]) / 2;
+      const dist = Math.hypot(mx - target.x, my - target.y);
+      if (dist < bestDist) {
+        best = { x: mx, y: my, wallId: wall.id };
+        bestDist = dist;
+      }
+    }
+    return best; // null if no snap, { x, y, wallId } if snapped
+  };
+
+  // Snap helper: axis alignment to original endpoint's H/V axis (Phase 5c-4 part 2)
+  // Strong horizontal: Y deviation < threshold AND X movement significant → lock Y to original
+  // Strong vertical: X deviation < threshold AND Y movement significant → lock X to original
+  const snapToAxisAlignment = (target, origPoint, threshold) => {
+    const dx = Math.abs(target.x - origPoint[0]);
+    const dy = Math.abs(target.y - origPoint[1]);
+    if (dy < threshold && dx > threshold * 2) {
+      return { x: target.x, y: origPoint[1], snapped: 'horizontal' };
+    }
+    if (dx < threshold && dy > threshold * 2) {
+      return { x: origPoint[0], y: target.y, snapped: 'vertical' };
+    }
+    return null;
+  };
+
   // Mouse handlers
   const handleMouseDown = (e) => {
     if (e.button === 1 || e.button === 2) {
@@ -212,11 +247,13 @@ export default function FloorPlanCanvas({
     }
   };
 
-  // Shared helper: apply shift-constrain + endpoint snap to a world position during drag
-  const applyDragConstraints = (worldX, worldY, shiftKey) => {
+  // Shared helper: apply axis constraint + all snaps to a world position during drag
+  // (Phase 5c-4 part 2: added altKey perpendicular, midpoint snap, axis-alignment snap)
+  const applyDragConstraints = (worldX, worldY, shiftKey, altKey = false) => {
     const drag = draggingEndpointRef.current;
-    let snapped = snapToGrid(worldX, worldY, 0.5);
 
+    // Step 1: Apply Shift axis constraint (Shift = parallel, Alt+Shift = perpendicular to wall)
+    let constrained = { x: worldX, y: worldY };
     if (shiftKey && drag?.connectedDirs?.length > 0) {
       const dirs = drag.connectedDirs;
       const longest = dirs.reduce((best, d) => {
@@ -224,21 +261,47 @@ export default function FloorPlanCanvas({
         return len > best.len ? { d, len } : best;
       }, { d: dirs[0], len: 0 });
       if (longest.len > 0) {
-        const dirX = longest.d[0] / longest.len;
-        const dirY = longest.d[1] / longest.len;
+        let dirX = longest.d[0] / longest.len;
+        let dirY = longest.d[1] / longest.len;
+        if (altKey) {
+          // Rotate 90° → perpendicular to wall axis
+          const tmp = dirX;
+          dirX = -dirY;
+          dirY = tmp;
+        }
         const cdx = worldX - drag.startPos[0];
         const cdy = worldY - drag.startPos[1];
         const proj = cdx * dirX + cdy * dirY;
-        snapped = snapToGrid(drag.startPos[0] + proj * dirX, drag.startPos[1] + proj * dirY, 0.5);
+        constrained = { x: drag.startPos[0] + proj * dirX, y: drag.startPos[1] + proj * dirY };
       }
     }
 
-    // Snap to nearest endpoint within 0.5 ft (6 inches)
+    // Step 2: Grid snap
+    let snapped = snapToGrid(constrained.x, constrained.y, 0.5);
+
+    // Step 3: Endpoint snap — highest priority (6" radius)
     for (const [k, ep] of Object.entries(endpointMap)) {
       if (drag && k === drag.key) continue;
-      const dist = Math.hypot(ep.pos[0] - snapped.x, ep.pos[1] - snapped.y);
-      if (dist < 0.5) return [ep.pos[0], ep.pos[1]];
+      if (Math.hypot(ep.pos[0] - snapped.x, ep.pos[1] - snapped.y) < 0.5) {
+        return [ep.pos[0], ep.pos[1]];
+      }
     }
+
+    // Step 4: Wall midpoint snap — second priority (Phase 5c-4 part 2)
+    const midSnap = snapToNearestWallMidpoint(
+      { x: snapped.x, y: snapped.y },
+      drag?.key || '',
+      normalized?.walls || [],
+      0.5,
+    );
+    if (midSnap) return [midSnap.x, midSnap.y];
+
+    // Step 5: Axis alignment snap — only when not shift-constrained (Phase 5c-4 part 2)
+    if (!shiftKey && drag?.startPos) {
+      const axisSnap = snapToAxisAlignment({ x: snapped.x, y: snapped.y }, drag.startPos, 0.5);
+      if (axisSnap) return [axisSnap.x, axisSnap.y];
+    }
+
     return [snapped.x, snapped.y];
   };
 
@@ -253,7 +316,7 @@ export default function FloorPlanCanvas({
     if (draggingEndpointRef.current && mode === 'wall-move' && svgRef.current) {
       const rect = svgRef.current.getBoundingClientRect();
       const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
-      const pos = applyDragConstraints(world.x, world.y, e.shiftKey);
+      const pos = applyDragConstraints(world.x, world.y, e.shiftKey, e.altKey);
       onWallEndpointDrag(draggingEndpointRef.current.key, pos);
     }
   };
@@ -263,7 +326,7 @@ export default function FloorPlanCanvas({
     if (draggingEndpointRef.current && mode === 'wall-move' && e && svgRef.current) {
       const rect = svgRef.current.getBoundingClientRect();
       const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
-      const pos = applyDragConstraints(world.x, world.y, e.shiftKey);
+      const pos = applyDragConstraints(world.x, world.y, e.shiftKey, e.altKey);
       onWallEndpointMove(draggingEndpointRef.current.key, pos);
       draggingEndpointRef.current = null;
     }
@@ -857,27 +920,129 @@ export default function FloorPlanCanvas({
         );
       })}
 
-      {/* Endpoint snap indicator: green ring when drag position snaps to an existing endpoint */}
+      {/* Snap indicators + angle badge during wall-move drag (Phase 5c-4 part 2) */}
       {mode === 'wall-move' && liveWallEndpointDrag?.newPos && (() => {
         const dragPos = liveWallEndpointDrag.newPos;
+        const dragKey = liveWallEndpointDrag.key;
+        const origPos = draggingEndpointRef.current?.startPos;
+        const dragScreen = toScreen(dragPos[0], dragPos[1]);
+
+        // Determine active snap type — check in priority order (endpoint > midpoint > axis)
+        let snapType = null;
+        let snapScreen = dragScreen;
+
         for (const [k, ep] of Object.entries(endpointMap)) {
-          if (k === liveWallEndpointDrag.key) continue;
+          if (k === dragKey) continue;
           if (Math.hypot(ep.pos[0] - dragPos[0], ep.pos[1] - dragPos[1]) < 0.05) {
-            const s = toScreen(ep.pos[0], ep.pos[1]);
-            return (
-              <circle
-                key="snap-target"
-                cx={s.x} cy={s.y} r={12}
-                fill="none"
-                stroke="#3a7"
-                strokeWidth={3}
-                strokeDasharray="3 3"
-                pointerEvents="none"
-              />
-            );
+            snapType = 'endpoint';
+            snapScreen = toScreen(ep.pos[0], ep.pos[1]);
+            break;
           }
         }
-        return null;
+
+        if (!snapType) {
+          for (const wall of (normalized?.walls || [])) {
+            const k1 = endpointKey(wall.p1);
+            const k2 = endpointKey(wall.p2);
+            if (k1 === dragKey || k2 === dragKey) continue;
+            const mx = (wall.p1[0] + wall.p2[0]) / 2;
+            const my = (wall.p1[1] + wall.p2[1]) / 2;
+            if (Math.hypot(mx - dragPos[0], my - dragPos[1]) < 0.05) {
+              snapType = 'midpoint';
+              snapScreen = toScreen(mx, my);
+              break;
+            }
+          }
+        }
+
+        if (!snapType && origPos) {
+          if (Math.abs(dragPos[1] - origPos[1]) < 0.05 && Math.abs(dragPos[0] - origPos[0]) > 0.5) {
+            snapType = 'axis-horizontal';
+          } else if (Math.abs(dragPos[0] - origPos[0]) < 0.05 && Math.abs(dragPos[1] - origPos[1]) > 0.5) {
+            snapType = 'axis-vertical';
+          }
+        }
+
+        // Angle + length badge: pick longest connected wall, compute live angle + length
+        const connectedForBadge = (normalized?.walls || []).filter(w =>
+          endpointKey(w.p1) === dragKey || endpointKey(w.p2) === dragKey
+        );
+        const longestBadge = connectedForBadge.reduce(
+          (acc, w) => {
+            const other = endpointKey(w.p1) === dragKey ? w.p2 : w.p1;
+            const len = Math.hypot(dragPos[0] - other[0], dragPos[1] - other[1]);
+            return len > acc.len ? { other, len } : acc;
+          },
+          { other: null, len: 0 },
+        );
+
+        let badgeEl = null;
+        if (longestBadge.other) {
+          const dx2 = dragPos[0] - longestBadge.other[0];
+          const dy2 = dragPos[1] - longestBadge.other[1];
+          let angleDeg = Math.atan2(dy2, dx2) * 180 / Math.PI;
+          if (angleDeg < 0) angleDeg += 360;
+          const offAxis = Math.min(angleDeg % 90, Math.abs((angleDeg % 90) - 90));
+          const isClean = offAxis < 0.5;
+          const wholeFt = Math.floor(longestBadge.len);
+          const inches = Math.round((longestBadge.len - wholeFt) * 12);
+          const lenLabel = inches > 0 ? `${wholeFt}'${inches}"` : `${wholeFt}'`;
+          badgeEl = (
+            <g pointerEvents="none">
+              <rect
+                x={dragScreen.x + 14} y={dragScreen.y - 30}
+                width={84} height={34} rx={4}
+                fill={isClean ? 'rgba(46,100,60,0.92)' : 'rgba(10,31,68,0.88)'}
+              />
+              <text
+                x={dragScreen.x + 56} y={dragScreen.y - 16}
+                fill="#F7F5F0" fontSize={11} fontWeight={700}
+                textAnchor="middle" fontFamily="monospace"
+              >{lenLabel}</text>
+              <text
+                x={dragScreen.x + 56} y={dragScreen.y - 4}
+                fill="rgba(247,245,240,0.85)" fontSize={9}
+                textAnchor="middle" fontFamily="monospace"
+              >{angleDeg.toFixed(1)}°</text>
+            </g>
+          );
+        }
+
+        return (
+          <g key="snap-indicators" pointerEvents="none">
+            {/* Endpoint snap: green dashed ring */}
+            {snapType === 'endpoint' && (
+              <circle
+                cx={snapScreen.x} cy={snapScreen.y} r={12}
+                fill="none" stroke="#3a7" strokeWidth={3} strokeDasharray="3 3"
+              />
+            )}
+            {/* Midpoint snap: green diamond */}
+            {snapType === 'midpoint' && (
+              <rect
+                x={snapScreen.x - 8} y={snapScreen.y - 8}
+                width={16} height={16}
+                fill="none" stroke="#3a7" strokeWidth={2.5}
+                transform={`rotate(45 ${snapScreen.x} ${snapScreen.y})`}
+              />
+            )}
+            {/* Axis-horizontal: gold dashed horizontal guide line */}
+            {snapType === 'axis-horizontal' && (
+              <line
+                x1={0} y1={dragScreen.y} x2={width} y2={dragScreen.y}
+                stroke="rgba(201,168,76,0.5)" strokeWidth={1} strokeDasharray="4 6"
+              />
+            )}
+            {/* Axis-vertical: gold dashed vertical guide line */}
+            {snapType === 'axis-vertical' && (
+              <line
+                x1={dragScreen.x} y1={0} x2={dragScreen.x} y2={height}
+                stroke="rgba(201,168,76,0.5)" strokeWidth={1} strokeDasharray="4 6"
+              />
+            )}
+            {badgeEl}
+          </g>
+        );
       })()}
 
     </svg>
