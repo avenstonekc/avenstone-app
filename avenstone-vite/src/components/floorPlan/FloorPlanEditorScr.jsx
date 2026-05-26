@@ -1,11 +1,24 @@
 import { useState, useEffect } from 'react';
-import { sbLoadFloorPlan } from '../../lib/supabase';
+import { sbLoadFloorPlan, sbUpdateFloorPlanOverrides, sbRegenerateFloorPlanPdf } from '../../lib/supabase';
+import { buildFloorPlanPDF } from '../../lib/pdf';
+import { applyOverridesToScan } from '../../lib/floorPlan/applyOverrides';
 import FloorPlanCanvas from './FloorPlanCanvas';
 
 const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
 const CREAM = '#F7F5F0';
 const DESKTOP_MIN_WIDTH = 1024;
+
+async function buildPdfFromOverrides(rawScan, overrides, plan) {
+  const merged = applyOverridesToScan(rawScan, overrides);
+  const minimalJob = {
+    address: plan.name,
+    client_name: '',
+    captured_at: rawScan?.created_at || plan.updated_at,
+  };
+  const doc = await buildFloorPlanPDF(merged, minimalJob);
+  return doc.output('blob');
+}
 
 export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [isDesktop, setIsDesktop] = useState(
@@ -14,8 +27,16 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [plan, setPlan] = useState(null);
+  const [versions, setVersions] = useState([]);
   const [selection, setSelection] = useState({ roomIds: [], wallIds: [] });
   const [canvasSize, setCanvasSize] = useState({ width: 1000, height: 680 });
+
+  // Persistence state
+  const [pendingOverrides, setPendingOverrides] = useState({});
+  const [isDirty, setIsDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [lastSavedVersion, setLastSavedVersion] = useState(null);
 
   useEffect(() => {
     const onResize = () => setIsDesktop(window.innerWidth >= DESKTOP_MIN_WIDTH);
@@ -49,10 +70,74 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
         return;
       }
       setPlan(result.data.plan);
+      setVersions(result.data.versions || []);
+      setPendingOverrides(result.data.plan?.layout_overrides || {});
+      setIsDirty(false);
+      setLastSavedVersion(null);
       setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [floorPlanId]);
+
+  // Called by future edit tools to stage an override change
+  const updateOverrides = (newOverrides) => {
+    setPendingOverrides(newOverrides);
+    setIsDirty(true);
+    setSaveError(null);
+  };
+
+  const handleSaveOnly = async () => {
+    if (!plan || !isDirty) return;
+    setSaving(true);
+    setSaveError(null);
+    const result = await sbUpdateFloorPlanOverrides(plan.id, pendingOverrides);
+    setSaving(false);
+    if (!result.ok) {
+      setSaveError(result.error || 'Save failed');
+      return;
+    }
+    setPlan(p => ({ ...p, layout_overrides: pendingOverrides }));
+    setIsDirty(false);
+  };
+
+  const handleSaveAndRegenerate = async () => {
+    if (!plan) return;
+    setSaving(true);
+    setSaveError(null);
+
+    if (isDirty) {
+      const upd = await sbUpdateFloorPlanOverrides(plan.id, pendingOverrides);
+      if (!upd.ok) {
+        setSaveError(upd.error || 'Save failed');
+        setSaving(false);
+        return;
+      }
+    }
+
+    let pdfBlob;
+    try {
+      pdfBlob = await buildPdfFromOverrides(plan.raw_scan, pendingOverrides, plan);
+    } catch (err) {
+      setSaveError(`PDF generation failed: ${err?.message || err}`);
+      setSaving(false);
+      return;
+    }
+
+    const regen = await sbRegenerateFloorPlanPdf(plan.id, pdfBlob);
+    setSaving(false);
+    if (!regen.ok) {
+      setSaveError(`Regenerate failed: ${regen.error}`);
+      return;
+    }
+
+    const reload = await sbLoadFloorPlan(plan.id);
+    if (reload.ok) {
+      setPlan(reload.data.plan);
+      setVersions(reload.data.versions || []);
+      setLastSavedVersion(regen.data?.version_number ?? null);
+    }
+    setIsDirty(false);
+  };
 
   // Mobile guard
   if (!isDesktop) {
@@ -114,6 +199,10 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
 
   const selRoomCount = selection.roomIds.length;
   const selWallCount = selection.wallIds.length;
+  const headerBtnBase = {
+    padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
+    fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: 'none', fontWeight: 600,
+  };
 
   return (
     <div style={{
@@ -124,16 +213,16 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', padding: '10px 20px',
-        background: NAVY, color: CREAM, gap: 16,
+        background: NAVY, color: CREAM, gap: 12,
         borderBottom: `3px solid ${GOLD}`,
         flexShrink: 0,
       }}>
         <button
           onClick={onBack}
           style={{
+            ...headerBtnBase,
             background: 'transparent', border: '1px solid rgba(247,245,240,0.35)',
-            color: CREAM, padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
-            fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+            color: CREAM,
           }}
         >
           ← Back
@@ -146,9 +235,47 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             v{plan.current_pdf_version} · {plan.status}
           </div>
         </div>
-        <div style={{ fontSize: 11, opacity: 0.5, textAlign: 'right', lineHeight: 1.5 }}>
-          Right-click drag to pan · Scroll to zoom<br />
-          Click to select · Shift-click multi-select
+
+        {/* Save controls */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {isDirty && (
+            <span style={{ fontSize: 11, color: GOLD, fontStyle: 'italic' }}>Unsaved changes</span>
+          )}
+          {saveError && (
+            <span style={{ fontSize: 11, color: '#f87' }}>{saveError}</span>
+          )}
+          {lastSavedVersion && !isDirty && !saveError && (
+            <span style={{ fontSize: 11, color: '#6d6' }}>Saved · v{lastSavedVersion}</span>
+          )}
+          <button
+            onClick={handleSaveOnly}
+            disabled={!isDirty || saving}
+            style={{
+              ...headerBtnBase,
+              background: isDirty && !saving ? 'rgba(247,245,240,0.15)' : 'rgba(247,245,240,0.05)',
+              color: isDirty && !saving ? CREAM : 'rgba(247,245,240,0.35)',
+              border: '1px solid rgba(247,245,240,0.3)',
+              cursor: isDirty && !saving ? 'pointer' : 'not-allowed',
+            }}
+          >
+            Save
+          </button>
+          <button
+            onClick={handleSaveAndRegenerate}
+            disabled={saving}
+            style={{
+              ...headerBtnBase,
+              background: saving ? 'rgba(201,168,76,0.5)' : GOLD,
+              color: '#fff',
+              cursor: saving ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {saving ? 'Working…' : 'Save & Regenerate PDF'}
+          </button>
+        </div>
+
+        <div style={{ fontSize: 10, opacity: 0.4, textAlign: 'right', lineHeight: 1.5, marginLeft: 4 }}>
+          Right-click drag to pan<br />Scroll to zoom · Click to select
         </div>
       </div>
 
@@ -160,7 +287,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
         }}>
           <FloorPlanCanvas
             rawScan={plan.raw_scan}
-            layoutOverrides={plan.layout_overrides || {}}
+            layoutOverrides={pendingOverrides}
             selection={selection}
             onSelectionChange={setSelection}
             width={canvasSize.width}
@@ -174,7 +301,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
           borderLeft: '1px solid rgba(10,31,68,0.08)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(10,31,68,0.06)' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(10,31,68,0.06)' }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: NAVY }}>Selection</div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
@@ -190,17 +317,16 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                 </div>
                 {selection.roomIds.map(id => {
                   const room = plan.raw_scan?.rooms?.find(r => r.id === id);
+                  const overrideName = pendingOverrides[id]?.name;
                   return (
                     <div key={id} style={{
                       padding: '8px 12px', background: 'rgba(10,31,68,0.04)',
                       borderRadius: 6, marginBottom: 6, fontSize: 13, color: NAVY,
                       border: '1px solid rgba(10,31,68,0.08)',
                     }}>
-                      {room?.name || id}
+                      {overrideName || room?.name || id}
                       {room?.sqft && (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: '#888' }}>
-                          {room.sqft} sf
-                        </span>
+                        <span style={{ marginLeft: 8, fontSize: 11, color: '#888' }}>{room.sqft} sf</span>
                       )}
                     </div>
                   );
@@ -227,7 +353,8 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
 
             {/* Future edit tools stub */}
             <div style={{
-              marginTop: 24, padding: 14,
+              marginTop: selRoomCount === 0 && selWallCount === 0 ? 16 : 8,
+              padding: 14,
               background: 'rgba(201,168,76,0.06)',
               border: '1px dashed rgba(201,168,76,0.35)',
               borderRadius: 8,
@@ -237,6 +364,41 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                 <br />Add Room · Move Wall · Merge Rooms · Delete + Undo
               </div>
             </div>
+
+            {/* Versions */}
+            {versions.length > 0 && (
+              <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(10,31,68,0.08)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 8 }}>
+                  Versions ({versions.length})
+                </div>
+                {versions.slice(0, 5).map(v => (
+                  <div key={v.id} style={{
+                    padding: '6px 10px', fontSize: 12, borderRadius: 6, marginBottom: 4,
+                    background: v.version_number === plan.current_pdf_version
+                      ? 'rgba(201,168,76,0.12)' : 'transparent',
+                  }}>
+                    <a
+                      href={v.pdf_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: NAVY, textDecoration: 'none' }}
+                    >
+                      v{v.version_number} · {new Date(v.created_at).toLocaleDateString()}
+                    </a>
+                    {v.sent_at && (
+                      <div style={{ fontSize: 10, opacity: 0.55, marginTop: 2 }}>
+                        Sent {new Date(v.sent_at).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {versions.length > 5 && (
+                  <div style={{ fontSize: 10, opacity: 0.45, paddingLeft: 10 }}>
+                    + {versions.length - 5} older
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
