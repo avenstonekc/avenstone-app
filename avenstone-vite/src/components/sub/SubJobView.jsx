@@ -326,6 +326,20 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
             const needsPhoto = PHOTO_GATE_TYPES.includes(item.type);
             const photoCount = completePhotoCounts[item.id] ?? 0;
             const isPending  = pendingComplete === item.id;
+            const invite = inviteByItemId[item.id] || null;
+            const isResponding = respondingId === item.id;
+            const handleInviteResponse = async (status) => {
+              if (!invite) return;
+              setRespondingId(item.id);
+              const result = await sbRespondToScheduleInvite(invite.id, status);
+              setRespondingId(null);
+              if (result?.ok) {
+                setInviteByItemId(prev => ({
+                  ...prev,
+                  [item.id]: { ...invite, status, responded_at: new Date().toISOString() },
+                }));
+              }
+            };
             return (
               <div key={item.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `4px solid ${accentCol}`, padding: '14px 16px', marginBottom: 10, borderRadius: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -337,6 +351,52 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
                   {item.trade && <span style={{ background: '#F7F5F0', padding: '1px 6px', borderRadius: 10 }}>{item.trade}</span>}
                 </div>
                 {item.notes && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 6, background: '#F7F5F0', padding: '6px 8px', borderRadius: 4, lineHeight: 1.4 }}>{item.notes}</div>}
+
+                {/* Invite response (SCHEDULING_ARC slice 4/8) */}
+                {invite && (invite.status === 'invited' || invite.status === 'tentative') && (
+                  <div style={{ marginTop: 8, padding: '10px 12px', background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.35)', borderRadius: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44', marginBottom: 8 }}>
+                      {invite.status === 'tentative' ? 'You marked this tentative — confirm or decline?' : "You're invited — please respond"}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handleInviteResponse('accepted')}
+                        disabled={isResponding}
+                        style={{ padding: '8px 14px', background: '#3a7', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, cursor: isResponding ? 'wait' : 'pointer', flex: '1 1 auto', minWidth: 90 }}
+                      >✓ Accept</button>
+                      <button
+                        onClick={() => handleInviteResponse('tentative')}
+                        disabled={isResponding || invite.status === 'tentative'}
+                        style={{ padding: '8px 14px', background: '#C9A84C', color: '#0A1F44', border: 'none', borderRadius: 6, fontWeight: 600, cursor: isResponding ? 'wait' : 'pointer', opacity: invite.status === 'tentative' ? 0.5 : 1, flex: '0 0 auto' }}
+                      >Tentative</button>
+                      <button
+                        onClick={() => handleInviteResponse('declined')}
+                        disabled={isResponding}
+                        style={{ padding: '8px 14px', background: 'rgba(196,68,68,0.12)', color: '#c44', border: '1px solid rgba(196,68,68,0.45)', borderRadius: 6, fontWeight: 600, cursor: isResponding ? 'wait' : 'pointer', flex: '1 1 auto', minWidth: 90 }}
+                      >Decline</button>
+                    </div>
+                  </div>
+                )}
+                {invite && invite.status === 'accepted' && (
+                  <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(58,119,71,0.10)', border: '1px solid rgba(58,119,71,0.35)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontSize: 13, color: '#3a7', fontWeight: 600 }}>✓ Accepted</span>
+                    <button
+                      onClick={() => handleInviteResponse('declined')}
+                      disabled={isResponding}
+                      style={{ padding: '4px 10px', background: 'transparent', color: '#c44', border: '1px solid rgba(196,68,68,0.4)', borderRadius: 4, fontSize: 11, cursor: isResponding ? 'wait' : 'pointer' }}
+                    >Can't make it</button>
+                  </div>
+                )}
+                {invite && invite.status === 'declined' && (
+                  <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(196,68,68,0.08)', border: '1px solid rgba(196,68,68,0.35)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontSize: 13, color: '#c44', fontWeight: 600 }}>Declined</span>
+                    <button
+                      onClick={() => handleInviteResponse('accepted')}
+                      disabled={isResponding}
+                      style={{ padding: '4px 10px', background: 'transparent', color: '#3a7', border: '1px solid rgba(58,119,71,0.45)', borderRadius: 4, fontSize: 11, cursor: isResponding ? 'wait' : 'pointer' }}
+                    >Reconsider</button>
+                  </div>
+                )}
 
                 {/* Mark Complete flow */}
                 {!isPending && (
