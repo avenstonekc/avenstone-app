@@ -1,5 +1,5 @@
 /**
- * FLOOR_PLAN_LAYOUT_ARC Phase 5c-2/3/4/5 — Override Applicator
+ * FLOOR_PLAN_LAYOUT_ARC Phase 5c-2/3/4/5/6 — Override Applicator
  *
  * Merges floor_plans.layout_overrides into a raw scan before normalization.
  *
@@ -10,6 +10,7 @@
  *     wall_endpoint_overrides?: EndpointMoves,    // moved wall endpoints (5c-4)
  *     merged_rooms?: MergedRoom[],                // polygon-union merged rooms (5c-5)
  *     text_annotations?: TextAnnotation[],        // freestanding text labels (5c-7)
+ *     deleted_room_ids?: string[],                // scanner rooms nuked by user (5c-6)
  *   }
  *
  * TextAnnotation shape:
@@ -35,6 +36,18 @@ export function applyOverridesToScan(rawScan, overrides) {
   if (!overrides || Object.keys(overrides).length === 0) return rawScan;
 
   const cloned = JSON.parse(JSON.stringify(rawScan));
+
+  // Delete scanner-produced rooms first (Phase 5c-6) — runs before all other overrides
+  // so subsequent patches operate on the surviving room set only
+  if (Array.isArray(overrides.deleted_room_ids) && overrides.deleted_room_ids.length > 0) {
+    const deletedSet = new Set(overrides.deleted_room_ids);
+    cloned.rooms = (cloned.rooms || []).filter(r => !deletedSet.has(r.id));
+    // Drop walls whose room_id (if scanner provided it) belongs to a deleted room
+    cloned.walls = (cloned.walls || []).filter(w => {
+      if (w.room_id && deletedSet.has(w.room_id)) return false;
+      return true;
+    });
+  }
 
   // Per-room patches (Phase 5c-2 / 5c-8)
   for (const room of cloned.rooms || []) {
