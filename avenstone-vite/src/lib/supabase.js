@@ -2326,6 +2326,101 @@ export async function sbCascadeScheduleChange(sourceItemId, reason = 'predecesso
   }
 }
 
+/**
+ * Soft resource-conflict check for schedule items.
+ * Checks two independent ID systems:
+ *   1. assigned_sub_id (TEXT contact ID) — finds schedule_items on overlapping dates
+ *      with the same assigned_sub_id. Sub name resolved from contacts.name.
+ *   2. invitee_user_id (UUID profile ID) — checks schedule_item_invitees joined to
+ *      schedule_items; date overlap evaluated client-side.
+ * Returns conflicts as a flat array; caller decides whether to block or warn+override.
+ *
+ * @param {{ scheduledDate: string, scheduledEndDate?: string, assignedSubId?: string,
+ *            inviteeUserIds?: string[], excludeItemId?: string }}
+ * @returns {{ ok: boolean, conflicts: Array<{ type, name, itemTitle, itemId, conflictDate, jobId }>, error?: string }}
+ */
+export async function sbCheckResourceConflicts({
+  scheduledDate,
+  scheduledEndDate,
+  assignedSubId,
+  inviteeUserIds,
+  excludeItemId,
+} = {}) {
+  if (!scheduledDate) return { ok: true, conflicts: [] };
+  const effectiveEnd = scheduledEndDate || scheduledDate;
+  const conflicts = [];
+
+  try {
+    // ── 1. Sub double-booking (assigned_sub_id is a TEXT contact ID) ──────────
+    if (assignedSubId) {
+      // Overlap condition: item.start <= our.end  AND  (item.end >= our.start OR (item.end IS NULL AND item.start >= our.start))
+      let q = sb
+        .from('schedule_items')
+        .select('id, title, scheduled_date, scheduled_end_date, job_id')
+        .eq('assigned_sub_id', assignedSubId)
+        .eq('tenant_id', AV_TENANT)
+        .not('status', 'eq', 'cancelled')
+        .lte('scheduled_date', effectiveEnd)
+        .or(`scheduled_end_date.gte.${scheduledDate},and(scheduled_end_date.is.null,scheduled_date.gte.${scheduledDate})`);
+      if (excludeItemId) q = q.neq('id', excludeItemId);
+      const { data: subItems } = await q;
+
+      if (subItems?.length) {
+        // Resolve sub name from contacts (best-effort — fall back to ID)
+        let subName = assignedSubId;
+        const { data: contactRow } = await sb.from('contacts').select('name').eq('id', assignedSubId).maybeSingle();
+        if (contactRow?.name) subName = contactRow.name;
+
+        (subItems).forEach(si => {
+          conflicts.push({
+            type:        'sub',
+            name:        subName,
+            itemTitle:   si.title,
+            itemId:      si.id,
+            conflictDate: si.scheduled_date,
+            jobId:       si.job_id,
+          });
+        });
+      }
+    }
+
+    // ── 2. Invitee double-booking (invitee_user_id is a UUID profile ID) ──────
+    if (inviteeUserIds?.length) {
+      const { data: invRows } = await sb
+        .from('schedule_item_invitees')
+        .select('invitee_user_id, profile:profiles!invitee_user_id(full_name), schedule_item:schedule_items!schedule_item_id(id, title, scheduled_date, scheduled_end_date, job_id, status, tenant_id)')
+        .in('invitee_user_id', inviteeUserIds);
+
+      (invRows || []).forEach(row => {
+        const si = row.schedule_item;
+        if (!si || si.status === 'cancelled') return;
+        if (si.tenant_id !== AV_TENANT) return;
+        if (excludeItemId && si.id === excludeItemId) return;
+        const siStart = si.scheduled_date;
+        const siEnd   = si.scheduled_end_date || siStart;
+        if (!siStart) return;
+        // JS date-string comparison (YYYY-MM-DD lexicographic == chronological)
+        if (siStart <= effectiveEnd && siEnd >= scheduledDate) {
+          conflicts.push({
+            type:         'invitee',
+            name:         row.profile?.full_name || 'Team member',
+            itemTitle:    si.title,
+            itemId:       si.id,
+            conflictDate: si.scheduled_date,
+            jobId:        si.job_id,
+          });
+        }
+      });
+    }
+
+    return { ok: true, conflicts };
+  } catch (err) {
+    // Non-fatal: surface as ok with empty conflicts so callers can proceed
+    console.warn('[sbCheckResourceConflicts]', err?.message);
+    return { ok: true, conflicts: [], error: err?.message || String(err) };
+  }
+}
+
 export async function sbUpdateScheduleItemPhase(id, phaseId) {
   if (!id) return { ok: false, error: 'id required' };
   try {
