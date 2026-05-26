@@ -2127,6 +2127,191 @@ export async function sbMarkScheduleItemFinished(id, finishDate = null) {
   }
 }
 
+// ─── Cascade Engine — SCHEDULING_ARC slice 6 ─────────────────────────────────
+
+// ISO date helpers (module-private)
+function _addDaysISO(isoDate, days) {
+  if (!isoDate) return null;
+  const d = new Date(isoDate + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function _daysBetweenISO(start, end) {
+  if (!start || !end) return null;
+  const s = new Date(start + 'T00:00:00Z');
+  const e = new Date(end + 'T00:00:00Z');
+  return Math.floor((e - s) / 86400000);
+}
+
+/**
+ * SCHEDULING_ARC slice 6: cascade engine.
+ *
+ * Called when a source schedule_item's date or duration changes. BFS-walks all
+ * items that have the source in their predecessor_ids, computes new
+ * earliest_start_date for each as max(predecessor_finish + lag_days + 1) across
+ * all predecessors, and pushes scheduled_date forward only when the item is
+ * currently scheduled BEFORE that earliest. Recurses to depth 20 (safety cap).
+ *
+ * @param {string} sourceItemId — the item whose change triggered this
+ * @param {string} reason — description for audit log
+ * @returns {{ ok, data: { affected_items, depth, source_item_id }, error }}
+ */
+export async function sbCascadeScheduleChange(sourceItemId, reason = 'predecessor change') {
+  if (!sourceItemId) return { ok: false, error: 'sourceItemId required' };
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const userId = user?.id || null;
+
+    // Pre-load source's effective finish date
+    const { data: src, error: srcErr } = await sb
+      .from('schedule_items')
+      .select('id, job_id, scheduled_date, scheduled_end_date, actual_finish_date, duration_days')
+      .eq('id', sourceItemId)
+      .single();
+    if (srcErr) return { ok: false, error: `read source item: ${srcErr.message}` };
+
+    const affected = [];
+    const visited  = new Set([sourceItemId]);
+    // Queue entries: { id, finishDate }
+    const srcFinish = src.actual_finish_date
+      || src.scheduled_end_date
+      || _addDaysISO(src.scheduled_date, (src.duration_days || 1) - 1);
+    const queue = [{ id: sourceItemId, finishDate: srcFinish }];
+    let maxDepth = 0;
+
+    // Cache job rows (job_id → { assigned_pm_id, client_user_id, address })
+    const jobCache = {};
+    const _getJob = async (jobId) => {
+      if (!jobId) return null;
+      if (jobCache[jobId]) return jobCache[jobId];
+      const { data } = await sb
+        .from('jobs')
+        .select('id, assigned_pm_id, client_user_id, address')
+        .eq('id', jobId)
+        .single();
+      if (data) jobCache[jobId] = data;
+      return data || null;
+    };
+
+    let depth = 0;
+    while (queue.length > 0) {
+      depth++;
+      if (depth > 20) {
+        return { ok: false, error: `cascade exceeded depth 20 — possible cycle near item ${sourceItemId}` };
+      }
+      maxDepth = Math.max(maxDepth, depth - 1);
+
+      const batch = queue.splice(0, queue.length);
+
+      for (const { id: currentId, finishDate: currentFinish } of batch) {
+        if (!currentFinish) continue;
+
+        // Find items with currentId in their predecessor_ids
+        const { data: downstream, error: dsErr } = await sb
+          .from('schedule_items')
+          .select('id, job_id, title, scheduled_date, scheduled_end_date, predecessor_ids, lag_days, duration_days, assigned_sub_id, actual_finish_date, status')
+          .contains('predecessor_ids', [currentId])
+          .neq('status', 'cancelled');
+        if (dsErr) return { ok: false, error: `query downstream of ${currentId}: ${dsErr.message}` };
+
+        for (const item of (downstream || [])) {
+          if (visited.has(item.id)) continue;
+          visited.add(item.id);
+
+          const lag = item.lag_days || 0;
+          // Start with this predecessor's contribution
+          let effectiveEarliest = _addDaysISO(currentFinish, lag + 1);
+
+          // If multi-predecessor, take MAX across all
+          const otherPredIds = (item.predecessor_ids || []).filter(pid => pid !== currentId);
+          if (otherPredIds.length > 0) {
+            const { data: otherPreds } = await sb
+              .from('schedule_items')
+              .select('id, scheduled_date, scheduled_end_date, actual_finish_date, duration_days')
+              .in('id', otherPredIds);
+            for (const op of (otherPreds || [])) {
+              const opFinish = op.actual_finish_date
+                || op.scheduled_end_date
+                || _addDaysISO(op.scheduled_date, (op.duration_days || 1) - 1);
+              if (opFinish) {
+                const opEarliest = _addDaysISO(opFinish, lag + 1);
+                if (opEarliest > effectiveEarliest) effectiveEarliest = opEarliest;
+              }
+            }
+          }
+
+          // Only push if item is currently scheduled BEFORE new earliest
+          if (item.scheduled_date && item.scheduled_date >= effectiveEarliest) continue;
+
+          const oldDate  = item.scheduled_date;
+          const newDate  = effectiveEarliest;
+          const daysShifted = oldDate ? _daysBetweenISO(oldDate, newDate) : null;
+          const newEnd = (item.scheduled_end_date && oldDate)
+            ? _addDaysISO(newDate, _daysBetweenISO(oldDate, item.scheduled_end_date) || 0)
+            : null;
+
+          const updatePayload = { scheduled_date: newDate };
+          if (newEnd) updatePayload.scheduled_end_date = newEnd;
+
+          const { error: updErr } = await sb
+            .from('schedule_items')
+            .update(updatePayload)
+            .eq('id', item.id);
+
+          if (updErr) {
+            affected.push({ id: item.id, title: item.title, old_date: oldDate, new_date: newDate, days_shifted: daysShifted, error: updErr.message, notified: false });
+            continue;
+          }
+
+          // Audit log
+          await sb.from('schedule_change_log').insert({
+            tenant_id:         AV_TENANT,
+            schedule_item_id:  item.id,
+            job_id:            item.job_id,
+            change_kind:       'cascade_applied',
+            old_value:         { scheduled_date: oldDate, scheduled_end_date: item.scheduled_end_date },
+            new_value:         { scheduled_date: newDate, scheduled_end_date: newEnd },
+            cascade_source_id: sourceItemId,
+            reason:            `cascade from item ${sourceItemId}: ${reason}`,
+            changed_by_id:     userId,
+          }).catch(() => {});
+
+          // Notify: enriched body with date change context
+          let notified = false;
+          try {
+            const oldFmt = fDate(oldDate);
+            const newFmt = fDate(newDate);
+            const body   = oldFmt
+              ? `${item.title} moved from ${oldFmt} to ${newFmt} (cascade from upstream task).`
+              : `${item.title} rescheduled to ${newFmt} (cascade from upstream task).`;
+            const job = await _getJob(item.job_id);
+            const title = `Schedule update — ${job?.address || 'job'}`;
+            const recipients = new Set();
+            if (item.assigned_sub_id) recipients.add(item.assigned_sub_id);
+            if (job?.assigned_pm_id)  recipients.add(job.assigned_pm_id);
+            if (AV_USER_ID) recipients.delete(AV_USER_ID);
+            await Promise.all([...recipients].map(uid =>
+              sbNotifyUser(uid, 'schedule_item_changed', title, body, item.job_id).catch(() => {})
+            ));
+            notified = recipients.size > 0;
+          } catch (_notifErr) { /* best effort */ }
+
+          affected.push({ id: item.id, title: item.title, old_date: oldDate, new_date: newDate, days_shifted: daysShifted, notified });
+
+          // Recurse: this item is now a new source for its own descendants
+          const itemFinish = newEnd || newDate;
+          queue.push({ id: item.id, finishDate: itemFinish });
+        }
+      }
+    }
+
+    return { ok: true, data: { affected_items: affected, depth: maxDepth, source_item_id: sourceItemId } };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
 export async function sbUpdateScheduleItemPhase(id, phaseId) {
   if (!id) return { ok: false, error: 'id required' };
   try {
