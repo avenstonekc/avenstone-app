@@ -2306,3 +2306,46 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Trade-aware: pure geometry.
 - Deviation: Part 6 (hint text update in FloorPlanEditorScr) skipped — spec explicitly excludes FloorPlanEditorScr from this slice.
 - Open: Phase 5e (versions + send to client). Capture-time scan-quality warnings. Editor is now feature-complete for v1.
+
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5e shipped — versions panel + send to client]
+- Action: Phase 5e shipped. Closes the floor-plan workflow loop. Every saved version in the editor side panel now has Open + Send buttons. Send opens a recipient picker modal: job client checkbox (loaded via direct sb query on job_id), previously-sent email pills (from all versions' sent_to arrays), free-text email input (comma-separated), optional custom message. Recipients deduped before send.
+- Email send: new edge function `send-floor-plan-email` (Resend-based, link-only, no attachment). Takes {to, plan_name, version_number, pdf_url, custom_message?}. Template matches Avenstone brand (navy/gold). Falls back to ANON_KEY if auth session unavailable.
+- Record send: sbSendFloorPlanVersion called after email succeeds — merges recipients into version.sent_to, stamps sent_at, flips plan status draft→sent. If email succeeds but record fails, surfaces inline error; no silent partial commits.
+- Version row shows green "Sent {date} · N recipient(s)" annotation after send. Plan reloads to reflect updated state.
+- Deviation: NOTIFY_EMAIL_URL is a profile-lookup path for app users only — can't send to arbitrary external emails. Created send-floor-plan-email edge fn instead. URL constructed inline as `${SUPABASE_URL}/functions/v1/send-floor-plan-email` (no supabase.js change needed).
+- Files: supabase/functions/send-floor-plan-email/index.ts (new), avenstone-vite/src/components/floorPlan/FloorPlanEditorScr.jsx (+308/-23).
+- Commits: 171f219 (edge fn), 90868a6 (editor). Pushed to main f2e269d..90868a6.
+- Open: Capture-time scan-quality warnings. Strip add-room console.logs (noted in 5c-8). Editor feature-complete for v1.
+
+[LOG — 2026-05-26 — Home screen weather widget shipped]
+- Action: Added current weather + 7-day forecast card to HomeScr. Uses Open-Meteo free API (no key, no rate limits). Hardcoded Kansas City coords (39.0997, -94.5786) for Avenstone HQ.
+- New module: avenstone-vite/src/lib/weather.js. Exports fetchWeather, weatherLabel, weatherIcon, formatDayLabel. 30-min in-memory cache prevents hammering on re-renders.
+- Card renders above Active Projects, inside the existing padding div. Navy gradient background. Current temp + condition + "Kansas City" label; 7-day strip below with Today highlighted gold. Rain % shown when ≥30%.
+- Failure mode: inline red error message, rest of HomeScr unaffected.
+- Files: avenstone-vite/src/lib/weather.js (new), avenstone-vite/src/components/home/HomeScr.jsx (+61 lines). Commit: 7c3583c.
+- Trade-aware: weather is per-location, hardcoded to KC for v1. Future: per-job weather for outdoor-work scheduling.
+- Open: per-job-location weather for scheduling intelligence. Browser geolocation fallback. Hourly forecast.
+
+[LOG — 2026-05-26 — SCHEDULING_ARC slice 1/8 shipped — schema foundation]
+- Action: Slice 1 of 8 SCHEDULING_INTELLIGENCE_ARC shipped. Schema foundation for dependency graph, phase linkage, actual finish tracking, and sub capacity modeling.
+- Migration: supabase/migrations/20260526100000_scheduling_arc_phase_1.sql. Applied + verified (16/16 checks PASS). All columns nullable/defaulted — backward compatible.
+- schedule_items new columns: duration_days INT DEFAULT 1, predecessor_ids UUID[] DEFAULT ARRAY[]::UUID[], lag_days INT DEFAULT 0, is_milestone BOOL DEFAULT false, actual_finish_date DATE, phase_id UUID FK→job_phases ON DELETE SET NULL.
+- contacts new column: daily_capacity_hours NUMERIC(4,2) DEFAULT 8.0.
+- New table: schedule_change_log (immutable audit trail). 11 columns, RLS enabled (SELECT+INSERT), 6 indexes (GIN on predecessor_ids + 5 B-tree).
+- Helpers added to supabase.js after sbRespondToScheduleInvite: sbSetScheduleItemDependencies (BFS cycle detection), sbMarkScheduleItemFinished, sbUpdateScheduleItemPhase, sbUpdateContactCapacity.
+- Arc doc corrections (affects slice 8 only): trade_material_lead_times.trade is TEXT not .trade_id UUID; materials table does not exist — actual table is material_orders.
+- ClientPortal note (slice 2): ClientScheduleView reads schedule_phases (legacy), not schedule_items. Needs reconciliation in slice 2.
+- Files: supabase/migrations/20260526100000_scheduling_arc_phase_1.sql (new), avenstone-vite/src/lib/supabase.js (+89 lines). Commits: 0f8e4d6 (migration), d436fd5 (helpers). Pushed to main.
+- Build: ✓ clean.
+- Open: Slice 2 — cascade engine (BFS date push on predecessor change). contacts.id is TEXT not UUID (sbUpdateContactCapacity param is TEXT, handled correctly).
+
+[LOG — 2026-05-26 — SCHEDULING_ARC slice 4/8 shipped — sub accept/decline/tentative response buttons + status badges]
+- Action: Slices 3 and 4 of 8 shipped together. Per-item invite state loaded in SubJobView schedule tab; subs can accept, decline, or mark tentative directly from the schedule list.
+- Slice 3 (commit 9340849): Added invite load useEffect to SubJobView.jsx. Loads schedule_item_invitees for every schedItems entry via Promise.all; extracts current sub's invite row by AV_USER_ID. Result stored as inviteByItemId map. Cancelled flag prevents stale state after unmount.
+- Slice 4 (commit b21ffda): Added per-item conditional UI blocks in schedItems.map(). Three states: invited/tentative shows Accept + Tentative + Decline buttons (gold box); accepted shows green badge + "Can't make it" (decline shortcut); declined shows red badge + "Reconsider" (accept shortcut). All transitions use sbRespondToScheduleInvite + optimistic state update (no refetch). respondingId tracks in-flight requests to disable buttons.
+- Helpers used: sbLoadScheduleInvitees, sbRespondToScheduleInvite (both pre-existing from CALENDAR_ARC Phase 1, dead-code until now). AV_USER_ID used directly — no sb.auth.getUser() call needed.
+- SubPortal optional badge: skipped — SubPortal has no per-item schedule state; fan-out would require full schedule load, not a 1-liner per spec. Spec rule honored.
+- Files: avenstone-vite/src/components/sub/SubJobView.jsx.
+- Build: ✓ 386 modules, clean.
+- Trade-aware: platform UI, tenant-agnostic. schedule_item_invitees is tenant-scoped via RLS. ✓
+- Open: Slice 2 (cascade engine), Slice 5 (duration/dependency UI in ScheduleTab), Slices 6–8 (critical path, conflict detection, recommendations).
