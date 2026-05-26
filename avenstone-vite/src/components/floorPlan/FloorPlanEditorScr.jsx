@@ -476,6 +476,25 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     setEditingAnnotation(null);
   }
 
+  function handleLabelMove({ roomId, x, y, reset }) {
+    if (reset) {
+      const existing = pendingOverrides[roomId];
+      if (!existing) return;
+      const { label_x, label_y, ...rest } = existing;
+      if (Object.keys(rest).length > 0) {
+        updateOverrides({ ...pendingOverrides, [roomId]: rest });
+      } else {
+        const { [roomId]: _removed, ...remaining } = pendingOverrides;
+        updateOverrides(remaining);
+      }
+    } else {
+      updateOverrides({
+        ...pendingOverrides,
+        [roomId]: { ...(pendingOverrides[roomId] || {}), label_x: x, label_y: y },
+      });
+    }
+  }
+
   // Delete selected rooms and/or annotations (Phase 5c-6)
   // Cases: added_room → filter from added_rooms, merged_room → filter from merged_rooms,
   // scanner room → push to deleted_room_ids, annotation → filter from text_annotations
@@ -856,6 +875,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             onTextAnnotationsChange={handleTextAnnotationChange}
             buildState={buildState}
             onBuildAnchorPlaced={handleBuildAnchorPlaced}
+            onLabelMove={handleLabelMove}
           />
         </div>
 
@@ -944,6 +964,19 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                           style={{ cursor: 'pointer', width: 16, height: 16 }}
                         />
                       </div>
+                      {pendingOverrides[roomId]?.label_x !== undefined && (
+                        <button
+                          onClick={() => handleLabelMove({ roomId, reset: true })}
+                          style={{
+                            width: '100%', padding: '7px 12px', marginTop: 8,
+                            background: '#fff', border: '1px solid rgba(10,31,68,0.2)',
+                            borderRadius: 6, fontSize: 12, color: '#666',
+                            cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                          }}
+                        >
+                          Reset label to auto-position
+                        </button>
+                      )}
                     </div>
                   );
                 })()}
