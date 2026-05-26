@@ -2176,7 +2176,17 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Live preview: gold dashed polyline between placed corners, faint closing-line preview from last to first corner when ≥3 corners, corner dots (first corner 7px gold, others 4px navy).
 - Commits: abe105a (applyOverrides), 4495576 (canvas), abe2126 (editor). Pushed to main. Build: 383 modules, clean.
 - Trade-aware: pure UI + geometry. Default-name heuristic is residential-flavored — extend per trade via future options.defaultNameByArea config.
-- Open: Phase 5c-4 (wall move — drag endpoints). Phase 5c-5 (merge rooms). Phase 5c-6 (undo last corner, snap-to-wall-endpoint, delete room).
+- Open: Phase 5c-4 part 2 (snap-to-perpendicular, multi-endpoint group drag, undo-during-drag). Phase 5c-5 (merge rooms). Phase 5c-6 (undo last corner, snap-to-wall-endpoint, delete room).
+
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-4 part 1 shipped — wall-move edit mode]
+- Action: Phase 5c-4 part 1 shipped. User can drag wall endpoint dots to reshape rooms. Adjacent walls sharing the endpoint follow automatically (shared-endpoint following via endpointKey strategy).
+- New override shape: overrides.wall_endpoint_overrides = { [endpointKey]: [newX, newY] }. endpointKey = `${Math.round(x*100)}:${Math.round(y*100)}` — stable identity for shared wall endpoints.
+- applyOverrides.js extended: exports endpointKey helper. wall_endpoint_overrides processing applied BEFORE added_rooms processing — patches wall p1/p2 + room polygon vertices by matching key. All walls/vertices at the same key move together.
+- FloorPlanCanvas additions: endpointKey import, endpointMap useMemo (key→{pos,walls[]}), draggingEndpointRef, handleEndpointMouseDown, extended handleMouseMove (live drag reporting), extended handleMouseUp (commit move), mode='wall-move' cursor, ghost-wall rendering (gold dashed overlay on affected walls during drag), endpoint dot rendering (navy circles, gold+7px when dragging), liveWallEndpointDrag/onWallEndpointDrag/onWallEndpointMove props.
+- FloorPlanEditorScr additions: dragState={key,livePos}|null, mode='wall-move', polygonArea + ccw + segmentsIntersect + polygonSelfIntersects + validateWallMove helpers (invalid moves silently rejected — collapse <1sqft or self-intersect). handleWallEndpointDrag (updates dragState or clears on null=cancel), handleWallEndpointMove (validates then commits to pendingOverrides). "↔ Move Walls" toggle button in side panel. Esc exits wall-move mode. Header hint updated for wall-move mode.
+- Commits: 9523e95 (applyOverrides), 54e8739 (canvas), 0e4101e (editor). Pushed to main. Build: clean.
+- Trade-aware: pure geometry. No trade assumptions.
+- Open: Phase 5c-4 part 2 (snap-to-perpendicular, multi-endpoint group drag, undo-during-drag). Phase 5c-5 (merge rooms). Phase 5c-6 (undo, delete room).
 
 [LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-2 shipped — editor persistence pipeline]
 - Action: Phase 5c-2 shipped. Editor now holds pendingOverrides + isDirty state, supports two save modes, applies overrides to canvas in real time.
