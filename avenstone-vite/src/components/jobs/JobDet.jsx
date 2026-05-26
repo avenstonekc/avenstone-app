@@ -21,7 +21,7 @@ const TABS = [
   { id: 'field',      lb: 'Field',        ic: 'clip' },
   { id: 'msgs',       lb: 'Messages',     ic: 'note' },
   { id: 'docs',       lb: 'Documents',    ic: 'folder' },
-  { id: 'floorplan',  lb: 'Floor Plans',  ic: 'doc' },
+  { id: 'scanner',    lb: 'Scanner',      ic: 'doc' },
   { id: 'session',    lb: 'Consultation', ic: 'eye' },
 ];
 
@@ -259,7 +259,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} sub={fieldSub} setSub={setFieldSub} />}
         {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
-        {tab === 'floorplan' && <FloorPlanTab job={job} profile={profile} />}
+        {tab === 'scanner' && <FloorPlanTab job={job} profile={profile} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} setTab={setTab} />}
       </div>
 
