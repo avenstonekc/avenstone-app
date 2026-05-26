@@ -30,6 +30,7 @@ export default function FloorPlanCanvas({
   onTextAnnotationsChange = () => {},
   buildState = null,
   onBuildAnchorPlaced = () => {},
+  onLabelMove = () => {},
 }) {
   const svgRef = useRef(null);
   const panRef = useRef({ x: 0, y: 0 });
@@ -39,6 +40,7 @@ export default function FloorPlanCanvas({
   const fittedScanRef = useRef(null); // tracks which rawScan we last fit to
   const draggingEndpointRef = useRef(null); // { key, startPos } during wall-move drag
   const [annotationDragState, setAnnotationDragState] = useState(null); // { id, x, y } live position
+  const [labelDragState, setLabelDragState] = useState(null); // { roomId, x, y } live position
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [showHint, setShowHint] = useState(false);
 
@@ -339,6 +341,36 @@ export default function FloorPlanCanvas({
     onTextAnnotationsChange({ kind: 'edit_request', id: ann.id });
   };
 
+  const handleLabelMouseDown = (e, room, effectiveLabelX, effectiveLabelY) => {
+    if (mode !== 'select') return;
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = svgRef.current.getBoundingClientRect();
+    const startScreenX = e.clientX - rect.left;
+    const startScreenY = e.clientY - rect.top;
+    let moved = false;
+    const onMove = (ev) => {
+      const dx = (ev.clientX - rect.left - startScreenX) / (PX_PER_FOOT * zoomRef.current);
+      const dy = (ev.clientY - rect.top - startScreenY) / (PX_PER_FOOT * zoomRef.current);
+      const snappedX = Math.round((effectiveLabelX + dx) / 0.5) * 0.5;
+      const snappedY = Math.round((effectiveLabelY + dy) / 0.5) * 0.5;
+      if (!moved && (Math.abs(snappedX - effectiveLabelX) > 0.01 || Math.abs(snappedY - effectiveLabelY) > 0.01)) {
+        moved = true;
+      }
+      if (moved) setLabelDragState({ roomId: room.id, x: snappedX, y: snappedY });
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setLabelDragState(current => {
+        if (current && moved) onLabelMove({ roomId: current.roomId, x: current.x, y: current.y });
+        return null;
+      });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   const handleBackgroundClick = (e) => {
     if (mode === 'wall-move') return;
     if (mode === 'build-walls') {
@@ -583,14 +615,24 @@ export default function FloorPlanCanvas({
       {normalized.rooms.map(room => {
         const hint = hints?.[room.id];
         if (!hint) return null;
-        // Look up sf_visible from effectiveScan (normalize.js may not preserve custom fields)
         const effectiveRoom = (effectiveScan.rooms || []).find(r => r.id === room.id);
         const sfVisible = effectiveRoom?.sf_visible !== false;
-        const lp = toScreen(hint.label_x, hint.label_y);
+        const hasLabelOverride = effectiveRoom?.label_x_override !== undefined;
+        const isDragging = labelDragState?.roomId === room.id;
+        const effectiveLabelX = isDragging ? labelDragState.x : (effectiveRoom?.label_x_override ?? hint.label_x);
+        const effectiveLabelY = isDragging ? labelDragState.y : (effectiveRoom?.label_y_override ?? hint.label_y);
+        const lp = toScreen(effectiveLabelX, effectiveLabelY);
         const fontSize = Math.max(9, Math.min(18, (hint.label_font_size || 14) * z * 0.55));
         const rotate = hint.label_rotation === 90 ? `rotate(-90 ${lp.x} ${lp.y})` : undefined;
+        const sfOffsetX = hint.sf_x - hint.label_x;
+        const sfOffsetY = hint.sf_y - hint.label_y;
+        const effectiveSfPos = toScreen(effectiveLabelX + sfOffsetX, effectiveLabelY + sfOffsetY);
         return (
-          <g key={`lbl_${room.id}`} pointerEvents="none">
+          <g
+            key={`lbl_${room.id}`}
+            style={{ cursor: mode === 'select' ? 'move' : 'default' }}
+            onContextMenu={hasLabelOverride ? (e) => { e.preventDefault(); onLabelMove({ roomId: room.id, reset: true }); } : undefined}
+          >
             <text
               x={lp.x} y={lp.y}
               fill={NAVY}
@@ -600,13 +642,15 @@ export default function FloorPlanCanvas({
               textAnchor="middle"
               dominantBaseline="middle"
               transform={rotate}
+              onMouseDown={(e) => handleLabelMouseDown(e, room, effectiveLabelX, effectiveLabelY)}
+              style={{ userSelect: 'none' }}
             >
               {hint.label_text}
             </text>
             {sfVisible && hint.sf_text && !hint.sf_inline_with_label && (
               <text
-                x={toScreen(hint.sf_x, hint.sf_y).x}
-                y={toScreen(hint.sf_x, hint.sf_y).y}
+                x={effectiveSfPos.x}
+                y={effectiveSfPos.y}
                 fill={NAVY}
                 fontSize={Math.max(8, fontSize * 0.82)}
                 fontFamily="'DM Sans', sans-serif"
@@ -615,9 +659,13 @@ export default function FloorPlanCanvas({
                 opacity={0.65}
                 fontStyle="italic"
                 transform={rotate}
+                pointerEvents="none"
               >
                 {hint.sf_text}
               </text>
+            )}
+            {hasLabelOverride && (
+              <circle cx={lp.x + 36} cy={lp.y - 8} r={3} fill={GOLD} pointerEvents="none" />
             )}
           </g>
         );
