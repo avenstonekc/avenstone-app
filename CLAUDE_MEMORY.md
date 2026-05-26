@@ -2076,3 +2076,13 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Requires: Google OAuth per user (token + refresh), conflict resolution, per-user opt-in toggle, sync state tracking column on schedule_items.
 - Phase 2 prerequisites: Phase 1 invitees feature must prove out in real use first. Sync surface multiplies bug area — don't build until needed.
 - Estimated: 4-6 prompts when greenlit.
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 1 — geometry normalizer + door dedupe]
+- Action: New module normalize.js — pure-function, zero-dependency geometry normalizer for raw RoomPlan/ARKit scan JSON.
+- Files: avenstone-vite/src/lib/floorPlan/normalize.js (new), _smoke.mjs (new), README.md (new).
+- Exports: snapToGrid, polygonCentroid, polygonAreaSqft, dedupeDoors, normalizeFloorPlan.
+- Key behavior: Two doors from adjacent rooms sharing a physical doorway are merged into one; room_ids are unioned. Merge condition: midpoints within MERGE_DISTANCE_FT=0.5 ft AND abs(dot(nx,nz)) >= cos(25°)≈0.906. All output coordinates world-space feet, snapped to 0.1 ft grid.
+- Smoke test: 34/34 pass (node _smoke.mjs). Build: ✓ 375 modules. No test runner (Vitest/Jest not configured) — smoke script is the test harness.
+- No rendering, no components, no migrations. Data-layer only.
+- Phase 2 (planned): layout.js — polylabel for L-shape label placement, layoutCheck rules engine.
+- Phase 4 (planned): pdf.js consumes normalize.js output directly instead of raw scan.
