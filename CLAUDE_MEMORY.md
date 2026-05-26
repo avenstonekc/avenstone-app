@@ -2220,3 +2220,16 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Trade-aware: pure UI restructure + bug fix.
 - Open: Phase 5e (versions panel + send to client) closes the workflow loop after scan + edit.
 - Open: Phase 5c-3 — first real edit move (e.g. rename room, toggle SF label). Phase 5c-6+ — add/move/delete room tools.
+
+[LOG — 2026-05-26 — Phase 5c-7 shipped — freestanding text annotations + custom room names]
+- Action: Phase 5c-7 shipped. Two improvements: (1) custom room name discoverability in LidarScanner NamingPhase, (2) freestanding text annotations fully wired in floor plan editor.
+- LidarScanner.jsx: placeholder updated to "e.g. Master Suite, Game Room, Future Office" — the free-text input already existed; this surfaced it alongside the preset buttons.
+- applyOverrides.js: text_annotations passthrough added. Array copied from overrides.text_annotations into cloned scan so annotations survive the override merge step. JSDoc updated with TextAnnotation shape.
+- FloorPlanCanvas.jsx: add-text mode click → onTextAnnotationsChange({kind:'create',...}). Annotations rendered as SVG text with gold selection highlight (dashed rect). handleAnnotationMouseDown: window-level drag, commits move on mouseup. handleAnnotationDoubleClick: fires edit_request. annotationIds added to selection shape + all clear-selection calls.
+- FloorPlanEditorScr.jsx: editingAnnotation state + 4 handlers (handleTextAnnotationChange, commitAnnotationText, cancelAnnotationEdit, deleteAnnotation). "T Add Text Label" toolbar button (gold when active). Keyboard Esc exits add-text. Edit modal: autoFocus input, Enter/Esc, Save/Cancel/Delete buttons, matches naming modal pattern. Annotation selection section in side panel with inline Edit button. annotationIds in all setSelection calls.
+- Override schema now: {[room_id]:{name?}, added_rooms?, wall_endpoint_overrides?, merged_rooms?, text_annotations?}
+- Files: LidarScanner.jsx, applyOverrides.js, FloorPlanCanvas.jsx, FloorPlanEditorScr.jsx.
+- Commits: b027b77 (scanner placeholder), 6a8e9d5 (applyOverrides), 76c1ac3 (canvas), 07c4fd7 (editor). Pushed to main.
+- Build: ✓ 384 modules, clean.
+- Note: pdf.js NOT touched (spec conflict — "Do NOT touch" takes precedence over Part 5 PDF rendering). PDF annotation rendering deferred.
+- Open: Phase 5c-6 (undo stack, delete room). Phase 5c-7 Part 5 (pdf.js annotation rendering — deferred). Phase 5e (versions panel + send to client).
