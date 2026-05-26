@@ -2166,6 +2166,18 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Trade-aware: pure UI, no trade assumptions. Color palette uses platform tokens.
 - Open: Phase 5c-2 — save layout_overrides back to DB (sbUpdateFloorPlanOverrides). Phase 5c-3+ — add room, move wall, merge rooms, delete + undo.
 
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-3 shipped — Add Room edit move]
+- Action: Phase 5c-3 shipped. First overrides-producing edit move. User clicks "+ Add Room" in side panel → places corners on canvas (0.5 ft grid snap) → closes polygon by clicking first corner (gold dot, 14px hit radius) or pressing Enter → naming modal opens with area-guessed default → confirms → room renders live and persists via Save & Regenerate.
+- New override shape: overrides.added_rooms = [{id, name, polygon, type:'unknown', source:'manual'}]. applyOverrides.js extended to merge added_rooms into the derived scan AND synthesize wall segments from polygon edges (one wall per polygon edge, id pattern: `${room.id}-wall-${i}`) so they flow through Phase 1's classifyAndStandardizeWalls.
+- Default name guess via shoelace area: <15 sqft = Closet, <35 = Bathroom, else Room.
+- Canvas modes: 'select' (default) | 'add-room'. Cursor changes to crosshair. Room/wall click handlers suppressed during add-room. Background click handler (handleBackgroundClick) now handles both selection clearing and corner placement.
+- toWorld(screenX, screenY) and snapToGrid(x, y, gridFt) helpers added to canvas.
+- Keyboard: Esc cancels, Enter closes polygon when ≥3 corners.
+- Live preview: gold dashed polyline between placed corners, faint closing-line preview from last to first corner when ≥3 corners, corner dots (first corner 7px gold, others 4px navy).
+- Commits: abe105a (applyOverrides), 4495576 (canvas), abe2126 (editor). Pushed to main. Build: 383 modules, clean.
+- Trade-aware: pure UI + geometry. Default-name heuristic is residential-flavored — extend per trade via future options.defaultNameByArea config.
+- Open: Phase 5c-4 (wall move — drag endpoints). Phase 5c-5 (merge rooms). Phase 5c-6 (undo last corner, snap-to-wall-endpoint, delete room).
+
 [LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-2 shipped — editor persistence pipeline]
 - Action: Phase 5c-2 shipped. Editor now holds pendingOverrides + isDirty state, supports two save modes, applies overrides to canvas in real time.
 - New file: avenstone-vite/src/lib/floorPlan/applyOverrides.js — single export applyOverridesToScan(rawScan, overrides). Deep-clones rawScan, applies room-level overrides (currently name only). Shared by canvas live preview and PDF regeneration path so they can never diverge.
