@@ -40,7 +40,8 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [lastSavedVersion, setLastSavedVersion] = useState(null);
 
   // Edit mode state
-  const [mode, setMode] = useState('select'); // 'select' | 'add-room' | 'wall-move'
+  const [mode, setMode] = useState('select'); // 'select' | 'add-room' | 'wall-move' | 'add-text'
+  const [editingAnnotation, setEditingAnnotation] = useState(null); // { id, text } when modal open
   const [drawingPolygon, setDrawingPolygon] = useState([]); // [[worldX, worldY], ...]
   const [pendingNewRoom, setPendingNewRoom] = useState(null); // { polygon, defaultName, name }
   const [dragState, setDragState] = useState(null); // { key, livePos: [x, y] } | null
@@ -276,10 +277,80 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     setPendingMerge(null);
   }
 
-  // Keyboard handler for add-room mode
+  // Text annotation handlers (Phase 5c-7)
+  function handleTextAnnotationChange(event) {
+    if (event.kind === 'create') {
+      const newAnn = {
+        id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        text: '',
+        x: event.x,
+        y: event.y,
+        font_size_pt: 14,
+        rotation: 0,
+      };
+      updateOverrides({
+        ...pendingOverrides,
+        text_annotations: [...(pendingOverrides.text_annotations || []), newAnn],
+      });
+      setEditingAnnotation({ id: newAnn.id, text: '' });
+      setMode('select');
+    } else if (event.kind === 'move') {
+      updateOverrides({
+        ...pendingOverrides,
+        text_annotations: (pendingOverrides.text_annotations || []).map(t =>
+          t.id === event.id ? { ...t, x: event.x, y: event.y } : t
+        ),
+      });
+    } else if (event.kind === 'edit_request') {
+      const existing = (pendingOverrides.text_annotations || []).find(t => t.id === event.id);
+      if (existing) setEditingAnnotation({ id: event.id, text: existing.text });
+    }
+  }
+
+  function commitAnnotationText() {
+    if (!editingAnnotation) return;
+    const text = editingAnnotation.text.trim();
+    if (!text) {
+      updateOverrides({
+        ...pendingOverrides,
+        text_annotations: (pendingOverrides.text_annotations || []).filter(t => t.id !== editingAnnotation.id),
+      });
+    } else {
+      updateOverrides({
+        ...pendingOverrides,
+        text_annotations: (pendingOverrides.text_annotations || []).map(t =>
+          t.id === editingAnnotation.id ? { ...t, text } : t
+        ),
+      });
+    }
+    setEditingAnnotation(null);
+  }
+
+  function cancelAnnotationEdit() {
+    if (editingAnnotation) {
+      const existing = (pendingOverrides.text_annotations || []).find(t => t.id === editingAnnotation.id);
+      if (existing && !existing.text) {
+        updateOverrides({
+          ...pendingOverrides,
+          text_annotations: (pendingOverrides.text_annotations || []).filter(t => t.id !== editingAnnotation.id),
+        });
+      }
+    }
+    setEditingAnnotation(null);
+  }
+
+  function deleteAnnotation(id) {
+    updateOverrides({
+      ...pendingOverrides,
+      text_annotations: (pendingOverrides.text_annotations || []).filter(t => t.id !== id),
+    });
+    setEditingAnnotation(null);
+  }
+
+  // Keyboard handler for edit modes
   useEffect(() => {
     function onKey(e) {
-      if (pendingNewRoom || pendingMerge) return; // modal is up, don't intercept
+      if (pendingNewRoom || pendingMerge || editingAnnotation) return; // modal is up, don't intercept
       if (mode === 'add-room') {
         if (e.key === 'Escape') {
           setMode('select');
@@ -292,11 +363,13 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
           setDragState(null);
           setMode('select');
         }
+      } else if (mode === 'add-text') {
+        if (e.key === 'Escape') setMode('select');
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, drawingPolygon, pendingNewRoom, pendingMerge]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, drawingPolygon, pendingNewRoom, pendingMerge, editingAnnotation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveOnly = async () => {
     if (!plan || !isDirty) return;
@@ -427,6 +500,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
 
   const selRoomCount = selection.roomIds.length;
   const selWallCount = selection.wallIds.length;
+  const selAnnotCount = selection.annotationIds?.length || 0;
   const headerBtnBase = {
     padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
     fontSize: 13, fontFamily: "'DM Sans', sans-serif", border: 'none', fontWeight: 600,
@@ -507,6 +581,8 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             ? <>Click to place corners<br />Click first corner or Enter to close · Esc to cancel</>
             : mode === 'wall-move'
             ? <>Drag endpoint dots to reshape walls<br />Adjacent walls follow · Esc to exit</>
+            : mode === 'add-text'
+            ? <>Click canvas to place a text label<br />Double-click label to edit · Esc to cancel</>
             : <>Right-click drag to pan<br />Scroll to zoom · Click to select</>
           }
         </div>
@@ -533,6 +609,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             onWallEndpointDrag={handleWallEndpointDrag}
             onWallEndpointMove={handleWallEndpointMove}
             mergePreviewPolygon={mergePreviewPolygon}
+            onTextAnnotationsChange={handleTextAnnotationChange}
           />
         </div>
 
@@ -546,7 +623,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             <div style={{ fontWeight: 700, fontSize: 13, color: NAVY }}>Selection</div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-            {selRoomCount === 0 && selWallCount === 0 && (
+            {selRoomCount === 0 && selWallCount === 0 && selAnnotCount === 0 && (
               <div style={{ color: '#aaa', fontSize: 13, lineHeight: 1.5 }}>
                 Click a room or wall to inspect it.
               </div>
@@ -606,8 +683,41 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
               </div>
             )}
 
+            {selAnnotCount > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 8 }}>
+                  Text Labels ({selAnnotCount})
+                </div>
+                {(selection.annotationIds || []).map(id => {
+                  const ann = (pendingOverrides.text_annotations || []).find(t => t.id === id);
+                  return (
+                    <div key={id} style={{
+                      padding: '8px 12px', background: 'rgba(10,31,68,0.04)',
+                      borderRadius: 6, marginBottom: 6, fontSize: 13, color: NAVY,
+                      border: '1px solid rgba(10,31,68,0.08)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    }}>
+                      <span>{ann?.text || '(empty)'}</span>
+                      <button
+                        onClick={() => {
+                          if (ann) setEditingAnnotation({ id: ann.id, text: ann.text });
+                        }}
+                        style={{
+                          padding: '3px 8px', border: '1px solid rgba(10,31,68,0.2)',
+                          borderRadius: 4, background: '#fff', color: NAVY,
+                          fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Edit tools */}
-            <div style={{ marginTop: selRoomCount === 0 && selWallCount === 0 ? 16 : 8 }}>
+            <div style={{ marginTop: selRoomCount === 0 && selWallCount === 0 && selAnnotCount === 0 ? 16 : 8 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>
                 Edit Tools
               </div>
@@ -620,7 +730,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                     setMode('add-room');
                     setDrawingPolygon([]);
                     setDragState(null);
-                    setSelection({ roomIds: [], wallIds: [] });
+                    setSelection({ roomIds: [], wallIds: [], annotationIds: [] });
                   }
                 }}
                 style={{
@@ -653,7 +763,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                     setMode('wall-move');
                     setDragState(null);
                     setDrawingPolygon([]);
-                    setSelection({ roomIds: [], wallIds: [] });
+                    setSelection({ roomIds: [], wallIds: [], annotationIds: [] });
                   }
                 }}
                 style={{
@@ -673,8 +783,40 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                 {mode === 'wall-move' ? 'Exit Move Walls' : '↔ Move Walls'}
               </button>
               {mode === 'wall-move' && (
-                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6 }}>
+                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6, marginBottom: 8 }}>
                   Drag endpoint dots to reshape walls. Adjacent walls follow automatically. Press Esc to exit.
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  if (mode === 'add-text') {
+                    setMode('select');
+                  } else {
+                    setMode('add-text');
+                    setDrawingPolygon([]);
+                    setDragState(null);
+                    setSelection({ roomIds: [], wallIds: [], annotationIds: [] });
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 14px',
+                  background: mode === 'add-text' ? GOLD : NAVY,
+                  color: mode === 'add-text' ? NAVY : CREAM,
+                  border: 'none',
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  marginBottom: 8,
+                  fontFamily: "'DM Sans', sans-serif",
+                }}
+              >
+                {mode === 'add-text' ? 'Cancel Add Text' : 'T  Add Text Label'}
+              </button>
+              {mode === 'add-text' && (
+                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6 }}>
+                  Click anywhere on the canvas to place a text label. Type a name then Save. Drag to reposition. Double-click to edit. Esc to cancel.
                 </div>
               )}
             </div>
@@ -771,6 +913,76 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
               >
                 Add Room
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Text annotation edit modal */}
+      {editingAnnotation && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2200, fontFamily: "'DM Sans', sans-serif",
+        }}>
+          <div style={{
+            background: '#fff', padding: 28, borderRadius: 12,
+            minWidth: 380, maxWidth: '90vw',
+            boxShadow: '0 8px 40px rgba(10,31,68,0.25)',
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, color: NAVY, fontFamily: "'DM Serif Display', serif", fontSize: 20 }}>
+              Text Label
+            </h3>
+            <input
+              type="text"
+              autoFocus
+              value={editingAnnotation.text}
+              onChange={(e) => setEditingAnnotation(a => ({ ...a, text: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitAnnotationText();
+                if (e.key === 'Escape') cancelAnnotationEdit();
+              }}
+              placeholder="e.g. Kitchen, Living Room, Future Pantry"
+              style={{
+                width: '100%', padding: '10px 12px', fontSize: 15,
+                border: '1px solid rgba(10,31,68,0.2)', borderRadius: 6,
+                marginBottom: 20, boxSizing: 'border-box',
+                fontFamily: "'DM Sans', sans-serif", outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center' }}>
+              <button
+                onClick={() => deleteAnnotation(editingAnnotation.id)}
+                style={{
+                  padding: '8px 16px', borderRadius: 6, border: '1px solid #e44',
+                  background: '#fff', color: '#c33', cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600,
+                }}
+              >
+                Delete
+              </button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={cancelAnnotationEdit}
+                  style={{
+                    padding: '8px 18px', borderRadius: 6, border: '1px solid rgba(10,31,68,0.2)',
+                    background: '#fff', color: NAVY, cursor: 'pointer',
+                    fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={commitAnnotationText}
+                  style={{
+                    padding: '8px 18px', borderRadius: 6, border: 'none',
+                    background: NAVY, color: CREAM, cursor: 'pointer',
+                    fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700,
+                  }}
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         </div>
