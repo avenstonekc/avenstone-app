@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import LidarScanner from './LidarScanner';
 import HeightCaptureStep from './HeightCaptureStep';
-import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan, sbUploadDoc } from '../../lib/supabase';
+import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan, sbUploadDoc, sbCreateFloorPlan } from '../../lib/supabase';
 import { stampGPS } from '../../lib/gps';
 import { buildFloorPlanPDF } from '../../lib/pdf';
 
@@ -61,6 +61,13 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
         const date = new Date(savedScan.created_at).toISOString().slice(0, 10);
         const file = new File([blob], `floor-plan-${date}.pdf`, { type: 'application/pdf' });
         await sbUploadDoc(jobId, file, 'plan');
+        await sbCreateFloorPlan({
+          jobId,
+          contactId: null,
+          name: `Floor Plan — ${date}`,
+          rawScan: savedScan,
+          pdfBlob: blob,
+        });
       } catch {
         // PDF export failure is non-fatal — scan is already saved
       }
