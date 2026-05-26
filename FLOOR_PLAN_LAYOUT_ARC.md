@@ -35,7 +35,7 @@ RoomPlan/ARKit data
 [4. pdf.js renderer]      ← consumes geometry + layout_hints; renders cleanly
        │
        ▼
-[5. Pre-submit preview]   ← Kalin sees rendered PDF in-app; approves or sends back
+[5. Editable scan drafts]  ← floor plans persist; Kalin edits labels/SF without rescanning
 ```
 
 Layers 1, 2, 4, 5 are deterministic code. Layer 3 is the only LLM call. Most floor plans should pass through 1 → 2 → 4 → 5 with zero Opus involvement.
@@ -104,39 +104,131 @@ Replace today's "centroid + hope" with "consume layout_hints + render exactly wh
 
 Scope: 1-2 Sonnet prompts depending on how tangled today's pdf.js is.
 
-### Phase 5 — Pre-submit preview
+### Phase 5 — Editable scan drafts (replaces original Phase 5 + 6)
 
-Kalin sees the PDF before it ships.
+Floor plans become first-class persistent entities. Raw scan + layout overrides + version history persist together so Kalin can open a saved floor plan later and tweak it without rescanning.
 
-- After Phases 1-4, the pipeline produces a PDF. Surface it in the app as a preview screen with two buttons: "Approve & Send" and "Re-scan".
-- On Re-scan: bounce back to the LiDAR scanner with the previous scan loaded for diff.
-- Approve & Send: existing send path.
+Original Phase 5 (pre-submit preview) and Phase 6 (confidence scoring) are absorbed here. Confidence scoring intentionally dropped — Kalin doesn't want it.
 
-Scope: 1 Sonnet prompt.
+#### Phase 5a — Schema + helpers (foundation)
 
-### Phase 6 — Confidence scoring + auto-flag
+New `floor_plans` table:
+- id UUID PK
+- job_id UUID FK→jobs (nullable — pre-job scans attach to contact)
+- contact_id UUID FK→contacts (nullable — used when job_id null)
+- tenant_id UUID NOT NULL
+- created_by UUID FK→profiles
+- name TEXT (e.g. "First Floor", "Basement")
+- raw_scan JSONB (the full Phase 1 input, persisted)
+- layout_overrides JSONB (per-room manual overrides: {room_id: {label_x?, label_y?, label_text?, sf_visible?}})
+- current_pdf_url TEXT (signed URL or storage path)
+- current_pdf_version INTEGER (incremented each regeneration)
+- status TEXT CHECK (draft|sent|archived) default 'draft'
+- created_at, updated_at
 
-For long-term Anti-Surprise: each rendered floor plan gets a layout_confidence score (0-100) based on how many issues Phase 2/3 resolved cleanly vs. how many were forced. Below 80 = auto-flag for Kalin review.
+Companion `floor_plan_versions` table for history:
+- id UUID PK
+- floor_plan_id UUID FK ON DELETE CASCADE
+- version_number INTEGER
+- pdf_url TEXT
+- layout_overrides_snapshot JSONB
+- raw_scan_snapshot JSONB
+- sent_to TEXT[] (emails / contact IDs this version was sent to)
+- sent_at TIMESTAMPTZ
+- created_at TIMESTAMPTZ
 
-Scope: 1 Sonnet prompt. Ship only if Phase 5 shows real bad outputs slipping through.
+Migration: create both tables + RLS (tenant_id pattern, plus job_id-scoped read for assigned subs).
+
+Helpers in supabase.js:
+- sbCreateFloorPlan({jobId, contactId, name, rawScan})
+- sbLoadFloorPlan(id)
+- sbLoadFloorPlansForJob(jobId)
+- sbUpdateFloorPlanOverrides(id, overrides)
+- sbRegenerateFloorPlanPdf(id) — runs normalize → layoutCheck → renderer → uploads PDF to storage → bumps current_pdf_version, writes a row to floor_plan_versions
+- sbSendFloorPlanVersion(id, versionNumber, recipientEmails[]) — marks the version as sent + fires existing notify-email path
+
+Scope: 1 prompt.
+
+#### Phase 5b — Save scan path
+
+Wire AiIntakeWizard (and any other scanner caller) to save a draft floor_plans row at the end of the scan instead of (or in addition to) the existing PDF-only path. The PDF is uploaded to storage, URL stored. Raw scan + layout_overrides (initially {}) saved on the row.
+
+Add a new "Floor Plans" section to the job detail screen showing draft + sent plans for that job. Each list item shows: name, status badge, last updated, "Open" button.
+
+Scope: 1 prompt.
+
+#### Phase 5c — Editor screen (list-of-rooms with per-room overrides)
+
+New screen: FloorPlanEditorScr.jsx (or rewire the existing FloorPlanEditor.jsx which was flagged as built-but-not-wired). Two-pane on desktop, stacked on mobile.
+
+Left: PDF preview, regenerated on save.
+Right: list of rooms with per-room edit controls:
+- Name (editable text)
+- Show SF (toggle)
+- Label position: "Auto (Phase 2)" or "Custom" with x/y inputs (advanced — most users won't touch)
+- "Reset to auto" button per room
+
+Bottom: "Regenerate PDF" button. Calls sbRegenerateFloorPlanPdf. Layout issues from Phase 2 surface inline next to each room with severity tag.
+
+Scope: 1 prompt.
+
+#### Phase 5d — Visual drag-to-reposition
+
+Extend the editor with a canvas overlay on the PDF preview. Drag a label, X/Y override updates, regenerate uses new position. Click a SF badge to toggle visibility. Right-click a label for "Reset to auto."
+
+Scope: 2 prompts. (1 for the canvas + drag mechanics, 1 for the override write path + regeneration trigger.)
+
+#### Phase 5e — Version history + send
+
+Bottom of editor: "Versions" tab showing all floor_plan_versions for this plan. Each version has: PDF preview thumbnail, sent_at + sent_to list, "Open this version's PDF" link, "Send to..." button.
+
+"Send to..." opens a recipient picker (contacts on the job + client email + free-text email). On confirm: fires existing notify-email with the PDF URL, writes a new row to floor_plan_versions OR updates the existing version's sent_to/sent_at, marks status='sent' on floor_plans if first send.
+
+Scope: 1 prompt.
+
+#### Total Phase 5 effort
+
+5a + 5b + 5c + 5d + 5e = 6 prompts (5d is 2). Ships the full editable-draft workflow.
+
+Minimum viable subset if Kalin wants the most value fastest:
+- 5a + 5b alone = 2 prompts. Floor plans persist, can re-open later but no editing yet.
+- Add 5c = 3 prompts total. Per-room name + SF toggle edits.
+- Add 5e = 4 prompts total. Versioning + send.
+- 5d (visual drag) can be deferred or skipped if list-based overrides feel sufficient.
+
+### Phase 6 — RESERVED
+
+Original Phase 6 (confidence scoring + auto-flag) DROPPED per Kalin's call 2026-05-25. Confidence scores were going to estimate "this floor plan is N% likely to render cleanly" — Kalin doesn't want it.
+
+If real production use surfaces a need for automated quality flags, revisit.
 
 ## Sequencing
 
 ```
-Phase 1 (norm + door dedupe)        ← biggest immediate value, isolated
+Phase 1 (norm + door dedupe)        ← shipped
    ↓
-Phase 2 (rules engine)              ← second biggest value, builds on Phase 1
+Phase 2 (rules engine)              ← shipped (2A + 2B)
    ↓
-Phase 4 (renderer rewrite)          ← consumes Phase 1+2 output; first end-to-end test point
+Phase 4 (renderer rewrite)          ← shipped
    ↓
-Phase 5 (preview)                   ← gives Kalin a feedback loop
+Phase 5a (schema + helpers)         ← editable drafts foundation
    ↓
-Phase 3 (Opus tiebreaker)           ← only if Phases 4+5 show ambiguous cases
+Phase 5b (save scan path)           ← scans persist as drafts
    ↓
-Phase 6 (confidence scoring)        ← only if Phase 5 shows bad outputs sneaking through
+Phase 5c (editor — list overrides)  ← per-room edits without rescan
+   ↓
+Phase 5e (versions + send)          ← send specific versions to clients
+   ↓
+Phase 5d (drag-to-reposition)       ← visual editor polish, can defer
+   ↓
+Phase 3 (Opus tiebreaker)           ← only if real ambiguity surfaces in production
+   ↓
+Phase 6 — DROPPED (was confidence scoring)
 ```
 
-Notice Phase 3 is OUT OF ORDER — it's last not first. The instinct is "have Opus fix it" but the better path is rules first, Opus only where rules fail.
+Notice 5d sits AFTER 5e — drag editing is polish on top of the working editor. If 5c list-based overrides feel sufficient in practice, 5d may never ship. That's fine.
+
+Notice Phase 3 sits AFTER all of Phase 5 — same reason as before, rules + overrides should resolve most edge cases without needing an LLM call.
 
 ## Trade-aware
 
@@ -144,15 +236,20 @@ Floor plan layout is platform UI, not trade-specific. No tenant or trade columns
 
 ## Estimated effort
 
-- Phase 1: 1 prompt
-- Phase 2: 2 prompts
-- Phase 4: 1-2 prompts
-- Phase 5: 1 prompt
-- Total minimum viable arc: 5-6 prompts before any Opus tiebreaker work.
-- Phase 3 (Opus): +1 prompt if needed.
-- Phase 6 (confidence): +1 prompt if needed.
+- Phase 1: 1 prompt — SHIPPED
+- Phase 2: 2 prompts — SHIPPED (2A + 2B)
+- Phase 4: 1 prompt — SHIPPED
+- Phase 5a (schema): 1 prompt
+- Phase 5b (save path): 1 prompt
+- Phase 5c (editor list overrides): 1 prompt
+- Phase 5e (versions + send): 1 prompt
+- Phase 5d (drag editor): 2 prompts (optional polish)
+- Phase 3 (Opus tiebreaker): 1 prompt (optional, only if needed)
+- Phase 6: DROPPED
 
-Worst case: 8 prompts. Best case: 6 and you're done.
+Remaining minimum to ship the editable-draft workflow: **4 prompts** (5a+5b+5c+5e).
+With visual drag editor: **6 prompts**.
+Plus Opus tiebreaker if needed: **+1 prompt**.
 
 ## Open questions
 
@@ -172,5 +269,13 @@ Worst case: 8 prompts. Best case: 6 and you're done.
 
 - Submit a floor plan from the app.
 - PDF renders with: room labels properly placed inside each room (not in hallway portions of L-shapes), dimensions readable, doors counted once, SF clear.
-- Kalin sees a preview before client gets the PDF.
-- Confidence score (if Phase 6 ships) above 80 on typical residential scans.
+- Kalin (or any user) can re-open a saved floor plan later and edit room names, toggle SF visibility, or reposition labels — without rescanning.
+- Multiple versions of the same floor plan tracked with version history.
+- Clients receive specific versions on demand; Kalin sees which version went to whom and when.
+- The visual layout matches or exceeds Procore's floor-plan output.
+
+---
+
+## Amendments
+
+**2026-05-25** — Phase 5 redesigned. Original Phase 5 (pre-submit preview, one-shot gate) replaced by Phase 5 multi-part editable scan drafts. Phase 6 (confidence scoring) dropped entirely per Kalin's call. Rationale: persistent editable drafts are substantially more valuable than a one-time preview gate — Kalin can fix label issues weeks after the original scan without re-scanning. Confidence scoring would have estimated quality but Kalin doesn't want it.
