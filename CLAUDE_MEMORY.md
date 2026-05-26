@@ -2269,3 +2269,18 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Build: ✓ 385 modules, clean.
 - Trade-aware: pure UI. No trade assumptions.
 - Open: Phase 5c-6 (delete + undo), Phase 5c-4 part 2 (wall move snap polish), Phase 5e (versions + send). Strip add-room console.logs.
+
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-6 shipped — delete + undo stack]
+- Action: Phase 5c-6 shipped. Editor now has full delete + undo/redo.
+- Undo stack: history { past, present, future } replaces bare pendingOverrides state. pendingOverrides is now derived as history.present — zero consumer changes needed. MAX_HISTORY 50. New edits clear future. Save clears entire history (both handleSaveOnly and handleSaveAndRegenerate). Plan load resets history.
+- Keyboard: Cmd-Z / Ctrl-Z = undo. Cmd-Shift-Z / Ctrl-Y = redo. Delete / Backspace = delete selected. Input tag guard (tagName=input/textarea) prevents all shortcuts from colliding with text editing. Modal guard (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) prevents undo/redo/delete while modals are open.
+- Delete: 4 cases unified. Added room → filter from overrides.added_rooms. Merged room → filter from overrides.merged_rooms (source rooms reappear; effectively unmerge). Text annotation → filter from overrides.text_annotations. Scanner-produced room → push to overrides.deleted_room_ids.
+- New override shape: overrides.deleted_room_ids = [room_id, ...]. applyOverrides filters these FIRST so subsequent wall/merge/patch overrides operate on surviving set only. Also drops walls whose room_id matches a deleted room.
+- Delete via: Delete/Backspace key OR side panel red "🗑 Delete N items" button. Both use window.confirm before destroying.
+- Header: ↶ Undo + ↷ Redo buttons (disabled when stack is empty). Small "N undos available" badge.
+- Trade-aware: pure UI + override layer. No trade assumptions.
+- Files: applyOverrides.js (+14/-1), FloorPlanEditorScr.jsx (+180/-10).
+- Commits: eb27bba (applyOverrides), 14d4f1d (FloorPlanEditorScr — undo + delete combined since inseparable in one file). Pushed to main.
+- Build: ✓ 385 modules, clean.
+- Deviation: spec requested 3 commits; undo stack and delete action landed in one JSX commit (14d4f1d) since they share updateOverrides and are in the same file.
+- Open: Phase 5d (drag-to-reposition labels). Phase 5c-4 part 2 (wall move snap polish). Phase 5e (versions + send). Strip add-room console.logs.
