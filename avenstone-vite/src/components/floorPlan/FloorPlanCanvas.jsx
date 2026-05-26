@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { normalizeFloorPlan } from '../../lib/floorPlan/normalize';
 import { computeLayoutHints } from '../../lib/floorPlan/layoutCheck';
-import { applyOverridesToScan } from '../../lib/floorPlan/applyOverrides';
+import { applyOverridesToScan, endpointKey } from '../../lib/floorPlan/applyOverrides';
 
 const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -23,6 +23,9 @@ export default function FloorPlanCanvas({
   drawingPolygon = [],
   onDrawingPolygonChange = () => {},
   onPolygonClosed = () => {},
+  liveWallEndpointDrag = null,
+  onWallEndpointDrag = () => {},
+  onWallEndpointMove = () => {},
 }) {
   const svgRef = useRef(null);
   const panRef = useRef({ x: 0, y: 0 });
@@ -30,6 +33,7 @@ export default function FloorPlanCanvas({
   const [renderTick, setRenderTick] = useState(0);
   const panningRef = useRef(null);
   const fittedScanRef = useRef(null); // tracks which rawScan we last fit to
+  const draggingEndpointRef = useRef(null); // { key, startPos } during wall-move drag
 
   const forceUpdate = useCallback(() => setRenderTick(t => t + 1), []);
 
@@ -65,6 +69,21 @@ export default function FloorPlanCanvas({
       }
     }
     return { minX, minZ, maxX, maxZ };
+  }, [normalized]);
+
+  // Map from endpoint key → { pos, walls[] } for wall-move mode
+  const endpointMap = useMemo(() => {
+    if (!normalized?.walls) return {};
+    const map = {};
+    for (const wall of normalized.walls) {
+      const k1 = endpointKey(wall.p1);
+      const k2 = endpointKey(wall.p2);
+      if (!map[k1]) map[k1] = { pos: wall.p1, walls: [] };
+      map[k1].walls.push({ wallId: wall.id, which: 'p1' });
+      if (!map[k2]) map[k2] = { pos: wall.p2, walls: [] };
+      map[k2].walls.push({ wallId: wall.id, which: 'p2' });
+    }
+    return map;
   }, [normalized]);
 
   // Fit to content — only when rawScan changes (new plan), not on every override change
@@ -115,9 +134,24 @@ export default function FloorPlanCanvas({
       };
       forceUpdate();
     }
+    if (draggingEndpointRef.current && mode === 'wall-move' && svgRef.current) {
+      const rect = svgRef.current.getBoundingClientRect();
+      const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const snapped = snapToGrid(world.x, world.y, 0.5);
+      onWallEndpointDrag(draggingEndpointRef.current.key, [snapped.x, snapped.y]);
+    }
   };
 
-  const handleMouseUp = () => { panningRef.current = null; };
+  const handleMouseUp = (e) => {
+    panningRef.current = null;
+    if (draggingEndpointRef.current && mode === 'wall-move' && e && svgRef.current) {
+      const rect = svgRef.current.getBoundingClientRect();
+      const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const snapped = snapToGrid(world.x, world.y, 0.5);
+      onWallEndpointMove(draggingEndpointRef.current.key, [snapped.x, snapped.y]);
+      draggingEndpointRef.current = null;
+    }
+  };
 
   // Wheel — passive:false required for preventDefault
   useEffect(() => {
@@ -143,7 +177,16 @@ export default function FloorPlanCanvas({
     return () => el.removeEventListener('wheel', onWheel);
   }, [forceUpdate]);
 
+  const handleEndpointMouseDown = (e, key, pos) => {
+    if (mode !== 'wall-move') return;
+    e.stopPropagation();
+    e.preventDefault();
+    draggingEndpointRef.current = { key, startPos: pos };
+    onWallEndpointDrag(key, pos);
+  };
+
   const handleBackgroundClick = (e) => {
+    if (mode === 'wall-move') return;
     if (mode === 'add-room') {
       const rect = svgRef.current.getBoundingClientRect();
       const sx = e.clientX - rect.left;
@@ -216,7 +259,7 @@ export default function FloorPlanCanvas({
       height={height}
       style={{
         background: CREAM,
-        cursor: mode === 'add-room' ? 'crosshair' : panningRef.current ? 'grabbing' : 'default',
+        cursor: mode === 'add-room' ? 'crosshair' : mode === 'wall-move' ? 'default' : panningRef.current ? 'grabbing' : 'default',
         userSelect: 'none',
         display: 'block',
         borderRadius: 8,
@@ -225,7 +268,13 @@ export default function FloorPlanCanvas({
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onMouseLeave={() => {
+        panningRef.current = null;
+        if (draggingEndpointRef.current) {
+          onWallEndpointDrag(draggingEndpointRef.current.key, null);
+          draggingEndpointRef.current = null;
+        }
+      }}
       onContextMenu={(e) => e.preventDefault()}
       onClick={handleBackgroundClick}
     >
@@ -402,6 +451,53 @@ export default function FloorPlanCanvas({
           })}
         </g>
       )}
+
+      {/* Ghost walls during endpoint drag (wall-move mode) */}
+      {mode === 'wall-move' && liveWallEndpointDrag?.newPos && (() => {
+        const { key, newPos } = liveWallEndpointDrag;
+        return normalized.walls
+          .filter(wall => endpointKey(wall.p1) === key || endpointKey(wall.p2) === key)
+          .map(wall => {
+            const ep1 = endpointKey(wall.p1) === key ? newPos : wall.p1;
+            const ep2 = endpointKey(wall.p2) === key ? newPos : wall.p2;
+            const ps1 = toScreen(ep1[0], ep1[1]);
+            const ps2 = toScreen(ep2[0], ep2[1]);
+            const thicknessPx = (wall.thickness_ft || 0.29) * PX_PER_FOOT * z;
+            return (
+              <line
+                key={`ghost-${wall.id}`}
+                x1={ps1.x} y1={ps1.y} x2={ps2.x} y2={ps2.y}
+                stroke={GOLD}
+                strokeWidth={Math.max(2, thicknessPx)}
+                strokeLinecap="butt"
+                strokeDasharray="6 4"
+                opacity={0.7}
+                pointerEvents="none"
+              />
+            );
+          });
+      })()}
+
+      {/* Endpoint dots in wall-move mode */}
+      {mode === 'wall-move' && Object.entries(endpointMap).map(([key, { pos }]) => {
+        const isDragging = liveWallEndpointDrag?.key === key && liveWallEndpointDrag?.newPos;
+        const displayPos = isDragging
+          ? toScreen(liveWallEndpointDrag.newPos[0], liveWallEndpointDrag.newPos[1])
+          : toScreen(pos[0], pos[1]);
+        return (
+          <circle
+            key={`ep-${key}`}
+            cx={displayPos.x}
+            cy={displayPos.y}
+            r={isDragging ? 7 : 5}
+            fill={isDragging ? GOLD : 'rgba(10,31,68,0.65)'}
+            stroke="#fff"
+            strokeWidth={1.5}
+            style={{ cursor: 'grab' }}
+            onMouseDown={(e) => handleEndpointMouseDown(e, key, pos)}
+          />
+        );
+      })}
 
       {/* Zoom badge */}
       <g pointerEvents="none">
