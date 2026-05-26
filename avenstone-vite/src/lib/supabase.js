@@ -281,6 +281,62 @@ export const sbLoadPhases = async jid => {
   const { data } = await sb.from('job_phases').select('*').eq('job_id', jid).order('phase_order', { ascending: true });
   return data || [];
 };
+export async function sbLoadJobPhaseProgress(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required' };
+  try {
+    const [phasesRes, itemsRes] = await Promise.all([
+      sb.from('job_phases').select('*').eq('job_id', jobId).order('phase_order', { ascending: true }),
+      sb.from('schedule_items')
+        .select('id, phase_id, scheduled_date, scheduled_end_date, actual_finish_date, status')
+        .eq('job_id', jobId)
+        .neq('status', 'cancelled'),
+    ]);
+    if (phasesRes.error) return { ok: false, error: phasesRes.error.message };
+    if (itemsRes.error) return { ok: false, error: itemsRes.error.message };
+    const phases = phasesRes.data || [];
+    const items = itemsRes.data || [];
+    const today = new Date().toISOString().slice(0, 10);
+    const byPhase = new Map();
+    for (const it of items) {
+      if (!it.phase_id) continue;
+      if (!byPhase.has(it.phase_id)) byPhase.set(it.phase_id, []);
+      byPhase.get(it.phase_id).push(it);
+    }
+    return {
+      ok: true,
+      data: phases.map(phase => {
+        const phItems = byPhase.get(phase.id) || [];
+        const total = phItems.length;
+        const completed = phItems.filter(i => !!i.actual_finish_date).length;
+        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+        const scheduledEnds = phItems.map(i => i.scheduled_end_date || i.scheduled_date).filter(Boolean).sort();
+        const scheduledDates = phItems.map(i => i.scheduled_date).filter(Boolean).sort();
+        const finishDates = phItems.map(i => i.actual_finish_date).filter(Boolean).sort();
+        const earliest_scheduled_date = scheduledDates[0] || null;
+        const latest_scheduled_end_date = scheduledEnds[scheduledEnds.length - 1] || null;
+        const actual_finish_date = (total > 0 && completed === total) ? (finishDates[finishDates.length - 1] || null) : null;
+        const actual_start_date = finishDates[0] || (earliest_scheduled_date && earliest_scheduled_date <= today ? earliest_scheduled_date : null);
+        let status;
+        if (total === 0) { status = 'not_started'; }
+        else if (completed === total) { status = 'completed'; }
+        else if (completed === 0 && (!earliest_scheduled_date || earliest_scheduled_date > today)) { status = 'not_started'; }
+        else if (phase.end_date && latest_scheduled_end_date && latest_scheduled_end_date > phase.end_date) { status = 'delayed'; }
+        else { status = 'in_progress'; }
+        const is_on_schedule = (!phase.end_date || !latest_scheduled_end_date) ? null : (latest_scheduled_end_date <= phase.end_date);
+        return {
+          id: phase.id, phase_name: phase.phase_name, phase_order: phase.phase_order,
+          start_date: phase.start_date, end_date: phase.end_date,
+          total_items: total, completed_items: completed, pct_complete: pct,
+          status, earliest_scheduled_date, latest_scheduled_end_date,
+          actual_start_date, actual_finish_date, is_on_schedule,
+        };
+      }),
+    };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
 export const sbSavePhase = async ph => {
   const { data, error } = await sb.from('job_phases').upsert(ph).select().single();
   if (error) {
