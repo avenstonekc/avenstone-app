@@ -2246,3 +2246,16 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Console.log diagnostics left in (add-room click path). Strip in 5c-9 cleanup.
 - Limitation: sf_visible toggle affects canvas only — pdf.js gate deferred.
 - Open: Phase 5c-9 — type-to-build walls. Strip console.logs in same slice. Phase 5e — versions + send.
+
+[LOG — 2026-05-26 — FLOOR_PLAN_LAYOUT_ARC Phase 5c-8 patch + Phase 5c-9 shipped]
+- Action: (1) sf_visible wired into pdf.js — SF toggle now affects regenerated PDFs. (2) Type-to-build wall mode fully shipped.
+- sf_visible patch: pdf.js line 1337 — showSf gating changed to `room.sf_visible !== false && (hint ? (!hint.sf_inline_with_label && !!sfTxt) : sqft > 0)`. One-line patch, closes the canvas-only limitation from 5c-8.
+- Phase 5c-9 — 3 new files/changes:
+  - parseFootInches.js (new): parses construction-style length strings → decimal feet. Handles "10'6", "10 6", "10.5", "6\"", "6in", pure numbers.
+  - FloorPlanCanvas.jsx: build-walls mode — handleBackgroundClick sets first anchor, onBuildAnchorPlaced prop wired. Preview rendering: accumulated polyline in gold, dashed close-back line (≥3 walls), first anchor larger dot, dashed ring on current anchor.
+  - FloorPlanEditorScr.jsx: buildState/lengthInput state. handleBuildAnchorPlaced, confirmLengthInput, cancelLengthInput, commitBuiltPolygon handlers. BUILD_DIRS = {N:[0,-1], S:[0,1], E:[1,0], W:[-1,0]}. Direction picker modal (N/S/E/W grid), monospace length input, arrow-key direction change, auto-close detection when endpoint within 0.5ft of firstAnchor. commitBuiltPolygon calls setPendingNewRoom → reuses existing confirmAddRoom path. "📐 Build Walls" button in toolbar. Header hint text for build-walls mode. Keyboard Esc exits build-walls. Overlay is transparent (zIndex:2300) so canvas stays visible.
+- Files: avenstone-vite/src/lib/pdf.js (patch), avenstone-vite/src/lib/floorPlan/parseFootInches.js (new), avenstone-vite/src/components/floorPlan/FloorPlanCanvas.jsx, avenstone-vite/src/components/floorPlan/FloorPlanEditorScr.jsx.
+- Commits: sf_visible pdf.js patch (prior session), 6b410a5 (parseFootInches), 150e9a0 (canvas build-walls), 7aaeabe (editor build-walls). Pushed to main.
+- Build: ✓ 385 modules, clean.
+- Trade-aware: pure geometry/editor tooling, no trade assumptions.
+- Open: Phase 5c-6 (undo stack, delete room). Phase 5c-7 Part 5 (pdf.js annotation rendering — deferred). Phase 5e (versions + send to client). Strip add-room console.logs.
