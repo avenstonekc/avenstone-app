@@ -1334,7 +1334,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     // Content from hint (abbreviated, formatted) or legacy fallback
     const nameTxt = hint ? hint.label_text : (room.name || '—');
     const sfTxt = hint ? hint.sf_text : (sqft > 0 ? `${sqft.toLocaleString()} sq ft` : null);
-    const showSf = hint ? (!hint.sf_inline_with_label && !!sfTxt) : sqft > 0;
+    const showSf = room.sf_visible !== false && (hint ? (!hint.sf_inline_with_label && !!sfTxt) : sqft > 0);
 
     let fs = Math.max(7, Math.min(11, (narrow ? h : w) / 8));
     const nameW = nameTxt.length * fs * 0.55, nameH = fs + 2;
