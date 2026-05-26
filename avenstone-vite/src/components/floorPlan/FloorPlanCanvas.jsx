@@ -39,6 +39,8 @@ export default function FloorPlanCanvas({
   const fittedScanRef = useRef(null); // tracks which rawScan we last fit to
   const draggingEndpointRef = useRef(null); // { key, startPos } during wall-move drag
   const [annotationDragState, setAnnotationDragState] = useState(null); // { id, x, y } live position
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const [showHint, setShowHint] = useState(false);
 
   const forceUpdate = useCallback(() => setRenderTick(t => t + 1), []);
 
@@ -108,6 +110,77 @@ export default function FloorPlanCanvas({
     forceUpdate();
   }, [normalized, bounds, width, height]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Nav helpers ──────────────────────────────────────────────────────────
+  function fitToContent() {
+    if (!normalized || !bounds) return;
+    const contentW = (bounds.maxX - bounds.minX) * PX_PER_FOOT;
+    const contentH = (bounds.maxZ - bounds.minZ) * PX_PER_FOOT;
+    if (contentW <= 0 || contentH <= 0) return;
+    const fitZoom = Math.min(width / contentW, height / contentH) * 0.85;
+    const fz = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom));
+    zoomRef.current = fz;
+    panRef.current = {
+      x: width / 2 - ((bounds.minX + bounds.maxX) / 2) * PX_PER_FOOT * fz,
+      y: height / 2 - ((bounds.minZ + bounds.maxZ) / 2) * PX_PER_FOOT * fz,
+    };
+    forceUpdate();
+  }
+
+  function zoomBy(factor) {
+    const newZ = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current * factor));
+    const cx = width / 2;
+    const cy = height / 2;
+    const worldX = (cx - panRef.current.x) / (PX_PER_FOOT * zoomRef.current);
+    const worldZ = (cy - panRef.current.y) / (PX_PER_FOOT * zoomRef.current);
+    zoomRef.current = newZ;
+    panRef.current = {
+      x: cx - worldX * PX_PER_FOOT * newZ,
+      y: cy - worldZ * PX_PER_FOOT * newZ,
+    };
+    forceUpdate();
+  }
+
+  // Space-held pan modifier (Figma/Sketch convention)
+  useEffect(() => {
+    const onDown = (e) => {
+      if (e.code !== 'Space') return;
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      e.preventDefault();
+      setSpaceHeld(true);
+    };
+    const onUp = (e) => { if (e.code === 'Space') setSpaceHeld(false); };
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
+  }, []);
+
+  // Keyboard shortcuts: +/− zoom, F fit, arrow keys pan
+  useEffect(() => {
+    const PAN_STEP_PX = 50;
+    const onKey = (e) => {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault(); zoomBy(ZOOM_STEP);
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault(); zoomBy(1 / ZOOM_STEP);
+      } else if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault(); fitToContent();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault(); panRef.current = { ...panRef.current, y: panRef.current.y + PAN_STEP_PX }; forceUpdate();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault(); panRef.current = { ...panRef.current, y: panRef.current.y - PAN_STEP_PX }; forceUpdate();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault(); panRef.current = { ...panRef.current, x: panRef.current.x + PAN_STEP_PX }; forceUpdate();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault(); panRef.current = { ...panRef.current, x: panRef.current.x - PAN_STEP_PX }; forceUpdate();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [normalized, bounds, width, height]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const toScreen = (worldX, worldZ) => ({
     x: worldX * PX_PER_FOOT * zoomRef.current + panRef.current.x,
     y: worldZ * PX_PER_FOOT * zoomRef.current + panRef.current.y,
@@ -128,6 +201,12 @@ export default function FloorPlanCanvas({
     if (e.button === 1 || e.button === 2) {
       e.preventDefault();
       panningRef.current = { startX: e.clientX, startY: e.clientY, startPan: { ...panRef.current } };
+      return;
+    }
+    if (e.button === 0 && spaceHeld) {
+      e.preventDefault();
+      panningRef.current = { startX: e.clientX, startY: e.clientY, startPan: { ...panRef.current } };
+      return;
     }
   };
 
@@ -357,14 +436,29 @@ export default function FloorPlanCanvas({
 
   const z = zoomRef.current;
 
+  const controlButtonStyle = {
+    width: 32, height: 32,
+    background: 'rgba(10,31,68,0.06)',
+    border: 'none', borderRadius: 6,
+    fontSize: 16, fontWeight: 700, color: NAVY,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontFamily: "'DM Sans', sans-serif",
+  };
+
   return (
+    <div style={{ position: 'relative', display: 'inline-block', width, height }}>
     <svg
       ref={svgRef}
       width={width}
       height={height}
       style={{
         background: CREAM,
-        cursor: mode === 'add-room' || mode === 'add-text' || mode === 'build-walls' ? 'crosshair' : mode === 'wall-move' ? 'default' : panningRef.current ? 'grabbing' : 'default',
+        cursor: spaceHeld
+          ? (panningRef.current ? 'grabbing' : 'grab')
+          : mode === 'add-room' || mode === 'add-text' || mode === 'build-walls' ? 'crosshair'
+          : mode === 'wall-move' ? 'default'
+          : panningRef.current ? 'grabbing' : 'default',
         userSelect: 'none',
         display: 'block',
         borderRadius: 8,
@@ -738,13 +832,49 @@ export default function FloorPlanCanvas({
         return null;
       })()}
 
-      {/* Zoom badge */}
-      <g pointerEvents="none">
-        <rect x={width - 72} y={height - 26} width={64} height={18} rx={4} fill="rgba(10,31,68,0.65)" />
-        <text x={width - 40} y={height - 13} fill={CREAM} fontSize={10} textAnchor="middle" dominantBaseline="middle" fontFamily="'DM Sans', sans-serif">
-          {Math.round(z * 100)}%
-        </text>
-      </g>
     </svg>
+
+    {/* Keyboard hint card — shown on ? hover */}
+    <div style={{
+      position: 'absolute', top: 12, right: 56,
+      background: 'rgba(10,31,68,0.92)', color: 'rgba(247,245,240,0.92)',
+      padding: '8px 12px', borderRadius: 6,
+      fontSize: 11, fontFamily: 'monospace', lineHeight: 1.7,
+      pointerEvents: 'none',
+      opacity: showHint ? 1 : 0, transition: 'opacity 0.15s',
+      zIndex: 10, whiteSpace: 'nowrap',
+    }}>
+      + / − &nbsp; zoom<br/>
+      F &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; fit to content<br/>
+      ↑↓←→ &nbsp; pan<br/>
+      Space+drag &nbsp; pan<br/>
+      Right-drag &nbsp; pan<br/>
+      Scroll &nbsp;&nbsp;&nbsp;&nbsp; zoom to cursor
+    </div>
+
+    {/* Controls overlay — top-right corner */}
+    <div style={{
+      position: 'absolute', top: 12, right: 12,
+      display: 'flex', flexDirection: 'column', gap: 4,
+      background: 'rgba(255,255,255,0.95)',
+      padding: 6, borderRadius: 8,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+      zIndex: 10,
+    }}>
+      <button onClick={() => zoomBy(ZOOM_STEP)} title="Zoom in (+)" style={controlButtonStyle}>+</button>
+      <button onClick={() => zoomBy(1 / ZOOM_STEP)} title="Zoom out (−)" style={controlButtonStyle}>−</button>
+      <button onClick={fitToContent} title="Fit to content (F)" style={controlButtonStyle}>⤢</button>
+      <div style={{ height: 1, background: 'rgba(10,31,68,0.1)', margin: '2px 0' }} />
+      <div style={{ fontSize: 10, color: '#666', textAlign: 'center', padding: '2px 0', fontFamily: 'monospace' }}>
+        {Math.round(z * 100)}%
+      </div>
+      <button
+        onMouseEnter={() => setShowHint(true)}
+        onMouseLeave={() => setShowHint(false)}
+        title="Keyboard shortcuts"
+        style={{ ...controlButtonStyle, fontSize: 13, fontWeight: 700, color: '#888' }}
+      >?</button>
+    </div>
+    </div>
   );
 }
