@@ -2412,3 +2412,10 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Deploy: GitHub Actions auto-deploys on push to supabase/functions/**.
 - Trade-aware: type field is enum, trade is free-text passthrough.
 - Open: Slice 6 (cascade engine — BFS date push when predecessor's scheduled_date changes). Slice 7 (resource conflict detection).
+
+[LOG — 2026-05-26 — Calendar added to mobile bot-nav]
+- Action: Added Calendar item to the mobile bottom-nav for owner/rep roles. Order: Home → Projects → To-dos → Calendar → Reports.
+- Files: avenstone-vite/src/App.jsx (bot-nav array, +1 line). Icon: `cal` (exists in Ic). Label: "Calendar".
+- Decision: gated by `isOwnerOrRep` to match the render-side gate at `App.jsx:292` (`{pg === 'calendar' && isOwnerOrRep && <CalScr ... />}`) — non-rep/owner roles would tap a button that renders nothing. PMs (staff but not owner/rep) intentionally excluded for now; separate scope if needed.
+- Build incident: `npm run build` initially failed with `Rolldown failed to resolve import "polylabel" from src/lib/pdf.js`. Pre-existing — polylabel was in package.json (`^2.0.1`) but not in node_modules. Ran `npm install polylabel` to restore. Unrelated to the bot-nav edit.
+- No CSS changes. 5 items on a 390px viewport fits without overflow (visually confirmed via build, no runtime check on device).

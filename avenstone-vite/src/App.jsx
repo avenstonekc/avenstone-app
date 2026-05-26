@@ -321,6 +321,7 @@ export default function App() {
               { id: 'home', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
               ...(isStaff ? [{ id: 'todos', ic: 'check', lb: 'To-dos' }] : []),
+              ...(isOwnerOrRep ? [{ id: 'calendar', ic: 'cal', lb: 'Calendar' }] : []),
               ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
