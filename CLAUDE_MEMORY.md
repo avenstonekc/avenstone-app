@@ -2354,6 +2354,21 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Trade-aware: pure date math + DB writes. No trade assumptions. ✓
 - Open: Slice 7 (resource conflict detection — sub double-booking). Slice 8 (lead-time enforcement with override).
 
+[LOG — 2026-05-26 — SCHEDULING_ARC slice 7/8 shipped — resource conflict detection]
+- Action: Slice 7/8 shipped. sbCheckResourceConflicts(opts) added to supabase.js. Surfaces sub double-booking in ScheduleTab ScheduleItemModal and invitee double-booking in CalScr EventModal as amber soft-warning banners with "Save anyway" override — saves are never hard-blocked.
+- Two independent check paths (different ID systems):
+  1. assigned_sub_id (TEXT contact ID) — PostgREST date-overlap query on schedule_items. Null-end-date handled via .or('scheduled_end_date.gte.DATE,and(scheduled_end_date.is.null,scheduled_date.gte.DATE)'). Sub name resolved from contacts.name (maybeSingle, best-effort).
+  2. invitee_user_id (UUID profile ID) — fetches schedule_item_invitees with joined schedule_items + profiles; JS-side date overlap filter (small result set).
+- contacts.primary_user_id does NOT exist — spec approach adapted. Sub detection uses assigned_sub_id directly on schedule_items, no user resolution needed.
+- Non-fatal: any query error returns ok=true empty conflicts + console.warn. Never blocks a save on network failure.
+- CalScr: invitee check only (no assigned_sub_id in form); runs on edit with invitees; excludes current item.
+- ScheduleTab: sub check only (no invitees in form); runs on any save where assigned_sub_id is set; excludes current item on edit.
+- Override: conflictOverride state prevents repeated conflict checks if user clicks Save anyway.
+- Files: avenstone-vite/src/lib/supabase.js (+95 lines), avenstone-vite/src/components/dashboard/CalScr.jsx, avenstone-vite/src/components/jobs/tabs/ScheduleTab.jsx.
+- Commits: 525e3ed (helper), a53e98f (UI). Pushed to main.
+- Build: ✓ 386 modules, clean.
+- Open: Slice 8 (lead-time enforcement with override).
+
 [LOG — 2026-05-26 — SCHEDULING_ARC slice 4/8 shipped — sub accept/decline/tentative response buttons + status badges]
 - Action: Slices 3 and 4 of 8 shipped together. Per-item invite state loaded in SubJobView schedule tab; subs can accept, decline, or mark tentative directly from the schedule list.
 - Slice 3 (commit 9340849): Added invite load useEffect to SubJobView.jsx. Loads schedule_item_invitees for every schedItems entry via Promise.all; extracts current sub's invite row by AV_USER_ID. Result stored as inviteByItemId map. Cancelled flag prevents stale state after unmount.
