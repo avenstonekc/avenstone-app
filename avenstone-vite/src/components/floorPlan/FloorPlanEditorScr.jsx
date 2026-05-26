@@ -39,9 +39,10 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [lastSavedVersion, setLastSavedVersion] = useState(null);
 
   // Edit mode state
-  const [mode, setMode] = useState('select'); // 'select' | 'add-room'
+  const [mode, setMode] = useState('select'); // 'select' | 'add-room' | 'wall-move'
   const [drawingPolygon, setDrawingPolygon] = useState([]); // [[worldX, worldY], ...]
   const [pendingNewRoom, setPendingNewRoom] = useState(null); // { polygon, defaultName, name }
+  const [dragState, setDragState] = useState(null); // { key, livePos: [x, y] } | null
 
   useEffect(() => {
     const onResize = () => setIsDesktop(window.innerWidth >= DESKTOP_MIN_WIDTH);
@@ -134,6 +135,78 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     setMode('add-room');
   }
 
+  // Wall-move validation helpers
+  function polygonArea(polygon) {
+    let area = 0;
+    const n = polygon.length;
+    for (let i = 0; i < n; i++) {
+      const [x1, y1] = polygon[i];
+      const [x2, y2] = polygon[(i + 1) % n];
+      area += x1 * y2 - x2 * y1;
+    }
+    return Math.abs(area) / 2;
+  }
+
+  function ccw(ax, ay, bx, by, cx, cy) {
+    return (cy - ay) * (bx - ax) > (by - ay) * (cx - ax);
+  }
+
+  function segmentsIntersect([ax, ay], [bx, by], [cx, cy], [dx, dy]) {
+    return (
+      ccw(ax, ay, cx, cy, dx, dy) !== ccw(bx, by, cx, cy, dx, dy) &&
+      ccw(ax, ay, bx, by, cx, cy) !== ccw(ax, ay, bx, by, dx, dy)
+    );
+  }
+
+  function polygonSelfIntersects(polygon) {
+    const n = polygon.length;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 2; j < n; j++) {
+        if (i === 0 && j === n - 1) continue; // adjacent edges share endpoint
+        if (segmentsIntersect(
+          polygon[i], polygon[(i + 1) % n],
+          polygon[j], polygon[(j + 1) % n],
+        )) return true;
+      }
+    }
+    return false;
+  }
+
+  function validateWallMove(key, newPos) {
+    const testOverrides = {
+      ...pendingOverrides,
+      wall_endpoint_overrides: {
+        ...(pendingOverrides.wall_endpoint_overrides || {}),
+        [key]: newPos,
+      },
+    };
+    const merged = applyOverridesToScan(plan.raw_scan, testOverrides);
+    for (const room of merged.rooms || []) {
+      if (!room.polygon || room.polygon.length < 3) continue;
+      if (polygonArea(room.polygon) < 1) return { ok: false, reason: 'Room would collapse (< 1 sqft)' };
+      if (polygonSelfIntersects(room.polygon)) return { ok: false, reason: 'Room would self-intersect' };
+    }
+    return { ok: true };
+  }
+
+  function handleWallEndpointDrag(key, newPos) {
+    if (newPos === null) { setDragState(null); return; }
+    setDragState({ key, livePos: newPos });
+  }
+
+  function handleWallEndpointMove(key, newPos) {
+    setDragState(null);
+    const validation = validateWallMove(key, newPos);
+    if (!validation.ok) return; // silently ignore invalid moves
+    updateOverrides({
+      ...pendingOverrides,
+      wall_endpoint_overrides: {
+        ...(pendingOverrides.wall_endpoint_overrides || {}),
+        [key]: newPos,
+      },
+    });
+  }
+
   // Keyboard handler for add-room mode
   useEffect(() => {
     function onKey(e) {
@@ -144,6 +217,11 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
           setDrawingPolygon([]);
         } else if (e.key === 'Enter' && drawingPolygon.length >= 3) {
           handlePolygonClosed(drawingPolygon);
+        }
+      } else if (mode === 'wall-move') {
+        if (e.key === 'Escape') {
+          setDragState(null);
+          setMode('select');
         }
       }
     }
@@ -342,6 +420,8 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
         <div style={{ fontSize: 10, opacity: 0.4, textAlign: 'right', lineHeight: 1.5, marginLeft: 4 }}>
           {mode === 'add-room'
             ? <>Click to place corners<br />Click first corner or Enter to close · Esc to cancel</>
+            : mode === 'wall-move'
+            ? <>Drag endpoint dots to reshape walls<br />Adjacent walls follow · Esc to exit</>
             : <>Right-click drag to pan<br />Scroll to zoom · Click to select</>
           }
         </div>
@@ -364,6 +444,9 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             drawingPolygon={drawingPolygon}
             onDrawingPolygonChange={setDrawingPolygon}
             onPolygonClosed={handlePolygonClosed}
+            liveWallEndpointDrag={dragState ? { key: dragState.key, newPos: dragState.livePos } : null}
+            onWallEndpointDrag={handleWallEndpointDrag}
+            onWallEndpointMove={handleWallEndpointMove}
           />
         </div>
 
@@ -436,6 +519,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                   } else {
                     setMode('add-room');
                     setDrawingPolygon([]);
+                    setDragState(null);
                     setSelection({ roomIds: [], wallIds: [] });
                   }
                 }}
@@ -456,8 +540,41 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                 {mode === 'add-room' ? 'Cancel Add Room' : '+ Add Room'}
               </button>
               {mode === 'add-room' && (
-                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6 }}>
+                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6, marginBottom: 8 }}>
                   Click to place corners. Click the first corner (gold dot) or press Enter to close. Press Esc to cancel.
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  if (mode === 'wall-move') {
+                    setMode('select');
+                    setDragState(null);
+                  } else {
+                    setMode('wall-move');
+                    setDragState(null);
+                    setDrawingPolygon([]);
+                    setSelection({ roomIds: [], wallIds: [] });
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '9px 14px',
+                  background: mode === 'wall-move' ? GOLD : NAVY,
+                  color: mode === 'wall-move' ? NAVY : CREAM,
+                  border: 'none',
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  marginBottom: 8,
+                  fontFamily: "'DM Sans', sans-serif",
+                }}
+              >
+                {mode === 'wall-move' ? 'Exit Move Walls' : '↔ Move Walls'}
+              </button>
+              {mode === 'wall-move' && (
+                <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6 }}>
+                  Drag endpoint dots to reshape walls. Adjacent walls follow automatically. Press Esc to exit.
                 </div>
               )}
             </div>
