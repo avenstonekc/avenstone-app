@@ -2137,3 +2137,12 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Build: clean (379 modules).
 - Decision: kept pairwise fallback in code so the renderer doesn't degrade if normalizeFloorPlan fails or is unavailable (malformed scan, future format change).
 - Open: Phase 5 (editable scan drafts — floor_plans table + FloorPlanEditorScr + versions). See FLOOR_PLAN_LAYOUT_ARC.md for sequencing.
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 5a shipped — persistence foundation]
+- Action: Phase 5a shipped. Floor plans are now first-class persistent entities.
+- Migration: 20260525200000_floor_plans.sql. Two tables: floor_plans (13 cols inc. contact_id TEXT matching contacts.id type, 4 RLS policies, 3 indexes, 1 updated_at trigger), floor_plan_versions (10 cols, 3 RLS policies, 2 indexes — including unique on plan+version). Status check: draft|sent|archived. Anchored check: must have job_id OR contact_id. Bucket 'floor-plans' (private, 3 storage policies, tenant-scoped path convention <tenant_id>/<plan_id>/v<N>.pdf).
+- Helpers: sbCreateFloorPlan, sbLoadFloorPlan, sbLoadFloorPlansForJob, sbUpdateFloorPlanOverrides, sbRegenerateFloorPlanPdf, sbSendFloorPlanVersion, sbDeleteFloorPlan. All return {ok, error, data}. +270 lines in supabase.js.
+- Fix during apply: contact_id declared UUID initially — failed FK (contacts.id is TEXT). Changed to TEXT before re-apply.
+- Storage URLs are signed (7-day expiry). Renewal strategy deferred — short-lived clients refetch via sbLoadFloorPlan.
+- Commits: 9e07592 (migration), a1fddde (helpers). Both pushed to main.
+- Phase 5b next: wire AiIntakeWizard scanner to call sbCreateFloorPlan at end of scan.
