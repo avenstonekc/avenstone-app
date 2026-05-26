@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import polygonClipping from 'polygon-clipping';
 import { sbLoadFloorPlan, sbUpdateFloorPlanOverrides, sbRegenerateFloorPlanPdf } from '../../lib/supabase';
 import { buildFloorPlanPDF } from '../../lib/pdf';
 import { applyOverridesToScan } from '../../lib/floorPlan/applyOverrides';
@@ -43,6 +44,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [drawingPolygon, setDrawingPolygon] = useState([]); // [[worldX, worldY], ...]
   const [pendingNewRoom, setPendingNewRoom] = useState(null); // { polygon, defaultName, name }
   const [dragState, setDragState] = useState(null); // { key, livePos: [x, y] } | null
+  const [pendingMerge, setPendingMerge] = useState(null); // { source_room_ids, name, candidate_polygon, source_rooms }
 
   useEffect(() => {
     const onResize = () => setIsDesktop(window.innerWidth >= DESKTOP_MIN_WIDTH);
@@ -207,10 +209,77 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     });
   }
 
+  // Merge rooms helpers
+  function runPolygonUnion(sourceRooms) {
+    const inputs = sourceRooms.map(r => [r.polygon]);
+    const result = polygonClipping.union(...inputs);
+    if (!result || result.length === 0) return { ok: false, reason: 'Merge produced no polygon — rooms may not be adjacent.' };
+    if (result.length > 1) return { ok: false, reason: 'Selected rooms are not all connected — they would form separate pieces.' };
+    let poly = result[0][0];
+    if (poly.length > 1 &&
+        poly[0][0] === poly[poly.length - 1][0] &&
+        poly[0][1] === poly[poly.length - 1][1]) {
+      poly = poly.slice(0, -1);
+    }
+    return { ok: true, polygon: poly };
+  }
+
+  function initiateMerge() {
+    const sourceIds = selection.roomIds;
+    if (sourceIds.length < 2) return;
+    const effectiveScan = applyOverridesToScan(plan.raw_scan, pendingOverrides);
+    const sourceRooms = sourceIds
+      .map(id => effectiveScan.rooms.find(r => r.id === id))
+      .filter(Boolean);
+    if (sourceRooms.length !== sourceIds.length) {
+      setSaveError('Some selected rooms no longer exist in the scan.');
+      return;
+    }
+    let unionResult;
+    try {
+      unionResult = runPolygonUnion(sourceRooms);
+    } catch (err) {
+      setSaveError(`Merge failed: ${err?.message || err}`);
+      return;
+    }
+    if (!unionResult.ok) {
+      setSaveError(unionResult.reason);
+      return;
+    }
+    setPendingMerge({
+      source_room_ids: sourceIds,
+      name: sourceRooms[0].name || 'Merged Room',
+      candidate_polygon: unionResult.polygon,
+      source_rooms: sourceRooms,
+    });
+  }
+
+  function confirmMerge() {
+    if (!pendingMerge) return;
+    const name = (pendingMerge.name || 'Merged Room').trim() || 'Merged Room';
+    const newRoom = {
+      id: `merged-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      polygon: pendingMerge.candidate_polygon,
+      source_room_ids: pendingMerge.source_room_ids,
+      type: 'unknown',
+    };
+    updateOverrides({
+      ...pendingOverrides,
+      merged_rooms: [...(pendingOverrides.merged_rooms || []), newRoom],
+    });
+    setPendingMerge(null);
+    setSelection({ roomIds: [], wallIds: [] });
+  }
+
+  function cancelMerge() {
+    setPendingMerge(null);
+  }
+
   // Keyboard handler for add-room mode
   useEffect(() => {
     function onKey(e) {
-      if (pendingNewRoom) return; // modal is up, don't intercept
+      if (pendingNewRoom || pendingMerge) return; // modal is up, don't intercept
       if (mode === 'add-room') {
         if (e.key === 'Escape') {
           setMode('select');
@@ -227,7 +296,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, drawingPolygon, pendingNewRoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, drawingPolygon, pendingNewRoom, pendingMerge]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveOnly = async () => {
     if (!plan || !isDirty) return;
@@ -281,6 +350,22 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     }
     setIsDirty(false);
   };
+
+  // Live merge preview — gold union outline shown while 2+ rooms are selected in select mode
+  const mergePreviewPolygon = useMemo(() => {
+    if (selection.roomIds.length < 2 || mode !== 'select' || !plan?.raw_scan) return null;
+    try {
+      const effectiveScan = applyOverridesToScan(plan.raw_scan, pendingOverrides);
+      const sourceRooms = selection.roomIds
+        .map(id => effectiveScan.rooms.find(r => r.id === id))
+        .filter(Boolean);
+      if (sourceRooms.length < 2) return null;
+      const result = runPolygonUnion(sourceRooms);
+      return result.ok ? result.polygon : null;
+    } catch {
+      return null;
+    }
+  }, [selection.roomIds, mode, plan?.raw_scan, pendingOverrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mobile guard
   if (!isDesktop) {
@@ -447,6 +532,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             liveWallEndpointDrag={dragState ? { key: dragState.key, newPos: dragState.livePos } : null}
             onWallEndpointDrag={handleWallEndpointDrag}
             onWallEndpointMove={handleWallEndpointMove}
+            mergePreviewPolygon={mergePreviewPolygon}
           />
         </div>
 
@@ -486,6 +572,20 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                     </div>
                   );
                 })}
+                {selRoomCount >= 2 && mode === 'select' && (
+                  <button
+                    onClick={initiateMerge}
+                    style={{
+                      width: '100%', padding: '9px 14px', marginTop: 4,
+                      background: NAVY, color: CREAM,
+                      border: 'none', borderRadius: 8, fontWeight: 700,
+                      fontSize: 13, cursor: 'pointer',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >
+                    Merge {selRoomCount} Rooms
+                  </button>
+                )}
               </div>
             )}
             {selWallCount > 0 && (
@@ -670,6 +770,77 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                 }}
               >
                 Add Room
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merge confirm modal */}
+      {pendingMerge && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2200, fontFamily: "'DM Sans', sans-serif",
+        }}>
+          <div style={{
+            background: '#fff', padding: 28, borderRadius: 12,
+            minWidth: 380, maxWidth: '90vw',
+            boxShadow: '0 8px 40px rgba(10,31,68,0.25)',
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, color: NAVY, fontFamily: "'DM Serif Display', serif", fontSize: 20 }}>
+              Merge {pendingMerge.source_rooms.length} Rooms
+            </h3>
+            <div style={{ marginBottom: 16, fontSize: 13, color: '#666' }}>
+              Combining:
+              <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                {pendingMerge.source_rooms.map(r => (
+                  <li key={r.id} style={{ marginBottom: 3 }}>{r.name || r.id}</li>
+                ))}
+              </ul>
+            </div>
+            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6 }}>
+              Name for merged room
+            </label>
+            <input
+              type="text"
+              autoFocus
+              value={pendingMerge.name}
+              onChange={(e) => setPendingMerge(m => ({ ...m, name: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmMerge();
+                if (e.key === 'Escape') cancelMerge();
+              }}
+              style={{
+                width: '100%', padding: '10px 12px', fontSize: 15,
+                border: '1px solid rgba(10,31,68,0.2)', borderRadius: 6,
+                marginBottom: 14, boxSizing: 'border-box',
+                fontFamily: "'DM Sans', sans-serif", outline: 'none',
+              }}
+            />
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 20, padding: '8px 10px', background: 'rgba(10,31,68,0.04)', borderRadius: 6 }}>
+              The wall between merged rooms will be removed. Revert by discarding changes before saving.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={cancelMerge}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: '1px solid rgba(10,31,68,0.2)',
+                  background: '#fff', color: NAVY, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmMerge}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: 'none',
+                  background: NAVY, color: CREAM, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700,
+                }}
+              >
+                Merge Rooms
               </button>
             </div>
           </div>
