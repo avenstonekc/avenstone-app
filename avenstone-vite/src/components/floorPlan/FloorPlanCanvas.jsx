@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { normalizeFloorPlan } from '../../lib/floorPlan/normalize';
 import { computeLayoutHints } from '../../lib/floorPlan/layoutCheck';
+import { applyOverridesToScan } from '../../lib/floorPlan/applyOverrides';
 
 const NAVY = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -24,13 +25,20 @@ export default function FloorPlanCanvas({
   const zoomRef = useRef(1);
   const [renderTick, setRenderTick] = useState(0);
   const panningRef = useRef(null);
+  const fittedScanRef = useRef(null); // tracks which rawScan we last fit to
 
   const forceUpdate = useCallback(() => setRenderTick(t => t + 1), []);
+
+  // Merge layout overrides into scan before normalization
+  const effectiveScan = useMemo(
+    () => applyOverridesToScan(rawScan, layoutOverrides),
+    [rawScan, layoutOverrides],
+  );
 
   // Run Phase 1 + 2 normalization
   const { normalized, hints, error } = useMemo(() => {
     try {
-      const normResult = normalizeFloorPlan(rawScan);
+      const normResult = normalizeFloorPlan(effectiveScan);
       if (!normResult.ok) return { error: normResult.error || 'Normalize failed' };
       const layoutResult = computeLayoutHints(normResult.data);
       if (!layoutResult.ok) return { normalized: normResult.data, hints: {}, error: null };
@@ -38,7 +46,7 @@ export default function FloorPlanCanvas({
     } catch (err) {
       return { error: err?.message || String(err) };
     }
-  }, [rawScan]);
+  }, [effectiveScan]);
 
   // Compute world-space bounds
   const bounds = useMemo(() => {
@@ -55,9 +63,9 @@ export default function FloorPlanCanvas({
     return { minX, minZ, maxX, maxZ };
   }, [normalized]);
 
-  // Fit to content on first load
+  // Fit to content — only when rawScan changes (new plan), not on every override change
   useEffect(() => {
-    if (!normalized) return;
+    if (!normalized || fittedScanRef.current === rawScan) return;
     const contentW = (bounds.maxX - bounds.minX) * PX_PER_FOOT;
     const contentH = (bounds.maxZ - bounds.minZ) * PX_PER_FOOT;
     if (contentW <= 0 || contentH <= 0) return;
@@ -68,6 +76,7 @@ export default function FloorPlanCanvas({
       x: width / 2 - ((bounds.minX + bounds.maxX) / 2) * PX_PER_FOOT * z,
       y: height / 2 - ((bounds.minZ + bounds.maxZ) / 2) * PX_PER_FOOT * z,
     };
+    fittedScanRef.current = rawScan;
     forceUpdate();
   }, [normalized, bounds, width, height]); // eslint-disable-line react-hooks/exhaustive-deps
 
