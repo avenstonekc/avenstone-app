@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbGenerateDailyLogDraft, sbSaveDailyLogClientMessage, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID, sbUpdateScheduleItem, sbCountPhotosForEntity, sbLoadPhotosForEntity } from '../../lib/supabase';
+import { sbLoadMessages, sbPostMessage, sbPhoto, sbLoadDailyLogs, sbSubmitDailyLog, sbGenerateDailyLogDraft, sbSaveDailyLogClientMessage, sbNotify, sbLoadScheduleItemsForSub, sbLoadJobDocuments, sbLoadSubPayments, sbLoadSubCOs, sbSubSubmitCO, sbLoadStaffMessages, sbPostStaffMessage, AV_USER_ID, sbUpdateScheduleItem, sbCountPhotosForEntity, sbLoadPhotosForEntity, sbLoadScheduleInvitees, sbRespondToScheduleInvite } from '../../lib/supabase';
 import { Ic, sc, sl, fD, fDT, f$ } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 
@@ -37,6 +37,8 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
   const capturePhotoRef = useRef();
   const [schedItems, setSchedItems] = useState([]);
   const [schedLoaded, setSchedLoaded] = useState(false);
+  const [inviteByItemId, setInviteByItemId] = useState({}); // { [item_id]: invite row | null }
+  const [respondingId, setRespondingId] = useState(null);   // item.id currently mid-response
   const [docs, setDocs] = useState([]);
   const [docsLoaded, setDocsLoaded] = useState(false);
   const [payments, setPayments] = useState([]);
@@ -77,6 +79,28 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
       setSchedLoaded(true);
     });
   }, [tab, schedLoaded]);
+
+  // Load invite rows for each visible schedule item (SCHEDULING_ARC slice 4/8)
+  // Fan-out per-item — acceptable for <10 items per job in typical use
+  useEffect(() => {
+    if (!schedLoaded || !schedItems.length) return;
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(
+        schedItems.map(async (item) => {
+          const res = await sbLoadScheduleInvitees(item.id);
+          if (!res?.ok) return [item.id, null];
+          const myInvite = (res.data || []).find(inv => inv.invitee_user_id === AV_USER_ID);
+          return [item.id, myInvite || null];
+        })
+      );
+      if (cancelled) return;
+      const map = {};
+      for (const [itemId, invite] of results) map[itemId] = invite;
+      setInviteByItemId(map);
+    })();
+    return () => { cancelled = true; };
+  }, [schedLoaded, schedItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (tab !== 'docs' || docsLoaded) return;
