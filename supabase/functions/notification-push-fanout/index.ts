@@ -29,9 +29,12 @@ interface NotificationRow {
 function buildTitle(n: NotificationRow): string {
   if (n.title) return n.title;
   switch (n.type) {
-    case 'todo_delegated':        return 'New todo assigned';
+    case 'todo_delegated':        return 'New to-do assigned';
     case 'assigned_to_job':       return 'You were added to a job';
     case 'schedule_item_created': return 'New schedule item';
+    // schedule_item_changed: cascade notifications carry enriched body written at INSERT time
+    // (e.g. "Drywall moved from Jun 8 to Jun 12 (cascade from upstream task).")
+    // Title fallback used only for non-cascade changes.
     case 'schedule_item_changed': return 'Schedule item updated';
     case 'co_submitted':          return 'Change order submitted';
     case 'co_approved':           return 'Change order approved';
