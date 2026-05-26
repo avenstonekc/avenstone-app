@@ -2107,3 +2107,33 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Build: clean (375 modules).
 - Trade-aware: all geometric, no trade assumptions. Hallway-type recognition uses regex match against type field (hallway|hall|corridor|stairs|landing).
 - Open: Phase 4 (pdf.js renderer consuming layout_hints) — 1-2 prompts. Phase 3 (Opus tiebreaker for ambiguous issues) — only if Phase 4 surfaces real edge cases.
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 4 shipped — pdf renderer consumes layout_hints]
+- Action: Phase 4 shipped. pdf.js now imports polylabel, normalizeFloorPlan, computeLayoutHints.
+- Pipeline: buildFloorPlanPDF runs Phase 1+2 after applyEditOverrides → builds layout_hints (by room.id) + hints_by_name (by label_full_text) for fallback lookup. Logs ambiguous issues + warns.
+- Label loop changes: polylabel on transformed polygon replaces centroid + _interiorPoint grid search (better for L-shapes). narrow threshold now from hint.label_rotation (1.5:1 Phase 2) not legacy 3:1. Text from hint.label_text (abbreviated). SF from hint.sf_text. Hallway micro SF gate respected via sf_inline_with_label flag.
+- Backward compat: all hint lookups fall back to legacy behavior when hint is missing (scan missing ids, Phase 1 normalization fails, etc.). Wall-margin + collision checks unchanged.
+- Coordinate space: hints.label_x/y (world-space) are NOT used for position. polylabel runs on the renderer's already-transformed polygon — same coord space, no conversion needed.
+- Files: avenstone-vite/src/lib/pdf.js (+57/-20 lines). Commit a27e463.
+- Build: clean (379 modules).
+- Visual testing: Kalin must run a real scan to see improvements (abbreviated names, better L-shape label placement, hallway SF suppression for small halls).
+- Open: Phase 5 (pre-submit preview — shows layout_hints output before saving scan) — future prompt.
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC Phase 1 extended — wall thickness standardized]
+- Action: Extended normalize.js to auto-classify walls as exterior (1 adjoining room) or interior (2+ adjoining rooms) and override scanner-noisy thicknesses with construction standards. Exterior = 2x6 = 5.5"; interior = 2x4 = 3.5". Raw thickness preserved as thickness_raw_ft.
+- New exported helper: classifyAndStandardizeWalls(walls, rooms, options).
+- Solves cosmetic problem from 2026-05-25 production scan where RoomPlan returned 3+ different thicknesses per plan, looked unprofessional in client PDFs.
+- Adjacency detection uses point-on-segment math with 0.05 ft default tolerance.
+- Override via options.exteriorWallThicknessFt / options.interiorWallThicknessFt / options.adjacencyToleranceFt — supports future tenant config (commercial trades may use different stud sizes).
+- Smoke: 50/50 tests pass (34 existing + 16 new).
+- Build: clean.
+- Trade-aware: 2x4/2x6 is residential US framing convention. Commercial / international tenants will need override. Hooks in place via options.
+- Open: phantom-closet problem (unscanned spaces appearing as malformed alcoves) — separate concern, not in this slice. Either Phase 5c editor's draw-missing-room or SCAN_QUALITY_ARC capture-time warnings.
+
+[LOG — 2026-05-25 — FLOOR_PLAN_LAYOUT_ARC — pdf renderer wired to standardized wall thickness]
+- Action: pdf.js now consumes wall classification from Phase 1's classifyAndStandardizeWalls output instead of the legacy O(n²) pairwise interior-wall heuristic.
+- Change: Phase 1+2 pipeline block in buildFloorPlanPDF now also builds wallClassByRoomAndSeg lookup ({room_id: ['exterior'|'interior', ...]}) from normalized.data.walls. Passed to _renderFloorPage as new trailing param. isInteriorWall(room, si, seg) function uses the lookup; pairwise heuristic runs only as fallback when lookup is unavailable. allWallSegs + wall-drawing loop (poché thickness 3pt/6pt) both updated to call isInteriorWall. Debug log now reports 'classified' or 'pairwise-fallback'.
+- Files: avenstone-vite/src/lib/pdf.js. Commit: c7e834b.
+- Build: clean (379 modules).
+- Decision: kept pairwise fallback in code so the renderer doesn't degrade if normalizeFloorPlan fails or is unavailable (malformed scan, future format change).
+- Open: Phase 5 (editable scan drafts — floor_plans table + FloorPlanEditorScr + versions). See FLOOR_PLAN_LAYOUT_ARC.md for sequencing.
