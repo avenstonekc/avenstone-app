@@ -3,7 +3,7 @@ import {
   sb, AV_USER_ID,
   sbLoadUpcomingScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem,
   sbLoadScheduleInvitees, sbAddScheduleInvitee, sbRemoveScheduleInvitee,
-  sbLoadTeam, sbLoadActiveSubs,
+  sbLoadTeam, sbLoadActiveSubs, sbCheckResourceConflicts,
 } from '../../lib/supabase';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -254,6 +254,8 @@ function EventModal({ item, jobs, onClose, onSaved }) {
   const [invitees, setInvitees]       = useState([]);
   const [pendingInvId, setPendingInvId] = useState('');
   const [staff, setStaff]             = useState([]);
+  const [conflictWarning, setConflictWarning] = useState(null); // null | { conflicts }
+  const [conflictOverride, setConflictOverride] = useState(false);
 
   useEffect(() => {
     if (!item?.id) return;
@@ -274,11 +276,31 @@ function EventModal({ item, jobs, onClose, onSaved }) {
   const invitedIds = new Set(invitees.map(inv => inv.invitee_user_id));
   const availableStaff = staff.filter(p => p.id !== AV_USER_ID && !invitedIds.has(p.id));
 
-  const save = async () => {
+  const save = async (override = conflictOverride) => {
     if (!form.title.trim()) { setErr('Title is required'); return; }
     if (!form.scheduled_date) { setErr('Date is required'); return; }
     if (!form.job_id) { setErr('Job is required'); return; }
-    setSaving(true); setErr(null);
+    setErr(null);
+
+    // Soft conflict check — only for existing items with invitees on edit
+    if (!override && !isNew && invitees.length > 0) {
+      const inviteeIds = invitees.map(inv => inv.invitee_user_id).filter(Boolean);
+      if (inviteeIds.length > 0) {
+        const { conflicts } = await sbCheckResourceConflicts({
+          scheduledDate:    form.scheduled_date,
+          scheduledEndDate: null,
+          inviteeUserIds:   inviteeIds,
+          excludeItemId:    item.id,
+        });
+        if (conflicts.length > 0) {
+          setConflictWarning({ conflicts });
+          return;
+        }
+      }
+    }
+
+    setConflictWarning(null);
+    setSaving(true);
     const payload = {
       type:           form.type,
       title:          form.title.trim(),
@@ -334,6 +356,21 @@ function EventModal({ item, jobs, onClose, onSaved }) {
         </div>
 
         {err && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>{err}</div>}
+
+        {conflictWarning && (
+          <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', padding: '10px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Scheduling conflict detected</div>
+            {conflictWarning.conflicts.map((c, i) => (
+              <div key={i} style={{ marginBottom: 2 }}>
+                <strong>{c.name}</strong> is already scheduled for <em>{c.itemTitle}</em> on {c.conflictDate}.
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button onClick={() => { setConflictOverride(true); save(true); }} className="btn btn-navy" style={{ fontSize: 12, padding: '4px 12px' }}>Save anyway</button>
+              <button onClick={() => setConflictWarning(null)} className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 12px' }}>Go back</button>
+            </div>
+          </div>
+        )}
 
         <div className="fg">
           <label className="flbl">Type *</label>

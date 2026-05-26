@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity, sbLoadPhotosForEntity, sbCreateChecklistFromTemplate, sbLoadChecklistForScheduleItem } from '../../../lib/supabase';
+import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity, sbLoadPhotosForEntity, sbCreateChecklistFromTemplate, sbLoadChecklistForScheduleItem, sbCheckResourceConflicts } from '../../../lib/supabase';
 import { getTemplateOptions } from '../../../lib/siteVisitTemplates';
 import SiteVisitChecklist from '../SiteVisitChecklist';
 import { Ic, fD } from '../../../lib/utils';
@@ -390,6 +390,8 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
   const [showEndDate, setShowEndDate]   = useState(!!item?.scheduled_end_date);
   const [saving, setSaving]             = useState(false);
   const [err, setErr]                   = useState(null);
+  const [conflictWarning, setConflictWarning] = useState(null); // null | { conflicts }
+  const [conflictOverride, setConflictOverride] = useState(false);
   const [trades, setTrades]             = useState([]);
   const [subs, setSubs]                 = useState([]);
   const [entityPhotoCount, setEntityPhotoCount] = useState(0);
@@ -448,10 +450,27 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     }
   };
 
-  const save = async () => {
+  const save = async (override = conflictOverride) => {
     if (!form.title.trim()) { setErr('Title is required'); return; }
     if (!form.scheduled_date && form.type !== 'delay') { setErr('Date is required'); return; }
-    setSaving(true); setErr(null);
+    setErr(null);
+
+    // Soft conflict check — sub double-booking via assigned_sub_id
+    if (!override && form.assigned_sub_id && form.scheduled_date) {
+      const { conflicts } = await sbCheckResourceConflicts({
+        scheduledDate:    form.scheduled_date,
+        scheduledEndDate: form.scheduled_end_date || null,
+        assignedSubId:    form.assigned_sub_id,
+        excludeItemId:    isNew ? undefined : item.id,
+      });
+      if (conflicts.length > 0) {
+        setConflictWarning({ conflicts });
+        return;
+      }
+    }
+
+    setConflictWarning(null);
+    setSaving(true);
 
     // Coalesce at modal boundary (defense in depth)
     const payload = {
@@ -491,6 +510,21 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
         </div>
 
         {err && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>{err}</div>}
+
+        {conflictWarning && (
+          <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', padding: '10px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Sub double-booking detected</div>
+            {conflictWarning.conflicts.map((c, i) => (
+              <div key={i} style={{ marginBottom: 2 }}>
+                <strong>{c.name}</strong> is already scheduled for <em>{c.itemTitle}</em> on {c.conflictDate}.
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button onClick={() => { setConflictOverride(true); save(true); }} className="btn btn-navy" style={{ fontSize: 12, padding: '4px 12px' }}>Save anyway</button>
+              <button onClick={() => setConflictWarning(null)} className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 12px' }}>Go back</button>
+            </div>
+          </div>
+        )}
 
         {/* Type */}
         <div className="fg">
