@@ -1976,6 +1976,95 @@ export const sbRespondToScheduleInvite = async (inviteeRowId, status) => {
   }
 };
 
+// ─── Scheduling Arc Phase 1 (SCHEDULING_ARC slice 1) ────────────────────────
+
+export async function sbSetScheduleItemDependencies(id, predecessorIds = [], lagDays = 0) {
+  if (!id) return { ok: false, error: 'id required' };
+  if (!Array.isArray(predecessorIds)) return { ok: false, error: 'predecessorIds must be array' };
+  try {
+    if (predecessorIds.length > 0) {
+      const visited = new Set();
+      const queue = [...predecessorIds];
+      while (queue.length > 0) {
+        const cur = queue.shift();
+        if (cur === id) return { ok: false, error: 'cycle detected — predecessor chain reaches this item' };
+        if (visited.has(cur)) continue;
+        visited.add(cur);
+        const { data, error } = await sb.from('schedule_items').select('predecessor_ids').eq('id', cur).single();
+        if (error) return { ok: false, error: `walking predecessors: ${error.message}` };
+        for (const pid of data?.predecessor_ids || []) {
+          if (!visited.has(pid)) queue.push(pid);
+        }
+      }
+    }
+    const { error: updErr } = await sb.from('schedule_items').update({ predecessor_ids: predecessorIds, lag_days: lagDays }).eq('id', id);
+    if (updErr) return { ok: false, error: updErr.message };
+    const { data: { user } } = await sb.auth.getUser();
+    const { data: item } = await sb.from('schedule_items').select('job_id').eq('id', id).single();
+    await sb.from('schedule_change_log').insert({
+      tenant_id: AV_TENANT,
+      schedule_item_id: id,
+      job_id: item?.job_id,
+      change_kind: 'date_moved',
+      new_value: { predecessor_ids: predecessorIds, lag_days: lagDays },
+      changed_by_id: user?.id,
+      reason: 'dependencies updated',
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+export async function sbMarkScheduleItemFinished(id, finishDate = null) {
+  if (!id) return { ok: false, error: 'id required' };
+  try {
+    const date = finishDate || new Date().toISOString().slice(0, 10);
+    const { data: { user } } = await sb.auth.getUser();
+    const { data: current, error: rdErr } = await sb.from('schedule_items').select('actual_finish_date, job_id').eq('id', id).single();
+    if (rdErr) return { ok: false, error: rdErr.message };
+    const { error: updErr } = await sb.from('schedule_items').update({ actual_finish_date: date, status: 'complete' }).eq('id', id);
+    if (updErr) return { ok: false, error: updErr.message };
+    await sb.from('schedule_change_log').insert({
+      tenant_id: AV_TENANT,
+      schedule_item_id: id,
+      job_id: current.job_id,
+      change_kind: 'finished',
+      old_value: { actual_finish_date: current.actual_finish_date },
+      new_value: { actual_finish_date: date },
+      changed_by_id: user?.id,
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+export async function sbUpdateScheduleItemPhase(id, phaseId) {
+  if (!id) return { ok: false, error: 'id required' };
+  try {
+    const { error } = await sb.from('schedule_items').update({ phase_id: phaseId || null }).eq('id', id);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+export async function sbUpdateContactCapacity(contactId, dailyCapacityHours) {
+  if (!contactId) return { ok: false, error: 'contactId required' };
+  if (dailyCapacityHours !== null && (typeof dailyCapacityHours !== 'number' || dailyCapacityHours < 0)) {
+    return { ok: false, error: 'dailyCapacityHours must be non-negative number or null' };
+  }
+  try {
+    const { error } = await sb.from('contacts').update({ daily_capacity_hours: dailyCapacityHours }).eq('id', contactId);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
 // ─── Site Visit Checklists (EXECUTION_ARC Phase 8) ──────────────────────────
 
 export async function sbCreateChecklistFromTemplate(scheduleItemId, templateKey) {
