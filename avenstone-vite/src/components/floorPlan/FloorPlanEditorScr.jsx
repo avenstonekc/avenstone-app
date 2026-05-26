@@ -42,6 +42,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   // Edit mode state
   const [mode, setMode] = useState('select'); // 'select' | 'add-room' | 'wall-move' | 'add-text'
   const [editingAnnotation, setEditingAnnotation] = useState(null); // { id, text } when modal open
+  const [renameInputValue, setRenameInputValue] = useState(null); // null = show current name, string = editing
   const [drawingPolygon, setDrawingPolygon] = useState([]); // [[worldX, worldY], ...]
   const [pendingNewRoom, setPendingNewRoom] = useState(null); // { polygon, defaultName, name }
   const [dragState, setDragState] = useState(null); // { key, livePos: [x, y] } | null
@@ -275,6 +276,42 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
 
   function cancelMerge() {
     setPendingMerge(null);
+  }
+
+  // Debug: log drawingPolygon changes to confirm add-room state flow
+  useEffect(() => {
+    if (drawingPolygon.length > 0 || mode === 'add-room') {
+      console.log('[add-room] drawingPolygon updated, length:', drawingPolygon.length, 'points:', drawingPolygon);
+    }
+  }, [drawingPolygon]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset rename input when selection changes
+  useEffect(() => {
+    setRenameInputValue(null);
+  }, [selection.roomIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Rename room helpers (Phase 5c-8)
+  function commitRename(roomId) {
+    if (renameInputValue === null) return;
+    const trimmed = renameInputValue.trim();
+    if (!trimmed) { setRenameInputValue(null); return; }
+    updateOverrides({
+      ...pendingOverrides,
+      [roomId]: { ...(pendingOverrides[roomId] || {}), name: trimmed },
+    });
+    setRenameInputValue(null);
+  }
+
+  // SF visibility helpers (Phase 5c-8)
+  function getSfVisible(roomId) {
+    return pendingOverrides[roomId]?.sf_visible !== false;
+  }
+
+  function toggleSfVisible(roomId, visible) {
+    updateOverrides({
+      ...pendingOverrides,
+      [roomId]: { ...(pendingOverrides[roomId] || {}), sf_visible: visible },
+    });
   }
 
   // Text annotation handlers (Phase 5c-7)
@@ -634,21 +671,73 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                   Rooms ({selRoomCount})
                 </div>
                 {selection.roomIds.map(id => {
-                  const room = plan.raw_scan?.rooms?.find(r => r.id === id);
-                  const overrideName = pendingOverrides[id]?.name;
+                  const effectiveScan = applyOverridesToScan(plan.raw_scan, pendingOverrides);
+                  const room = effectiveScan.rooms?.find(r => r.id === id);
                   return (
                     <div key={id} style={{
                       padding: '8px 12px', background: 'rgba(10,31,68,0.04)',
                       borderRadius: 6, marginBottom: 6, fontSize: 13, color: NAVY,
                       border: '1px solid rgba(10,31,68,0.08)',
                     }}>
-                      {overrideName || room?.name || id}
+                      {room?.name || id}
                       {room?.sqft && (
                         <span style={{ marginLeft: 8, fontSize: 11, color: '#888' }}>{room.sqft} sf</span>
                       )}
                     </div>
                   );
                 })}
+                {/* Single-room tools: rename + SF toggle */}
+                {selRoomCount === 1 && (() => {
+                  const roomId = selection.roomIds[0];
+                  const effectiveScan = applyOverridesToScan(plan.raw_scan, pendingOverrides);
+                  const room = effectiveScan.rooms?.find(r => r.id === roomId);
+                  if (!room) return null;
+                  const currentName = room.name || '';
+                  return (
+                    <div style={{ marginTop: 12, padding: '12px', background: 'rgba(10,31,68,0.04)', borderRadius: 8 }}>
+                      <label style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#888', marginBottom: 6, fontWeight: 700 }}>
+                        Room name
+                      </label>
+                      <input
+                        type="text"
+                        value={renameInputValue !== null ? renameInputValue : currentName}
+                        onChange={(e) => setRenameInputValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitRename(roomId);
+                          if (e.key === 'Escape') setRenameInputValue(null);
+                        }}
+                        onBlur={() => {
+                          if (renameInputValue !== null && renameInputValue.trim() !== currentName) {
+                            commitRename(roomId);
+                          } else {
+                            setRenameInputValue(null);
+                          }
+                        }}
+                        placeholder="e.g. Master Suite"
+                        style={{
+                          width: '100%', padding: '8px 10px', fontSize: 13,
+                          border: '1px solid rgba(10,31,68,0.2)', borderRadius: 6,
+                          boxSizing: 'border-box', fontFamily: "'DM Sans', sans-serif",
+                          outline: 'none',
+                        }}
+                      />
+                      <div style={{ fontSize: 10, color: '#aaa', marginTop: 4 }}>
+                        Enter to save · Esc to cancel
+                      </div>
+                      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: '#fff', borderRadius: 6, border: '1px solid rgba(10,31,68,0.08)' }}>
+                        <label style={{ fontSize: 12, color: NAVY, cursor: 'pointer' }}>
+                          Show square footage
+                        </label>
+                        <input
+                          type="checkbox"
+                          checked={getSfVisible(roomId)}
+                          onChange={(e) => toggleSfVisible(roomId, e.target.checked)}
+                          style={{ cursor: 'pointer', width: 16, height: 16 }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
                 {selRoomCount >= 2 && mode === 'select' && (
                   <button
                     onClick={initiateMerge}
@@ -784,7 +873,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
               </button>
               {mode === 'wall-move' && (
                 <div style={{ fontSize: 11, color: '#666', lineHeight: 1.6, padding: '8px 10px', background: 'rgba(201,168,76,0.08)', borderRadius: 6, marginBottom: 8 }}>
-                  Drag endpoint dots to reshape walls. Adjacent walls follow automatically. Press Esc to exit.
+                  Drag any endpoint dot to reshape rooms. Hold <strong>Shift</strong> to constrain to wall axis. Snaps to other endpoints within 6". Esc to cancel.
                 </div>
               )}
               <button
