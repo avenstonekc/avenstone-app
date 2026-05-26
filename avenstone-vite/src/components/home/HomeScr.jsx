@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { sbLoadUpcomingScheduleItems, sbLoadMyTodos } from '../../lib/supabase';
 import { isMob } from '../../lib/utils';
 import TodoCard from '../common/TodoCard';
+import { fetchWeather, formatDayLabel } from '../../lib/weather';
 
 const STATUS_LABEL = {
   lead: 'Lead', proposal: 'Proposal', contract: 'Contract',
@@ -50,10 +51,23 @@ export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob }) 
   const [todos, setTodos] = useState([]);
   const [loadingSched, setLoadingSched] = useState(true);
   const [loadingTodos, setLoadingTodos] = useState(true);
+  const [weather, setWeather] = useState(null);
+  const [weatherErr, setWeatherErr] = useState(null);
 
   useEffect(() => {
     sbLoadUpcomingScheduleItems(7).then(r => { setSchedItems(r.data || []); setLoadingSched(false); });
     sbLoadMyTodos().then(d => { setTodos(d || []); setLoadingTodos(false); });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const result = await fetchWeather();
+      if (cancelled) return;
+      if (result.ok) { setWeather(result.data); setWeatherErr(null); }
+      else setWeatherErr(result.error);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const activeJobs = (jobs || []).filter(j => !['complete', 'on_hold'].includes(j.status));
@@ -88,6 +102,63 @@ export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob }) 
       </div>
 
       <div style={{ padding: '20px 20px 0' }}>
+
+        {/* ── Weather ─────────────────────────────────────── */}
+        {weather && (
+          <div style={{
+            background: 'linear-gradient(135deg, #0A1F44 0%, #143264 100%)',
+            color: '#F7F5F0',
+            padding: '16px 18px',
+            borderRadius: 12,
+            marginBottom: 24,
+            boxShadow: '0 2px 8px rgba(10,31,68,0.15)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 40, lineHeight: 1 }}>{weather.current.icon}</div>
+              <div>
+                <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.1 }}>
+                  {weather.current.temp_f}°F
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.85 }}>
+                  {weather.current.label} · Kansas City
+                </div>
+              </div>
+            </div>
+            <div style={{
+              display: 'flex', gap: 4, paddingTop: 12,
+              borderTop: '1px solid rgba(247,245,240,0.15)',
+              overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+            }}>
+              {weather.daily.map((day, i) => (
+                <div key={day.date} style={{
+                  flex: '1 1 0', minWidth: 52, textAlign: 'center', padding: '6px 4px',
+                  background: i === 0 ? 'rgba(201,168,76,0.18)' : 'transparent',
+                  borderRadius: 6,
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.85, marginBottom: 2 }}>
+                    {formatDayLabel(day.date, i)}
+                  </div>
+                  <div style={{ fontSize: 18, lineHeight: 1, marginBottom: 2 }}>{day.icon}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600 }}>{day.high_f}°</div>
+                  <div style={{ fontSize: 10, opacity: 0.65 }}>{day.low_f}°</div>
+                  {day.precip_pct >= 30 && (
+                    <div style={{ fontSize: 9, color: '#7BD3F7', marginTop: 2 }}>
+                      💧{day.precip_pct}%
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {weatherErr && (
+          <div style={{
+            background: 'rgba(196,68,68,0.08)', color: '#c44',
+            padding: '8px 14px', borderRadius: 8, marginBottom: 16, fontSize: 12,
+          }}>
+            Weather unavailable: {weatherErr}
+          </div>
+        )}
 
         {/* ── Active Projects ─────────────────────────────── */}
         <div style={{ marginBottom: 28 }}>
