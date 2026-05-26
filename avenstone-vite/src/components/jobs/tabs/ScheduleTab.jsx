@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity, sbLoadPhotosForEntity, sbCreateChecklistFromTemplate, sbLoadChecklistForScheduleItem } from '../../../lib/supabase';
 import { getTemplateOptions } from '../../../lib/siteVisitTemplates';
 import SiteVisitChecklist from '../SiteVisitChecklist';
@@ -133,6 +133,24 @@ export default function ScheduleTab({ job }) {
   const phaseMap = Object.fromEntries(phases.map(p => [p.phase_name, p]));
   const orderedPhases = PHASE_ORDER.map(name => phaseMap[name]).filter(Boolean);
 
+  // ── Phase item progress (SCHEDULING_ARC slice 3) ─────────────────────────
+  // Computed from already-loaded items + phases. No extra query.
+  const phaseProgressMap = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const map = {};
+    for (const ph of phases) {
+      const phItems = items.filter(i => i.phase_id === ph.id && i.status !== 'cancelled');
+      const total = phItems.length;
+      const completed = phItems.filter(i => !!i.actual_finish_date).length;
+      const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+      const scheduledEnds = phItems.map(i => i.scheduled_end_date || i.scheduled_date).filter(Boolean).sort();
+      const latestEnd = scheduledEnds[scheduledEnds.length - 1] || null;
+      const isDelayed = ph.end_date && latestEnd && latestEnd > ph.end_date;
+      map[ph.id] = { total, completed, pct, isDelayed };
+    }
+    return map;
+  }, [phases, items]);
+
   // ── Week groups ───────────────────────────────────────────────────────────
   const groups = groupByWeek(items);
 
@@ -158,16 +176,27 @@ export default function ScheduleTab({ job }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {orderedPhases.map(ph => {
               const col = PILL_COLOR[ph.status] || '#9CA3AF';
+              const prog = phaseProgressMap[ph.id];
               return (
-                <div key={ph.id} style={{ textAlign: 'center', display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div key={ph.id} style={{ textAlign: 'center', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 72 }}>
                   <div style={{ background: col + '20', border: `1.5px solid ${col}`, borderRadius: 20, padding: '4px 12px', fontSize: 11, fontWeight: 700, color: col, whiteSpace: 'nowrap', lineHeight: 1.4 }}>
                     {ph.phase_name}
                   </div>
+                  {prog?.total > 0 && (
+                    <div style={{ width: '100%', marginTop: 4 }}>
+                      <div style={{ background: '#E8E4DC', height: 4, borderRadius: 2, overflow: 'hidden', width: '100%' }}>
+                        <div style={{ background: prog.isDelayed ? '#EF4444' : '#C9A84C', height: 4, borderRadius: 2, width: `${prog.pct}%`, transition: 'width 0.4s' }} />
+                      </div>
+                      <div style={{ fontSize: 9, color: prog.isDelayed ? '#EF4444' : '#9CA3AF', marginTop: 2, fontWeight: prog.isDelayed ? 700 : 400 }}>
+                        {prog.completed}/{prog.total}{prog.isDelayed ? ' · late' : ''}
+                      </div>
+                    </div>
+                  )}
                   {ph.status === 'in_progress' && ph.started_at && (
-                    <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 3 }}>Started {fD(ph.started_at)}</div>
+                    <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>Started {fD(ph.started_at)}</div>
                   )}
                   {ph.status === 'complete' && ph.completed_at && (
-                    <div style={{ fontSize: 10, color: '#22c55e', marginTop: 3 }}>Done {fD(ph.completed_at)}</div>
+                    <div style={{ fontSize: 10, color: '#22c55e', marginTop: 2 }}>Done {fD(ph.completed_at)}</div>
                   )}
                 </div>
               );
