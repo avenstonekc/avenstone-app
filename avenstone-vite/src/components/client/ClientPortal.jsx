@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 // Note: legacy `payments` compat view is deprecated. ClientPortal reads invoices + job_transactions directly.
 // Compat view still alive in DB until verified no consumers remain. — Phase 6a, 2026-05-06
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates } from '../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates, sbLoadClientMilestones } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
@@ -21,14 +21,47 @@ async function sbLoadJobReview(jobId) {
   return data || null;
 }
 
+const MS_STATUS_COLOR = { completed: '#22c55e', in_progress: '#22c55e', upcoming: '#0A1F44', delayed: '#EF4444', unscheduled: '#9CA3AF' };
+const MS_STATUS_LABEL = { completed: '✓ Done', in_progress: 'In Progress', upcoming: 'Upcoming', delayed: 'Delayed', unscheduled: 'Unscheduled' };
+
+function clientFacingStatus(item) {
+  if (item.actual_finish_date) return 'completed';
+  if (!item.scheduled_date) return 'unscheduled';
+  const today = new Date().toISOString().slice(0, 10);
+  if (item.scheduled_date > today) return 'upcoming';
+  const slipDays = Math.floor((new Date(today) - new Date(item.scheduled_date)) / (1000 * 60 * 60 * 24));
+  return slipDays <= 5 ? 'in_progress' : 'delayed';
+}
+
 function ClientScheduleView({ jobId }) {
-  const [phases, setPhases] = useState([]);
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => { sbLoadPhases(jobId).then(d => { setPhases(d); setLoaded(true); }); }, [jobId]);
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading schedule...</div>;
-  if (!phases.length) return <div className="empty">{Ic.sched}<div className="empty-t">Schedule not set</div><div>Your contractor will add the project schedule here</div></div>;
-  const done = phases.filter(p => p.status === 'complete').length;
-  const pct = Math.round((done / phases.length) * 100);
+  const [milestones, setMilestones] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  async function loadMilestones() {
+    if (!jobId) return;
+    const result = await sbLoadClientMilestones(jobId);
+    if (result?.ok) setMilestones(result.data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => { loadMilestones(); }, [jobId]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    const ch = sb.channel(`schedule-milestones-${jobId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_items', filter: `job_id=eq.${jobId}` }, () => { loadMilestones(); })
+      .subscribe();
+    return () => sb.removeChannel(ch);
+  }, [jobId]);
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading schedule...</div>;
+  if (!milestones.length) return <div className="empty">{Ic.sched}<div className="empty-t">No milestones set</div><div>Your contractor will add project milestones here</div></div>;
+
+  const total = milestones.length;
+  const done = milestones.filter(m => m.computed_status === 'completed' || m.computed_status === 'completed_late').length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const today = new Date().toISOString().slice(0, 10);
+
   return (
     <div>
       <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 16 }}>
@@ -39,16 +72,41 @@ function ClientScheduleView({ jobId }) {
         <div style={{ background: '#E8E4DC', height: 8, borderRadius: 4 }}>
           <div style={{ background: '#22c55e', height: 8, borderRadius: 4, width: `${pct}%`, transition: 'width 0.4s' }} />
         </div>
+        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6 }}>{done} of {total} milestones complete</div>
       </div>
-      {phases.map(ph => (
-        <div key={ph.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `3px solid ${phSc(ph.status)}`, marginBottom: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 2 }}>{ph.phase_name}</div>
-            {(ph.start_date || ph.end_date) && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{ph.start_date ? fD(ph.start_date) : 'TBD'} → {ph.end_date ? fD(ph.end_date) : 'TBD'}</div>}
+      {milestones.map(m => {
+        const cfs = clientFacingStatus(m);
+        const color = MS_STATUS_COLOR[cfs];
+        const label = MS_STATUS_LABEL[cfs];
+        const daysRemaining = m.scheduled_date && m.scheduled_date > today
+          ? Math.ceil((new Date(m.scheduled_date) - new Date(today)) / (1000 * 60 * 60 * 24))
+          : null;
+        const daysLate = cfs === 'delayed' && m.scheduled_date
+          ? Math.floor((new Date(today) - new Date(m.scheduled_date)) / (1000 * 60 * 60 * 24))
+          : null;
+        return (
+          <div key={m.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `3px solid ${color}`, marginBottom: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 2 }}>
+                {m.title}
+                {m.trade && <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 400, marginLeft: 6 }}>{m.trade}</span>}
+              </div>
+              <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+                {cfs === 'completed' && m.actual_finish_date && <span>Completed {fD(m.actual_finish_date)}</span>}
+                {cfs === 'in_progress' && m.scheduled_date && <span>Scheduled {fD(m.scheduled_date)} · On track</span>}
+                {cfs === 'upcoming' && m.scheduled_date && (
+                  <span>{fD(m.scheduled_date)}{daysRemaining != null ? ` · ${daysRemaining}d away` : ''}</span>
+                )}
+                {cfs === 'delayed' && m.scheduled_date && (
+                  <span style={{ color: '#EF4444' }}>Was {fD(m.scheduled_date)}{daysLate != null ? ` · ${daysLate}d late` : ''}</span>
+                )}
+                {cfs === 'unscheduled' && <span>Date TBD</span>}
+              </div>
+            </div>
+            <span style={{ fontSize: 9, background: color + '18', color, padding: '3px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>{label}</span>
           </div>
-          <span style={{ fontSize: 9, background: phSc(ph.status) + '18', color: phSc(ph.status), padding: '3px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>{phSl(ph.status)}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -226,8 +284,8 @@ export default function ClientPortal({ profile, signOut }) {
 
   useEffect(() => {
     if (!job?.id) return;
-    const ch = sb.channel('client-phase-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_phases', filter: `job_id=eq.${job.id}` }, () => {
+    const ch = sb.channel(`client-phases-${job.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_phases', filter: `job_id=eq.${job.id}` }, () => {
         sbLoadPhases(job.id).then(d => setPhases(d));
       })
       .subscribe();
