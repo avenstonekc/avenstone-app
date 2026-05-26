@@ -129,6 +129,36 @@ export default function FloorPlanCanvas({
     }
   };
 
+  // Shared helper: apply shift-constrain + endpoint snap to a world position during drag
+  const applyDragConstraints = (worldX, worldY, shiftKey) => {
+    const drag = draggingEndpointRef.current;
+    let snapped = snapToGrid(worldX, worldY, 0.5);
+
+    if (shiftKey && drag?.connectedDirs?.length > 0) {
+      const dirs = drag.connectedDirs;
+      const longest = dirs.reduce((best, d) => {
+        const len = Math.hypot(d[0], d[1]);
+        return len > best.len ? { d, len } : best;
+      }, { d: dirs[0], len: 0 });
+      if (longest.len > 0) {
+        const dirX = longest.d[0] / longest.len;
+        const dirY = longest.d[1] / longest.len;
+        const cdx = worldX - drag.startPos[0];
+        const cdy = worldY - drag.startPos[1];
+        const proj = cdx * dirX + cdy * dirY;
+        snapped = snapToGrid(drag.startPos[0] + proj * dirX, drag.startPos[1] + proj * dirY, 0.5);
+      }
+    }
+
+    // Snap to nearest endpoint within 0.5 ft (6 inches)
+    for (const [k, ep] of Object.entries(endpointMap)) {
+      if (drag && k === drag.key) continue;
+      const dist = Math.hypot(ep.pos[0] - snapped.x, ep.pos[1] - snapped.y);
+      if (dist < 0.5) return [ep.pos[0], ep.pos[1]];
+    }
+    return [snapped.x, snapped.y];
+  };
+
   const handleMouseMove = (e) => {
     if (panningRef.current) {
       panRef.current = {
@@ -140,8 +170,8 @@ export default function FloorPlanCanvas({
     if (draggingEndpointRef.current && mode === 'wall-move' && svgRef.current) {
       const rect = svgRef.current.getBoundingClientRect();
       const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
-      const snapped = snapToGrid(world.x, world.y, 0.5);
-      onWallEndpointDrag(draggingEndpointRef.current.key, [snapped.x, snapped.y]);
+      const pos = applyDragConstraints(world.x, world.y, e.shiftKey);
+      onWallEndpointDrag(draggingEndpointRef.current.key, pos);
     }
   };
 
@@ -150,8 +180,8 @@ export default function FloorPlanCanvas({
     if (draggingEndpointRef.current && mode === 'wall-move' && e && svgRef.current) {
       const rect = svgRef.current.getBoundingClientRect();
       const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
-      const snapped = snapToGrid(world.x, world.y, 0.5);
-      onWallEndpointMove(draggingEndpointRef.current.key, [snapped.x, snapped.y]);
+      const pos = applyDragConstraints(world.x, world.y, e.shiftKey);
+      onWallEndpointMove(draggingEndpointRef.current.key, pos);
       draggingEndpointRef.current = null;
     }
   };
@@ -184,7 +214,15 @@ export default function FloorPlanCanvas({
     if (mode !== 'wall-move') return;
     e.stopPropagation();
     e.preventDefault();
-    draggingEndpointRef.current = { key, startPos: pos };
+    // Collect axis directions of connected walls for shift-constrain
+    const connectedDirs = [];
+    for (const wall of normalized.walls) {
+      const k1 = endpointKey(wall.p1);
+      const k2 = endpointKey(wall.p2);
+      if (k1 === key) connectedDirs.push([wall.p2[0] - wall.p1[0], wall.p2[1] - wall.p1[1]]);
+      else if (k2 === key) connectedDirs.push([wall.p1[0] - wall.p2[0], wall.p1[1] - wall.p2[1]]);
+    }
+    draggingEndpointRef.current = { key, startPos: pos, connectedDirs };
     onWallEndpointDrag(key, pos);
   };
 
@@ -236,12 +274,15 @@ export default function FloorPlanCanvas({
       const world = toWorld(sx, sy);
       const snapped = snapToGrid(world.x, world.y, 0.5);
 
+      console.log('[add-room] background click at world:', snapped, 'poly length before:', drawingPolygon.length);
+
       // Click near first corner → close polygon
       if (drawingPolygon.length >= 3) {
         const first = drawingPolygon[0];
         const screenFirst = toScreen(first[0], first[1]);
         const distPx = Math.hypot(sx - screenFirst.x, sy - screenFirst.y);
         if (distPx < 14) {
+          console.log('[add-room] closing polygon at', drawingPolygon.length, 'points');
           onPolygonClosed(drawingPolygon);
           return;
         }
@@ -254,8 +295,11 @@ export default function FloorPlanCanvas({
   };
 
   const handleRoomClick = (roomId, e) => {
-    if (mode === 'add-room') {
-      // Forward to background handler so add-room clicks on room fills still place corners
+    if (mode === 'add-room' || mode === 'add-text') {
+      // In drawing modes, forward to background handler so corner/annotation placement
+      // works inside room fills. stopPropagation prevents double-fire from SVG onClick.
+      e.stopPropagation();
+      console.log('[add-room] room click forwarded to background, mode:', mode);
       handleBackgroundClick(e);
       return;
     }
@@ -264,7 +308,7 @@ export default function FloorPlanCanvas({
     const next = e.shiftKey
       ? cur.includes(roomId) ? cur.filter(id => id !== roomId) : [...cur, roomId]
       : cur.length === 1 && cur[0] === roomId ? [] : [roomId];
-    onSelectionChange({ roomIds: next, wallIds: [] });
+    onSelectionChange({ roomIds: next, wallIds: [], annotationIds: [] });
   };
 
   const handleWallClick = (wallId, e) => {
@@ -426,6 +470,9 @@ export default function FloorPlanCanvas({
       {normalized.rooms.map(room => {
         const hint = hints?.[room.id];
         if (!hint) return null;
+        // Look up sf_visible from effectiveScan (normalize.js may not preserve custom fields)
+        const effectiveRoom = (effectiveScan.rooms || []).find(r => r.id === room.id);
+        const sfVisible = effectiveRoom?.sf_visible !== false;
         const lp = toScreen(hint.label_x, hint.label_y);
         const fontSize = Math.max(9, Math.min(18, (hint.label_font_size || 14) * z * 0.55));
         const rotate = hint.label_rotation === 90 ? `rotate(-90 ${lp.x} ${lp.y})` : undefined;
@@ -443,7 +490,7 @@ export default function FloorPlanCanvas({
             >
               {hint.label_text}
             </text>
-            {hint.sf_text && !hint.sf_inline_with_label && (
+            {sfVisible && hint.sf_text && !hint.sf_inline_with_label && (
               <text
                 x={toScreen(hint.sf_x, hint.sf_y).x}
                 y={toScreen(hint.sf_x, hint.sf_y).y}
@@ -600,6 +647,29 @@ export default function FloorPlanCanvas({
           />
         );
       })}
+
+      {/* Endpoint snap indicator: green ring when drag position snaps to an existing endpoint */}
+      {mode === 'wall-move' && liveWallEndpointDrag?.newPos && (() => {
+        const dragPos = liveWallEndpointDrag.newPos;
+        for (const [k, ep] of Object.entries(endpointMap)) {
+          if (k === liveWallEndpointDrag.key) continue;
+          if (Math.hypot(ep.pos[0] - dragPos[0], ep.pos[1] - dragPos[1]) < 0.05) {
+            const s = toScreen(ep.pos[0], ep.pos[1]);
+            return (
+              <circle
+                key="snap-target"
+                cx={s.x} cy={s.y} r={12}
+                fill="none"
+                stroke="#3a7"
+                strokeWidth={3}
+                strokeDasharray="3 3"
+                pointerEvents="none"
+              />
+            );
+          }
+        }
+        return null;
+      })()}
 
       {/* Zoom badge */}
       <g pointerEvents="none">
