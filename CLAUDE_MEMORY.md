@@ -2337,7 +2337,22 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - ClientPortal note (slice 2): ClientScheduleView reads schedule_phases (legacy), not schedule_items. Needs reconciliation in slice 2.
 - Files: supabase/migrations/20260526100000_scheduling_arc_phase_1.sql (new), avenstone-vite/src/lib/supabase.js (+89 lines). Commits: 0f8e4d6 (migration), d436fd5 (helpers). Pushed to main.
 - Build: ✓ clean.
-- Open: Slice 2 — cascade engine (BFS date push on predecessor change). contacts.id is TEXT not UUID (sbUpdateContactCapacity param is TEXT, handled correctly).
+- Open: Slice 6 (cascade engine) — shipped. Slice 7 (resource conflict detection), Slice 8 (lead-time enforcement).
+
+[LOG — 2026-05-26 — SCHEDULING_ARC slice 6/8 shipped — cascade engine]
+- Action: Slice 6/8 shipped. sbCascadeScheduleChange(sourceItemId, reason) BFS-walks downstream items via predecessor_ids GIN index. Computes earliest_start = max(predecessor_finish + lag_days + 1) across all predecessors. Pushes scheduled_date forward only when item is currently scheduled BEFORE that earliest. Recurses to depth 20 safety cap (returns error beyond cap rather than infinite loop).
+- Hooked into sbMarkScheduleItemFinished — every finish triggers cascade; returns { ok, cascade, cascade_error }.
+- Hooked into sbUpdateScheduleItem — cascade fires (fire-and-forget) when scheduled_date or scheduled_end_date changed.
+- Audit trail: every cascade write logs 'cascade_applied' to schedule_change_log with old_value, new_value, cascade_source_id, reason. cascade_applied already in constraint from slice 1 — no migration needed.
+- Notification enrichment: cascade calls sbNotifyUser per affected item with enriched body "ItemTitle moved from Jun 8 to Jun 12 (cascade from upstream task)." Push fanout reads notification.body directly — no fanout code change required. Added comment in notification-push-fanout/index.ts documenting design decision.
+- Multi-predecessor: if item has 2+ predecessors, earliest_start = MAX across all (PERT/CPM style). Correctly handles diverging predecessor finish times.
+- Per-item failure handling: update errors captured in affected_items array, cascade continues on remaining items. Caller receives full affected_items list including any failures.
+- ISO helpers: _addDaysISO and _daysBetweenISO as module-private functions (UTC-safe, no DST drift).
+- Files: avenstone-vite/src/lib/supabase.js (+200/-1), supabase/functions/notification-push-fanout/index.ts (+4/-1 comment only).
+- Commits: b4a6e8a (cascade engine), d1d1f71 (hooks), b72fe3b (notif comment). Pushed to main.
+- Build: ✓ clean.
+- Trade-aware: pure date math + DB writes. No trade assumptions. ✓
+- Open: Slice 7 (resource conflict detection — sub double-booking). Slice 8 (lead-time enforcement with override).
 
 [LOG — 2026-05-26 — SCHEDULING_ARC slice 4/8 shipped — sub accept/decline/tentative response buttons + status badges]
 - Action: Slices 3 and 4 of 8 shipped together. Per-item invite state loaded in SubJobView schedule tab; subs can accept, decline, or mark tentative directly from the schedule list.
@@ -2349,3 +2364,36 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Build: ✓ 386 modules, clean.
 - Trade-aware: platform UI, tenant-agnostic. schedule_item_invitees is tenant-scoped via RLS. ✓
 - Open: Slice 2 (cascade engine), Slice 5 (duration/dependency UI in ScheduleTab), Slices 6–8 (critical path, conflict detection, recommendations).
+
+[LOG — 2026-05-26 — SCHEDULING_ARC slice 2/8 shipped — client view unified to schedule_items]
+- Action: Slice 2/8 shipped. ClientScheduleView now reads from schedule_items WHERE is_milestone=true instead of job_phases. Realtime subscription switched accordingly.
+- Helper: sbLoadClientMilestones(jobId). Returns ordered milestones with computed_status (completed/completed_late/in_progress/upcoming/unscheduled) and 5-day buffered client-facing status.
+- Client-facing buffer: slips ≤5 days display as "In Progress" not "Delayed." Internal PM view (CalScr) shows raw scheduled_date so PM tools remain accurate.
+- schedule_phases table preserved. job_phases still used for overview tab (phases hero card, "What's Happening Next", "What to Expect"). They are no longer connected to ClientScheduleView.
+- schedule_items added to supabase_realtime publication (verified via pg_publication_tables).
+- Bonus fix: parent's realtime channel was watching schedule_phases (not in publication, dead subscription). Fixed to watch job_phases (what sbLoadPhases actually reads), renamed to client-phases-${job.id} (unique per job to prevent channel collision).
+- Existing schedule_items rows have is_milestone=false (default from slice 1). PMs need to flag items as milestones for client view to show anything. Can toggle directly in DB for testing until slice 5 wires the toggle in CalScr UI.
+- Files: supabase/migrations/20260526110000_scheduling_arc_realtime_schedule_items.sql (new), avenstone-vite/src/lib/supabase.js (+31), avenstone-vite/src/components/client/ClientPortal.jsx (+76/-18). Commits: 7e80ff2, 72d354f, c68da62. Pushed to main.
+- Open: slice 3 (phase progress tracker — read phase % done from schedule_items.phase_id rollup). Slice 5 (is_milestone toggle in CalScr UI).
+
+[LOG — 2026-05-26 — SCHEDULING_ARC slice 3/8 shipped — phase progress tracker upgrade]
+- Action: Slice 3/8 shipped. Phase progress now computes from schedule_items.phase_id rollup.
+- Helper: sbLoadJobPhaseProgress(jobId). Returns per-phase: total_items, completed_items, pct_complete (0-100), status (not_started/in_progress/completed/delayed), earliest_scheduled_date, latest_scheduled_end_date, actual_start_date, actual_finish_date, is_on_schedule. Uses job_phases.start_date/end_date (actual schema — spec assumed planned_start_date/planned_end_date which don't exist).
+- derivePhaseStatus: NOT wrapped or replaced. It's a DB-write side effect (updates job_phases.status from sub_start items via trade_phase_map). Untouched. ScheduleTab reads the written values via sbLoadPhases.
+- UI: ScheduleTab phase pills now show mini progress bar (gold/red) + X/Y item count computed via useMemo from already-loaded phases+items state. Zero extra DB query. Delay detection: latest_scheduled_end_date > job_phases.end_date.
+- SQL view: skipped. JS computation is fast enough for v1 and avoids a migration.
+- Until slice 5 wires phase_id picker in CalScr, progress shows 0/0 for all phases (no items linked). PMs can link via DB: UPDATE schedule_items SET phase_id='...' WHERE id='...'.
+- Files: avenstone-vite/src/lib/supabase.js (+56), avenstone-vite/src/components/jobs/tabs/ScheduleTab.jsx (+33/-4). Commits: d3ed57e, 5196bd2. Pushed to main.
+- Open: Slice 5 (phase_id picker in CalScr + is_milestone toggle). Slice 6 (cascade engine).
+
+[LOG — 2026-05-26 — SCHEDULING_ARC slice 5/8 shipped — Master Agent create_schedule_item verb]
+- Action: Slice 5/8 shipped. Master Agent can now create schedule items conversationally. Input: job_id, title, type, scheduled_date (required) + optional duration, trade, sub_search, phase_search, is_milestone, notes.
+- In CONFIRM_TOOLS (required per CLAUDE.md). Confirm card shows title, date, trade, sub, phase, milestone flag.
+- Fuzzy resolution: sub_search matches profiles WHERE role='sub' on full_name (substring, first-name aware). Phase_search matches job_phases.phase_name (substring). On miss, item still created and agent surfaces "couldn't match" note.
+- Invitee: when sub_search resolves, inserts schedule_item_invitees row (status='invited', invited_by=userId). Column is invited_by not invited_by_id (actual schema).
+- Audit: every creation writes 'created' row to schedule_change_log with reason "Master Agent create_schedule_item".
+- System prompt: added SCHEDULING section + updated WHAT YOU CAN DO + confirm-gated tools list.
+- Deviations from spec: contacts table has no primary_user_id/company_name/contact_type — spec assumed these exist but don't. Subs are profiles with role='sub'. schedule_item type enum = DB constraint: material_delivery, sub_start, site_visit, inspection, milestone, delay (not sub_finish/delivery/meeting/other from spec).
+- Deploy: GitHub Actions auto-deploys on push to supabase/functions/**.
+- Trade-aware: type field is enum, trade is free-text passthrough.
+- Open: Slice 6 (cascade engine — BFS date push when predecessor's scheduled_date changes). Slice 7 (resource conflict detection).
