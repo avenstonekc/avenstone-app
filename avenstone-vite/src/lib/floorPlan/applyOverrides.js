@@ -36,11 +36,12 @@ export function applyOverridesToScan(rawScan, overrides) {
 
   const cloned = JSON.parse(JSON.stringify(rawScan));
 
-  // Per-room patches (Phase 5c-2)
+  // Per-room patches (Phase 5c-2 / 5c-8)
   for (const room of cloned.rooms || []) {
     const ov = overrides[room.id];
     if (!ov) continue;
     if (ov.name !== undefined) room.name = ov.name;
+    if (ov.sf_visible !== undefined) room.sf_visible = ov.sf_visible;
   }
 
   // Wall endpoint overrides (Phase 5c-4)
