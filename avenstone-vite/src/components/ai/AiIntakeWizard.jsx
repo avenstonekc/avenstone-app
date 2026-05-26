@@ -53,23 +53,29 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
     });
     if (!ok) { setSaving(false); setSaveError(error || 'Save failed'); return; }
 
-    // Auto-export PDF to Documents
+    // Auto-export PDF and save floor plan record
     if (savedScan && job) {
+      const date = new Date(savedScan.created_at).toISOString().slice(0, 10);
+      let pdfBlob = null;
       try {
         const doc = await buildFloorPlanPDF(savedScan, job);
-        const blob = doc.output('blob');
-        const date = new Date(savedScan.created_at).toISOString().slice(0, 10);
-        const file = new File([blob], `floor-plan-${date}.pdf`, { type: 'application/pdf' });
+        pdfBlob = doc.output('blob');
+        const file = new File([pdfBlob], `floor-plan-${date}.pdf`, { type: 'application/pdf' });
         await sbUploadDoc(jobId, file, 'plan');
+      } catch (pdfErr) {
+        console.error('PDF generation failed (non-fatal):', pdfErr);
+      }
+      // Always save floor_plans record — independent of PDF outcome
+      try {
         await sbCreateFloorPlan({
           jobId,
           contactId: null,
           name: `Floor Plan — ${date}`,
           rawScan: savedScan,
-          pdfBlob: blob,
+          pdfBlob,
         });
-      } catch {
-        // PDF export failure is non-fatal — scan is already saved
+      } catch (saveErr) {
+        console.error('Floor plan save failed:', saveErr);
       }
     }
 
