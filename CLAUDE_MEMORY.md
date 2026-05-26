@@ -2424,3 +2424,12 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Action: Extended mobile bot-nav Calendar entry and `pg === 'calendar'` render gate from `isOwnerOrRep` to `isStaff` so PMs see Calendar in mobile nav (their primary delegated-work view). PM bot-nav now: Home → Projects → To-dos → Calendar (4 items). Owner/rep: Home → Projects → To-dos → Calendar → Reports (5 items).
 - Files: avenstone-vite/src/App.jsx (lines 292 + 324, gate swap only).
 - Open: `CalScr.jsx` filters jobs by status only; `profile` prop is unused for filtering. PMs see all company jobs on the calendar, not just delegated/assigned ones. PM-aware view (filter by `assigned_pm` or schedule_items they're invited to) is a separate slice.
+
+[LOG — 2026-05-26 — PROOF_ARC.md shipped (doc-only)]
+- Action: Wrote `PROOF_ARC.md` planning doc at repo root. Doc-only slice — no code, no migrations.
+- Files: PROOF_ARC.md (new).
+- Covers: photo proof gates for change orders (`co_condition` + `co_fix`, owner+PM bypass with reason), optional before-photos toggle per-job, soft delivery-photo request on `material_delivery` items, and a reusable blocking-todo primitive (snooze counter + escalation) intended to be shared with future COI/lien/permit arcs. 6 phases proposed: schema → CO gate → blocking-todo primitive → before photos → delivery prompt → polish.
+- Audit findings reflected: `photos.related_entity_type`/`_id` and `client_visible` already exist; `sbPhoto`/`sbCountPhotosForEntity`/`sbLoadPhotosForEntity`/`sbLabelPhoto` already wired; multi-photo upload already works (`NotesPhotosTab.PhotosTab.onFile`); current schedule-item photo banner is a soft warning (no save block in `ScheduleItemModal.save`); COTab has zero photo plumbing today. Arc keeps schedule-item gate soft, makes CO gate hard, treats before+delivery as tenant-opted artifacts.
+- Deferred (called out as Out of Scope v1): per-room photo requirements via LiDAR anchors, trade-specific shot lists, lumber counter, tenant config table (v1 uses hardcoded JS config object `proofConfig.js`), auto-draft daily log from schedule item completion, snooze UX polish, hardening the schedule-item gate.
+- Open questions documented (not decided): minimum photo count per CO category, bulk-tag UX shape (inline vs modal), escalation surface for blocking todos, whether to harden schedule-item gate post-v1.
+- No CLAUDE.md update — no architecture has shifted yet, just a planning doc.
