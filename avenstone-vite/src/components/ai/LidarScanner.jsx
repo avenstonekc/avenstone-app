@@ -499,7 +499,7 @@ function NamingPhase({ roomName, setRoomName, onStartScan, onBack, inputRef, hea
         value={roomName}
         onChange={(e) => setRoomName(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="e.g. Living Room"
+        placeholder="e.g. Master Suite, Game Room, Future Office"
         style={{
           width: '100%',
           padding: '12px 14px',
