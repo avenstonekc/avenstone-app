@@ -239,7 +239,13 @@ export default function ClientPortal({ profile, signOut }) {
 
   useEffect(() => {
     if (!job || tab !== 'docs' || loaded.docs) return;
-    sb.from('job_documents').select('*').eq('job_id', job.id).eq('client_visible', true).order('created_at', { ascending: false }).then(({ data }) => { setDocs(data || []); setLoaded(p => ({ ...p, docs: true })); });
+    // Migrated to job_files (slice 6/12). Note: 'docs' tab is not in BASE_CLIENT_TABS; this
+    // effect is currently dead code but kept for forward-compatibility if the tab returns.
+    sb.from('job_files').select('*').eq('job_id', job.id).eq('storage_bucket', 'job-documents').eq('client_visible', true).eq('lifecycle_status', 'active').order('created_at', { ascending: false }).then(({ data }) => {
+      const _sub = { Plans:'plan', Permits:'permit', Contracts:'contract', Inspections:'inspection', Specs:'spec' };
+      setDocs((data || []).map(jf => ({ ...jf, file_url: jf.storage_path, file_type: _sub[jf.subcategory] || 'other' })));
+      setLoaded(p => ({ ...p, docs: true }));
+    });
   }, [job?.id, tab]);
 
   useEffect(() => {
