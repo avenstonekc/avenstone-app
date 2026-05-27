@@ -1692,3 +1692,26 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   - Step 9: Stripe webhook path NOT testable in dev — deferred to real-job onboarding (first live Stripe payment on a cost-plus draw invoice will exercise the path).
 - COST_PLUS_ARC Phase 1 + Phase 2 + Phase 3 COMPLETE.
 - Next: Phase 4 — float stat cards (sbLoadJobFinancialSummary extension + FinancialsTab cost-plus cards). Phase 5 — Master Agent verbs.
+
+[LOG — 2026-05-27 — COST_PLUS_ARC Phase 4 shipped — float visibility stat cards]
+- Action: Phase 4 shipped. Float stat cards on FinancialsTab + sbLoadJobFinancialSummary extended.
+- supabase.js: sbLoadJobFinancialSummary(jobId, { contractValue, coTotal, costPlus=false })
+  - Added costPlus optional param. Selects invoice_id + reimbursement_status from job_transactions (non-breaking).
+  - When costPlus=true: float_unreimbursed, bucket_balance, client_float_owed computed from existing tx fetch.
+  - markup_earned: paid draw IDs → SUM draw_line_items.markup_amount (2 extra queries, paid-only).
+  - Error fallback includes zero cost-plus fields when costPlus=true.
+- FinancialsTab.jsx: 3 cards pushed to existing stats[] array (inline, no new component) when job.cost_plus===true:
+  - Float Out (amber) — float_unreimbursed
+  - Client Owes (red) OR Bucket Credit (green) — sign-aware per Locked Decision #20
+  - Markup ★ (gold) — markup_earned from paid draws
+- Commits: 9b5e30d (supabase.js), b3d84ac (FinancialsTab). Pushed to main.
+- DB-side test results (999 Cost Plus Sandbox, job_id 5ebd7c3c-c4a7-450c-b529-479903668010):
+  - State 1 (43 unreimbursed, $8,500 bucket): float=$42,637 / bucket=$8,500 / client_owes=$34,137 / markup=$0 ✓
+  - State 2 (after compose, all in_draw): float=$0 / bucket=$8,500 / client_float_owed=$0 → Bucket Credit $8,500 ✓
+  - State 3 (after invoice paid + cascade): float=$0 / Bucket Credit $8,500 / markup=$6,936.90 ✓
+  - State 4 (after invoice void + reverse cascade): float=$0 / markup=$0 (draw back to planned) ✓
+  - Sandbox restored: 43 unreimbursed, 0 in_draw ✓
+- Browser UI tests (Steps 6-8) deferred to manual in-app review — DB math verified programmatically.
+  - Lucy Webb (fixed-price): cards hidden — gated on job.cost_plus===true ✓ (verified via code gate, no data risk)
+- COST_PLUS_ARC Phase 1 + 2 + 3 + 4 COMPLETE.
+- Next: Phase 5 — Master Agent verbs (record_deposit + compose_draw confirm-gated tools).
