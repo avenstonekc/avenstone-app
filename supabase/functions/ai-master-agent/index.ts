@@ -180,6 +180,15 @@ const RECEIPT_TYPE_OPTIONS: CardOption[] = [
   { value: "other_expense", label: "Other Expense" },
 ];
 
+const SCHEDULE_ITEM_TYPE_OPTIONS: CardOption[] = [
+  { value: "sub_start", label: "Sub Start" },
+  { value: "material_delivery", label: "Material Delivery" },
+  { value: "inspection", label: "Inspection" },
+  { value: "milestone", label: "Milestone" },
+  { value: "site_visit", label: "Site Visit" },
+  { value: "delay", label: "Delay" },
+];
+
 const REQUIRED_FIELDS: Record<string, FieldSpec[]> = {
   log_payment: [
     { field: "amount", type: "text", label: "Amount ($)" },
@@ -233,8 +242,16 @@ const REQUIRED_FIELDS: Record<string, FieldSpec[]> = {
     { field: "category", type: "text", label: "Category" },
     { field: "content", type: "text", label: "Content" },
   ],
+  create_schedule_item: [
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+    { field: "title", type: "text", label: "Event title" },
+    { field: "type", type: "select", label: "Event type", options: SCHEDULE_ITEM_TYPE_OPTIONS },
+    { field: "scheduled_date", type: "text", label: "Date (YYYY-MM-DD)" },
+  ],
   // Intentionally skipped: update_job, update_phase (technical-ID + object-payload
   // required fields — model gets these from prior tool calls, not user prompts).
+  // Intentionally skipped: notify_team_member — single required field (message) is
+  // always present in chat input; executor guard at line ~1152 is sufficient.
 };
 
 function isMissing(v: unknown): boolean {
