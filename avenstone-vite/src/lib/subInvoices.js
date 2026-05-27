@@ -117,11 +117,11 @@ export async function sbCreateSubInvoice({
 }
 
 /**
- * Add a payment against an existing invoice.
+ * Add a payment against an existing invoice — Phase 4a atomic version.
  *
- * Rejects if invoice is disputed or voided.
- * Returns newStatus from compute_sub_invoice_status after insert.
- * Phase 4 will extend this to also write a job_transactions row.
+ * Delegates to the add_sub_invoice_payment_with_ledger Postgres function which
+ * inserts sub_invoice_payments + job_transactions in one transaction (no partial
+ * commits). Guards (voided, disputed, unapproved) are enforced at the DB level.
  *
  * @param {object} params
  * @param {string}  params.subInvoiceId
@@ -130,7 +130,7 @@ export async function sbCreateSubInvoice({
  * @param {'check'|'ach'|'cash'|'card'|'other'} params.method
  * @param {string}  [params.reference]
  * @param {string}  [params.notes]
- * @returns {Promise<{ok:boolean, error?:string, data?:{paymentId:string, newStatus:string}}>}
+ * @returns {Promise<{ok:boolean, error?:string, data?:{paymentId:string, transactionId:string, newStatus:string}}>}
  */
 export async function sbAddSubInvoicePayment({
   subInvoiceId,
@@ -141,43 +141,25 @@ export async function sbAddSubInvoicePayment({
   notes,
 }) {
   try {
-    // Guard: fetch invoice state before inserting
-    const { data: inv, error: invErr } = await sb
-      .from('sub_invoices')
-      .select('disputed, voided_at, approved_at')
-      .eq('id', subInvoiceId)
-      .single();
+    const { data, error } = await sb.rpc('add_sub_invoice_payment_with_ledger', {
+      p_sub_invoice_id: subInvoiceId,
+      p_amount:         amount,
+      p_paid_date:      paidDate,
+      p_method:         method,
+      p_reference:      reference || null,
+      p_notes:          notes    || null,
+    });
 
-    if (invErr || !inv) return { ok: false, error: 'Invoice not found' };
-    if (inv.voided_at)   return { ok: false, error: 'Cannot add payment to voided invoice' };
-    if (inv.disputed)    return { ok: false, error: 'Cannot add payment to disputed invoice' };
-    if (!inv.approved_at) return { ok: false, error: 'Invoice must be approved before recording payment' };
+    if (error) return { ok: false, error: error.message };
 
-    const { data: payment, error: payErr } = await sb
-      .from('sub_invoice_payments')
-      .insert({
-        sub_invoice_id: subInvoiceId,
-        amount,
-        paid_date:      paidDate,
-        method,
-        reference:      reference || null,
-        notes:          notes || null,
-        created_by_id:  AV_USER_ID,
-      })
-      .select('id')
-      .single();
-
-    if (payErr) return { ok: false, error: payErr.message };
-
-    // Derive new status via DB function (source-of-truth)
-    const { data: statusResult, error: statusErr } = await sb
-      .rpc('compute_sub_invoice_status', { p_invoice_id: subInvoiceId });
-
-    const newStatus = statusErr ? 'unknown' : (statusResult || 'unknown');
-
+    const row = Array.isArray(data) ? data[0] : data;
     return {
       ok: true,
-      data: { paymentId: payment.id, newStatus },
+      data: {
+        paymentId:     row.payment_id,
+        transactionId: row.transaction_id,
+        newStatus:     row.new_status,
+      },
     };
   } catch (e) {
     return { ok: false, error: e.message || 'sbAddSubInvoicePayment failed' };
