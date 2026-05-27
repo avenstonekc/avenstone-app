@@ -101,6 +101,18 @@ async function handleInvoicePayment(
   if (newStatus === "paid") invoicePatch.paid_at = now;
   await sb.from("invoices").update(invoicePatch).eq("id", invoice.id as string);
 
+  // Step 6b — Cost-plus cascade: flip in_draw transactions to reimbursed when invoice fully paid
+  if (invoice.draw_id && newStatus === "paid") {
+    const { data: cascadeCount, error: cascadeErr } = await sb
+      .rpc("cascade_draw_paid_to_transactions", { p_invoice_id: invoice.id as string });
+    if (cascadeErr) {
+      console.error("Stripe cascade failed", { invoice_id: invoice.id, error: cascadeErr });
+      // Don't throw — invoice is paid; reconciliation can happen by hand
+    } else {
+      console.log("Stripe cascade flipped transactions", { invoice_id: invoice.id, count: cascadeCount });
+    }
+  }
+
   // Step 7 — Roll up draw paid_amount if linked
   if (invoice.draw_id) {
     const { data: draw } = await sb
