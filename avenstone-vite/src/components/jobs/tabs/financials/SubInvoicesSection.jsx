@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { sb, AV_TENANT } from '../../../../lib/supabase';
+import { sb, AV_TENANT, AI_EXTRACT_SUB_INVOICE_URL, sbUploadJobFile, sbSignJobFileUrl, sbLoadScheduleItems } from '../../../../lib/supabase';
 import {
   sbLoadSubInvoices, sbCreateSubInvoice, sbApproveSubInvoice,
   sbDisputeSubInvoice, sbAddSubInvoicePayment, sbVoidSubInvoicePayment,
@@ -332,7 +332,17 @@ function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onRe
             </div>
           )}
           {inv.invoiceFileId && (
-            <div style={{ marginTop: 6, color: '#1D4ED8', fontSize: 11 }}>📎 PDF attached (view via Files tab)</div>
+            <button
+              onClick={async () => {
+                const r = await sbSignJobFileUrl(inv.invoiceFileId);
+                if (r.ok) window.open(r.url, '_blank');
+                else alert('Could not load file: ' + r.error);
+              }}
+              style={{ marginTop: 6, fontSize: 11, color: '#1D4ED8', background: 'none',
+                border: '1px solid #DBEAFE', borderRadius: 4, padding: '3px 8px',
+                cursor: 'pointer', display: 'inline-block' }}>
+              📎 View Invoice File
+            </button>
           )}
           {inv.disputeReason && (
             <div style={{ marginTop: 6, color: '#DC2626', fontSize: 11 }}>🚩 Dispute: {inv.disputeReason}</div>
@@ -455,45 +465,138 @@ function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onRe
 function AddInvoiceModal({ job, onClose, onSaved }) {
   const TODAY = new Date().toISOString().slice(0, 10);
 
-  const [contacts, setContacts]   = useState([]);
-  const [saving, setSaving]       = useState(false);
-  const [err, setErr]             = useState(null);
+  const [contacts, setContacts]       = useState([]);
+  const [schedItems, setSchedItems]   = useState([]);
+  const [lineItems, setLineItems]     = useState([]);
+  const [saving, setSaving]           = useState(false);
+  const [uploading, setUploading]     = useState(false);
+  const [extracting, setExtracting]   = useState(false);
+  const [uploadedFileId, setUploadedFileId]     = useState(null);
+  const [uploadedFileName, setUploadedFileName] = useState(null);
+  const [err, setErr]                 = useState(null);
   const [form, setForm] = useState({
-    subContactId:  '',
-    invoiceNumber: '',
-    invoiceDate:   TODAY,
-    dueDate:       '',
-    amount:        '',
-    description:   '',
+    subContactId:          '',
+    invoiceNumber:         '',
+    invoiceDate:           TODAY,
+    dueDate:               '',
+    amount:                '',
+    description:           '',
+    relatedScheduleItemId: '',
   });
 
   useEffect(() => {
-    // Load all contacts for this tenant for the sub dropdown
     sb.from('contacts')
       .select('id, name, type')
       .eq('tenant_id', AV_TENANT)
       .order('name')
       .then(({ data }) => setContacts(data || []));
-  }, []);
+    sbLoadScheduleItems(job.id).then(res => {
+      if (res.ok) setSchedItems(res.data || []);
+    });
+  }, [job.id]);
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
+  // ── Line items helpers ────────────────────────────────────────────────────────
+  const addLineItem = () => setLineItems(p => [...p, { description: '', qty: '', unit_price: '', total: '' }]);
+  const removeLineItem = (i) => setLineItems(p => p.filter((_, idx) => idx !== i));
+  const setLineItem = (idx, k, v) => {
+    setLineItems(p => {
+      const next = [...p];
+      next[idx] = { ...next[idx], [k]: v };
+      if (k === 'qty' || k === 'unit_price') {
+        const qty = parseFloat(k === 'qty' ? v : next[idx].qty) || 0;
+        const up  = parseFloat(k === 'unit_price' ? v : next[idx].unit_price) || 0;
+        if (qty > 0 && up > 0) next[idx].total = (qty * up).toFixed(2);
+      }
+      return next;
+    });
+  };
+
+  // ── File upload + AI extract ──────────────────────────────────────────────────
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr(null);
+    setUploading(true);
+    const up = await sbUploadJobFile({
+      jobId: job.id,
+      file,
+      category: 'Documents',
+      subcategory: null,
+      uploadSource: 'manual',
+    });
+    setUploading(false);
+    if (!up.ok) { setErr(up.error || 'Upload failed'); return; }
+    const fileId = up.data.id;
+    setUploadedFileId(fileId);
+    setUploadedFileName(file.name);
+
+    setExtracting(true);
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(AI_EXTRACT_SUB_INVOICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ jobFileId: fileId }),
+      });
+      const json = await res.json();
+      if (json.ok && json.extracted) {
+        const x = json.extracted;
+        setForm(p => ({
+          ...p,
+          invoiceNumber: x.invoice_number ?? p.invoiceNumber,
+          invoiceDate:   x.invoice_date   ?? p.invoiceDate,
+          dueDate:       x.due_date       ?? p.dueDate,
+          amount:        x.amount != null ? String(x.amount) : p.amount,
+          description:   x.description   ?? p.description,
+        }));
+        if (Array.isArray(x.line_items) && x.line_items.length > 0) {
+          setLineItems(x.line_items.map(li => ({
+            description: li.description || '',
+            qty:         li.qty        != null ? String(li.qty)        : '',
+            unit_price:  li.unit_price != null ? String(li.unit_price) : '',
+            total:       li.total      != null ? String(li.total)      : '',
+          })));
+        }
+      }
+    } catch (e) {
+      console.warn('[AddInvoiceModal] extract failed:', e);
+    }
+    setExtracting(false);
+  };
+
+  // ── Save ──────────────────────────────────────────────────────────────────────
   const save = async () => {
     if (!form.subContactId) { setErr('Select a sub contact'); return; }
     if (!form.invoiceDate)  { setErr('Invoice date is required'); return; }
     const amt = parseFloat(form.amount);
     if (!form.amount || isNaN(amt) || amt <= 0) { setErr('Amount must be greater than 0'); return; }
+
+    const cleanLineItems = lineItems
+      .filter(li => li.description.trim())
+      .map(li => ({
+        description: li.description.trim(),
+        qty:         li.qty        ? parseFloat(li.qty)        || null : null,
+        unit_price:  li.unit_price ? parseFloat(li.unit_price) || null : null,
+        total:       parseFloat(li.total) || 0,
+      }));
+
     setErr(null);
     setSaving(true);
     const res = await sbCreateSubInvoice({
-      jobId:         job.id,
-      subContactId:  form.subContactId,
-      invoiceNumber: form.invoiceNumber.trim() || undefined,
-      invoiceDate:   form.invoiceDate,
-      dueDate:       form.dueDate || undefined,
-      amount:        amt,
-      description:   form.description.trim() || undefined,
-      submittedVia:  'manual_upload',
+      jobId:                 job.id,
+      subContactId:          form.subContactId,
+      invoiceNumber:         form.invoiceNumber.trim() || undefined,
+      invoiceDate:           form.invoiceDate,
+      dueDate:               form.dueDate || undefined,
+      amount:                amt,
+      description:           form.description.trim() || undefined,
+      lineItems:             cleanLineItems.length > 0 ? cleanLineItems : undefined,
+      relatedScheduleItemId: form.relatedScheduleItemId || undefined,
+      invoiceFileId:         uploadedFileId || undefined,
+      submittedVia:          uploadedFileId ? 'pdf_upload' : 'manual_upload',
     });
     setSaving(false);
     if (res.ok) {
@@ -504,18 +607,17 @@ function AddInvoiceModal({ job, onClose, onSaved }) {
   };
 
   const ssty = { appearance: 'none', paddingRight: 28 };
+  const inpSty = { border: '1px solid #E8E4DC', borderRadius: 3, padding: '3px 6px',
+    fontSize: 12, background: '#fff', outline: 'none', width: '100%', boxSizing: 'border-box' };
+  const lineItemTotal = lineItems.reduce((s, li) => s + (parseFloat(li.total) || 0), 0);
 
   return (
     <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 440 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div className="modal" style={{ maxWidth: 560, maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div className="modal-title" style={{ margin: 0 }}>Add Invoice</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20,
             color: '#9CA3AF', cursor: 'pointer' }}>×</button>
-        </div>
-
-        <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 12 }}>
-          Minimal entry — line items + PDF upload ship in Phase 3.
         </div>
 
         {err && (
@@ -523,7 +625,37 @@ function AddInvoiceModal({ job, onClose, onSaved }) {
             padding: '7px 10px', fontSize: 12, borderRadius: 4, marginBottom: 12 }}>{err}</div>
         )}
 
-        {/* Sub contact */}
+        {/* ── File upload + AI extract ── */}
+        <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6,
+          padding: '10px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6 }}>
+            Invoice File <span style={{ fontWeight: 400, color: '#9CA3AF' }}>(optional — PDF or image; fields auto-extracted by AI)</span>
+          </div>
+          {uploadedFileName ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: '#374151' }}>📎 {uploadedFileName}</span>
+              {extracting ? (
+                <span style={{ fontSize: 11, color: '#C9A84C' }}>✨ Extracting fields…</span>
+              ) : (
+                <span style={{ fontSize: 11, color: '#22c55e' }}>✓ Fields pre-filled — review below</span>
+              )}
+              <button type="button" onClick={() => { setUploadedFileId(null); setUploadedFileName(null); }}
+                style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#9CA3AF',
+                  cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+          ) : uploading ? (
+            <div style={{ fontSize: 12, color: '#9CA3AF' }}>Uploading…</div>
+          ) : (
+            <label style={{ display: 'inline-block', cursor: 'pointer', fontSize: 12, color: '#1D4ED8',
+              background: '#EFF6FF', border: '1px solid #DBEAFE', borderRadius: 4, padding: '5px 12px' }}>
+              📁 Choose file
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange}
+                style={{ display: 'none' }} />
+            </label>
+          )}
+        </div>
+
+        {/* Sub / Vendor */}
         <div className="fg">
           <label className="flbl">Sub / Vendor *</label>
           <select className="finp" style={ssty} value={form.subContactId} onChange={e => set('subContactId', e.target.value)}>
@@ -534,7 +666,7 @@ function AddInvoiceModal({ job, onClose, onSaved }) {
           </select>
         </div>
 
-        {/* Invoice number (optional — auto-gen if blank) */}
+        {/* Invoice # */}
         <div className="fg">
           <label className="flbl">Invoice # <span style={{ color: '#9CA3AF' }}>(leave blank to auto-generate)</span></label>
           <input className="finp" value={form.invoiceNumber}
@@ -542,23 +674,30 @@ function AddInvoiceModal({ job, onClose, onSaved }) {
             placeholder="e.g. 2024-047" />
         </div>
 
-        {/* Invoice date */}
-        <div className="fg">
-          <label className="flbl">Invoice Date *</label>
-          <input className="finp" type="date" value={form.invoiceDate}
-            onChange={e => set('invoiceDate', e.target.value)} />
-        </div>
-
-        {/* Due date */}
-        <div className="fg">
-          <label className="flbl">Due Date <span style={{ color: '#9CA3AF' }}>(optional)</span></label>
-          <input className="finp" type="date" value={form.dueDate}
-            onChange={e => set('dueDate', e.target.value)} />
+        {/* Dates — side by side */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="fg">
+            <label className="flbl">Invoice Date *</label>
+            <input className="finp" type="date" value={form.invoiceDate}
+              onChange={e => set('invoiceDate', e.target.value)} />
+          </div>
+          <div className="fg">
+            <label className="flbl">Due Date <span style={{ color: '#9CA3AF' }}>(opt.)</span></label>
+            <input className="finp" type="date" value={form.dueDate}
+              onChange={e => set('dueDate', e.target.value)} />
+          </div>
         </div>
 
         {/* Amount */}
         <div className="fg">
-          <label className="flbl">Amount *</label>
+          <label className="flbl">
+            Amount *
+            {lineItems.length > 0 && lineItemTotal > 0 && (
+              <span style={{ color: '#9CA3AF', fontWeight: 400, marginLeft: 8 }}>
+                (line items total: {f$(lineItemTotal)})
+              </span>
+            )}
+          </label>
           <input className="finp" type="number" min="0.01" step="0.01"
             value={form.amount} onChange={e => set('amount', e.target.value)}
             placeholder="0.00" />
@@ -572,9 +711,73 @@ function AddInvoiceModal({ job, onClose, onSaved }) {
             placeholder="e.g. Framing labor — 142 Oak St" style={{ resize: 'vertical' }} />
         </div>
 
+        {/* ── Line items table ── */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#374151',
+              textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Line Items <span style={{ fontWeight: 400, color: '#9CA3AF', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+            </div>
+            <button type="button" onClick={addLineItem}
+              style={{ fontSize: 11, color: '#1D4ED8', background: 'none', border: '1px solid #DBEAFE',
+                borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>
+              + Add line
+            </button>
+          </div>
+          {lineItems.length > 0 && (
+            <div style={{ border: '1px solid #E8E4DC', borderRadius: 4, overflow: 'hidden', fontSize: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr 1fr 1fr 28px',
+                background: '#F7F5F0', padding: '5px 8px', fontWeight: 700, color: '#374151', fontSize: 10 }}>
+                {['Description', 'Qty', 'Unit $', 'Total', ''].map((h, i) => <div key={i}>{h}</div>)}
+              </div>
+              {lineItems.map((li, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '3fr 1fr 1fr 1fr 28px',
+                  padding: '4px 8px', borderTop: '1px solid #F3F0EB', gap: 4, alignItems: 'center' }}>
+                  <input value={li.description} onChange={e => setLineItem(i, 'description', e.target.value)}
+                    placeholder="Description" style={inpSty} />
+                  <input value={li.qty} onChange={e => setLineItem(i, 'qty', e.target.value)}
+                    type="number" min="0" placeholder="0" style={inpSty} />
+                  <input value={li.unit_price} onChange={e => setLineItem(i, 'unit_price', e.target.value)}
+                    type="number" min="0" step="0.01" placeholder="0.00" style={inpSty} />
+                  <input value={li.total} onChange={e => setLineItem(i, 'total', e.target.value)}
+                    type="number" min="0" step="0.01" placeholder="0.00"
+                    style={{ ...inpSty, fontWeight: 600 }} />
+                  <button type="button" onClick={() => removeLineItem(i)}
+                    style={{ background: 'none', border: 'none', color: '#9CA3AF',
+                      cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+                </div>
+              ))}
+              {lineItemTotal > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '5px 8px',
+                  background: '#F7F5F0', fontSize: 12, fontWeight: 700,
+                  borderTop: '1px solid #E8E4DC', color: '#0A1F44' }}>
+                  Total: {f$(lineItemTotal)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Schedule item link */}
+        {schedItems.length > 0 && (
+          <div className="fg">
+            <label className="flbl">Related Schedule Item <span style={{ color: '#9CA3AF' }}>(optional)</span></label>
+            <select className="finp" style={ssty} value={form.relatedScheduleItemId}
+              onChange={e => set('relatedScheduleItemId', e.target.value)}>
+              <option value="">— None —</option>
+              {schedItems.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.title}{s.scheduled_date ? ` · ${s.scheduled_date}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
-          <button className="btn btn-navy" style={{ flex: 1 }} onClick={save} disabled={saving}>
+          <button className="btn btn-navy" style={{ flex: 1 }} onClick={save}
+            disabled={saving || uploading || extracting}>
             {saving ? 'Saving…' : 'Add Invoice'}
           </button>
         </div>
