@@ -81,12 +81,19 @@ export default function SubInvoicesSection({ job, profile }) {
     return { pending, outstanding, paid };
   }, [invoices]);
 
-  const apOutstanding = useMemo(() =>
-    partitioned.outstanding
-      .filter(i => i.status !== 'disputed')
-      .reduce((s, i) => s + i.balance, 0),
-    [partitioned.outstanding]
-  );
+  const rollup = useMemo(() => {
+    const pendingInvoices     = partitioned.pending;
+    const outstandingInvoices = partitioned.outstanding.filter(i => i.status !== 'disputed');
+    const paidInvoices        = partitioned.paid;
+    return {
+      pendingTotal:     pendingInvoices.reduce((s, i) => s + Number(i.amount), 0),
+      outstandingTotal: outstandingInvoices.reduce((s, i) => s + Number(i.balance), 0),
+      paidTotal:        paidInvoices.reduce((s, i) => s + Number(i.amount), 0),
+      pendingCount:     pendingInvoices.length,
+      outstandingCount: outstandingInvoices.length,
+      paidCount:        paidInvoices.length,
+    };
+  }, [partitioned]);
 
   const selectedInvoice = invoices.find(i => i.id === selectedId) || null;
 
@@ -145,14 +152,7 @@ export default function SubInvoicesSection({ job, profile }) {
       {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
         marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>Sub Invoices</div>
-          {apOutstanding > 0 && (
-            <div style={{ fontSize: 11, color: '#C9A84C', marginTop: 2 }}>
-              AP Outstanding: <strong>{f$(apOutstanding)}</strong> across {partitioned.outstanding.filter(i => i.status !== 'disputed').length} invoice{partitioned.outstanding.filter(i => i.status !== 'disputed').length !== 1 ? 's' : ''}
-            </div>
-          )}
-        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>Sub Invoices</div>
         <button
           onClick={() => setShowAddInvoice(true)}
           style={{ fontSize: 12, padding: '6px 14px', background: '#0A1F44', color: '#C9A84C',
@@ -160,6 +160,38 @@ export default function SubInvoicesSection({ job, profile }) {
           + Add Invoice
         </button>
       </div>
+
+      {/* Per-status rollup totals */}
+      {invoices.length > 0 && (
+        <div style={{ display: 'flex', gap: 24, padding: '12px 0',
+          borderBottom: '1px solid #E8E4DC', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase',
+              letterSpacing: '0.05em', marginBottom: 2 }}>Pending Review</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: '#0A1F44' }}>{f$(rollup.pendingTotal)}</div>
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+              {rollup.pendingCount} invoice{rollup.pendingCount === 1 ? '' : 's'}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase',
+              letterSpacing: '0.05em', marginBottom: 2 }}>Outstanding</div>
+            <div style={{ fontSize: 20, fontWeight: 600,
+              color: rollup.outstandingTotal > 0 ? '#b45309' : '#0A1F44' }}>{f$(rollup.outstandingTotal)}</div>
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+              {rollup.outstandingCount} invoice{rollup.outstandingCount === 1 ? '' : 's'}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase',
+              letterSpacing: '0.05em', marginBottom: 2 }}>Paid</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: '#059669' }}>{f$(rollup.paidTotal)}</div>
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+              {rollup.paidCount} invoice{rollup.paidCount === 1 ? '' : 's'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* View tabs */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 14, borderBottom: '2px solid #E8E4DC',

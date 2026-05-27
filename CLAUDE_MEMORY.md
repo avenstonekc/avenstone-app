@@ -1336,4 +1336,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Why Phase 1 smoke test passed: the SQL smoke test (sbApproveSubInvoice etc.) did not exercise sbCreateSubInvoice via UI; the INSERT was never exercised end-to-end until Phase 3's Add Invoice modal wired it to a real PDF submit.
 - Files: avenstone-vite/src/lib/subInvoices.js — line 15 (import) + payload line ~84.
 - Lesson: every helper that INSERTs to a tenant-scoped table must include tenant_id: AV_TENANT from the start. UI smoke test (not SQL test) is the gate — SQL tests that bypass the helper path don't catch this class of bug.
-- Commit: see below.
+- Commit: 4786114.
+
+[LOG — 2026-05-27 — Sub Invoices rollup totals]
+- Action: Added three-stat rollup block (Pending Review / Outstanding / Paid) above view tabs in Sub Invoices section. Per-job, in-memory aggregation from already-loaded invoices — no new DB query.
+- Pending = sum(amount), Outstanding = sum(balance) on approved+partially_paid (disputed excluded), Paid = sum(amount).
+- Replaced the old single-line "AP Outstanding: $X across N invoices" with the three-stat block. Existing `apOutstanding` useMemo replaced with `rollup` useMemo returning all three totals + counts.
+- Hidden when invoices.length === 0 (no $0.00 blocks on fresh jobs).
+- Style: inline styles matching existing SubInvoicesSection.jsx pattern. Colors: Outstanding amber (#b45309) when > 0, Paid green (#059669), Pending navy (#0A1F44).
+- Files: avenstone-vite/src/components/jobs/tabs/financials/SubInvoicesSection.jsx.
+- Build: ✓ clean (718ms).
