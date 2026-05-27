@@ -1275,3 +1275,27 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ clean (584ms). Commit: 8a47f74.
 - Smoke test: end-to-end create→approve→partial pay→full pay flow functional via deployed app.
 - Next: Phase 3 — PDF upload via Haiku vision + line items in manual entry. Phase 4 — transaction_id propagation to job_transactions on payment.
+
+[LOG — 2026-05-27 — SUB_INVOICES_ARC Phase 3 shipped]
+- Action: Built AI invoice extraction edge function + enhanced AddInvoiceModal with file upload + line items + schedule item link. Added working "View Invoice File" button to InvoiceDetailPanel.
+- NEW supabase/functions/ai-extract-sub-invoice/index.ts
+  - Input: { jobFileId } (UUID from job_files row — no base64 payload from client)
+  - Downloads file from 'job-files' bucket using service role client
+  - Branches on mime_type / extension: PDF → document content block + anthropic-beta header; image → image content block
+  - Model: claude-haiku-4-5-20251001, max_tokens: 1024, user-triggered only
+  - Returns { ok, extracted: { invoice_number, invoice_date, due_date, amount, description, line_items, vendor_name } }
+  - Security: JWT auth → profile → tenant_id; tenant isolation check on job_files.tenant_id; 10 MB guard
+  - arrayBufferToBase64 chunked (no external deps)
+  - Cost: ~$0.001/invoice (Haiku, single call)
+- EDIT supabase.js: added AI_EXTRACT_SUB_INVOICE_URL export
+- EDIT SubInvoicesSection.jsx (246 insertions):
+  - AddInvoiceModal: file upload section (PDF/image) → sbUploadJobFile → jobFileId → auto-extract → form pre-fill
+  - Uploading/extracting spinner states; file remove button
+  - Line items table: add/remove rows, auto-calc total from qty×unit_price, editable total override, footer sum
+  - Schedule item dropdown (loaded from sbLoadScheduleItems; hidden when no items)
+  - Dates side-by-side grid layout
+  - save() passes invoiceFileId, lineItems, relatedScheduleItemId, submittedVia='pdf_upload' to sbCreateSubInvoice
+  - InvoiceDetailPanel: "View Invoice File" button calls sbSignJobFileUrl → window.open signed URL (was static placeholder)
+- Build: ✓ clean (566ms). Commits: 5a341d0 (edge fn + URL), b05f394 (UI). Pushed.
+- Deploy: edge fn auto-deploys via GitHub Actions on push to supabase/functions/**; Vercel auto-deploys UI changes.
+- Next: Phase 4 — sub_invoice_payments → job_transactions propagation via transaction_id FK (cash accounting integration). Phase 5 — Master Agent verbs (log_sub_invoice, log_sub_payment, approve_sub_invoice).
