@@ -205,14 +205,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0 (audit:schema scans JS/TS src only — ai-pm-nightly TS edge fn drift was not scanner-visible; closed manually).** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Note: ai-pm-nightly todos insert was never writing rows because function is DISABLED — but the stale payload would have silently dropped rows on any re-enable. Detector Phase 2 shipped 2026-05-13 — skipped now 9 (was 34 at Phase 1 baseline, 15 after Phase 1). Remaining 8 skipped are function parameters (no call-site analysis), 1 is dynamic .from() (opaque). No new drift surfaced by Phase 2 extension. Missing-tables arc 2026-05-19: 4 findings → 1 STOP (see LOG). Scanner missing-tables now: 1 (quote_requests in ai-pm-nightly — DISABLED, deferred until re-enable). Write/read drift 0, write skipped 0. **Detector Phase 3 shipped 2026-05-27** (Bucket A: array-of-ObjectExpression batch-insert resolution; Bucket C: intentional-skips docs block). Write-skipped now 0, read-skipped 1 (field-opus-db-query dynamic table — intentional). **14 open drift findings surfaced** (real code vs. DB drift, not scanner bugs — see block below).
 
 - **Open drift findings (2026-05-27 scan — NOT fixed, queued for a dedicated slice):**
-  - **Write drift (1, was 2 — field-opus-result-webhook half closed 2026-05-27 commit dd1a78b):** `notifications.priority` written at `src/lib/supabase.js:2406` — column doesn't exist in DB. field-opus-result-webhook:106 half fixed (priority key dropped from INSERT).
+  - **Write drift (0 — fully closed 2026-05-27):** `notifications.priority` both halves fixed: field-opus-result-webhook:106 (dd1a78b) + supabase.js:2406 (62c5d6f). No remaining write drift.
   - **Missing tables (2, was 3 — itb_invitees closed 2026-05-27):**
     - `failed_intents` — read at `field-opus-db-query/index.ts:71`. Table never created; likely stale reference.
     - `quote_requests` — read at `ai-pm-nightly/index.ts:76`. Function DISABLED. Deferred until re-enable.
   - **Read drift — auto_fix_attempts (7 cols, all at `field-opus-db-query/index.ts:50`):** Code selects `bug_report_id, status, commit_hash, attempt_number, started_at, completed_at, result_summary` — none exist. Actual columns: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`. field-opus-db-query query is stale against the shipped schema.
   - **Read drift — bug_reports (2 cols, `field-opus-db-query/index.ts:40`):** `title` and `classification` selected but don't exist in `bug_reports` schema. Same stale field-opus-db-query query.
   - **Read drift — jobs (1 col, `src/lib/supabase.js:2575`):** `assigned_pm_id` selected but actual column is `assigned_pm` (TEXT not UUID). Simple rename fix.
-  - **Priority:** `jobs.assigned_pm_id` (supabase.js) is highest — live user-facing code. `field-opus-db-query` queries are dev-console-only (Kalin-only auth). `notifications.priority` needs schema investigation first.
+  - **Priority:** `jobs.assigned_pm_id` (supabase.js) is highest — live user-facing code. `field-opus-db-query` queries are dev-console-only (Kalin-only auth).
 
 - **Tool-payload drift detector refinement (Path B)** — Detector shipped 2026-05-21 in commit 94708e1. Initial run: 14 advertised-not-written findings, all expected false positives in 3 categories:
   1. WHERE-clause keys (e.g. update_job.job_id used in .eq() not .update payload)
@@ -1664,3 +1664,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - void_draw RPC confirmed working: correctly reverts in_draw → unreimbursed, deletes draw_line_items, marks draw cancelled.
 - COST_PLUS_ARC Phase 1 (schema + trigger + RPCs) + Phase 2 (ComposeDrawScr A/B/C) COMPLETE.
 - Next: Phase 3 — sbMarkInvoicePaid cascade (cascade_draw_paid_to_transactions Postgres function; marks draw tx as reimbursed when invoice paid). Phase 4 — float stat cards.
+
+[LOG — 2026-05-27 — notifications.priority drift — supabase.js half fixed (finding fully closed)]
+- Action: Removed `priority: 'normal'` from the notifications INSERT payload in `sbAddScheduleInvitee` (supabase.js:2406). One-line deletion.
+- Audit: `priority` column confirmed absent from notifications (11 cols). `priority` was hardcoded inline — no variable, no other consumer (not logged, not returned, not used in conditional logic). Single caller (CalScr.jsx:355) only reads `r.ok` and `r.data.id`.
+- Other notifications writes in supabase.js (lines 906 + 914) confirmed clean — neither included `priority`.
+- Pairs with dd1a78b (field-opus-result-webhook half). Both halves now shipped.
+- Drift detector: write drift 0. `notifications.priority` finding fully closed. Open drift findings write count updated in Active open items block.
+- Build: ✓ clean. Commit: 62c5d6f. Pushed to main.
