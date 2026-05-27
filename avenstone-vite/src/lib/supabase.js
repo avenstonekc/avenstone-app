@@ -233,10 +233,11 @@ async function _callVisionCategorizer({ file, jobId }) {
 }
 
 /**
- * Best-effort dual-write to job_files after sbPhoto succeeds.
- * Never throws — failure is logged and ignored so the legacy photos path is never broken.
+ * Write photo record to job_files. Returns the inserted job_files.id, or null on error.
+ * slice 8/12: replaces _dualWritePhotoToJobFiles; now the PRIMARY write (no legacy photos table).
+ * Storage bucket stays 'job-photos' (public) so existing consumers work without URL changes.
  */
-async function _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId) {
+async function _insertPhotoToJobFiles(path, file, jid, entityType, entityId) {
   try {
     let category = 'Photos';
     let subcategory = null;
@@ -244,11 +245,9 @@ async function _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId) 
     let aiSuggested = null;
 
     if (entityType === 'change_order') {
-      // CO photos: fixed category, no vision needed
       category = 'Change Orders';
       aiConfidence = 1.0;
     } else {
-      // Full inference chain: file-name rules → phase lookup → Vision-Haiku
       try {
         const { inferFileCategory } = await import('./jobFiles/inferFileCategory.js');
         const queryFn = async ({ jobId: qjid }) => {
@@ -263,26 +262,20 @@ async function _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId) 
           return data?.phase_name ?? null;
         };
         const inferred = await inferFileCategory({
-          file,
-          jobId: jid,
-          uploadSource: entityType || 'manual',
-          queryFn,
-          visionFn: _callVisionCategorizer,
+          file, jobId: jid, uploadSource: entityType || 'manual', queryFn, visionFn: _callVisionCategorizer,
         });
         category = inferred.category;
         const isLowConf = inferred.source === 'vision_lowconf';
         subcategory = isLowConf ? null : (inferred.subcategory ?? null);
         aiConfidence = inferred.confidence;
-        // For low-conf vision: store AI's guess in ai_subcategory_suggested for later review
         aiSuggested = isLowConf ? (inferred.subcategory ?? null) : null;
       } catch { /* non-fatal — falls back to Photos / null */ }
     }
 
-    // Only link entity types the CHECK constraint allows; material_order etc. silently dropped
     const linkedType = entityType && _JF_VALID_ENTITY_TYPES.has(entityType) ? entityType : null;
     const linkedId   = linkedType ? (entityId || null) : null;
 
-    await sb.from('job_files').insert({
+    const { data: jfRow, error } = await sb.from('job_files').insert({
       tenant_id: AV_TENANT,
       job_id: jid,
       uploaded_by_id: AV_USER_ID || null,
@@ -298,12 +291,20 @@ async function _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId) 
       client_visible: false,
       related_entity_type: linkedType,
       related_entity_id: linkedId,
-    });
+    }).select('id').single();
+    if (error) { console.warn('[sbPhoto _insertPhotoToJobFiles]', error?.message); return null; }
+    return jfRow?.id || null;
   } catch (err) {
-    console.warn('[sbPhoto dual-write to job_files]', err?.message || err);
+    console.warn('[sbPhoto _insertPhotoToJobFiles]', err?.message || err);
+    return null;
   }
 }
 
+/**
+ * Upload a photo and record it in job_files (source of truth).
+ * slice 8/12: dual-write bridge dropped — no longer writes to legacy photos table.
+ * Storage bucket stays 'job-photos' (public). Return shape preserved for callers.
+ */
 export const sbPhoto = async (jid, file, entityType, entityId, category = null) => {
   try {
     const ext = file.name.split('.').pop() || 'jpg';
@@ -312,18 +313,14 @@ export const sbPhoto = async (jid, file, entityType, entityId, category = null) 
     if (ue) { console.error('[sbPhoto] upload failed:', ue.message); return { ok: false, error: ue.message, data: null }; }
     const { data: ud } = sb.storage.from('job-photos').getPublicUrl(path);
     const url = ud.publicUrl;
-    const row = {
-      job_id: jid, tenant_id: AV_TENANT,
-      type: file.type.startsWith('video') ? 'video' : 'photo',
-      url, name: file.name,
-      ...(entityType ? { related_entity_type: entityType } : {}),
-      ...(entityId   ? { related_entity_id:   entityId }   : {}),
-      ...(category   ? { category }                        : {}),
-    };
-    const { data: inserted, error: ie } = await sb.from('photos').insert(row).select('id').single();
-    if (ie) { console.error('[sbPhoto] insert failed:', ie.message); return { ok: false, error: ie.message, data: null }; }
-    await _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId);
-    return { ok: true, error: null, data: { id: inserted?.id, type: row.type, url, name: file.name } };
+    const type = file.type.startsWith('video') ? 'video' : 'photo';
+    const jfId = await _insertPhotoToJobFiles(path, file, jid, entityType, entityId);
+    if (!jfId) {
+      // Clean up orphaned storage object and surface the error
+      sb.storage.from('job-photos').remove([path]).catch(() => {});
+      return { ok: false, error: 'Failed to save photo record', data: null };
+    }
+    return { ok: true, error: null, data: { id: jfId, type, url, name: file.name } };
   } catch (e) {
     console.error('[sbPhoto]', e);
     return { ok: false, error: e.message || 'Photo save failed', data: null };
@@ -652,24 +649,33 @@ export const sbLoadDocs = async jid => {
   }));
 };
 /**
- * Best-effort dual-write to job_files after sbUploadDoc succeeds.
- * fileType → category/subcategory mapping mirrors the slice 1 backfill migration.
+ * Upload a document and record it in job_files (source of truth).
+ * slice 8/12: dual-write bridge dropped — no longer writes to legacy job_documents table.
+ * Storage bucket stays 'job-documents' (private). Return shape preserved for callers.
+ * Note: ClientSignContractModal directly updates job_documents.client_visible — that path
+ * is now a silent no-op. Fix scheduled for slice 9.
  */
-async function _dualWriteDocToJobFiles(path, jid, file, fileType) {
+export const sbUploadDoc = async (jid, file, fileType) => {
   try {
+    const ext = file.name.split('.').pop() || 'bin';
+    const path = `${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: ue } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type, upsert: false });
+    if (ue) { console.error('Doc upload error:', ue); return { error: ue.message || 'Upload failed' }; }
+
+    // fileType → category/subcategory mapping (consistent with slice 1 migration + subcategory='Proposals' fix)
     let category = 'Documents';
     let subcategory = null;
     const ft = (fileType || 'other').toLowerCase();
     if (ft === 'permit')                              { category = 'Documents';       subcategory = 'Permits'; }
     else if (ft === 'plan' || ft === 'blueprint')     { category = 'Documents';       subcategory = 'Plans'; }
-    else if (ft === 'contract' || ft === 'agreement') { category = 'Communications';  subcategory = 'Contracts'; }
+    else if (ft === 'contract' || ft === 'agreement') { category = 'Documents';       subcategory = 'Contracts'; }
     else if (ft === 'receipt' || ft === 'invoice')    { category = 'Receipts';        subcategory = null; }
     else if (ft === 'spec' || ft === 'specification') { category = 'Documents';       subcategory = 'Specs'; }
     else if (ft === 'inspection')                     { category = 'Documents';       subcategory = 'Inspections'; }
-    else if (ft === 'proposal')                       { category = 'Documents';       subcategory = null; }
+    else if (ft === 'proposal')                       { category = 'Documents';       subcategory = 'Proposals'; }
     // 'other', 'transcript', etc. → Documents / null
 
-    await sb.from('job_files').insert({
+    const { data: jfRow, error: ie } = await sb.from('job_files').insert({
       tenant_id: AV_TENANT,
       job_id: jid,
       uploaded_by_id: AV_USER_ID || null,
@@ -683,33 +689,35 @@ async function _dualWriteDocToJobFiles(path, jid, file, fileType) {
       ai_confidence: 1.0,
       ai_subcategory_suggested: subcategory,
       client_visible: false,
-    });
-  } catch (err) {
-    console.warn('[sbUploadDoc dual-write to job_files]', err?.message || err);
-  }
-}
-
-export const sbUploadDoc = async (jid, file, fileType) => {
-  try {
-    const ext = file.name.split('.').pop() || 'bin';
-    const path = `${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error: ue } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type, upsert: false });
-    if (ue) { console.error('Doc upload error:', ue); return { error: ue.message || 'Upload failed' }; }
-    const { data: existing } = await sb.from('job_documents').select('version').eq('job_id', jid).eq('name', file.name).order('version', { ascending: false }).limit(1);
-    const version = (existing && existing.length ? existing[0].version : 0) + 1;
-    const row = { job_id: jid, tenant_id: AV_TENANT, name: file.name, file_url: path, file_type: fileType || 'other', version, client_visible: false };
-    const { data: inserted, error: ie } = await sb.from('job_documents').insert(row).select().single();
+    }).select('id, created_at').single();
     if (ie) return { error: ie.message || 'Save failed' };
-    await _dualWriteDocToJobFiles(path, jid, file, fileType);
+
     const signed_url = await docSignedUrl(path);
-    return { doc: { ...inserted, signed_url } };
+    // Return a shape compatible with the legacy job_documents-based callers
+    return { doc: {
+      id: jfRow.id,          // job_files.id — used by sbDelDoc, sbToggleDocVisible, DocsTab
+      job_id: jid,
+      tenant_id: AV_TENANT,
+      name: file.name,
+      file_url: path,        // storage_path — used by sbDelDoc for storage cleanup
+      file_type: ft === 'other' ? 'other' : (subcategory?.toLowerCase().replace(/s$/, '') || 'other'),
+      version: 1,            // job_files has no version column
+      client_visible: false,
+      created_at: jfRow.created_at,
+      signed_url,
+    }};
   } catch (e) { return { error: e.message || 'Unknown error' }; }
 };
+
+/**
+ * Delete a document by id. slice 8/12: id is job_files.id (sbLoadDocs returns job_files rows).
+ * Also removes storage object. Legacy job_documents table NOT touched — write-frozen.
+ */
 export const sbDelDoc = async doc => {
   try {
     const path = docPathFromUrl(doc.file_url);
     if (path) await sb.storage.from('job-documents').remove([path]);
-    const { error } = await sb.from('job_documents').delete().eq('id', doc.id);
+    const { error } = await sb.from('job_files').delete().eq('id', doc.id);
     if (error) {
       captureFailedIntent({ kind: 'doc_delete', payload: { docId: doc.id }, jobId: doc.job_id, message: error.message, resumable: false }).catch(() => {});
       return { ok: false, error: error.message };
@@ -720,9 +728,13 @@ export const sbDelDoc = async doc => {
     return { ok: false, error: e.message || 'Delete failed' };
   }
 };
+
+/**
+ * Toggle client_visible on a document. slice 8/12: id is job_files.id.
+ */
 export const sbToggleDocVisible = async (id, val) => {
   try {
-    const { error } = await sb.from('job_documents').update({ client_visible: val }).eq('id', id);
+    const { error } = await sb.from('job_files').update({ client_visible: val }).eq('id', id);
     if (error) {
       captureFailedIntent({ kind: 'doc_toggle', payload: { id, val }, jobId: null, message: error.message, resumable: false }).catch(() => {});
       return { ok: false, error: error.message };
