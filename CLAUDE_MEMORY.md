@@ -1395,3 +1395,20 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - System prompt: added SUB INVOICE WORKFLOW section.
 - Note: commit was stuck mid-rebase in previous session; resolved in this session by clearing corrupted rebase-merge state and committing directly.
 - Commit: 43d9d5b. Pushed to main. Build: auto-deploys via GitHub Actions.
+
+[LOG — 2026-05-27 — COMPANY_FILES_ARC Phase 1 shipped]
+- Action: Created company_files table with visible_to_roles TEXT[] (5 roles), RLS policies, 5 indexes, set_updated_at trigger. Storage bucket 'company-files' (private). Built helpers in companyFiles.js per blueprint Phase 1 scope.
+- Audit confirmed: profiles.role has exactly 5 values (client, owner, project_manager, sales_rep, sub) — matches blueprint's 5-role assumption exactly. set_updated_at function pre-exists.
+- Migration: 20260527040000_company_files_arc_phase_1.sql. All DB objects verified via information_schema after apply.
+- Schema: 21 columns. RLS: cf_tenant_select (all tenant members can read), cf_modify (owner+PM+rep writes). Storage policies: upload, read, delete. partial unique index enforces one active row per (tenant_id, type). 4 performance indexes (tenant_active, expiration, client_visible, sub_visible).
+- Helpers in avenstone-vite/src/lib/companyFiles.js (separate file, matching subInvoices.js pattern):
+  sbUploadCompanyFile, sbLoadCompanyFiles, sbGetCompanyFile, sbUpdateCompanyFile,
+  sbSetCompanyFileRoles, sbArchiveCompanyFile, sbReplaceCompanyFile, sbSignCompanyFileUrl.
+- ReplaceCompanyFile: archives old, uploads new, wires replaced_by_id pointer. Rollback on insert failure. Does NOT wire Phase 5 watchdog (deferred — sbScheduleCompanyFileExpirations / sbCancelCompanyFileScheduledActions not built yet).
+- Smoke test: SQL-level verification — all 21 columns present, 2 RLS policies on company_files, 3 storage policies, build ✓ clean (605ms).
+- Deviations from blueprint noted:
+  1. Helpers in companyFiles.js (not supabase.js) — blueprint says supabase.js but subInvoices.js pattern and file size make separate file correct. Stated explicitly per scope.
+  2. Phase 1 admin UI (CompanyFilesAdminScr) deferred — this run's scope was schema + helpers only.
+  3. sbToggleAutoShare (stale pre-patch name in blueprint Phase 1 detail) replaced by sbSetCompanyFileRoles per patched blueprint locked decision 3 and net-new list.
+  4. sbLoadCompanyFilesForSub, sbScheduleCompanyFileExpirations, sbCancelCompanyFileScheduledActions omitted — Phase 3b/5 scope.
+- Next: Phase 1 admin UI or Phase 2 FilesTab integration — Kalin decides order.
