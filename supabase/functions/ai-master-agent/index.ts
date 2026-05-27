@@ -145,6 +145,7 @@ const CONFIRM_TOOLS = new Set([
   "log_sub_invoice",
   "log_sub_payment",
   "approve_sub_invoice",
+  "upload_company_file",
 ]);
 
 // ── REQUIRED_FIELDS registry (Phase 4) ───────────────────────────────────────
@@ -729,6 +730,22 @@ const TOOLS = [
         invoice_id: { type: "string", description: "UUID of specific invoice. Required if sub has multiple pending invoices on this job." },
       },
       required: ["job_id", "sub_name"],
+    },
+  },
+  {
+    name: "upload_company_file",
+    description: "Uploads a company-level compliance document (COI, license, W-9, bond) from an attached image or PDF. Owner/PM only. Haiku extracts expiration date, policy number, and issuer automatically from the attached document. Use when the user attaches a document and mentions uploading, saving, updating, or filing it — e.g. 'save this insurance cert', 'upload our new COI', 'log this W-9', 'here's the new bond'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file_type: { type: "string", description: "Document type label. Common values: COI, General Liability, Workers Comp, Bond, License, W-9, Other." },
+        expiration_date: { type: "string", description: "Expiration date YYYY-MM-DD. Vision extracts this from the document; override only if the user specifies a different date." },
+        policy_number: { type: "string", description: "Policy number, license number, or bond number from the document. Optional — vision extracts if present." },
+        issuer: { type: "string", description: "Insurer, surety, or licensing authority that issued the document. Optional — vision extracts if visible." },
+        visible_to_subs: { type: "boolean", description: "Whether subs can see this document in their portal. Default false unless user explicitly says subs should see it." },
+        visible_to_clients: { type: "boolean", description: "Whether clients can see this document. Default false unless user explicitly says clients should see it." },
+      },
+      required: ["file_type"],
     },
   },
 ];
@@ -1511,6 +1528,121 @@ async function executeTool(
         return { success: `Invoice from ${apSubName} approved. Ready for payment.` };
       }
 
+      case "upload_company_file": {
+        if (userRole !== "owner" && userRole !== "project_manager") {
+          return { error: "Owner or PM role required to upload company files." };
+        }
+
+        const cfType      = String(input.file_type || "Other");
+        const cfExp       = input.expiration_date ? String(input.expiration_date)  : null;
+        const cfPolicy    = input.policy_number   ? String(input.policy_number)    : null;
+        const cfIssuer    = input.issuer          ? String(input.issuer)           : null;
+        const cfToSubs    = Boolean(input.visible_to_subs);
+        const cfToClients = Boolean(input.visible_to_clients);
+        const imgData     = input._image_data ? String(input._image_data) : null;
+        const imgMime     = input._image_mime ? String(input._image_mime) : "image/jpeg";
+        const isPdfFile   = Boolean(input._is_pdf);
+
+        if (!imgData) {
+          return { error: "No document attached. Please attach an image or PDF of the company document first." };
+        }
+
+        // Derive category from type
+        const CF_CATEGORY_MAP: Record<string, string> = {
+          "coi": "Insurance", "general liability": "Insurance", "gl insurance": "Insurance",
+          "workers comp": "Insurance", "workers compensation": "Insurance", "umbrella": "Insurance",
+          "bond": "Insurance", "surety bond": "Insurance",
+          "license": "License", "contractor license": "License", "trade license": "License",
+          "w-9": "Tax", "w9": "Tax",
+        };
+        const cfCategory = CF_CATEGORY_MAP[cfType.toLowerCase()] ?? "Compliance";
+
+        // Build visible_to_roles
+        const cfVisibleToRoles: string[] = [];
+        if (cfToSubs)    cfVisibleToRoles.push("sub");
+        if (cfToClients) cfVisibleToRoles.push("client");
+
+        // Decode base64 and upload to storage
+        const cfFileId   = crypto.randomUUID();
+        const cfExt      = isPdfFile ? "pdf" : (imgMime.split("/")[1] || "jpg");
+        const cfTypeSlug = cfType.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+        const cfPath     = `${tenantId}/${cfTypeSlug}/${cfFileId}.${cfExt}`;
+
+        const cfBin   = atob(imgData);
+        const cfBytes = new Uint8Array(cfBin.length);
+        for (let b = 0; b < cfBin.length; b++) cfBytes[b] = cfBin.charCodeAt(b);
+
+        const { error: cfUpErr } = await sb.storage
+          .from("company-files")
+          .upload(cfPath, cfBytes, { contentType: imgMime, upsert: false });
+        if (cfUpErr) return { error: `Upload failed: ${cfUpErr.message}` };
+
+        // Archive any existing active file of same type for this tenant
+        await sb.from("company_files")
+          .update({ lifecycle_status: "archived", archived_at: new Date().toISOString() })
+          .eq("tenant_id", tenantId)
+          .eq("type", cfType)
+          .eq("lifecycle_status", "active");
+
+        // Insert new company_files row
+        const { error: cfInsErr } = await sb.from("company_files").insert({
+          id:               cfFileId,
+          tenant_id:        tenantId,
+          uploaded_by_id:   userId,
+          name:             `${cfType} — uploaded via agent`,
+          storage_path:     cfPath,
+          storage_bucket:   "company-files",
+          mime_type:        imgMime,
+          category:         cfCategory,
+          type:             cfType,
+          issuer:           cfIssuer,
+          policy_number:    cfPolicy,
+          expiration_date:  cfExp,
+          extracted_fields: {},
+          visible_to_roles: cfVisibleToRoles,
+          lifecycle_status: "active",
+        });
+
+        if (cfInsErr) {
+          await sb.storage.from("company-files").remove([cfPath]).catch(() => {});
+          return { error: `Database insert failed: ${cfInsErr.message}` };
+        }
+
+        // Schedule watchdog rows if expiration_date set (non-blocking)
+        if (cfExp) {
+          const cfExpMs = new Date(cfExp).getTime();
+          const cfScheduleRows = [
+            { daysOut: 30, ruleKey: `cf_exp_30d_${cfFileId}`, priority: "medium" },
+            { daysOut: 14, ruleKey: `cf_exp_14d_${cfFileId}`, priority: "high"   },
+            { daysOut: 0,  ruleKey: `cf_exp_0d_${cfFileId}`,  priority: "high"   },
+          ];
+          for (const s of cfScheduleRows) {
+            const cfFireAt = new Date(cfExpMs - s.daysOut * 86_400_000).toISOString();
+            sb.from("scheduled_actions").insert({
+              tenant_id:           tenantId,
+              kind:                "reminder",
+              status:              "scheduled",
+              priority:            s.priority,
+              rule_key:            s.ruleKey,
+              fire_at:             cfFireAt,
+              source:              "system",
+              related_entity_type: "company_file",
+              related_entity_id:   cfFileId,
+              payload:             { company_file_id: cfFileId, days_out: s.daysOut },
+              created_by_id:       userId,
+            }).then(({ error: saErr }: { error: unknown }) => {
+              if (saErr) console.warn(`[upload_company_file] schedule row failed: ${saErr}`);
+            });
+          }
+        }
+
+        const cfBits: string[] = [`${cfType} uploaded`];
+        if (cfExp)    cfBits.push(`expires ${cfExp}`);
+        if (cfIssuer) cfBits.push(cfIssuer);
+        if (cfVisibleToRoles.length > 0) cfBits.push(`visible to: ${cfVisibleToRoles.join(", ")}`);
+        return { success: cfBits.join(" · ") };
+      }
+
       default:
         return { error: `Unknown tool: ${toolName}` };
     }
@@ -1538,6 +1670,56 @@ function extractLatestUserImage(
         typeof block.source.media_type === "string"
       ) {
         return { data: block.source.data, mime: block.source.media_type };
+      }
+    }
+  }
+  return null;
+}
+
+// Company-file extraction system prompt — used inline in runAgentLoop for upload_company_file.
+// Mirrors ai-extract-company-file/index.ts but embedded to avoid inter-function HTTP call.
+const CF_EXTRACT_PROMPT = `You are extracting fields from a contractor compliance document (insurance certificate, license, bond, or tax form). Return ONLY valid JSON, no preamble, no markdown fences, no commentary.
+
+Schema:
+{
+  "type": "COI" | "General Liability" | "Workers Comp" | "Bond" | "License" | "W-9" | "Other" | null,
+  "expiration_date": "YYYY-MM-DD" | null,
+  "policy_number": string | null,
+  "issuer": string | null
+}
+
+Rules:
+- type: "COI" = Certificate of Insurance (any kind). "Workers Comp" = workers compensation. "Bond" = surety bond. "License" = contractor/trade license. "W-9" = IRS W-9. "General Liability" = stand-alone GL policy. "Other" if unclear.
+- Dates must be ISO 8601 YYYY-MM-DD; return null if year cannot be determined.
+- policy_number: policy, license, or bond number — the primary document ID.
+- issuer: the insurance company, surety, or licensing authority (NOT the contractor holding it).
+- Return null for any field not present or not determinable.`;
+
+// Extends extractLatestUserImage to also capture PDF document blocks (type="document").
+// Used for upload_company_file which accepts both image snapshots and PDF uploads.
+function extractLatestUserFile(
+  msgs: Array<{ role: string; content: unknown }>,
+): { data: string; mime: string; isPdf: boolean } | null {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.role !== "user" || !Array.isArray(m.content)) continue;
+    for (const block of m.content as Array<any>) {
+      // PDF document block — Anthropic beta format
+      if (
+        block?.type === "document" &&
+        block?.source?.type === "base64" &&
+        typeof block.source.data === "string"
+      ) {
+        return { data: block.source.data, mime: "application/pdf", isPdf: true };
+      }
+      // Image block
+      if (
+        block?.type === "image" &&
+        block?.source?.type === "base64" &&
+        typeof block.source.data === "string" &&
+        typeof block.source.media_type === "string"
+      ) {
+        return { data: block.source.data, mime: block.source.media_type, isPdf: false };
       }
     }
   }
@@ -1647,6 +1829,17 @@ function describeConfirmAction(tool: string, input: any): string {
     }
     case "approve_sub_invoice":
       return `Approve invoice from ${input.sub_name} on job ${String(input.job_id || "")}.`;
+    case "upload_company_file": {
+      const cfDescBits: string[] = [`Upload ${String(input.file_type || "document")}`];
+      if (input.issuer)          cfDescBits.push(String(input.issuer));
+      if (input.expiration_date) cfDescBits.push(`expires ${String(input.expiration_date)}`);
+      if (input.policy_number)   cfDescBits.push(`#${String(input.policy_number)}`);
+      const cfVis: string[] = [];
+      if (input.visible_to_subs)    cfVis.push("subs");
+      if (input.visible_to_clients) cfVis.push("clients");
+      if (cfVis.length > 0) cfDescBits.push(`visible to ${cfVis.join(" + ")}`);
+      return cfDescBits.join(" · ") + ".";
+    }
     default:
       return "Perform this action.";
   }
@@ -1681,7 +1874,7 @@ Tenant: ${tenantId}${contextLine}
 
 WHAT YOU CAN DO:
 - Read: jobs, team
-- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, log sub invoices, log sub payments, approve sub invoices, send notifications, write to knowledge base, create schedule items
+- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, log sub invoices, log sub payments, approve sub invoices, send notifications, write to knowledge base, create schedule items, upload company files
 
 HOW TO BEHAVE:
 - Act immediately. Don't ask "should I do X?" — just do it and tell them what you did.
@@ -1689,7 +1882,7 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
-- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
+- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
 - Missing required fields: call the tool with whatever fields you have. If any required field is missing, the system surfaces a missing-field card automatically — do NOT ask in text first ("What's the amount?", "Which job?", etc.). Never invent values to fill gaps; just call the tool and let the card collect the rest.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: do NOT pass override_reason. Just call the tool with the job_id. If gates fail, the system surfaces a gate-resolution card automatically (redirect to Schedule / leave open / override-with-structured-reason). Do not ask in text whether to override — the card IS the prompt.
@@ -1728,6 +1921,9 @@ When the user says things like "schedule [sub/event] for [day]" or "add [event] 
 
 SUB INVOICE WORKFLOW
 Sub invoice workflow: When user mentions a sub sent an invoice or bill, use log_sub_invoice. When user mentions paying a sub, use log_sub_payment — if multiple unpaid invoices exist for that sub, ask which before calling. When user explicitly approves a sub invoice, use approve_sub_invoice (owner/PM only). Do not invent sub names — if unclear, ask the user to confirm spelling first. Void and dispute actions are UI-only; tell user to use FinancialsTab if they ask.
+
+COMPANY FILE WORKFLOW
+When the user attaches an image or PDF and mentions insurance, license, bond, W-9, COI, or any company compliance document, use upload_company_file. Vision extracts expiration date, policy number, and issuer automatically from the attached document — do NOT ask the user for those fields if the document was attached. Only ask if (a) the document type is genuinely ambiguous after reading it, or (b) the user explicitly wants to override an extracted value. Owner/PM only — if a rep or sub asks, explain that company file uploads require owner or PM access.
 
 DIAGNOSTIC REPORTING STYLE
 
@@ -1833,6 +2029,53 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
           if (img) {
             inputObj.image_data = img.data;
             inputObj.image_mime = img.mime;
+          }
+        }
+        // upload_company_file: extract fields from attached image/PDF via inline Haiku call.
+        // File data is stashed in _image_data/_image_mime/_is_pdf so the executor can upload
+        // to storage. Inline extraction avoids inter-function JWT forwarding complexity.
+        if (confirmBlock.name === "upload_company_file") {
+          const cfFileBlock = extractLatestUserFile(currentMessages);
+          if (cfFileBlock) {
+            const cfExtractHdrs: Record<string, string> = {
+              "x-api-key": ANTHROPIC_KEY,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+            };
+            if (cfFileBlock.isPdf) cfExtractHdrs["anthropic-beta"] = "pdfs-2024-09-25";
+            const cfContentBlock = cfFileBlock.isPdf
+              ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: cfFileBlock.data } }
+              : { type: "image",    source: { type: "base64", media_type: cfFileBlock.mime,            data: cfFileBlock.data } };
+            try {
+              const cfExtractRes = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: cfExtractHdrs,
+                body: JSON.stringify({
+                  model: "claude-haiku-4-5-20251001",
+                  max_tokens: 512,
+                  system: CF_EXTRACT_PROMPT,
+                  messages: [{ role: "user", content: [cfContentBlock, { type: "text", text: "Extract the document fields." }] }],
+                }),
+              });
+              if (cfExtractRes.ok) {
+                const cfExtractData = await cfExtractRes.json();
+                const rawCf: string = cfExtractData?.content?.[0]?.text ?? "{}";
+                const matchCf = rawCf.match(/\{[\s\S]*\}/);
+                // deno-lint-ignore no-explicit-any
+                const extr: Record<string, any> = JSON.parse(matchCf?.[0] ?? "{}");
+                // Merge Haiku findings — agent-provided values win (user can override)
+                if (extr.type           && !inputObj.file_type)       inputObj.file_type       = extr.type;
+                if (extr.expiration_date && !inputObj.expiration_date) inputObj.expiration_date = extr.expiration_date;
+                if (extr.policy_number  && !inputObj.policy_number)   inputObj.policy_number   = extr.policy_number;
+                if (extr.issuer         && !inputObj.issuer)           inputObj.issuer          = extr.issuer;
+              }
+            } catch (cfExtractErr) {
+              console.warn("[upload_company_file] Haiku extraction failed:", cfExtractErr);
+            }
+            // Stash file bytes for executor — never ask Claude to forward base64 through tool input
+            inputObj._image_data = cfFileBlock.data;
+            inputObj._image_mime = cfFileBlock.mime;
+            inputObj._is_pdf     = cfFileBlock.isPdf;
           }
         }
         // add_todo: pre-fetch assignee name so Confirm card readback shows "Add todo for [Name]".
