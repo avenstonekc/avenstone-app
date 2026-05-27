@@ -1224,3 +1224,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - All references to auto_share_with_clients updated: architecture diagram, phase plan, net-new helpers (sbToggleAutoShare → sbSetCompanyFileRoles + sbLoadCompanyFilesForSub), locked decisions 3/5/11, phase detail sections, phase 4 tool definition, phase 5 banner query.
 - Commit: c183191. Final: 820 lines (was 753).
 - Open: Phase 1 dispatch next.
+
+[LOG — 2026-05-27 — ScheduleTab white-page bug fixed]
+- Symptom: Clicking Schedule tab inside JobDet showed white page; back button didn't return to app (unhandled render exception killing the whole JobDet React tree).
+- Root cause: SCHEDULING_ARC slice 3 (commit 5196bd2) added `phaseProgressMap = useMemo(...)` AFTER the `if (!loaded) return` early return guard. useMemo is a React hook — must be called on every render in the same order. First render: loaded=false → early return fires → useMemo never registered (10 hooks). Second render: loaded=true → no early return → useMemo called for first time (11 hooks). React throws "Rendered more hooks than during the previous render." No ErrorBoundary in JobDet → entire tree dies → white page.
+- Fix: Moved useMemo block above the early return guard. phases/items initialize to [] so memo computes safely (empty map) while loading. One-file diff, lines 130-155.
+- Files: avenstone-vite/src/components/jobs/tabs/ScheduleTab.jsx
+- Commit: 99db9cb. Build: ✓ clean.
+- Recurrence pattern: Any useMemo/useCallback/useRef added below an early return gate will repro this exact crash. Symptom fingerprint: white page on first meaningful re-render, back button broken.
