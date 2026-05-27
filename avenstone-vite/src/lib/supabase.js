@@ -50,6 +50,7 @@ export const SUBMIT_BID_RESPONSE_URL    = `${FN}/submit-bid-response`;
 export const VIEW_ENGAGEMENT_URL        = `${FN}/view-engagement`;
 export const SUBMIT_BUG_REPORT_URL      = `${FN}/submit-bug-report`;
 export const AI_DAILY_LOG_DRAFT_URL     = `${FN}/ai-daily-log-draft`;
+export const AI_CATEGORIZE_URL          = `${FN}/ai-categorize-file`;
 export const FIELD_OPUS_CHAT_URL        = `${FN}/field-opus-chat`;
 export const FIELD_OPUS_DISPATCH_URL    = `${FN}/field-opus-dispatch-to-vm`;
 
@@ -181,6 +182,42 @@ const _PHASE_SUBCAT_MAP = {
 const _JF_VALID_ENTITY_TYPES = new Set(['schedule_item', 'change_order', 'daily_log', 'floor_plan', 'job_transaction', 'consultation_session']);
 
 /**
+ * Calls ai-categorize-file edge function with a base64-encoded image.
+ * Returns { category, subcategory, confidence, source } or throws on error.
+ * Cost: ~$0.001/call (Claude Haiku vision). User-triggered only — never fires on DB hooks.
+ */
+async function _callVisionCategorizer({ file, jobId }) {
+  // Convert File → base64 string (strips data:<mime>;base64, prefix)
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error('FileReader error'));
+    reader.readAsDataURL(file);
+  });
+
+  const { data: { session } } = await sb.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('No auth session for vision categorizer');
+
+  const res = await fetch(AI_CATEGORIZE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      jobId,
+      imageBase64: base64,
+      imageMimeType: file.type || 'image/jpeg',
+      fileName: file.name || 'photo',
+    }),
+  });
+  if (!res.ok) throw new Error(`ai-categorize-file returned ${res.status}`);
+  return await res.json();
+}
+
+/**
  * Best-effort dual-write to job_files after sbPhoto succeeds.
  * Never throws — failure is logged and ignored so the legacy photos path is never broken.
  */
@@ -188,25 +225,45 @@ async function _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId) 
   try {
     let category = 'Photos';
     let subcategory = null;
+    let aiConfidence = 0.3;
+    let aiSuggested = null;
 
     if (entityType === 'change_order') {
+      // CO photos: fixed category, no vision needed
       category = 'Change Orders';
-      // Condition/Fix subcategory not determinable from sbPhoto args — stays null
-    } else if (entityType && jid) {
+      aiConfidence = 1.0;
+    } else {
+      // Full inference chain: file-name rules → phase lookup → Vision-Haiku
       try {
-        const { data: phaseRow } = await sb.from('job_phases')
-          .select('phase_name')
-          .eq('job_id', jid)
-          .eq('tenant_id', AV_TENANT)
-          .eq('status', 'in_progress')
-          .order('phase_order', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (phaseRow?.phase_name) subcategory = _PHASE_SUBCAT_MAP[phaseRow.phase_name] || null;
-      } catch { /* phase lookup failure is non-fatal */ }
+        const { inferFileCategory } = await import('./jobFiles/inferFileCategory.js');
+        const queryFn = async ({ jobId: qjid }) => {
+          const { data } = await sb.from('job_phases')
+            .select('phase_name')
+            .eq('job_id', qjid)
+            .eq('tenant_id', AV_TENANT)
+            .eq('status', 'in_progress')
+            .order('phase_order', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          return data?.phase_name ?? null;
+        };
+        const inferred = await inferFileCategory({
+          file,
+          jobId: jid,
+          uploadSource: entityType || 'manual',
+          queryFn,
+          visionFn: _callVisionCategorizer,
+        });
+        category = inferred.category;
+        const isLowConf = inferred.source === 'vision_lowconf';
+        subcategory = isLowConf ? null : (inferred.subcategory ?? null);
+        aiConfidence = inferred.confidence;
+        // For low-conf vision: store AI's guess in ai_subcategory_suggested for later review
+        aiSuggested = isLowConf ? (inferred.subcategory ?? null) : null;
+      } catch { /* non-fatal — falls back to Photos / null */ }
     }
 
-    // Only link entity types the CHECK constraint allows; material_order etc. are silently dropped
+    // Only link entity types the CHECK constraint allows; material_order etc. silently dropped
     const linkedType = entityType && _JF_VALID_ENTITY_TYPES.has(entityType) ? entityType : null;
     const linkedId   = linkedType ? (entityId || null) : null;
 
@@ -221,8 +278,8 @@ async function _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId) 
       size_bytes: file?.size || null,
       category,
       subcategory,
-      ai_confidence: subcategory ? 0.85 : 0.3,
-      ai_subcategory_suggested: subcategory,
+      ai_confidence: aiConfidence < 1.0 ? aiConfidence : null,
+      ai_subcategory_suggested: aiSuggested,
       client_visible: false,
       related_entity_type: linkedType,
       related_entity_id: linkedId,
@@ -4487,11 +4544,15 @@ export async function sbUploadJobFile({
           .maybeSingle();
         return data?.phase_name ?? null;
       };
-      const inferred = await inferFileCategory({ file, jobId, uploadSource, fileTypeHint, queryFn });
+      const inferred = await inferFileCategory({ file, jobId, uploadSource, fileTypeHint, queryFn, visionFn: _callVisionCategorizer });
       resolvedCategory = inferred.category;
-      resolvedSubcategory = subcategory ?? inferred.subcategory;
+      const isVisionLowConf = inferred.source === 'vision_lowconf';
+      resolvedSubcategory = subcategory ?? (isVisionLowConf ? null : inferred.subcategory);
       aiConfidence = inferred.confidence < 1.0 ? inferred.confidence : null;
-      aiSuggested = (inferred.source !== 'rule' && inferred.subcategory) ? inferred.subcategory : null;
+      // Low-conf: store AI suggestion for review; don't auto-file into subcategory folder
+      aiSuggested = isVisionLowConf
+        ? (inferred.subcategory ?? null)
+        : ((inferred.source !== 'rule' && inferred.subcategory) ? inferred.subcategory : null);
     }
 
     const ext = (file.name || 'file').split('.').pop().toLowerCase() || 'bin';
