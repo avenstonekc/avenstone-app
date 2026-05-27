@@ -2429,3 +2429,24 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Decision: sbCheckLeadTime uses sbGetTradeLeadDays (existing helper) + material_orders query. No order_date column — uses created_at::date as proxy; quoted_delivery_date wins if present. Soft-fail on DB error (never blocks save). EventModal: optional Trade field added; lead-time check fires on save if trade is set; amber warning card with Cancel + Override — I'll handle it; Override writes 'date_moved' row to schedule_change_log for audit trail. Existing conflict-override param left intact; forceLeadOverride added as second param.
 - Commits: 76cb29e (supabase.js), 3891e21 (CalScr.jsx). Pushed to main.
 - SCHEDULING_ARC complete: slices 1, 2, 3, 5, 8 shipped. Slices 4 (sub portal schedule view), 6 (cascade engine), 7 (resource conflict) remain.
+
+[LOG — 2026-05-26 — Calendar added to mobile bot-nav]
+- Action: Added Calendar item to the mobile bottom-nav for owner/rep roles. Order: Home → Projects → To-dos → Calendar → Reports.
+- Files: avenstone-vite/src/App.jsx (bot-nav array, +1 line). Icon: `cal` (exists in Ic). Label: "Calendar".
+- Decision: gated by `isOwnerOrRep` to match the render-side gate at `App.jsx:292` (`{pg === 'calendar' && isOwnerOrRep && <CalScr ... />}`) — non-rep/owner roles would tap a button that renders nothing. PMs (staff but not owner/rep) intentionally excluded for now; separate scope if needed.
+- Build incident: `npm run build` initially failed with `Rolldown failed to resolve import "polylabel" from src/lib/pdf.js`. Pre-existing — polylabel was in package.json (`^2.0.1`) but not in node_modules. Ran `npm install polylabel` to restore. Unrelated to the bot-nav edit.
+- No CSS changes. 5 items on a 390px viewport fits without overflow (visually confirmed via build, no runtime check on device).
+
+[LOG — 2026-05-26 — mobile Calendar extended to project_managers]
+- Action: Extended mobile bot-nav Calendar entry and `pg === 'calendar'` render gate from `isOwnerOrRep` to `isStaff` so PMs see Calendar in mobile nav (their primary delegated-work view). PM bot-nav now: Home → Projects → To-dos → Calendar (4 items). Owner/rep: Home → Projects → To-dos → Calendar → Reports (5 items).
+- Files: avenstone-vite/src/App.jsx (lines 292 + 324, gate swap only).
+- Open: `CalScr.jsx` filters jobs by status only; `profile` prop is unused for filtering. PMs see all company jobs on the calendar, not just delegated/assigned ones. PM-aware view (filter by `assigned_pm` or schedule_items they're invited to) is a separate slice.
+
+[LOG — 2026-05-26 — PROOF_ARC.md shipped (doc-only)]
+- Action: Wrote `PROOF_ARC.md` planning doc at repo root. Doc-only slice — no code, no migrations.
+- Files: PROOF_ARC.md (new).
+- Covers: photo proof gates for change orders (`co_condition` + `co_fix`, owner+PM bypass with reason), optional before-photos toggle per-job, soft delivery-photo request on `material_delivery` items, and a reusable blocking-todo primitive (snooze counter + escalation) intended to be shared with future COI/lien/permit arcs. 6 phases proposed: schema → CO gate → blocking-todo primitive → before photos → delivery prompt → polish.
+- Audit findings reflected: `photos.related_entity_type`/`_id` and `client_visible` already exist; `sbPhoto`/`sbCountPhotosForEntity`/`sbLoadPhotosForEntity`/`sbLabelPhoto` already wired; multi-photo upload already works (`NotesPhotosTab.PhotosTab.onFile`); current schedule-item photo banner is a soft warning (no save block in `ScheduleItemModal.save`); COTab has zero photo plumbing today. Arc keeps schedule-item gate soft, makes CO gate hard, treats before+delivery as tenant-opted artifacts.
+- Deferred (called out as Out of Scope v1): per-room photo requirements via LiDAR anchors, trade-specific shot lists, lumber counter, tenant config table (v1 uses hardcoded JS config object `proofConfig.js`), auto-draft daily log from schedule item completion, snooze UX polish, hardening the schedule-item gate.
+- Open questions documented (not decided): minimum photo count per CO category, bulk-tag UX shape (inline vs modal), escalation surface for blocking todos, whether to harden schedule-item gate post-v1.
+- No CLAUDE.md update — no architecture has shifted yet, just a planning doc.

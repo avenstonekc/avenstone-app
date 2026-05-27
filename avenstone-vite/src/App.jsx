@@ -289,7 +289,7 @@ export default function App() {
             {pg === 'subs' && isStaff && <SubDir profile={profile} />}
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
-            {pg === 'calendar' && isOwnerOrRep && <CalScr jobs={jobs} profile={profile} onSelectJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
+            {pg === 'calendar' && isStaff && <CalScr jobs={jobs} profile={profile} onSelectJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'leads' && isOwnerOrRep && <LeadsScr profile={profile} onConvertToJob={c => { setPg('jobs'); setPendingNew(true); }} />}
             {pg === 'field-agent' && isStaff && <AiFieldAgent profile={profile} currentJob={jobs.find(j => j.id === pendingJobId) || null} />}
             {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}
@@ -321,6 +321,7 @@ export default function App() {
               { id: 'home', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
               ...(isStaff ? [{ id: 'todos', ic: 'check', lb: 'To-dos' }] : []),
+              ...(isStaff ? [{ id: 'calendar', ic: 'cal', lb: 'Calendar' }] : []),
               ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
