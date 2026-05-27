@@ -202,7 +202,18 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - URL-based routing (`selJ` is React state — no deep-link, refresh loses position)
 - Todo push notification wiring deferred (`send-push` edge fn exists, no callers)
 - Dev auto-login removal before external testers
-- Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0 (audit:schema scans JS/TS src only — ai-pm-nightly TS edge fn drift was not scanner-visible; closed manually).** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Note: ai-pm-nightly todos insert was never writing rows because function is DISABLED — but the stale payload would have silently dropped rows on any re-enable. Detector Phase 2 shipped 2026-05-13 — skipped now 9 (was 34 at Phase 1 baseline, 15 after Phase 1). Remaining 8 skipped are function parameters (no call-site analysis), 1 is dynamic .from() (opaque). No new drift surfaced by Phase 2 extension. Missing-tables arc 2026-05-19: 4 findings → 1 STOP (see LOG). Scanner missing-tables now: 1 (quote_requests in ai-pm-nightly — DISABLED, deferred until re-enable). Write/read drift 0, write skipped 0.
+- Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0 (audit:schema scans JS/TS src only — ai-pm-nightly TS edge fn drift was not scanner-visible; closed manually).** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Note: ai-pm-nightly todos insert was never writing rows because function is DISABLED — but the stale payload would have silently dropped rows on any re-enable. Detector Phase 2 shipped 2026-05-13 — skipped now 9 (was 34 at Phase 1 baseline, 15 after Phase 1). Remaining 8 skipped are function parameters (no call-site analysis), 1 is dynamic .from() (opaque). No new drift surfaced by Phase 2 extension. Missing-tables arc 2026-05-19: 4 findings → 1 STOP (see LOG). Scanner missing-tables now: 1 (quote_requests in ai-pm-nightly — DISABLED, deferred until re-enable). Write/read drift 0, write skipped 0. **Detector Phase 3 shipped 2026-05-27** (Bucket A: array-of-ObjectExpression batch-insert resolution; Bucket C: intentional-skips docs block). Write-skipped now 0, read-skipped 1 (field-opus-db-query dynamic table — intentional). **14 open drift findings surfaced** (real code vs. DB drift, not scanner bugs — see block below).
+
+- **Open drift findings (2026-05-27 scan — NOT fixed, queued for a dedicated slice):**
+  - **Write drift (1):** `notifications.priority` written at `src/lib/supabase.js:2406` + `field-opus-result-webhook/index.ts:106` but column doesn't exist in DB. Fix: add `priority` column to `notifications` table OR remove writes if field-opus uses a different column.
+  - **Missing tables (3):**
+    - `failed_intents` — read at `field-opus-db-query/index.ts:71`. Table never created; likely stale reference.
+    - `itb_invitees` — upserted at `send-bid-invite/index.ts:36`. Table was dropped in Phase 3 (2026-05-06). Needs audit of `send-bid-invite` fn.
+    - `quote_requests` — read at `ai-pm-nightly/index.ts:76`. Function DISABLED. Deferred until re-enable.
+  - **Read drift — auto_fix_attempts (7 cols, all at `field-opus-db-query/index.ts:50`):** Code selects `bug_report_id, status, commit_hash, attempt_number, started_at, completed_at, result_summary` — none exist. Actual columns: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`. field-opus-db-query query is stale against the shipped schema.
+  - **Read drift — bug_reports (2 cols, `field-opus-db-query/index.ts:40`):** `title` and `classification` selected but don't exist in `bug_reports` schema. Same stale field-opus-db-query query.
+  - **Read drift — jobs (1 col, `src/lib/supabase.js:2575`):** `assigned_pm_id` selected but actual column is `assigned_pm` (TEXT not UUID). Simple rename fix.
+  - **Priority:** `jobs.assigned_pm_id` (supabase.js) is highest — live user-facing code. `field-opus-db-query` queries are dev-console-only (Kalin-only auth). `send-bid-invite` `itb_invitees` is a real function bug. `notifications.priority` needs schema investigation first.
 
 - **Tool-payload drift detector refinement (Path B)** — Detector shipped 2026-05-21 in commit 94708e1. Initial run: 14 advertised-not-written findings, all expected false positives in 3 categories:
   1. WHERE-clause keys (e.g. update_job.job_id used in .eq() not .update payload)
@@ -1587,3 +1598,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Unreimbursed: $42,637 across 43 expense rows
 - Type routing verified: sub_payout(12) + labor(8) → markup_pct=15; material_purchase(10) + fuel(5) + permit(3) + commission(3) + other_expense(2) → markup_pct=20
 - All 7 Step-5 assertions passed. No cross-job contamination.
+
+[LOG — 2026-05-27 — Drift detector Phase 3 — Bucket A + Bucket C shipped]
+- Action: tools/audit_schema_vs_code.js improved. write-skipped dropped from 1 → 0. 14 open drift findings surfaced.
+- Bucket A: added Case 2b inside resolveIdentifierColumns — detects array-of-ObjectExpression batch-insert pattern (const rows = [{...},{...}]). Now resolves scheduled_actions batch insert in companyFiles.js:397. write-skipped: 1 → 0.
+- Bucket C: added INTENTIONAL SKIPS documentation block at top of scanner. Documents field-opus-db-query dynamic-table skip (expected, 1/run) and generic helper param skip (0 currently). Any write-side skip > 1 or new read-opaque beyond field-opus-db-query is an investigation signal.
+- 14 open drift findings (NOT fixed — queued separately, see "Open drift findings" block in Active open items):
+  - Write (1): notifications.priority written at supabase.js:2406 + field-opus-result-webhook:106 — column doesn't exist in DB.
+  - Missing tables (3): failed_intents (field-opus-db-query:71), itb_invitees (send-bid-invite:36 — dropped Phase 3 2026-05-06), quote_requests (ai-pm-nightly:76 — DISABLED).
+  - Read (10): auto_fix_attempts 7 cols (field-opus-db-query:50 — stale schema), bug_reports.title + .classification (field-opus-db-query:40 — don't exist), jobs.assigned_pm_id (supabase.js:2575 — should be assigned_pm).
+- Scanner state post-Phase 3: write drift 1, read drift 10, missing tables 3, write-skipped 0, read-skipped 38 (1 fully opaque + 37 partial).
+- Files: tools/audit_schema_vs_code.js. No src/ or supabase/ changes.
+- Commit: 4cc9dd9.

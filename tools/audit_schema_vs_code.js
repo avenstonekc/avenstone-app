@@ -11,6 +11,25 @@
 // Exit:   0 = clean
 //         1 = drift found (or potential in --strict)
 //         2 = parse error / PAT load failure / API error
+//
+// ── INTENTIONAL SKIPS (do not attempt to resolve) ───────────────────────────
+//
+// These appear in the "write/read skipped" summary lines. A non-zero opaque
+// count is NOT a scanner defect when it matches entries here.
+//
+// 1. dynamic .from(<expr>) — table name is a runtime variable; static analysis
+//    cannot determine the target table. Current instance:
+//      supabase/functions/field-opus-db-query/index.ts — meta-tool that accepts
+//      any table name as a parameter by design. One skip per run is expected.
+//
+// 2. Generic (table, payload) helper parameters — if a wrapper function takes
+//    the table name and payload as arguments the scanner can't follow the
+//    indirection to a specific table. None currently in this codebase, but the
+//    pattern is skipped if encountered (reason: "no binding (param or external)").
+//
+// Any write-side skip count > 1 or a new read-opaque site beyond field-opus-db-query
+// indicates new code that may need a scanner extension or investigation.
+// ─────────────────────────────────────────────────────────────────────────────
 
 const fs = require('fs');
 const path = require('path');
@@ -219,6 +238,24 @@ function resolveIdentifierColumns(name, callPath, seen) {
   if (init?.type === 'ArrayExpression') {
     const strs = arrayOfStringLiterals(init);
     if (strs) return { keys: strs, partial: true, resolved: true };
+
+    // Case 2b: const rows = [{ col: val, ... }, { col: val, ... }]
+    // Array of object literals — batch-insert pattern. Union keys from all elements.
+    const colSet2b = new Set();
+    let partial2b = false;
+    let anyObj2b = false;
+    for (const el of init.elements) {
+      if (!el) { partial2b = true; continue; }
+      if (el.type === 'ObjectExpression') {
+        anyObj2b = true;
+        const r = keysFromObject(el, callPath, seen);
+        r.keys.forEach(k => colSet2b.add(k));
+        if (r.partial) partial2b = true;
+      } else {
+        partial2b = true;
+      }
+    }
+    if (anyObj2b) return { keys: [...colSet2b], partial: partial2b, resolved: true };
   }
 
   // Case 3: const p = {};  (then mutated via forEach with an allowlist array)
