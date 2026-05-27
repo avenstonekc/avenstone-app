@@ -12,7 +12,7 @@
  * now; it will be populated then.
  */
 
-import { sb, AV_USER_ID } from './supabase.js';
+import { sb, AV_USER_ID, sbSaveContact } from './supabase.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -481,4 +481,24 @@ export async function sbLoadSubInvoices({ jobId }) {
   } catch (e) {
     return { ok: false, error: e.message || 'sbLoadSubInvoices failed' };
   }
+}
+
+/**
+ * Create a new sub/vendor contact.
+ * Wraps sbSaveContact with type='sub'. Used by AddInvoiceModal when a
+ * vendor name typed (or extracted by AI) does not match an existing contact.
+ *
+ * @param {{ name: string, phone?: string, email?: string }} params
+ * @returns {{ ok: boolean, error: string|null, data: { id: string, name: string }|null }}
+ */
+export async function sbCreateSubContact({ name, phone, email }) {
+  if (!name?.trim()) return { ok: false, error: 'Name is required', data: null };
+  const res = await sbSaveContact({
+    name:  name.trim(),
+    type:  'sub',
+    phone: phone?.trim() || null,
+    email: email?.trim() || null,
+  });
+  if (!res.ok) return { ok: false, error: res.error, data: null };
+  return { ok: true, error: null, data: { id: res.data.id, name: res.data.name } };
 }
