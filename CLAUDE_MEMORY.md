@@ -1429,3 +1429,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - App.jsx wiring: import CompanyFilesScr; NAV entry { id: 'company-files', lb: 'Company Files', ic: 'folder', sec: 'Settings' } gated on isStaff (owner+PM+rep); render {pg === 'company-files' && isStaff && <CompanyFilesScr profile={profile} />}.
 - Build: ✓ clean (685ms). Commits: beedcab (UI components), 920a733 (mount). Both pushed to main.
 - Open: Phase 3a (virtual job_files rows at job creation — 'client' in visible_to_roles → auto-attach to new jobs). Phase 3b (sub portal direct query sbLoadCompanyFilesForSub). Phase 5 (watchdog / expiration scheduled_actions).
+
+[LOG — 2026-05-27 — COMPANY_FILES_ARC Phase 3a shipped — client visibility]
+- Action: Client-visible company files now auto-attach as virtual job_files rows when a new job is created. Client portal reads job_files naturally — no portal code changes needed.
+- Auto-attach mechanism: JS-level hook (sbCreateJobCompanyFileRefs) called non-blocking after sbSave succeeds in JobsScr.jsx add(). No Postgres trigger. Blueprint explicitly names sbCreateJobCompanyFileRefs as a JS helper.
+- No migration: uses existing job_files table with related_entity_type='company_file', related_entity_id=UUID.
+- virtual row shape: category='Communications', subcategory per SUBCATEGORY_FOR map (Insurance→Insurance, License→License, Tax→Tax, else Compliance), client_visible=true.
+- related_entity_id column is UUID type (not text as blueprint SQL shows — no cast needed in JS path).
+- Files: avenstone-vite/src/lib/companyFiles.js (+sbCreateJobCompanyFileRefs, +SUBCATEGORY_FOR const), avenstone-vite/src/components/jobs/JobsScr.jsx (import + non-blocking call at line ~107).
+- Smoke test: not live-verifiable from this session (requires creating a new job with a client-visible company file in the live app). Steps 1-7 from the prompt require manual testing: blueprint says ClientPortal already reads job_files WHERE client_visible=true — virtual rows land there naturally.
+- Existing jobs do NOT see newly-uploaded client-visible files (static snapshot per blueprint Locked Decision 3 open question answer: option (a) — leave old virtual rows pointing to archived file, new jobs get new rows). Backfill is out of scope v1 (blueprint Out of Scope: "Retroactive virtual row update").
+- Commit: 9f97d35. Pushed to main.
+- Next: Phase 3b — sub portal "Company Documents" section (direct query, no virtual rows). Phase 5 watchdog.
