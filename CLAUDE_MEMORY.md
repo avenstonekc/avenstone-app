@@ -1255,3 +1255,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Net-new: sub_invoices + sub_invoice_payments tables, compute_sub_invoice_status function, 8 helpers, FinancialsTab Sub Invoices section, Add Payment modal, 3 Master Agent verbs.
 - Commit: c6059c2. Build: not applicable (docs only).
 - Open: Phase 1 dispatch next.
+
+[LOG — 2026-05-27 — SUB_INVOICES_ARC Phase 1 shipped]
+- Action: Created sub_invoices + sub_invoice_payments tables, RLS, indexes, set_updated_at triggers, compute_sub_invoice_status function. Built 7 helpers in avenstone-vite/src/lib/subInvoices.js (484 lines).
+- Migration: 20260527000000_sub_invoices_arc_phase_1.sql — applied + all 13 objects verified green via apply_migration.js.
+- Schema: sub_contact_id TEXT (contacts.id is TEXT confirmed), currency CHECK='USD', transaction_id UUID FK on sub_invoice_payments (bidirectional to job_transactions.invoice_id), submitted_via enum includes 'sub_portal' for Phase 6 forward-compat.
+- Smoke test: all 4 transitions verified on live DB — pending_review → approved → partially_paid → paid.
+- Helpers: all {ok,error,data}. sbAddSubInvoicePayment guards disputed/voided/unapproved, calls RPC for newStatus. sbEditSubInvoice validates amount >= paid_sum. sbLoadSubInvoices joins contacts+payments, derives status via RPC per row.
+- Deviation: helpers in subInvoices.js (plain JS) not subInvoices.ts — codebase has no TypeScript.
+- Commits: 01fe60a (migration), 650bade (helpers). Build: ✓ clean.
+- Next: Phase 2 — FinancialsTab "Sub Invoices" section. Reads sbLoadSubInvoices, renders three views (Pending Review / Approved Unpaid+Partially Paid / Paid).
