@@ -1498,3 +1498,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Smoke test: SQL-level only (no live test this session). Steps 1-7 require manual verify with upload of expiring file + watchdog trigger.
 - COMPANY_FILES_ARC v1 substantially complete. Phase 4 (Master Agent upload_company_file verb) remains. All client/sub/staff surfaces shipped.
 - Next: Phase 4 (Master Agent verb) OR pivot to other arc.
+
+[LOG — 2026-05-27 — COST_PLUS_ARC blueprint shipped]
+- Action: Wrote COST_PLUS_ARC.md at repo root. 6-phase arc covering cost-plus float tracking, draw composer, reimbursement cascade, client portal migration. ~640 lines.
+- 20 locked decisions including: two markup rates (labor_markup_pct + material_markup_pct on jobs table), bucket = inbound rows with invoice_id IS NULL (no separate credit pool table), per-draw client portal view, type-to-markup mapping (sub_payout/labor → labor_markup_pct; everything else → material_markup_pct) with per-row override, reimbursement state machine on out rows (NULL → unreimbursed → in_draw → reimbursed).
+- Reuses: draw_schedules, invoices, sbMarkInvoicePaid, existing transactions ledger. Net-new: jobs.labor_markup_pct + material_markup_pct, job_transactions.draw_id + reimbursement_status + markup_pct + reimbursed_at, draw_line_items table (with forward-looking rows support), BEFORE INSERT trigger for cost-plus defaulting, cascade_draw_paid_to_transactions function, reverse_draw_paid_cascade function.
+- 6 phases for v1 (~14 prompts). Phase 0 partially shipped (checkDepositPaid OR fix from earlier today). Phase 0 remaining: Stripe overpayment → surplus inbound bucket row.
+- Phase 6 (client portal migration) is the cleanup that lets Avenstone finally deprecate the legacy job_cost_items system.
+- Audit basis: two prior cost-plus audit sessions (COST_PLUS_AUDIT.md + prepayment additive audit). Three locked decisions from Kalin answered the 5 open questions.
+- Commit: 40d4634. Pushed to main.
+- Open: Phase 1 dispatch next.
