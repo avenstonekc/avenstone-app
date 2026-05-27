@@ -656,10 +656,12 @@ const TOOLS = [
         scheduled_end_date: { type: "string", description: "Optional. ISO date. End date for multi-day events." },
         scheduled_time: { type: "string", description: "Optional. HH:MM 24-hour. Omit for all-day events." },
         duration_days: { type: "integer", description: "Optional. Default 1. Working days the task takes." },
-        trade: { type: "string", description: "Optional. Trade category (e.g. 'Framing', 'Garage doors', 'Tile - Floor'). Helps phase grouping." },
+        trade: { type: "string", description: "Optional. MUST be a canonical trade string from the tenant's active trade taxonomy (e.g. 'Framing', 'Tile - Floor', 'Tile - Wall / shower', 'Cabinets / vanities - Install', 'Plumbing - Finish / fixtures'). If the user describes a trade in freeform ('garage door install', 'paint the bathroom'), infer the closest canonical match. If uncertain, omit — the schedule modal will infer from title or sub assignment." },
         sub_search: { type: "string", description: "Optional. If user names a sub ('garage door guy', 'John', 'ABC Tile'), pass that here — system fuzzy-matches team profiles." },
         phase_search: { type: "string", description: "Optional. If user implies a phase ('for the framing phase', 'drywall milestone'), pass the phase name — system fuzzy-matches job_phases." },
         is_milestone: { type: "boolean", description: "Optional. Set true to make this a client-visible milestone. Auto-set when type='milestone'." },
+        notify_client: { type: "boolean", description: "Override default. Default: true when type='milestone', false otherwise." },
+        notify_sub: { type: "boolean", description: "Override default. Default: true when a sub is matched via sub_search, false otherwise." },
         notes: { type: "string", description: "Optional. Free-text notes or instructions." },
       },
       required: ["job_id", "title", "type", "scheduled_date"],
@@ -1218,8 +1220,8 @@ async function executeTool(
           scheduled_date: scheduledDate,
           status: "scheduled",
           is_milestone: isMilestone,
-          notify_client: isMilestone,
-          notify_sub: !!assignedSubId,
+          notify_client: typeof input.notify_client === 'boolean' ? input.notify_client : isMilestone,
+          notify_sub: typeof input.notify_sub === 'boolean' ? input.notify_sub : !!assignedSubId,
         };
         if (input.scheduled_end_date) insertPayload.scheduled_end_date = String(input.scheduled_end_date);
         if (input.scheduled_time) insertPayload.scheduled_time = String(input.scheduled_time);
