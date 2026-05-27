@@ -1191,3 +1191,9 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ clean (397 modules).
 - UNIFIED_FILES_ARC: ALL 12/12 SLICES SHIPPED. Arc spans slices 1–12 across 2026-05-26 and 2026-05-27. See individual slice LOGs for full detail.
 - Open: ClientSignContractModal client_visible fix (job_documents id mismatch — noted slice 8). Legacy table hard-drop (photos, job_documents) after soak period. Legacy table drop unblocked: no new writes to either table as of slice 8.
+
+[LOG — 2026-05-27 — UNIFIED_FILES_ARC slice 13 shipped — tree view default collapsed]
+- Action: FilesTreeView now opens with all category and subcategory folders collapsed. User clicks to expand.
+- Reason: UX feedback — Photos auto-expanded showed all subcategories at once on first open, felt cluttered.
+- Audit finding: No Set-based expanded state. Both CatSection and SubSection used `useState(true)` — flipped to `useState(false)`. Two-line diff.
+- Commit: f8ab04b. Build ✓ clean.
