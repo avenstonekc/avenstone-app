@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { sb, AV_USER_ID, sbNote, sbPhoto, sbLabelPhoto, sbNotify } from '../../../lib/supabase';
+import { AV_USER_ID, sbNote, sbPhoto, sbLabelPhoto, sbDeleteJobPhoto, sbNotify } from '../../../lib/supabase';
 import { Ic, fDT } from '../../../lib/utils';
 import PhotoLightbox from '../../shared/PhotoLightbox';
 
@@ -78,14 +78,8 @@ export function PhotosTab({ job, upd }) {
   };
 
   const delP = async id => {
-    const p = (job.photos || []).find(x => x.id === id);
-    if (p?.url) {
-      try {
-        const path = p.url.split('/job-photos/')[1];
-        if (path) await sb.storage.from('job-photos').remove([path]);
-        await sb.from('photos').delete().eq('id', id);
-      } catch (e) {}
-    }
+    // slice 7/12: id is job_files.id; sbDeleteJobPhoto handles storage + legacy cleanup
+    await sbDeleteJobPhoto(id);
     upd({ photos: (job.photos || []).filter(x => x.id !== id) });
   };
 
