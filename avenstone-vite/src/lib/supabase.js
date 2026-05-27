@@ -4332,6 +4332,187 @@ export async function sbSendFloorPlanVersion(planId, versionNumber, recipientEma
  * Soft-delete a floor plan by setting status='archived'. Versions remain in DB.
  * Hard delete is intentionally not exposed in v1 — use SQL editor if needed.
  */
+// ─── UNIFIED_FILES_ARC Phase 1 ────────────────────────────────────────────────
+// New helpers for the unified job_files system.
+// Old helpers (sbPhoto, sbUploadDoc, sbLoadDocs) kept intact for backward compat
+// during Phase 3 migration window. Do NOT remove until Phase 3 ships.
+
+/**
+ * Upload a file to the unified job_files system.
+ * Writes to the private 'job-files' bucket + inserts a job_files row.
+ * If category is not provided, calls inferFileCategory (rule-based + phase-based).
+ */
+export async function sbUploadJobFile({
+  jobId,
+  file,
+  category = null,
+  subcategory = null,
+  uploadSource = 'manual',
+  fileTypeHint = null,
+  relatedEntityType = null,
+  relatedEntityId = null,
+  clientVisible = false,
+}) {
+  if (!jobId || !file) return { ok: false, error: 'jobId + file required' };
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return { ok: false, error: 'not authenticated' };
+
+    let resolvedCategory = category;
+    let resolvedSubcategory = subcategory;
+    let aiConfidence = null;
+    let aiSuggested = null;
+
+    if (!resolvedCategory) {
+      const { inferFileCategory } = await import('./jobFiles/inferFileCategory.js');
+      // queryFn: resolves current in-progress phase for entity-linked uploads
+      const queryFn = async ({ jobId: jid }) => {
+        const { data } = await sb
+          .from('job_phases')
+          .select('phase_name')
+          .eq('job_id', jid)
+          .eq('status', 'in_progress')
+          .order('phase_order', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        return data?.phase_name ?? null;
+      };
+      const inferred = await inferFileCategory({ file, jobId, uploadSource, fileTypeHint, queryFn });
+      resolvedCategory = inferred.category;
+      resolvedSubcategory = subcategory ?? inferred.subcategory;
+      aiConfidence = inferred.confidence < 1.0 ? inferred.confidence : null;
+      aiSuggested = (inferred.source !== 'rule' && inferred.subcategory) ? inferred.subcategory : null;
+    }
+
+    const ext = (file.name || 'file').split('.').pop().toLowerCase() || 'bin';
+    const fileId = crypto.randomUUID();
+    const storagePath = `${AV_TENANT}/${jobId}/${fileId}.${ext}`;
+
+    const { error: upErr } = await sb.storage
+      .from('job-files')
+      .upload(storagePath, file, { contentType: file.type, upsert: false });
+    if (upErr) return { ok: false, error: `storage: ${upErr.message}` };
+
+    const { data, error } = await sb.from('job_files').insert({
+      tenant_id:               AV_TENANT,
+      job_id:                  jobId,
+      uploaded_by_id:          user.id,
+      name:                    file.name || 'untitled',
+      storage_path:            storagePath,
+      storage_bucket:          'job-files',
+      mime_type:               file.type || null,
+      size_bytes:              file.size || null,
+      category:                resolvedCategory,
+      subcategory:             resolvedSubcategory,
+      ai_confidence:           aiConfidence,
+      ai_subcategory_suggested: aiSuggested,
+      client_visible:          clientVisible,
+      related_entity_type:     relatedEntityType,
+      related_entity_id:       relatedEntityId,
+    }).select().single();
+
+    if (error) {
+      await sb.storage.from('job-files').remove([storagePath]).catch(() => {});
+      return { ok: false, error: error.message };
+    }
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Load files for a job from the unified job_files system.
+ * Optionally filtered by category and/or subcategory.
+ */
+export async function sbLoadJobFiles(jobId, { category = null, subcategory = null, limit = 100 } = {}) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: [] };
+  try {
+    let q = sb.from('job_files')
+      .select('*')
+      .eq('job_id', jobId)
+      .eq('tenant_id', AV_TENANT)
+      .eq('lifecycle_status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (category) q = q.eq('category', category);
+    if (subcategory !== undefined && subcategory !== null) q = q.eq('subcategory', subcategory);
+    const { data, error } = await q;
+    if (error) return { ok: false, error: error.message, data: [] };
+    return { ok: true, data: data || [] };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err), data: [] };
+  }
+}
+
+/**
+ * Generate a signed URL for any job_file.
+ * Works for all storage_bucket values (job-files, job-photos, job-documents).
+ * Default expiry: 7 days.
+ */
+export async function sbSignJobFileUrl(jobFileId, expiresIn = 60 * 60 * 24 * 7) {
+  if (!jobFileId) return { ok: false, error: 'jobFileId required' };
+  try {
+    const { data: file, error: rdErr } = await sb.from('job_files')
+      .select('storage_path, storage_bucket')
+      .eq('id', jobFileId)
+      .single();
+    if (rdErr) return { ok: false, error: rdErr.message };
+    const { data, error } = await sb.storage
+      .from(file.storage_bucket)
+      .createSignedUrl(file.storage_path, expiresIn);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, url: data.signedUrl };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Recategorize an existing job_file. Used by bulk-tag UI in Phase 2.
+ */
+export async function sbCategorizeJobFile(jobFileId, { category, subcategory = null }) {
+  if (!jobFileId || !category) return { ok: false, error: 'jobFileId + category required' };
+  try {
+    const { error } = await sb.from('job_files')
+      .update({ category, subcategory })
+      .eq('id', jobFileId)
+      .eq('tenant_id', AV_TENANT);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
+ * Delete a job_file and its storage object.
+ * Best-effort storage cleanup — row delete is the source of truth.
+ */
+export async function sbDeleteJobFile(jobFileId) {
+  if (!jobFileId) return { ok: false, error: 'jobFileId required' };
+  try {
+    const { data: file, error: rdErr } = await sb.from('job_files')
+      .select('storage_path, storage_bucket')
+      .eq('id', jobFileId)
+      .single();
+    if (rdErr) return { ok: false, error: rdErr.message };
+
+    const { error: delErr } = await sb.from('job_files')
+      .delete()
+      .eq('id', jobFileId)
+      .eq('tenant_id', AV_TENANT);
+    if (delErr) return { ok: false, error: delErr.message };
+
+    // Best-effort storage cleanup (don't fail if object already gone)
+    await sb.storage.from(file.storage_bucket).remove([file.storage_path]).catch(() => {});
+
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
 export async function sbDeleteFloorPlan(id) {
   if (!id) return { ok: false, error: 'id required' };
   try {
