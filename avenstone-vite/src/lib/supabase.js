@@ -4771,6 +4771,59 @@ export async function sbLoadJobFiles(jobId, { category = null, subcategory = nul
 }
 
 /**
+ * Search files for a job across name, category, subcategory, mime_type,
+ * and receipt metadata (vendor, description, notes, amount) from job_transactions.
+ * Returns { ok, data, error } — data items may include _receipt_meta for receipt files.
+ * Client-side filter; server fetches up to 500 files. Suitable for v1 job sizes.
+ */
+export async function sbSearchJobFiles(jobId, query) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: [] };
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return sbLoadJobFiles(jobId, { limit: 200 });
+  try {
+    const { data: files, error } = await sb.from('job_files')
+      .select('*')
+      .eq('job_id', jobId)
+      .eq('tenant_id', AV_TENANT)
+      .eq('lifecycle_status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (error) return { ok: false, error: error.message, data: [] };
+
+    // Batch-load job_transactions for receipt files so vendor/description are searchable
+    const receiptIds = (files || [])
+      .filter(f => f.category === 'Receipts' && f.related_entity_id)
+      .map(f => f.related_entity_id);
+    let txMap = {};
+    if (receiptIds.length > 0) {
+      const { data: txs } = await sb.from('job_transactions')
+        .select('id, payer_or_payee_name, description, notes, amount')
+        .in('id', receiptIds);
+      txMap = Object.fromEntries((txs || []).map(t => [t.id, t]));
+    }
+
+    const filtered = (files || []).filter(f => {
+      const haystack = [f.name, f.category, f.subcategory, f.mime_type];
+      if (f.category === 'Receipts' && f.related_entity_id) {
+        const tx = txMap[f.related_entity_id];
+        if (tx) {
+          haystack.push(tx.payer_or_payee_name, tx.description, tx.notes);
+          if (tx.amount != null) haystack.push(String(tx.amount));
+        }
+      }
+      return haystack.filter(Boolean).some(v => String(v).toLowerCase().includes(q));
+    }).map(f => {
+      const tx = f.category === 'Receipts' && f.related_entity_id ? txMap[f.related_entity_id] : null;
+      return tx ? { ...f, _receipt_meta: tx } : f;
+    });
+
+    return { ok: true, data: filtered };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err), data: [] };
+  }
+}
+
+/**
  * Generate a signed URL for any job_file.
  * Works for all storage_bucket values (job-files, job-photos, job-documents).
  * Default expiry: 7 days.
