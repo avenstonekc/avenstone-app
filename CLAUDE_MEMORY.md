@@ -1577,3 +1577,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - State confirmed: 21 rows, 0 null_tenant, 1 distinct tenant. Both helpers live. SELECT open to all tenant members; INSERT/UPDATE/DELETE gated to owner only.
 - Writer call sites: ai-master-agent add_knowledge + ai-companion → both SERVICE_ROLE_KEY (bypass RLS). AiKnowledgeScr.jsx INSERT includes tenant_id ✓; UPDATE/DELETE rely on USING clause ✓. AiKnowledgeScr UI is owner-only gated — owner-only modify policy is correct as-is.
 - No migration written. CLAUDE_MEMORY.md line 66 already accurate. No open-item entry found or removed (task was its own stale tracking artifact).
+
+[LOG — 2026-05-27 — COST_PLUS_ARC sandbox job seeded]
+- 999 Cost Plus Sandbox job created 2026-05-27, job_id = 5ebd7c3c-c4a7-450c-b529-479903668010
+- Use this job for all cost-plus arc testing through Phase 5
+- Lucy Webb (b720f17f-0f69-4477-adcf-7c02115b4b0d) and test-flow-001 stay off-limits as scratch space
+- Markups: labor=15%, material=20% — designed to verify trigger routing
+- Bucket: $8,500 in 2 inbound rows (client_deposit $3,000 + client_payment $5,500)
+- Unreimbursed: $42,637 across 43 expense rows
+- Type routing verified: sub_payout(12) + labor(8) → markup_pct=15; material_purchase(10) + fuel(5) + permit(3) + commission(3) + other_expense(2) → markup_pct=20
+- All 7 Step-5 assertions passed. No cross-job contamination.
