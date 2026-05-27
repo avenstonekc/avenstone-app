@@ -154,7 +154,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '12px 16px', marginTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1 }}>
-              <input type="checkbox" checked={inf.cost_plus || false} onChange={e => upd({ cost_plus: e.target.checked })} style={{ width: 16, height: 16 }} />
+              <input type="checkbox" checked={inf.cost_plus || false} onChange={e => { const v = e.target.checked; setInf(p => ({ ...p, cost_plus: v })); upd({ cost_plus: v }); }} style={{ width: 16, height: 16 }} />
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>Cost-plus job</div>
                 <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>Client sees financials in their portal</div>
@@ -169,7 +169,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
                     step="0.1"
                     min="0"
                     value={inf.labor_markup_pct ?? ''}
-                    onChange={e => upd({ labor_markup_pct: Number(e.target.value || 0) })}
+                    onChange={e => { const v = Number(e.target.value || 0); setInf(p => ({ ...p, labor_markup_pct: v })); upd({ labor_markup_pct: v }); }}
                     style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
                   />
                   <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
@@ -181,7 +181,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
                     step="0.1"
                     min="0"
                     value={inf.material_markup_pct ?? ''}
-                    onChange={e => upd({ material_markup_pct: Number(e.target.value || 0) })}
+                    onChange={e => { const v = Number(e.target.value || 0); setInf(p => ({ ...p, material_markup_pct: v })); upd({ material_markup_pct: v }); }}
                     style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
                   />
                   <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
@@ -193,7 +193,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
                     min="0"
                     max="200"
                     value={inf.default_markup_pct ?? ''}
-                    onChange={e => upd({ default_markup_pct: Number(e.target.value || 0) })}
+                    onChange={e => { const v = Number(e.target.value || 0); setInf(p => ({ ...p, default_markup_pct: v })); upd({ default_markup_pct: v }); }}
                     style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
                   />
                   <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
