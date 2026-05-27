@@ -35,7 +35,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 6. **`.insert()` vs `.upsert()`.** New-rows-only helpers use `.insert()`. `.upsert()` on insert-only paths silently triggers UPDATE RLS evaluation and fails. (2026-05-01, jobs INSERT RLS fix.)
 
-7. **Built-but-not-wired components exist. Do not treat as dead code.** Current list: `MaterialSelectionScr.jsx`, `FloorPlanEditor.jsx`. Both have outstanding design decisions before rewiring.
+7. **Built-but-not-wired components exist. Do not treat as dead code.** Current list: `FloorPlanEditor.jsx` (at `src/components/ai/FloorPlanEditor.jsx` and `src/components/floorPlan/FloorPlanEditorScr.jsx`). Outstanding design decisions before rewiring. (`MaterialSelectionScr.jsx` removed from this list 2026-05-27 rot sweep — file confirmed absent from codebase.)
 
 8. **Two-file memory split.** CLAUDE_MEMORY.md = lean working memory. CLAUDE_ARCHIVE.md = full LOG history by slug. Established 2026-05-03 after memory bloat caused three schema claim failures.
 
@@ -71,7 +71,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **`scheduled_actions` table EXISTS** (AGENT_OPS Phase 1.1, 2026-05-20). Agent's own todo list — reminders, self-followups, watchdog detections. 21 columns: id, tenant_id, kind (reminder/followup/watchdog), status (scheduled/fired/cancelled/failed), priority (low/medium/high — Phase 1.2 migrated from 4-level spec to match todos canonical enum), fire_at, fired_at, cancelled_at, retry_count (INTEGER DEFAULT 0), created_by_id (NOT NULL FK→profiles), target_user_id (nullable FK→profiles), related_job_id (nullable TEXT FK→jobs), related_todo_id (nullable UUID FK→todos), related_entity_type, related_entity_id, payload (JSONB DEFAULT '{}'), result, rule_key, source (agent/watchdog_cron/system DEFAULT agent), created_at, updated_at. 4 indexes (2 partial). 3 RLS policies — no DELETE policy (use status='cancelled'). Migrations: 20260520100000_scheduled_actions.sql (create), 20260520110000_scheduled_actions_priority_3level.sql (enum fix). Helpers: sbCreateScheduledAction, sbListScheduledActionsForUser, sbCancelScheduledAction.
 - **`daily_logs` has 3 AGENT_OPS columns** (Phase 1.2, 2026-05-20): `phase_on_schedule BOOLEAN`, `delay_days INTEGER`, `issues_flagged TEXT` — all nullable, backward-compatible. Patched by daily-log conversation hook in Phase 6. Migration: 20260520120000_daily_logs_agent_ops_columns.sql.
 - **`trade_material_lead_times` table EXISTS** (AGENT_OPS Phase 1.2, 2026-05-20). Per-trade material lead time thresholds. Tenant override → platform default (tenant_id NULL) → fallback 7 days. 4 Avenstone seed rows (canonical trade strings verified against trade_phase_map: 'Cabinets / vanities - Install' 21d, 'Tile - Floor' 14d, 'Tile - Wall / shower' 14d, 'Plumbing - Finish / fixtures' 14d). Migration: 20260520130000_trade_material_lead_times.sql. Helper: sbGetTradeLeadDays.
-- **bug_reports.status CHECK extended** (AUTO_FIX_ARC Phase C, 2026-05-21). New values added: 'reported', 'attempting', 'auto_fixed', 'needs_human'. Existing values retained: 'open', 'in_progress', 'fixed', 'wontfix'. Dispatcher acts on 'open' (submit-bug-report insert value). Migration: 20260521000000_bug_reports_status_extend.sql.
+- **bug_reports.status CHECK extended** (AUTO_FIX_ARC Phase C, 2026-05-21). New values added: 'reported', 'attempting', 'auto_fixed', 'auto_fix_failed', 'auto_fix_unknown', 'needs_human'. Existing values retained: 'open', 'in_progress', 'fixed', 'wontfix'. Full live set (10 values, verified 2026-05-27): open, in_progress, fixed, wontfix, reported, attempting, auto_fixed, auto_fix_failed, auto_fix_unknown, needs_human. Dispatcher acts on 'open' (submit-bug-report insert value). Migration: 20260521000000_bug_reports_status_extend.sql.
 - **auto_fix_attempts table EXISTS** (AUTO_FIX_ARC Phase C, 2026-05-21). Audit log for every dispatcher invocation. Columns: id, bug_id (FK→bug_reports), classification, reasoning, fix_prompt, vm_dispatch_status, vm_response (JSONB), created_at. RLS: platform_owner SELECT only. One row per classifier call. Used for one-try-per-bug enforcement (COUNT check before dispatch) and global 24h rate limit (COUNT where created_at >= 24h ago). Indexes: bug_id, created_at DESC. Migration: 20260521010000_auto_fix_attempts.sql.
 - **notifications_type_check extended with 'todo_delegated'** (AGENT_OPS Phase 2.1, 2026-05-20). Migration: 20260520140000_notifications_type_todo_delegated.sql. notify-email SUBJECTS map updated with subject "You've been assigned a new todo".
 - **notifications_type_check extended with 'team_alert' and 'master_agent' reinstated** (AGENT_OPS Phase 2.2, 2026-05-20). Migration: 20260520150000_notifications_type_team_alert.sql. `master_agent` was inadvertently dropped in Phase 2.1's migration — reinstated. `team_alert` is the type for `notify_team_member` verb.
@@ -200,7 +200,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 **App infra:**
 - VOICE_AGENT Phase 3/4 on-device verification pending next Codemagic TestFlight build.
 - URL-based routing (`selJ` is React state — no deep-link, refresh loses position)
-- Todo push notification wiring deferred (`send-push` edge fn exists, no callers)
+- Todo push notification (personal, non-delegated) not yet wired. Delegated todo push (`type='todo_delegated'`) ships via fan-out trigger (PUSH_NOTIFICATIONS_ARC Phase 5, 2026-05-24) — send-push now has callers.
 - Dev auto-login removal before external testers
 - Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0 (audit:schema scans JS/TS src only — ai-pm-nightly TS edge fn drift was not scanner-visible; closed manually).** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Note: ai-pm-nightly todos insert was never writing rows because function is DISABLED — but the stale payload would have silently dropped rows on any re-enable. Detector Phase 2 shipped 2026-05-13 — skipped now 9 (was 34 at Phase 1 baseline, 15 after Phase 1). Remaining 8 skipped are function parameters (no call-site analysis), 1 is dynamic .from() (opaque). No new drift surfaced by Phase 2 extension. Missing-tables arc 2026-05-19: 4 findings → 1 STOP (see LOG). Scanner missing-tables now: 1 (quote_requests in ai-pm-nightly — DISABLED, deferred until re-enable). Write/read drift 0, write skipped 0. **Detector Phase 3 shipped 2026-05-27** (Bucket A: array-of-ObjectExpression batch-insert resolution; Bucket C: intentional-skips docs block). Write-skipped now 0, read-skipped 1 (field-opus-db-query dynamic table — intentional). **14 open drift findings surfaced** (real code vs. DB drift, not scanner bugs — see block below).
 
@@ -211,18 +211,18 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
     - `quote_requests` — read at `ai-pm-nightly/index.ts:76`. Function DISABLED. Deferred until re-enable.
   - **Read drift — auto_fix_attempts (7 cols, all at `field-opus-db-query/index.ts:50`):** Code selects `bug_report_id, status, commit_hash, attempt_number, started_at, completed_at, result_summary` — none exist. Actual columns: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`. field-opus-db-query query is stale against the shipped schema.
   - **Read drift — bug_reports (2 cols, `field-opus-db-query/index.ts:40`):** `title` and `classification` selected but don't exist in `bug_reports` schema. Same stale field-opus-db-query query.
-  - **Read drift — jobs (1 col, `src/lib/supabase.js:2575`):** `assigned_pm_id` selected but actual column is `assigned_pm` (TEXT not UUID). Simple rename fix.
+  - **Read drift — jobs (1 col):** `assigned_pm_id` selected at `supabase.js:2608` (also 2710, 3084 — all reads in notification fan-out path) but actual column is `assigned_pm` (UUID, not TEXT). Simple rename fix. (Line 2575 in memory was stale — corrected 2026-05-27 rot sweep.)
   - **Priority:** `jobs.assigned_pm_id` (supabase.js) is highest — live user-facing code. `field-opus-db-query` queries are dev-console-only (Kalin-only auth).
 
 - **Tool-payload drift detector refinement (Path B)** — Detector shipped 2026-05-21 in commit 94708e1. Initial run: 14 advertised-not-written findings, all expected false positives in 3 categories:
   1. WHERE-clause keys (e.g. update_job.job_id used in .eq() not .update payload)
   2. Key aliases (e.g. notify_team_member.message written to body column)
   3. Meta-fields / control flow (e.g. also_create_todo controls logic, never written)
-  Refinement needed for signal-to-noise at multi-tenant scale. Scope: teach scanner to recognize Patterns 1 + 2 via AST (Phase A); add x-meta schema annotation for Pattern 3 (Phase B only if Phase A leaves residual noise). Estimated 1-2 prompts. Trigger to ship: when noise list grows past ~25, OR when a real finding gets buried in the noise, OR next fresh session if Kalin wants to close the loop.
+  **Manual audit 2026-05-27 confirmed:** All 14 false positives are correct; no real Failure A/B/C exists. The two real BUILD-LITE findings (update_phase.fields description gap + system prompt omission) are documentation-level, not code-level. Detector refinement trigger: wait until noise list grows past ~25 OR a real finding gets buried. Still deferred.
 
 **Components:**
-- `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring
-- `MaterialSelectionScr.jsx` — built, landing surface decision outstanding
+- `FloorPlanEditor.jsx` — built, UX decision outstanding before rewiring (see also Locked Principle #7 for paths)
+- ~~`MaterialSelectionScr.jsx`~~ — removed from list 2026-05-27 rot sweep; file absent from codebase
 
 ---
 
@@ -243,7 +243,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - VOICE_AGENT Phase 3+ (native iOS STT/TTS/hands-free)
 - Generalize the receipt-photo server-side stash (2026-05-09) if a second confirm verb needs to bind a user-uploaded artifact. Vision content blocks reach the model for reasoning but aren't accessible as text the model can quote into tool_use input — hence the `extractLatestUserImage` injection in `ai-master-agent`. If a second verb (e.g. attach signed contract image to log_payment) hits the same wall, refactor into a generic `attachUserBinaryToConfirmInput(blockType, paramKeys)` helper
 - Tool-schema vs insert-payload mismatch detector — extend `tools/audit_schema_vs_code.js` to walk edge-fn `input_schema.properties` and cross-reference against the executor's actual `.insert()` payloads. Catches the silent-LLM-token-waste class surfaced by 2026-05-12 job_notes cleanup (note_type advertised in tool schema, dropped on insert).
-- Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()`/`.flatMap()` callback payloads). Phase 2 shipped 2026-05-13 (decodes ObjectPattern-rest `const {..., ...patch} = x || {}` + ConditionalExpression branch union). Phase 3 shipped 2026-05-19 (binding.kind=param early return + sbUpdateScanOverrides static refactor). Skipped: 34 → 15 → 9 → 0. CLOSED.
+- Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()`/`.flatMap()` callback payloads). Phase 2 shipped 2026-05-13 (decodes ObjectPattern-rest `const {..., ...patch} = x || {}` + ConditionalExpression branch union). Phase 3a shipped 2026-05-19 (binding.kind=param early return + sbUpdateScanOverrides static refactor). Phase 3b shipped 2026-05-27 (Bucket A: array-of-ObjectExpression batch-insert resolution; Bucket C: intentional-skips docs block). Skipped: 34 → 15 → 9 → 0. CLOSED.
 - Capture-time incomplete-scan detection — RoomPlan is returning wall-segment rings with multi-foot gaps (missing wall captures). The 2026-05-17 stitcher fix makes rendering robust, but the rep should be warned at scan time when a room's segment ring has a gap > ~3 ft so they can rescan that wall. Anti-surprise alignment — catch the bad scan in the field, not in the office PDF.
 
 ---
@@ -516,7 +516,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 [LOG — 2026-05-24 — bug 5bc01e69 fixed: sbMarkNotifsRead .catch() on Supabase v2 query builder]
 - Action: Replaced bare `.update(...).in(...).catch(...)` chain with `await` + try/catch in `sbMarkNotifsRead`. Supabase v2 query builder is PromiseLike, not a real Promise — `.catch()` chained on the builder caused mark-read to silently fail.
 - Files: avenstone-vite/src/lib/supabase.js (sbMarkNotifsRead body only). Also added `?.` to the `ids?.length` guard.
-- Audit follow-up: one other instance of `.catch()` chained on a query builder remains at supabase.js:3156 — `.select('address').eq('id', jobId).single().catch(() => ({ data: null }))` inside sbAdvancePhase. Same bug class but a SELECT chain, not the UPDATE pattern listed in the fix scope; left for a follow-up slice.
+- Audit follow-up: one other instance of `.catch()` chained on a query builder potentially remains inside `sbAdvancePhase` (starts at supabase.js:4093). Same bug class. Left for a follow-up slice. (Original pointer "line 3156 inside sbAdvancePhase" was wrong — line 3156 is inside sbAssignSub and is an intentional captureFailedIntent fire-and-forget. Corrected 2026-05-27 rot sweep.)
 
 [LOG — 2026-05-24 — PUSH_NOTIFICATIONS_ARC Phase 4: client registration shipped.]
 - Action: Phase 4 of PUSH_NOTIFICATIONS_ARC shipped. APNs token registration wired end-to-end in the React app.
@@ -1555,6 +1555,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - COMPANY_FILES_ARC: ALL PHASES COMPLETE (1 schema, 2 admin UI, 3a client ref, 3b sub portal, 4 agent verb, 5 watchdog).
 - Open: CompanyFilesScr admin UI can now wire "Extract with AI" button → ai-extract-company-file edge fn (not built yet — extraction is available on demand from Phase 4 master agent path). Live smoke test for upload_company_file verb requires attaching a COI image in the master agent chat.
 
+[LOG — 2026-05-27 — Tool-schema-vs-payload design audit — ai-master-agent 22 tools read-only]
+- Action: Read-only full audit of all 22 tools in ai-master-agent/index.ts. Tabulated schema properties, required keys, executor reads, DB columns, helper-shape compliance. No code written.
+- Verdict: No Failure A (advertised-not-written), no real Failure B, no Failure C. The note_type silent-drop bug class does not exist in the current codebase. Existing tool-payload drift detector false-positive list confirmed: all 14 entries are legitimate (WHERE-clause keys, aliases, control-flow fields) — no real finding buried in noise. Refinement trigger not yet fired.
+- Finding 1 — BUILD-LITE: update_phase.fields description omits assigned_sub_id from valid-keys list, but executor allowed[] includes it. Claude can never set assigned_sub_id on a trade phase via freeform input. Fix: add assigned_sub_id to description string. One-word edit.
+- Finding 2 — System prompt documentation gap: CONFIRM_TOOLS set (line 143) includes notify_team_member (11 tools total), but the system prompt confirm-gated tools list (line ~1885) lists only 10, omitting notify_team_member. Server-side gate still fires correctly; Claude just doesn't know to set user expectations. Fix: add notify_team_member to the system prompt list. One-word edit.
+- Finding 3 — REQUIRED_FIELDS coverage gaps: create_schedule_item (silent empty-string insert risk). CLOSED 2026-05-27 in commit 1748491. notify_team_member intentionally skipped (single required field, executor guard sufficient). log_sub_invoice/log_sub_payment/approve_sub_invoice/upload_company_file assessed low-risk (no empty-string fallback pattern in their executors).
+- Files: read-only (ai-master-agent/index.ts, supabase/functions/field-opus-result-webhook/index.ts). No commits this slice.
+- Open: ALL THREE FINDINGS CLOSED. No open items from this audit.
+
 [LOG — 2026-05-27 — COST_PLUS_ARC Phase 1B shipped — trigger + RPCs + helpers + InfoTab]
 - Action: Phase 1B shipped. Trigger, two RPCs, four JS helpers, InfoTab markup inputs.
 - Migration 1: 20260527060000_cost_plus_phase_1b_trigger.sql — set_cost_plus_defaults_on_jt() BEFORE INSERT trigger. Commits reimbursement_status='unreimbursed' + markup_pct routing on outbound rows for cost-plus jobs. Non-cost-plus and inbound rows: no-op confirmed via smoke tests.
@@ -1715,3 +1724,30 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   - Lucy Webb (fixed-price): cards hidden — gated on job.cost_plus===true ✓ (verified via code gate, no data risk)
 - COST_PLUS_ARC Phase 1 + 2 + 3 + 4 COMPLETE.
 - Next: Phase 5 — Master Agent verbs (record_deposit + compose_draw confirm-gated tools).
+
+[LOG — 2026-05-27 — Tool-schema audit Finding #3 closed — create_schedule_item REQUIRED_FIELDS]
+- Action: Registered create_schedule_item in REQUIRED_FIELDS in ai-master-agent/index.ts. Added SCHEDULE_ITEM_TYPE_OPTIONS const following RECEIPT_TYPE_OPTIONS pattern.
+- 4 fields registered: job_id (select/dynamic_options:active_jobs), title (text), type (select/SCHEDULE_ITEM_TYPE_OPTIONS), scheduled_date (text/YYYY-MM-DD)
+- type enum verified against live DB constraint (6 values: sub_start, material_delivery, inspection, milestone, site_visit, delay) — exact match with audit's suggested values.
+- REQUIRED_FIELDS count: 12 → 13 entries.
+- Decision: notify_team_member intentionally NOT added. Single required field (message) is always present in chat input; executor guard at line ~1152 is sufficient. No value added by elicitation card.
+- All three tool-schema audit findings now closed:
+  - Finding 1 ✓ — update_phase assigned_sub_id doc fix (commit f48c707, 2026-05-27)
+  - Finding 2 ✓ — system prompt notify_team_member omission (commit f48c707, 2026-05-27)
+  - Finding 3 ✓ — create_schedule_item REQUIRED_FIELDS coverage (commit 1748491, 2026-05-27)
+- Open items from audit: none. Codebase clean.
+- Files: supabase/functions/ai-master-agent/index.ts only. Commit: 1748491. Pushed to main.
+
+[LOG — 2026-05-27 — CLAUDE_MEMORY rot sweep]
+- Action: Audited 44 concrete claims against live DB / grep / filesystem.
+- Findings: 36 verified, 6 corrected, 2 ambiguous (flagged for manual review).
+- Corrections applied:
+  1. MaterialSelectionScr.jsx — removed from Locked Principle #7 + Components section (file absent from codebase)
+  2. bug_reports.status CHECK — added 'auto_fix_failed' and 'auto_fix_unknown' to listed values (live constraint has 10 values, memory had 8)
+  3. jobs.assigned_pm_id read drift line number — corrected 2575 → 2608/2710/3084; type corrected TEXT → UUID
+  4. sbMarkNotifsRead audit follow-up — corrected wrong line (3156→3158 in sbAssignSub) and wrong function (sbAdvancePhase starts at 4093)
+  5. send-push "no callers" — updated to note PUSH_NOTIFICATIONS_ARC Phase 5 shipped callers 2026-05-24
+  6. Drift detector Phase 3 backlog entry — clarified Phase 3a (2026-05-19) vs Phase 3b (2026-05-27) dates
+- Ambiguous (manual review needed): (a) VOICE_AGENT Phase 3/4 on-device verification status; (b) sbAdvancePhase .catch() bug class at line 4093+ requires manual read to confirm if query-builder .catch() pattern exists there
+- Drift patterns observed: (1) LOG audit follow-up pointers (line numbers + function names) rot fastest when code moves; (2) files declared "built-not-wired" can be silently deleted without memory update; (3) CHECK constraints gain new values in follow-up migrations that aren't reflected in the original schema entry
+- Reliability flag reinforced: open-item line numbers and file paths are the highest-rot claims. Verify before acting on them.
