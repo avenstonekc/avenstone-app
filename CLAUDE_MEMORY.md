@@ -1806,3 +1806,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Next milestone: Real $45k job onboarding — use the live arc, log every receipt + deposit, compose first real draw.
 - Deferred: Legacy cleanup arc (DROP TABLE job_cost_items, job_cost_invoices) — conditional on 30+ days zero new writes. Verify via: SELECT count(*), max(created_at) FROM job_cost_items WHERE created_at > NOW() - INTERVAL '30 days'.
 - Pattern: client-facing helpers (sbLoadClientDrawBreakdown) filter to non-draft/non-void state; owner-facing helpers see all states. Document when adding new helpers to avoid presenting draft/internal data to clients.
+
+[LOG — 2026-05-27 — 8617 Houston backfill cleanup]
+- Action: Backfilled 4 orphan job_transactions rows with reimbursement_status='unreimbursed' + markup_pct=25. Deleted 1 duplicate $2.82 Home Depot row (5bad83a2).
+- Root cause: cost_plus was false at insert time (InfoTab dead-checkbox bug — Bug 2 in the InfoTab regression LOG above). BEFORE INSERT trigger set_cost_plus_defaults_on_jt no-op'd; rows landed with reimbursement_status=NULL, invisible to Float Out math.
+- Orphans backfilled: Benson Plumbing LLC $8,500 (sub_payout), Benson Plumbing Chang eorder $1,500 (labor), Carlos (flooring) $4,500 (labor), Southside Carpet $4,647 (material_purchase).
+- Duplicate deleted: 5bad83a2-427c-4aa8-9626-e54f2ff148ff — old live-test Master Agent row for TxnID 57829. CSV import had already inserted the same row correctly as c630036f.
+- Float Out: $11,529.03 → $30,676.03. Bucket Credit: $33,470.97 → $14,323.97 (correct — matches $45k deposit − $30,676 float).
+- Verify: 23 rows, all reimbursement_status='unreimbursed', SUM=$30,676.03 confirmed via SQL.
+- Open: InfoTab dead-checkbox bug is the root cause. Until fully confirmed fixed (commit 501d25e), future InfoTab saves on cost-plus jobs may still re-orphan rows. Audit other recently-touched cost-plus jobs (test-flow-001, sandbox) for similar orphan rows if observed.
