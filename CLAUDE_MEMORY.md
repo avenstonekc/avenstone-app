@@ -1508,3 +1508,24 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Audit basis: two prior cost-plus audit sessions (COST_PLUS_AUDIT.md + prepayment additive audit). Three locked decisions from Kalin answered the 5 open questions.
 - Commit: 40d4634. Pushed to main.
 - Open: Phase 1 dispatch next.
+
+[LOG — 2026-05-27 — COMPANY_FILES_ARC Phase 4 shipped — Master Agent upload_company_file verb]
+- Action: Built standalone extraction edge function + wired upload_company_file confirm-gated verb into ai-master-agent. COMPANY_FILES_ARC fully complete.
+- NEW supabase/functions/ai-extract-company-file/index.ts:
+  - Standalone admin UI path for CompanyFilesScr.jsx (future wiring — not called yet).
+  - Input: { storagePath, storageBucket }. Auth: JWT + owner/PM role check.
+  - Haiku extraction: type (COI/General Liability/Workers Comp/Bond/License/W-9/Other), expiration_date, effective_date, policy_number, issuer, coverage_amount.
+  - max_tokens: 512. PDF beta header when isPdf. Returns { ok, extracted }.
+  - Cost: ~$0.001-0.002/call. User-triggered only.
+- EDIT supabase/functions/ai-master-agent/index.ts (7 edits):
+  1. CONFIRM_TOOLS: added 'upload_company_file' (confirm card gate).
+  2. TOOLS array: added upload_company_file tool definition (file_type required, expiration_date/policy_number/issuer/visible_to_subs/visible_to_clients optional).
+  3. CF_EXTRACT_PROMPT constant: embedded Haiku system prompt (mirrors edge fn, avoids inter-function HTTP). Defined before extractLatestUserFile.
+  4. extractLatestUserFile() helper: extends extractLatestUserImage to capture both image and PDF document blocks. Returns { data, mime, isPdf }.
+  5. Pre-confirm block: inline Haiku extraction merges fields into inputObj; file bytes stashed as _image_data/_image_mime/_is_pdf for executor (same pattern as log_receipt receipt photo — never forwarded through Claude tool_use input).
+  6. Executor case 'upload_company_file': role check (owner/PM), base64 decode, upload to company-files bucket, archive existing active file of same type, INSERT company_files row (category derived from type via CF_CATEGORY_MAP), schedule 3 watchdog rows if expiration_date set (non-blocking — same thresholds as Phase 5).
+  7. describeConfirmAction case: "Upload {type} · {issuer} · expires {date} · #{policy} · visible to {subs/clients}."
+  8. System prompt: WHAT YOU CAN DO (added 'upload company files'), confirm-gated tools list (added upload_company_file), new COMPANY FILE WORKFLOW section after SUB INVOICE WORKFLOW.
+- Commit: d5e2740 (rebased on ad23ddd, pushed as 5e686fe). Pushed to main.
+- COMPANY_FILES_ARC: ALL PHASES COMPLETE (1 schema, 2 admin UI, 3a client ref, 3b sub portal, 4 agent verb, 5 watchdog).
+- Open: CompanyFilesScr admin UI can now wire "Extract with AI" button → ai-extract-company-file edge fn (not built yet — extraction is available on demand from Phase 4 master agent path). Live smoke test for upload_company_file verb requires attaching a COI image in the master agent chat.
