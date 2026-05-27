@@ -81,12 +81,12 @@ async function checkContractSigned(jobId, sb) {
 }
 
 async function checkDepositPaid(jobId, sb) {
-  // Any inbound client payment recorded against this job
+  // Any inbound client payment recorded against this job (client_payment or client_deposit)
   const { count } = await sb
     .from('job_transactions')
     .select('*', { count: 'exact', head: true })
     .eq('job_id', jobId)
-    .eq('type', 'client_payment')
+    .in('type', ['client_payment', 'client_deposit'])
     .eq('direction', 'in')
     .eq('status', 'paid');
   return {

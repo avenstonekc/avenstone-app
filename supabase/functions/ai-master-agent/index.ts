@@ -50,7 +50,7 @@ async function runGatesForTransition(jobId: string, fromPhase: string, toPhase: 
     });
     checks.push(async () => {
       const { count } = await sb.from("job_transactions").select("*", { count: "exact", head: true })
-        .eq("job_id", jobId).eq("type", "client_payment").eq("direction", "in").eq("status", "paid");
+        .eq("job_id", jobId).in("type", ["client_payment", "client_deposit"]).eq("direction", "in").eq("status", "paid");
       return { key: "deposit_paid", label: "Client payment received", passed: (count ?? 0) > 0 };
     });
   } else if (key === "in_progress→final_touches") {
