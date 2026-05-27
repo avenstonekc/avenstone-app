@@ -1265,3 +1265,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Deviation: helpers in subInvoices.js (plain JS) not subInvoices.ts — codebase has no TypeScript.
 - Commits: 01fe60a (migration), 650bade (helpers). Build: ✓ clean.
 - Next: Phase 2 — FinancialsTab "Sub Invoices" section. Reads sbLoadSubInvoices, renders three views (Pending Review / Approved Unpaid+Partially Paid / Paid).
+
+[LOG — 2026-05-27 — SUB_INVOICES_ARC Phase 2 shipped]
+- Action: Built SubInvoicesSection in FinancialsTab. Three views (Pending Review / Outstanding / Paid with counts). AP outstanding summary line. Invoice detail panel (modal overlay) with payment history table, line items table, overpayment warning. Add Payment modal with overpayment check. Approve + Dispute + Resolve Dispute + Void Payment actions, all role-gated to owner+PM (hidden for other roles, not greyed). Minimal AddInvoiceModal for end-to-end testing (sub contact dropdown + all fields except line items + PDF).
+- Reads sbLoadSubInvoices; writes via sbCreateSubInvoice / sbAddSubInvoicePayment / sbVoidSubInvoicePayment / sbApproveSubInvoice / sbDisputeSubInvoice (all from lib/subInvoices.js).
+- Wired into FinancialsTab as new 'Sub Invoices' sub-tab (added to SUB_TABS array).
+- Audit finding: contacts.id TEXT confirmed; sub dropdown queries contacts table directly via sb (no separate helper needed). Dispute/void use window.prompt() — matches codebase prompt pattern.
+- Deviation from spec: all components in one file (SubInvoicesSection.jsx, ~460 lines) rather than separate files — matches FinancialsTab's own single-file pattern.
+- Build: ✓ clean (584ms). Commit: 8a47f74.
+- Smoke test: end-to-end create→approve→partial pay→full pay flow functional via deployed app.
+- Next: Phase 3 — PDF upload via Haiku vision + line items in manual entry. Phase 4 — transaction_id propagation to job_transactions on payment.
