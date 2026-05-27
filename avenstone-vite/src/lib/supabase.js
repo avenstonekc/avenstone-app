@@ -2408,7 +2408,6 @@ export const sbAddScheduleInvitee = async ({ scheduleItemId, inviteeUserId, sche
       type: 'schedule_item_created',
       title: `Invited: ${title}`,
       body: `You've been invited to "${title}"${dateStr ? ` on ${dateStr}` : ''}. Open the calendar to view.`,
-      priority: 'normal',
       job_id: scheduleItem?.job_id || null,
     });
     if (notifErr) console.error('sbAddScheduleInvitee notification insert failed:', notifErr.message);
