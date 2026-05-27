@@ -480,6 +480,8 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
   - Tab bars and filter bars must scroll, never grid-wrap — use `overflow-x: auto; flex-wrap: nowrap; flex: none` on tab items. A grid on mobile wraps 11 tabs into 3 unreadable rows at 9px.
   - Touch-only interaction items need pressed-state via `onTouchStart`/`onTouchEnd`/`onTouchCancel` — `onMouseEnter`/`onMouseLeave` hover highlights have zero feedback on touch devices.
 
+- **CLAUDE_MEMORY.md line-number pointers rot immediately** — when a LOG entry records "bug at supabase.js:3156" and code moves, that pointer is wrong next session. Never trust a specific line number in CLAUDE_MEMORY without re-running `grep -n`. Same for "file deleted" claims — verify with `ls` before treating as true.
+
 - **Job IDs must be valid UUIDs** — `Date.now().toString()` is silently rejected by Supabase
 - **`sbLoadSubJobs` uses `job_phases`** — subs can SELECT `job_phases` but not `job_subs`
 - **`assigned_rep` filter uses `profile.full_name`** — not email
