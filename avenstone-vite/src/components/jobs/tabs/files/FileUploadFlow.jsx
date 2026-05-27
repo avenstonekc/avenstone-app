@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { sbUploadJobFile } from '../../../../lib/supabase';
 import { inferFileCategory } from '../../../../lib/jobFiles/inferFileCategory';
 import { Ic } from '../../../../lib/utils';
@@ -20,91 +20,160 @@ function ConfidenceBadge({ confidence, source }) {
   );
 }
 
-export default function FileUploadFlow({ jobId, onClose, onUploaded }) {
+/**
+ * FileUploadFlow — handles single or multi-file upload with AI categorization preview.
+ *
+ * Props:
+ *   jobId          — required
+ *   onClose        — called when the user dismisses or upload completes
+ *   onUploaded     — called once per successfully uploaded file with the jobFile object
+ *   preloadedFiles — optional File[] to pre-load, skipping the pick stage
+ */
+export default function FileUploadFlow({ jobId, onClose, onUploaded, preloadedFiles }) {
+  // fileItems: [{id, file, inferred, category, subcategory}]
+  const [fileItems, setFileItems] = useState([]);
   const [stage, setStage] = useState('pick'); // 'pick' | 'review' | 'uploading'
-  const [file, setFile] = useState(null);
-  const [inferred, setInferred] = useState(null);
-  const [category, setCategory] = useState('');
-  const [subcategory, setSubcategory] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [uplPct, setUplPct] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef();
+  const initRef = useRef(false);
 
-  const handleFileChosen = async f => {
-    if (!f) return;
-    setFile(f);
-    setError('');
-    try {
-      const result = await inferFileCategory({ file: f, jobId, uploadSource: 'manual' });
-      setInferred(result);
-      setCategory(result.category || '');
-      setSubcategory(result.subcategory || null);
-    } catch {
-      setCategory('Documents');
-      setSubcategory(null);
-      setInferred(null);
+  // If preloadedFiles provided, skip pick stage on mount
+  useEffect(() => {
+    if (preloadedFiles?.length > 0 && !initRef.current) {
+      initRef.current = true;
+      handleFilesChosen(preloadedFiles);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Accept File[] from any source (picker, drop, camera, preload).
+   * Sets stage to review immediately; inference fills in per-file as it completes.
+   */
+  const handleFilesChosen = (files) => {
+    const arr = Array.from(files).filter(Boolean);
+    if (!arr.length) return;
+    setError('');
+
+    // Build initial items with no inference yet
+    const ids = arr.map(() => crypto.randomUUID());
+    const initial = arr.map((f, i) => ({
+      id: ids[i], file: f, inferred: null, category: '', subcategory: null,
+    }));
+    setFileItems(initial);
     setStage('review');
+
+    // Run inference per-file; update state as each completes without clobbering edits
+    arr.forEach(async (f, i) => {
+      try {
+        const result = await inferFileCategory({ file: f, jobId, uploadSource: 'manual' });
+        setFileItems(prev => prev.map(item =>
+          item.id !== ids[i] ? item : {
+            ...item,
+            inferred: result,
+            // Only set if user hasn't already chosen a category
+            category: item.category || result.category || '',
+            subcategory: item.subcategory !== null ? item.subcategory : (result.subcategory || null),
+          }
+        ));
+      } catch {
+        setFileItems(prev => prev.map(item =>
+          item.id !== ids[i] ? item : {
+            ...item, inferred: null,
+            category: item.category || 'Documents',
+            subcategory: item.subcategory || null,
+          }
+        ));
+      }
+    });
   };
 
   const handleInputChange = e => {
-    const f = e.target.files?.[0];
-    if (f) handleFileChosen(f);
+    if (e.target.files?.length > 0) handleFilesChosen(e.target.files);
+    // Reset input so the same file can be re-selected (important for camera re-capture)
+    e.target.value = '';
   };
 
   const handleDrop = e => {
     e.preventDefault();
     setDragging(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) handleFileChosen(f);
+    if (e.dataTransfer.files?.length > 0) handleFilesChosen(e.dataTransfer.files);
   };
 
+  const updateItem = (id, patch) => {
+    setFileItems(prev => prev.map(item => item.id === id ? { ...item, ...patch } : item));
+  };
+
+  const removeItem = (id) => {
+    setFileItems(prev => {
+      const next = prev.filter(item => item.id !== id);
+      if (!next.length) { setStage('pick'); setError(''); }
+      return next;
+    });
+  };
+
+  const allCategorized = fileItems.length > 0 && fileItems.every(item => !!item.category);
+
   const handleUpload = async () => {
-    if (!file || !category) return;
-    setUploading(true);
-    setUplPct(0);
+    if (!allCategorized) return;
     setStage('uploading');
     setError('');
-    const tick = setInterval(() => setUplPct(p => Math.min(p + 12, 88)), 250);
-    try {
-      const result = await sbUploadJobFile({
-        jobId,
-        file,
-        category,
-        subcategory: subcategory || null,
-        uploadSource: 'manual',
-      });
-      clearInterval(tick);
-      setUplPct(100);
-      if (result.error) {
-        setError(result.error);
-        setStage('review');
-        setUploading(false);
-        return;
+    setUploadProgress({ done: 0, total: fileItems.length });
+    const errors = [];
+    for (let i = 0; i < fileItems.length; i++) {
+      const item = fileItems[i];
+      try {
+        const result = await sbUploadJobFile({
+          jobId,
+          file: item.file,
+          category: item.category,
+          subcategory: item.subcategory || null,
+          uploadSource: 'manual',
+        });
+        if (result.error) {
+          errors.push(`${item.file.name}: ${result.error}`);
+        } else {
+          onUploaded(result.jobFile);
+        }
+      } catch (err) {
+        errors.push(`${item.file.name}: ${err?.message || 'Upload failed'}`);
       }
-      setTimeout(() => {
-        onUploaded(result.jobFile);
-        onClose();
-      }, 300);
-    } catch (err) {
-      clearInterval(tick);
-      setError(err?.message || 'Upload failed');
+      setUploadProgress({ done: i + 1, total: fileItems.length });
+    }
+    if (errors.length) {
+      setError(errors.join('\n'));
       setStage('review');
-      setUploading(false);
+    } else {
+      onClose();
     }
   };
 
+  const pct = uploadProgress.total > 0
+    ? Math.round((uploadProgress.done / uploadProgress.total) * 100)
+    : 0;
+
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460, width: '100%' }}>
+      <div
+        className="modal"
+        onClick={e => e.stopPropagation()}
+        style={{ maxWidth: 480, width: '100%' }}
+      >
+        {/* Title */}
         <div className="modal-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>Upload File</span>
+          <span>
+            {stage === 'pick'
+              ? 'Upload File'
+              : stage === 'uploading'
+                ? 'Uploading…'
+                : `Review ${fileItems.length} file${fileItems.length !== 1 ? 's' : ''}`}
+          </span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18, lineHeight: 1, padding: 4 }}>×</button>
         </div>
 
-        {/* Stage: pick */}
+        {/* ── Stage: pick ───────────────────────────────────────────────── */}
         {stage === 'pick' && (
           <div
             onDragOver={e => { e.preventDefault(); setDragging(true); }}
@@ -118,62 +187,123 @@ export default function FileUploadFlow({ jobId, onClose, onUploaded }) {
               transition: 'all 0.15s', margin: '4px 0 12px',
             }}
           >
-            <span style={{ width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, color: '#0A1F44', opacity: 0.5 }}>{Ic.folder}</span>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#0A1F44', marginBottom: 4 }}>Drop a file here</div>
+            <span style={{ width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, color: '#0A1F44', opacity: 0.5 }}>
+              {Ic.folder}
+            </span>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#0A1F44', marginBottom: 4 }}>Drop files here</div>
             <div style={{ fontSize: 12, color: '#9CA3AF' }}>or click to browse — photos, PDFs, docs</div>
-            <input ref={inputRef} type="file" accept={ACCEPT} style={{ display: 'none' }} onChange={handleInputChange} />
+            <input
+              ref={inputRef}
+              type="file"
+              accept={ACCEPT}
+              multiple
+              style={{ display: 'none' }}
+              onChange={handleInputChange}
+            />
           </div>
         )}
 
-        {/* Stage: review */}
-        {stage === 'review' && file && (
-          <div style={{ margin: '4px 0 12px' }}>
-            <div style={{ background: '#F7F5F0', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', wordBreak: 'break-all' }}>{file.name}</div>
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>
-                {file.type || 'unknown type'} · {file.size ? (file.size / 1024).toFixed(0) + ' KB' : ''}
-              </div>
-              {inferred && (
-                <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, color: '#6B7280' }}>AI suggests:</span>
-                  <strong style={{ fontSize: 11, color: '#0A1F44' }}>{inferred.category}{inferred.subcategory ? ` / ${inferred.subcategory}` : ''}</strong>
-                  <ConfidenceBadge confidence={inferred.confidence} source={inferred.source} />
+        {/* ── Stage: review ─────────────────────────────────────────────── */}
+        {stage === 'review' && fileItems.length > 0 && (
+          <div style={{ margin: '4px 0 0' }}>
+            {/* Scrollable file list */}
+            <div style={{ maxHeight: '55vh', overflowY: 'auto', paddingBottom: 4 }}>
+              {fileItems.map(item => (
+                <div
+                  key={item.id}
+                  style={{
+                    background: '#F7F5F0', borderRadius: 8, padding: '12px 14px', marginBottom: 10,
+                    border: item.category ? '1px solid #E8E4DC' : '1px solid #FCA5A5',
+                  }}
+                >
+                  {/* File header row */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', wordBreak: 'break-all' }}>
+                        {item.file.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+                        {item.file.type || 'unknown type'}
+                        {item.file.size ? ` · ${(item.file.size / 1024).toFixed(0)} KB` : ''}
+                      </div>
+                      {!item.inferred && (
+                        <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 4, fontStyle: 'italic' }}>
+                          Categorizing…
+                        </div>
+                      )}
+                      {item.inferred && (
+                        <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 10, color: '#6B7280' }}>AI suggests:</span>
+                          <strong style={{ fontSize: 10, color: '#0A1F44' }}>
+                            {item.inferred.category}{item.inferred.subcategory ? ` / ${item.inferred.subcategory}` : ''}
+                          </strong>
+                          <ConfidenceBadge confidence={item.inferred.confidence} source={item.inferred.source} />
+                        </div>
+                      )}
+                    </div>
+                    {fileItems.length > 1 && (
+                      <button
+                        onClick={() => removeItem(item.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18, lineHeight: 1, padding: '0 0 0 4px', flexShrink: 0 }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  <CategoryPicker
+                    category={item.category}
+                    subcategory={item.subcategory}
+                    onChange={({ category: c, subcategory: s }) =>
+                      updateItem(item.id, { category: c || '', subcategory: s || null })
+                    }
+                  />
                 </div>
-              )}
+              ))}
             </div>
 
-            <CategoryPicker
-              category={category}
-              subcategory={subcategory}
-              onChange={({ category: c, subcategory: s }) => { setCategory(c || ''); setSubcategory(s || null); }}
-            />
-
+            {/* Error */}
             {error && (
-              <div style={{ marginTop: 10, padding: '8px 12px', background: '#FEE2E2', color: '#991b1b', borderRadius: 6, fontSize: 12 }}>{error}</div>
+              <div style={{ marginBottom: 10, padding: '8px 12px', background: '#FEE2E2', color: '#991b1b', borderRadius: 6, fontSize: 12, whiteSpace: 'pre-line' }}>
+                {error}
+              </div>
             )}
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            {/* Sticky action row */}
+            <div style={{ display: 'flex', gap: 8, paddingTop: 8 }}>
               <button
                 onClick={handleUpload}
-                disabled={!category}
+                disabled={!allCategorized}
                 className="btn btn-navy"
-                style={{ flex: 1, opacity: category ? 1 : 0.45 }}
+                style={{ flex: 1, opacity: allCategorized ? 1 : 0.45 }}
               >
-                Upload
+                Upload {fileItems.length > 1 ? `${fileItems.length} files` : 'file'}
               </button>
-              <button onClick={() => setStage('pick')} className="btn btn-ghost">Back</button>
+              <button
+                onClick={() => { setStage('pick'); setFileItems([]); setError(''); }}
+                className="btn btn-ghost"
+              >
+                Back
+              </button>
             </div>
           </div>
         )}
 
-        {/* Stage: uploading */}
+        {/* ── Stage: uploading ──────────────────────────────────────────── */}
         {stage === 'uploading' && (
           <div style={{ padding: '24px 0 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 12 }}>Uploading…</div>
-            <div style={{ background: '#E8E4DC', borderRadius: 6, height: 8, overflow: 'hidden', marginBottom: 6 }}>
-              <div style={{ height: '100%', background: '#0A1F44', borderRadius: 6, width: `${uplPct}%`, transition: 'width 0.3s' }} />
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 12 }}>
+              {uploadProgress.done < uploadProgress.total
+                ? `Uploading ${uploadProgress.done + 1} of ${uploadProgress.total}…`
+                : 'Finishing up…'}
             </div>
-            <div style={{ fontSize: 11, color: '#9CA3AF' }}>{uplPct}%</div>
+            <div style={{ background: '#E8E4DC', borderRadius: 6, height: 8, overflow: 'hidden', marginBottom: 6 }}>
+              <div style={{
+                height: '100%', background: '#0A1F44', borderRadius: 6,
+                width: `${pct}%`, transition: 'width 0.3s',
+              }} />
+            </div>
+            <div style={{ fontSize: 11, color: '#9CA3AF' }}>{uploadProgress.done} / {uploadProgress.total}</div>
           </div>
         )}
       </div>

@@ -26,7 +26,11 @@ export default function FilesTab({ job, profile }) {
   const [detailFileId, setDetailFileId] = useState(null);
   const [bulkApplying, setBulkApplying] = useState(false);
   const [shareModal, setShareModal] = useState(null); // { folderLabel, files }
+  const [preloadedFiles, setPreloadedFiles] = useState(null); // File[] for camera/drop → FileUploadFlow
+  const [dragActive, setDragActive] = useState(false);
   const debounceRef = useRef(null);
+  const cameraRef = useRef(null);
+  const dragCounterRef = useRef(0);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -60,6 +64,37 @@ export default function FilesTab({ job, profile }) {
     }, 200);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchQuery, files, job.id]);
+
+  // Camera capture (mobile) — routes captured photo into FileUploadFlow review stage
+  const handleCameraCapture = e => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    e.target.value = ''; // reset so same file can be re-captured
+    setPreloadedFiles([f]);
+    setUploadOpen(true);
+  };
+
+  // Drag-drop zone handlers (desktop) — counter prevents flicker on child boundaries
+  const handleDragEnter = e => {
+    e.preventDefault();
+    dragCounterRef.current++;
+    setDragActive(true);
+  };
+  const handleDragLeave = e => {
+    e.preventDefault();
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) { dragCounterRef.current = 0; setDragActive(false); }
+  };
+  const handleDragOver = e => { e.preventDefault(); };
+  const handleFileDrop = e => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    setPreloadedFiles(files);
+    setUploadOpen(true);
+  };
 
   const handleToggleSelect = id => {
     setSelectedFileIds(prev =>
@@ -124,7 +159,27 @@ export default function FilesTab({ job, profile }) {
   );
 
   return (
-    <div style={{ position: 'relative', paddingBottom: bulkTagMode && selectedFileIds.length ? 88 : 0 }}>
+    <div
+      style={{ position: 'relative', paddingBottom: bulkTagMode && selectedFileIds.length ? 88 : 0, minHeight: 200 }}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleFileDrop}
+    >
+      {/* Drag-drop overlay (desktop) */}
+      {dragActive && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 20,
+          background: 'rgba(201,168,76,0.12)',
+          border: '2px dashed #C9A84C', borderRadius: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none',
+        }}>
+          <div style={{ fontSize: 16, color: '#C9A84C', fontWeight: 700, background: 'rgba(255,255,255,0.85)', padding: '10px 20px', borderRadius: 8 }}>
+            Drop files to upload
+          </div>
+        </div>
+      )}
       {/* Search input */}
       <div style={{ position: 'relative', marginBottom: 10 }}>
         <span style={{
@@ -187,6 +242,32 @@ export default function FilesTab({ job, profile }) {
         >
           {bulkTagMode ? (bulkApplying ? 'Applying…' : `Tag (${selectedFileIds.length})`) : 'Bulk tag'}
         </button>
+
+        {/* Camera capture button (mobile only) */}
+        {mob && (
+          <>
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={handleCameraCapture}
+            />
+            <button
+              onClick={() => cameraRef.current?.click()}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
+                background: '#F7F5F0', color: '#0A1F44',
+                border: '1px solid #E8E4DC', borderRadius: 6,
+                cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              }}
+            >
+              <span style={{ fontSize: 13 }}>📷</span>
+              Photo
+            </button>
+          </>
+        )}
 
         {/* Upload button */}
         <button
@@ -259,7 +340,8 @@ export default function FilesTab({ job, profile }) {
       {uploadOpen && (
         <FileUploadFlow
           jobId={job.id}
-          onClose={() => setUploadOpen(false)}
+          preloadedFiles={preloadedFiles}
+          onClose={() => { setUploadOpen(false); setPreloadedFiles(null); }}
           onUploaded={handleFileUploaded}
         />
       )}
