@@ -333,6 +333,8 @@ export default function FilesTab({ job, profile }) {
           onClose={() => setDetailFileId(null)}
           onUpdated={handleFileUpdated}
           onDeleted={handleFileDeleted}
+          folderFiles={filteredFiles}
+          onFileChange={setDetailFileId}
         />
       )}
 

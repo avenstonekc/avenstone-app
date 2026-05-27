@@ -10,7 +10,7 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function FileDetailPanel({ fileId, onClose, onUpdated, onDeleted }) {
+export default function FileDetailPanel({ fileId, onClose, onUpdated, onDeleted, folderFiles, onFileChange }) {
   const [file, setFile] = useState(null);
   const [signedUrl, setSignedUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,6 +21,24 @@ export default function FileDetailPanel({ fileId, onClose, onUpdated, onDeleted 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [toggling, setToggling] = useState(false);
+
+  // Keyboard nav — ArrowLeft/Right cycle through folder, Escape closes
+  useEffect(() => {
+    if (!folderFiles?.length || !onFileChange) return;
+    const handler = e => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const idx = folderFiles.findIndex(f => f.id === fileId);
+        if (idx === -1) return;
+        const next = e.key === 'ArrowRight'
+          ? (idx + 1) % folderFiles.length
+          : (idx - 1 + folderFiles.length) % folderFiles.length;
+        onFileChange(folderFiles[next].id);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [fileId, folderFiles, onFileChange, onClose]);
 
   useEffect(() => {
     if (!fileId) return;
