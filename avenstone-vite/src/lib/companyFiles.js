@@ -12,9 +12,9 @@
  *
  * Phase deferred (not in this file yet):
  *  - sbLoadCompanyFilesForSub — Phase 3b (sub portal direct query) — SHIPPED
- *  - sbScheduleCompanyFileExpirations — Phase 5 (watchdog scheduled_actions rows)
- *  - sbCancelCompanyFileScheduledActions — Phase 5
- *  - sbCreateJobCompanyFileRefs — Phase 3a (virtual job_files rows at job creation)
+ *  - sbScheduleCompanyFileExpirations — Phase 5 — SHIPPED
+ *  - sbCancelCompanyFileScheduledActions — Phase 5 — SHIPPED
+ *  - sbCreateJobCompanyFileRefs — Phase 3a (virtual job_files rows at job creation) — SHIPPED
  */
 
 import { sb, AV_TENANT, AV_USER_ID } from './supabase.js';
@@ -90,6 +90,10 @@ export async function sbUploadCompanyFile({
       // Best-effort cleanup if DB insert fails
       await sb.storage.from(BUCKET).remove([storagePath]).catch(() => {});
       return { ok: false, error: error.message };
+    }
+    // Phase 5 — schedule expiration watchdog rows if expiration_date provided (non-blocking)
+    if (metadata.expirationDate) {
+      sbScheduleCompanyFileExpirations(data.id, metadata.expirationDate).catch(() => {});
     }
     return { ok: true, data: { id: data.id, storagePath: data.storage_path } };
   } catch (e) {
@@ -287,6 +291,10 @@ export async function sbReplaceCompanyFile({
       .eq('tenant_id', AV_TENANT)
       .catch(() => {}); // non-critical — just a pointer for history browsing
 
+    // Phase 5 — cancel old scheduled_actions after successful replace (non-blocking)
+    // New file's scheduled_actions were already written by sbUploadCompanyFile above.
+    sbCancelCompanyFileScheduledActions(existingId).catch(() => {});
+
     return {
       ok: true,
       data: {
@@ -319,6 +327,101 @@ export async function sbSignCompanyFileUrl(storagePath, expiresIn = SIGNED_URL_E
     return { ok: true, url: data.signedUrl };
   } catch (e) {
     return { ok: false, error: e.message || 'sbSignCompanyFileUrl failed' };
+  }
+}
+
+// ─── Phase 5 — Watchdog helpers ───────────────────────────────────────────────
+
+/**
+ * Phase 5 — Write 3 scheduled_actions rows for a company file's expiration date.
+ * Thresholds: 30d (medium), 14d (high), 0d/day-of (high).
+ * Called automatically by sbUploadCompanyFile when metadata.expirationDate is set.
+ *
+ * @param {string} companyFileId  UUID of the company_files row
+ * @param {string} expirationDate ISO date string 'YYYY-MM-DD'
+ * @returns {Promise<{ok:boolean, error?:string}>}
+ */
+export async function sbScheduleCompanyFileExpirations(companyFileId, expirationDate) {
+  if (!companyFileId || !expirationDate) return { ok: false, error: 'companyFileId and expirationDate required' };
+  try {
+    const exp = new Date(expirationDate);
+    if (isNaN(exp.getTime())) return { ok: false, error: 'Invalid expirationDate' };
+
+    const subDays = (date, d) => new Date(date.getTime() - d * 86400000).toISOString();
+
+    const rows = [
+      {
+        tenant_id:           AV_TENANT,
+        kind:                'reminder',
+        status:              'scheduled',
+        priority:            'medium',
+        fire_at:             subDays(exp, 30),
+        created_by_id:       AV_USER_ID,
+        target_user_id:      AV_USER_ID,
+        related_entity_type: 'company_file',
+        related_entity_id:   companyFileId,
+        rule_key:            `cf_exp_30d_${companyFileId}`,
+        source:              'system',
+        payload:             { company_file_id: companyFileId, days_out: 30 },
+      },
+      {
+        tenant_id:           AV_TENANT,
+        kind:                'reminder',
+        status:              'scheduled',
+        priority:            'high',
+        fire_at:             subDays(exp, 14),
+        created_by_id:       AV_USER_ID,
+        target_user_id:      AV_USER_ID,
+        related_entity_type: 'company_file',
+        related_entity_id:   companyFileId,
+        rule_key:            `cf_exp_14d_${companyFileId}`,
+        source:              'system',
+        payload:             { company_file_id: companyFileId, days_out: 14 },
+      },
+      {
+        tenant_id:           AV_TENANT,
+        kind:                'reminder',
+        status:              'scheduled',
+        priority:            'high',
+        fire_at:             exp.toISOString(),
+        created_by_id:       AV_USER_ID,
+        target_user_id:      AV_USER_ID,
+        related_entity_type: 'company_file',
+        related_entity_id:   companyFileId,
+        rule_key:            `cf_exp_0d_${companyFileId}`,
+        source:              'system',
+        payload:             { company_file_id: companyFileId, days_out: 0 },
+      },
+    ];
+
+    const { error } = await sb.from('scheduled_actions').insert(rows);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message || 'sbScheduleCompanyFileExpirations failed' };
+  }
+}
+
+/**
+ * Phase 5 — Cancel pending scheduled_actions rows for a company file.
+ * Called by sbReplaceCompanyFile after successful replace.
+ *
+ * @param {string} companyFileId  UUID of the company_files row being replaced/archived
+ * @returns {Promise<{ok:boolean, error?:string}>}
+ */
+export async function sbCancelCompanyFileScheduledActions(companyFileId) {
+  if (!companyFileId) return { ok: false, error: 'companyFileId required' };
+  try {
+    const { error } = await sb
+      .from('scheduled_actions')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+      .eq('related_entity_type', 'company_file')
+      .eq('related_entity_id', companyFileId)
+      .eq('status', 'scheduled');
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message || 'sbCancelCompanyFileScheduledActions failed' };
   }
 }
 
