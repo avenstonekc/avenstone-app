@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY, ADDRESS_AUTOCOMPLETE_URL, AI_ERROR_LOGGER_URL, AV_USER_ID, AV_TENANT, captureFailedIntent, sbCompleteTodo } from '../../lib/supabase';
+import { sbCreateJobCompanyFileRefs } from '../../lib/companyFiles';
 import { Ic, STATS, sc, sl, f$, isMob, ls } from '../../lib/utils';
 import JobDet from './JobDet';
 import AiIntakeWizard from '../ai/AiIntakeWizard';
@@ -104,6 +105,8 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
       return;
     }
     if (pendingAction?.todoId) sbCompleteTodo(pendingAction.todoId).catch(() => {});
+    // Phase 3a — attach client-visible company files as virtual job_files rows (non-blocking)
+    sbCreateJobCompanyFileRefs(j.id, AV_TENANT).catch(() => {});
     setNewA(''); setShowNew(false); setSel(j.id);
   };
   const del = async id => { if (!window.confirm('Delete this job?')) return; const u = jobs.filter(j => j.id !== id); setJobs(u); ls('av_j', u); setSel(null); const r = await sbDel(id); if (!r.ok) { setJobs(jobs); ls('av_j', jobs); alert('Delete failed: ' + (r.error || 'Unknown error')); } };

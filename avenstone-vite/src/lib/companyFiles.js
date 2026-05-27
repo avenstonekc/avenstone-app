@@ -322,6 +322,60 @@ export async function sbSignCompanyFileUrl(storagePath, expiresIn = SIGNED_URL_E
   }
 }
 
+/**
+ * Phase 3a — Job creation hook.
+ * After a new job row is committed, call this to insert virtual job_files rows
+ * for every active company file where 'client' = ANY(visible_to_roles).
+ *
+ * Non-critical path: caller should not await this or block job creation on its result.
+ * Failure is logged but does not roll back the job.
+ *
+ * @param {string} jobId    The newly created job id (TEXT — matches job_files.job_id)
+ * @param {string} tenantId The tenant UUID
+ * @returns {Promise<{ok:boolean, error?:string, data?:{attached:number}}>}
+ */
+export async function sbCreateJobCompanyFileRefs(jobId, tenantId) {
+  if (!jobId || !tenantId) return { ok: false, error: 'jobId and tenantId required' };
+  try {
+    const { data: files, error: loadErr } = await sb
+      .from('company_files')
+      .select('id, tenant_id, name, storage_path, storage_bucket, mime_type, category')
+      .eq('tenant_id', tenantId)
+      .eq('lifecycle_status', 'active')
+      .contains('visible_to_roles', ['client']);
+
+    if (loadErr) return { ok: false, error: loadErr.message };
+    if (!files || files.length === 0) return { ok: true, data: { attached: 0 } };
+
+    const rows = files.map(cf => ({
+      tenant_id:           cf.tenant_id,
+      job_id:              jobId,
+      name:                cf.name,
+      storage_path:        cf.storage_path,
+      storage_bucket:      cf.storage_bucket,
+      mime_type:           cf.mime_type || null,
+      category:            'Communications',
+      subcategory:         SUBCATEGORY_FOR[cf.category] ?? 'Compliance',
+      client_visible:      true,
+      related_entity_type: 'company_file',
+      related_entity_id:   cf.id,
+    }));
+
+    const { error: insErr } = await sb.from('job_files').insert(rows);
+    if (insErr) return { ok: false, error: insErr.message };
+    return { ok: true, data: { attached: rows.length } };
+  } catch (e) {
+    return { ok: false, error: e.message || 'sbCreateJobCompanyFileRefs failed' };
+  }
+}
+
+const SUBCATEGORY_FOR = {
+  Insurance:  'Insurance',
+  License:    'License',
+  Tax:        'Tax',
+  // Legal, Compliance, Template, Other → 'Compliance'
+};
+
 // ─── Internal row mapper ───────────────────────────────────────────────────────
 
 function mapRow(r) {
