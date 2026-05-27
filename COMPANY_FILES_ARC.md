@@ -12,7 +12,7 @@ Tenant-scoped document storage for company-level compliance and reference files:
 **Augments**: UNIFIED_FILES_ARC (the per-job file system) by adding a tenant-level peer. Company files surface in job context via virtual `job_files` reference rows — not copies.
 **Powers**: future arcs that need compliance state: CO-send-with-COI, sub-onboarding-with-insurance-check, lien waiver workflow, permit renewal tracking.
 
-**Key design**: company files are **tenant-level data** with **per-job visibility via virtual references**. Update the master file once — every active job's client portal automatically reflects the new version. No stale copies.
+**Key design**: company files are **tenant-level data** with **per-role, per-audience visibility** controlled by a `visible_to_roles TEXT[]` column (valid values: `owner`, `project_manager`, `sales_rep`, `sub`, `client`). Clients see company files via virtual `job_files` reference rows on each job. Subs see company files via a tenant-wide "Company Documents" section in the sub portal (direct query — no virtual rows). Internal roles manage files in the Company Files admin tab. Update the master file once — all audience surfaces reflect the current version.
 
 ---
 
@@ -63,9 +63,14 @@ company_files (new table — tenant-scoped)
     │
     ├── expiration_date   ── triggers watchdog scheduled_actions at 30/14/0 days
     │
-    ├── auto_share_with_clients BOOLEAN
-    │      └── true → virtual job_files row generated on every new job creation
-    │           └── client_visible = true, points back to company_files storage_path
+    ├── visible_to_roles TEXT[]   ── valid values: owner, project_manager, sales_rep, sub, client
+    │      ├── 'client' = ANY(visible_to_roles)
+    │      │      └── virtual job_files row generated at job creation (Phase 3a)
+    │      │           client_visible=true, references company_files storage_path
+    │      ├── 'sub' = ANY(visible_to_roles)
+    │      │      └── file appears in sub portal "Company Documents" section (Phase 3b)
+    │      │           direct query on company_files — tenant-wide, no virtual row needed
+    │      └── owner always sees all files via RLS regardless of visible_to_roles
     │
     └── lifecycle_status  ── 'active' | 'archived'
            └── Upload new version → old row archived, new row active
@@ -93,10 +98,15 @@ Watchdog (scheduled_actions rows written by sbScheduleCompanyFileExpirations)
           14-day todo: "URGENT: GL Insurance expires in 14 days — renew now"
           Day-of: todo stays open + red banner on every active job
 
-Job creation hook (Phase 3)
+Phase 3a — Job creation hook (client audience)
     └── INSERT INTO job_files SELECT ... FROM company_files
-          WHERE auto_share_with_clients = true AND lifecycle_status = 'active'
-          → virtual rows, client_visible = true, related_entity_type = 'company_file'
+          WHERE 'client' = ANY(visible_to_roles) AND lifecycle_status = 'active'
+          → virtual rows, client_visible=true, related_entity_type='company_file'
+
+Phase 3b — Sub portal direct read (sub audience)
+    └── SELECT ... FROM company_files
+          WHERE tenant_id=<tenant> AND 'sub' = ANY(visible_to_roles) AND lifecycle_status='active'
+          → renders in sub portal "Company Documents" section (tenant-wide, not job-scoped)
 ```
 
 ---
@@ -107,7 +117,8 @@ Job creation hook (Phase 3)
 |-------|-------|---------|--------|
 | 1 — Schema + admin UI | `company_files` table, `company-files` bucket, helpers, admin UI for upload/manage | 3 | Planned |
 | 2 — Files tab integration | Job Files / Company Files sub-tabs in FilesTab, role gate, flat tagged view, file detail panel | 2 | Planned |
-| 3 — Job creation auto-reference | New job creation generates virtual `job_files` rows for `auto_share_with_clients=true` company files | 2 | Planned |
+| 3a — Client visibility via job creation | Virtual `job_files` rows for `'client' = ANY(visible_to_roles)` company files generated at job creation | 1 | Planned |
+| 3b — Sub portal Pattern A | New "Company Documents" section in sub portal — direct query on `company_files`, tenant-wide, no virtual rows | 1 | Planned |
 | 4 — Master Agent verb | `upload_company_file` with Haiku vision metadata extraction, confirm card, replace-on-type logic | 2 | Planned |
 | 5 — Watchdog + escalation + banner | `scheduled_actions` for 30/14/0-day expiration todos, cancellation on update, job-level expired-doc banner | 3 | Planned |
 
@@ -134,7 +145,7 @@ Job creation hook (Phase 3)
 
 - `company_files` table — see Schema Reference.
 - `company-files` storage bucket (private, separate from `job-files`).
-- Helpers: `sbUploadCompanyFile`, `sbLoadCompanyFiles`, `sbGetCompanyFile`, `sbUpdateCompanyFile`, `sbArchiveCompanyFile`, `sbSignCompanyFileUrl`, `sbToggleAutoShare`, `sbReplaceCompanyFile` (archives old + inserts new + rewires virtual job_files rows).
+- Helpers: `sbUploadCompanyFile`, `sbLoadCompanyFiles`, `sbGetCompanyFile`, `sbUpdateCompanyFile`, `sbArchiveCompanyFile`, `sbSignCompanyFileUrl`, `sbSetCompanyFileRoles(id, roles[])`, `sbReplaceCompanyFile` (archives old + inserts new + rewires virtual job_files rows), `sbLoadCompanyFilesForSub(tenantId)` (Phase 3b — filters `'sub' = ANY(visible_to_roles)`).
 - `sbScheduleCompanyFileExpirations(companyFileId)` — writes 3 `scheduled_actions` rows for a file with an expiration_date.
 - `sbCancelCompanyFileScheduledActions(companyFileId)` — cancels pending watchdog rows when a file is replaced.
 - Admin UI — Company Files management tab. See Phase 1 for location decision.
@@ -143,7 +154,7 @@ Job creation hook (Phase 3)
 - Master Agent verb `upload_company_file` in `ai-master-agent/index.ts` (Phase 4).
 - Haiku vision document metadata extraction (inline or edge function) (Phase 4).
 - Watchdog cron integration — `scheduled_actions` rows fire → todos created (Phase 5).
-- `CompanyFileExpirationBanner.jsx` — red banner shown on active jobs when any auto-share company file is expired (Phase 5).
+- `CompanyFileExpirationBanner.jsx` — red banner shown on active jobs when any client-visible (`'client' = ANY(visible_to_roles)`) company file is expired (Phase 5).
 
 ---
 
@@ -153,11 +164,20 @@ Job creation hook (Phase 3)
 
 2. **Reference pattern, not copy pattern.** Job creation generates virtual `job_files` rows with `related_entity_type='company_file'`, `related_entity_id=<company_file.id>`, `storage_path` pointing to the company file's actual storage path. Update the master file (replace flow) → new virtual rows generated from the new company_file row. Old virtual rows from the archived file remain but are no longer the "current" version — Phase 3 defines the update propagation. No frozen-at-time-of-creation copies.
 
-3. **`auto_share_with_clients` flag per file.** Owner/PM sets at upload. `true` → file appears in every new job's client portal via virtual `job_files` row (`client_visible=true`). `false` → file stays in Company Files tab only. Existing jobs are NOT retroactively updated when you toggle this flag — only new jobs pick up the flag state at creation time. (Retroactive update is a future batch operation, out of scope v1.)
+3. **`visible_to_roles TEXT[]` controls per-audience visibility.** Replaces `auto_share_with_clients BOOLEAN`. Valid values: `owner`, `project_manager`, `sales_rep`, `sub`, `client`. Three audience surfaces:
+   - `'client' = ANY(visible_to_roles)` → file appears in every new job's client portal via virtual `job_files` row (`client_visible=true`). Phase 3a.
+   - `'sub' = ANY(visible_to_roles)` → file appears in sub portal "Company Documents" section via direct query. Phase 3b.
+   - `'sales_rep'` / `'project_manager'` in `visible_to_roles` → governs Company Files tab visibility per role (owner sees all via RLS, not gated by this column).
+
+   **Owner always sees all files via RLS regardless of `visible_to_roles`.** The `cf_tenant_select` policy gives read access to all tenant members. `visible_to_roles` gates portal surfaces, not DB row access. Owner is the one setting visibility — they must never be locked out of their own files.
+
+   **Default: empty array `{}`** (no portal visibility). Safer than defaulting to `{client}` or `{sub}`. Rep must explicitly opt each file into each audience. Prevents accidental client or sub exposure of draft or internal-only docs.
+
+   Existing jobs are NOT retroactively updated when `visible_to_roles` changes. Only new jobs pick up the current flag state at creation time. (Retroactive propagation is Phase 5+.)
 
 4. **Flat list with category tags v1.** No folder tree inside Company Files. Categories: `Insurance`, `License`, `Tax`, `Legal`, `Compliance`, `Template`, `Other`. Sorted by category then `type` label. Dynamic folders don't apply here — a company typically has fewer than 30 company files total.
 
-5. **Rep-visible for the Company Files tab; client-visible via job virtual rows only.** Roles that see Company Files tab: `owner`, `project_manager`, `sales_rep`. Subs and clients never see the Company Files tab. Individual files flagged `auto_share_with_clients=true` still surface in client portal via per-job virtual references — that is the design. Client sees a file in "their" job without knowing it's a company-level document.
+5. **Company Files admin tab is internal-role-only.** Roles that see Company Files tab: `owner`, `project_manager`, `sales_rep`. Subs and clients never see the Company Files admin tab. Client-visible files (`'client' = ANY(visible_to_roles)`) surface in client portal via per-job virtual `job_files` references. Sub-visible files (`'sub' = ANY(visible_to_roles)`) surface in the sub portal "Company Documents" section via direct query. Neither client nor sub is aware the file is a company-level document — they see it as a file on their job or portal, not as a company record.
 
 6. **Expiration tracking with watchdog rules using `scheduled_actions`.**
    - 30 days before expiration → todo to owner+PM: "GL Insurance expires in 30 days — start renewal"
@@ -174,7 +194,7 @@ Job creation hook (Phase 3)
 
 10. **Files accept any format.** PDF, image, DOC, DOCX. Haiku vision metadata extraction only runs on PDF and image MIME types. Other types skip extraction — rep fills in metadata fields manually on the confirm card.
 
-11. **Job-level banner for expired auto-share docs.** When any company_file with `auto_share_with_clients=true` and `lifecycle_status='active'` has `expiration_date <= today`, every active job shows a red banner: "⚠ GL Insurance expired — renew before sending next CO." Banner derives from a tenant-level query on `company_files` — no per-job column to maintain. Dismisses when expiration_date is updated (new file uploaded).
+11. **Job-level banner for expired client-visible docs.** When any company_file with `'client' = ANY(visible_to_roles)` and `lifecycle_status='active'` has `expiration_date <= today`, every active job shows a red banner: "⚠ GL Insurance expired — renew before sending next CO." Banner derives from a tenant-level query on `company_files` — no per-job column to maintain. Dismisses when expiration_date is updated (new file uploaded).
 
 12. **Multi-tenant: full tenant isolation.** Tenant A's COI never leaks to Tenant B's jobs. RLS on `company_files` enforces tenant boundary. Storage bucket path convention includes `<tenant_id>/` prefix. Partial unique index enforces only one active row per type per tenant.
 
@@ -183,6 +203,8 @@ Job creation hook (Phase 3)
 14. **No hard delete v1.** Company files can be archived (`lifecycle_status='archived'`) but not hard-deleted from the UI. Compliance audit trail matters. Hard delete is a future admin SQL action with an explicit FKsafe-delete check (virtual `job_files` rows that reference the company_file must be cleaned up first).
 
 15. **No "shared with other tenants" v1.** Each tenant's company files are their own. New tenant onboards with zero company_files and adds their own. No template-tenant seeding, no cross-tenant sharing.
+
+16. **Sub portal Pattern A — tenant-wide "Company Documents" section.** Subs access company files via a direct `company_files` query filtered to `'sub' = ANY(visible_to_roles) AND lifecycle_status='active'`. This section is tenant-wide — the same company files appear in the sub's portal regardless of which job they're assigned to. Pattern B (generating virtual `job_files` rows per-job for each sub) is explicitly rejected: it creates fan-out (100 jobs × 5 company files = 500 virtual rows), defeats "update once, see everywhere," and requires per-job sub-assignment scoping that the client-portal pattern does not need. Client audience uses Pattern B because client visibility is intentionally job-scoped. Sub audience is company-scoped.
 
 ---
 
@@ -208,9 +230,9 @@ Job creation hook (Phase 3)
 **Admin UI location:** `FilesTab.jsx` — Company Files appears as a sub-tab alongside Job Files (Phase 2 wires the sub-tabs). For Phase 1, build a standalone `CompanyFilesAdminScr.jsx` or add it as a section in `AiKnowledgeScr.jsx` (owner-only). Kalin decides final placement before Phase 2. Either location is wired without code duplication. See Open Questions.
 
 **Admin UI features (Phase 1):**
-- File list: name, category badge, type label, expiration date (red if expired, amber if within 30 days), auto-share indicator.
+- File list: name, category badge, type label, expiration date (red if expired, amber if within 30 days), visibility badges (Client / Sub / Internal).
 - Upload: file picker → category selector → type text input → metadata fields (issuer, expiration date, policy number) pre-fillable manually, or "Extract with AI" button fires Master Agent verb (Phase 4 wires this).
-- Each row: Download (signed URL) + Archive + Edit (expiration date, auto-share toggle).
+- Each row: Download (signed URL) + Archive + Edit (expiration date, visible_to_roles multi-select).
 - Filter by category.
 - Empty state: "No company files yet. Upload your certificate of insurance to get started."
 
@@ -228,14 +250,14 @@ Job creation hook (Phase 3)
 - Role gate: show only if `profile.role IN ('owner', 'project_manager', 'sales_rep')`. If sub or client navigates directly, render null.
 - Renders a flat tagged list of all active company_files for the tenant (not job-scoped — same list regardless of which job you're viewing).
 - Sorted by category, then type label.
-- Each row: file icon, type label, category badge, expiration date (red/amber/green), auto-share badge ("Shared with clients").
-- Actions: Download (signed URL in new tab), Edit (expiration date, auto-share toggle), Archive.
+- Each row: file icon, type label, category badge, expiration date (red/amber/green), visibility badges (Client / Sub).
+- Actions: Download (signed URL in new tab), Edit (expiration date, visible_to_roles multi-select), Archive.
 - Expiration badge: red if expired, amber if within 30 days, green otherwise, no badge if no expiration.
 
 **File detail panel:**
 - Slide-in panel (desktop) or full-screen sheet (mobile) on row click.
-- Shows: name, type, category, issuer, policy number, effective date, expiration date, auto-share status, uploaded by, upload date, signed-URL download.
-- Edit fields inline (expiration date, auto-share).
+- Shows: name, type, category, issuer, policy number, effective date, expiration date, visible_to_roles badges, uploaded by, upload date, signed-URL download.
+- Edit fields inline (expiration date, visible_to_roles).
 
 **No duplicate upload UI.** Company file upload routes through the admin UI from Phase 1. The Company Files sub-tab in FilesTab is view + light edit only — no new upload form in Phase 2.
 
@@ -244,11 +266,11 @@ Job creation hook (Phase 3)
 2. Switch to Company Files. Confirm the tenant's company files load.
 3. Log in as a sub. Navigate to Files tab. Confirm Company Files sub-tab is not rendered.
 
-### Phase 3 — Job Creation Auto-Reference
+### Phase 3a — Client Visibility via Job Creation
 
 **Hook into job creation.** Find the path where a new job row is inserted (likely in `LeadsTab.jsx` or `CreateJobModal.jsx` via a `sbCreateJob` helper or direct insert).
 
-**After job insert**, query `company_files` for all `auto_share_with_clients=true AND lifecycle_status='active'` rows for the tenant. For each, insert a virtual `job_files` row:
+**After job insert**, query `company_files` for all rows where `'client' = ANY(visible_to_roles) AND lifecycle_status='active'` for the tenant. For each, insert a virtual `job_files` row:
 
 ```sql
 INSERT INTO job_files (
@@ -276,20 +298,38 @@ SELECT
   NOW()
 FROM company_files cf
 WHERE cf.tenant_id = <tenant_id>
-  AND cf.auto_share_with_clients = true
+  AND 'client' = ANY(cf.visible_to_roles)
   AND cf.lifecycle_status = 'active';
 ```
 
-**Implementation:** add `sbCreateJobCompanyFileRefs(jobId, tenantId)` helper. Call it in the job creation flow after the job row commits. If it fails (unlikely), log error but do not block job creation — non-critical path.
+**Implementation:** `sbCreateJobCompanyFileRefs(jobId, tenantId)` helper. Called in the job creation flow after the job row commits. If it fails, log error but do not block job creation — non-critical path.
 
 **Client portal verification:** `ClientPortal.jsx` loads `job_files WHERE job_id=? AND client_visible=true AND lifecycle_status='active'`. Virtual company-file rows land here naturally — no portal code changes needed.
 
 **Smoke test:**
-1. Ensure at least one company_file has `auto_share_with_clients=true`.
+1. Ensure at least one company_file has `'client' = ANY(visible_to_roles)`.
 2. Create a new job.
 3. Query `job_files WHERE job_id=<new_job_id> AND related_entity_type='company_file'` — confirm rows exist.
 4. Open ClientPortal for that job. Confirm the company file appears in the Files section.
 5. Click download. Confirm signed URL from `company-files` bucket resolves.
+
+### Phase 3b — Sub Portal Pattern A
+
+**New "Company Documents" section in sub portal.** Subs access company files via a direct `company_files` query, not via virtual `job_files` rows. The section is tenant-wide — same files appear regardless of which job the sub is on.
+
+**Query:** `sbLoadCompanyFilesForSub(tenantId)` — loads `company_files WHERE tenant_id=<tenant> AND 'sub' = ANY(visible_to_roles) AND lifecycle_status='active'`.
+
+**Location in sub portal:** Add a "Company Documents" section to `SubJobView.jsx` or the sub portal home. Renders below the job-specific content. Uses the same card/row pattern as the Files tab.
+
+**Signed URLs:** `sbSignCompanyFileUrl(row.storage_path)` — same helper as internal admin UI. No storage access changes needed.
+
+**No virtual rows for subs.** Pattern A is a direct query. Adding `'sub'` to `visible_to_roles` on a company file makes it immediately visible to all subs in that tenant's portal — no per-job backfill.
+
+**Smoke test:**
+1. Add `'sub'` to `visible_to_roles` on the GL Insurance company_file.
+2. Log in as a sub. Open sub portal. Confirm "Company Documents" section renders with the GL cert.
+3. Click download. Confirm signed URL resolves.
+4. Remove `'sub'` from `visible_to_roles`. Refresh sub portal. Confirm the file is gone.
 
 ### Phase 4 — Master Agent Verb
 
@@ -309,7 +349,7 @@ WHERE cf.tenant_id = <tenant_id>
       policy_number: { type: "string" },
       effective_date: { type: "string", description: "ISO date YYYY-MM-DD" },
       expiration_date: { type: "string", description: "ISO date YYYY-MM-DD" },
-      auto_share_with_clients: { type: "boolean", description: "If true, this file appears in every new job's client portal automatically" }
+      visible_to_roles: { type: "array", items: { type: "string", enum: ["owner", "project_manager", "sales_rep", "sub", "client"] }, description: "Which roles see this file in their portal. Empty = internal only. 'client' = client portal via job creation, 'sub' = sub portal Company Documents section." }
     },
     required: ["type", "category"]
   }
@@ -331,7 +371,7 @@ WHERE cf.tenant_id = <tenant_id>
 - Policy number (editable)
 - Effective date (editable)
 - Expiration date (editable, red border if blank for Insurance/License categories)
-- Auto-share with clients (checkbox)
+- Visible to: multi-select pill chooser (Client / Sub / Sales Rep / PM / Owner)
 
 **On confirm:**
 - If an active `company_files` row exists with the same `type` for this tenant → `sbReplaceCompanyFile`. Cancel old scheduled_actions, schedule new ones if expiration_date set.
@@ -400,7 +440,7 @@ Called in `sbReplaceCompanyFile` before scheduling new rows.
 
 **`CompanyFileExpirationBanner.jsx`:**
 - Mounted inside `JobDet.jsx` above the tab bar (or in the job header).
-- On mount, queries `company_files WHERE tenant_id=<tenant> AND auto_share_with_clients=true AND lifecycle_status='active' AND expiration_date <= NOW()`.
+- On mount, queries `company_files WHERE tenant_id=<tenant> AND 'client' = ANY(visible_to_roles) AND lifecycle_status='active' AND expiration_date <= NOW()`.
 - If any expired files: renders red banner listing them. "⚠ GL Insurance expired Mar 15 — update before next CO" with a direct link to the Company Files admin UI.
 - If empty: renders nothing.
 - No per-job dismiss — banner is tenant-wide and undismissable until the underlying doc is updated (see Locked Decisions 11).
@@ -482,8 +522,11 @@ CREATE TABLE IF NOT EXISTS public.company_files (
   expiration_date DATE,
   extracted_fields JSONB      DEFAULT '{}'::jsonb,  -- additional vision-extracted fields
 
-  -- Visibility
-  auto_share_with_clients BOOLEAN NOT NULL DEFAULT false,
+  -- Visibility — valid values: owner, project_manager, sales_rep, sub, client
+  -- 'client' = ANY(visible_to_roles) → virtual job_files row at job creation (Phase 3a)
+  -- 'sub'    = ANY(visible_to_roles) → sub portal Company Documents direct query (Phase 3b)
+  -- owner always sees all files via RLS regardless of this column
+  visible_to_roles TEXT[] NOT NULL DEFAULT '{}',
 
   -- Lifecycle
   lifecycle_status TEXT       NOT NULL DEFAULT 'active'
@@ -510,14 +553,19 @@ CREATE INDEX idx_company_files_expiration
   ON company_files(tenant_id, expiration_date)
   WHERE lifecycle_status = 'active' AND expiration_date IS NOT NULL;
 
-CREATE INDEX idx_company_files_auto_share
+CREATE INDEX idx_company_files_client_visible
   ON company_files(tenant_id)
-  WHERE auto_share_with_clients = true AND lifecycle_status = 'active';
+  WHERE 'client' = ANY(visible_to_roles) AND lifecycle_status = 'active';
+
+CREATE INDEX idx_company_files_sub_visible
+  ON company_files(tenant_id)
+  WHERE 'sub' = ANY(visible_to_roles) AND lifecycle_status = 'active';
 
 ALTER TABLE public.company_files ENABLE ROW LEVEL SECURITY;
 
--- All tenant members can read (clients/subs see company_files data via their job's virtual rows,
--- but they never directly query this table — RLS here is belt-and-suspenders)
+-- All tenant members can read. Visibility filtering (visible_to_roles) is app-level,
+-- not enforced by RLS — the column gates which portal surfaces show the file, not DB access.
+-- Clients/subs reach content via signed URLs resolved server-side or via their portal query.
 DROP POLICY IF EXISTS cf_tenant_select ON public.company_files;
 CREATE POLICY cf_tenant_select ON public.company_files
   FOR SELECT TO authenticated
@@ -619,11 +667,29 @@ SELECT
   NOW()
 FROM company_files cf
 WHERE cf.tenant_id = <tenant_id>
-  AND cf.auto_share_with_clients = true
+  AND 'client' = ANY(cf.visible_to_roles)
   AND cf.lifecycle_status = 'active';
 ```
 
 These rows appear in `sbLoadFiles(jobId)` naturally. Client portal `client_visible=true` filter surfaces them. No portal code changes needed.
+
+### Sub portal direct read (Phase 3b)
+
+Subs access company files via a tenant-wide "Company Documents" section — direct query, no virtual rows:
+
+```sql
+SELECT
+  id, name, storage_path, storage_bucket, mime_type,
+  category, type, issuer, expiration_date, visible_to_roles,
+  lifecycle_status
+FROM company_files
+WHERE tenant_id = <tenant_id>
+  AND 'sub' = ANY(visible_to_roles)
+  AND lifecycle_status = 'active'
+ORDER BY category, type;
+```
+
+Signed URL fetched via `sbSignCompanyFileUrl(row.storage_path)` on click — same helper as internal admin UI. Sub portal renders this section independently of the current job context (Pattern A — tenant-wide). No `job_files` rows created for the sub audience.
 
 ### Watchdog `scheduled_actions` rows (Phase 5)
 
@@ -698,6 +764,7 @@ Apply via: `npm run migrate ../supabase/migrations/<filename>.sql` from `avensto
 - **History UI for archived files.** Admin UI shows active + recently archived. Deep history (grep by type) is SQL-accessible but not surfaced in UI.
 - **Auto-prune of archived files.** Archived rows and their storage objects remain indefinitely v1. Storage hygiene is a future arc.
 - **Retroactive virtual row update.** When a company file is replaced, existing jobs' virtual `job_files` rows continue pointing to the old (now archived) storage path. Only new jobs get virtual rows from the new file. Retroactive propagation is Phase 5+ if needed.
+- **Per-job sub portal company docs (Pattern B — explicitly rejected).** Generating virtual `job_files` rows per-job for each sub-visible company file creates massive fan-out (100 jobs × 5 company files = 500 virtual rows), defeats "update once, see everywhere," and requires per-job sub-assignment scoping that the client-portal pattern does not need. Client audience uses Pattern B (virtual rows, job-scoped) because client visibility is intentionally job-scoped. Sub audience uses Pattern A (direct tenant-wide query) — see Locked Decision 16.
 - **Multi-location / franchise scoping.** One tenant = one set of company files. If a franchisee network needs location-level license scoping, that's its own arc.
 
 ---
