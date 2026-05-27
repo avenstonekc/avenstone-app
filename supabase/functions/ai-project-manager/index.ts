@@ -88,7 +88,8 @@ Deno.serve(async (req) => {
       sb.from("job_notes").select("*").eq("job_id", job_id).order("created_at", { ascending: false }).limit(20),
       sb.from("change_orders").select("*").eq("job_id", job_id),
       sb.from("payments").select("*").eq("job_id", job_id),
-      sb.from("job_documents").select("id, name, file_type, created_at").eq("job_id", job_id),
+      // slice 8/12: read from job_files instead of job_documents
+      sb.from("job_files").select("id, name, subcategory, created_at").eq("job_id", job_id).eq("storage_bucket", "job-documents").eq("lifecycle_status", "active"),
       sb.from("job_phases").select("*").eq("job_id", job_id).order("phase_order"),
       sb.from("daily_logs").select("*").eq("job_id", job_id).order("log_date", { ascending: false }).limit(10),
       sb.from("job_sub_engagements").select("*, profiles!sub_id(full_name, phone, email)").eq("job_id", job_id),
