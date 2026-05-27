@@ -1762,3 +1762,17 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Test (test_phase5_agent_verbs.js): 14/14 PASS. Sandbox restored (bucket $8,500, unreimbursed $42,637).
 - Files: supabase/functions/ai-master-agent/index.ts. Commits: 892900d, aa3f646 (after rebase). Pushed to main.
 - Open: Phase 6 — client portal migration (ClientPortal.jsx cost-plus draw breakdown).
+
+[LOG — 2026-05-27 — COST_PLUS_ARC Phase 6 shipped — client portal draw breakdown — ARC v1 COMPLETE]
+- Action: ClientPortal.jsx Financials tab replaced with per-draw breakdown from draw_line_items + draw_schedules.
+- 6A: sbLoadClientDrawBreakdown helper added to supabase.js. 3 round trips: draws + line_items + invoices. Filters: draw.status != 'cancelled', invoice exists with status NOT IN ('draft','void'). Invoice status enum confirmed: draft/sent/viewed/paid/partially_paid/overdue/void. Helper shape { ok, error, data }. Also added @deprecated comments to sbLoadCostItems + sbLoadCostInvoices with 4-step removal path (separate legacy cleanup arc, 30+ day zero-write gate).
+- 6B: DrawCard component (collapsible) added above ClientPortal export. Renders line items table (desc/cost/markup%/total), summary (subtotal/markup/draw total/credit applied/invoiced/paid date). Status badges: Paid green, Partially Paid/Invoice Sent amber, Overdue red. Forward-looking lines show (pre-bill) marker. Backward-compat fallback: legacy job_cost_items view renders when drawBreakdown=[] (jobs predating arc). Financials useEffect now loads draw breakdown + legacy in parallel. openJob resets drawBreakdown on job switch.
+- 6C: ConsultationTab.jsx has ZERO job_cost_items references — that insert was never there or was removed pre-arc. No code removal needed. @deprecated comments in 6A cover the deprecation prep.
+- Sandbox seeded before test: composed draw #7 (43 lines, gross $49,573.90, bucket credit $8,500, net $41,073.90), invoice INV-PHASE6-001 marked paid, cascade flipped 43 rows to reimbursed.
+- DB test (14/14 PASS): 1 non-cancelled paid draw, 43 line items, credit $8,500, no forward-looking lines, 6 cancelled draws excluded, no visible draws without valid invoices, no new job_cost_items inserts, test-flow-001 has 4 legacy rows (backward compat path), 999 sandbox has 0 legacy rows (new path).
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/client/ClientPortal.jsx. Commits: bd67cdd (6A+6C), 06031d7 (6B). Build: ✓ clean (993ms). Pushed to main.
+- COST_PLUS_ARC v1 ALL SIX PHASES COMPLETE:
+  Phase 0 (deposit type fix) ✓ | Phase 1 (schema + trigger + RPCs) ✓ | Phase 2 (ComposeDrawScr) ✓ | Phase 3 (cascade) ✓ | Phase 4 (float cards) ✓ | Phase 5 (Master Agent verbs) ✓ | Phase 6 (client portal) ✓
+- Next milestone: Real $45k job onboarding — use the live arc, log every receipt + deposit, compose first real draw.
+- Deferred: Legacy cleanup arc (DROP TABLE job_cost_items, job_cost_invoices) — conditional on 30+ days zero new writes. Verify via: SELECT count(*), max(created_at) FROM job_cost_items WHERE created_at > NOW() - INTERVAL '30 days'.
+- Pattern: client-facing helpers (sbLoadClientDrawBreakdown) filter to non-draft/non-void state; owner-facing helpers see all states. Document when adding new helpers to avoid presenting draft/internal data to clients.
