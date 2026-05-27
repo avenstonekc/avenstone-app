@@ -58,7 +58,7 @@ function PhotoThumbnail({ file, onSelect, checked, onToggle, bulkTagMode }) {
   );
 }
 
-export default function FilesGridView({ files, onSelectFile, bulkTagMode, selectedFileIds, onToggleSelect }) {
+export default function FilesGridView({ files, onSelectFile, bulkTagMode, selectedFileIds, onToggleSelect, onShareFolder }) {
   const photos = files.filter(f => f.category === 'Photos');
   const others = files.filter(f => f.category !== 'Photos');
 
@@ -75,8 +75,23 @@ export default function FilesGridView({ files, onSelectFile, bulkTagMode, select
     <div>
       {photos.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-            Photos ({photos.length})
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Photos ({photos.length})
+            </div>
+            {onShareFolder && (
+              <button
+                onClick={() => onShareFolder({ folderLabel: 'Photos', files: photos })}
+                style={{
+                  marginLeft: 'auto', fontSize: 11, color: '#C9A84C',
+                  background: 'transparent', border: '1px solid rgba(201,168,76,0.4)',
+                  padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                Share
+              </button>
+            )}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: 6 }}>
             {photos.map(f => (

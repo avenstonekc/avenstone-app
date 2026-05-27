@@ -7,6 +7,7 @@ import FilesGridView from './files/FilesGridView';
 import FileUploadFlow from './files/FileUploadFlow';
 import FilesBulkTagBar from './files/FilesBulkTagBar';
 import FileDetailPanel from './files/FileDetailPanel';
+import ShareFolderModal from './files/ShareFolderModal';
 
 export default function FilesTab({ job, profile }) {
   const mob = isMob();
@@ -24,6 +25,7 @@ export default function FilesTab({ job, profile }) {
   const [selectedFileIds, setSelectedFileIds] = useState([]);
   const [detailFileId, setDetailFileId] = useState(null);
   const [bulkApplying, setBulkApplying] = useState(false);
+  const [shareModal, setShareModal] = useState(null); // { folderLabel, files }
   const debounceRef = useRef(null);
 
   const loadFiles = useCallback(async () => {
@@ -102,6 +104,7 @@ export default function FilesTab({ job, profile }) {
     bulkTagMode,
     selectedFileIds,
     onToggleSelect: handleToggleSelect,
+    onShareFolder: ({ folderLabel, files }) => setShareModal({ folderLabel, files }),
   };
 
   const ViewToggle = ({ id, icon, label }) => (
@@ -258,6 +261,17 @@ export default function FilesTab({ job, profile }) {
           jobId={job.id}
           onClose={() => setUploadOpen(false)}
           onUploaded={handleFileUploaded}
+        />
+      )}
+
+      {/* Share folder modal */}
+      {shareModal && (
+        <ShareFolderModal
+          folderLabel={shareModal.folderLabel}
+          files={shareModal.files}
+          job={job}
+          onClose={() => setShareModal(null)}
+          onSent={() => setShareModal(null)}
         />
       )}
 
