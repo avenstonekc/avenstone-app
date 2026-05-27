@@ -1545,3 +1545,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: d5e2740 (rebased on ad23ddd, pushed as 5e686fe). Pushed to main.
 - COMPANY_FILES_ARC: ALL PHASES COMPLETE (1 schema, 2 admin UI, 3a client ref, 3b sub portal, 4 agent verb, 5 watchdog).
 - Open: CompanyFilesScr admin UI can now wire "Extract with AI" button → ai-extract-company-file edge fn (not built yet — extraction is available on demand from Phase 4 master agent path). Live smoke test for upload_company_file verb requires attaching a COI image in the master agent chat.
+
+[LOG — 2026-05-27 — COST_PLUS_ARC Phase 1B shipped — trigger + RPCs + helpers + InfoTab]
+- Action: Phase 1B shipped. Trigger, two RPCs, four JS helpers, InfoTab markup inputs.
+- Migration 1: 20260527060000_cost_plus_phase_1b_trigger.sql — set_cost_plus_defaults_on_jt() BEFORE INSERT trigger. Commits reimbursement_status='unreimbursed' + markup_pct routing on outbound rows for cost-plus jobs. Non-cost-plus and inbound rows: no-op confirmed via smoke tests.
+- Migration 2: 20260527060100_cost_plus_phase_1b_rpc.sql — compose_draw(text,text,text,numeric,boolean,jsonb) + void_draw(uuid) RPCs. Both SECURITY INVOKER, GRANT to authenticated. Role check (owner/PM) inside function. NOTE: draw_schedules has no created_by_id column — omitted from INSERT; draw_line_items does have created_by_id (used in RPC).
+- Helpers added to supabase.js: sbLoadUnreimbursedExpenses, sbGetBucketBalance, sbComposeDraw, sbVoidDraw. All return { ok, error, data }.
+- InfoTab: labor_markup_pct + material_markup_pct inputs added to cost-plus section. default_markup_pct relabeled "Legacy markup % (deprecated)". sbLoad + sbUpd column allowlists updated.
+- Trigger smoke tests: C (cost-plus out → unreimbursed stamped ✓), D (non-cost-plus → no-op ✓), E (inbound → untouched ✓).
+- RPC privileges: compose_draw EXECUTE ✓, void_draw EXECUTE ✓.
+- Commits: ad92151 (trigger), 7af7565 (RPCs + helpers), 8eeb6d2 (InfoTab). Pushed to main.
+- COST_PLUS_ARC Phase 1 COMPLETE. Phase 2 (draw composer UI) is next.
