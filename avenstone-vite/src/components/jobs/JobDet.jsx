@@ -12,6 +12,7 @@ import FieldTab from './tabs/FieldTab';
 import EstimateTab from './tabs/EstimateTab';
 import SubsTab from './tabs/SubsTab';
 import FloorPlanTab from './tabs/FloorPlanTab';
+import CompanyFileExpirationBanner from '../common/CompanyFileExpirationBanner';
 
 const TABS = [
   { id: 'info',       lb: 'Info',         ic: 'info' },
@@ -198,6 +199,8 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
 
       {/* Tab content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        {/* Phase 5 — expired company doc banner (staff only, client-visible files) */}
+        <CompanyFileExpirationBanner profile={profile} />
         {job.status === 'complete' && canRunAi && (
           <div style={{ background: 'linear-gradient(135deg,#0A1F44,#1a3a6e)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: 1 }}>
