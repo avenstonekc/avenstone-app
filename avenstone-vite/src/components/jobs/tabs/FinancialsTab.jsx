@@ -282,11 +282,11 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
           {summary && (() => {
             const owes = summary.client_owes;
             const stats = [
-              { lb: 'Contract',    v: f$(summary.contract_total),                                    c: '#0A1F44',  bold: true },
-              { lb: 'Received',    v: f$(summary.total_in),                                          c: summary.total_in > 0 ? '#22c55e' : '#9CA3AF' },
-              { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),       c: owes < 0 ? '#22c55e' : owes > 0 ? '#C9A84C' : '#9CA3AF' },
-              { lb: 'Paid Out',    v: f$(summary.total_out),                                         c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
-              { lb: 'Outstanding', v: f$(summary.outstanding),                                       c: summary.outstanding > 0 ? '#C9A84C' : '#9CA3AF' },
+              { lb: 'Contract',    v: f$(summary.contract_total),                                      c: '#0A1F44',  bold: true },
+              { lb: 'Received',    v: f$(summary.total_in),                                            c: summary.total_in > 0 ? '#22c55e' : '#9CA3AF' },
+              { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),         c: owes < 0 ? '#22c55e' : owes > 0 ? '#C9A84C' : '#9CA3AF' },
+              { lb: 'Pending Out', v: f$(summary.pending_out),                                         c: summary.pending_out > 0 ? '#b45309' : '#9CA3AF' },
+              { lb: 'Paid Out',    v: f$(summary.total_out),                                           c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
             ];
             return (
               <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>

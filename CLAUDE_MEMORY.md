@@ -1374,3 +1374,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Lucy Webb cleanup unblocked: can now void wrong invoices + their payments cleanly with audit trail preserved.
 - Migration: 20260527030000_void_sub_invoice_with_cascade.sql. Commits: 7ebc1c2 (migration + helpers), see next commit for UI.
 - Build: ✓ clean (723ms).
+
+[LOG — 2026-05-27 — Ledger stat cards fixed]
+- Action: Restructured Ledger stat cards. Replaced "Outstanding" with new "Pending Out" card. Fixed "Paid Out" to clearly sum only paid expense rows (was already correct code, but no matching "Pending Out" card existed to make the distinction visible).
+- Root cause of bug: "Paid Out" correctly summed `direction='out' AND status='paid'` ($7,227.85). But there was NO card showing `direction='out' AND status='pending'` (~$19k). The "Outstanding" card (which showed `direction='in' AND status='pending'` — pending client income) was visually confusing because it appeared next to "Paid Out" with no pending-expense counterpart. Users saw ~$19k of pending expense rows in the table but no stat card accounting for them.
+- Removed "Outstanding" card: dropped. It summed `direction='in' AND status='pending'` (pending client income), which semantically overlaps with "Client Owes" = `contract_total - total_in`. Two cards representing client-owes-us were redundant.
+- Added "Pending Out" = `direction='out' AND status='pending'` (amber #b45309 — matches PENDING badge color). Both cards now correctly exclude void rows (query already uses `.neq('status','void')`).
+- No voided_at column on job_transactions — void mechanism is status='void' (confirmed Phase 4b audit). Status enum: paid, pending, void.
+- Files: avenstone-vite/src/lib/supabase.js (sbLoadJobFinancialSummary — renamed outstanding→pending_out, direction='in'→'out'), avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx (stat cards array).
+- Lesson: stat card labels and aggregation logic must match exactly. "Outstanding" (pending income) next to "Paid Out" (paid expenses) created a semantic gap where pending expenses had no card at all.

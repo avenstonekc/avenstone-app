@@ -1302,14 +1302,14 @@ export const sbLoadJobTransactions = async (jobId, filters = {}) => {
 };
 export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTotal = 0 } = {}) => {
   const { data } = await sb.from('job_transactions').select('direction,amount,status,lien_waiver_required,lien_waiver_url').eq('job_id', jobId).neq('status', 'void');
-  if (!data) return { total_in: 0, total_out: 0, outstanding: 0, lien_waivers_missing: 0, contract_total: 0, client_owes: 0 };
-  const total_in = data.filter(t => t.direction === 'in' && t.status === 'paid').reduce((s, t) => s + Number(t.amount || 0), 0);
-  const total_out = data.filter(t => t.direction === 'out' && t.status === 'paid').reduce((s, t) => s + Number(t.amount || 0), 0);
-  const outstanding = data.filter(t => t.direction === 'in' && t.status === 'pending').reduce((s, t) => s + Number(t.amount || 0), 0);
+  if (!data) return { total_in: 0, total_out: 0, pending_out: 0, lien_waivers_missing: 0, contract_total: 0, client_owes: 0 };
+  const total_in   = data.filter(t => t.direction === 'in'  && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
+  const total_out  = data.filter(t => t.direction === 'out' && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
+  const pending_out = data.filter(t => t.direction === 'out' && t.status === 'pending').reduce((s, t) => s + Number(t.amount || 0), 0);
   const lien_waivers_missing = data.filter(t => t.lien_waiver_required && !t.lien_waiver_url).length;
   const contract_total = Number(contractValue || 0) + Number(coTotal || 0);
   const client_owes = contract_total - total_in;
-  return { total_in, total_out, outstanding, lien_waivers_missing, contract_total, client_owes };
+  return { total_in, total_out, pending_out, lien_waivers_missing, contract_total, client_owes };
 };
 export const sbCreateTransaction = async tx => {
   const { data, error } = await sb.from('job_transactions').insert({ ...tx, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();
