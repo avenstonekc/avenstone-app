@@ -127,16 +127,10 @@ export default function ScheduleTab({ job }) {
     flash(prevItem ? 'Item updated' : 'Item added');
   };
 
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading schedule...</div>;
-
-  // ── Phase pill data ───────────────────────────────────────────────────────
-  const phaseMap = Object.fromEntries(phases.map(p => [p.phase_name, p]));
-  const orderedPhases = PHASE_ORDER.map(name => phaseMap[name]).filter(Boolean);
-
   // ── Phase item progress (SCHEDULING_ARC slice 3) ─────────────────────────
-  // Computed from already-loaded items + phases. No extra query.
+  // Must be above the early return — useMemo is a hook and must be called on
+  // every render in the same order. phases/items start as [] so this is safe.
   const phaseProgressMap = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
     const map = {};
     for (const ph of phases) {
       const phItems = items.filter(i => i.phase_id === ph.id && i.status !== 'cancelled');
@@ -150,6 +144,12 @@ export default function ScheduleTab({ job }) {
     }
     return map;
   }, [phases, items]);
+
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading schedule...</div>;
+
+  // ── Phase pill data ───────────────────────────────────────────────────────
+  const phaseMap = Object.fromEntries(phases.map(p => [p.phase_name, p]));
+  const orderedPhases = PHASE_ORDER.map(name => phaseMap[name]).filter(Boolean);
 
   // ── Week groups ───────────────────────────────────────────────────────────
   const groups = groupByWeek(items);
