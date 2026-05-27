@@ -319,13 +319,36 @@ export const sbCountPhotosForEntity = async (entityType, entityId, category = nu
   return countPhotosForEntity(sb, entityType, entityId, category);
 };
 
+/**
+ * Load photos for a given entity from job_files (slice 6/12 migration).
+ * material_order photos are NOT in job_files (_JF_VALID_ENTITY_TYPES check excludes it)
+ * so that type falls back to the legacy photos table.
+ * Returns: [{ id, url, name, type, client_visible, created_at }]
+ */
 export const sbLoadPhotosForEntity = async (entityType, entityId) => {
-  const { data } = await sb.from('photos')
-    .select('id, url, name, type, client_visible, created_at')
+  if (entityType === 'material_order') {
+    // Fallback: material_order photos were never dual-written to job_files
+    const { data } = await sb.from('photos')
+      .select('id, url, name, type, client_visible, created_at')
+      .eq('related_entity_type', entityType)
+      .eq('related_entity_id', entityId)
+      .order('created_at', { ascending: true });
+    return data || [];
+  }
+  const { data } = await sb.from('job_files')
+    .select('id, storage_path, storage_bucket, name, mime_type, client_visible, created_at')
     .eq('related_entity_type', entityType)
     .eq('related_entity_id', entityId)
+    .eq('lifecycle_status', 'active')
     .order('created_at', { ascending: true });
-  return data || [];
+  return (data || []).map(jf => ({
+    id: jf.id,
+    url: sb.storage.from(jf.storage_bucket).getPublicUrl(jf.storage_path).data?.publicUrl || '',
+    name: jf.name,
+    type: jf.mime_type?.startsWith('video/') ? 'video' : 'photo',
+    client_visible: jf.client_visible,
+    created_at: jf.created_at,
+  }));
 };
 
 export const sbLabelPhoto = async (jobId, photoId, label) => {
@@ -539,12 +562,44 @@ const docPathFromUrl = url => {
   return url; // already a plain path
 };
 
+/**
+ * Load documents for a job from job_files (slice 6/12 migration).
+ * Returns a backward-compatible shape matching the old job_documents rows:
+ *   { id, job_id, tenant_id, name, file_url, file_type, version, client_visible, created_at, signed_url }
+ *
+ * Field mapping:
+ *   job_files.storage_path → file_url
+ *   job_files.subcategory  → file_type (Plans→plan, Permits→permit, Contracts→contract, etc.)
+ *   version is not stored in job_files; always 1 for these rows.
+ *
+ * Callers: DocsTab.jsx, InfoTab.jsx — signatures unchanged.
+ */
 export const sbLoadDocs = async jid => {
-  const { data } = await sb.from('job_documents').select('*').eq('job_id', jid).order('created_at', { ascending: false });
+  const _subcatToFileType = {
+    'Plans': 'plan', 'Permits': 'permit', 'Contracts': 'contract',
+    'Inspections': 'inspection', 'Specs': 'spec',
+  };
+  const { data } = await sb.from('job_files')
+    .select('*')
+    .eq('job_id', jid)
+    .eq('storage_bucket', 'job-documents')
+    .eq('lifecycle_status', 'active')
+    .order('created_at', { ascending: false });
   if (!data || !data.length) return [];
-  return Promise.all(data.map(async doc => {
-    const signed_url = await docSignedUrl(docPathFromUrl(doc.file_url));
-    return { ...doc, signed_url };
+  return Promise.all(data.map(async jf => {
+    const signed_url = await docSignedUrl(jf.storage_path);
+    return {
+      id: jf.id,
+      job_id: jf.job_id,
+      tenant_id: jf.tenant_id,
+      name: jf.name,
+      file_url: jf.storage_path,
+      file_type: _subcatToFileType[jf.subcategory] || 'other',
+      version: 1, // job_files does not track document versions
+      client_visible: jf.client_visible,
+      created_at: jf.created_at,
+      signed_url,
+    };
   }));
 };
 /**
@@ -925,9 +980,32 @@ export const sbLoadSubPhases = async (subId, jobId) => {
   const { data } = await sb.from('job_phases').select('*').eq('assigned_sub_id', subId).eq('job_id', jobId).order('phase_order', { ascending: true });
   return data || [];
 };
+/**
+ * Load documents for a job from job_files (slice 6/12 migration).
+ * Returns a backward-compatible shape for SubJobView:
+ *   { id, name, file_url, url (signed URL for download), client_visible, created_at }
+ * SubJobView uses d.url || d.file_url for the download anchor href.
+ * Callers: SubJobView.jsx
+ */
 export const sbLoadJobDocuments = async (jobId) => {
-  const { data } = await sb.from('job_documents').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
-  return data || [];
+  const { data } = await sb.from('job_files')
+    .select('id, name, storage_path, storage_bucket, client_visible, created_at')
+    .eq('job_id', jobId)
+    .eq('storage_bucket', 'job-documents')
+    .eq('lifecycle_status', 'active')
+    .order('created_at', { ascending: false });
+  if (!data || !data.length) return [];
+  return Promise.all(data.map(async jf => {
+    const signed = await docSignedUrl(jf.storage_path);
+    return {
+      id: jf.id,
+      name: jf.name,
+      file_url: jf.storage_path,
+      url: signed,
+      client_visible: jf.client_visible,
+      created_at: jf.created_at,
+    };
+  }));
 };
 export const sbLoadSubPayments = async (subId, jobId) => {
   const { data } = await sb.from('payments').select('*').eq('job_id', jobId).order('due_date', { ascending: true });
@@ -1083,6 +1161,12 @@ export const sbSetPhotoClientVisible = async (photoId, visible) => {
   const { error } = await sb.from('photos').update({ client_visible: visible }).eq('id', photoId);
   return error ? { ok: false, error: error.message } : { ok: true };
 };
+/**
+ * Load client-visible approved daily log updates with their photos.
+ * Photos now read from job_files (slice 6/12 migration).
+ * daily_log is in _JF_VALID_ENTITY_TYPES so photos are present in job_files.
+ * Returns: [{ id, log_date, client_message, work_completed, approved_at, photos: [{ id, url, type, related_entity_id, created_at }] }]
+ */
 export const sbLoadClientUpdates = async jobId => {
   const { data: logs } = await sb.from('daily_logs')
     .select('id, log_date, client_message, work_completed, approved_at')
@@ -1092,15 +1176,22 @@ export const sbLoadClientUpdates = async jobId => {
     .order('created_at', { ascending: false });
   if (!logs?.length) return [];
   const logIds = logs.map(l => l.id);
-  const { data: photos } = await sb.from('photos')
-    .select('id, url, type, related_entity_id')
+  const { data: files } = await sb.from('job_files')
+    .select('id, storage_path, storage_bucket, mime_type, related_entity_id, created_at')
     .in('related_entity_id', logIds)
     .eq('related_entity_type', 'daily_log')
-    .eq('client_visible', true);
+    .eq('client_visible', true)
+    .eq('lifecycle_status', 'active');
   const photosByLog = {};
-  (photos || []).forEach(p => {
-    if (!photosByLog[p.related_entity_id]) photosByLog[p.related_entity_id] = [];
-    photosByLog[p.related_entity_id].push(p);
+  (files || []).forEach(jf => {
+    if (!photosByLog[jf.related_entity_id]) photosByLog[jf.related_entity_id] = [];
+    photosByLog[jf.related_entity_id].push({
+      id: jf.id,
+      url: sb.storage.from(jf.storage_bucket).getPublicUrl(jf.storage_path).data?.publicUrl || '',
+      type: jf.mime_type?.startsWith('video/') ? 'video' : 'photo',
+      related_entity_id: jf.related_entity_id,
+      created_at: jf.created_at,
+    });
   });
   return logs.map(l => ({ ...l, photos: photosByLog[l.id] || [] }));
 };
