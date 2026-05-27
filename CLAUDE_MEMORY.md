@@ -2465,3 +2465,11 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Deferred (called out as Out of Scope v1): per-room photo requirements via LiDAR anchors, trade-specific shot lists, lumber counter, tenant config table (v1 uses hardcoded JS config object `proofConfig.js`), auto-draft daily log from schedule item completion, snooze UX polish, hardening the schedule-item gate.
 - Open questions documented (not decided): minimum photo count per CO category, bulk-tag UX shape (inline vs modal), escalation surface for blocking todos, whether to harden schedule-item gate post-v1.
 - No CLAUDE.md update — no architecture has shifted yet, just a planning doc.
+
+[LOG — 2026-05-26 — UNIFIED_FILES_ARC slice 2/12 shipped — Unified Files tab UI]
+- Action: Built complete Files tab UI and wired into JobDet replacing the 'docs' tab.
+- Files: 7 new sub-components in `avenstone-vite/src/components/jobs/tabs/files/`, new `FilesTab.jsx`, `JobDet.jsx` (tab switch + import).
+- Components: CategoryPicker (tenant_file_subcategories-backed selects), FilesRecentView (last-20 list), FilesTreeView (category→subcategory accordion, _uncategorized last), FilesGridView (photo thumbnail grid + lazy signed URLs), FileUploadFlow (3-stage: pick/drop → AI infer + override → progress), FilesBulkTagBar (fixed bottom bar, batch sbCategorizeJobFile), FileDetailPanel (signed URL preview, client_visible toggle, recategorize, delete).
+- Decision: JobDet `docs` tab id → `files`, lb → 'Files'. DocsTab import kept with Phase 3 removal comment. docs/docsLoaded state preserved — still consumed by EstimateTab + FinancialsTab. Default view: tree on desktop, grid on mobile.
+- Commits: e8550d8 (files/ sub-components), 3ce3ff5 (FilesTab.jsx), efe4eb7 (JobDet wiring). Pushed to main. Build passed clean.
+- Open: Slice 3 — rewire sbPhoto/sbUploadDoc surfaces to write to job_files in addition to photos/job_documents (dual-write bridge). Slice 4 — client portal file views.
