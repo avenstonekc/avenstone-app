@@ -20,7 +20,7 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
       const r = await sbUploadDoc(job.id, file, 'contract');
       if (r.doc) {
         fileUrl = r.doc.signed_url || r.doc.file_url;
-        await sb.from('job_documents').update({ client_visible: true }).eq('id', r.doc.id);
+        await sb.from('job_files').update({ client_visible: true }).eq('id', r.doc.id);
       } else {
         console.error('Signed contract upload error:', r.error);
       }
