@@ -4824,6 +4824,35 @@ export async function sbSearchJobFiles(jobId, query) {
 }
 
 /**
+ * Share a folder bundle by emailing 7-day signed links for all files.
+ * Calls send-files-bundle edge function which verifies tenant ownership.
+ */
+export async function sbShareFolderBundle({ fileIds, recipientEmail, recipientName, message, folderLabel }) {
+  if (!fileIds?.length || !recipientEmail || !folderLabel) {
+    return { ok: false, error: 'fileIds, recipientEmail, folderLabel required' };
+  }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return { ok: false, error: 'not authenticated' };
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-files-bundle`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fileIds, recipientEmail, recipientName, message, folderLabel }),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      return { ok: false, error: `Send failed: ${txt.slice(0, 200)}` };
+    }
+    return await res.json();
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
  * Generate a signed URL for any job_file.
  * Works for all storage_bucket values (job-files, job-photos, job-documents).
  * Default expiry: 7 days.
