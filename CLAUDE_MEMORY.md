@@ -1447,3 +1447,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Key finding: TWO parallel cost-plus systems exist: (1) legacy job_cost_items+job_cost_invoices (read by ClientPortal), (2) new job_transactions ledger (no cost-plus awareness). They are not connected. Draw composer must build on job_transactions; job_cost_items deprecation is a separate arc decision.
 - Secondary finding: job_transactions.draw_number INT already exists as a soft link to draw_schedules (no FK), and draw_schedules has no line items table. Phase 1 needs draw_id UUID FK + draw_line_items table + reimbursement_status + markup_pct on job_transactions.
 - Next: write COST_PLUS_ARC.md blueprint based on findings + Kalin's answers to the 5 open questions in the audit.
+
+[LOG — 2026-05-27 — COMPANY_FILES_ARC Phase 3b shipped — sub portal direct read]
+- Action: Added sbLoadCompanyFilesForSub helper (direct query on company_files with .contains('visible_to_roles', ['sub']) + lifecycle_status='active'). Built read-only sub portal Company Documents section with View button (signed URL). Mounted as new 'docs' tab in SubPortal.jsx, visible to all subs.
+- Pattern A confirmed (direct read, no snapshot — distinct from Phase 3a's job_files copy mechanism for client visibility).
+- RLS: cf_tenant_select already allows subs to SELECT from company_files within their tenant (all authenticated tenant members). No RLS change needed. visible_to_roles filter applied at query time in sbLoadCompanyFilesForSub.
+- New files: avenstone-vite/src/components/sub/CompanyDocsSection.jsx. Modified: avenstone-vite/src/components/sub/SubPortal.jsx (import, TABS entry, render), avenstone-vite/src/lib/companyFiles.js (helper).
+- UI: grouped by category (CATEGORY_ORDER), ExpirationBadge (red/amber/green), CategoryBadge with per-category color palette, View button → sbSignCompanyFileUrl → window.open. Loading/empty/error states.
+- Smoke test: SQL-verified (policies confirmed). Live-test blocked (no sub account this session). Per-step verification requires sub login.
+- Build: ✓ clean (638ms). Commits: 5f601de (helper), d9e597b (UI). Both pushed to main.
+- Existing files with visible_to_roles=['sub'] immediately visible to subs on refresh (Pattern A — no backfill needed unlike Phase 3a).
+- Next: Phase 5 (expiration watchdog) — alert owner/PM when COI/license expires. Phase 4 (Master Agent verb) if scoped separately.
