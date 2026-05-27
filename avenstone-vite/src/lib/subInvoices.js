@@ -379,6 +379,8 @@ export async function sbLoadSubInvoices({ jobId }) {
         disputed,
         dispute_reason,
         voided_at,
+        voided_by_id,
+        void_reason,
         submitted_via,
         created_at,
         sub_contact:contacts!sub_contact_id(name),
@@ -428,6 +430,8 @@ export async function sbLoadSubInvoices({ jobId }) {
           disputed:                inv.disputed,
           disputeReason:           inv.dispute_reason,
           voidedAt:                inv.voided_at,
+          voidedById:              inv.voided_by_id,
+          voidReason:              inv.void_reason,
           invoiceFileId:           inv.invoice_file_id,
           lienWaiverFileId:        inv.lien_waiver_file_id,
           relatedScheduleItemId:   inv.related_schedule_item_id,
@@ -474,4 +478,46 @@ export async function sbCreateSubContact({ name, phone, email }) {
   });
   if (!res.ok) return { ok: false, error: res.error, data: null };
   return { ok: true, error: null, data: { id: res.data.id, name: res.data.name } };
+}
+
+/**
+ * Void a sub invoice and cascade void to all its non-voided payments.
+ * Each payment void calls Phase 4b's void_sub_invoice_payment_with_ledger
+ * atomically (ledger reversal per payment). Audit trail preserved — no hard deletes.
+ *
+ * @param {{ subInvoiceId: string, voidReason: string }} params
+ * @returns {Promise<{ok:boolean, error?:string, data?:{invoiceId:string, paymentsVoided:number}}>}
+ */
+export async function sbVoidSubInvoice({ subInvoiceId, voidReason }) {
+  try {
+    const { data, error } = await sb.rpc('void_sub_invoice_with_cascade', {
+      p_invoice_id:  subInvoiceId,
+      p_void_reason: voidReason,
+    });
+    if (error) return { ok: false, error: error.message };
+    const row = Array.isArray(data) ? data[0] : data;
+    return { ok: true, data: { invoiceId: row.invoice_id, paymentsVoided: row.payments_voided } };
+  } catch (e) {
+    return { ok: false, error: e.message || 'sbVoidSubInvoice failed' };
+  }
+}
+
+/**
+ * Un-void a previously voided sub invoice.
+ * Only clears voided_at / voided_by_id / void_reason on the invoice itself.
+ * Cascaded payments stay voided — user re-records fresh payments after restoring.
+ *
+ * @param {{ subInvoiceId: string }} params
+ * @returns {Promise<{ok:boolean, error?:string}>}
+ */
+export async function sbUnvoidSubInvoice({ subInvoiceId }) {
+  try {
+    const { error } = await sb.rpc('unvoid_sub_invoice', {
+      p_invoice_id: subInvoiceId,
+    });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message || 'sbUnvoidSubInvoice failed' };
+  }
 }
