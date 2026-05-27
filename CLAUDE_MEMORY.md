@@ -2511,3 +2511,23 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Files: supabase/migrations/20260526220000_proof_arc_phase_1.sql (new), avenstone-vite/src/lib/proofConfig.js (new), avenstone-vite/src/lib/photoGate.js, avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/COTab.jsx.
 - Commit: 0deb4e8. Build passed clean (✓ 396 modules, 752ms).
 - Open: Slice 6 — CO photo gate (first PROOF_ARC dependency). Slice 6+ — migrate readers from legacy tables to job_files (kills dual-write).
+
+[LOG — 2026-05-26 — UNIFIED_FILES_ARC slice 6/12 shipped — reader migration]
+- Action: Audited all readers of `photos` and `job_documents` tables. Migrated 7 readers to query job_files instead.
+- Migrated readers:
+  1. countPhotosForEntity (photoGate.js) — non-material_order entity types now query job_files WHERE category='Photos' AND lifecycle_status='active'; material_order falls back to photos table (not in _JF_VALID_ENTITY_TYPES, never dual-written).
+  2. sbLoadPhotosForEntity (supabase.js) — partial migration: daily_log, schedule_item, change_order entity types read job_files; material_order stays on photos table (same reason as above).
+  3. sbLoadClientUpdates photos section (supabase.js) — daily_log photos for client view now read job_files WHERE related_entity_type='daily_log' AND client_visible=true AND lifecycle_status='active'.
+  4. sbLoadDocs (supabase.js) — reads job_files WHERE storage_bucket='job-documents' AND lifecycle_status='active'; subcategory→file_type mapping; signed URLs via docSignedUrl; version constant=1 (job_files has no version column). Callers: DocsTab.jsx, InfoTab.jsx.
+  5. sbLoadJobDocuments (supabase.js) — reads job_files WHERE storage_bucket='job-documents' AND lifecycle_status='active'; signed URLs; returns backward-compatible shape. Caller: SubJobView.jsx.
+  6. CompletionPage.jsx — public completion page now queries job_files WHERE category='Photos' AND subcategory IN ('Before','After') AND lifecycle_status='active'; maps subcategory.toLowerCase() to legacy label field.
+  7. ClientPortal.jsx docs query — migrated to job_files (inline subcategory→file_type map); confirmed dead code (docs tab not in BASE_CLIENT_TABS) but migrated for forward-compatibility.
+- Deferred readers (2):
+  1. sbLoad (supabase.js:~85) — returns job.photos with photos.id; NotesPhotosTab.delP uses p.id to DELETE from photos table. Migrating sbLoad to return job_files.id would silently no-op the delete. Defer to slice 7 (coordinate delete path simultaneously).
+  2. sbLoadPhotosForEntity for material_order — material_order is NOT in _JF_VALID_ENTITY_TYPES; photos were never dual-written to job_files; migrating reader would return 0 results. Requires _JF_VALID_ENTITY_TYPES extension + backfill migration in slice 7.
+- Edge function readers migrated: none (grep of supabase/functions/ found zero direct photos/job_documents queries).
+- Dual-write status: RETAINED — sbLoad still reads photos table, material_order photo reader still on photos table.
+- Field mapping pattern: photos.url → job_files.storage_path + sb.storage.from(storage_bucket).getPublicUrl(); photos.label → job_files.subcategory.toLowerCase() (case correction required); photos.type → mime_type.startsWith('video/') ? 'video' : 'photo'; job_documents.file_type → derived from subcategory (Plans→plan, Permits→permit, Contracts→contract, Inspections→inspection, Specs→spec, else other).
+- Legacy tables (photos, job_documents) still EXIST — not dropped.
+- Build: ✓ clean. Commits: e5fca9f (photoGate.js), f1f88aa (sbLoadPhotosForEntity + sbLoadClientUpdates + sbLoadDocs + sbLoadJobDocuments), 57aa0cc (CompletionPage.jsx), 4f030ed (ClientPortal.jsx). All pushed to main.
+- Open: Slice 7 — migrate sbLoad (coordinate with NotesPhotosTab delete path); extend _JF_VALID_ENTITY_TYPES to include material_order + backfill + migrate sbLoadPhotosForEntity for material_order; migrate sbCountPhotosForEntity for material_order.
