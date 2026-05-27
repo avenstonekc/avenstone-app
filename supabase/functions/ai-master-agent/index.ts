@@ -546,7 +546,7 @@ const TOOLS = [
       type: "object",
       properties: {
         phase_id: { type: "string" },
-        fields: { type: "object", description: "Keys: status (pending/in_progress/complete), start_date, end_date, name, description" },
+        fields: { type: "object", description: "Keys: status (pending/in_progress/complete), start_date, end_date, name, description, assigned_sub_id (UUID of the sub to assign to this phase)" },
       },
       required: ["phase_id", "fields"],
     },
@@ -1882,7 +1882,7 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
-- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
+- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
 - Missing required fields: call the tool with whatever fields you have. If any required field is missing, the system surfaces a missing-field card automatically — do NOT ask in text first ("What's the amount?", "Which job?", etc.). Never invent values to fill gaps; just call the tool and let the card collect the rest.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: do NOT pass override_reason. Just call the tool with the job_id. If gates fail, the system surfaces a gate-resolution card automatically (redirect to Schedule / leave open / override-with-structured-reason). Do not ask in text whether to override — the card IS the prompt.
