@@ -1310,3 +1310,22 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ clean (587ms). Commit: 5162ba4. Pushed.
 - Smoke test: all 6 paths pass (existing sub, new sub via combobox, new sub with details modal, vision-matched, vision-unmatched, empty validation).
 - Next: Phase 4 — payment → job_transactions ledger propagation via transaction_id FK.
+
+[LOG — 2026-05-27 — SUB_INVOICES_ARC Phase 4a shipped — ledger propagation]
+- Action: Built add_sub_invoice_payment_with_ledger Postgres function for atomic payment + job_transactions insert. Backfill loop ran (no-op — 0 orphaned payments existed). Rewrote sbAddSubInvoicePayment to call the RPC.
+- Audit-discovered job_transactions column map:
+  tenant_id (from sub_invoice), job_id (from sub_invoice), direction='out', type='sub_payout',
+  amount, date_incurred=paidDate (NOT NULL), date_paid=paidDate, status='paid',
+  payer_or_payee_type='sub', payer_or_payee_name=contacts.name, payment_method=method,
+  description (formatted), notes, created_by=auth.uid() (NOT created_by_id — different from sub_invoice_payments)
+- CRITICAL: job_transactions.invoice_id is FK to invoices (client billing), NOT sub_invoices.
+  Linkage runs sub_invoice_payments.transaction_id → job_transactions.id only.
+- Type value used: 'sub_payout' — exact match in type_check constraint, already in use.
+- SECURITY INVOKER: jt_staff_write and sip_modify RLS policies both cover owner+PM callers.
+  auth.uid() works inside INVOKER context for both inserts.
+- Tenant_id fix: pre-existing sbAddSubInvoicePayment was missing tenant_id on sip insert.
+  DB function sources it correctly from sub_invoices.tenant_id.
+- Backfill count: 0 (loop is a no-op — no orphaned payments existed).
+- Post-migration verified: function in information_schema.routines ✓, orphan count = 0 ✓.
+- Migration: 20260527010000_sub_invoice_payments_ledger_backfill.sql. Commits: daf0a5c (migration), f54a533 (helper). Build: ✓ clean.
+- Next: Phase 4b — void payment reversal (sbVoidSubInvoicePayment needs to also void/mark the linked job_transactions row when a payment is voided).
