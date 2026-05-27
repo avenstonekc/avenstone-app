@@ -12,7 +12,7 @@
  * now; it will be populated then.
  */
 
-import { sb, AV_USER_ID, sbSaveContact } from './supabase.js';
+import { sb, AV_TENANT, AV_USER_ID, sbSaveContact } from './supabase.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +81,7 @@ export async function sbCreateSubInvoice({
     }
 
     const payload = {
+      tenant_id:                 AV_TENANT,
       job_id:                    jobId,
       sub_contact_id:            subContactId,
       invoice_number:            finalNumber,

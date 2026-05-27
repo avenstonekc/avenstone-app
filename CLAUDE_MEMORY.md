@@ -1329,3 +1329,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Post-migration verified: function in information_schema.routines ✓, orphan count = 0 ✓.
 - Migration: 20260527010000_sub_invoice_payments_ledger_backfill.sql. Commits: daf0a5c (migration), f54a533 (helper). Build: ✓ clean.
 - Next: Phase 4b — void payment reversal (sbVoidSubInvoicePayment needs to also void/mark the linked job_transactions row when a payment is voided).
+
+[LOG — 2026-05-27 — SUB_INVOICES_ARC RLS fix — sbCreateSubInvoice missing tenant_id]
+- Action: sbCreateSubInvoice INSERT payload was missing tenant_id → RLS WITH CHECK rejected every submission from the UI. Added AV_TENANT to the import and tenant_id: AV_TENANT to the payload.
+- Root cause: Phase 1 comment in subInvoices.js header ("tenant-scoped via RLS — no explicit tenant_id param needed") was wrong. The sub_invoices RLS WITH CHECK policy requires tenant_id IN (SELECT tenant_id FROM profiles WHERE id = auth.uid()) — Postgres does not inject tenant_id automatically; the INSERT payload must carry it.
+- Why Phase 1 smoke test passed: the SQL smoke test (sbApproveSubInvoice etc.) did not exercise sbCreateSubInvoice via UI; the INSERT was never exercised end-to-end until Phase 3's Add Invoice modal wired it to a real PDF submit.
+- Files: avenstone-vite/src/lib/subInvoices.js — line 15 (import) + payload line ~84.
+- Lesson: every helper that INSERTs to a tenant-scoped table must include tenant_id: AV_TENANT from the start. UI smoke test (not SQL test) is the gate — SQL tests that bypass the helper path don't catch this class of bug.
+- Commit: see below.
