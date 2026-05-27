@@ -2369,6 +2369,16 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Build: ✓ 386 modules, clean.
 - Open: Slice 8 (lead-time enforcement with override).
 
+[LOG — 2026-05-26 — UNIFIED_FILES_ARC blueprint shipped]
+- Action: Wrote UNIFIED_FILES_ARC.md at repo root. 502 lines. Foundation arc sequenced BEFORE PROOF_ARC.
+- Audit findings: documents table is job_documents (not 'documents'); sbPhoto writes to public job-photos bucket + photos table; 13+ upload surfaces scattered across tabs; log_receipt verb writes job_transactions + uploads to job-receipts bucket with no job_files row today; floor_plans stays separate (virtual job_files rows link it).
+- 17 locked decisions. Key ones: one job_files table replaces job_documents + absorbs photos; folders derived (not stored) from category+subcategory columns; dynamic folder appearance (first file = folder appears, last leaves = folder disappears); AI auto-categorization Haiku vision on photos ~$0.001/upload, rule-based on docs; per-tenant subcategory config; receipts folder flat + accepts PDF not just images; lifecycle_status column included for future Google Drive arc (no archive code built); PhotosTab (FieldTab) deleted in Phase 3.
+- PROOF_ARC dependency: PROOF_ARC Phase 1 schema is free (category column already in job_files). PROOF_ARC first slice prompt should skip file-table schema and note the dependency.
+- 5 phases, ~12 prompts. Phase 1 = schema + migration (next dispatch when Kalin's ready).
+- Future architecture sketches: walkthrough intake arc (client selections in Selections folders), Google Drive archive arc (lifecycle flip), todos-per-job pattern analysis.
+- Trade-neutral: subcategory list is config per tenant, not code. GC vs painter vs roofer = different seed rows, same table.
+- Files: UNIFIED_FILES_ARC.md (new, 502 lines). Commit: f77dc34. Pushed to main.
+
 [LOG — 2026-05-26 — SCHEDULING_ARC slice 4/8 shipped — sub accept/decline/tentative response buttons + status badges]
 - Action: Slices 3 and 4 of 8 shipped together. Per-item invite state loaded in SubJobView schedule tab; subs can accept, decline, or mark tentative directly from the schedule list.
 - Slice 3 (commit 9340849): Added invite load useEffect to SubJobView.jsx. Loads schedule_item_invitees for every schedItems entry via Promise.all; extracts current sub's invite row by AV_USER_ID. Result stored as inviteByItemId map. Cancelled flag prevents stale state after unmount.
@@ -2412,3 +2422,10 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Deploy: GitHub Actions auto-deploys on push to supabase/functions/**.
 - Trade-aware: type field is enum, trade is free-text passthrough.
 - Open: Slice 6 (cascade engine — BFS date push when predecessor's scheduled_date changes). Slice 7 (resource conflict detection).
+
+[LOG — 2026-05-26]
+- Action: SCHEDULING_ARC slice 8/8 shipped — soft lead-time enforcement with override
+- Files: avenstone-vite/src/lib/supabase.js (sbCheckLeadTime), avenstone-vite/src/components/dashboard/CalScr.jsx (EventModal)
+- Decision: sbCheckLeadTime uses sbGetTradeLeadDays (existing helper) + material_orders query. No order_date column — uses created_at::date as proxy; quoted_delivery_date wins if present. Soft-fail on DB error (never blocks save). EventModal: optional Trade field added; lead-time check fires on save if trade is set; amber warning card with Cancel + Override — I'll handle it; Override writes 'date_moved' row to schedule_change_log for audit trail. Existing conflict-override param left intact; forceLeadOverride added as second param.
+- Commits: 76cb29e (supabase.js), 3891e21 (CalScr.jsx). Pushed to main.
+- SCHEDULING_ARC complete: slices 1, 2, 3, 5, 8 shipped. Slices 4 (sub portal schedule view), 6 (cascade engine), 7 (resource conflict) remain.
