@@ -2473,3 +2473,13 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Decision: JobDet `docs` tab id → `files`, lb → 'Files'. DocsTab import kept with Phase 3 removal comment. docs/docsLoaded state preserved — still consumed by EstimateTab + FinancialsTab. Default view: tree on desktop, grid on mobile.
 - Commits: e8550d8 (files/ sub-components), 3ce3ff5 (FilesTab.jsx), efe4eb7 (JobDet wiring). Pushed to main. Build passed clean.
 - Open: Slice 3 — rewire sbPhoto/sbUploadDoc surfaces to write to job_files in addition to photos/job_documents (dual-write bridge). Slice 4 — client portal file views.
+
+[LOG — 2026-05-26 — UNIFIED_FILES_ARC slice 3/12 shipped — dual-write bridge + Master Agent receipt rewire]
+- Action: Every existing upload surface now auto-populates job_files. Zero consumer code changes needed — FilesTab fills up automatically as people use the app.
+- sbPhoto: added _dualWritePhotoToJobFiles (best-effort, never throws). Phase inference queries job_phases for in_progress phase → _PHASE_SUBCAT_MAP subcategory. CO photos → Change Orders category. material_order entityType silently drops linkage (not in CHECK constraint). _PHASE_SUBCAT_MAP and _JF_VALID_ENTITY_TYPES added as module-level constants.
+- sbUploadDoc: added _dualWriteDocToJobFiles. fileType → category/subcategory mapping matches slice 1 backfill migration (permit→Permits, contract→Contracts, receipt/invoice→Receipts, spec→Specs, etc.).
+- Master Agent log_receipt: after receipt photo upload succeeds, inserts job_files row with category=Receipts, related_entity_type=job_transaction, related_entity_id=txId. Best-effort — console.warn on failure.
+- Migration 20260526210000: backfilled 2 floor_plan rows + 18 receipt rows → 73 total job_files. Trigger sync_floor_plan_to_job_files fires on floor_plans UPDATE (WHEN current_pdf_url changes non-null). Stores reconstructed stable path (not expiring signed URL) for sbSignJobFileUrl compatibility.
+- Key audit finding: floor_plans bucket is 'floor-plans' (not 'job-documents' as spec assumed). current_pdf_url stores signed URL (7-day expiry) — path reconstructed as {tenant_id}/{fp_id}/v{version}.pdf. sbSignJobFileUrl handles arbitrary buckets via storage_bucket column. ✓
+- Commits: e533ec9 (sbPhoto+sbUploadDoc), 9c27c73 (Master Agent), 8620b88 (migration). Build passed clean.
+- Open: Slice 4 — client portal file views. Slice 5 — CO photo gate (first PROOF_ARC dependency). Slice 6+ — migrate readers from legacy tables to job_files (kills dual-write). Trade-aware backlog: phase inference map is GC-flavored; future non-GC tenants need additional phase→subcategory entries.
