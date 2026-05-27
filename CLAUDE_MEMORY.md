@@ -1468,7 +1468,17 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   6. No "client credit available" UI surface anywhere in the app.
   7. sbLoadJobFinancialSummary.client_owes is the only credit-balance proxy (contract_total - total_in) — blunt, conflates deposits with invoice payments.
   8. draw_schedules.paid_amount only updates when Stripe fires against an invoice.draw_id. Pre-invoice deposits never credit a draw.
-- Arc shape updates: Phase 1 fix checkDepositPaid; Phase 2 draw composer needs "Client Credit Available" line; Phase 5 needs record_deposit and apply_credit verbs.
+- Arc shape updates: Phase 2 draw composer needs "Client Credit Available" line; Phase 5 needs record_deposit and apply_credit verbs.
 - Open Q: whether to build a formal credit pool table (option A/B) or enforce invoice-before-payment discipline going forward (option C).
 - Existing files with visible_to_roles=['sub'] immediately visible to subs on refresh (Pattern A — no backfill needed unlike Phase 3a).
 - Next: Phase 5 (expiration watchdog) — alert owner/PM when COI/license expires. Phase 4 (Master Agent verb) if scoped separately.
+
+[LOG — 2026-05-27 — checkDepositPaid bug fix]
+- Action: Phase gate function checkDepositPaid was checking only type='client_payment', missing manually logged client_deposit rows. Changed .eq('type','client_payment') → .in('type',['client_payment','client_deposit']) in all three copies.
+- Copies fixed: (1) avenstone-vite/src/lib/phaseGates.js line 89, (2) supabase/functions/ai-field-agent/index.ts line 48, (3) supabase/functions/ai-master-agent/index.ts line 53.
+- Surfaced by: COST_PLUS_AUDIT.md prepayment additive audit (Finding #3).
+- Stranded jobs: ZERO — live DB has no job_transactions rows with type='client_deposit' (all 9 inbound rows are type='client_payment'). Bug was latent, not yet triggered in practice.
+- Edge functions: ai-field-agent + ai-master-agent auto-redeploy via GitHub Actions on push to supabase/functions/**. No manual redeploy needed.
+- Commit: 68c41b9. Pushed to main.
+- Lesson: enum drift between manual data entry path (client_deposit available in TransactionModal) and webhook/verb path (Stripe + Master Agent always write client_payment) silently breaks downstream gates. Every type-based gate must be an enum-aware .in() covering all valid variants, not a single .eq().
+- Next: cost-plus blueprint conversation (open questions in COST_PLUS_AUDIT.md).
