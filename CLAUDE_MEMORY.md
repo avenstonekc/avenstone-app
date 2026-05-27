@@ -1197,3 +1197,10 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Reason: UX feedback — Photos auto-expanded showed all subcategories at once on first open, felt cluttered.
 - Audit finding: No Set-based expanded state. Both CatSection and SubSection used `useState(true)` — flipped to `useState(false)`. Two-line diff.
 - Commit: f8ab04b. Build ✓ clean.
+
+[LOG — 2026-05-27 — UNIFIED_FILES_ARC slice 14 shipped — ClientSignContractModal id fix]
+- Action: Fixed silent no-op in ClientSignContractModal. The client_visible=true update was targeting job_documents using a job_files.id (same UUID-mismatch pattern as sbToggleDocVisible in slice 8). Now updates job_files directly. One-line fix, line 23.
+- Files: avenstone-vite/src/components/modals/ClientSignContractModal.jsx
+- Closes the open item flagged in slice 8 LOG (line 1148 in CLAUDE_MEMORY.md at time of fix).
+- Pre-fix symptom: client signs contract → success shown → client portal shows nothing (client_visible never flipped on the job_files row). Silent failure indistinguishable from RLS misconfig.
+- Commit: 6f3e909. Build: ✓ clean.
