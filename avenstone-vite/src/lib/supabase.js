@@ -4934,3 +4934,22 @@ export async function sbDeleteFloorPlan(id) {
     return { ok: false, error: err?.message || String(err) };
   }
 }
+
+export async function sbMarkTransactionsPaid({ transactionIds, paidDate } = {}) {
+  if (!transactionIds || transactionIds.length === 0) {
+    return { ok: false, error: 'No transactions selected' };
+  }
+  try {
+    const today = paidDate || new Date().toISOString().slice(0, 10);
+    const { data, error } = await sb
+      .from('job_transactions')
+      .update({ status: 'paid', date_paid: today })
+      .in('id', transactionIds)
+      .eq('status', 'pending')
+      .select('id');
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, data: { updatedCount: data?.length || 0 } };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}

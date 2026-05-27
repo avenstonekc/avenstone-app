@@ -5,7 +5,7 @@ import MaterialsTab from './MaterialsTab';
 import TransactionModal from './financials/TransactionModal';
 import LineItemModal from './financials/LineItemModal';
 import SubInvoicesSection from './financials/SubInvoicesSection';
-import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo } from '../../../lib/supabase';
+import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo, sbMarkTransactionsPaid } from '../../../lib/supabase';
 import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
 import { f$, isMob } from '../../../lib/utils';
 
@@ -49,6 +49,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   const [showSynced, setShowSynced] = useState(true);
   const [catMap, setCatMap] = useState([]);
   const [pendingTodoId, setPendingTodoId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   useEffect(() => {
     if (!pendingAction) return;
@@ -69,6 +70,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     if (sub === 'ledger') loadLedger();
     if (sub === 'budget') loadBudget();
   }, [sub, job.id]);
+
+  useEffect(() => { setSelectedIds(new Set()); }, [filterDir, filterStatus]);
 
   const loadLedger = async () => {
     setLoading(true);
@@ -100,6 +103,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   };
 
   const lienCount = txs.filter(t => t.lien_waiver_required && !t.lien_waiver_url).length;
+  const isManager = ['owner', 'project_manager'].includes(profile?.role);
 
   const openQbModal = async () => {
     if (!catMap.length) { const m = await sbLoadQbCategoryMap(); setCatMap(m); }
@@ -129,6 +133,22 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     setQbExporting(false);
     setQbModal(false);
     if (qbMarkSynced) loadLedger();
+  };
+
+  const handleMarkPaid = async () => {
+    const ids = Array.from(selectedIds);
+    const total = txs.filter(r => selectedIds.has(r.id)).reduce((sum, r) => sum + Number(r.amount || 0), 0);
+    const confirmed = window.confirm(
+      `Mark ${ids.length} expense${ids.length === 1 ? '' : 's'} as paid (total: ${f$(total)})? This will update the ledger.`
+    );
+    if (!confirmed) return;
+    const result = await sbMarkTransactionsPaid({ transactionIds: ids });
+    if (result.ok) {
+      setSelectedIds(new Set());
+      loadLedger();
+    } else {
+      alert(`Failed: ${result.error}`);
+    }
   };
 
   const filtered = txs.filter(tx => {
@@ -328,35 +348,93 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>
               {filterDir !== 'all' || filterStatus !== 'all' ? 'No transactions match this filter' : 'No transactions yet — tap + Add to record one'}
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {filtered.map(tx => {
-                const isIn = tx.direction === 'in';
-                const lienMissing = tx.lien_waiver_required && !tx.lien_waiver_url;
-                return (
-                  <div key={tx.id} onClick={() => setModal({ mode: 'view', tx })} style={{ background: '#fff', border: `1px solid ${lienMissing ? '#fca5a5' : '#E8E4DC'}`, borderRadius: 8, padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: isIn ? '#D1FAE5' : '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{isIn ? '↑' : '↓'}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        {TYPE_LABELS[tx.type] || tx.type}
-                        {lienMissing && <span style={{ fontSize: 10, background: '#FEE2E2', color: '#991b1b', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>Lien Missing</span>}
-                        {tx.receipt_url && <span style={{ fontSize: 11, color: '#3B82F6' }}>📎</span>}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
-                        {tx.date_incurred}
-                        {tx.payer_or_payee_name ? ` · ${tx.payer_or_payee_name}` : ''}
-                        {tx.description ? ` · ${tx.description.slice(0, 40)}` : ''}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: isIn ? '#22c55e' : '#ef4444' }}>{isIn ? '+' : '-'}{f$(tx.amount)}</div>
-                      <div style={{ fontSize: 10, marginTop: 2, color: STATUS_COLOR[tx.status] || '#9CA3AF', fontWeight: 600, textTransform: 'uppercase' }}>{tx.status}</div>
+          ) : (() => {
+            const pendingExpenseRows = filtered.filter(r => r.status === 'pending' && r.direction === 'out');
+            const selectedTotal = filtered.filter(r => selectedIds.has(r.id)).reduce((sum, r) => sum + Number(r.amount || 0), 0);
+            const allChecked = pendingExpenseRows.length > 0 && pendingExpenseRows.every(r => selectedIds.has(r.id));
+            const someChecked = pendingExpenseRows.some(r => selectedIds.has(r.id));
+            return (
+              <div>
+                {/* Floating bulk action bar */}
+                {selectedIds.size > 0 && isManager && (
+                  <div style={{ position: 'sticky', top: 0, background: '#fef3c7', border: '1px solid #fcd34d', padding: '8px 12px', borderRadius: 4, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10, flexWrap: 'wrap', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: '#92400e', fontWeight: 500 }}>
+                      {selectedIds.size} pending expense{selectedIds.size === 1 ? '' : 's'} selected — total: {f$(selectedTotal)}
+                    </span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => setSelectedIds(new Set())} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #E8E4DC', background: '#fff', color: '#6B7280', cursor: 'pointer' }}>Clear</button>
+                      <button onClick={handleMarkPaid} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#059669', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+                        Mark {selectedIds.size} as Paid
+                      </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+                {/* Select-all row */}
+                {pendingExpenseRows.length > 0 && isManager && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 14px 6px', marginBottom: 2 }}>
+                    <input
+                      type="checkbox"
+                      checked={allChecked}
+                      ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setSelectedIds(new Set(pendingExpenseRows.map(r => r.id)));
+                        } else {
+                          setSelectedIds(new Set());
+                        }
+                      }}
+                    />
+                    <span style={{ fontSize: 11, color: '#6B7280' }}>Select all pending expenses ({pendingExpenseRows.length})</span>
+                  </div>
+                )}
+                {/* Row list */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {filtered.map(tx => {
+                    const isIn = tx.direction === 'in';
+                    const lienMissing = tx.lien_waiver_required && !tx.lien_waiver_url;
+                    const isPendingExpense = tx.status === 'pending' && tx.direction === 'out';
+                    return (
+                      <div key={tx.id} onClick={() => setModal({ mode: 'view', tx })} style={{ background: '#fff', border: `1px solid ${lienMissing ? '#fca5a5' : '#E8E4DC'}`, borderRadius: 8, padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        {isManager && (
+                          <div style={{ width: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {isPendingExpense && (
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(tx.id)}
+                                onClick={e => e.stopPropagation()}
+                                onChange={e => {
+                                  const next = new Set(selectedIds);
+                                  if (e.target.checked) next.add(tx.id); else next.delete(tx.id);
+                                  setSelectedIds(next);
+                                }}
+                              />
+                            )}
+                          </div>
+                        )}
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: isIn ? '#D1FAE5' : '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{isIn ? '↑' : '↓'}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            {TYPE_LABELS[tx.type] || tx.type}
+                            {lienMissing && <span style={{ fontSize: 10, background: '#FEE2E2', color: '#991b1b', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>Lien Missing</span>}
+                            {tx.receipt_url && <span style={{ fontSize: 11, color: '#3B82F6' }}>📎</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+                            {tx.date_incurred}
+                            {tx.payer_or_payee_name ? ` · ${tx.payer_or_payee_name}` : ''}
+                            {tx.description ? ` · ${tx.description.slice(0, 40)}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: isIn ? '#22c55e' : '#ef4444' }}>{isIn ? '+' : '-'}{f$(tx.amount)}</div>
+                          <div style={{ fontSize: 10, marginTop: 2, color: STATUS_COLOR[tx.status] || '#9CA3AF', fontWeight: 600, textTransform: 'uppercase' }}>{tx.status}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
