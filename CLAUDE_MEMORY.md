@@ -1420,3 +1420,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Sets date_paid to today on bulk update. Pending Out / Paid Out stat cards reflect changes after reload.
 - Files: avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx, avenstone-vite/src/lib/supabase.js. Commit: c3605d3.
 - Next: keep COMPANY_FILES_ARC Phase 2 rolling in parallel CMD.
+
+[LOG — 2026-05-27 — COMPANY_FILES_ARC Phase 2 shipped — admin UI]
+- Action: Built full admin UI for company files management and wired into App.jsx Settings nav.
+- Component: avenstone-vite/src/components/company-files/CompanyFilesScr.jsx (~644 lines).
+- Surfaces: FileRow list grouped by category (CATEGORIES order), DetailPanel overlay (metadata grid + inline visibility edit + View/Replace/Archive), UploadModal (file picker, category, type, issuer, policy#, effective/expiration dates side-by-side, 5-role visibility checkboxes with owner always checked/disabled).
+- ExpirationBadge: green >30d, amber ≤30d, red = expired. VisibilityChips: colored chips per role, 'Owner only' fallback. Both computed from camelCase mapRow output.
+- App.jsx wiring: import CompanyFilesScr; NAV entry { id: 'company-files', lb: 'Company Files', ic: 'folder', sec: 'Settings' } gated on isStaff (owner+PM+rep); render {pg === 'company-files' && isStaff && <CompanyFilesScr profile={profile} />}.
+- Build: ✓ clean (685ms). Commits: beedcab (UI components), 920a733 (mount). Both pushed to main.
+- Open: Phase 3a (virtual job_files rows at job creation — 'client' in visible_to_roles → auto-attach to new jobs). Phase 3b (sub portal direct query sbLoadCompanyFilesForSub). Phase 5 (watchdog / expiration scheduled_actions).
