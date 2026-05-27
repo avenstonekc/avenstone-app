@@ -1672,3 +1672,23 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Pairs with dd1a78b (field-opus-result-webhook half). Both halves now shipped.
 - Drift detector: write drift 0. `notifications.priority` finding fully closed. Open drift findings write count updated in Active open items block.
 - Build: ✓ clean. Commit: 62c5d6f. Pushed to main.
+
+[LOG — 2026-05-27 — COST_PLUS_ARC Phase 3 shipped — draw paid cascade]
+- Action: Phase 3 shipped. Forward cascade (paid invoice → reimbursed) + reverse cascade (void invoice → in_draw).
+- Migration: 20260527070000_cost_plus_phase_3_cascade_rpcs.sql — cascade_draw_paid_to_transactions(UUID) + reverse_draw_paid_cascade(UUID). Both SECURITY INVOKER, GRANT EXECUTE to authenticated. Verified in pg_proc post-apply.
+- supabase.js changes:
+  - sbMarkInvoicePaid: after fully paid (newStatus='paid') + draw_id present → calls cascade_draw_paid_to_transactions RPC. Error logged but doesn't fail the operation.
+  - sbVoidInvoice: guard relaxed — cost-plus draw invoices (draw_id IS NOT NULL) can be voided even when paid. Calls reverse_draw_paid_cascade after void. Error logged but doesn't fail.
+- stripe-webhook/index.ts: handleInvoicePayment — after invoice update to paid, calls cascade_draw_paid_to_transactions if draw_id present. Service-role client; no role check in RPC. Cascade errors logged, webhook still returns 200.
+- Commits: aa0ecc1 (JS helpers + migration), bccbfcb (Stripe webhook). Pushed to main.
+- Manual test results (999 Cost Plus Sandbox, job_id 5ebd7c3c-c4a7-450c-b529-479903668010):
+  - Step 1 ✓: 43 unreimbursed pre-state confirmed.
+  - Step 2 ✓: compose_draw 43 rows → all in_draw.
+  - Step 3 ✓: invoice created with draw_id linked.
+  - Step 4-5 ✓: cascade_draw_paid_to_transactions → 43 reimbursed, all with reimbursed_at timestamp.
+  - Step 6 ✓: idempotency — second cascade call returns 0 (guard AND reimbursement_status='in_draw').
+  - Step 7 ✓: reverse_draw_paid_cascade → 43 in_draw, reimbursed_at cleared; draw NOT cancelled (status=planned).
+  - Step 8 ✓: void_draw → 43 unreimbursed, draw=cancelled. Sandbox restored to clean state.
+  - Step 9: Stripe webhook path NOT testable in dev — deferred to real-job onboarding (first live Stripe payment on a cost-plus draw invoice will exercise the path).
+- COST_PLUS_ARC Phase 1 + Phase 2 + Phase 3 COMPLETE.
+- Next: Phase 4 — float stat cards (sbLoadJobFinancialSummary extension + FinancialsTab cost-plus cards). Phase 5 — Master Agent verbs.
