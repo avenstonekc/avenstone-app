@@ -1179,3 +1179,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Audit findings: no existing drag-drop wrapper in FilesTab (only Pipeline.jsx had one). FileUploadFlow's internal drop was first-file-only — upgraded to all-files. `isMob()` already imported — no useMediaQuery needed.
 - Build: ✓ 396 modules, clean. Commit: c54cc1c. Pushed to main.
 - Open: Slice 12 (ClientSignContractModal fix, legacy table hard-drop after soak, IntersectionObserver lazy thumbnails for 200+ file jobs).
+
+[LOG — 2026-05-27 — UNIFIED_FILES_ARC slice 12/12 shipped — final polish. UNIFIED_FILES_ARC COMPLETE.]
+- Action: Lazy thumbnails, Recent view pagination, tree folder counts verified, keyboard nav in FileDetailPanel.
+- FilesGridView.jsx: PhotoThumbnail uses IntersectionObserver (rootMargin:'200px') — signed URL fetch deferred until thumbnail is near viewport. inView state gates the URL-fetch useEffect. Zero eager URL loads for off-screen photos on 200+ file jobs.
+- FilesRecentView.jsx: PAGE_SIZE=50 with visibleCount state. `slice(0,20)` → `slice(0,visibleCount)`. "Load more (N remaining)" button. Header shows total sorted count. `useEffect([files])` resets visibleCount on file list change (search/reload). useState import added.
+- FilesTreeView.jsx: folder counts already present from slice 2 (SubSection {files.length} badge, CatSection {total} badge). No changes needed — verified.
+- FileDetailPanel.jsx: folderFiles + onFileChange props added. useEffect with window.addEventListener('keydown') — ArrowLeft/Right cycles through folderFiles array (wrapping), Escape closes. Listener cleans up on unmount/dep change.
+- FilesTab.jsx: FileDetailPanel mount updated with folderFiles={filteredFiles} + onFileChange={setDetailFileId}.
+- Commits: 2b7f885 (lazy thumbnails + pagination), 71cacad (keyboard nav). Pushed to main.
+- Build: ✓ clean (397 modules).
+- UNIFIED_FILES_ARC: ALL 12/12 SLICES SHIPPED. Arc spans slices 1–12 across 2026-05-26 and 2026-05-27. See individual slice LOGs for full detail.
+- Open: ClientSignContractModal client_visible fix (job_documents id mismatch — noted slice 8). Legacy table hard-drop (photos, job_documents) after soak period. Legacy table drop unblocked: no new writes to either table as of slice 8.
