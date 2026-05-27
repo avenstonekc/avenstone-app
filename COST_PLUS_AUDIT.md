@@ -259,3 +259,168 @@ None. No `forecast`, `projected`, `float`, or upcoming-expense concepts in `src/
 | `job.default_markup_pct` is per-job, no tenant default | Any new insert path for cost-plus jobs needs to explicitly pull `job.default_markup_pct` to pre-fill |
 | `ai-home-companion` references draws in prompt context | Agent already "knows about" draws conceptually — `compose_draw` verb is a natural Phase 5 addition |
 | No forward-looking expense tracking | Phase 2 must allow manual line items for unincurred-but-expected costs; draw amounts would otherwise lag actual work |
+
+---
+
+## Additive Audit — Prepayment / Client Credit Pool
+
+_Additive read-only audit conducted 2026-05-27. Goal: determine whether any mechanism tracks "client paid money not yet tied to an invoice or draw." Findings appended without touching earlier sections._
+
+---
+
+### Q1 — Is there a prepayment / credit / escrow / retainer table?
+
+**Finding: No.** No `client_credits`, `prepayments`, `retainer_accounts`, `escrow`, `credit_memos`, or `credit_pool` tables exist anywhere in `supabase/migrations/`. The only inbound-money storage is `job_transactions`.
+
+---
+
+### Q2 — Are there prepayment-aware columns on existing tables?
+
+**Finding: Partial.** `job_transactions` has:
+- `type` enum includes `'client_deposit'` — a dedicated deposit type alongside `'client_payment'` and `'client_refund'`
+- `payment_method` TEXT stores draw type (e.g. `'deposit'`, `'progress'`, `'final'`) as a free-text annotation — no FK, no enum constraint
+
+Nothing on `jobs`, `invoices`, or `draw_schedules` tracks "unapplied client credit" or "credit balance available."
+
+---
+
+### Q3 — How does the initial contract deposit flow?
+
+**Finding: Tracked as a ledger row but not structurally linked to the draw schedule.**
+
+- Phase gate `contract→in_progress` calls `checkDepositPaid(jobId)` in `phaseGates.js`
+- That function queries: `WHERE type = 'client_payment' AND direction = 'in' AND status = 'paid'`
+- **Bug:** the gate ignores `type = 'client_deposit'` — if a PM uses the `client_deposit` transaction type in `TransactionModal`, the phase gate will not detect it
+- The deposit `job_transactions` row has `invoice_id = null` (no draw invoice has been created yet at the time of signing)
+- When Draw 1 invoice is later created and paid, `draw_schedules.paid_amount` is incremented — the earlier deposit row is **never retroactively linked** to any draw
+
+**Net effect:** the deposit money appears in `sbLoadJobFinancialSummary.total_in` and reduces `client_owes`, but it has no structural connection to any draw or invoice. The draw composer would see unreimbursed expenses against zero draw credit.
+
+---
+
+### Q4 — What `type` / `status` enum values exist for inbound (`direction='in'`) transactions?
+
+**Allowed types (from migration `20260423_unified_financial_ledger.sql` and addendum `20260519_labor_transaction_type.sql`):**
+```
+client_payment   — general client remittance
+client_deposit   — deposit / retainer
+client_refund    — refund issued to client (still direction='in' — represents a recapture)
+other_income     — miscellaneous inbound
+```
+_(Note: `other_income` was added in a later migration; the original type check did not include it. Current `TransactionModal` and enum definitions include it.)_
+
+**Status values:** `draft | pending | paid | overdue | void | refunded`
+
+**Stripe webhook** always writes `type = 'client_payment'` for both invoice flow and legacy payment-link flow — `client_deposit` is never used programmatically.
+
+**Master Agent `log_payment` verb** also hardcodes `type: "client_payment"` in the executor — deposits triggered via voice would use this type, not `client_deposit`.
+
+---
+
+### Q5 — How are partial invoice payments handled?
+
+**Finding: Cumulative `amount_paid` on `invoices` row; no per-payment allocation table.**
+
+`stripe-webhook/index.ts` Step 6:
+```ts
+const newAmountPaid = Number(invoice.amount_paid) + paidAmount;
+const newStatus     = newAmountPaid >= Number(invoice.total_amount) ? 'paid' : 'partially_paid';
+```
+
+- Each payment writes a `job_transactions` row with `invoice_id` pointing to the invoice
+- `invoices.amount_paid` accumulates all payments against that invoice
+- `invoices.status` transitions to `partially_paid` until the full amount is covered
+- **No allocation table** — you cannot trace "payment X covered line items A, B, C"
+
+---
+
+### Q6 — How does Stripe handle overpayments?
+
+**Finding: Silent excess; no flag, no credit.**
+
+The webhook condition is `newAmountPaid >= total_amount → status = 'paid'`. If a client pays $12,000 against a $10,000 invoice:
+- `amount_paid` = 12,000
+- `status` = 'paid'
+- `draw_schedules.paid_amount` increases by 12,000 — potentially exceeds `target_amount`
+- No `overpayment_amount` column, no notification, no credit memo row
+- The surplus is not surfaced anywhere — it disappears into `total_in` of `sbLoadJobFinancialSummary`
+
+---
+
+### Q7 — Is there any allocation / "applied-to" mechanic?
+
+**Finding: No.** There is no `payment_allocations`, `credit_applications`, or `applied_to` table or column. The only soft linkage between payments and invoices is `job_transactions.invoice_id` — a direct FK set at payment time by the Stripe webhook. For manual transactions logged via `TransactionModal`, `invoice_id` is not set (no UI field for it).
+
+No mechanism to say "I'm applying $3,000 of the $5,000 deposit to Draw 1, and the remaining $2,000 stays in the credit pool."
+
+---
+
+### Q8 — Is there a "client credit available" UI surface anywhere?
+
+**Finding: No.** No component shows:
+- Unapplied deposit balance
+- Credit-pool total
+- "Client has a $X credit" banner
+- Offset suggestion in draw composer
+
+`sbLoadJobFinancialSummary` returns `client_owes = contract_total - total_in`, which bluntly reduces the balance by every inbound dollar regardless of whether it's linked to a draw or not. This is the only credit-balance approximation in the system, and it conflates deposits with invoice payments.
+
+---
+
+### Q9 — Do any Master Agent verbs handle prepayment / credit application?
+
+**Finding: No dedicated verb.** Relevant verbs:
+- `log_payment` — hardcodes `type: 'client_payment'`; description param is free-text (e.g. "Deposit")
+- No `record_deposit`, `apply_credit`, `compose_draw_with_credit` verb exists
+- The system does not track whether a `log_payment` call was a deposit vs. a mid-draw payment
+- `approve_sub_invoice` and `log_sub_payment` are sub-side (outbound); no equivalent for client-side credit
+
+---
+
+### Q10 — Implication for the draw composer
+
+The draw composer will need to answer: **"What has the client already paid that isn't yet tied to a draw invoice?"**
+
+Today there is no way to answer this directly. The closest proxy is:
+```sql
+SELECT SUM(amount)
+FROM job_transactions
+WHERE job_id = $1
+  AND direction = 'in'
+  AND status = 'paid'
+  AND invoice_id IS NULL   -- not attached to any invoice
+```
+But this query also picks up legacy manual payments that predate the invoicing arc and were never meant to be "unapplied credit." There is no `is_unapplied_credit` flag.
+
+---
+
+### Open questions — prepayment track
+
+1. **Does Kalin want a formal credit pool?** Option A: treat all inbound with `invoice_id IS NULL` as unapplied credit. Option B: add a `client_credit_id UUID` column to `job_transactions` + a `client_credits` table with allocation rows. Option C: no pool — always create an invoice before collecting payment; the Stripe invoice flow already enforces this for Stripe payments.
+
+2. **Should `client_deposit` be fully deprecated in favor of always using `client_payment` + `invoice_id`?** The two types behave identically in all aggregations today. The difference is purely semantic labeling in the UI.
+
+3. **Phase gate bug — `checkDepositPaid` excludes `client_deposit` type.** Fix in Phase 1 of the arc? Or is this a standalone one-line fix to ship now?
+
+4. **Overpayment handling.** Does Avenstone ever collect more than the invoice amount? If yes, Phase 1 should add `overpayment_amount` or a credit row insert in the Stripe webhook. If no (Stripe enforces exact amounts), no action needed.
+
+5. **Manual deposit-to-draw linkage.** If a client hands over a check before Draw 1 is composed, is that deposit expected to auto-apply to Draw 1, or does the PM manually note it? This choice determines whether the draw composer needs a "credit offset" step or just shows a separate "existing credit" line.
+
+---
+
+### Updated arc shape — prepayment additions
+
+Phase 1 (schema) should additionally include:
+- **Fix `checkDepositPaid`** to OR `type IN ('client_payment','client_deposit')` (one-line JS fix)
+- **Decision checkpoint:** add `is_unapplied_credit BOOLEAN DEFAULT false` to `job_transactions` or defer credit pool to Phase 3
+
+Phase 2 (draw composer) should show:
+- A "Client Credit Available" line if any `direction='in' status='paid' invoice_id IS NULL` rows exist
+- The composer subtracts the credit from the draw total before setting `target_amount` (optional offset step)
+
+Phase 3 (draw paid cascade) should:
+- When a draw invoice is paid, attempt to match against any unallocated `invoice_id IS NULL` inbound rows and mark them with the invoice FK (retroactive linkage) — or accept they remain unlinked
+
+Phase 5 (Master Agent) should add:
+- `record_deposit` verb that uses `type: 'client_deposit'` and explicitly flags `invoice_id = null` (credit pool entry)
+- `apply_credit` confirm-gated verb: "apply $5,000 credit to Draw 2" → sets `invoice_id` on the deposit row
