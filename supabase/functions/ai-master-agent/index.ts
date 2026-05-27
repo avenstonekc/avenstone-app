@@ -146,6 +146,8 @@ const CONFIRM_TOOLS = new Set([
   "log_sub_payment",
   "approve_sub_invoice",
   "upload_company_file",
+  "record_deposit",
+  "compose_draw",
 ]);
 
 // ── REQUIRED_FIELDS registry (Phase 4) ───────────────────────────────────────
@@ -209,6 +211,13 @@ const REQUIRED_FIELDS: Record<string, FieldSpec[]> = {
   ],
   create_job: [
     { field: "address", type: "text", label: "Job address" },
+  ],
+  record_deposit: [
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+    { field: "amount", type: "text", label: "Amount ($)" },
+  ],
+  compose_draw: [
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
   ],
   add_contact: [
     { field: "full_name", type: "text", label: "Full name" },
@@ -763,6 +772,33 @@ const TOOLS = [
         visible_to_clients: { type: "boolean", description: "Whether clients can see this document. Default false unless user explicitly says clients should see it." },
       },
       required: ["file_type"],
+    },
+  },
+  {
+    name: "record_deposit",
+    description: "Record a client deposit payment for a cost-plus job. Lands as an inbound transaction with no invoice link — adds to the bucket balance. Use when client hands over a check, ACH, or cash before a draw invoice is created. Do NOT use log_payment for cost-plus deposits — that is for standard contract invoices. Owner/PM only.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id:         { type: "string", description: "Job ID. Use active job context if available." },
+        amount:         { type: "number", description: "Deposit amount in USD." },
+        description:    { type: "string", description: "e.g. 'Initial deposit — signed contract · Ref: 1042'. Include the check/ACH reference number here if provided. Defaults to 'Client deposit' if omitted." },
+        payment_method: { type: "string", description: "check, ach, card, cash, wire, other" },
+      },
+      required: ["job_id", "amount"],
+    },
+  },
+  {
+    name: "compose_draw",
+    description: "Compose a cost-plus draw for a job — auto-loads all unreimbursed expenses and current bucket balance, then generates a draw draft for your review. Use when owner says 'compose a draw', 'bill the client for expenses', or 'generate a draw invoice'. Only works on cost-plus jobs. Owner/PM only.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id:       { type: "string", description: "Job ID. Use active job context if available." },
+        title:        { type: "string", description: "Draw title, e.g. 'Draw 2 — May work'. Defaults to 'Draw' if omitted." },
+        apply_bucket: { type: "boolean", description: "Whether to offset the draw by existing bucket credit. Defaults to true." },
+      },
+      required: ["job_id"],
     },
   },
 ];
@@ -1660,6 +1696,121 @@ async function executeTool(
         return { success: cfBits.join(" · ") };
       }
 
+      case "record_deposit": {
+        if (!["owner", "project_manager"].includes(userRole)) {
+          return { error: "Only owner or project manager can record client deposits." };
+        }
+        const { data: rdJob } = await sb.from("jobs")
+          .select("address")
+          .eq("id", input.job_id)
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        if (!rdJob) return { error: "Job not found." };
+        let rdDesc = input.description ? String(input.description) : null;
+        if (!rdDesc) rdDesc = `Client deposit${(rdJob as any).address ? ` — ${(rdJob as any).address}` : ""}`;
+        const { data: rdTx, error: rdErr } = await sb.from("job_transactions").insert({
+          tenant_id:      tenantId,
+          job_id:         input.job_id,
+          direction:      "in",
+          type:           "client_deposit",
+          amount:         Number(input.amount),
+          description:    rdDesc,
+          payment_method: input.payment_method || null,
+          status:         "paid",
+          invoice_id:     null,
+          date_paid:      new Date().toISOString().slice(0, 10),
+          created_by:     userId,
+          created_at:     new Date().toISOString(),
+        }).select("id, amount").single();
+        if (rdErr) return { error: rdErr.message };
+        return { success: true, transaction_id: (rdTx as any).id, amount: (rdTx as any).amount };
+      }
+
+      case "compose_draw": {
+        if (!["owner", "project_manager"].includes(userRole)) {
+          return { error: "Only owner or project manager can compose draws." };
+        }
+
+        const cdRound2 = (n: number) => Math.round(n * 100) / 100;
+        const CD_TYPE_LABELS: Record<string, string> = {
+          sub_payout: "Sub Payout", labor: "Labor", material_purchase: "Material Purchase",
+          fuel: "Fuel", permit: "Permit", commission: "Commission", other_expense: "Other Expense",
+        };
+
+        // On confirm path, _line_items is pre-built by the confirmBlock hydration.
+        // On direct call path (rare), build them here.
+        let cdLineItems: unknown[] = [];
+        let cdNetDue = 0;
+
+        if (Array.isArray(input._line_items) && (input._line_items as any[]).length > 0) {
+          cdLineItems = input._line_items as unknown[];
+          cdNetDue = Number(input._net_due || 0);
+        } else {
+          // Direct path: load job, check cost_plus, load expenses
+          const { data: cdJob } = await sb.from("jobs")
+            .select("cost_plus")
+            .eq("id", input.job_id)
+            .eq("tenant_id", tenantId)
+            .maybeSingle();
+          if (!(cdJob as any)?.cost_plus) {
+            return { error: "This job is not set up for cost-plus billing." };
+          }
+          const { data: cdExpenses } = await sb.from("job_transactions")
+            .select("id, type, amount, markup_pct, description")
+            .eq("job_id", input.job_id)
+            .eq("direction", "out")
+            .eq("reimbursement_status", "unreimbursed")
+            .order("date_incurred", { ascending: true });
+          if (!cdExpenses || (cdExpenses as any[]).length === 0) {
+            return { error: "No unreimbursed expenses found for this job." };
+          }
+          cdLineItems = (cdExpenses as any[]).map((e: any, idx: number) => {
+            const base = Number(e.amount) || 0;
+            const pct = Number(e.markup_pct) || 0;
+            const markupAmt = cdRound2(base * pct / 100);
+            return {
+              transaction_id: e.id,
+              description: e.description || CD_TYPE_LABELS[e.type] || e.type,
+              base_amount: base, markup_pct: pct, markup_amount: markupAmt,
+              total_with_markup: cdRound2(base + markupAmt),
+              is_forward_looking: false, display_order: idx, notes: null,
+            };
+          });
+          const cdGross = cdRound2((cdLineItems as any[]).reduce((s: number, r: any) => s + r.total_with_markup, 0));
+          const { data: cdTxRows } = await sb.from("job_transactions")
+            .select("direction, amount, invoice_id, status")
+            .eq("job_id", input.job_id)
+            .neq("status", "void");
+          let cdBucket = 0;
+          for (const r of (cdTxRows || []) as any[]) {
+            if (r.direction === "in" && r.invoice_id === null && r.status === "paid") {
+              cdBucket += Number(r.amount) || 0;
+            }
+          }
+          cdBucket = cdRound2(cdBucket);
+          const cdApplyBucket = input.apply_bucket !== false;
+          cdNetDue = cdApplyBucket ? cdRound2(Math.max(0, cdGross - cdBucket)) : cdGross;
+        }
+
+        const { data: cdRpc, error: cdErr } = await sb.rpc("compose_draw", {
+          p_job_id:        input.job_id,
+          p_title:         input.title ? String(input.title) : "Draw",
+          p_description:   null,
+          p_target_amount: cdNetDue,
+          p_apply_bucket:  input.apply_bucket !== false,
+          p_line_items:    cdLineItems,
+        });
+        if (cdErr) return { error: cdErr.message };
+        const cdResult = Array.isArray(cdRpc) ? cdRpc[0] : cdRpc;
+        return {
+          success: true,
+          draw_id:     (cdResult as any)?.draw_id,
+          draw_number: (cdResult as any)?.draw_number,
+          line_count:  (cdResult as any)?.line_count,
+          target:      cdNetDue,
+        };
+      }
+
       default:
         return { error: `Unknown tool: ${toolName}` };
     }
@@ -1857,6 +2008,23 @@ function describeConfirmAction(tool: string, input: any): string {
       if (cfVis.length > 0) cfDescBits.push(`visible to ${cfVis.join(" + ")}`);
       return cfDescBits.join(" · ") + ".";
     }
+    case "record_deposit": {
+      const rdBits: string[] = [`Record ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) deposit`];
+      if (input._job_address) rdBits.push(String(input._job_address));
+      if (input.description)  rdBits.push(String(input.description));
+      rdBits.push("Bucket balance increases by this amount.");
+      return rdBits.join(" · ") + ".";
+    }
+    case "compose_draw": {
+      const cdCount = Number(input._expense_count || 0);
+      const cdGrossStr = fmtMoney(input._gross);
+      const cdBucket = Number(input._bucket || 0);
+      const cdNetStr = fmtMoney(input._net_due);
+      const cdAddr = input._job_address ? ` for ${String(input._job_address)}` : "";
+      const cdTitle = input.title ? ` "${String(input.title)}"` : "";
+      const cdBucketBit = cdBucket > 0 ? ` · bucket offset -${fmtMoney(cdBucket)}` : "";
+      return `Compose draw${cdAddr}${cdTitle}: ${cdCount} expense${cdCount !== 1 ? "s" : ""}, gross ${cdGrossStr}${cdBucketBit}, draw target ${cdNetStr}.`;
+    }
     default:
       return "Perform this action.";
   }
@@ -1891,7 +2059,7 @@ Tenant: ${tenantId}${contextLine}
 
 WHAT YOU CAN DO:
 - Read: jobs, team
-- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, log sub invoices, log sub payments, approve sub invoices, send notifications, write to knowledge base, create schedule items, upload company files
+- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, log sub invoices, log sub payments, approve sub invoices, send notifications, write to knowledge base, create schedule items, upload company files, record client deposits (cost-plus), compose cost-plus draws
 
 HOW TO BEHAVE:
 - Act immediately. Don't ask "should I do X?" — just do it and tell them what you did.
@@ -1899,7 +2067,7 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
-- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
+- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file, record_deposit, compose_draw): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
 - Missing required fields: call the tool with whatever fields you have. If any required field is missing, the system surfaces a missing-field card automatically — do NOT ask in text first ("What's the amount?", "Which job?", etc.). Never invent values to fill gaps; just call the tool and let the card collect the rest.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: do NOT pass override_reason. Just call the tool with the job_id. If gates fail, the system surfaces a gate-resolution card automatically (redirect to Schedule / leave open / override-with-structured-reason). Do not ask in text whether to override — the card IS the prompt.
@@ -1941,6 +2109,11 @@ Sub invoice workflow: When user mentions a sub sent an invoice or bill, use log_
 
 COMPANY FILE WORKFLOW
 When the user attaches an image or PDF and mentions insurance, license, bond, W-9, COI, or any company compliance document, use upload_company_file. Vision extracts expiration date, policy number, and issuer automatically from the attached document — do NOT ask the user for those fields if the document was attached. Only ask if (a) the document type is genuinely ambiguous after reading it, or (b) the user explicitly wants to override an extracted value. Owner/PM only — if a rep or sub asks, explain that company file uploads require owner or PM access.
+
+COST-PLUS DRAW WORKFLOW
+record_deposit is for cost-plus jobs only. Use when a client hands over a check, ACH, or cash before a draw invoice is created — the payment lands as a bucket credit (inbound, no invoice link). Do NOT use log_payment for cost-plus deposits — log_payment is for standard contract invoices. Owner/PM only.
+
+compose_draw is for cost-plus jobs only. Use when the owner says "compose a draw", "bill the client for expenses", "generate a draw", or similar. The system auto-loads all unreimbursed expenses and the current bucket balance, then surfaces a confirmation card showing expense count, gross total, bucket offset, and draw target. On confirm, the draw draft is created and transactions are flipped to in_draw. Owner/PM only — if a rep asks, explain the role requirement. After the draw is confirmed, tell the owner the draw number so they can proceed to invoice creation in the Financials tab. Do NOT call compose_draw on standard (non-cost-plus) jobs — the system will reject it. If the job is not cost-plus, explain how the Financials tab handles standard invoicing instead.
 
 DIAGNOSTIC REPORTING STYLE
 
@@ -2093,6 +2266,79 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
             inputObj._image_data = cfFileBlock.data;
             inputObj._image_mime = cfFileBlock.mime;
             inputObj._is_pdf     = cfFileBlock.isPdf;
+          }
+        }
+        // record_deposit: pre-fetch job address for Confirm card readback.
+        if (confirmBlock.name === "record_deposit" && inputObj.job_id) {
+          const { data: rdJobCard } = await sb.from("jobs").select("address").eq("id", String(inputObj.job_id)).maybeSingle();
+          if (rdJobCard) inputObj._job_address = (rdJobCard as any).address;
+        }
+        // compose_draw: load unreimbursed expenses + bucket, compute line items + net due.
+        // If job is not cost-plus or has no expenses, abort early with a text response.
+        if (confirmBlock.name === "compose_draw") {
+          const cdJobId = String(inputObj.job_id || "");
+          if (cdJobId) {
+            const { data: cdJobCard } = await sb.from("jobs")
+              .select("address, cost_plus")
+              .eq("id", cdJobId)
+              .eq("tenant_id", tenantId)
+              .maybeSingle();
+            if (!(cdJobCard as any)?.cost_plus) {
+              const jobLabel = (cdJobCard as any)?.address || cdJobId;
+              return {
+                response: `${jobLabel} is not set up for cost-plus billing. compose_draw only works on cost-plus jobs.`,
+                actions,
+              };
+            }
+            const cdR2 = (n: number) => Math.round(n * 100) / 100;
+            const CD_TLABELS: Record<string, string> = {
+              sub_payout: "Sub Payout", labor: "Labor", material_purchase: "Material Purchase",
+              fuel: "Fuel", permit: "Permit", commission: "Commission", other_expense: "Other Expense",
+            };
+            const { data: cdExp } = await sb.from("job_transactions")
+              .select("id, type, amount, markup_pct, description")
+              .eq("job_id", cdJobId)
+              .eq("direction", "out")
+              .eq("reimbursement_status", "unreimbursed")
+              .order("date_incurred", { ascending: true });
+            if (!cdExp || (cdExp as any[]).length === 0) {
+              return {
+                response: "No unreimbursed expenses found on this job — nothing to draw.",
+                actions,
+              };
+            }
+            const cdItems = (cdExp as any[]).map((e: any, idx: number) => {
+              const base = Number(e.amount) || 0;
+              const pct = Number(e.markup_pct) || 0;
+              const markupAmt = cdR2(base * pct / 100);
+              return {
+                transaction_id: e.id,
+                description: e.description || CD_TLABELS[e.type] || e.type,
+                base_amount: base, markup_pct: pct, markup_amount: markupAmt,
+                total_with_markup: cdR2(base + markupAmt),
+                is_forward_looking: false, display_order: idx, notes: null,
+              };
+            });
+            const cdGross = cdR2(cdItems.reduce((s, r) => s + r.total_with_markup, 0));
+            const { data: cdTxCard } = await sb.from("job_transactions")
+              .select("direction, amount, invoice_id, status")
+              .eq("job_id", cdJobId)
+              .neq("status", "void");
+            let cdBucketVal = 0;
+            for (const r of (cdTxCard || []) as any[]) {
+              if (r.direction === "in" && r.invoice_id === null && r.status === "paid") {
+                cdBucketVal += Number(r.amount) || 0;
+              }
+            }
+            cdBucketVal = cdR2(cdBucketVal);
+            const cdApplyBkt = inputObj.apply_bucket !== false;
+            const cdNetDue = cdApplyBkt ? cdR2(Math.max(0, cdGross - cdBucketVal)) : cdGross;
+            inputObj._line_items     = cdItems;
+            inputObj._gross          = cdGross;
+            inputObj._bucket         = cdBucketVal;
+            inputObj._net_due        = cdNetDue;
+            inputObj._expense_count  = cdItems.length;
+            inputObj._job_address    = (cdJobCard as any).address || "";
           }
         }
         // add_todo: pre-fetch assignee name so Confirm card readback shows "Add todo for [Name]".
