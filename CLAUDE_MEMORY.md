@@ -206,14 +206,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 - **Open drift findings (2026-05-27 scan — NOT fixed, queued for a dedicated slice):**
   - **Write drift (1):** `notifications.priority` written at `src/lib/supabase.js:2406` + `field-opus-result-webhook/index.ts:106` but column doesn't exist in DB. Fix: add `priority` column to `notifications` table OR remove writes if field-opus uses a different column.
-  - **Missing tables (3):**
+  - **Missing tables (2, was 3 — itb_invitees closed 2026-05-27):**
     - `failed_intents` — read at `field-opus-db-query/index.ts:71`. Table never created; likely stale reference.
-    - `itb_invitees` — upserted at `send-bid-invite/index.ts:36`. Table was dropped in Phase 3 (2026-05-06). Needs audit of `send-bid-invite` fn.
     - `quote_requests` — read at `ai-pm-nightly/index.ts:76`. Function DISABLED. Deferred until re-enable.
   - **Read drift — auto_fix_attempts (7 cols, all at `field-opus-db-query/index.ts:50`):** Code selects `bug_report_id, status, commit_hash, attempt_number, started_at, completed_at, result_summary` — none exist. Actual columns: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`. field-opus-db-query query is stale against the shipped schema.
   - **Read drift — bug_reports (2 cols, `field-opus-db-query/index.ts:40`):** `title` and `classification` selected but don't exist in `bug_reports` schema. Same stale field-opus-db-query query.
   - **Read drift — jobs (1 col, `src/lib/supabase.js:2575`):** `assigned_pm_id` selected but actual column is `assigned_pm` (TEXT not UUID). Simple rename fix.
-  - **Priority:** `jobs.assigned_pm_id` (supabase.js) is highest — live user-facing code. `field-opus-db-query` queries are dev-console-only (Kalin-only auth). `send-bid-invite` `itb_invitees` is a real function bug. `notifications.priority` needs schema investigation first.
+  - **Priority:** `jobs.assigned_pm_id` (supabase.js) is highest — live user-facing code. `field-opus-db-query` queries are dev-console-only (Kalin-only auth). `notifications.priority` needs schema investigation first.
 
 - **Tool-payload drift detector refinement (Path B)** — Detector shipped 2026-05-21 in commit 94708e1. Initial run: 14 advertised-not-written findings, all expected false positives in 3 categories:
   1. WHERE-clause keys (e.g. update_job.job_id used in .eq() not .update payload)
@@ -1625,3 +1624,16 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Deviations from scope: (1) No selectedIds/checkboxes — Phase 2A auto-includes all tx rows; forward rows follow same pattern. (2) No Tailwind — inline CSS throughout. (3) canSubmit not wired to button disabled state yet — left as comment for Phase 2C.
 - Build: ✓ clean. Commit: dbf0217. Pushed to main.
 - COST_PLUS_ARC Phase 2B COMPLETE. Phase 2C (sbComposeDraw submit wiring) is next.
+
+[LOG — 2026-05-27 — send-bid-invite orphaned edge function deleted]
+- Action: Deleted `supabase/functions/send-bid-invite/` from filesystem. Removed from Supabase deployed functions via Management API. Missing-tables drift count: 3 → 2.
+- Discovery: CLAUDE_ARCHIVE entry (drift-cleanup-arc, 2026-05-10) claimed the function was deleted ~17 days ago. It was NOT in git (confirmed untracked — `git rm` had run but left the filesystem directory behind). The file persisted locally and was still ACTIVE on Supabase (version 90, last updated 2026-05-07).
+- Dead-state verification (all checks PASS before delete):
+  - `ls supabase/functions/send-bid-invite/` → directory exists with index.ts ✓
+  - `grep send-bid-invite src/ supabase/functions/` → zero hits outside the function itself ✓
+  - `to_regclass('public.itb_invitees')` → NULL (table dropped) ✓
+  - `to_regclass('public.job_sub_engagements')` + `engagement_bids` → both exist ✓
+- Supabase deletion: HTTP 200. Verified absent from deployed function list post-delete.
+- Post-delete: drift detector missing-tables 3 → 2. Build ✓ clean (404 modules). Zero remaining references to `send-bid-invite` or `BID_INVITE_URL` in active code.
+- Reliability flag: **Archive entries claiming file deletions are unverified historically.** `git rm` removes from git tracking but leaves the filesystem directory if the working tree is dirty or the commit doesn't land. Drift detector caught this miss 17 days after the archive entry. Pattern: after any "file deleted" archive entry, verify with `ls` + Supabase function list on the next session that touches that area.
+- Commit: (CLAUDE_MEMORY.md only — function was untracked, deletion is filesystem-only with no git artifact to commit).
