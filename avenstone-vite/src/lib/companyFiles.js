@@ -11,7 +11,7 @@
  *   type_slug = type.toLowerCase().replace(/[^a-z0-9]+/g, '-')
  *
  * Phase deferred (not in this file yet):
- *  - sbLoadCompanyFilesForSub — Phase 3b (sub portal direct query)
+ *  - sbLoadCompanyFilesForSub — Phase 3b (sub portal direct query) — SHIPPED
  *  - sbScheduleCompanyFileExpirations — Phase 5 (watchdog scheduled_actions rows)
  *  - sbCancelCompanyFileScheduledActions — Phase 5
  *  - sbCreateJobCompanyFileRefs — Phase 3a (virtual job_files rows at job creation)
@@ -319,6 +319,30 @@ export async function sbSignCompanyFileUrl(storagePath, expiresIn = SIGNED_URL_E
     return { ok: true, url: data.signedUrl };
   } catch (e) {
     return { ok: false, error: e.message || 'sbSignCompanyFileUrl failed' };
+  }
+}
+
+/**
+ * Phase 3b — Sub portal direct read.
+ * Returns all active company files where 'sub' = ANY(visible_to_roles) for the current tenant.
+ * Tenant scope is enforced by RLS (cf_tenant_select — all tenant members can SELECT).
+ * visible_to_roles filter is applied at query time, not enforced by RLS.
+ *
+ * @returns {Promise<{ok:boolean, error?:string, data?:Array}>}
+ */
+export async function sbLoadCompanyFilesForSub() {
+  try {
+    const { data, error } = await sb
+      .from('company_files')
+      .select('id, tenant_id, name, storage_path, storage_bucket, mime_type, category, type, issuer, expiration_date, lifecycle_status, created_at')
+      .contains('visible_to_roles', ['sub'])
+      .eq('lifecycle_status', 'active')
+      .order('category', { ascending: true })
+      .order('type', { ascending: true });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, data: (data || []).map(mapRow) };
+  } catch (e) {
+    return { ok: false, error: e.message || 'sbLoadCompanyFilesForSub failed' };
   }
 }
 
