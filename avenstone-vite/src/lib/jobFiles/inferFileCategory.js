@@ -18,8 +18,10 @@
  * @param {Function} [args.queryFn]       - async (sql, params) => rows — injected by sbUploadJobFile
  *                                          to avoid circular import with supabase.js.
  *                                          Signature: queryFn({ jobId }) => { phase_name? }
+ * @param {Function} [args.visionFn]      - async ({ file, jobId }) => { category, subcategory, confidence, source }
+ *                                          Calls ai-categorize-file edge function. Injected by supabase.js.
  * @returns {Promise<{ category: string, subcategory: string|null, confidence: number, source: string }>}
- *   source: 'rule' | 'phase' | 'default'
+ *   source: 'rule' | 'phase' | 'vision' | 'vision_lowconf' | 'default'
  */
 
 const RULE_BASED = {
@@ -74,6 +76,7 @@ export async function inferFileCategory({
   uploadSource = 'manual',
   fileTypeHint = null,
   queryFn = null,
+  visionFn = null,
 }) {
   // ── 1. Explicit file type hint from upload UI ──────────────────────────────
   if (fileTypeHint) {
@@ -128,6 +131,24 @@ export async function inferFileCategory({
     }
   }
 
-  // ── 5. Image with no context → Uncategorized (vision deferred to Phase 2) ─
+  // ── 5. Image with no context → Vision-Haiku AI categorization ───────────
+  if (visionFn && file) {
+    try {
+      const result = await visionFn({ file, jobId });
+      if (result && result.category) {
+        const src = result.source || (result.confidence >= 0.80 ? 'vision' : 'vision_lowconf');
+        return {
+          category: result.category,
+          subcategory: result.subcategory ?? null, // AI suggestion; caller checks source for low-conf
+          confidence: typeof result.confidence === 'number' ? result.confidence : 0,
+          source: src,
+        };
+      }
+    } catch {
+      // Vision failure is non-fatal — fall through to default
+    }
+  }
+
+  // ── 6. Default: Photos / Uncategorized ────────────────────────────────────
   return { category: 'Photos', subcategory: null, confidence: 0.3, source: 'default' };
 }
