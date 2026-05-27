@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 // Note: legacy `payments` compat view is deprecated. ClientPortal reads invoices + job_transactions directly.
 // Compat view still alive in DB until verified no consumers remain. — Phase 6a, 2026-05-06
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates, sbLoadClientMilestones } from '../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates, sbLoadClientMilestones, sbLoadClientDrawBreakdown } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
@@ -155,6 +155,105 @@ function ProgressStepper({ status }) {
   );
 }
 
+const DRAW_STATUS_STYLE = {
+  paid:           { text: 'Paid ✓',       color: '#22c55e', bg: '#F0FDF4' },
+  partially_paid: { text: 'Partially Paid', color: '#b45309', bg: '#FEF3C7' },
+  sent:           { text: 'Invoice Sent',  color: '#b45309', bg: '#FEF3C7' },
+  viewed:         { text: 'Invoice Sent',  color: '#b45309', bg: '#FEF3C7' },
+  overdue:        { text: 'Overdue',       color: '#991b1b', bg: '#FEE2E2' },
+};
+
+function DrawCard({ draw, lineItems, invoice }) {
+  const [expanded, setExpanded] = useState(true);
+  const baseSum    = lineItems.reduce((s, l) => s + Number(l.base_amount   || 0), 0);
+  const markupSum  = lineItems.reduce((s, l) => s + Number(l.markup_amount || 0), 0);
+  const drawTotal  = baseSum + markupSum;
+  const invoiced   = Number(invoice?.total_amount || 0);
+  const creditApplied = drawTotal - invoiced;
+  const style = DRAW_STATUS_STYLE[invoice?.status] || { text: invoice?.status || '—', color: '#9CA3AF', bg: '#F7F5F0' };
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E8E4DC', marginBottom: 16 }}>
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: expanded ? '1px solid #E8E4DC' : 'none' }}
+      >
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44', marginBottom: 3 }}>
+            {draw.title || `Draw ${draw.draw_number}`}
+          </div>
+          <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+            {lineItems.length} line item{lineItems.length !== 1 ? 's' : ''} · Draw total {f$(drawTotal)}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <span style={{ fontSize: 10, background: style.bg, color: style.color, padding: '3px 10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{style.text}</span>
+          <span style={{ fontSize: 11, color: '#9CA3AF' }}>{expanded ? '▲' : '▼'}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ padding: '0 16px 16px' }}>
+          {/* Line items table */}
+          <div style={{ marginTop: 14, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #F3F0EB' }}>
+                  <th style={{ textAlign: 'left', padding: '6px 8px 6px 0', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Description</th>
+                  <th style={{ textAlign: 'right', padding: '6px 0', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>Cost</th>
+                  <th style={{ textAlign: 'right', padding: '6px 0', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Markup</th>
+                  <th style={{ textAlign: 'right', padding: '6px 0 6px 8px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lineItems.map(li => (
+                  <tr key={li.id} style={{ borderBottom: '1px solid #F7F5F0' }}>
+                    <td style={{ padding: '8px 8px 8px 0', color: '#374151', lineHeight: 1.4 }}>
+                      {li.description}
+                      {li.is_forward_looking && <span style={{ marginLeft: 6, fontSize: 10, color: '#6B7280', fontStyle: 'italic' }}>(pre-bill)</span>}
+                    </td>
+                    <td style={{ padding: '8px 0', textAlign: 'right', color: '#6B7280', whiteSpace: 'nowrap' }}>{f$(Number(li.base_amount))}</td>
+                    <td style={{ padding: '8px 0', textAlign: 'right', color: '#6B7280', whiteSpace: 'nowrap' }}>{Number(li.markup_pct).toFixed(0)}%</td>
+                    <td style={{ padding: '8px 0 8px 8px', textAlign: 'right', color: '#0A1F44', fontWeight: 600, whiteSpace: 'nowrap' }}>{f$(Number(li.total_with_markup))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Summary */}
+          <div style={{ borderTop: '2px solid #E8E4DC', marginTop: 10, paddingTop: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
+                <span>Subtotal (costs)</span><span>{f$(baseSum)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
+                <span>Markup</span><span>{f$(markupSum)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#0A1F44', borderTop: '1px solid #F3F0EB', paddingTop: 6, marginTop: 3 }}>
+                <span>Draw Total</span><span style={{ fontFamily: "'DM Serif Display',serif" }}>{f$(drawTotal)}</span>
+              </div>
+              {creditApplied > 0.01 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#059669' }}>
+                  <span>Credit Applied (deposit)</span><span>−{f$(creditApplied)}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#0A1F44', borderTop: '1px solid #F3F0EB', paddingTop: 6, marginTop: 3 }}>
+                <span>Amount Invoiced</span><span style={{ fontFamily: "'DM Serif Display',serif" }}>{f$(invoiced)}</span>
+              </div>
+              {invoice?.paid_at && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
+                  <span>Paid</span><span>{fD(invoice.paid_at.slice(0, 10))}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const BASE_CLIENT_TABS = [
   { id: 'overview',  lb: 'Overview',  ic: 'info' },
   { id: 'updates',   lb: 'Updates',   ic: 'bell' },
@@ -206,6 +305,8 @@ export default function ClientPortal({ profile, signOut }) {
   const [costItems, setCostItems] = useState([]);
   const [costInvoices, setCostInvoices] = useState([]);
   const [budgetItems, setBudgetItems] = useState([]);
+  const [drawBreakdown, setDrawBreakdown] = useState(null);
+  const [drawBreakdownLoading, setDrawBreakdownLoading] = useState(false);
   const [staffOwnerId, setStaffOwnerId] = useState(null);
   const [jobReview, setJobReview] = useState(null);
   const [reviewForm, setReviewForm] = useState({ quality: 0, communication: 0, timeliness: 0, would_recommend: null, text: '' });
@@ -274,8 +375,15 @@ export default function ClientPortal({ profile, signOut }) {
 
   useEffect(() => {
     if (!job || tab !== 'financials' || !job.cost_plus) return;
+    // Legacy helpers kept for backward compat fallback (jobs with no draws)
     Promise.all([sbLoadCostItems(job.id), sbLoadCostInvoices(job.id), sbLoadEstimateLineItems(job.id)])
       .then(([its, invs, budget]) => { setCostItems(its); setCostInvoices(invs); setBudgetItems(budget); });
+    // New draw breakdown (Phase 6)
+    setDrawBreakdownLoading(true);
+    sbLoadClientDrawBreakdown(job.id).then(result => {
+      setDrawBreakdown(result.ok ? result.data : []);
+      setDrawBreakdownLoading(false);
+    });
   }, [job?.id, tab]);
 
   useEffect(() => {
@@ -303,7 +411,7 @@ export default function ClientPortal({ profile, signOut }) {
     setLoaded({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false });
     setPhases([]); setPhotos([]); setDocs([]); setPayments([]); setMsgs([]); setJobSubs([]);
     setTotalPaid(0); setPayingNext(false);
-    setRatings({}); setRatingDone({}); setJobReview(null); setCostItems([]); setCostInvoices([]); setNotes([]); setNoteText('');
+    setRatings({}); setRatingDone({}); setJobReview(null); setCostItems([]); setCostInvoices([]); setDrawBreakdown(null); setNotes([]); setNoteText('');
     setReviewForm({ quality: 0, communication: 0, timeliness: 0, would_recommend: null, text: '' }); setReviewDone(false);
     sbLoadJobReview(id).then(r => setJobReview(r || false));
   };
@@ -793,51 +901,70 @@ export default function ClientPortal({ profile, signOut }) {
                 </div>
               );
             })()}
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Costs</div>
-            {!costItems.filter(i => i.client_visible).length && <div className="empty">{Ic.doc}<div className="empty-t">No cost items yet</div><div>Your contractor will add cost details here</div></div>}
-            {costItems.filter(i => i.client_visible).map(item => {
-              const factor = 1 + Number(item.markup_pct || 0) / 100;
-              const estimate = Number(item.estimate || 0);
-              const clientPrice = estimate * factor;
-              const itemInvs = costInvoices.filter(i => i.cost_item_id === item.id && i.paid);
-              const paidToDate = itemInvs.reduce((a, i) => a + Number(i.amount || 0), 0) * factor;
-              return (
-                <div key={item.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{item.trade}</div>
-                      {item.vendor && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{item.vendor}</div>}
-                      {item.proposal_signed_url && (
-                        <a href={item.proposal_signed_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: '#3B82F6', textDecoration: 'none', fontWeight: 600 }}>📄 View Proposal</a>
+            {/* ── New draw breakdown (Phase 6) ── */}
+            {drawBreakdownLoading && (
+              <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading draws...</div>
+            )}
+
+            {!drawBreakdownLoading && drawBreakdown && drawBreakdown.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Draw History</div>
+                {drawBreakdown.map(({ draw, lineItems: dli, invoice }) => (
+                  <DrawCard key={draw.id} draw={draw} lineItems={dli} invoice={invoice} />
+                ))}
+              </>
+            )}
+
+            {/* ── Legacy fallback (jobs with no draws — predates the arc) ── */}
+            {!drawBreakdownLoading && drawBreakdown !== null && drawBreakdown.length === 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Costs</div>
+                {!costItems.filter(i => i.client_visible).length && <div className="empty">{Ic.doc}<div className="empty-t">No cost items yet</div><div>Your contractor will add cost details here</div></div>}
+                {costItems.filter(i => i.client_visible).map(item => {
+                  const factor = 1 + Number(item.markup_pct || 0) / 100;
+                  const estimate = Number(item.estimate || 0);
+                  const clientPrice = estimate * factor;
+                  const itemInvs = costInvoices.filter(i => i.cost_item_id === item.id && i.paid);
+                  const paidToDate = itemInvs.reduce((a, i) => a + Number(i.amount || 0), 0) * factor;
+                  return (
+                    <div key={item.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{item.trade}</div>
+                          {item.vendor && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{item.vendor}</div>}
+                          {item.proposal_signed_url && (
+                            <a href={item.proposal_signed_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: '#3B82F6', textDecoration: 'none', fontWeight: 600 }}>📄 View Proposal</a>
+                          )}
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 4 }}>Estimate</div>
+                          <div style={{ fontSize: 13, color: '#6B7280' }}>{f$(estimate)}</div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6, marginBottom: 2 }}>Markup</div>
+                          <div style={{ fontSize: 13, color: '#6B7280' }}>{item.markup_pct || 0}%</div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6, marginBottom: 2 }}>Your Price</div>
+                          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44', fontWeight: 700 }}>{f$(clientPrice)}</div>
+                          {paidToDate > 0 && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 4 }}>Paid {f$(paidToDate)}</div>}
+                        </div>
+                      </div>
+                      {itemInvs.length > 0 && (
+                        <div style={{ borderTop: '1px solid #F0ECE6', paddingTop: 10 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Paid Invoices</div>
+                          {itemInvs.map(inv => (
+                            <div key={inv.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#374151' }}>
+                              <span>{inv.date || '—'}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <span style={{ fontWeight: 600 }}>{f$(Number(inv.amount || 0) * factor)}</span>
+                                {inv.lien_waiver_signed_url && <a href={inv.lien_waiver_signed_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#3B82F6', textDecoration: 'none' }}>📎 Lien Waiver</a>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 4 }}>Estimate</div>
-                      <div style={{ fontSize: 13, color: '#6B7280' }}>{f$(estimate)}</div>
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6, marginBottom: 2 }}>Markup</div>
-                      <div style={{ fontSize: 13, color: '#6B7280' }}>{item.markup_pct || 0}%</div>
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6, marginBottom: 2 }}>Your Price</div>
-                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44', fontWeight: 700 }}>{f$(clientPrice)}</div>
-                      {paidToDate > 0 && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 4 }}>Paid {f$(paidToDate)}</div>}
-                    </div>
-                  </div>
-                  {itemInvs.length > 0 && (
-                    <div style={{ borderTop: '1px solid #F0ECE6', paddingTop: 10 }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Paid Invoices</div>
-                      {itemInvs.map(inv => (
-                        <div key={inv.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#374151' }}>
-                          <span>{inv.date || '—'}</span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontWeight: 600 }}>{f$(Number(inv.amount || 0) * factor)}</span>
-                            {inv.lien_waiver_signed_url && <a href={inv.lien_waiver_signed_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#3B82F6', textDecoration: 'none' }}>📎 Lien Waiver</a>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </>
+            )}
           </div>}
 
         </div>
