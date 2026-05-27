@@ -1619,6 +1619,19 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Files: tools/audit_schema_vs_code.js. No src/ or supabase/ changes.
 - Commit: 4cc9dd9.
 
+[LOG — 2026-05-27 — create_job tool cost-plus fields hotfix shipped]
+- Action: 3 bugs fixed in ai-master-agent create_job verb after live cost-plus onboarding test on 8617 Houston Lenexa KS.
+- Bug 1: create_job input_schema was missing cost_plus, labor_markup_pct, material_markup_pct. Agent had no schema path to capture "cost-plus at 25%" intent. Added all 3 fields to TOOLS input_schema. default_markup_pct backfilled in executor for legacy compat (not advertised in schema — Locked Decision #19).
+- Bug 2: describeConfirmAction for create_job was generic bits-joined string. Replaced with explicit multi-line preview showing address, client, contract value, cost-plus Y/N + markup rates, status, scope.
+- Bug 3: System prompt: added INTENT RESOLUTION block — single primary verb per response, no multi-tool inference on compound user messages. Internal read-support calls (get_jobs etc.) are exempt.
+- System prompt: COST-PLUS DRAW WORKFLOW extended with create_job guidance — always set cost_plus + both markup rates; single % applies to both.
+- Repair: 8617 Houston Lenexa KS job (id=58345dc5-ecae-4f6f-b502-cac80d6c43be) patched via SQL: cost_plus=true, labor_markup_pct=25, material_markup_pct=25, default_markup_pct=25. Phantom duplicate todo (5378f95d, created 20:54 same minute as job) deleted. Legit Candy Armstrong todo (e7fc2353, 20:50 with notes) preserved.
+- Root cause: Phase 1B added jobs.labor_markup_pct + jobs.material_markup_pct and updated sbGetJobs/sbSave column allowlists, but never updated the create_job tool schema. Live cost-plus onboarding hit the gap immediately.
+- Lesson: schema-add migrations must include a tool-schema audit step (see CLAUDE.md rule added this session).
+- Commit: bcea548. Pushed to main. GitHub Actions auto-deploys ai-master-agent.
+- Open: Audit ALL tools whose input_schemas were defined before Phase 1B for column-add gaps. Triage candidates: update_job (does it know about labor_markup_pct/material_markup_pct?), log_receipt (vendor field fine, but cost-plus context?), log_payment (cost-plus distinction?). Likely low risk — those tools don't create jobs — but worth verifying.
+- Note: ai-master-agent now has 24 tools (record_deposit + compose_draw added in COST_PLUS_ARC, memory line 68 shows 22 which is stale) and 13 CONFIRM_TOOLS (record_deposit + compose_draw added, memory line 69 shows 11 which is stale). Memory lines 68–69 need a rot-sweep update separately.
+
 [LOG — 2026-05-27 — COST_PLUS_ARC Phase 2B shipped — forward-looking line items]
 - Action: Phase 2B shipped. Forward-looking line items in ComposeDrawScr. Local state only — no DB calls.
 - File: ComposeDrawScr.jsx only. +136 lines net.
