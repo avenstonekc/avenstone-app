@@ -2546,3 +2546,20 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Legacy tables (photos, job_documents) still EXIST with all historical data. photos table receives new writes via dual-write (sbPhoto). job_documents receives new writes via dual-write (sbUploadDoc). Hard-drop deferred to slice 8+ after edge functions migrated.
 - Commits: cb8f452 (supabase.js + photoGate.js migrations), 440959d (NotesPhotosTab). Pushed to main.
 - Open: Slice 8 — migrate edge function readers (ai-pm-nightly, ai-project-manager, get-job-status) + ClientSignContractModal + sbDelDoc/sbToggleDocVisible to job_files; then drop dual-write (sbPhoto INSERT to photos, sbUploadDoc INSERT to job_documents).
+
+[LOG — 2026-05-27 — UNIFIED_FILES_ARC slice 8/12 shipped — edge function reader migration + dual-write drop]
+- Action: All edge function readers of photos/job_documents migrated to job_files. Dual-write dropped from sbPhoto and sbUploadDoc. Pre-existing silent bugs in sbDelDoc and sbToggleDocVisible fixed.
+- Edge functions migrated (4 reads across 3 functions):
+  1. ai-pm-nightly — 2 reads: job_documents contract query → job_files WHERE storage_bucket='job-documents' AND subcategory='Contracts' AND lifecycle_status='active'; job_documents proposal query → job_files WHERE subcategory='Proposals'. Proposal subcategory was NULL (unqueryable) — fixed to 'Proposals'.
+  2. ai-project-manager — 1 read: job_documents.select('id,name,file_type') → job_files.select('id,name,subcategory') WHERE storage_bucket='job-documents' AND lifecycle_status='active'. Output shape unchanged (only d.name used by consumer).
+  3. get-job-status — 1 read: photos table → job_files WHERE lifecycle_status='active' + in storage_bucket (['job-photos','job-files']). Reconstructs public URL (job-photos bucket) or signed URL (other buckets) per row. Fetches 8, filters videos in JS, slices to 4.
+- sbPhoto: _dualWritePhotoToJobFiles replaced by _insertPhotoToJobFiles (now the primary write, returns job_files.id). photos table INSERT removed. sbPhoto return shape unchanged: { ok, error, data: { id (job_files.id), type, url, name } }. Job rollback on job_files insert failure (storage remove). job-photos bucket preserved (public — CompletionPage.getPublicUrl requires public bucket).
+- sbUploadDoc: _dualWriteDocToJobFiles removed entirely. sbUploadDoc now inserts directly into job_files only. Returns { doc: { id (job_files.id), ... } } in backward-compatible shape. proposal subcategory='Proposals' (was NULL).
+- Pre-existing bugs fixed (silent since slice 6):
+  1. sbDelDoc: was deleting from job_documents using doc.id — but sbLoadDocs returns job_files.id since slice 6. Every delete was a silent no-op. Fixed to delete from job_files.
+  2. sbToggleDocVisible: was updating job_documents.client_visible — same id mismatch. Fixed to update job_files.client_visible.
+- Legacy tables (photos, job_documents): RETAINED with all historical rows. No new rows written to photos (sbPhoto no longer inserts). No new rows written to job_documents (sbUploadDoc no longer inserts). Hard-drop is slice 12 after soak period.
+- Known limitation: ClientSignContractModal still calls sb.from('job_documents').update({client_visible:true}).eq('id', r.doc.id) — was broken since slice 6 (same id mismatch as sbToggleDocVisible). Accepted as known; schedule for slice 9.
+- Build: ✓ 396 modules, clean.
+- Commits: ace1fbc (ai-pm-nightly), 3229962 (ai-project-manager), d666a64 (get-job-status), 4cca251 (supabase.js dual-write drop + sbDelDoc + sbToggleDocVisible fix). Pushed to main.
+- Open: Slice 9 — fix ClientSignContractModal to update job_files.client_visible. Slices 10-12 — cleanup, FilesTab polish, hard-drop legacy tables after soak.
