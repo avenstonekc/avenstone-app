@@ -418,6 +418,31 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     }
   }, []);
 
+  // Title → trade fuzzy match. Fires only when trade is empty (never overwrites).
+  // Modal-side fallback for when the agent omits/guesses trade or the user types
+  // a title before picking a sub. Scoring: trailing segment (3) > leading (2) > word (1).
+  useEffect(() => {
+    if (form.trade) return;
+    if (!trades.length) return;
+    const norm = form.title.toLowerCase().replace(/[^\w\s/-]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!norm) return;
+    const titleWords = norm.split(' ').filter(w => w.length >= 4);
+    let bestScore = 0;
+    let bestTrade = '';
+    for (const t of trades) {
+      const tl = t.toLowerCase();
+      const parts = tl.split(/\s+-\s+|\s+\/\s+/);
+      const trailing = parts[parts.length - 1].trim();
+      const leading  = parts[0].trim();
+      let score = 0;
+      if (trailing && norm.includes(trailing))      score = 3;
+      else if (leading && norm.includes(leading))   score = 2;
+      else if (titleWords.some(w => tl.includes(w))) score = 1;
+      if (score > bestScore) { bestScore = score; bestTrade = t; }
+    }
+    if (bestScore > 0) setField('trade', bestTrade);
+  }, [form.title, trades, form.trade]);
+
   const setField = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const handleEntityPhoto = async (e) => {
