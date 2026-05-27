@@ -142,6 +142,9 @@ const CONFIRM_TOOLS = new Set([
   "create_job",
   "notify_team_member",
   "create_schedule_item",
+  "log_sub_invoice",
+  "log_sub_payment",
+  "approve_sub_invoice",
 ]);
 
 // ── REQUIRED_FIELDS registry (Phase 4) ───────────────────────────────────────
@@ -680,6 +683,54 @@ const TOOLS = [
     },
     cache_control: { type: "ephemeral" },
   },
+  {
+    name: "log_sub_invoice",
+    description: "Records a new sub-contractor invoice for a job. Use when user mentions a sub sent an invoice or bill. Lands in Pending Review until owner/PM approves.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id: { type: "string", description: "Job ID. Use the active job context if available." },
+        sub_name: { type: "string", description: "Name of the subcontractor." },
+        amount: { type: "number", description: "Total invoice amount in USD." },
+        invoice_number: { type: "string", description: "Invoice number if user mentioned one. Omit to auto-generate." },
+        invoice_date: { type: "string", description: "ISO date YYYY-MM-DD. Default today if not specified." },
+        due_date: { type: "string", description: "ISO date YYYY-MM-DD. Optional." },
+        description: { type: "string", description: "Short description of work invoiced." },
+      },
+      required: ["job_id", "sub_name", "amount"],
+    },
+  },
+  {
+    name: "log_sub_payment",
+    description: "Records a payment made to a sub against an existing approved invoice. Use when user mentions paying a sub or writing a check to a sub. If sub has multiple unpaid invoices, ask which before calling this tool.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id: { type: "string", description: "Job ID. Use active job context." },
+        sub_name: { type: "string", description: "Name of the sub being paid." },
+        amount: { type: "number", description: "Payment amount in USD." },
+        method: { type: "string", enum: ["check", "ach", "cash", "card", "other"], description: "Payment method." },
+        reference: { type: "string", description: "Check number, ACH confirmation, or transaction ID. Optional." },
+        paid_date: { type: "string", description: "ISO date YYYY-MM-DD. Default today." },
+        invoice_id: { type: "string", description: "UUID of specific invoice to pay. Required if sub has multiple unpaid invoices." },
+        notes: { type: "string", description: "Optional notes." },
+      },
+      required: ["job_id", "sub_name", "amount", "method"],
+    },
+  },
+  {
+    name: "approve_sub_invoice",
+    description: "Approves a sub invoice in pending_review status. Owner/PM only. Use when user explicitly approves an invoice from a sub.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id: { type: "string", description: "Job ID." },
+        sub_name: { type: "string", description: "Name of the sub whose invoice to approve." },
+        invoice_id: { type: "string", description: "UUID of specific invoice. Required if sub has multiple pending invoices on this job." },
+      },
+      required: ["job_id", "sub_name"],
+    },
+  },
 ];
 
 // ─── Tool executor ────────────────────────────────────────────────────────────
@@ -689,7 +740,8 @@ async function executeTool(
   tenantId: string,
   userId: string,
   toolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  userRole = "owner",
 ): Promise<Record<string, unknown>> {
   try {
     switch (toolName) {
@@ -1291,6 +1343,174 @@ async function executeTool(
         return { success: true, knowledge_id: data.id, category: data.category };
       }
 
+      case "log_sub_invoice": {
+        // 1. Resolve sub_contact_id from sub_name
+        const { data: siContacts } = await sb
+          .from("contacts")
+          .select("id, name")
+          .eq("tenant_id", tenantId)
+          .eq("type", "sub")
+          .ilike("name", `%${String(input.sub_name)}%`);
+
+        let subContactId: string;
+        if (!siContacts || siContacts.length === 0) {
+          // Auto-create minimal contact (matches UI combobox behavior)
+          const { data: newContact, error: createErr } = await sb
+            .from("contacts")
+            .insert({ name: String(input.sub_name).trim(), type: "sub", tenant_id: tenantId })
+            .select("id")
+            .single();
+          if (createErr || !newContact) return { error: `Could not create sub contact: ${createErr?.message}` };
+          subContactId = (newContact as any).id;
+        } else if (siContacts.length > 1) {
+          const names = siContacts.map((c: any) => c.name).join(", ");
+          return { error: `Multiple subs match "${input.sub_name}": ${names}. Please be more specific.` };
+        } else {
+          subContactId = (siContacts[0] as any).id;
+        }
+
+        // 2. Auto-generate invoice number if not provided
+        let invoiceNumber = input.invoice_number ? String(input.invoice_number) : null;
+        let autoGenerated = false;
+        if (!invoiceNumber) {
+          const { count: invCount } = await sb
+            .from("sub_invoices")
+            .select("id", { count: "exact", head: true })
+            .eq("job_id", input.job_id)
+            .eq("sub_contact_id", subContactId)
+            .is("voided_at", null);
+          const nameSlug = String(input.sub_name).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20);
+          const jobShort = String(input.job_id).slice(-6);
+          invoiceNumber = `${nameSlug}-${jobShort}-${(invCount || 0) + 1}`;
+          autoGenerated = true;
+        }
+
+        // 3. Insert sub_invoice
+        const siToday = new Date().toISOString().split("T")[0];
+        const { data: inv, error: invErr } = await sb
+          .from("sub_invoices")
+          .insert({
+            tenant_id: tenantId,
+            job_id: input.job_id,
+            sub_contact_id: subContactId,
+            invoice_number: invoiceNumber,
+            auto_generated_number: autoGenerated,
+            invoice_date: input.invoice_date || siToday,
+            due_date: input.due_date || null,
+            amount: Number(input.amount),
+            description: input.description || null,
+            submitted_via: "master_agent",
+            created_by_id: userId,
+          })
+          .select("id, invoice_number")
+          .single();
+
+        if (invErr) return { error: `Failed to log invoice: ${invErr.message}` };
+        return { success: `Invoice ${(inv as any).invoice_number} from ${input.sub_name} for $${Number(input.amount).toFixed(2)} logged. Pending review.` };
+      }
+
+      case "log_sub_payment": {
+        // 1. Resolve sub contact
+        const { data: spContacts } = await sb
+          .from("contacts")
+          .select("id, name")
+          .eq("tenant_id", tenantId)
+          .eq("type", "sub")
+          .ilike("name", `%${String(input.sub_name)}%`);
+
+        if (!spContacts?.length) return { error: `No sub found matching "${input.sub_name}".` };
+        if (spContacts.length > 1) return { error: `Multiple subs match "${input.sub_name}": ${spContacts.map((c: any) => c.name).join(", ")}. Be more specific.` };
+        const spSubContactId = (spContacts[0] as any).id;
+        const spSubName = (spContacts[0] as any).name;
+
+        // 2. Resolve invoice
+        let spInvoiceId = input.invoice_id ? String(input.invoice_id) : null;
+        if (!spInvoiceId) {
+          const { data: invoices } = await sb
+            .from("sub_invoices")
+            .select("id, invoice_number, amount")
+            .eq("job_id", input.job_id)
+            .eq("sub_contact_id", spSubContactId)
+            .is("voided_at", null)
+            .eq("disputed", false)
+            .not("approved_at", "is", null);
+
+          if (!invoices?.length) return { error: `No approved unpaid invoices from ${spSubName} on this job. Log and approve the invoice first.` };
+          if (invoices.length > 1) {
+            const list = invoices.map((i: any) => `${i.invoice_number} ($${Number(i.amount).toFixed(2)})`).join(", ");
+            return { error: `Multiple unpaid invoices from ${spSubName}: ${list}. Specify which invoice with invoice_id.` };
+          }
+          spInvoiceId = (invoices[0] as any).id;
+        }
+
+        // 3. Call RPC (Phase 4a atomic function)
+        const spToday = new Date().toISOString().split("T")[0];
+        const { data: rpcResult, error: rpcErr } = await sb.rpc("add_sub_invoice_payment_with_ledger", {
+          p_sub_invoice_id: spInvoiceId,
+          p_amount: Number(input.amount),
+          p_paid_date: input.paid_date || spToday,
+          p_method: input.method,
+          p_reference: input.reference || null,
+          p_notes: input.notes || null,
+        });
+
+        if (rpcErr) return { error: `Payment failed: ${rpcErr.message}` };
+        const row = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
+        return { success: `Payment of $${Number(input.amount).toFixed(2)} to ${spSubName} recorded. Invoice status: ${(row as any)?.new_status ?? "updated"}.` };
+      }
+
+      case "approve_sub_invoice": {
+        // 1. Role check
+        if (!["owner", "project_manager"].includes(userRole)) {
+          return { error: "Only owner or project manager can approve sub invoices." };
+        }
+
+        // 2. Resolve sub contact
+        const { data: apContacts } = await sb
+          .from("contacts")
+          .select("id, name")
+          .eq("tenant_id", tenantId)
+          .eq("type", "sub")
+          .ilike("name", `%${String(input.sub_name)}%`);
+
+        if (!apContacts?.length) return { error: `No sub found matching "${input.sub_name}".` };
+        if (apContacts.length > 1) return { error: `Multiple subs match "${input.sub_name}": ${apContacts.map((c: any) => c.name).join(", ")}. Be more specific.` };
+        const apSubContactId = (apContacts[0] as any).id;
+        const apSubName = (apContacts[0] as any).name;
+
+        // 3. Resolve invoice
+        let apInvoiceId = input.invoice_id ? String(input.invoice_id) : null;
+        if (!apInvoiceId) {
+          const { data: apInvoices } = await sb
+            .from("sub_invoices")
+            .select("id, invoice_number, amount, invoice_date, description")
+            .eq("job_id", input.job_id)
+            .eq("sub_contact_id", apSubContactId)
+            .is("voided_at", null)
+            .is("approved_at", null)
+            .eq("disputed", false);
+
+          if (!apInvoices?.length) return { error: `No pending invoices from ${apSubName} on this job.` };
+          if (apInvoices.length > 1) {
+            const list = apInvoices.map((i: any) => `${i.invoice_number} ($${Number(i.amount).toFixed(2)})`).join(", ");
+            return { error: `Multiple pending invoices from ${apSubName}: ${list}. Specify which with invoice_id.` };
+          }
+          apInvoiceId = (apInvoices[0] as any).id;
+        }
+
+        // 4. Approve
+        const apNow = new Date().toISOString();
+        const { error: appErr } = await sb
+          .from("sub_invoices")
+          .update({ approved_at: apNow, approved_by_id: userId })
+          .eq("id", apInvoiceId)
+          .is("voided_at", null)
+          .is("approved_at", null);
+
+        if (appErr) return { error: `Approval failed: ${appErr.message}` };
+        return { success: `Invoice from ${apSubName} approved. Ready for payment.` };
+      }
+
       default:
         return { error: `Unknown tool: ${toolName}` };
     }
@@ -1416,6 +1636,17 @@ function describeConfirmAction(tool: string, input: any): string {
       if (input.is_milestone || input.type === "milestone") bits.push("milestone");
       return bits.join(" · ") + ".";
     }
+    case "log_sub_invoice": {
+      const invNum = input.invoice_number ? String(input.invoice_number) : "auto-generate";
+      const invDate = input.invoice_date ? String(input.invoice_date) : new Date().toISOString().split("T")[0];
+      return `Log invoice from ${input.sub_name} for ${fmtMoney(input.amount)} (${amountToWords(input.amount)}). Invoice #${invNum}. Date: ${invDate}.`;
+    }
+    case "log_sub_payment": {
+      const ref = input.reference ? String(input.reference) : "—";
+      return `Record ${input.method} payment of ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) to ${input.sub_name}. Reference: ${ref}.`;
+    }
+    case "approve_sub_invoice":
+      return `Approve invoice from ${input.sub_name} on job ${String(input.job_id || "")}.`;
     default:
       return "Perform this action.";
   }
@@ -1450,7 +1681,7 @@ Tenant: ${tenantId}${contextLine}
 
 WHAT YOU CAN DO:
 - Read: jobs, team
-- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, send notifications, write to knowledge base, create schedule items
+- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, log sub invoices, log sub payments, approve sub invoices, send notifications, write to knowledge base, create schedule items
 
 HOW TO BEHAVE:
 - Act immediately. Don't ask "should I do X?" — just do it and tell them what you did.
@@ -1458,7 +1689,7 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
-- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, create_schedule_item): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
+- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
 - Missing required fields: call the tool with whatever fields you have. If any required field is missing, the system surfaces a missing-field card automatically — do NOT ask in text first ("What's the amount?", "Which job?", etc.). Never invent values to fill gaps; just call the tool and let the card collect the rest.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: do NOT pass override_reason. Just call the tool with the job_id. If gates fail, the system surfaces a gate-resolution card automatically (redirect to Schedule / leave open / override-with-structured-reason). Do not ask in text whether to override — the card IS the prompt.
@@ -1494,6 +1725,9 @@ When the user says things like "schedule [sub/event] for [day]" or "add [event] 
 - If the user implies a phase ("for the framing phase", "drywall milestone"), pass it as phase_search.
 - After the confirmation card is approved, tell the user what got scheduled, including date, any sub invited, and any phase linked.
 - Do NOT call this tool speculatively — only when the user is explicitly asking for something to be scheduled.
+
+SUB INVOICE WORKFLOW
+Sub invoice workflow: When user mentions a sub sent an invoice or bill, use log_sub_invoice. When user mentions paying a sub, use log_sub_payment — if multiple unpaid invoices exist for that sub, ask which before calling. When user explicitly approves a sub invoice, use approve_sub_invoice (owner/PM only). Do not invent sub names — if unclear, ask the user to confirm spelling first. Void and dispute actions are UI-only; tell user to use FinancialsTab if they ask.
 
 DIAGNOSTIC REPORTING STYLE
 
@@ -1642,7 +1876,7 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
 
       for (const block of blocks) {
         if (block.type === "tool_use" && block.name && block.id) {
-          const result = await executeTool(sb, tenantId, userId, block.name, block.input || {});
+          const result = await executeTool(sb, tenantId, userId, block.name, block.input || {}, userRole);
           actions.push({ tool: block.name, input: block.input, result });
 
           // Post-execution elicitation: inspect the result and emit a card if needed.
@@ -1722,7 +1956,7 @@ Deno.serve(async (req) => {
     }
 
     if (confirmed && pending_action?.tool) {
-      const result = await executeTool(sb, tenant_id, user_id, pending_action.tool, pending_action.input || {});
+      const result = await executeTool(sb, tenant_id, user_id, pending_action.tool, pending_action.input || {}, role || "owner");
       const action = { tool: pending_action.tool, input: pending_action.input, result };
       const confirmedInput = pending_action.input || {};
       const response = (result as any)?.error
