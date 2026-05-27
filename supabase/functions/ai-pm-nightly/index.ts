@@ -74,11 +74,13 @@ Deno.serve(async (req) => {
           sb.from("notifications").select("type").eq("job_id", job.id).gte("created_at", new Date(Date.now() - 86400000).toISOString()),
           sb.from("estimate_line_items").select("phase,client_price,total_cost").eq("job_id", job.id),
           sb.from("quote_requests").select("*,responses:bid_responses(*)").eq("job_id", job.id),
-          sb.from("job_documents").select("id,file_type").eq("job_id", job.id).eq("file_type", "contract"),
+          // slice 8/12: read from job_files instead of job_documents
+          sb.from("job_files").select("id,subcategory").eq("job_id", job.id).eq("storage_bucket", "job-documents").eq("subcategory", "Contracts").eq("lifecycle_status", "active"),
           sb.from("profiles").select("id").eq("tenant_id", job.tenant_id).in("role", ["project_manager", "owner"]).limit(1),
           sb.from("consultation_sessions").select("id,created_at").eq("job_id", job.id).order("created_at", { ascending: false }).limit(1),
           sb.from("job_estimates").select("id,created_at").eq("job_id", job.id).order("created_at", { ascending: false }).limit(1),
-          sb.from("job_documents").select("id,created_at").eq("job_id", job.id).eq("file_type", "proposal").order("created_at", { ascending: false }).limit(1),
+          // slice 8/12: proposals have subcategory='Proposals' in job_files (set by sbUploadDoc since slice 8)
+          sb.from("job_files").select("id,created_at").eq("job_id", job.id).eq("storage_bucket", "job-documents").eq("subcategory", "Proposals").eq("lifecycle_status", "active").order("created_at", { ascending: false }).limit(1),
         ]);
 
         const pmUserId = pmUsers?.[0]?.id || null;
