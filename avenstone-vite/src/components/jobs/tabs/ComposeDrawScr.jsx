@@ -28,6 +28,22 @@ export default function ComposeDrawScr({ job, onClose }) {
   const [title, setTitle]             = useState('');
   const [description, setDescription] = useState('');
   const [applyBucket, setApplyBucket] = useState(true);
+  // Forward-looking line items: rows NOT tied to an existing job_transactions row.
+  // Keyed by client-side temp id so add/remove/edit stays stable across renders.
+  // Shape: { [tempId]: { description, base_amount, markup_pct } }
+  const [forwardLines, setForwardLines] = useState({});
+
+  const nextForwardId = () => `fwd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const addForwardLine = () => {
+    const id = nextForwardId();
+    setForwardLines(prev => ({
+      ...prev,
+      [id]: { description: '', base_amount: '', markup_pct: Number(job?.material_markup_pct) || 0 },
+    }));
+  };
+  const removeForwardLine = id => setForwardLines(prev => { const n = { ...prev }; delete n[id]; return n; });
+  const updateForwardLine = (id, field, value) =>
+    setForwardLines(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
 
   useEffect(() => { load(); }, [job.id]);
 
@@ -61,7 +77,21 @@ export default function ComposeDrawScr({ job, onClose }) {
     return { ...e, base, pct, markupAmt, total };
   }), [expenses, overrides]);
 
-  const subtotal = useMemo(() => round2(lineItems.reduce((s, r) => s + r.total, 0)), [lineItems]);
+  const subtotal = useMemo(() => {
+    const txTotal = lineItems.reduce((s, r) => s + r.total, 0);
+    let fwdTotal = 0;
+    for (const fwd of Object.values(forwardLines)) {
+      const base = Number(fwd.base_amount) || 0;
+      const pct  = Number(fwd.markup_pct) || 0;
+      fwdTotal += base * (1 + pct / 100);
+    }
+    return round2(txTotal + fwdTotal);
+  }, [lineItems, forwardLines]);
+
+  // Submit is eligible when any transaction rows are loaded OR any forward lines exist.
+  // The button stays hard-disabled in this slice — Phase 2C wires the actual call.
+  const canSubmit = expenses.length > 0 || Object.keys(forwardLines).length > 0; // eslint-disable-line no-unused-vars
+
   const netDue   = useMemo(
     () => round2(applyBucket ? subtotal - balance.bucket : subtotal),
     [subtotal, balance.bucket, applyBucket],
@@ -168,8 +198,9 @@ export default function ComposeDrawScr({ job, onClose }) {
                 Unreimbursed Expenses ({expenses.length})
               </div>
 
+              {/* Transaction-linked rows */}
               {expenses.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px 0', color: '#9CA3AF', fontSize: 13 }}>
+                <div style={{ textAlign: 'center', padding: '16px 0 8px', color: '#9CA3AF', fontSize: 13 }}>
                   No unreimbursed expenses for this job.
                 </div>
               ) : (
@@ -186,7 +217,7 @@ export default function ComposeDrawScr({ job, onClose }) {
                     ))}
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 4 }}>
                     {lineItems.map(row => (
                       <div key={row.id} style={{
                         display: 'grid',
@@ -218,6 +249,103 @@ export default function ComposeDrawScr({ job, onClose }) {
                   </div>
                 </>
               )}
+
+              {/* Forward-looking rows */}
+              {Object.keys(forwardLines).length > 0 && (
+                <>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    borderTop: expenses.length > 0 ? `1px dashed ${BORDER}` : 'none',
+                    paddingTop: expenses.length > 0 ? 10 : 4,
+                    marginBottom: 6,
+                  }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Forward-looking</span>
+                    <span style={{ fontSize: 10, background: '#DBEAFE', color: '#1e40af', padding: '1px 7px', borderRadius: 10, fontWeight: 700 }}>Pre-billing</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                    {Object.entries(forwardLines).map(([id, fwd]) => {
+                      const base     = Number(fwd.base_amount) || 0;
+                      const pct      = Number(fwd.markup_pct) || 0;
+                      const fwdTotal = round2(base * (1 + pct / 100));
+                      return (
+                        <div key={id} style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '6px 8px', borderRadius: 4,
+                          background: '#EFF6FF', border: `1px dashed #BFDBFE`,
+                        }}>
+                          <input
+                            type="text"
+                            placeholder="e.g. Upcoming concrete pour deposit"
+                            value={fwd.description}
+                            onChange={ev => updateForwardLine(id, 'description', ev.target.value)}
+                            style={{
+                              flex: 1, fontSize: 11, padding: '3px 6px', minWidth: 0,
+                              border: `1px solid ${BORDER}`, borderRadius: 4, background: '#fff',
+                            }}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                            <span style={{ fontSize: 10, color: '#9CA3AF' }}>$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={fwd.base_amount}
+                              onChange={ev => updateForwardLine(id, 'base_amount', ev.target.value)}
+                              style={{
+                                width: 76, fontSize: 11, padding: '3px 5px',
+                                border: `1px solid ${BORDER}`, borderRadius: 4,
+                                background: '#fff', textAlign: 'right',
+                              }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={fwd.markup_pct}
+                              onChange={ev => updateForwardLine(id, 'markup_pct', ev.target.value)}
+                              style={{
+                                width: 52, fontSize: 11, padding: '3px 5px',
+                                border: `1px solid ${BORDER}`, borderRadius: 4,
+                                background: '#fff', textAlign: 'right',
+                              }}
+                            />
+                            <span style={{ fontSize: 10, color: '#9CA3AF' }}>%</span>
+                          </div>
+                          <div style={{ width: 76, fontSize: 12, fontWeight: 700, color: fwdTotal > 0 ? GOLD : NAVY, textAlign: 'right', flexShrink: 0 }}>
+                            {f$(fwdTotal)}
+                          </div>
+                          <button
+                            onClick={() => removeForwardLine(id)}
+                            title="Remove line"
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: '#9CA3AF', fontSize: 14, lineHeight: 1,
+                              padding: '2px 4px', borderRadius: 4, flexShrink: 0,
+                            }}
+                          >✕</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {/* "+ Add line item" button */}
+              <button
+                onClick={addForwardLine}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 6, padding: '8px 0',
+                  background: 'none', border: `1px dashed ${BORDER}`, borderRadius: 6,
+                  fontSize: 12, color: '#6B7280', cursor: 'pointer',
+                  marginTop: 4,
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>+</span> Add line item
+              </button>
             </div>
 
             {/* ── Section 3: Draw Summary ───────────────────────── */}
@@ -229,6 +357,11 @@ export default function ComposeDrawScr({ job, onClose }) {
                   <span>Expense subtotal (with markup)</span>
                   <span style={{ fontWeight: 700, color: NAVY }}>{f$(subtotal)}</span>
                 </div>
+                {Object.keys(forwardLines).length > 0 && (
+                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: -4 }}>
+                    Includes {Object.keys(forwardLines).length} forward-looking line{Object.keys(forwardLines).length === 1 ? '' : 's'}
+                  </div>
+                )}
 
                 {balance.bucket > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
