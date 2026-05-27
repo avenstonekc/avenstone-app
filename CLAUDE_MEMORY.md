@@ -1383,3 +1383,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - No voided_at column on job_transactions — void mechanism is status='void' (confirmed Phase 4b audit). Status enum: paid, pending, void.
 - Files: avenstone-vite/src/lib/supabase.js (sbLoadJobFinancialSummary — renamed outstanding→pending_out, direction='in'→'out'), avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx (stat cards array).
 - Lesson: stat card labels and aggregation logic must match exactly. "Outstanding" (pending income) next to "Paid Out" (paid expenses) created a semantic gap where pending expenses had no card at all.
+
+[LOG — 2026-05-27 — SUB_INVOICES_ARC Phase 5 shipped — Master Agent verbs]
+- Action: Added three confirm-gated verbs to ai-master-agent: log_sub_invoice, log_sub_payment, approve_sub_invoice.
+- All three in CONFIRM_TOOLS Set. Modeled on log_receipt pattern. Money verbs include fmtMoney + amountToWords on confirm card.
+- log_sub_invoice: resolves sub contact via contacts WHERE type='sub' ILIKE '%name%'. 0 matches → auto-create minimal contact. >1 matches → disambiguation error. Auto-generates invoice number (SI-{date}-{random}). Inserts sub_invoices with submitted_via='master_agent'.
+- log_sub_payment: resolves sub contact + invoice (disambiguation if multiple unpaid). Calls add_sub_invoice_payment_with_ledger RPC directly (Phase 4a atomicity).
+- approve_sub_invoice: early role check (owner/PM only — surfaces error before confirm card). Resolves sub + invoice, sets approved_at/approved_by_id.
+- executeTool signature extended: userRole='owner' as 6th parameter. 3 call sites updated to pass role || 'owner'.
+- describeConfirmAction: 3 new case branches.
+- System prompt: added SUB INVOICE WORKFLOW section.
+- Note: commit was stuck mid-rebase in previous session; resolved in this session by clearing corrupted rebase-merge state and committing directly.
+- Commit: 43d9d5b. Pushed to main. Build: auto-deploys via GitHub Actions.
