@@ -289,7 +289,7 @@ async function _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId) 
   }
 }
 
-export const sbPhoto = async (jid, file, entityType, entityId) => {
+export const sbPhoto = async (jid, file, entityType, entityId, category = null) => {
   try {
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${jid}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
@@ -303,6 +303,7 @@ export const sbPhoto = async (jid, file, entityType, entityId) => {
       url, name: file.name,
       ...(entityType ? { related_entity_type: entityType } : {}),
       ...(entityId   ? { related_entity_id:   entityId }   : {}),
+      ...(category   ? { category }                        : {}),
     };
     const { data: inserted, error: ie } = await sb.from('photos').insert(row).select('id').single();
     if (ie) { console.error('[sbPhoto] insert failed:', ie.message); return { ok: false, error: ie.message, data: null }; }
@@ -314,8 +315,8 @@ export const sbPhoto = async (jid, file, entityType, entityId) => {
   }
 };
 
-export const sbCountPhotosForEntity = async (entityType, entityId) => {
-  return countPhotosForEntity(sb, entityType, entityId);
+export const sbCountPhotosForEntity = async (entityType, entityId, category = null) => {
+  return countPhotosForEntity(sb, entityType, entityId, category);
 };
 
 export const sbLoadPhotosForEntity = async (entityType, entityId) => {
