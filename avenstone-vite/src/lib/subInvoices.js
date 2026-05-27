@@ -168,43 +168,33 @@ export async function sbAddSubInvoicePayment({
 }
 
 /**
- * Void a payment. Retains the row for audit trail; sum excludes voided rows.
- * Does NOT delete or void the linked job_transactions row in Phase 1
- * (Phase 4 will handle that side).
+ * Void a payment atomically — voids the sub_invoice_payments row AND the linked
+ * job_transactions row (status='void') in a single DB function call.
+ * Retains both rows for the audit trail; the payment sum excludes voided rows.
+ *
+ * Phase 4b: delegates to void_sub_invoice_payment_with_ledger RPC for atomicity.
  *
  * @param {object} params
  * @param {string}  params.paymentId
- * @param {string}  params.voidReason
- * @returns {Promise<{ok:boolean, error?:string, data?:{newStatus:string}}>}
+ * @param {string}  [params.voidReason]
+ * @returns {Promise<{ok:boolean, error?:string, data?:{paymentId:string, transactionId:string|null, newStatus:string}}>}
  */
 export async function sbVoidSubInvoicePayment({ paymentId, voidReason }) {
   try {
-    // Fetch the payment to get sub_invoice_id
-    const { data: payment, error: fetchErr } = await sb
-      .from('sub_invoice_payments')
-      .select('id, sub_invoice_id, voided_at')
-      .eq('id', paymentId)
-      .single();
-
-    if (fetchErr || !payment) return { ok: false, error: 'Payment not found' };
-    if (payment.voided_at)    return { ok: false, error: 'Payment is already voided' };
-
-    const { error: voidErr } = await sb
-      .from('sub_invoice_payments')
-      .update({
-        voided_at:    new Date().toISOString(),
-        voided_by_id: AV_USER_ID,
-        void_reason:  voidReason || null,
-      })
-      .eq('id', paymentId);
-
-    if (voidErr) return { ok: false, error: voidErr.message };
-
-    const { data: statusResult, error: statusErr } = await sb
-      .rpc('compute_sub_invoice_status', { p_invoice_id: payment.sub_invoice_id });
-
-    const newStatus = statusErr ? 'unknown' : (statusResult || 'unknown');
-    return { ok: true, data: { newStatus } };
+    const { data, error } = await sb.rpc('void_sub_invoice_payment_with_ledger', {
+      p_payment_id:  paymentId,
+      p_void_reason: voidReason || null,
+    });
+    if (error) return { ok: false, error: error.message };
+    const row = Array.isArray(data) ? data[0] : data;
+    return {
+      ok: true,
+      data: {
+        paymentId:     row.payment_id,
+        transactionId: row.transaction_id,
+        newStatus:     row.new_status,
+      },
+    };
   } catch (e) {
     return { ok: false, error: e.message || 'sbVoidSubInvoicePayment failed' };
   }
