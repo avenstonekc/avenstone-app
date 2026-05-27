@@ -161,17 +161,43 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
               </div>
             </label>
             {inf.cost_plus && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Default markup</div>
-                <input
-                  type="number"
-                  min="0"
-                  max="200"
-                  value={inf.default_markup_pct ?? ''}
-                  onChange={e => upd({ default_markup_pct: Number(e.target.value || 0) })}
-                  style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
-                />
-                <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Labor markup %</div>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={inf.labor_markup_pct ?? ''}
+                    onChange={e => upd({ labor_markup_pct: Number(e.target.value || 0) })}
+                    style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
+                  />
+                  <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Material markup %</div>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={inf.material_markup_pct ?? ''}
+                    onChange={e => upd({ material_markup_pct: Number(e.target.value || 0) })}
+                    style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
+                  />
+                  <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Legacy markup % (deprecated — use labor + material above)</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="200"
+                    value={inf.default_markup_pct ?? ''}
+                    onChange={e => upd({ default_markup_pct: Number(e.target.value || 0) })}
+                    style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
+                  />
+                  <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+                </div>
               </div>
             )}
           </div>

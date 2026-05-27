@@ -92,6 +92,8 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
     client_notify: job.client_notify || 'portal',
     cost_plus: job.cost_plus || false,
     default_markup_pct: Number(job.default_markup_pct || 0),
+    labor_markup_pct: Number(job.labor_markup_pct || 0),
+    material_markup_pct: Number(job.material_markup_pct || 0),
     referring_realtor_name: job.referring_realtor_name || '',
     referring_realtor_phone: job.referring_realtor_phone || '',
     referring_realtor_email: job.referring_realtor_email || '',
