@@ -1412,3 +1412,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   3. sbToggleAutoShare (stale pre-patch name in blueprint Phase 1 detail) replaced by sbSetCompanyFileRoles per patched blueprint locked decision 3 and net-new list.
   4. sbLoadCompanyFilesForSub, sbScheduleCompanyFileExpirations, sbCancelCompanyFileScheduledActions omitted — Phase 3b/5 scope.
 - Next: Phase 1 admin UI or Phase 2 FilesTab integration — Kalin decides order.
+
+[LOG — 2026-05-27 — Ledger bulk Mark Paid]
+- Action: Added per-row checkboxes + select-all + floating "Mark X as Paid" bar to Ledger view in FinancialsTab. Bulk helper sbMarkTransactionsPaid does one UPDATE with .in('id', ids) + .eq('status', 'pending') guard for atomicity + idempotency.
+- Owner+PM gated (isManager = ['owner','project_manager'].includes(profile?.role)). Checkboxes only render on pending expense rows (direction='out', status='pending'). Selection resets on filter pill change and after successful mark-paid.
+- Select-all checkbox uses ref-based indeterminate state for partial-selection visual. Floating action bar is sticky:top with amber background (#fef3c7) matching PENDING pill palette.
+- Sets date_paid to today on bulk update. Pending Out / Paid Out stat cards reflect changes after reload.
+- Files: avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx, avenstone-vite/src/lib/supabase.js. Commit: c3605d3.
+- Next: keep COMPANY_FILES_ARC Phase 2 rolling in parallel CMD.
