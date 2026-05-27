@@ -77,7 +77,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     setLoading(true);
     const [data, sum] = await Promise.all([
       sbLoadJobTransactions(job.id),
-      sbLoadJobFinancialSummary(job.id, { contractValue: job.contract_value, coTotal: job.co_total }),
+      sbLoadJobFinancialSummary(job.id, { contractValue: job.contract_value, coTotal: job.co_total, costPlus: job.cost_plus }),
     ]);
     setTxs(data);
     setSummary(sum);
@@ -308,6 +308,17 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
               { lb: 'Pending Out', v: f$(summary.pending_out),                                         c: summary.pending_out > 0 ? '#b45309' : '#9CA3AF' },
               { lb: 'Paid Out',    v: f$(summary.total_out),                                           c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
             ];
+            // Cost-plus stat cards — only when job is cost-plus
+            if (job?.cost_plus === true && summary.float_unreimbursed !== undefined) {
+              const surplus = summary.bucket_balance - summary.float_unreimbursed;
+              stats.push(
+                { lb: 'Float Out',    v: f$(summary.float_unreimbursed), c: summary.float_unreimbursed > 0 ? '#b45309' : '#9CA3AF' },
+                summary.client_float_owed > 0
+                  ? { lb: 'Client Owes ↑', v: f$(summary.client_float_owed),  c: '#ef4444' }
+                  : { lb: 'Bucket Credit', v: f$(Math.max(0, surplus)),        c: '#22c55e' },
+                { lb: 'Markup ★',    v: f$(summary.markup_earned),       c: summary.markup_earned > 0 ? '#C9A84C' : '#9CA3AF' },
+              );
+            }
             return (
               <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
                 {stats.map(({ lb, v, c, bold }) => (
