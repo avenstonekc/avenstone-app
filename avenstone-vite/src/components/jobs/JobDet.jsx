@@ -3,7 +3,8 @@ import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, AI_PM_URL, sbNotif
 import { Ic, sc, sl, f$, STATS, isMob } from '../../lib/utils';
 import InfoTab from './tabs/InfoTab';
 import ScheduleTab from './tabs/ScheduleTab';
-import DocsTab from './tabs/DocsTab';
+import DocsTab from './tabs/DocsTab'; // kept for Phase 3 removal
+import FilesTab from './tabs/FilesTab';
 import MessagesTab from './tabs/MessagesTab';
 import ConsultationTab from './tabs/ConsultationTab';
 import FinancialsTab from './tabs/FinancialsTab';
@@ -20,7 +21,7 @@ const TABS = [
   { id: 'sched',      lb: 'Schedule',     ic: 'sched' },
   { id: 'field',      lb: 'Field',        ic: 'clip' },
   { id: 'msgs',       lb: 'Messages',     ic: 'note' },
-  { id: 'docs',       lb: 'Documents',    ic: 'folder' },
+  { id: 'files',      lb: 'Files',        ic: 'folder' },
   { id: 'scanner',    lb: 'Scanner',      ic: 'doc' },
   { id: 'session',    lb: 'Consultation', ic: 'eye' },
 ];
@@ -99,7 +100,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
   const [docs, setDocs] = useState([]);
   const [docsLoaded, setDocsLoaded] = useState(false);
 
-  // Re-fetch docs every time the user navigates to the docs tab
+  // Re-fetch docs when user navigates to docs tab (DocsTab is Phase 3 removal; no-op while 'files' is active)
   useEffect(() => {
     if (tab === 'docs') setDocsLoaded(false);
   }, [tab]);
@@ -258,7 +259,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} sub={fieldSub} setSub={setFieldSub} />}
-        {tab === 'docs' && <DocsTab job={job} docs={docs} setDocs={setDocs} docsLoaded={docsLoaded} setDocsLoaded={setDocsLoaded} />}
+        {tab === 'files' && <FilesTab job={job} profile={profile} />}
         {tab === 'scanner' && <FloorPlanTab job={job} profile={profile} />}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} setTab={setTab} />}
       </div>
