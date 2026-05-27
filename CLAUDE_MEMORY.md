@@ -1751,3 +1751,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Ambiguous (manual review needed): (a) VOICE_AGENT Phase 3/4 on-device verification status; (b) sbAdvancePhase .catch() bug class at line 4093+ requires manual read to confirm if query-builder .catch() pattern exists there
 - Drift patterns observed: (1) LOG audit follow-up pointers (line numbers + function names) rot fastest when code moves; (2) files declared "built-not-wired" can be silently deleted without memory update; (3) CHECK constraints gain new values in follow-up migrations that aren't reflected in the original schema entry
 - Reliability flag reinforced: open-item line numbers and file paths are the highest-rot claims. Verify before acting on them.
+
+[LOG — 2026-05-27 — COST_PLUS_ARC Phase 5 shipped — record_deposit + compose_draw Master Agent verbs]
+- Action: Two new confirm-gated write verbs added to supabase/functions/ai-master-agent/index.ts.
+- record_deposit: Inserts job_transactions direction=in, type=client_deposit, invoice_id=null, status=paid. Owner/PM only. Bucket balance increases by amount.
+- compose_draw: Pre-confirm hydration loads all unreimbursed expenses + bucket balance, computes markup line items, gross, net_due (with bucket offset). Returns confirm card with expense count, gross, bucket offset, draw target. On confirm: calls compose_draw RPC. Owner/PM only. Aborts early (before confirm card) if job.cost_plus=false.
+- CONFIRM_TOOLS: 11 → 13. REQUIRED_FIELDS: both verbs added (job_id select dynamic_options:active_jobs, amount text for record_deposit).
+- System prompt: WHAT YOU CAN DO updated, confirm-gate list updated (11→13), COST-PLUS DRAW WORKFLOW section added.
+- Drift audit: write drift 0. reference schema field removed (folded into description hint). type/status/invoice_id flags are hardcoded constants (acceptable pattern — same as log_payment).
+- Test (test_phase5_agent_verbs.js): 14/14 PASS. Sandbox restored (bucket $8,500, unreimbursed $42,637).
+- Files: supabase/functions/ai-master-agent/index.ts. Commits: 892900d, aa3f646 (after rebase). Pushed to main.
+- Open: Phase 6 — client portal migration (ClientPortal.jsx cost-plus draw breakdown).
