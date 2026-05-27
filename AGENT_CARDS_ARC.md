@@ -4,7 +4,7 @@ Living design doc for the agent-card arc. Read at the start of any
 session that touches MasterAgent.jsx, ai-master-agent, ai-field-agent,
 or adds a verb that needs structured input from the user.
 
-## Status as of 2026-05-19
+## Status as of 2026-05-20
 - **Phase 1 — Shipped 2026-05-18.** Card schema, MasterAgent renderer, round-trip wiring. Commits: 6067a0d, 48b97d2, 0fcbab8.
 - **Phase 2 — Shipped 2026-05-19.** Receipt categorization card. ELICIT_TOOLS registry + log_receipt elicitor + executor hardened. Commit: 133f937.
 - **labor type added 2026-05-19.** `labor` joined the job_transactions type set (direct hourly-labor, distinct from sub_payout). Receipt card option list updated to 9 options. Commits: 5c6a064, c42b6a7, e796755.
@@ -12,6 +12,7 @@ or adds a verb that needs structured input from the user.
 - **Phase 4 — Shipped 2026-05-19.** Generic missing-field validator. REQUIRED_FIELDS registry (12 write tools) + validateRequiredFields. Phase 2's bespoke log_receipt elicitor absorbed. text question type added. Commits: af2c9ba, 697cbed.
 - **Phase 5 — Shipped 2026-05-19.** Gate resolution card. POST_EXECUTE_ELICIT entry for advance_phase emits Card A (redirect / leave open / override LAST). Card B collects structured override reason + optional detail; deterministic branch in card_response handler runs executor with combined reason. pending_card.meta echo channel + optional CardQuestion flag added. Commits: fd92fbc, 93dc605, 9bf8ad4.
 - **v1 arc complete.** Phase 6 (field voice rendering of cards) is deferred — gated on VOICE_AGENT Phase 3 (native iOS STT) shipping a hands-free path.
+- **Phase 7 (Contextual Job Context) — Shipped 2026-05-20.** viewportJobId state lifted from JobsScr to App.jsx. Client-side context_confirm card fires when suggestedJobId changes. context_job_id sent in every POST body. Server injects into system prompt + pre-fills job_id in all tool blocks (block-level, before validateRequiredFields and executeTool). Conversation-context-wins-over-viewport (Option A). All 5 smoke tests pass. Commits: d614ecd, 412cd44, 708545c, aab3a78, 9dd8c68.
 - Sibling arcs: VOICE_AGENT (Phase 3+4 shipped), EXECUTION_ARC (complete).
 
 ## The goal
@@ -157,55 +158,49 @@ Phase 6 (deferred): Field voice rendering for cards. Likely "say one
 of: A, B, C" with grammar matching. Wait until VOICE_AGENT Phase 3
 ships first.
 
-### Phase 7: Contextual Job Context (queued, audit-first)
+### Phase 7: Contextual Job Context — SHIPPED 2026-05-20
 
-**Problem:** When MasterAgent is opened from inside a JobDet (project)
-view, the agent doesn't automatically know which job the user is
-working on. Agent has to ask via REQUIRED_FIELDS, or user has to state
-the job name in every message. Friction.
+Commits: d614ecd (state lift), 412cd44 (context card), 708545c (client POST),
+aab3a78 (system prompt), 9dd8c68 (pre-fill).
 
-**Design — opening confirm card:**
+**Design note (corrected from original spec):** Original doc said
+"MasterAgent rendered inside JobDet receives suggestedJobId prop" — this
+was written before the App-level mount was locked. Actual path: `sel` state
+lifted from JobsScr to App.jsx as `viewportJobId`. App passes
+`suggestedJobId={viewportJobId}` to MasterAgent at the top level.
 
-- MasterAgent rendered inside JobDet receives a `suggestedJobId` prop.
-- Agent's FIRST message in the conversation is a pending_card:
-  "Are we working on [job_name]?" with yes/no options.
-- User confirms (tap or voice "yes"): context = that job_id, locked
-  for the conversation.
-- User declines: no context, agent behaves like global master agent.
-- Mid-conversation override: user can say "actually let's work on
-  Smith remodel" → agent acknowledges, switches context.
+**What shipped:**
+- `viewportJobId` state at App.jsx. JobsScr fires `onJobOpen/onJobClose`
+  callbacks via useEffect on `sel`. Unmount cleanup clears on screen nav.
+- MasterAgent: `contextJobId` state + `suggestedJobId`/`jobs` props.
+  Client-side pending_card (kind=`context_confirm`) fires when suggestedJobId
+  changes and hasn't been confirmed or declined this session. No edge fn call
+  for the card itself — it's pure React state.
+- submitCard branches on `meta.kind === 'context_confirm'` before the normal
+  edge-fn path: yes → `setContextJobId`, no → `declinedForJobRef`.
+- `context_job_id` included in every POST body when contextJobId is set.
+- Server: fetches job addr, injects `Context job: <addr> (id: <uuid>)` into
+  system prompt. HOW TO BEHAVE note added. Block-level pre-fill of job_id in
+  any tool block whose REQUIRED_FIELDS spec uses dynamic_options:"active_jobs".
+- Conversation-context-wins-over-viewport (Option A locked): navigating to a
+  new job fires a new context card; user must confirm to switch. Declining
+  keeps existing context.
 
-**Why this beats silent prop-injection:**
-- Eliminates wrong-job-by-default bug class. User always knows the
-  agent's context because they set it themselves.
-- Eliminates stale-context-on-navigation. Context is fixed by
-  conversation start, not viewport.
-- Override behavior is trivially correct: explicit user mention always
-  beats existing context, no priority logic needed.
+**Smoke tests (all PASS — code trace):**
+1. Open in job, confirm → next tool call → job_id pre-filled, REQUIRED_FIELDS
+   asks only for other missing fields, Confirm card shows correct job. PASS.
+2. Open in job, confirm context A → mention Smith → disambiguation card fires
+   (explicit mention wins), row written with Smith id. PASS.
+3. Open outside job → no suggestedJobId → no card, REQUIRED_FIELDS elicits
+   normally. PASS.
+4. Open outside job, mention job → no context card, disambiguation handles it.
+   PASS.
+5. Switch jobs mid-session: new context_confirm card fires for B. No → context
+   stays A. Yes → context switches to B, history preserved. PASS both branches.
 
-**Reuses:** AGENT_CARDS pending_card infrastructure (Phases 1-5).
-Voice-confirm slice's yes/no grammar handles voice confirm of the
-opening card.
-
-**Implementation flow (when built):**
-- `suggestedJobId` prop from MasterAgent's parent (JobDet).
-- Edge function injects opening confirm pending_card as first assistant
-  message if `suggestedJobId` is present and conversation is new.
-- Conversation state stores confirmed `contextJobId` after user yes.
-- REQUIRED_FIELDS checks contextJobId before eliciting a job_id field.
-- Tool calls that need job_id pre-fill from contextJobId.
-
-**Smoke test cases (locked):**
-1. Open agent in job, no job mention → uses contextual job after user confirms.
-2. Open agent in job, mention different job → uses mentioned job (override works).
-3. Open agent outside any job, no mention → REQUIRED_FIELDS elicits normally.
-4. Open agent outside job, mention job → uses mentioned job.
-5. Switch jobs mid-conversation → defined behavior: explicit re-state required;
-   navigation alone does not switch context.
-
-**Status:** queued; audit-first before build (current job_id handling
-in ai-master-agent is unknown — needs map of where job_id is resolved,
-defaulted, or left blank).
+**add_todo edge case confirmed:** `add_todo` has no `job_id` in REQUIRED_FIELDS
+(line 192-194 of index.ts) — block-level pre-fill correctly skips it. Job-less
+todos remain valid.
 
 ## Guard rails (non-negotiable)
 
