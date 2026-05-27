@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Avenstone** — an AI-powered construction field operations platform for Avenstone Contracting (Kansas City, MO). Manages the full job lifecycle: leads → AI consultation → estimate → proposal → contract → field ops → client portal → payments.
 
-**Today screen** is the morning brief replacement and the unifying interface across roles. On cold-start, the app lands here if the user has pending todos. Features (EstimateTab restructure, Subs tab, Materials tab, Takeoff wizard) emit todos as they ship — Today is the substrate. Todos with `type='failed_intent'` render amber (FEF3C7 background, FCD34D border, amber left accent) with a "↩ Resume" button that fires `setPendingAction` → App.jsx routes to the right screen and pre-fills the original form. Auto-resolves via `sbCompleteTodo` on successful save; remains open if user closes modal without saving.
+**HomeScr** is the morning brief replacement and the unifying interface across roles. On cold-start, the app lands here if the user has pending todos. Features (EstimateTab restructure, Subs tab, Materials tab, Takeoff wizard) emit todos as they ship — Today is the substrate. Todos with `type='failed_intent'` render amber (FEF3C7 background, FCD34D border, amber left accent) with a "↩ Resume" button that fires `setPendingAction` → App.jsx routes to the right screen and pre-fills the original form. Auto-resolves via `sbCompleteTodo` on successful save; remains open if user closes modal without saving.
 
 **Competitive advantage:** AI embedded at every step of field operations. Not a CRM. Not a marketing tool. The thing that makes crews smarter, faster, and more profitable on every job.
 
@@ -301,18 +301,6 @@ curl -X POST -H "x-auth-token: $CODEMAGIC_PAT" \
 ---
 
 ## The AI System — How It All Connects
-
-This is Avenstone's core competitive advantage. Six surfaces:
-
-- **LiDAR intake** (`AiIntakeWizard.jsx` + `LidarScanner.jsx`) — floor picker → scan rooms (ContinuousRoomScanViewController, worldX/worldZ) → height capture → quality report → save to job_lidar_scans / contact_lidar_scans → buildFloorPlanPDF. Supports interior multi-room and exterior ARKit outline. Original ai-intake chat flow retired.
-- **Tenant setup** (`AiSetupWizard.jsx`) — opens via manual button on AiKnowledgeScr; no auto-fire. 7 questions → populates ai_knowledge with labor rate, markup, draw structure, CO policy, specialties.
-- **AI Consultation** (`process-transcript` edge fn) — ambient mode extracts concerns/budget/scope → consultation_extractions; measure mode guides rep trade-by-trade → consultation_measurements. UI is `ConsultationTab.jsx` (thin composer) + 3 atoms in `components/jobs/consultation/`: `AmbientPanel` (owns mic + transcript + 60s flush interval), `MeasurePanel` (owns chat + TTS + mic), `GapResolutionModal` (gap review before estimate). State: parent-owned, prop callbacks, no Context. sessionIdRef closure pattern: ref set synchronously in `startSession()`, passed as `getSessionId()` callback to atoms. AmbientPanel unmount cleanup is non-negotiable (mic-stuck-on bug). OhShitCurator stays inline in ConsultationTab (no 4th atom).
-- **AI Companion** (`AiCompanionChat.jsx`, `ai-companion` edge fn) — per person per job, full job context, ai_knowledge injected, conversation_history in job_ai_companions, sliding 20-message window.
-- **Daily PM brief** (`ai-pm-nightly`) — fires once/day on login, 11 rule checks (+ 3 added 2026-04-28: consultation_stale, estimate_no_proposal_24h, proposal_not_sent_48h) per active job, 24h dedup, right person notified. DISABLED — do not re-enable without approval.
-- **Scope detail forms** — bathroom scope tags (full_remodel, tile_only, vanity_swap, paint_and_floor) show a per-room detail form in ScopeTab. Schemas stored in `scope_detail_schemas` table (JSONB, keyed by room_type + scope_tag). Rep-filled values stored in `job_room_scopes.scope_details` JSONB. `fixture_select` fields (vanity, door, toilet, countertop) emit fixed line items at takeoff time. Number fields feed material formula evaluation via `scope_detail` qty_basis in `takeoff_templates.scope_definition`. Other room types have no detail forms yet.
-- **Bathroom takeoff inputs**: shower dimensions in feet+inches (shower_width_in, shower_length_in, shower_wall_height_in — stored as total inches). Schema fields `shower_wall_sf` and `shower_floor_sf` are `type: computed` — resolved by `runCompute` in `computeFns.js` (shared between takeoff.js + ScopeDetailForm). Override via `shower_wall_sf_override` / `shower_floor_sf_override` in scope_details. `resolveDetails` 3-pass: defaults → computed (override wins) → subtract. `labor_formula` in scope_definition drives labor qty for Tile-Wall/shower (shower_wall_sf), Tile-Floor (floor_tile_sf), Cleanup (floor_sf metric); other trades fall back to `buildQuantity`. Labor never applies waste — materials only (unit cost row waste_pct).
-- **Black box** (`ai-error-logger`) — fire-and-forget on every AI error → ai_error_logs.
-
 ### AI Component Map
 | Component | File | Purpose |
 |-----------|------|---------|
@@ -329,65 +317,6 @@ This is Avenstone's core competitive advantage. Six surfaces:
 | `ai-auto-fix-dispatcher` | `supabase/functions/ai-auto-fix-dispatcher/index.ts` | AUTO_FIX_ARC Phase C+D — receives Supabase DB webhook on bug_reports INSERT, classifies bugs (backend_safe / frontend / ios / unsafe_path / ambiguous) via Sonnet, dispatches fix prompts to VM webhook if eligible. Kill switch: AUTO_FIX_ENABLED env var. |
 | `auto-fix-callback` | `scripts/auto-fix-callback.js` | AUTO_FIX_ARC Phase D — VM executor runs this after committing a fix. Patches bug_reports optimistically to auto_fixed, then polls Vercel /v6/deployments every 10s (up to 5min). READY → confirms auto_fixed + records vercel_deployment_id. ERROR → git revert + push + auto_fix_failed. TIMEOUT → auto_fix_unknown. Reads SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY + VERCEL_API_TOKEN from ~/avenstone-app/.env on VM. |
 | `TodoCard` (Phase E) | `components/common/TodoCard.jsx` | AUTO_FIX_ARC Phase E — failed-intent todos with bug_report_id subscribe to bug_reports realtime changes. Status-aware states: attempting=amber spinner, auto_fixed=green+"Try again" (re-fires handleResume), auto_fix_failed/unknown/needs_human=amber label+Resume. |
-
----
-
-## Master Agent v2 (chat-first)
-
-`MasterAgent.jsx` is a single persistent chat panel that lives at the App.jsx
-top level — it survives every `pg` navigation, so the conversation thread is
-session-wide. 5 tiles render above the input but they are NOT a state machine;
-they are starter prompts.
-
-**Tile contract.** Each tile click does ONE of two things:
-1. Sets the chat input to a `TILE_PREFIXES[verb]` string and focuses the input
-   with the cursor at the end. The user finishes the sentence and hits Enter.
-   The agent (ai-master-agent edge fn) infers the verb + fields from the
-   freeform message. No state machine, no chips, no per-field steps.
-2. (Bug only.) Bypasses the agent entirely. Captures `getSnapshot()` and an
-   html2canvas screenshot synchronously at click time (the screen changes
-   during chat), flips `bugMode=true`, asks the user to type a description.
-   The next message routes to `submit-bug-report`, never to ai-master-agent.
-
-```js
-const TILE_PREFIXES = {
-  receipt:      'Log a receipt for ',
-  todo:         'Add a todo: ',
-  lead:         'New lead — ',
-  change_order: 'Submit a change order on ',
-  // bug is the inline exception (see above)
-};
-```
-
-**Confirm card chokepoint.** ai-master-agent has a `CONFIRM_TOOLS` whitelist of 5
-write verbs: `log_payment`, `log_receipt`, `submit_change_order`, `add_todo`,
-`create_job`. When the agent calls one, the edge fn returns `pending_action`
-instead of executing the tool. The chat renders a Confirm card; on Confirm,
-the client re-sends the saved tool call and the row writes. The card IS the
-only commit point for write verbs — the agent never writes silently.
-
-**Money read-back.** Money verbs (log_payment, log_receipt, submit_change_order)
-include the spelled-out amount on the Confirm card via `amountToWords` (now
-ported into ai-master-agent/index.ts; the old `lib/labelParser.js` was
-deleted with the queue). VOICE_AGENT money-safety pattern: `$750.00
-(seven hundred fifty dollars)` reads obviously wrong if a digit was misheard.
-
-**Persistent conversation.** `messages` and `conversationHistory` live in
-component state; the component is mounted at the App root, so navigation does
-not unmount it. The thread persists for the session. There is no DB-backed
-queue (`pending_tasks` was dropped in migration `20260509180000`).
-
-**Receipt photo path.** The user can attach a receipt photo to a chat message.
-The agent reads the PO ("YY-NNN" format), calls `get_jobs` to match, and only
-then calls `log_receipt` — which surfaces the Confirm card. If no PO matches
-or several do, the agent asks before writing.
-
-**No chip flow, no smart-Resume contract, no per-flow file.** v1's
-ReceiptFlow / TodoFlow / LeadFlow / COFlow / BugFlow components are gone.
-v1.1's labelParser regex bank is gone. Verb inference is now the LLM's job;
-the chat is the input surface. The trade-off: every captured intent now spends
-one Sonnet call. That is acceptable because the alternative was 5 chip-flow
-components plus a queue table plus a parser plus a smart-Resume contract.
 
 ---
 
@@ -611,15 +540,6 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 
 6. **Test AI estimator with live data** — ai_knowledge seeded with KC pricing. Open a job, ask AI Companion for a rough estimate, verify real dollar figures come back.
 
-**Done** (pre-2026-04-19 history in CLAUDE_MEMORY.md project snapshot):
-- **Capacitor iOS native app + Codemagic pipeline** shipped to TestFlight (bundle id `com.avenstonekc.avenstone`)
-- **Full LiDAR capture stack** — single-room, multi-room (ContinuousRoomScanViewController, pauseARSession:false), exterior AR outline, height capture, quality meter (0–100), GPS stamping, floor picker, room-naming modal with polygon thumbnails
-- **Floor plan PDF renderer** (`src/lib/pdf.js`) — landscape per-floor + summary page, poché walls, chain dims with collision-tiered labels, room fill tint, left title column, polylabel, scale bar
-- **AI PM Dashboard** — owner-only, 30-day nightly alert history + "Failed saves (7 days)" tile (`AiPmDashboard.jsx`). Failure tile: green=0, navy=1-5, amber=6+; "By kind" toggle shows breakdown by todo kind. `captureFailedIntent` is a pure DB write — no AI calls, safe on every save failure.
-- **Floor plan PDF crash fixed (2026-04-26)** — `dimBoxes` const hoisted to let at outer scope
-- **Sub CO workflow** — sbSubSubmitCO generates co_number, stamps submitted_by_id/role; COTab shows submitter badge + inline edit for pending COs; PM approve/reject triggers targeted sub notification (sbNotifyUser)
-- **Phase audit columns** — started_at/started_by_id/completed_at/completed_by_id stamped on status change; ScheduleTab + SubJobView render audit lines
-
 **GHL stays for marketing.** Avenstone owns everything after the lead handoff. Don't rebuild what GHL does.
 
 ---
@@ -657,28 +577,7 @@ Claude Code on Kalin's dev machine runs in bypassPermissions mode by default. Co
 
 ## Memory system
 
-**Two-file split (established 2026-05-03):**
-
-- **CLAUDE_MEMORY.md** — lean working memory. Contains locked principles, active open items, working-mode patterns, and a slug pointer index. Read this at session start. Append new [LOG] entries here. When a LOG is no longer actively relevant, move its content to CLAUDE_ARCHIVE.md under a new slug and add the pointer to the index.
-- **CLAUDE_ARCHIVE.md** — full historical LOG content organized by `## slug · date · description` headings. Retrieve by searching for the slug. Fully populated — all chunks committed. Pre-cleanup CLAUDE_MEMORY.md (1220 lines) preserved at `git show 7070d65^:CLAUDE_MEMORY.md`.
-
-**Archive complete.** CLAUDE_ARCHIVE.md fully populated with all historical LOG entries by slug. Search by slug heading or scan the pointer index in CLAUDE_MEMORY.md. Pre-cleanup CLAUDE_MEMORY.md (1220 lines) preserved in git history at commit `7070d65^`.
-
-**Symptom index:** CLAUDE_MEMORY.md contains a "Symptom index" section mapping common error patterns to the archive slugs that solved them. Consult this section first when debugging — it's the triage layer before reading archive entries in full. Add new entries whenever a resolved bug fits a pattern likely to recur.
-
-**Failed-attempts logging:** When an audit produces a wrong hypothesis, or an experiment is reverted, or a "we thought X" moment ends in "it was actually Y" — log it as a slug in CLAUDE_ARCHIVE with the suffix `-failed` (e.g. `structurebuilder-skip-failed · 2026-04-26 · we thought skipping it would fix naming, it broke wall geometry, reversed same day`). These slugs are first-class archive entries. Diagnose faster by surfacing what already didn't work.
-
-**CLAUDE_INDEX.md (planned, not yet built):** Categorized lookup file. Three categories: function (app area), date (chronological), failure pattern. Each line: `YYYY-MM-DD · slug-name`. Future Claude reads this before archive to identify relevant slugs. Build deferred until real friction justifies it. Discipline rules pre-locked in OPUS_RULES so when built, it ships disciplined.
-
-At session start: read CLAUDE_MEMORY.md top-to-bottom. It is now lean enough to read fully every time.
-
-Auto-append a [LOG] entry to CLAUDE_MEMORY.md immediately when: a feature ships, a bug is fixed, a file is significantly changed, an architecture decision is made, a blocker is identified.
-
-Log format:
-```
-[LOG — YYYY-MM-DD]
-- Action: one line
-- Files: changed files
-- Decision: choice + why (omit if none)
-- Open: blocker or follow-up (omit if none)
-```
+**CLAUDE_MEMORY.md** — lean working memory (locked principles, open items, patterns, slug index). Read fully at session start. Append [LOG] entries here; move completed-arc LOGs to CLAUDE_ARCHIVE.md under a new slug heading.
+**CLAUDE_ARCHIVE.md** — full LOG history by slug heading (` ## slug * date * desc `). Retrieve by searching for the slug. Pre-cleanup history at `git show 7070d65^:CLAUDE_MEMORY.md`.
+**Symptom index** in CLAUDE_MEMORY.md maps error patterns → slugs. Consult before reading full archive entries. Add entries when a resolved bug fits a recurrence pattern.
+Auto-append a [LOG] immediately when: feature ships, bug fixed, architecture decision, blocker identified. Format: `[LOG - YYYY-MM-DD] - Action: / - Files: / - Decision: / - Open:`
