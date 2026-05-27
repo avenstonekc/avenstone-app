@@ -1610,3 +1610,18 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Scanner state post-Phase 3: write drift 1, read drift 10, missing tables 3, write-skipped 0, read-skipped 38 (1 fully opaque + 37 partial).
 - Files: tools/audit_schema_vs_code.js. No src/ or supabase/ changes.
 - Commit: 4cc9dd9.
+
+[LOG — 2026-05-27 — COST_PLUS_ARC Phase 2B shipped — forward-looking line items]
+- Action: Phase 2B shipped. Forward-looking line items in ComposeDrawScr. Local state only — no DB calls.
+- File: ComposeDrawScr.jsx only. +136 lines net.
+- forwardLines state: { [tempId]: { description, base_amount, markup_pct } }. Temp IDs use Date.now() + random suffix for stability.
+- Handlers: addForwardLine (prefills markup_pct from job.material_markup_pct), removeForwardLine, updateForwardLine.
+- subtotal useMemo extended to sum forward rows alongside tx rows. forward rows always included (no checkboxes).
+- canSubmit flag: expenses.length > 0 || Object.keys(forwardLines).length > 0. Button still hard-disabled (Phase 2C wires sbComposeDraw).
+- Forward rows render below tx rows with blue-tinted background (#EFF6FF) + dashed border, "Pre-billing" badge, description/base/$markup%/total/X inputs.
+- "+ Add line item" dashed-border button below all rows (and in empty state).
+- Summary note: "Includes N forward-looking line(s)" shown when forwardLines.length > 0.
+- Forward rows reset on modal close (component unmounts — no explicit reset effect needed).
+- Deviations from scope: (1) No selectedIds/checkboxes — Phase 2A auto-includes all tx rows; forward rows follow same pattern. (2) No Tailwind — inline CSS throughout. (3) canSubmit not wired to button disabled state yet — left as comment for Phase 2C.
+- Build: ✓ clean. Commit: dbf0217. Pushed to main.
+- COST_PLUS_ARC Phase 2B COMPLETE. Phase 2C (sbComposeDraw submit wiring) is next.
