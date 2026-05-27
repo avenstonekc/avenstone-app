@@ -1441,3 +1441,9 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Existing jobs do NOT see newly-uploaded client-visible files (static snapshot per blueprint Locked Decision 3 open question answer: option (a) — leave old virtual rows pointing to archived file, new jobs get new rows). Backfill is out of scope v1 (blueprint Out of Scope: "Retroactive virtual row update").
 - Commit: 9f97d35. Pushed to main.
 - Next: Phase 3b — sub portal "Company Documents" section (direct query, no virtual rows). Phase 5 watchdog.
+
+[LOG — 2026-05-27 — COST_PLUS_AUDIT.md shipped]
+- Action: Read-only audit of cost-plus mechanics. Findings in COST_PLUS_AUDIT.md at repo root. Commit: 50553d9.
+- Key finding: TWO parallel cost-plus systems exist: (1) legacy job_cost_items+job_cost_invoices (read by ClientPortal), (2) new job_transactions ledger (no cost-plus awareness). They are not connected. Draw composer must build on job_transactions; job_cost_items deprecation is a separate arc decision.
+- Secondary finding: job_transactions.draw_number INT already exists as a soft link to draw_schedules (no FK), and draw_schedules has no line items table. Phase 1 needs draw_id UUID FK + draw_line_items table + reimbursement_status + markup_pct on job_transactions.
+- Next: write COST_PLUS_ARC.md blueprint based on findings + Kalin's answers to the 5 open questions in the audit.
