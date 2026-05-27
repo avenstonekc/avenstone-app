@@ -43,6 +43,8 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 10. **Silent-failure ranking discipline.** Diagnostics rank symptoms, not bugs. Before queueing a fix slice from an ai_error_logs / failed_intents diagnostic, spend 5 minutes auditing the actual code path. The 2026-05-12 master-agent bundle dispatched a Sonnet slice that found existing guards already in place. (2026-05-12)
 
+11. **tenant_id discipline — INSERT must be explicit.** Every INSERT into a tenant-scoped table MUST include `tenant_id` explicitly. Postgres and RLS do NOT inject it automatically. Two drift instances found on 2026-05-27: (a) `sbAddSubInvoicePayment` JS helper omitted `tenant_id` on the `sub_invoice_payments` insert — fixed in Phase 4a by DB function sourcing it from `sub_invoices.tenant_id`. (b) `job_transactions` insert inside the same function required explicit `tenant_id` too. Pattern: when building helpers that write to tenant-scoped tables, always verify the INSERT payload includes tenant_id before shipping.
+
 ---
 
 ## Schema reality (verified 2026-05-05)
@@ -1346,3 +1348,17 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Style: inline styles matching existing SubInvoicesSection.jsx pattern. Colors: Outstanding amber (#b45309) when > 0, Paid green (#059669), Pending navy (#0A1F44).
 - Files: avenstone-vite/src/components/jobs/tabs/financials/SubInvoicesSection.jsx.
 - Build: ✓ clean (718ms).
+
+[LOG — 2026-05-27 — SUB_INVOICES_ARC Phase 4b shipped — void payment reversal]
+- Action: Built void_sub_invoice_payment_with_ledger Postgres function for atomic payment void + job_transactions void. Rewrote sbVoidSubInvoicePayment to call the RPC. Corrected SUB_INVOICES_ARC.md linkage doc. Added Principle 11 (tenant_id discipline).
+- Audit-confirmed void mechanism on job_transactions: status='void' (no voided_at/voided_by columns). CHECK constraint confirmed. Live status values: paid, pending, void.
+- void_sub_invoice_payment_with_ledger(p_payment_id UUID, p_void_reason TEXT):
+  - Fetches payment row, guards already-voided
+  - UPDATEs sub_invoice_payments SET voided_at=NOW(), voided_by_id=auth.uid(), void_reason
+  - IF transaction_id IS NOT NULL: UPDATEs job_transactions SET status='void' WHERE id=transaction_id
+  - Returns (payment_id, transaction_id, new_status) via compute_sub_invoice_status
+  - SECURITY INVOKER, GRANT EXECUTE TO authenticated
+- Function verified in information_schema.routines ✓
+- SUB_INVOICES_ARC.md corrected: type was 'sub_payment' → 'sub_payout'; job_transactions.invoice_id NOT used (FK to invoices client billing, not sub_invoices); linkage explicitly documented as one-way (sub_invoice_payments.transaction_id → job_transactions.id).
+- Migration: 20260527020000_void_sub_invoice_payment_with_ledger.sql. Commits: 3a18cd6 (migration), 3cb4912 (helper), 5c26b6f (docs).
+- Next: Phase 5 — Master Agent verbs (log_sub_invoice, log_sub_payment, approve_sub_invoice).

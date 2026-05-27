@@ -55,7 +55,7 @@ Invoice arrives (email/text/handed over) → rep uploads PDF or enters manually 
 
 - **`contacts` table** — sub identity (`contacts.id` is TEXT). `sub_invoices.sub_contact_id TEXT REFERENCES contacts(id)`.
 - **`job_files` table** — invoice PDFs land here with `category='Sub Invoices'`, `related_entity_type='sub_invoice'`, `related_entity_id=sub_invoices.id`. Signed URL pattern for display.
-- **`job_transactions` table** — each payment row writes a transaction (`direction='out'`, `type='sub_payment'`). `job_transactions.invoice_id UUID` already exists in the schema — this FK is the integration point (confirmed in schema audit: column present, UUID type matches `sub_invoices.id`).
+- **`job_transactions` table** — each payment row writes a transaction (`direction='out'`, `type='sub_payout'`). Linkage is **one-way**: `sub_invoice_payments.transaction_id → job_transactions.id`. `job_transactions.invoice_id` is a FK to `invoices` (client billing), NOT `sub_invoices` — do not write it here.
 - **`schedule_items`** — optional FK via `related_schedule_item_id UUID REFERENCES schedule_items(id)`.
 - **Haiku vision pattern** — same as `ai-categorize-file`. Extracts invoice number, date, amount, vendor name, line items from PDF image.
 - **Master Agent CONFIRM_TOOLS pattern** — all three new verbs are confirm-gated. Same Set + confirm card flow as `log_receipt` and `log_payment`.
@@ -284,24 +284,28 @@ seq = COUNT(*) of existing non-voided invoices for (sub_contact_id, job_id) + 1
 
 ```
 direction = 'out'
-type = 'sub_payment'
+type = 'sub_payout'
 amount = payment.amount
+date_incurred = payment.paid_date  (NOT NULL — used as paid date)
 date_paid = payment.paid_date
+status = 'paid'
 payment_method = payment.method
-description = "Sub payment: invoice #{invoice_number} — {sub_name}"
-payer_or_payee_id = sub_invoices.sub_contact_id (TEXT — matches contacts.id type)
-payer_or_payee_type = 'contact'
-invoice_id = sub_invoice.id  (UUID — job_transactions.invoice_id already exists, confirmed in schema)
+payer_or_payee_type = 'sub'
+payer_or_payee_name = contacts.name  (resolved from sub_invoices.sub_contact_id)
+description = "Payment to {sub_name} for invoice #{invoice_number}"
+notes = payment.notes
 job_id = sub_invoice.job_id
 tenant_id = sub_invoice.tenant_id
-created_by = AV_USER_ID
+created_by = auth.uid()  (UUID — NOT created_by_id)
 ```
 
-This write happens inside `sbAddSubInvoicePayment` — single DB round-trip using a transaction (or sequential inserts with rollback on error).
+**Linkage is one-way:** `sub_invoice_payments.transaction_id → job_transactions.id`.
+`job_transactions.invoice_id` is a FK to `invoices` (client billing) — never written here.
+
+This write is handled atomically by `add_sub_invoice_payment_with_ledger` (SECURITY INVOKER plpgsql function) rather than sequential JS inserts, preventing partial commits.
 
 **Voiding a payment:**
-- `sbVoidSubInvoicePayment` voids the `sub_invoice_payments` row
-- Also sets `status='voided'` on the linked `job_transactions` row (look up by `invoice_id` + `amount` + `date_paid` to find the correct row)
+- `void_sub_invoice_payment_with_ledger` atomically voids the `sub_invoice_payments` row AND sets `status='void'` on the linked `job_transactions` row (looked up directly via `sub_invoice_payments.transaction_id`).
 
 **Why not just use `job_transactions` directly for sub invoices?**
 The existing transactions table models completed payments — no approval state, no partial-payment sequence, no invoice-level grouping. Sub invoices need a lifecycle with approval gates. The two-table approach (sub_invoices + sub_invoice_payments → job_transactions) keeps the ledger clean while adding the workflow layer.
@@ -526,7 +530,9 @@ CREATE TABLE sub_invoice_payments (
   voided_by_id    UUID REFERENCES profiles(id),
   void_reason     TEXT,
 
-  -- Linked job_transactions row (populated in Phase 4)
+  -- Linked job_transactions row (populated in Phase 4a).
+  -- One-way FK: sub_invoice_payments.transaction_id → job_transactions.id.
+  -- job_transactions.invoice_id is NOT used here (it's FK to invoices, client billing).
   transaction_id  UUID REFERENCES job_transactions(id) ON DELETE SET NULL,
 
   created_by_id   UUID REFERENCES profiles(id),
