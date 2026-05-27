@@ -162,6 +162,76 @@ export const sbCreateNote = async (jobId, content, author, opts = {}) => {
   return r;
 };
 
+// Phase → subcategory map for photo dual-write (mirrors inferFileCategory.js PHASE_TO_SUBCATEGORY)
+const _PHASE_SUBCAT_MAP = {
+  'Demo / Tear-out': 'Demo', 'Demo': 'Demo',
+  'Framing / Rough Structure': 'Framing', 'Framing': 'Framing',
+  'Plumbing - Rough': 'Plumbing', 'Plumbing - Rough-in': 'Plumbing', 'Plumbing - Finish / fixtures': 'Plumbing',
+  'Electrical - Rough': 'Electrical', 'Electrical - Rough-in': 'Electrical', 'Electrical - Finish': 'Electrical',
+  'HVAC - Rough': 'HVAC', 'HVAC - Finish': 'HVAC', 'HVAC-Install': 'HVAC',
+  'Drywall / Insulation': 'Drywall', 'Drywall-Hang': 'Drywall', 'Drywall': 'Drywall',
+  'Tile - Floor': 'Tile', 'Tile - Wall / shower': 'Tile', 'Tile': 'Tile',
+  'Cabinets / vanities - Install': 'Cabinets', 'Cabinets': 'Cabinets',
+  'Paint / Finish': 'Paint', 'Paint-Interior': 'Paint', 'Paint': 'Paint',
+  'Trim / Finish carpentry': 'Trim/Finish', 'Trim': 'Trim/Finish',
+  'Flooring': 'Flooring', 'Roofing': 'Roofing',
+  'Final inspection / Punch list': 'Final', 'Final': 'Final',
+};
+// Entity types in job_files.related_entity_type CHECK constraint
+const _JF_VALID_ENTITY_TYPES = new Set(['schedule_item', 'change_order', 'daily_log', 'floor_plan', 'job_transaction', 'consultation_session']);
+
+/**
+ * Best-effort dual-write to job_files after sbPhoto succeeds.
+ * Never throws — failure is logged and ignored so the legacy photos path is never broken.
+ */
+async function _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId) {
+  try {
+    let category = 'Photos';
+    let subcategory = null;
+
+    if (entityType === 'change_order') {
+      category = 'Change Orders';
+      // Condition/Fix subcategory not determinable from sbPhoto args — stays null
+    } else if (entityType && jid) {
+      try {
+        const { data: phaseRow } = await sb.from('job_phases')
+          .select('phase_name')
+          .eq('job_id', jid)
+          .eq('tenant_id', AV_TENANT)
+          .eq('status', 'in_progress')
+          .order('phase_order', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (phaseRow?.phase_name) subcategory = _PHASE_SUBCAT_MAP[phaseRow.phase_name] || null;
+      } catch { /* phase lookup failure is non-fatal */ }
+    }
+
+    // Only link entity types the CHECK constraint allows; material_order etc. are silently dropped
+    const linkedType = entityType && _JF_VALID_ENTITY_TYPES.has(entityType) ? entityType : null;
+    const linkedId   = linkedType ? (entityId || null) : null;
+
+    await sb.from('job_files').insert({
+      tenant_id: AV_TENANT,
+      job_id: jid,
+      uploaded_by_id: AV_USER_ID || null,
+      name: file?.name || 'photo',
+      storage_path: path,
+      storage_bucket: 'job-photos',
+      mime_type: file?.type || null,
+      size_bytes: file?.size || null,
+      category,
+      subcategory,
+      ai_confidence: subcategory ? 0.85 : 0.3,
+      ai_subcategory_suggested: subcategory,
+      client_visible: false,
+      related_entity_type: linkedType,
+      related_entity_id: linkedId,
+    });
+  } catch (err) {
+    console.warn('[sbPhoto dual-write to job_files]', err?.message || err);
+  }
+}
+
 export const sbPhoto = async (jid, file, entityType, entityId) => {
   try {
     const ext = file.name.split('.').pop() || 'jpg';
@@ -179,6 +249,7 @@ export const sbPhoto = async (jid, file, entityType, entityId) => {
     };
     const { data: inserted, error: ie } = await sb.from('photos').insert(row).select('id').single();
     if (ie) { console.error('[sbPhoto] insert failed:', ie.message); return { ok: false, error: ie.message, data: null }; }
+    await _dualWritePhotoToJobFiles(path, file, jid, entityType, entityId);
     return { ok: true, error: null, data: { id: inserted?.id, type: row.type, url, name: file.name } };
   } catch (e) {
     console.error('[sbPhoto]', e);
@@ -418,6 +489,44 @@ export const sbLoadDocs = async jid => {
     return { ...doc, signed_url };
   }));
 };
+/**
+ * Best-effort dual-write to job_files after sbUploadDoc succeeds.
+ * fileType → category/subcategory mapping mirrors the slice 1 backfill migration.
+ */
+async function _dualWriteDocToJobFiles(path, jid, file, fileType) {
+  try {
+    let category = 'Documents';
+    let subcategory = null;
+    const ft = (fileType || 'other').toLowerCase();
+    if (ft === 'permit')                              { category = 'Documents';       subcategory = 'Permits'; }
+    else if (ft === 'plan' || ft === 'blueprint')     { category = 'Documents';       subcategory = 'Plans'; }
+    else if (ft === 'contract' || ft === 'agreement') { category = 'Communications';  subcategory = 'Contracts'; }
+    else if (ft === 'receipt' || ft === 'invoice')    { category = 'Receipts';        subcategory = null; }
+    else if (ft === 'spec' || ft === 'specification') { category = 'Documents';       subcategory = 'Specs'; }
+    else if (ft === 'inspection')                     { category = 'Documents';       subcategory = 'Inspections'; }
+    else if (ft === 'proposal')                       { category = 'Documents';       subcategory = null; }
+    // 'other', 'transcript', etc. → Documents / null
+
+    await sb.from('job_files').insert({
+      tenant_id: AV_TENANT,
+      job_id: jid,
+      uploaded_by_id: AV_USER_ID || null,
+      name: file?.name || 'document',
+      storage_path: path,
+      storage_bucket: 'job-documents',
+      mime_type: file?.type || null,
+      size_bytes: file?.size || null,
+      category,
+      subcategory,
+      ai_confidence: 1.0,
+      ai_subcategory_suggested: subcategory,
+      client_visible: false,
+    });
+  } catch (err) {
+    console.warn('[sbUploadDoc dual-write to job_files]', err?.message || err);
+  }
+}
+
 export const sbUploadDoc = async (jid, file, fileType) => {
   try {
     const ext = file.name.split('.').pop() || 'bin';
@@ -429,6 +538,7 @@ export const sbUploadDoc = async (jid, file, fileType) => {
     const row = { job_id: jid, tenant_id: AV_TENANT, name: file.name, file_url: path, file_type: fileType || 'other', version, client_visible: false };
     const { data: inserted, error: ie } = await sb.from('job_documents').insert(row).select().single();
     if (ie) return { error: ie.message || 'Save failed' };
+    await _dualWriteDocToJobFiles(path, jid, file, fileType);
     const signed_url = await docSignedUrl(path);
     return { doc: { ...inserted, signed_url } };
   } catch (e) { return { error: e.message || 'Unknown error' }; }
