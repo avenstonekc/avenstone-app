@@ -38,7 +38,7 @@ function sortedSubs(subs) {
 }
 
 function SubSection({ label, category, files, onSelectFile, bulkTagMode, selectedFileIds, onToggleSelect, onShareFolder }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const isUncat = label === '_uncategorized';
   const displayLabel = isUncat ? 'Uncategorized' : label;
   const folderLabel = `${category} / ${displayLabel}`;
@@ -95,7 +95,7 @@ function SubSection({ label, category, files, onSelectFile, bulkTagMode, selecte
 }
 
 function CatSection({ category, subs, onSelectFile, bulkTagMode, selectedFileIds, onToggleSelect, onShareFolder }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const color = CAT_COLORS[category] || '#6B7280';
   const total = Object.values(subs).reduce((n, arr) => n + arr.length, 0);
   const allFiles = Object.values(subs).flat();
