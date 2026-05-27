@@ -13,10 +13,16 @@ export default function CompletionPage({ jobId }) {
     const load = async () => {
       if (!jobId) { setStep('error'); return; }
 
-      // Load job + photos + company
-      const [{ data: job }, { data: photos }] = await Promise.all([
+      // Load job + photos (from job_files, slice 6/12) + company
+      // photos.label ('before'/'after') maps to job_files.subcategory ('Before'/'After')
+      const [{ data: job }, { data: rawFiles }] = await Promise.all([
         sb.from('jobs').select('id,address,client_name,tenant_id,status').eq('id', jobId).maybeSingle(),
-        sb.from('photos').select('id,url,label,type').eq('job_id', jobId).in('label', ['before','after']),
+        sb.from('job_files')
+          .select('id,storage_path,storage_bucket,subcategory,mime_type')
+          .eq('job_id', jobId)
+          .eq('category', 'Photos')
+          .eq('lifecycle_status', 'active')
+          .in('subcategory', ['Before', 'After']),
       ]);
 
       if (!job) { setStep('error'); return; }
@@ -24,6 +30,14 @@ export default function CompletionPage({ jobId }) {
       const { data: company } = await sb.from('company_profiles')
         .select('company_name,city,state,phone,website')
         .eq('tenant_id', job.tenant_id).maybeSingle();
+
+      // Map job_files rows to the legacy { id, url, label, type } shape
+      const photos = (rawFiles || []).map(jf => ({
+        id: jf.id,
+        url: sb.storage.from(jf.storage_bucket).getPublicUrl(jf.storage_path).data?.publicUrl || '',
+        label: jf.subcategory?.toLowerCase() || null, // 'Before'→'before', 'After'→'after'
+        type: jf.mime_type?.startsWith('video/') ? 'video' : 'photo',
+      }));
 
       const before = photos?.find(p => p.label === 'before');
       const after  = photos?.find(p => p.label === 'after');
