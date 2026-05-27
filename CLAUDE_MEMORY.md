@@ -1215,3 +1215,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Out of scope: sub-uploaded compliance, lien waiver workflow, renewal automation, OCR on non-PDF, retroactive virtual row update.
 - Open Q: admin UI location (FilesTab sub-tab vs Settings) + virtual row propagation on file replace. Both flagged for decision before Phase 1 prompt.
 - Commit: 867a707. File: 753 lines.
+
+[LOG — 2026-05-27 — COMPANY_FILES_ARC patched — visibility model corrected]
+- Action: Patched COMPANY_FILES_ARC.md. Replaced auto_share_with_clients BOOLEAN with visible_to_roles TEXT[] (valid values: owner, project_manager, sales_rep, sub, client). Added sub portal Pattern A locked decision (#16). Split Phase 3 into 3a (client portal via virtual job_files rows) and 3b (sub portal Company Documents via direct query).
+- Owner always sees all files via RLS regardless of visible_to_roles. Default empty array {} — safer opt-in.
+- Two new schema indexes: idx_company_files_client_visible + idx_company_files_sub_visible (replacing idx_company_files_auto_share).
+- Added "Sub portal direct read (Phase 3b)" section to Schema Reference. Added "Pattern B explicitly rejected" to Out of Scope.
+- All references to auto_share_with_clients updated: architecture diagram, phase plan, net-new helpers (sbToggleAutoShare → sbSetCompanyFileRoles + sbLoadCompanyFilesForSub), locked decisions 3/5/11, phase detail sections, phase 4 tool definition, phase 5 banner query.
+- Commit: c183191. Final: 820 lines (was 753).
+- Open: Phase 1 dispatch next.
