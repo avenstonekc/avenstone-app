@@ -1245,3 +1245,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - CLAUDE_MEMORY.md: Added VOICE_AGENT Phase 3/4 on-device verification open item under App infra. Archived 1414 lines of completed-arc LOGs covering: floor-plan stitcher, voice STT/TTS, agent-cards-v1, agent-ops, auto-fix A+C+D+E, mobile UX, drift cleanup.
 - CLAUDE_ARCHIVE.md: Added slug claude-md-archived-sections-2026-05-27 (removed CLAUDE.md sections). Added slug completed-arc-logs-2026-05-17-to-23 (1414 lines of archived LOGs).
 - Commit: 129d65b.
+
+[LOG — 2026-05-27 — SUB_INVOICES_ARC blueprint shipped]
+- Action: Wrote SUB_INVOICES_ARC.md at repo root (692 lines). First-class AP workflow for sub invoices with partial payments, owner+PM approval gate, lien waiver FK reserved for future arc.
+- 18 locked decisions including: separate tables (sub_invoices + sub_invoice_payments), derived status via compute_sub_invoice_status() (not stored), cash accounting (each payment writes a job_transactions row), payments are voidable not deletable, overpayment allowed, line items JSONB nullable for lump sum or itemized, invoice number vision-extract with auto-gen fallback, dispute toggle freezes actions, submitted_via enum future-proofs Phase 6 sub portal.
+- Audit findings incorporated: contacts.id is TEXT not UUID (sub_contact_id is TEXT FK); job_transactions.invoice_id UUID already exists in live schema (Phase 4 cash accounting integration uses it as FK back to sub_invoices.id); jobs.id is TEXT (confirmed); schedule_items.id is UUID (confirmed); job_files.category is plain text (Sub Invoices is a new valid value).
+- 5 phases for v1 (~11 prompts). Phase 6 (sub portal submission) deferred to sub portal expansion arc. Schema is forward-compatible via submitted_via enum.
+- Reuses: contacts, job_files, job_transactions (invoice_id FK), schedule_items (optional FK), Haiku vision, Master Agent CONFIRM_TOOLS, role gates, set_updated_at trigger.
+- Net-new: sub_invoices + sub_invoice_payments tables, compute_sub_invoice_status function, 8 helpers, FinancialsTab Sub Invoices section, Add Payment modal, 3 Master Agent verbs.
+- Commit: c6059c2. Build: not applicable (docs only).
+- Open: Phase 1 dispatch next.
