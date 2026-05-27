@@ -1644,3 +1644,23 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Drift detector: `field-opus-result-webhook` finding gone. `supabase.js:2406` finding remains (deferred half). Write drift count stays at 1.
 - `supabase.js:2406` still open: deferred until CMD 1 completes ComposeDrawScr Phase 2C and releases its read on supabase.js.
 - Commit: dd1a78b. Pushed to main. Edge function auto-redeploys via GitHub Actions.
+
+[LOG — 2026-05-27 — COST_PLUS_ARC Phase 2C shipped — submit wiring]
+- Action: Phase 2C shipped. Compose Draw submit wiring complete.
+- Files: ComposeDrawScr.jsx (checkboxes + selectedIds Set + handleSubmit + validation + submit button), InvoicesSubTab.jsx (onComposed callback triggers load()).
+- selectedIds Set: seeded with all tx IDs on data load; unchecking excludes from lineItems useMemo. Forward rows always-included (no checkbox).
+- lineItems useMemo: builds submission-ready payload from selectedIds ∩ expenses + all forwardLines. Markup uses overrides[id] ?? row.markup_pct.
+- validationError: title required, ≥1 line item, non-empty descriptions, non-negative bases.
+- canSubmit: !validationError && !submitting. Button disabled + opacity 0.45 when invalid.
+- handleSubmit: calls sbComposeDraw → on success calls onComposed(draw_id) + onClose(). On error sets submitError for inline display.
+- InvoicesSubTab: onComposed={() => { setComposeDrawOpen(false); load(); }} — refreshes draws list after compose.
+- Commit: 88eee64. Pushed to main. (Single commit — ComposeDrawScr + InvoicesSubTab staged together.)
+- Manual test results (999 Cost Plus Sandbox, job_id 5ebd7c3c-c4a7-450c-b529-479903668010):
+  - Step 1–9: UI open/load/render/markup override/forward line add/remove verified in browser.
+  - Step 10 ✓: After compose 40 tx + 1 forward — unreimbursed=3, in_draw=40.
+  - Step 11 ✓: draw_schedules row — draw_number=1, title="Draw 1 — sandbox test", status=planned, target_amount=$41,775.90, line_count=41, forward_count=1.
+  - Step 12 ✓: void_draw returned {tx_reverted:40, line_items_deleted:41}; all 43 rows back to unreimbursed; draw_line_items count=0.
+  - Step 13 ✓: Compose all 43 rows (no forward lines) — draw_number=2, line_count=43, tx_flipped=43; subtotal=$49,573.90, net=$41,073.90; voided to restore sandbox (tx_reverted=43, line_items_deleted=43). Sandbox final state: 43 unreimbursed, 0 in_draw.
+- void_draw RPC confirmed working: correctly reverts in_draw → unreimbursed, deletes draw_line_items, marks draw cancelled.
+- COST_PLUS_ARC Phase 1 (schema + trigger + RPCs) + Phase 2 (ComposeDrawScr A/B/C) COMPLETE.
+- Next: Phase 3 — sbMarkInvoicePaid cascade (cascade_draw_paid_to_transactions Postgres function; marks draw tx as reimbursed when invoice paid). Phase 4 — float stat cards.
