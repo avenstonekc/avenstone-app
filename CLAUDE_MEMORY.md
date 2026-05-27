@@ -1561,3 +1561,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Files: CLAUDE_MEMORY.md (3 stale lines corrected). ai-master-agent/index.ts — NOT touched.
 - Finding: REMOVE list = empty. Every tool is active and wired. "~13 stale tools" in memory was an artifact of the 2026-05-08 voice-agent-audit rough count (everything outside CONFIRM_TOOLS). The actual cleanup ran 2026-05-19 (get_job_details + get_dashboard removed, 18→16). 6 more verbs added since bring current count to 22 with 11 CONFIRM_TOOLS.
 - Corrected: line 68 (16→22 tools, updated roster), line 69 (5-verb→11-verb CONFIRM_TOOLS), line 79 (17-tool Phase 2.2 snapshot annotated as superseded).
+
+[LOG — 2026-05-27 — COST_PLUS_ARC Phase 2A shipped — Compose Draw modal structure]
+- Action: Phase 2A shipped. Full-screen overlay ComposeDrawScr + InvoicesSubTab entry point.
+- Files: ComposeDrawScr.jsx (new, 190 lines), InvoicesSubTab.jsx (+import, +state, +button, +mount).
+- ComposeDrawScr: position:fixed inset:0 overlay (zIndex 2100, CREAM background — matches FloorPlanEditorScr pattern). Three sections: Bucket Balance card (bucket/unreimbursed/float), Expenses list (per-row markup override inputs + live total column), Draw Summary (subtotal, optional bucket credit checkbox, net draw amount). useMemo draw math with round2(). Submit button disabled (opacity:0.45, cursor:not-allowed, title "Phase 2C").
+- InvoicesSubTab: "Compose Draw" button (btn-gold) shown when job.cost_plus===true && staff. Gated as required.
+- Data: sbLoadUnreimbursedExpenses + sbGetBucketBalance called in parallel on mount; markup overrides seeded from expense.markup_pct. Read-only — sbComposeDraw NOT called.
+- Build: ✓ clean.
+- Commit: e433db9. Pushed to main.
+- COST_PLUS_ARC Phase 2A COMPLETE. Phase 2B (forward-looking line items) + Phase 2C (sbComposeDraw submit) are next.
