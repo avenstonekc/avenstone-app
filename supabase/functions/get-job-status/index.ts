@@ -35,14 +35,34 @@ Deno.serve(async (req) => {
       .eq("job_id", job.id)
       .order("phase_order", { ascending: true });
 
-    // Fetch last 3 photos
-    const { data: photos } = await sb
-      .from("photos")
-      .select("url, type, created_at")
+    // Fetch last 4 photos — slice 8/12: read from job_files instead of photos table
+    // Fetch extra rows and filter non-video in JS to avoid PostgREST LIKE filter quirks
+    const { data: jfPhotos } = await sb
+      .from("job_files")
+      .select("storage_path, storage_bucket, mime_type, created_at")
       .eq("job_id", job.id)
-      .eq("type", "photo")
+      .eq("lifecycle_status", "active")
+      .in("storage_bucket", ["job-photos", "job-files"])
       .order("created_at", { ascending: false })
-      .limit(4);
+      .limit(8);
+
+    // Reconstruct public/signed URL per bucket
+    const photoRows = (jfPhotos || [])
+      .filter(p => !p.mime_type || !p.mime_type.startsWith("video/"))
+      .slice(0, 4);
+
+    const photos = await Promise.all(photoRows.map(async p => {
+      let url: string;
+      if (p.storage_bucket === "job-photos") {
+        // job-photos is public
+        url = sb.storage.from("job-photos").getPublicUrl(p.storage_path).data.publicUrl;
+      } else {
+        // job-files is private — generate 24-hour signed URL
+        const { data: signed } = await sb.storage.from(p.storage_bucket).createSignedUrl(p.storage_path, 86400);
+        url = signed?.signedUrl || "";
+      }
+      return { url, created_at: p.created_at };
+    }));
 
     // Only expose first name for privacy
     const clientFirstName = job.client_name
@@ -62,7 +82,7 @@ Deno.serve(async (req) => {
           start_date: p.start_date,
           end_date: p.end_date,
         })),
-        photos: (photos || []).map(p => ({ url: p.url, created_at: p.created_at })),
+        photos,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
