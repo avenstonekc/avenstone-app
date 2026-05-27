@@ -447,6 +447,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 **Drift cleanup**
 - `drift-cleanup-arc · 2026-05-10–13` — audit_schema_vs_code.js built. All 15 drift findings closed (15→0). 3 missing tables cleared. submit-bid-response 500→409. Doc cleanup (5 MDs deleted, 2 archived, OPUS_RULES.md rename).
 
+**Unified files + proof + hygiene (2026-05-25–27)**
+- `unified-files-arc · 2026-05-26` — 14-slice unified files surface — FilesTab, AI vision categorization, dual-write bridge, mobile camera, tree view, ClientSignContractModal fix
+- `proof-arc-phase1-2 · 2026-05-26` — CO photo gate hard from day one with owner/PM bypass + reason audit trail
+- `claude-md-hygiene-2026-05-26 · 2026-05-26` — CLAUDE.md leaned, CLAUDE_MEMORY.md leaned, older LOGs moved to CLAUDE_ARCHIVE.md
+
 ---
 
 [LOG — 2026-05-23 — PUSH_NOTIFICATIONS_ARC Phase 1: dual-channel push_subscriptions schema SHIPPED.]
