@@ -4,6 +4,7 @@ import { f$, fD } from '../../../lib/utils';
 import DrawModal from '../../modals/DrawModal';
 import InvoiceComposerModal from '../../modals/InvoiceComposerModal';
 import MarkPaidModal from '../../modals/MarkPaidModal';
+import ComposeDrawScr from './ComposeDrawScr';
 
 const DRAW_STATUS = {
   planned:     { label: 'Planned',     bg: '#F3F4F6', color: '#6B7280' },
@@ -34,8 +35,9 @@ export default function InvoicesSubTab({ job, profile }) {
   const [composerOpen, setComposerOpen]       = useState(false);
   const [editInvoice, setEditInvoice]         = useState(null);
   const [prefillDrawId, setPrefillDrawId]     = useState(null);
-  const [markPaidInvoice, setMarkPaidInvoice]     = useState(null);
+  const [markPaidInvoice, setMarkPaidInvoice]       = useState(null);
   const [resendingInvoiceId, setResendingInvoiceId] = useState(null);
+  const [composeDrawOpen, setComposeDrawOpen]       = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -132,9 +134,14 @@ export default function InvoicesSubTab({ job, profile }) {
           <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>Draw Schedule</div>
           <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>Planned milestone payments for this job</div>
         </div>
-        {staff && (
-          <button onClick={openAddDraw} className="btn btn-navy" style={{ fontSize: 12, padding: '6px 14px' }}>+ Add Draw</button>
-        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {job?.cost_plus === true && staff && (
+            <button onClick={() => setComposeDrawOpen(true)} className="btn btn-gold" style={{ fontSize: 12, padding: '6px 14px' }}>Compose Draw</button>
+          )}
+          {staff && (
+            <button onClick={openAddDraw} className="btn btn-navy" style={{ fontSize: 12, padding: '6px 14px' }}>+ Add Draw</button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -299,6 +306,10 @@ export default function InvoicesSubTab({ job, profile }) {
           onClose={() => setMarkPaidInvoice(null)}
           onSaved={load}
         />
+      )}
+
+      {composeDrawOpen && (
+        <ComposeDrawScr job={job} onClose={() => setComposeDrawOpen(false)} />
       )}
     </div>
   );
