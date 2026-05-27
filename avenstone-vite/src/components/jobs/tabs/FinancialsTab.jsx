@@ -298,33 +298,36 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
 
       {sub === 'ledger' && (
         <div>
-          {/* Stat bar — 5 stats, wraps to 3+2 on mobile */}
+          {/* Stat bar — cost-plus-aware */}
           {summary && (() => {
             const owes = summary.client_owes;
-            const stats = [
-              { lb: 'Contract',    v: f$(summary.contract_total),                                      c: '#0A1F44',  bold: true },
-              { lb: 'Received',    v: f$(summary.total_in),                                            c: summary.total_in > 0 ? '#22c55e' : '#9CA3AF' },
-              { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),         c: owes < 0 ? '#22c55e' : owes > 0 ? '#C9A84C' : '#9CA3AF' },
-              { lb: 'Pending Out', v: f$(summary.pending_out),                                         c: summary.pending_out > 0 ? '#b45309' : '#9CA3AF' },
-              { lb: 'Paid Out',    v: f$(summary.total_out),                                           c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
-            ];
-            // Cost-plus stat cards — only when job is cost-plus
-            if (job?.cost_plus === true && summary.float_unreimbursed !== undefined) {
-              const surplus = summary.bucket_balance - summary.float_unreimbursed;
-              stats.push(
-                { lb: 'Float Out',    v: f$(summary.float_unreimbursed), c: summary.float_unreimbursed > 0 ? '#b45309' : '#9CA3AF' },
-                summary.client_float_owed > 0
-                  ? { lb: 'Client Owes ↑', v: f$(summary.client_float_owed),  c: '#ef4444' }
-                  : { lb: 'Bucket Credit', v: f$(Math.max(0, surplus)),        c: '#22c55e' },
-                { lb: 'Markup ★',    v: f$(summary.markup_earned),       c: summary.markup_earned > 0 ? '#C9A84C' : '#9CA3AF' },
-              );
-            }
+            const isCostPlus = job?.cost_plus === true && summary.float_unreimbursed !== undefined;
+            const surplus = isCostPlus ? summary.bucket_balance - summary.float_unreimbursed : 0;
+            const stats = isCostPlus
+              ? [
+                  { lb: 'Contract (signed)', v: f$(summary.contract_total), c: '#0A1F44', bold: true, note: `actuals + ${job.material_markup_pct ?? 25}% markup determine final billing` },
+                  { lb: 'Received',          v: f$(summary.total_in),       c: summary.total_in > 0 ? '#22c55e' : '#9CA3AF' },
+                  { lb: 'Float Out',         v: f$(summary.float_unreimbursed), c: summary.float_unreimbursed > 0 ? '#b45309' : '#9CA3AF' },
+                  summary.client_float_owed > 0
+                    ? { lb: 'Client Owes ↑', v: f$(summary.client_float_owed), c: '#ef4444' }
+                    : { lb: 'Bucket Credit', v: f$(Math.max(0, surplus)),       c: '#22c55e' },
+                  { lb: 'Markup ★',          v: f$(summary.markup_earned),  c: summary.markup_earned > 0 ? '#C9A84C' : '#9CA3AF' },
+                  { lb: 'Paid Out',          v: f$(summary.total_out),      c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
+                ]
+              : [
+                  { lb: 'Contract',    v: f$(summary.contract_total),                                     c: '#0A1F44',  bold: true },
+                  { lb: 'Received',    v: f$(summary.total_in),                                           c: summary.total_in > 0 ? '#22c55e' : '#9CA3AF' },
+                  { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),        c: owes < 0 ? '#22c55e' : owes > 0 ? '#C9A84C' : '#9CA3AF' },
+                  { lb: 'Pending Out', v: f$(summary.pending_out),                                        c: summary.pending_out > 0 ? '#b45309' : '#9CA3AF' },
+                  { lb: 'Paid Out',    v: f$(summary.total_out),                                          c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
+                ];
             return (
               <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                {stats.map(({ lb, v, c, bold }) => (
+                {stats.map(({ lb, v, c, bold, note }) => (
                   <div key={lb} style={{ flex: 1, minWidth: 90, background: '#fff', border: '1px solid #E8E4DC', padding: '10px 14px', borderRadius: 6 }}>
                     <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{lb}</div>
                     <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: c, fontWeight: bold ? 700 : 400 }}>{v}</div>
+                    {note && <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 3, lineHeight: 1.3 }}>{note}</div>}
                   </div>
                 ))}
               </div>
