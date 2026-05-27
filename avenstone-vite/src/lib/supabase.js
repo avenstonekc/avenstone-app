@@ -1302,16 +1302,48 @@ export const sbLoadJobTransactions = async (jobId, filters = {}) => {
   const { data } = await q;
   return data || [];
 };
-export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTotal = 0 } = {}) => {
-  const { data } = await sb.from('job_transactions').select('direction,amount,status,lien_waiver_required,lien_waiver_url').eq('job_id', jobId).neq('status', 'void');
-  if (!data) return { total_in: 0, total_out: 0, pending_out: 0, lien_waivers_missing: 0, contract_total: 0, client_owes: 0 };
+export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTotal = 0, costPlus = false } = {}) => {
+  const round2 = n => Math.round(n * 100) / 100;
+  const cpFallback = costPlus ? { float_unreimbursed: 0, bucket_balance: 0, client_float_owed: 0, markup_earned: 0 } : {};
+  const { data } = await sb.from('job_transactions')
+    .select('direction,amount,status,lien_waiver_required,lien_waiver_url,invoice_id,reimbursement_status')
+    .eq('job_id', jobId).neq('status', 'void');
+  if (!data) return { total_in: 0, total_out: 0, pending_out: 0, lien_waivers_missing: 0, contract_total: 0, client_owes: 0, ...cpFallback };
   const total_in   = data.filter(t => t.direction === 'in'  && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
   const total_out  = data.filter(t => t.direction === 'out' && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
   const pending_out = data.filter(t => t.direction === 'out' && t.status === 'pending').reduce((s, t) => s + Number(t.amount || 0), 0);
   const lien_waivers_missing = data.filter(t => t.lien_waiver_required && !t.lien_waiver_url).length;
   const contract_total = Number(contractValue || 0) + Number(coTotal || 0);
   const client_owes = contract_total - total_in;
-  return { total_in, total_out, pending_out, lien_waivers_missing, contract_total, client_owes };
+  const summary = { total_in, total_out, pending_out, lien_waivers_missing, contract_total, client_owes };
+
+  if (costPlus) {
+    // Bucket balance — inbound rows not attached to an invoice (raw client deposits)
+    // Unreimbursed — outbound rows still waiting to be billed in a draw
+    let bucket = 0;
+    let unreimbursed = 0;
+    for (const r of data) {
+      const amt = Number(r.amount) || 0;
+      if (r.direction === 'in' && r.invoice_id === null && r.status === 'paid') bucket += amt;
+      else if (r.direction === 'out' && r.reimbursement_status === 'unreimbursed') unreimbursed += amt;
+    }
+
+    // Markup earned — sum of markup_amount on line items belonging to paid draws
+    let markup_earned = 0;
+    const { data: paidDraws } = await sb.from('draw_schedules').select('id').eq('job_id', jobId).eq('status', 'paid');
+    if (paidDraws?.length) {
+      const paidDrawIds = paidDraws.map(d => d.id);
+      const { data: markupRows } = await sb.from('draw_line_items').select('markup_amount').in('draw_id', paidDrawIds);
+      markup_earned = round2((markupRows || []).reduce((s, r) => s + (Number(r.markup_amount) || 0), 0));
+    }
+
+    summary.float_unreimbursed = round2(unreimbursed);
+    summary.bucket_balance     = round2(bucket);
+    summary.client_float_owed  = round2(Math.max(0, unreimbursed - bucket));
+    summary.markup_earned      = markup_earned;
+  }
+
+  return summary;
 };
 export const sbCreateTransaction = async tx => {
   const { data, error } = await sb.from('job_transactions').insert({ ...tx, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();
