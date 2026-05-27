@@ -51,6 +51,7 @@ export const VIEW_ENGAGEMENT_URL        = `${FN}/view-engagement`;
 export const SUBMIT_BUG_REPORT_URL      = `${FN}/submit-bug-report`;
 export const AI_DAILY_LOG_DRAFT_URL     = `${FN}/ai-daily-log-draft`;
 export const AI_CATEGORIZE_URL          = `${FN}/ai-categorize-file`;
+export const AI_EXTRACT_SUB_INVOICE_URL = `${FN}/ai-extract-sub-invoice`;
 export const FIELD_OPUS_CHAT_URL        = `${FN}/field-opus-chat`;
 export const FIELD_OPUS_DISPATCH_URL    = `${FN}/field-opus-dispatch-to-vm`;
 
