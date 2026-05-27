@@ -3600,7 +3600,8 @@ export async function sbVoidInvoice(id, reason) {
 
   if (invoice.status === 'void') throw new Error('Invoice is already void');
   if (invoice.status === 'draft') throw new Error('Drafts should be deleted, not voided. Use the Delete action instead.');
-  if (Number(invoice.amount_paid) > 0.01) {
+  // Cost-plus draw invoices may be voided even when paid — reverse cascade restores in_draw status
+  if (Number(invoice.amount_paid) > 0.01 && !invoice.draw_id) {
     throw new Error('Cannot void an invoice with payments received. Issue a refund or credit memo (handle in QuickBooks for now until credit memo support ships).');
   }
 
@@ -3641,6 +3642,15 @@ export async function sbVoidInvoice(id, reason) {
         captureFailedIntent({ kind: 'void_invoice_draw_rollup', payload: { id, draw_id: invoice.draw_id }, jobId: invoice.job_id, message: drawErr.message, resumable: true }).catch(() => {});
         console.warn(`Invoice ${id} voided but draw rollup reversal failed: ${drawErr.message}`);
       }
+    }
+
+    // Phase 3: reverse cascade — revert reimbursed transactions back to in_draw
+    const { data: revertCount, error: revertErr } = await sb.rpc('reverse_draw_paid_cascade', {
+      p_invoice_id: id,
+    });
+    if (revertErr) {
+      // Log but don't fail — invoice is voided, transactions can be reconciled by hand
+      console.error('reverse_draw_paid_cascade failed', revertErr);
     }
   }
 
@@ -3828,7 +3838,19 @@ export async function sbMarkInvoicePaid(invoiceId, payment) {
     }
   }
 
-  return { invoice: { ...invoice, ...invPatch }, transaction: tx };
+  // Phase 3: cascade — flip in_draw transactions to reimbursed when invoice fully paid
+  if (invoice.draw_id && newStatus === 'paid') {
+    const { data: cascadeCount, error: cascadeErr } = await sb.rpc('cascade_draw_paid_to_transactions', {
+      p_invoice_id: invoice.id,
+    });
+    if (cascadeErr) {
+      // Log but don't fail — invoice is paid, transactions can be reconciled by hand
+      console.error('cascade_draw_paid_to_transactions failed', cascadeErr);
+    }
+    return { invoice: { ...invoice, ...invPatch }, transaction: tx, cascade_count: cascadeErr ? 0 : (cascadeCount || 0) };
+  }
+
+  return { invoice: { ...invoice, ...invPatch }, transaction: tx, cascade_count: 0 };
 }
 
 // ---------------------------------------------------------------------------
