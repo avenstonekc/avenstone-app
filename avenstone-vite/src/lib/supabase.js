@@ -81,8 +81,14 @@ export const sbLoad = async repName => {
     const { data, error } = await q;
     if (error || !data) return null;
     return await Promise.all(data.map(async j => {
+      // slice 7/12: photos now read from job_files (source of truth); id is job_files.id
       const [{ data: ph }, { data: nt }, { data: co }] = await Promise.all([
-        sb.from('photos').select('*').eq('job_id', j.id).order('created_at', { ascending: true }),
+        sb.from('job_files')
+          .select('id, storage_path, storage_bucket, name, mime_type, subcategory, client_visible, created_at')
+          .eq('job_id', j.id)
+          .eq('storage_bucket', 'job-photos')
+          .eq('lifecycle_status', 'active')
+          .order('created_at', { ascending: true }),
         sb.from('job_notes').select('*').eq('job_id', j.id).order('created_at', { ascending: false }),
         sb.from('change_orders').select('*').eq('job_id', j.id).order('created_at', { ascending: false }),
       ]);
@@ -101,7 +107,14 @@ export const sbLoad = async repName => {
         cost_plus: j.cost_plus || false,
         default_markup_pct: Number(j.default_markup_pct || 0),
         client_user_id: j.client_user_id || null,
-        photos: (ph || []).map(p => ({ id: p.id, type: p.type, url: p.url, name: p.name, label: p.label || null })),
+        photos: (ph || []).map(jf => ({
+          id: jf.id,  // job_files.id — used by sbDeleteJobPhoto and sbLabelPhoto
+          type: jf.mime_type?.startsWith('video/') ? 'video' : 'photo',
+          url: sb.storage.from(jf.storage_bucket).getPublicUrl(jf.storage_path).data?.publicUrl || '',
+          name: jf.name,
+          label: jf.subcategory?.toLowerCase() || null,  // 'Before'→'before', 'After'→'after'
+          storage_path: jf.storage_path,  // needed by sbDeleteJobPhoto for storage cleanup
+        })),
         activity: nt || [], change_orders: co || [],
       };
     }));
@@ -126,6 +139,7 @@ export const sbDel = async id => {
     }
     await Promise.all([
       sb.from('photos').delete().eq('job_id', id),
+      sb.from('job_files').delete().eq('job_id', id),  // slice 7/12: clean up unified files rows
       sb.from('job_notes').delete().eq('job_id', id),
       sb.from('change_orders').delete().eq('job_id', id),
       sb.from('jobs').delete().eq('id', id),
@@ -179,7 +193,8 @@ const _PHASE_SUBCAT_MAP = {
   'Final inspection / Punch list': 'Final', 'Final': 'Final',
 };
 // Entity types in job_files.related_entity_type CHECK constraint
-const _JF_VALID_ENTITY_TYPES = new Set(['schedule_item', 'change_order', 'daily_log', 'floor_plan', 'job_transaction', 'consultation_session']);
+// material_order added slice 7/12 — future uploads populate job_files
+const _JF_VALID_ENTITY_TYPES = new Set(['schedule_item', 'change_order', 'daily_log', 'floor_plan', 'job_transaction', 'consultation_session', 'material_order']);
 
 /**
  * Calls ai-categorize-file edge function with a base64-encoded image.
@@ -321,20 +336,10 @@ export const sbCountPhotosForEntity = async (entityType, entityId, category = nu
 
 /**
  * Load photos for a given entity from job_files (slice 6/12 migration).
- * material_order photos are NOT in job_files (_JF_VALID_ENTITY_TYPES check excludes it)
- * so that type falls back to the legacy photos table.
+ * slice 7/12: material_order added to _JF_VALID_ENTITY_TYPES — all entity types now read job_files.
  * Returns: [{ id, url, name, type, client_visible, created_at }]
  */
 export const sbLoadPhotosForEntity = async (entityType, entityId) => {
-  if (entityType === 'material_order') {
-    // Fallback: material_order photos were never dual-written to job_files
-    const { data } = await sb.from('photos')
-      .select('id, url, name, type, client_visible, created_at')
-      .eq('related_entity_type', entityType)
-      .eq('related_entity_id', entityId)
-      .order('created_at', { ascending: true });
-    return data || [];
-  }
   const { data } = await sb.from('job_files')
     .select('id, storage_path, storage_bucket, name, mime_type, client_visible, created_at')
     .eq('related_entity_type', entityType)
@@ -351,10 +356,22 @@ export const sbLoadPhotosForEntity = async (entityType, entityId) => {
   }));
 };
 
+/**
+ * Label a photo (Before/After/During). slice 7/12: photoId is now job_files.id.
+ * Stores label as subcategory in job_files ('before'→'Before', 'after'→'After').
+ */
 export const sbLabelPhoto = async (jobId, photoId, label) => {
   try {
-    if (label) await sb.from('photos').update({ label: null }).eq('job_id', jobId).eq('label', label).neq('id', photoId);
-    const { error } = await sb.from('photos').update({ label: label || null }).eq('id', photoId);
+    // Map lowercase label to INITCAP subcategory used in job_files
+    const subcategory = label ? (label.charAt(0).toUpperCase() + label.slice(1)) : null;
+    // Clear same subcategory from other photos in this job first
+    if (subcategory) {
+      await sb.from('job_files').update({ subcategory: null })
+        .eq('job_id', jobId)
+        .eq('subcategory', subcategory)
+        .neq('id', photoId);
+    }
+    const { error } = await sb.from('job_files').update({ subcategory }).eq('id', photoId);
     if (error) {
       captureFailedIntent({ kind: 'photo_label', payload: { photoId }, jobId, message: error.message, resumable: false }).catch(() => {});
       return { ok: false, error: error.message };
@@ -364,6 +381,38 @@ export const sbLabelPhoto = async (jobId, photoId, label) => {
     captureFailedIntent({ kind: 'photo_label', payload: { photoId }, jobId, message: e.message, resumable: false }).catch(() => {});
     return { ok: false, error: e.message || 'Unknown error' };
   }
+};
+
+/**
+ * Delete a job photo by job_files.id. slice 7/12: source of truth is now job_files.
+ * Also best-effort removes: storage object + legacy photos row (matched by storage path).
+ */
+export const sbDeleteJobPhoto = async jobFileId => {
+  try {
+    // Load the storage path from job_files so we can clean up storage + legacy table
+    const { data: jfRow } = await sb.from('job_files')
+      .select('storage_path, storage_bucket')
+      .eq('id', jobFileId)
+      .maybeSingle();
+
+    // Delete from job_files first (source of truth)
+    const { error } = await sb.from('job_files').delete().eq('id', jobFileId);
+    if (error) return { ok: false, error: error.message };
+
+    const storagePath = jfRow?.storage_path;
+    const bucket = jfRow?.storage_bucket || 'job-photos';
+
+    // Best-effort: remove storage object
+    if (storagePath) {
+      sb.storage.from(bucket).remove([storagePath]).catch(() => {});
+    }
+    // Best-effort: remove legacy photos row (matched by URL suffix)
+    if (storagePath && bucket === 'job-photos') {
+      sb.from('photos').delete().like('url', `%${storagePath}`).catch(() => {});
+    }
+
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message || 'Delete failed' }; }
 };
 
 export const sbCO = async co => {
@@ -1157,8 +1206,9 @@ export const sbSendDailyLog = async (logId, clientMessage, job) => {
   }
   return { ok: true };
 };
+// slice 7/12: photoId is job_files.id (sbLoadPhotosForEntity already returns job_files rows)
 export const sbSetPhotoClientVisible = async (photoId, visible) => {
-  const { error } = await sb.from('photos').update({ client_visible: visible }).eq('id', photoId);
+  const { error } = await sb.from('job_files').update({ client_visible: visible }).eq('id', photoId);
   return error ? { ok: false, error: error.message } : { ok: true };
 };
 /**
