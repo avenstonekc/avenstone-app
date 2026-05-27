@@ -15,7 +15,7 @@ import { sb, AV_TENANT, AI_EXTRACT_SUB_INVOICE_URL, sbUploadJobFile, sbSignJobFi
 import {
   sbLoadSubInvoices, sbCreateSubInvoice, sbApproveSubInvoice,
   sbDisputeSubInvoice, sbAddSubInvoicePayment, sbVoidSubInvoicePayment,
-  sbCreateSubContact,
+  sbVoidSubInvoice, sbUnvoidSubInvoice, sbCreateSubContact,
 } from '../../../../lib/subInvoices';
 import { f$, isMob } from '../../../../lib/utils';
 
@@ -54,7 +54,7 @@ export default function SubInvoicesSection({ job, profile }) {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [err, setErr]           = useState(null);
-  const [view, setView]         = useState('pending');   // 'pending' | 'outstanding' | 'paid'
+  const [view, setView]         = useState('pending');   // 'pending' | 'outstanding' | 'paid' | 'voided'
   const [selectedId, setSelectedId] = useState(null);
   const [showAddInvoice, setShowAddInvoice] = useState(false);
   const [addPaymentFor, setAddPaymentFor]   = useState(null); // invoice object
@@ -73,12 +73,13 @@ export default function SubInvoicesSection({ job, profile }) {
 
   useEffect(() => { load(); }, [job.id]);
 
-  // Partition into views (voided invoices excluded from all three main buckets)
+  // Partition into views
   const partitioned = useMemo(() => {
     const pending     = invoices.filter(i => i.status === 'pending_review');
     const outstanding = invoices.filter(i => ['approved', 'partially_paid', 'disputed'].includes(i.status));
     const paid        = invoices.filter(i => i.status === 'paid');
-    return { pending, outstanding, paid };
+    const voided      = invoices.filter(i => i.status === 'voided');
+    return { pending, outstanding, paid, voided };
   }, [invoices]);
 
   const rollup = useMemo(() => {
@@ -127,14 +128,43 @@ export default function SubInvoicesSection({ job, profile }) {
     else { setErr(res.error || 'Void failed'); }
   };
 
+  const handleVoidInvoice = async (inv) => {
+    const reason = window.prompt(
+      `Reason for voiding this invoice? (This will also void all ${inv.payments.filter(p => !p.voidedAt).length} active payment(s) on this invoice.)`
+    );
+    if (!reason) return;
+    const activePayments = inv.payments.filter(p => !p.voidedAt).length;
+    const confirmed = window.confirm(
+      `Void invoice #${inv.invoiceNumber}${activePayments > 0 ? ` and reverse ${activePayments} payment(s)` : ''}? This can be undone via the Voided tab.`
+    );
+    if (!confirmed) return;
+    const res = await sbVoidSubInvoice({ subInvoiceId: inv.id, voidReason: reason });
+    if (res.ok) { setSelectedId(null); await load(); }
+    else { setErr(res.error || 'Void failed'); }
+  };
+
+  const handleUnvoidInvoice = async (inv) => {
+    const confirmed = window.confirm(
+      `Restore invoice #${inv.invoiceNumber}? Its payments will remain voided — you can record new payments after restoring.`
+    );
+    if (!confirmed) return;
+    const res = await sbUnvoidSubInvoice({ subInvoiceId: inv.id });
+    if (res.ok) { setSelectedId(null); await load(); }
+    else { setErr(res.error || 'Restore failed'); }
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   const viewList = [
     { id: 'pending',     label: `Pending Review (${partitioned.pending.length})` },
     { id: 'outstanding', label: `Outstanding (${partitioned.outstanding.length})` },
     { id: 'paid',        label: `Paid (${partitioned.paid.length})` },
+    // Voided tab only shown when there are voided invoices — don't clutter UI otherwise
+    ...(partitioned.voided.length > 0
+      ? [{ id: 'voided', label: `Voided (${partitioned.voided.length})` }]
+      : []),
   ];
-  const currentList = partitioned[view] || [];
+  const currentList = view === 'voided' ? partitioned.voided : (partitioned[view] || []);
 
   return (
     <div>
@@ -220,6 +250,7 @@ export default function SubInvoicesSection({ job, profile }) {
           <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
             {view === 'pending' ? 'No invoices pending review' :
              view === 'outstanding' ? 'No outstanding invoices' :
+             view === 'voided' ? 'No voided invoices' :
              'No paid invoices yet'}
           </div>
           <div style={{ fontSize: 12, color: '#9CA3AF' }}>
@@ -227,6 +258,8 @@ export default function SubInvoicesSection({ job, profile }) {
               ? 'Click + Add Invoice to enter one manually. PDF upload ships in Phase 3.'
               : view === 'outstanding'
               ? 'All invoices are either pending review or fully paid.'
+              : view === 'voided'
+              ? 'Voided invoices will appear here.'
               : 'Paid invoices will appear here once payments are complete.'}
           </div>
         </div>
@@ -257,6 +290,8 @@ export default function SubInvoicesSection({ job, profile }) {
           onResolveDispute={() => handleResolveDispute(selectedInvoice)}
           onAddPayment={() => setAddPaymentFor(selectedInvoice)}
           onVoidPayment={handleVoidPayment}
+          onVoidInvoice={() => handleVoidInvoice(selectedInvoice)}
+          onUnvoidInvoice={() => handleUnvoidInvoice(selectedInvoice)}
           mob={mob}
         />
       )}
@@ -285,6 +320,7 @@ export default function SubInvoicesSection({ job, profile }) {
 // ─── InvoiceRow ───────────────────────────────────────────────────────────────
 
 function InvoiceRow({ inv, selected, onClick }) {
+  const isVoided = inv.status === 'voided';
   return (
     <div
       onClick={onClick}
@@ -292,6 +328,7 @@ function InvoiceRow({ inv, selected, onClick }) {
         background: selected ? '#F0F4FF' : '#fff',
         border: `1px solid ${selected ? '#1D4ED8' : '#E8E4DC'}`,
         borderRadius: 6, padding: '10px 14px', cursor: 'pointer',
+        opacity: isVoided ? 0.55 : 1,
         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         transition: 'all 0.12s',
       }}
@@ -320,14 +357,23 @@ function InvoiceRow({ inv, selected, onClick }) {
 
 // ─── InvoiceDetailPanel ───────────────────────────────────────────────────────
 
-function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onResolveDispute, onAddPayment, onVoidPayment, mob }) {
+function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onResolveDispute, onAddPayment, onVoidPayment, onVoidInvoice, onUnvoidInvoice, mob }) {
   const canManage = isManager(userRole);
+  const isVoided = inv.status === 'voided';
   const nonVoidedPayments = inv.payments.filter(p => !p.voidedAt);
   const overPaid = inv.paidSum > inv.amount;
 
   return (
     <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+        {/* Voided banner */}
+        {isVoided && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b',
+            padding: '8px 12px', borderRadius: 4, marginBottom: 12, fontSize: 12 }}>
+            <strong>VOIDED</strong>{inv.voidReason ? ` — ${inv.voidReason}` : ''}
+          </div>
+        )}
+
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
@@ -466,25 +512,40 @@ function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onRe
         {/* Action buttons (owner/PM only) */}
         {canManage && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {inv.status === 'pending_review' && (
-              <button onClick={onApprove} className="btn btn-navy" style={{ fontSize: 12, padding: '7px 16px' }}>
-                ✓ Approve
+            {/* Voided invoice — only Restore is available */}
+            {isVoided ? (
+              <button onClick={onUnvoidInvoice} className="btn btn-navy" style={{ fontSize: 12, padding: '7px 16px' }}>
+                ↩ Restore Invoice
               </button>
-            )}
-            {(inv.status === 'approved' || inv.status === 'partially_paid') && (
-              <button onClick={onAddPayment} className="btn btn-gold" style={{ fontSize: 12, padding: '7px 16px' }}>
-                + Add Payment
-              </button>
-            )}
-            {!inv.disputed && inv.status !== 'voided' && inv.status !== 'paid' && (
-              <button onClick={onDispute} className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 16px', color: '#DC2626' }}>
-                🚩 Dispute
-              </button>
-            )}
-            {inv.disputed && (
-              <button onClick={onResolveDispute} className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 16px' }}>
-                Resolve Dispute
-              </button>
+            ) : (
+              <>
+                {inv.status === 'pending_review' && (
+                  <button onClick={onApprove} className="btn btn-navy" style={{ fontSize: 12, padding: '7px 16px' }}>
+                    ✓ Approve
+                  </button>
+                )}
+                {(inv.status === 'approved' || inv.status === 'partially_paid') && (
+                  <button onClick={onAddPayment} className="btn btn-gold" style={{ fontSize: 12, padding: '7px 16px' }}>
+                    + Add Payment
+                  </button>
+                )}
+                {!inv.disputed && inv.status !== 'paid' && (
+                  <button onClick={onDispute} className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 16px', color: '#DC2626' }}>
+                    🚩 Dispute
+                  </button>
+                )}
+                {inv.disputed && (
+                  <button onClick={onResolveDispute} className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 16px' }}>
+                    Resolve Dispute
+                  </button>
+                )}
+                {inv.status !== 'paid' && (
+                  <button onClick={onVoidInvoice} className="btn btn-ghost"
+                    style={{ fontSize: 12, padding: '7px 16px', color: '#DC2626', marginLeft: 'auto' }}>
+                    Void Invoice
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}

@@ -1362,3 +1362,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - SUB_INVOICES_ARC.md corrected: type was 'sub_payment' → 'sub_payout'; job_transactions.invoice_id NOT used (FK to invoices client billing, not sub_invoices); linkage explicitly documented as one-way (sub_invoice_payments.transaction_id → job_transactions.id).
 - Migration: 20260527020000_void_sub_invoice_payment_with_ledger.sql. Commits: 3a18cd6 (migration), 3cb4912 (helper), 5c26b6f (docs).
 - Next: Phase 5 — Master Agent verbs (log_sub_invoice, log_sub_payment, approve_sub_invoice).
+
+[LOG — 2026-05-27 — Sub Invoice void + un-void shipped]
+- Action: Built void_sub_invoice_with_cascade + unvoid_sub_invoice Postgres functions. Added sbVoidSubInvoice + sbUnvoidSubInvoice helpers. Added Void Invoice button to detail panel, Voided view tab (only renders when count > 0), Restore Invoice button on voided invoices, VOIDED banner at top of detail panel for voided invoices.
+- Cascade: voiding an invoice loops through its non-voided payments and calls Phase 4b's void_sub_invoice_payment_with_ledger for each → atomic ledger reversal per payment. Returns (invoice_id, payments_voided) count.
+- Un-void only restores the invoice — payments stay voided (explicit decision; un-voiding cascaded payments needs per-payment user judgment, can re-record fresh after restore).
+- sbLoadSubInvoices updated: added void_reason + voided_by_id to SELECT + enriched output (needed for VOIDED banner display).
+- Rollup totals (Pending / Outstanding / Paid) already correctly excluded voided — status='voided' not in any of the three filter sets.
+- Voided tab hidden until count > 0. InvoiceRow at 55% opacity in Voided view. Only Restore action shown on voided invoice detail panels; Approve/Add Payment/Dispute/Void hidden.
+- Void Invoice button available on all non-voided, non-paid invoices (pending, approved, partially_paid, disputed).
+- Lucy Webb cleanup unblocked: can now void wrong invoices + their payments cleanly with audit trail preserved.
+- Migration: 20260527030000_void_sub_invoice_with_cascade.sql. Commits: 7ebc1c2 (migration + helpers), see next commit for UI.
+- Build: ✓ clean (723ms).
