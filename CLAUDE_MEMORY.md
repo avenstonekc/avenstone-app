@@ -1482,3 +1482,19 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: 68c41b9. Pushed to main.
 - Lesson: enum drift between manual data entry path (client_deposit available in TransactionModal) and webhook/verb path (Stripe + Master Agent always write client_payment) silently breaks downstream gates. Every type-based gate must be an enum-aware .in() covering all valid variants, not a single .eq().
 - Next: cost-plus blueprint conversation (open questions in COST_PLUS_AUDIT.md).
+
+[LOG — 2026-05-27 — COMPANY_FILES_ARC Phase 5 shipped — expiration watchdog]
+- Action: Built full Phase 5 watchdog chain — scheduled_actions producer helpers, consumer edge function, daily GitHub Actions schedule, job-level expiration banner.
+- Helpers added to companyFiles.js:
+  sbScheduleCompanyFileExpirations(companyFileId, expirationDate) — writes 3 scheduled_actions rows (30d/14d/0d). Auto-called by sbUploadCompanyFile when metadata.expirationDate set.
+  sbCancelCompanyFileScheduledActions(companyFileId) — cancels pending rows. Auto-called by sbReplaceCompanyFile after successful replace.
+- Schema adjustments vs blueprint: todos.priority valid values = 'low'|'medium'|'high' (no 'urgent'/'normal'). Blueprint 'normal'→'medium', 'urgent'→'high'. scheduled_actions same. confirmed via information_schema.
+- company-files-watchdog/index.ts: service-role client. Processes scheduled_actions WHERE rule_key LIKE 'cf_exp_%' AND status='scheduled' AND fire_at<=NOW(). For each: load company_file, skip archived, get owner+PM profiles, check existing open todos (idempotency), create todos, mark fired.
+- Idempotency: checks todos WHERE related_entity_type='company_file' AND related_entity_id=<uuid> AND assigned_to_user_id=<prof.id> AND status='open'. Skips if open todo exists for that profile+file combination.
+- Schedule: GitHub Actions .github/workflows/company-files-watchdog.yml. Daily at 14:00 UTC (~9am CT). Same pattern as credential-check.yml. workflow_dispatch for manual triggers.
+- No new migration: all tables (scheduled_actions, todos) already exist with correct columns.
+- CompanyFileExpirationBanner.jsx: mounted in JobDet.jsx tab content top. Queries company_files WHERE client-visible AND lifecycle_status='active' AND expiration_date<=today. Red banner listing expired files. Staff-only (owner/PM/rep). Undismissable (resolves when file renewed/archived).
+- Build: ✓ clean (793ms). Commits: ded524c (helpers), c184244 (scanner+banner). Pushed.
+- Smoke test: SQL-level only (no live test this session). Steps 1-7 require manual verify with upload of expiring file + watchdog trigger.
+- COMPANY_FILES_ARC v1 substantially complete. Phase 4 (Master Agent upload_company_file verb) remains. All client/sub/staff surfaces shipped.
+- Next: Phase 4 (Master Agent verb) OR pivot to other arc.
