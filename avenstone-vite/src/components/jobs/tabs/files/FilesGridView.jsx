@@ -1,22 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { sbSignJobFileUrl } from '../../../../lib/supabase';
 import { Ic } from '../../../../lib/utils';
 import { FileRow } from './FilesRecentView';
 
 function PhotoThumbnail({ file, onSelect, checked, onToggle, bulkTagMode }) {
   const [url, setUrl] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [inView, setInView] = useState(false);
+  const containerRef = useRef();
 
+  // IntersectionObserver — start URL fetch 200px before entering viewport
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) { setInView(true); observer.disconnect(); }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Fetch signed URL only once in-view
+  useEffect(() => {
+    if (!inView) return;
     let cancelled = false;
+    setLoading(true);
     sbSignJobFileUrl(file.id, 3600).then(r => {
       if (!cancelled) { setUrl(r.url || null); setLoading(false); }
     }).catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [file.id]);
+  }, [inView, file.id]);
 
   return (
     <div
+      ref={containerRef}
       onClick={() => bulkTagMode ? onToggle(file.id) : onSelect(file.id)}
       style={{
         position: 'relative', aspectRatio: '1 / 1', borderRadius: 6,

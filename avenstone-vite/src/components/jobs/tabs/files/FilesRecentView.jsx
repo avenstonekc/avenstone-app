@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Ic, fD } from '../../../../lib/utils';
 
 const CAT_COLORS = {
@@ -66,10 +67,19 @@ function FileRow({ file, onSelect, checked, onToggle, bulkTagMode }) {
   );
 }
 
-export default function FilesRecentView({ files, onSelectFile, bulkTagMode, selectedFileIds, onToggleSelect }) {
-  const recent = [...files].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 20);
+const PAGE_SIZE = 50;
 
-  if (!recent.length) {
+export default function FilesRecentView({ files, onSelectFile, bulkTagMode, selectedFileIds, onToggleSelect }) {
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  // Reset pagination when file list changes (search / reload)
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [files]);
+
+  const sorted = [...files].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const recent = sorted.slice(0, visibleCount);
+  const hasMore = sorted.length > visibleCount;
+
+  if (!sorted.length) {
     return (
       <div style={{ textAlign: 'center', padding: '48px 20px', color: '#9CA3AF' }}>
         <span style={{ width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, opacity: 0.4 }}>{Ic.folder}</span>
@@ -82,7 +92,7 @@ export default function FilesRecentView({ files, onSelectFile, bulkTagMode, sele
   return (
     <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, overflow: 'hidden' }}>
       <div style={{ padding: '8px 12px', background: '#F7F5F0', borderBottom: '1px solid #E8E4DC', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        Recent ({recent.length})
+        Recent ({sorted.length})
       </div>
       {recent.map(f => (
         <FileRow
@@ -93,6 +103,20 @@ export default function FilesRecentView({ files, onSelectFile, bulkTagMode, sele
           bulkTagMode={bulkTagMode}
         />
       ))}
+      {hasMore && (
+        <div style={{ padding: '10px 12px', borderTop: '1px solid #F3F0E8', textAlign: 'center' }}>
+          <button
+            onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
+            style={{
+              fontSize: 12, color: '#0A1F44', background: 'none',
+              border: '1px solid #E8E4DC', borderRadius: 6,
+              padding: '6px 16px', cursor: 'pointer', fontWeight: 600,
+            }}
+          >
+            Load more ({sorted.length - visibleCount} remaining)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
