@@ -2531,3 +2531,18 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Legacy tables (photos, job_documents) still EXIST — not dropped.
 - Build: ✓ clean. Commits: e5fca9f (photoGate.js), f1f88aa (sbLoadPhotosForEntity + sbLoadClientUpdates + sbLoadDocs + sbLoadJobDocuments), 57aa0cc (CompletionPage.jsx), 4f030ed (ClientPortal.jsx). All pushed to main.
 - Open: Slice 7 — migrate sbLoad (coordinate with NotesPhotosTab delete path); extend _JF_VALID_ENTITY_TYPES to include material_order + backfill + migrate sbLoadPhotosForEntity for material_order; migrate sbCountPhotosForEntity for material_order.
+
+[LOG — 2026-05-26 — UNIFIED_FILES_ARC slice 7/12 shipped — dual-write gap closed]
+- Action: Closed all remaining reader gaps. sbLoad, sbLabelPhoto, sbSetPhotoClientVisible, sbLoadPhotosForEntity, countPhotosForEntity all migrated to job_files. NotesPhotosTab delete decoupled. material_order added to valid entity types.
+- Backfill: No backfill migration needed. Audit confirmed 0 material_order rows in legacy photos table (entity_type distribution: 10 daily_log, 4 null — all already in job_files at 14/14 parity from slice 1).
+- _JF_VALID_ENTITY_TYPES: added 'material_order'. Future uploads now populate job_files. Legacy fallback in sbLoadPhotosForEntity and countPhotosForEntity removed.
+- sbLoad migrated: reads job_files WHERE storage_bucket='job-photos' AND lifecycle_status='active' instead of photos table. Returns same consumer shape; id is now job_files.id; adds storage_path field for delete path.
+- sbLabelPhoto migrated: writes job_files.subcategory (INITCAP: 'before'→'Before') instead of photos.label. Clears subcategory from other same-job photos before setting.
+- sbSetPhotoClientVisible migrated: updates job_files.client_visible (photoId was already job_files.id since slice 6).
+- sbDeleteJobPhoto (new helper): deletes from job_files, then best-effort removes storage object and legacy photos row (matched by URL suffix). NotesPhotosTab.delP now calls this helper.
+- sbDel (job delete): also deletes job_files rows when a job is deleted.
+- Edge function readers: ai-pm-nightly, ai-project-manager, get-job-status still read legacy tables — out of scope per spec. Dual-write retained for their coverage.
+- Dual-write status: RETAINED — edge functions still read legacy tables; ClientSignContractModal directly updates job_documents (out of scope).
+- Legacy tables (photos, job_documents) still EXIST with all historical data. photos table receives new writes via dual-write (sbPhoto). job_documents receives new writes via dual-write (sbUploadDoc). Hard-drop deferred to slice 8+ after edge functions migrated.
+- Commits: cb8f452 (supabase.js + photoGate.js migrations), 440959d (NotesPhotosTab). Pushed to main.
+- Open: Slice 8 — migrate edge function readers (ai-pm-nightly, ai-project-manager, get-job-status) + ClientSignContractModal + sbDelDoc/sbToggleDocVisible to job_files; then drop dual-write (sbPhoto INSERT to photos, sbUploadDoc INSERT to job_documents).
