@@ -2379,6 +2379,21 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - Trade-neutral: subcategory list is config per tenant, not code. GC vs painter vs roofer = different seed rows, same table.
 - Files: UNIFIED_FILES_ARC.md (new, 502 lines). Commit: f77dc34. Pushed to main.
 
+[LOG — 2026-05-26 — UNIFIED_FILES_ARC slice 1/12 shipped — schema foundation + private bucket]
+- Action: Slice 1/12 shipped. Foundation layer for unified file management is live.
+- New tables: job_files (25 cols, 5 partial indexes, 4 RLS policies, updated_at trigger). tenant_file_subcategories (7 cols, UNIQUE constraint, 2 RLS policies).
+- New private storage bucket: job-files (public=false). Path convention: <tenant_id>/<job_id>/<file_id>.<ext>. 4 tenant-scoped RLS policies on storage.objects.
+- Backfill: photos (14 rows) → job_files with storage_bucket='job-photos', category='Photos', subcategory inferred from label column. job_documents (39 rows) → job_files with storage_bucket='job-documents', category/subcategory derived from file_type. Both source tables UNTOUCHED. Counts verified: 14/14 and 39/39.
+- 16 Avenstone GC Photos subcategories seeded into tenant_file_subcategories.
+- New helpers: sbUploadJobFile (writes to job-files bucket + job_files row, calls inferFileCategory via dynamic import if no category), sbLoadJobFiles (category/subcategory filter, tenant-scoped), sbSignJobFileUrl (works across all 3 buckets), sbCategorizeJobFile, sbDeleteJobFile.
+- New module: avenstone-vite/src/lib/jobFiles/inferFileCategory.js — rule-based + phase-based categorizer. queryFn param injected by sbUploadJobFile to avoid circular import. Vision-Haiku AI deferred to Phase 2.
+- Audit deviations from spec: photos.uploaded_by_id doesn't exist (NULL in migration); job_documents.storage_path doesn't exist (file_url used); job_documents.uploaded_by not uploaded_by_id; job_documents has no mime_type/size_bytes; BOTH job-photos AND job-documents buckets are public (not just job-photos — second security finding).
+- CRITICAL DEFERRED: job-photos AND job-documents buckets still public. Flip deferred to Phase 3 when consumers are rewired to signed URLs. Documented as security debt.
+- Old helpers (sbPhoto, sbUploadDoc, sbLoadDocs) untouched for backward compat.
+- Build: ✓ 386 modules, clean.
+- Commits: 00f558e (migration), 0f01f6a (inferFileCategory), 6aade72 (helpers). Pushed to main.
+- Open: Phase 2 (Unified Files tab UI). Phase 3 (rewire consumers + flip bucket privacy).
+
 [LOG — 2026-05-26 — SCHEDULING_ARC slice 4/8 shipped — sub accept/decline/tentative response buttons + status badges]
 - Action: Slices 3 and 4 of 8 shipped together. Per-item invite state loaded in SubJobView schedule tab; subs can accept, decline, or mark tentative directly from the schedule list.
 - Slice 3 (commit 9340849): Added invite load useEffect to SubJobView.jsx. Loads schedule_item_invitees for every schedItems entry via Promise.all; extracts current sub's invite row by AV_USER_ID. Result stored as inviteByItemId map. Cancelled flag prevents stale state after unmount.
