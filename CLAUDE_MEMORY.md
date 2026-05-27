@@ -1456,5 +1456,19 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - UI: grouped by category (CATEGORY_ORDER), ExpirationBadge (red/amber/green), CategoryBadge with per-category color palette, View button → sbSignCompanyFileUrl → window.open. Loading/empty/error states.
 - Smoke test: SQL-verified (policies confirmed). Live-test blocked (no sub account this session). Per-step verification requires sub login.
 - Build: ✓ clean (638ms). Commits: 5f601de (helper), d9e597b (UI). Both pushed to main.
+
+[LOG — 2026-05-27 — COST_PLUS additive audit — prepayment / client credit pool]
+- Action: Appended prepayment/client-credit audit section to COST_PLUS_AUDIT.md (165 lines added). Read-only. No code or schema changes. Commit: 907d97e.
+- Key findings:
+  1. No credit pool table exists — no client_credits, prepayments, escrow, retainer tables anywhere in the schema.
+  2. client_deposit TYPE exists in job_transactions but is unused by Stripe webhook and Master Agent log_payment verb (both hardcode type='client_payment'). Deposit type is manual-entry only.
+  3. Phase gate bug: checkDepositPaid in phaseGates.js queries type='client_payment' only — misses any deposit recorded as type='client_deposit'. One-line fix (OR condition) — can ship standalone.
+  4. No allocation table: invoice_id on job_transactions is the only linkage between payments and invoices. Manual transactions leave it null. No way to say "apply $3k of $5k deposit to Draw 1."
+  5. Stripe overpayment: silent excess — amount_paid accumulates above total_amount, no flag/credit row/notification.
+  6. No "client credit available" UI surface anywhere in the app.
+  7. sbLoadJobFinancialSummary.client_owes is the only credit-balance proxy (contract_total - total_in) — blunt, conflates deposits with invoice payments.
+  8. draw_schedules.paid_amount only updates when Stripe fires against an invoice.draw_id. Pre-invoice deposits never credit a draw.
+- Arc shape updates: Phase 1 fix checkDepositPaid; Phase 2 draw composer needs "Client Credit Available" line; Phase 5 needs record_deposit and apply_credit verbs.
+- Open Q: whether to build a formal credit pool table (option A/B) or enforce invoice-before-payment discipline going forward (option C).
 - Existing files with visible_to_roles=['sub'] immediately visible to subs on refresh (Pattern A — no backfill needed unlike Phase 3a).
 - Next: Phase 5 (expiration watchdog) — alert owner/PM when COI/license expires. Phase 4 (Master Agent verb) if scoped separately.
