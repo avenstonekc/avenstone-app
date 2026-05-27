@@ -6,7 +6,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 ---
 
-## Current state (2026-05-09)
+## Current state (2026-05-27)
 
 - **Repo:** github.com/avenstonekc/avenstone-app
 - **Web:** Vercel auto-deploy on push to main
@@ -1232,3 +1232,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Files: avenstone-vite/src/components/jobs/tabs/ScheduleTab.jsx
 - Commit: 99db9cb. Build: ✓ clean.
 - Recurrence pattern: Any useMemo/useCallback/useRef added below an early return gate will repro this exact crash. Symptom fingerprint: white page on first meaningful re-render, back button broken.
+
+[LOG — 2026-05-27 — CLAUDE.md + CLAUDE_MEMORY.md hygiene pass — historical LOGs archived]
+- Action: Leaned CLAUDE.md and CLAUDE_MEMORY.md; moved completed-arc LOGs (2026-05-17 to 2026-05-23) to CLAUDE_ARCHIVE.md under new slugs.
+- Files: CLAUDE.md (684 → 583 lines), CLAUDE_MEMORY.md (2548 → 1151 lines), CLAUDE_ARCHIVE.md (1760 → 3313 lines).
+- CLAUDE.md removals: Today screen label updated to HomeScr; AI System prose intro (12 lines); Master Agent v2 chat-first section (58 lines, historical narrative — locked decisions covers facts); Priority Order Done subsection (9 lines, all items in archive/git); Memory system compressed (27 → 6 lines).
+- CLAUDE_MEMORY.md: Added VOICE_AGENT Phase 3/4 on-device verification open item under App infra. Archived 1414 lines of completed-arc LOGs covering: floor-plan stitcher, voice STT/TTS, agent-cards-v1, agent-ops, auto-fix A+C+D+E, mobile UX, drift cleanup.
+- CLAUDE_ARCHIVE.md: Added slug claude-md-archived-sections-2026-05-27 (removed CLAUDE.md sections). Added slug completed-arc-logs-2026-05-17-to-23 (1414 lines of archived LOGs).
+- Commit: 129d65b.
