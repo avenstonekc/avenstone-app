@@ -1149,3 +1149,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ 396 modules, clean.
 - Commits: ace1fbc (ai-pm-nightly), 3229962 (ai-project-manager), d666a64 (get-job-status), 4cca251 (supabase.js dual-write drop + sbDelDoc + sbToggleDocVisible fix). Pushed to main.
 - Open: Slice 9 — fix ClientSignContractModal to update job_files.client_visible. Slices 10-12 — cleanup, FilesTab polish, hard-drop legacy tables after soak.
+
+[LOG — 2026-05-27 — UNIFIED_FILES_ARC slice 9/12 shipped — search across folders in Files tab]
+- Action: Full-text search across all file categories including receipt transaction metadata.
+- New helper sbSearchJobFiles(jobId, query): fetches up to 500 active job_files, joins job_transactions for Receipt files (payer_or_payee_name, description, notes, amount), filters client-side across all fields. Empty query delegates to sbLoadJobFiles(limit:200). Attaches _receipt_meta: tx to matched receipt rows for downstream display.
+- FilesRecentView.FileRow: displays vendor + amount from _receipt_meta when present (e.g. "Home Depot — $247"); shows tx.description in subtitle row. Shared by FilesTreeView + FilesGridView (all import FileRow from FilesRecentView).
+- FilesTab changes: search input above header bar (cream-themed, full-width, gold focus ring, clear button); 200ms debounced search effect; filteredFiles state passed to all three views; pre-existing bug fixed: result.files → result.data (sbLoadJobFiles returns {ok,data}, not {ok,files}); handleFileUploaded/Updated/Deleted keep filteredFiles in sync; empty search state (🔍 + "No files match" + Clear button).
+- Commits: 69bc328 (sbSearchJobFiles helper), fbb9cb5 (search UI + filter wiring). Pushed to main.
+- Build: ✓ 396 modules, clean.
+- Open: ClientSignContractModal still calls job_documents.update for client_visible — schedule for slice 10. Slices 10-12: share folder bundles, mobile camera polish, perf + final polish.
