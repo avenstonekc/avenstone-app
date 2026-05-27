@@ -478,6 +478,9 @@ const TOOLS = [
         contract_value: { type: "number" },
         target_completion: { type: "string", description: "YYYY-MM-DD" },
         assigned_rep: { type: "string", description: "Full name of sales rep" },
+        cost_plus: { type: "boolean", description: "True if this is a cost-plus job (client billed for actual expenses + markup, not a fixed contract). Defaults to false." },
+        labor_markup_pct: { type: "number", description: "Markup percentage applied to labor expenses (sub_payout, labor types). Required when cost_plus=true. e.g. 15 for 15%." },
+        material_markup_pct: { type: "number", description: "Markup percentage applied to material/other expenses (material_purchase, fuel, permits, etc.). Required when cost_plus=true. e.g. 20 for 20%." },
       },
       required: ["address"],
     },
@@ -853,6 +856,10 @@ async function executeTool(
           contract_value: input.contract_value || 0,
           target_completion: input.target_completion || null,
           assigned_rep: input.assigned_rep || null,
+          cost_plus: input.cost_plus === true,
+          labor_markup_pct: input.cost_plus ? Number(input.labor_markup_pct ?? 0) : null,
+          material_markup_pct: input.cost_plus ? Number(input.material_markup_pct ?? 0) : null,
+          default_markup_pct: input.cost_plus ? Number(input.labor_markup_pct ?? input.material_markup_pct ?? 0) : null,
           created_at: new Date().toISOString(),
         }).select().single();
         if (error) return { error: error.message };
@@ -1962,11 +1969,19 @@ function describeConfirmAction(tool: string, input: any): string {
       return bits.join(" · ") + ".";
     }
     case "create_job": {
-      const bits: string[] = [`Create job at ${input.address}`];
-      if (input.client_name) bits.push(`client ${input.client_name}`);
-      if (input.scope) bits.push(`scope: ${input.scope}`);
-      if (input.contract_value) bits.push(`${fmtMoney(input.contract_value)} contract`);
-      return bits.join(" · ") + ".";
+      const lines: string[] = [`Create job: ${input.address || '(no address)'}`];
+      if (input.client_name) lines.push(`  Client: ${input.client_name}`);
+      if (input.contract_value) lines.push(`  Contract value: $${Number(input.contract_value).toFixed(2)}`);
+      if (input.cost_plus) {
+        const lp = Number(input.labor_markup_pct ?? 0);
+        const mp = Number(input.material_markup_pct ?? 0);
+        lines.push(`  Cost-plus: yes (labor ${lp}%, material ${mp}%)`);
+      } else {
+        lines.push(`  Cost-plus: no (fixed price)`);
+      }
+      if (input.status) lines.push(`  Status: ${input.status}`);
+      if (input.scope) lines.push(`  Scope: ${String(input.scope).slice(0, 80)}${String(input.scope).length > 80 ? '...' : ''}`);
+      return lines.join('\n');
     }
     case "notify_team_member": {
       const target = input._target_name ? String(input._target_name) : "team member";
@@ -2110,10 +2125,27 @@ Sub invoice workflow: When user mentions a sub sent an invoice or bill, use log_
 COMPANY FILE WORKFLOW
 When the user attaches an image or PDF and mentions insurance, license, bond, W-9, COI, or any company compliance document, use upload_company_file. Vision extracts expiration date, policy number, and issuer automatically from the attached document — do NOT ask the user for those fields if the document was attached. Only ask if (a) the document type is genuinely ambiguous after reading it, or (b) the user explicitly wants to override an extracted value. Owner/PM only — if a rep or sub asks, explain that company file uploads require owner or PM access.
 
+INTENT RESOLUTION
+
+When the user's message contains multiple possible actions, do NOT fire multiple tool calls in one response. Pick the PRIMARY action (the one most directly stated as an imperative) and fire ONLY that one. If unsure which action is primary, ask the user briefly which to do first.
+
+Examples:
+- "Create a job at 123 Main and log a receipt from Home Depot" → fire create_job ONLY. After it confirms, ask the user to re-send the receipt request.
+- "Add a todo to call Mike and create a new job" → ask the user "Which first — the todo or the job?"
+
+This rule does NOT apply to internal helper calls (e.g. get_jobs to resolve a PO match before log_receipt) — those are reads that support a single user-intent verb.
+
 COST-PLUS DRAW WORKFLOW
 record_deposit is for cost-plus jobs only. Use when a client hands over a check, ACH, or cash before a draw invoice is created — the payment lands as a bucket credit (inbound, no invoice link). Do NOT use log_payment for cost-plus deposits — log_payment is for standard contract invoices. Owner/PM only.
 
 compose_draw is for cost-plus jobs only. Use when the owner says "compose a draw", "bill the client for expenses", "generate a draw", or similar. The system auto-loads all unreimbursed expenses and the current bucket balance, then surfaces a confirmation card showing expense count, gross total, bucket offset, and draw target. On confirm, the draw draft is created and transactions are flipped to in_draw. Owner/PM only — if a rep asks, explain the role requirement. After the draw is confirmed, tell the owner the draw number so they can proceed to invoice creation in the Financials tab. Do NOT call compose_draw on standard (non-cost-plus) jobs — the system will reject it. If the job is not cost-plus, explain how the Financials tab handles standard invoicing instead.
+
+When creating a cost-plus job via create_job, ALWAYS set:
+  - cost_plus: true
+  - labor_markup_pct (the labor/sub markup rate as a number)
+  - material_markup_pct (the material/other markup rate as a number)
+
+If the user gives a single markup percentage ("set it at 25%"), apply that percentage to BOTH labor and material. If they specify different rates ("15% labor, 20% material"), split accordingly. NEVER create a cost-plus job without both markup rates populated — the cost-plus state machine relies on them.
 
 DIAGNOSTIC REPORTING STYLE
 
