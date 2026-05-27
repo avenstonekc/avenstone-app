@@ -1507,7 +1507,23 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Phase 6 (client portal migration) is the cleanup that lets Avenstone finally deprecate the legacy job_cost_items system.
 - Audit basis: two prior cost-plus audit sessions (COST_PLUS_AUDIT.md + prepayment additive audit). Three locked decisions from Kalin answered the 5 open questions.
 - Commit: 40d4634. Pushed to main.
-- Open: Phase 1 dispatch next.
+- Open: Phase 1A shipped (below). Phase 1B (trigger + helpers + InfoTab) is next.
+
+[LOG — 2026-05-27 — COST_PLUS_ARC Phase 1A shipped — schema foundation]
+- Action: Migration 20260527050000_cost_plus_phase_1a_schema.sql applied and verified. All 10 auto-derived objects confirmed green. Commit: b2ed16e.
+- Schema changes:
+  - jobs.labor_markup_pct NUMERIC DEFAULT 0 + jobs.material_markup_pct NUMERIC DEFAULT 0 (backfilled from default_markup_pct on cost_plus=true jobs — both were 0)
+  - job_transactions.draw_id UUID FK → draw_schedules ON DELETE SET NULL
+  - job_transactions.reimbursement_status TEXT CHECK ('unreimbursed'|'in_draw'|'reimbursed')
+  - job_transactions.markup_pct NUMERIC DEFAULT 0
+  - job_transactions.reimbursed_at TIMESTAMPTZ
+  - Indexes: idx_jt_draw, idx_jt_reimb_unreim, idx_jt_bucket (partial)
+  - draw_line_items table: 16 columns, FK to draw_schedules + job_transactions + profiles, chk_dli_fwd_or_tx constraint, RLS (dli_tenant_select + dli_modify), 2 indexes, set_updated_at trigger
+- Backfill result: 0 rows → reimbursed (no draw_number set on any cost-plus out rows); 66 rows → unreimbursed (43 Lucy Webb + 23 test-flow-001). All draw_number=NULL — no row was ever tied to a draw.
+- Pre-migration audit: all blueprint assumptions confirmed. No enum/column deviations.
+- Fix applied: backfill Step 1 SQL moved jt.draw_number = ds.draw_number from FROM JOIN to WHERE clause (PostgreSQL disallows updated table alias in FROM JOIN conditions).
+- Unreimbursed rows for Kalin review: 66 total. Lucy Webb: 43 rows ($2026-04-23 to 2026-05-27, types: sub_payout/material_purchase/labor/fuel/permit/other_expense). test-flow-001: 23 rows ($2026-04-10 to 2026-05-27). All draw_number=NULL.
+- Open: Phase 1B — BEFORE INSERT trigger (set_cost_plus_defaults_on_jt), sbLoadUnreimbursedExpenses + sbGetBucketBalance + sbComposeDraw + sbVoidDraw helpers, InfoTab markup fields.
 
 [LOG — 2026-05-27 — COMPANY_FILES_ARC Phase 4 shipped — Master Agent upload_company_file verb]
 - Action: Built standalone extraction edge function + wired upload_company_file confirm-gated verb into ai-master-agent. COMPANY_FILES_ARC fully complete.
