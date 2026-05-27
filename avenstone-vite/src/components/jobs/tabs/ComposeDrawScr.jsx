@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { sbLoadUnreimbursedExpenses, sbGetBucketBalance } from '../../../lib/supabase';
+import { sbLoadUnreimbursedExpenses, sbGetBucketBalance, sbComposeDraw } from '../../../lib/supabase';
 import { f$, fD } from '../../../lib/utils';
 
 const NAVY   = '#0A1F44';
@@ -19,7 +19,7 @@ const TYPE_LABELS = {
   misc:       'Misc',
 };
 
-export default function ComposeDrawScr({ job, onClose }) {
+export default function ComposeDrawScr({ job, onClose, onComposed }) {
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
   const [expenses, setExpenses]       = useState([]);
@@ -32,6 +32,9 @@ export default function ComposeDrawScr({ job, onClose }) {
   // Keyed by client-side temp id so add/remove/edit stays stable across renders.
   // Shape: { [tempId]: { description, base_amount, markup_pct } }
   const [forwardLines, setForwardLines] = useState({});
+  const [selectedIds, setSelectedIds]   = useState(() => new Set());
+  const [submitting, setSubmitting]     = useState(false);
+  const [submitError, setSubmitError]   = useState(null);
 
   const nextForwardId = () => `fwd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const addForwardLine = () => {
@@ -64,38 +67,92 @@ export default function ComposeDrawScr({ job, onClose }) {
     if (!expRes.ok) { setError(expRes.error); setLoading(false); return; }
     if (!balRes.ok) { setError(balRes.error); setLoading(false); return; }
     setExpenses(expRes.data);
+    setSelectedIds(new Set(expRes.data.map(r => r.id)));
     setBalance(balRes.data);
     setLoading(false);
   };
 
-  // Derive per-row totals from current markup overrides
-  const lineItems = useMemo(() => expenses.map(e => {
-    const base      = Number(e.amount) || 0;
-    const pct       = Number(overrides[e.id] ?? e.markup_pct ?? 0);
-    const markupAmt = round2(base * pct / 100);
-    const total     = round2(base + markupAmt);
-    return { ...e, base, pct, markupAmt, total };
-  }), [expenses, overrides]);
-
-  const subtotal = useMemo(() => {
-    const txTotal = lineItems.reduce((s, r) => s + r.total, 0);
-    let fwdTotal = 0;
-    for (const fwd of Object.values(forwardLines)) {
-      const base = Number(fwd.base_amount) || 0;
-      const pct  = Number(fwd.markup_pct) || 0;
-      fwdTotal += base * (1 + pct / 100);
+  // Submission-ready line items: checked tx rows + all forward rows.
+  // Drives both sbComposeDraw payload and summary math.
+  const lineItems = useMemo(() => {
+    const items = [];
+    let idx = 0;
+    for (const e of expenses) {
+      if (!selectedIds.has(e.id)) continue;
+      const base      = Number(e.amount) || 0;
+      const pct       = Number(overrides[e.id] ?? e.markup_pct ?? 0);
+      const markupAmt = round2(base * pct / 100);
+      items.push({
+        transaction_id:    e.id,
+        description:       e.description || TYPE_LABELS[e.type] || e.type || '',
+        base_amount:       base,
+        markup_pct:        pct,
+        markup_amount:     markupAmt,
+        total_with_markup: round2(base + markupAmt),
+        is_forward_looking: false,
+        display_order:     idx++,
+        notes:             null,
+      });
     }
-    return round2(txTotal + fwdTotal);
-  }, [lineItems, forwardLines]);
+    for (const fwd of Object.values(forwardLines)) {
+      const base      = Number(fwd.base_amount) || 0;
+      const pct       = Number(fwd.markup_pct) || 0;
+      const markupAmt = round2(base * pct / 100);
+      items.push({
+        transaction_id:    null,
+        description:       fwd.description || 'Forward-looking line',
+        base_amount:       base,
+        markup_pct:        pct,
+        markup_amount:     markupAmt,
+        total_with_markup: round2(base + markupAmt),
+        is_forward_looking: true,
+        display_order:     idx++,
+        notes:             null,
+      });
+    }
+    return items;
+  }, [expenses, selectedIds, overrides, forwardLines]);
 
-  // Submit is eligible when any transaction rows are loaded OR any forward lines exist.
-  // The button stays hard-disabled in this slice — Phase 2C wires the actual call.
-  const canSubmit = expenses.length > 0 || Object.keys(forwardLines).length > 0; // eslint-disable-line no-unused-vars
+  const subtotal = useMemo(
+    () => round2(lineItems.reduce((s, r) => s + r.total_with_markup, 0)),
+    [lineItems],
+  );
 
-  const netDue   = useMemo(
+  const validationError = useMemo(() => {
+    if (!title.trim()) return 'Draw title is required';
+    if (lineItems.length === 0) return 'Select at least one expense or add a line item';
+    if (lineItems.some(l => !l.description?.trim())) return 'Every line item needs a description';
+    if (lineItems.some(l => !Number.isFinite(l.base_amount) || l.base_amount < 0)) return 'Base amounts must be non-negative numbers';
+    return null;
+  }, [title, lineItems]);
+
+  const canSubmit = !validationError && !submitting;
+
+  const netDue = useMemo(
     () => round2(applyBucket ? subtotal - balance.bucket : subtotal),
     [subtotal, balance.bucket, applyBucket],
   );
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    const result = await sbComposeDraw({
+      jobId:        job.id,
+      title:        title.trim(),
+      description:  description.trim() || null,
+      lineItems,
+      targetAmount: netDue,
+      applyBucket,
+    });
+    setSubmitting(false);
+    if (!result.ok) {
+      setSubmitError(result.error || 'Failed to compose draw');
+      return;
+    }
+    onComposed?.(result.data?.draw_id);
+    onClose?.();
+  };
 
   return (
     <div style={{
@@ -194,8 +251,26 @@ export default function ComposeDrawScr({ job, onClose }) {
 
             {/* ── Section 2: Expense list ───────────────────────── */}
             <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>
-                Unreimbursed Expenses ({expenses.length})
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Unreimbursed Expenses ({expenses.length})
+                </div>
+                {expenses.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(
+                      selectedIds.size === expenses.length
+                        ? new Set()
+                        : new Set(expenses.map(r => r.id))
+                    )}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      fontSize: 11, color: '#6B7280', fontWeight: 600, padding: '2px 6px',
+                    }}
+                  >
+                    {selectedIds.size === expenses.length ? 'Deselect all' : 'Select all'}
+                  </button>
+                )}
               </div>
 
               {/* Transaction-linked rows */}
@@ -208,44 +283,65 @@ export default function ComposeDrawScr({ job, onClose }) {
                   {/* Column headers */}
                   <div style={{
                     display: 'grid',
-                    gridTemplateColumns: '80px 1fr 76px 76px 60px 76px',
+                    gridTemplateColumns: '24px 80px 1fr 76px 76px 60px 76px',
                     gap: 6, padding: '4px 6px', marginBottom: 4,
                     borderBottom: `1px solid ${BORDER}`,
                   }}>
-                    {['Date', 'Description', 'Type', 'Cost', 'Markup %', 'Total'].map(h => (
+                    {['', 'Date', 'Description', 'Type', 'Cost', 'Markup %', 'Total'].map(h => (
                       <div key={h} style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
                     ))}
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 4 }}>
-                    {lineItems.map(row => (
-                      <div key={row.id} style={{
-                        display: 'grid',
-                        gridTemplateColumns: '80px 1fr 76px 76px 60px 76px',
-                        gap: 6, alignItems: 'center',
-                        padding: '6px 6px', borderRadius: 4, background: CREAM,
-                      }}>
-                        <div style={{ fontSize: 11, color: '#6B7280' }}>{fD(row.date_incurred)}</div>
-                        <div style={{ fontSize: 11, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.description || ''}>
-                          {row.description || '—'}
+                    {expenses.map(row => {
+                      const base      = Number(row.amount) || 0;
+                      const pct       = Number(overrides[row.id] ?? row.markup_pct ?? 0);
+                      const markupAmt = round2(base * pct / 100);
+                      const rowTotal  = round2(base + markupAmt);
+                      const checked   = selectedIds.has(row.id);
+                      return (
+                        <div key={row.id} style={{
+                          display: 'grid',
+                          gridTemplateColumns: '24px 80px 1fr 76px 76px 60px 76px',
+                          gap: 6, alignItems: 'center',
+                          padding: '6px 6px', borderRadius: 4,
+                          background: checked ? CREAM : '#F9FAFB',
+                          opacity: checked ? 1 : 0.55,
+                          transition: 'opacity 0.1s',
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            aria-label={`Include ${row.description || row.type} in this draw`}
+                            onChange={ev => setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              if (ev.target.checked) next.add(row.id); else next.delete(row.id);
+                              return next;
+                            })}
+                            style={{ width: 14, height: 14, cursor: 'pointer', margin: 0 }}
+                          />
+                          <div style={{ fontSize: 11, color: '#6B7280' }}>{fD(row.date_incurred)}</div>
+                          <div style={{ fontSize: 11, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.description || ''}>
+                            {row.description || '—'}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#6B7280' }}>{TYPE_LABELS[row.type] || row.type}</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>{f$(base)}</div>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            value={overrides[row.id] ?? row.markup_pct ?? 0}
+                            onChange={ev => setOverrides(prev => ({ ...prev, [row.id]: parseFloat(ev.target.value) || 0 }))}
+                            style={{
+                              width: '100%', fontSize: 11, padding: '3px 5px',
+                              border: `1px solid ${BORDER}`, borderRadius: 4,
+                              boxSizing: 'border-box', background: '#fff', textAlign: 'right',
+                            }}
+                          />
+                          <div style={{ fontSize: 12, fontWeight: 700, color: markupAmt > 0 ? GOLD : NAVY }}>{f$(rowTotal)}</div>
                         </div>
-                        <div style={{ fontSize: 10, color: '#6B7280' }}>{TYPE_LABELS[row.type] || row.type}</div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>{f$(row.base)}</div>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          value={overrides[row.id] ?? row.markup_pct ?? 0}
-                          onChange={ev => setOverrides(prev => ({ ...prev, [row.id]: parseFloat(ev.target.value) || 0 }))}
-                          style={{
-                            width: '100%', fontSize: 11, padding: '3px 5px',
-                            border: `1px solid ${BORDER}`, borderRadius: 4,
-                            boxSizing: 'border-box', background: '#fff', textAlign: 'right',
-                          }}
-                        />
-                        <div style={{ fontSize: 12, fontWeight: 700, color: row.markupAmt > 0 ? GOLD : NAVY }}>{f$(row.total)}</div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -386,25 +482,41 @@ export default function ComposeDrawScr({ job, onClose }) {
             </div>
 
             {/* ── Action bar ────────────────────────────────────── */}
+            {submitError && (
+              <div style={{
+                background: '#FEE2E2', border: '1px solid #fca5a5', borderRadius: 8,
+                padding: '10px 14px', color: '#991b1b', fontSize: 13, marginBottom: 12,
+              }}>
+                {submitError}
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingBottom: 8 }}>
               <button
+                type="button"
                 onClick={onClose}
+                disabled={submitting}
                 style={{
                   background: 'none', border: `1px solid ${BORDER}`,
                   borderRadius: 6, padding: '8px 20px',
-                  fontSize: 13, color: '#6B7280', cursor: 'pointer',
+                  fontSize: 13, color: '#6B7280',
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.5 : 1,
                 }}
               >Cancel</button>
               <button
-                disabled
-                title="Submit wiring ships in Phase 2C"
+                type="button"
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                title={validationError || ''}
                 style={{
-                  background: NAVY, border: 'none',
+                  background: canSubmit ? GOLD : NAVY, border: 'none',
                   borderRadius: 6, padding: '8px 20px',
                   fontSize: 13, color: '#fff', fontWeight: 700,
-                  opacity: 0.45, cursor: 'not-allowed',
+                  opacity: canSubmit ? 1 : 0.45,
+                  cursor: canSubmit ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.15s',
                 }}
-              >Submit Draw — Phase 2C</button>
+              >{submitting ? 'Composing…' : 'Compose Draw →'}</button>
             </div>
           </>
         )}

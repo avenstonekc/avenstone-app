@@ -309,7 +309,11 @@ export default function InvoicesSubTab({ job, profile }) {
       )}
 
       {composeDrawOpen && (
-        <ComposeDrawScr job={job} onClose={() => setComposeDrawOpen(false)} />
+        <ComposeDrawScr
+          job={job}
+          onClose={() => setComposeDrawOpen(false)}
+          onComposed={() => { setComposeDrawOpen(false); load(); }}
+        />
       )}
     </div>
   );
