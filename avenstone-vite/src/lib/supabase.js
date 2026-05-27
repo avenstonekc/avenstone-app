@@ -760,6 +760,19 @@ const costFilePathFromUrl = url => {
   if (url.startsWith('http')) return url.split('/job-documents/')[1] || null;
   return url;
 };
+/**
+ * @deprecated Replaced by sbLoadClientDrawBreakdown (COST_PLUS_ARC Phase 6, shipped 2026-05-27).
+ * job_cost_items + job_cost_invoices tables retained for backward compat on jobs
+ * that predate the cost-plus arc. After 30+ days with zero new writes (verify via
+ * audit log), this helper and its sibling sbLoadCostInvoices should be removed,
+ * and the underlying tables DROPped via a separate legacy cleanup arc.
+ *
+ * Removal path:
+ *   1. Confirm zero new INSERTs to job_cost_items / job_cost_invoices in 30 days
+ *   2. Backfill any remaining rows into draw_line_items / job_transactions for completeness
+ *   3. Delete sbLoadCostItems + sbLoadCostInvoices + these comments
+ *   4. DROP TABLE job_cost_items, job_cost_invoices in a migration
+ */
 export const sbLoadCostItems = async jid => {
   const { data } = await sb.from('job_cost_items').select('*').eq('job_id', jid).order('created_at', { ascending: true });
   if (!data || !data.length) return [];
@@ -802,6 +815,7 @@ export const sbDelCostItem = async id => {
   }
   return { ok: true, error: null };
 };
+/** @deprecated See sbLoadCostItems deprecation note above. Same removal path applies. */
 export const sbLoadCostInvoices = async jid => {
   const { data } = await sb.from('job_cost_invoices').select('*').eq('job_id', jid).order('created_at', { ascending: true });
   if (!data || !data.length) return [];
@@ -5108,4 +5122,81 @@ export async function sbVoidDraw(drawId) {
   const { data, error } = await sb.rpc('void_draw', { p_draw_id: drawId });
   if (error) return { ok: false, error: error.message, data: null };
   return { ok: true, error: null, data };
+}
+
+/**
+ * Client-facing draw breakdown for a cost-plus job. Returns per-draw cards with
+ * line items, summary math, and invoice status. Filters out cancelled draws and
+ * draws whose invoice is in draft or void state (i.e. not yet sent to client).
+ *
+ * Invoice status enum: draft, sent, viewed, paid, partially_paid, overdue, void.
+ * Client-visible statuses: sent, viewed, paid, partially_paid, overdue.
+ *
+ * Returns { ok, error, data: [{ draw, lineItems, invoice }] }
+ */
+export async function sbLoadClientDrawBreakdown(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: [] };
+
+  // Load non-cancelled draws for this job
+  const { data: draws, error: drawsErr } = await sb
+    .from('draw_schedules')
+    .select('id, draw_number, title, status, target_amount, created_at')
+    .eq('job_id', jobId)
+    .neq('status', 'cancelled')
+    .order('draw_number', { ascending: true });
+
+  if (drawsErr) return { ok: false, error: drawsErr.message, data: [] };
+  if (!draws || draws.length === 0) return { ok: true, error: null, data: [] };
+
+  const drawIds = draws.map(d => d.id);
+
+  // Load line items for these draws
+  const { data: lineItems, error: liErr } = await sb
+    .from('draw_line_items')
+    .select('id, draw_id, transaction_id, description, base_amount, markup_pct, markup_amount, total_with_markup, is_forward_looking, display_order, notes')
+    .in('draw_id', drawIds)
+    .order('display_order', { ascending: true });
+
+  if (liErr) return { ok: false, error: liErr.message, data: [] };
+
+  // Load invoices linked to these draws
+  const { data: invoices, error: invErr } = await sb
+    .from('invoices')
+    .select('id, draw_id, status, total_amount, paid_at, sent_at, created_at')
+    .in('draw_id', drawIds);
+
+  if (invErr) return { ok: false, error: invErr.message, data: [] };
+
+  // Group line items by draw_id
+  const linesByDraw = new Map();
+  for (const li of lineItems || []) {
+    if (!linesByDraw.has(li.draw_id)) linesByDraw.set(li.draw_id, []);
+    linesByDraw.get(li.draw_id).push(li);
+  }
+
+  // Find the best invoice per draw (latest non-void, non-cancelled)
+  const invoiceByDraw = new Map();
+  for (const inv of invoices || []) {
+    if (inv.status === 'void') continue; // skip voided invoices
+    const existing = invoiceByDraw.get(inv.draw_id);
+    if (!existing || new Date(inv.created_at) > new Date(existing.created_at)) {
+      invoiceByDraw.set(inv.draw_id, inv);
+    }
+  }
+
+  // Client filter: only show draws that have a sent/visible invoice (not draft)
+  const HIDDEN_STATUSES = new Set(['draft', 'void']);
+  const visible = draws
+    .filter(d => {
+      const inv = invoiceByDraw.get(d.id);
+      if (!inv) return false; // no invoice → not client-visible yet
+      return !HIDDEN_STATUSES.has(inv.status);
+    })
+    .map(d => ({
+      draw: d,
+      lineItems: linesByDraw.get(d.id) || [],
+      invoice: invoiceByDraw.get(d.id),
+    }));
+
+  return { ok: true, error: null, data: visible };
 }
