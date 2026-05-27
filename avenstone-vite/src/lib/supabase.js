@@ -107,6 +107,8 @@ export const sbLoad = async repName => {
         status_token: j.status_token || '',
         cost_plus: j.cost_plus || false,
         default_markup_pct: Number(j.default_markup_pct || 0),
+        labor_markup_pct: Number(j.labor_markup_pct || 0),
+        material_markup_pct: Number(j.material_markup_pct || 0),
         client_user_id: j.client_user_id || null,
         photos: (ph || []).map(jf => ({
           id: jf.id,  // job_files.id — used by sbDeleteJobPhoto and sbLabelPhoto
@@ -124,7 +126,7 @@ export const sbLoad = async repName => {
 
 export const sbUpd = async (id, ch) => {
   try {
-    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email','cost_plus','default_markup_pct'];
+    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email','cost_plus','default_markup_pct','labor_markup_pct','material_markup_pct'];
     const p = {};
     ok.forEach(k => { if (ch[k] !== undefined) p[k] = ch[k]; });
     if (Object.keys(p).length) await sb.from('jobs').update(p).eq('id', id);
@@ -4952,4 +4954,105 @@ export async function sbMarkTransactionsPaid({ transactionIds, paidDate } = {}) 
   } catch (err) {
     return { ok: false, error: err?.message || String(err) };
   }
+}
+
+// ===== Cost-Plus =====
+
+/**
+ * Returns all unreimbursed outbound expense rows for a cost-plus job,
+ * ordered by date_incurred ASC. Used by the draw composer and float cards.
+ * Returns { ok, error, data: [...rows] }.
+ */
+export async function sbLoadUnreimbursedExpenses(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: [] };
+
+  const { data, error } = await sb
+    .from('job_transactions')
+    .select('id, job_id, date_incurred, type, amount, markup_pct, description, draw_number, status, created_at')
+    .eq('job_id', jobId)
+    .eq('direction', 'out')
+    .eq('reimbursement_status', 'unreimbursed')
+    .order('date_incurred', { ascending: true });
+
+  if (error) return { ok: false, error: error.message, data: [] };
+  return { ok: true, error: null, data: data || [] };
+}
+
+/**
+ * Computes bucket + float math for a cost-plus job in one round trip.
+ * bucket = sum of paid inbound rows with invoice_id IS NULL
+ * unreimbursed = sum of direction='out', reimbursement_status='unreimbursed'
+ * float = unreimbursed - bucket (positive = we're ahead of client; negative = bucket surplus)
+ * Returns { ok, error, data: { bucket, unreimbursed, float } }.
+ */
+export async function sbGetBucketBalance(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+
+  const { data, error } = await sb
+    .from('job_transactions')
+    .select('direction, amount, invoice_id, status, reimbursement_status')
+    .eq('job_id', jobId);
+
+  if (error) return { ok: false, error: error.message, data: null };
+
+  let bucket = 0;
+  let unreimbursed = 0;
+  for (const r of data || []) {
+    const amt = Number(r.amount) || 0;
+    if (r.direction === 'in' && r.invoice_id === null && r.status === 'paid') {
+      bucket += amt;
+    } else if (r.direction === 'out' && r.reimbursement_status === 'unreimbursed') {
+      unreimbursed += amt;
+    }
+  }
+
+  return {
+    ok: true,
+    error: null,
+    data: {
+      bucket: Number(bucket.toFixed(2)),
+      unreimbursed: Number(unreimbursed.toFixed(2)),
+      float: Number((unreimbursed - bucket).toFixed(2)),
+    },
+  };
+}
+
+/**
+ * Composes a cost-plus draw atomically: creates draw_schedules row,
+ * draw_line_items rows, flips linked transactions to in_draw.
+ * lineItems: [{ transaction_id, description, base_amount, markup_pct,
+ *               markup_amount, total_with_markup, is_forward_looking,
+ *               display_order, notes }]
+ * Returns { ok, error, data: { draw_id, draw_number, line_count, tx_flipped } }.
+ */
+export async function sbComposeDraw({ jobId, title, description, targetAmount, applyBucket, lineItems }) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+  if (!Array.isArray(lineItems) || lineItems.length === 0) {
+    return { ok: false, error: 'At least one line item required', data: null };
+  }
+
+  const { data, error } = await sb.rpc('compose_draw', {
+    p_job_id:        jobId,
+    p_title:         title || 'Draw',
+    p_description:   description || null,
+    p_target_amount: Number(targetAmount) || 0,
+    p_apply_bucket:  applyBucket !== false,
+    p_line_items:    lineItems,
+  });
+
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data };
+}
+
+/**
+ * Voids a draw: reverses linked transactions to 'unreimbursed',
+ * deletes draw_line_items, marks draw status='cancelled'.
+ * Blocked if the draw has a paid invoice linked.
+ * Returns { ok, error, data: { draw_id, tx_reverted, line_items_deleted } }.
+ */
+export async function sbVoidDraw(drawId) {
+  if (!drawId) return { ok: false, error: 'drawId required', data: null };
+  const { data, error } = await sb.rpc('void_draw', { p_draw_id: drawId });
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data };
 }
