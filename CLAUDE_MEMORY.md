@@ -1158,3 +1158,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commits: 69bc328 (sbSearchJobFiles helper), fbb9cb5 (search UI + filter wiring). Pushed to main.
 - Build: ✓ 396 modules, clean.
 - Open: ClientSignContractModal still calls job_documents.update for client_visible — schedule for slice 10. Slices 10-12: share folder bundles, mobile camera polish, perf + final polish.
+
+[LOG — 2026-05-27 — UNIFIED_FILES_ARC slice 10/12 shipped — share folder bundles via email]
+- Action: Folder-level Share action ships across Tree and Grid views.
+- send-files-bundle edge fn: JWT-verified (auth → getUser → profile.tenant_id); verifies all fileIds belong to caller's tenant; generates 7-day signed URLs across all storage buckets; sends Resend email with branded bullet-link list. Auth pattern mirrors ai-categorize-file. FROM: "Avenstone Group <notifications@avenstonekc.com>".
+- sbShareFolderBundle: client helper — gets session access_token, POSTs to send-files-bundle, returns { ok, sent } or { ok: false, error }.
+- ShareFolderModal: quick-pick from job.client_email + referring_realtor_email (no contacts.job_id FK — using direct job fields). Email + name + optional message inputs. Gold focus rings. Disabled Send button until email present.
+- FilesTreeView: Share button on each SubSection (subcategory folder, label = "Photos / Tile"); "Share all" on CatSection (all files in category).
+- FilesGridView: Share button on Photos section header.
+- FilesTab: shareModal state wired to viewProps.onShareFolder, ShareFolderModal rendered when set.
+- Audit findings: contacts table has no job_id FK; quick-pick pulls from job.client_email + job.referring_realtor_email. send-files-bundle uses full JWT auth (tenant scoping required for fileId verification), unlike no-verify-jwt send-floor-plan-email.
+- Build: ✓ 396 modules, clean. Commits: 2b50dc5 (edge fn), a437f45 (helper), 2951404 (UI). Pushed to main.
+- Open: Slice 11 (mobile camera polish), Slice 12 (perf + final polish, ClientSignContractModal fix, legacy table hard-drop).
