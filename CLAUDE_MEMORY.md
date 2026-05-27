@@ -1267,6 +1267,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: c6059c2. Build: not applicable (docs only).
 - Open: Phase 1 dispatch next.
 
+[LOG — 2026-05-27 — Estimate ingest + FinancialsTab cost-plus stat row shipped]
+- Action: (1) FinancialsTab Ledger stat row made cost-plus-aware (conditional on job.cost_plus === true). (2) Clay Davis estimate PDF ingested into estimate_line_items.
+- Files: avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx (stat row conditional). Commit: aa42703. Pushed to origin main.
+- Estimate ingest: 115 rows, $77,908.00 total. job_id: 58345dc5-ecae-4f6f-b502-cac80d6c43be (Clay Davis, 8617 Houston St Lenexa KS 66227). job_estimates id: b49a58ba-6df2-480a-84eb-7bcbbdedc2d4. Notes tag: manual_estimate_ingest:2026-04-davis. Ceiling fan rough-in ($200) excluded — bundled in rough-in row per PDF subtotal reconciliation.
+- Schema discovery: estimate_line_items.total_cost is a GENERATED column (quantity * unit_cost STORED). Never INSERT total_cost explicitly. For rows where total_cost / quantity is not a terminating decimal (e.g. 117 SF @ $164), use quantity=1, unit_cost=total_cost to guarantee exact match.
+- Execution method: Python urllib.request (not PowerShell — ConvertTo-Json wraps strings as {"value":"..."} objects, causing "Expected string, received object" from the Management API). User-Agent header required to bypass Cloudflare (error 1010 = bot detection).
+- Open: Duplicate Home Depot row 5bad83a2 ($2.82, TxnID 57829) — old live-test row, pending delete confirmation from Kalin.
+
 [LOG — 2026-05-27 — SUB_INVOICES_ARC Phase 1 shipped]
 - Action: Created sub_invoices + sub_invoice_payments tables, RLS, indexes, set_updated_at triggers, compute_sub_invoice_status function. Built 7 helpers in avenstone-vite/src/lib/subInvoices.js (484 lines).
 - Migration: 20260527000000_sub_invoices_arc_phase_1.sql — applied + all 13 objects verified green via apply_migration.js.
