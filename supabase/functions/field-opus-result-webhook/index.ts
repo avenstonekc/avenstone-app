@@ -108,7 +108,6 @@ Deno.serve(async (req) => {
       type: 'todo_delegated',
       title,
       body: notifBody,
-      priority: isSuccess ? 'normal' : 'high',
     });
     if (notifErr) {
       console.error('field-opus-result-webhook notification insert failed:', notifErr.message);
