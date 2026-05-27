@@ -956,6 +956,28 @@ async function executeTool(
           }
         }
 
+        // Best-effort dual-write: receipt file → job_files so it appears in FilesTab
+        if (receiptPath) {
+          try {
+            await sb.from("job_files").insert({
+              tenant_id: tenantId,
+              job_id: String(input.job_id),
+              uploaded_by_id: userId,
+              name: `Receipt - ${String((input as any).vendor || input.description || "expense")}`,
+              storage_path: receiptPath,
+              storage_bucket: "job-receipts",
+              mime_type: (input as any).image_mime ? String((input as any).image_mime) : "image/jpeg",
+              category: "Receipts",
+              subcategory: null,
+              client_visible: false,
+              related_entity_type: "job_transaction",
+              related_entity_id: txId,
+            });
+          } catch (e) {
+            console.warn("[log_receipt dual-write to job_files]", String(e));
+          }
+        }
+
         return {
           success: true,
           transaction_id: txId,
