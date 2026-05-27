@@ -1571,3 +1571,9 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ clean.
 - Commit: e433db9. Pushed to main.
 - COST_PLUS_ARC Phase 2A COMPLETE. Phase 2B (forward-looking line items) + Phase 2C (sbComposeDraw submit) are next.
+
+[LOG — 2026-05-27 — ai_knowledge RLS audit — no-op, already shipped 2026-05-17]
+- Action: Full DB audit before writing migration. Found RLS already enabled with 4 live policies (ai_knowledge_select, ai_knowledge_insert, ai_knowledge_update, ai_knowledge_delete) — shipped in 20260517120000_ai_knowledge_rls.sql. Task premise ("0 policies") was stale.
+- State confirmed: 21 rows, 0 null_tenant, 1 distinct tenant. Both helpers live. SELECT open to all tenant members; INSERT/UPDATE/DELETE gated to owner only.
+- Writer call sites: ai-master-agent add_knowledge + ai-companion → both SERVICE_ROLE_KEY (bypass RLS). AiKnowledgeScr.jsx INSERT includes tenant_id ✓; UPDATE/DELETE rely on USING clause ✓. AiKnowledgeScr UI is owner-only gated — owner-only modify policy is correct as-is.
+- No migration written. CLAUDE_MEMORY.md line 66 already accurate. No open-item entry found or removed (task was its own stale tracking artifact).
