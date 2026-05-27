@@ -1204,3 +1204,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Closes the open item flagged in slice 8 LOG (line 1148 in CLAUDE_MEMORY.md at time of fix).
 - Pre-fix symptom: client signs contract → success shown → client portal shows nothing (client_visible never flipped on the job_files row). Silent failure indistinguishable from RLS misconfig.
 - Commit: 6f3e909. Build: ✓ clean.
+
+[LOG — 2026-05-27 — COMPANY_FILES_ARC blueprint shipped]
+- Action: Wrote COMPANY_FILES_ARC.md at repo root. New arc — tenant-level compliance and reference documents with per-job auto-reference and expiration watchdog.
+- 15 locked decisions. 5 phases (~12 prompts). Reference pattern (not copy) so master file updates propagate to new jobs automatically. Master Agent vision extracts metadata on upload (issuer, expiration, policy number) via Haiku. Watchdog writes scheduled_actions rows at 30/14/0-day marks before expiration.
+- Schema reference: company_files table (tenant-scoped, partial unique index for one active row per type, lifecycle column), company-files private bucket, virtual job_files row pattern for client-portal surfacing (related_entity_type='company_file'), scheduled_actions watchdog rows using priority values from live schema ('normal'/'high'/'urgent' — NOT 'medium' which doesn't exist in the CHECK constraint).
+- Audit finding corrected: blueprint template had priority='medium'; live scheduled_actions schema CHECK is ('low','normal','high','urgent'). Blueprint uses 'normal' at 30d, 'high' at 14d, 'urgent' at 0d.
+- Audit finding corrected: UNIQUE NULLS NOT DISTINCT pattern would break multi-version history (archived rows conflict). Blueprint uses partial unique index (WHERE lifecycle_status='active') instead.
+- Phase 1 (schema + admin UI), Phase 2 (FilesTab sub-tab), Phase 3 (job creation auto-reference), Phase 4 (Master Agent verb), Phase 5 (watchdog + escalation + job banner).
+- Out of scope: sub-uploaded compliance, lien waiver workflow, renewal automation, OCR on non-PDF, retroactive virtual row update.
+- Open Q: admin UI location (FilesTab sub-tab vs Settings) + virtual row propagation on file replace. Both flagged for decision before Phase 1 prompt.
+- Commit: 867a707. File: 753 lines.
