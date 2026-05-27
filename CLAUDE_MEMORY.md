@@ -1170,3 +1170,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Audit findings: contacts table has no job_id FK; quick-pick pulls from job.client_email + job.referring_realtor_email. send-files-bundle uses full JWT auth (tenant scoping required for fileId verification), unlike no-verify-jwt send-floor-plan-email.
 - Build: ✓ 396 modules, clean. Commits: 2b50dc5 (edge fn), a437f45 (helper), 2951404 (UI). Pushed to main.
 - Open: Slice 11 (mobile camera polish), Slice 12 (perf + final polish, ClientSignContractModal fix, legacy table hard-drop).
+
+[LOG — 2026-05-27 — UNIFIED_FILES_ARC slice 11/12 shipped — mobile camera + desktop drag-drop]
+- Action: Mobile "Photo" button opens rear camera (capture="environment"). Desktop FilesTab is now a full drag-drop zone. FileUploadFlow extended from single-file to multi-file.
+- FileUploadFlow rewrite: fileItems[] state replaces single file/inferred/category/subcategory. preloadedFiles prop skips pick stage. Parallel inference runs per-file via forEach+async; each result updates its own item without clobbering user edits to others (functional state update). Review shows all files with per-item CategoryPicker + remove button. Upload loop is sequential; progress bar shows "N of total". Pick stage input now has multiple attr. handleDrop accepts all dropped files.
+- FilesTab camera: hidden `<input type="file" accept="image/*" capture="environment">` + "Photo" button (mobile only via `mob`). Captured file sets preloadedFiles → opens FileUploadFlow at review stage.
+- FilesTab drop zone: onDragEnter/Leave/Over/Drop on outer div. dragCounter ref prevents flicker on child element boundaries (counter pattern). dragActive shows gold dashed overlay. Dropped files → preloadedFiles → FileUploadFlow.
+- Audit findings: no existing drag-drop wrapper in FilesTab (only Pipeline.jsx had one). FileUploadFlow's internal drop was first-file-only — upgraded to all-files. `isMob()` already imported — no useMediaQuery needed.
+- Build: ✓ 396 modules, clean. Commit: c54cc1c. Pushed to main.
+- Open: Slice 12 (ClientSignContractModal fix, legacy table hard-drop after soak, IntersectionObserver lazy thumbnails for 200+ file jobs).
