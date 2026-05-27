@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { sbLoadJobFiles, sbCategorizeJobFile, AV_TENANT } from '../../../lib/supabase';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { sbLoadJobFiles, sbSearchJobFiles, sbCategorizeJobFile, AV_TENANT } from '../../../lib/supabase';
 import { Ic, isMob } from '../../../lib/utils';
 import FilesRecentView from './files/FilesRecentView';
 import FilesTreeView from './files/FilesTreeView';
@@ -14,6 +14,9 @@ export default function FilesTab({ job, profile }) {
 
   const [view, setView] = useState(defaultView);
   const [files, setFiles] = useState([]);
+  const [filteredFiles, setFilteredFiles] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -21,6 +24,7 @@ export default function FilesTab({ job, profile }) {
   const [selectedFileIds, setSelectedFileIds] = useState([]);
   const [detailFileId, setDetailFileId] = useState(null);
   const [bulkApplying, setBulkApplying] = useState(false);
+  const debounceRef = useRef(null);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -29,12 +33,31 @@ export default function FilesTab({ job, profile }) {
     if (result.error) {
       setError(result.error);
     } else {
-      setFiles(result.files || []);
+      const loaded = result.data || [];
+      setFiles(loaded);
+      setFilteredFiles(loaded);
     }
     setLoading(false);
   }, [job.id]);
 
   useEffect(() => { loadFiles(); }, [loadFiles]);
+
+  // Debounced search effect
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!searchQuery.trim()) {
+      setFilteredFiles(files);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      const result = await sbSearchJobFiles(job.id, searchQuery);
+      setFilteredFiles(result.data || []);
+      setSearching(false);
+    }, 200);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchQuery, files, job.id]);
 
   const handleToggleSelect = id => {
     setSelectedFileIds(prev =>
@@ -56,19 +79,25 @@ export default function FilesTab({ job, profile }) {
   };
 
   const handleFileUploaded = newFile => {
-    setFiles(prev => [newFile, ...prev]);
+    setFiles(prev => {
+      const updated = [newFile, ...prev];
+      if (!searchQuery.trim()) setFilteredFiles(updated);
+      return updated;
+    });
   };
 
   const handleFileUpdated = updatedFile => {
     setFiles(prev => prev.map(f => f.id === updatedFile.id ? updatedFile : f));
+    setFilteredFiles(prev => prev.map(f => f.id === updatedFile.id ? updatedFile : f));
   };
 
   const handleFileDeleted = deletedId => {
     setFiles(prev => prev.filter(f => f.id !== deletedId));
+    setFilteredFiles(prev => prev.filter(f => f.id !== deletedId));
   };
 
   const viewProps = {
-    files,
+    files: filteredFiles,
     onSelectFile: setDetailFileId,
     bulkTagMode,
     selectedFileIds,
@@ -93,6 +122,42 @@ export default function FilesTab({ job, profile }) {
 
   return (
     <div style={{ position: 'relative', paddingBottom: bulkTagMode && selectedFileIds.length ? 88 : 0 }}>
+      {/* Search input */}
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <span style={{
+          position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+          width: 15, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#9CA3AF', pointerEvents: 'none',
+        }}>
+          {Ic.doc}
+        </span>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search files, vendors, receipts…"
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            padding: '9px 36px 9px 32px',
+            border: '1px solid #E8E4DC', borderRadius: 8,
+            background: '#F7F5F0', fontSize: 13, color: '#0A1F44',
+            outline: 'none', transition: 'border-color 0.12s',
+          }}
+          onFocus={e => { e.target.style.borderColor = '#C9A84C'; e.target.style.background = '#fff'; }}
+          onBlur={e => { e.target.style.borderColor = '#E8E4DC'; e.target.style.background = '#F7F5F0'; }}
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            style={{
+              position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#9CA3AF', fontSize: 16, lineHeight: 1, padding: '2px 4px',
+            }}
+          >×</button>
+        )}
+      </div>
+
       {/* Header bar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
@@ -147,10 +212,35 @@ export default function FilesTab({ job, profile }) {
         </div>
       )}
 
+      {/* Searching indicator */}
+      {searching && (
+        <div style={{ textAlign: 'center', padding: '12px 20px', color: '#9CA3AF', fontSize: 12 }}>
+          Searching…
+        </div>
+      )}
+
+      {/* Empty search state */}
+      {!loading && !searching && searchQuery.trim() && filteredFiles.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '48px 20px', color: '#9CA3AF' }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: '#6B7280' }}>No files match "{searchQuery}"</div>
+          <div style={{ fontSize: 12, marginTop: 4, marginBottom: 16 }}>Try a different search or browse all files</div>
+          <button
+            onClick={() => setSearchQuery('')}
+            style={{
+              padding: '7px 16px', background: '#0A1F44', color: '#fff',
+              border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+            }}
+          >
+            Clear search
+          </button>
+        </div>
+      )}
+
       {/* Views */}
-      {!loading && view === 'recent' && <FilesRecentView {...viewProps} />}
-      {!loading && view === 'tree' && <FilesTreeView {...viewProps} />}
-      {!loading && view === 'grid' && <FilesGridView {...viewProps} />}
+      {!loading && !searching && !(searchQuery.trim() && filteredFiles.length === 0) && view === 'recent' && <FilesRecentView {...viewProps} />}
+      {!loading && !searching && !(searchQuery.trim() && filteredFiles.length === 0) && view === 'tree' && <FilesTreeView {...viewProps} />}
+      {!loading && !searching && !(searchQuery.trim() && filteredFiles.length === 0) && view === 'grid' && <FilesGridView {...viewProps} />}
 
       {/* File detail panel */}
       {detailFileId && (

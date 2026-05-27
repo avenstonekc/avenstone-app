@@ -17,6 +17,11 @@ function fileIcon(mime) {
 
 function FileRow({ file, onSelect, checked, onToggle, bulkTagMode }) {
   const color = CAT_COLORS[file.category] || '#6B7280';
+  const meta = file._receipt_meta; // enriched by sbSearchJobFiles for receipt files
+  // Display vendor + amount for receipts when search has enriched the row
+  const displayName = meta?.payer_or_payee_name
+    ? `${meta.payer_or_payee_name}${meta.amount != null ? ` — $${Number(meta.amount).toLocaleString()}` : ''}`
+    : file.name;
   return (
     <div
       onClick={() => bulkTagMode ? onToggle(file.id) : onSelect(file.id)}
@@ -37,7 +42,7 @@ function FileRow({ file, onSelect, checked, onToggle, bulkTagMode }) {
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: '#0A1F44', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {file.name}
+          {displayName}
         </div>
         <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ background: color + '22', color, borderRadius: 4, padding: '1px 6px', fontWeight: 600, fontSize: 10 }}>
@@ -45,6 +50,9 @@ function FileRow({ file, onSelect, checked, onToggle, bulkTagMode }) {
           </span>
           {file.subcategory && (
             <span style={{ color: '#6B7280' }}>{file.subcategory}</span>
+          )}
+          {meta?.description && (
+            <span style={{ color: '#9CA3AF', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{meta.description}</span>
           )}
         </div>
       </div>
