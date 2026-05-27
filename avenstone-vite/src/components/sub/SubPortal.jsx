@@ -4,6 +4,7 @@ import { Ic, sc, sl, f$, fD, fDT } from '../../lib/utils';
 import { t } from '../../lib/i18n';
 import SubJobView from './SubJobView';
 import SubOnboardingWizard from './SubOnboardingWizard';
+import CompanyDocsSection from './CompanyDocsSection';
 import EngagementDetailModal from '../modals/EngagementDetailModal';
 const NAV = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -119,6 +120,7 @@ export default function SubPortal({ profile, signOut }) {
   const TABS = [
     { id: 'jobs', lb: t('My Projects', lang), ic: 'home' },
     { id: 'pricing', lb: t('My Pricing', lang), ic: 'box' },
+    { id: 'docs', lb: t('Company Docs', lang), ic: 'folder' },
   ];
 
   return (
@@ -250,6 +252,9 @@ export default function SubPortal({ profile, signOut }) {
             </div>
           ))}
         </>}
+
+        {/* Company Docs tab */}
+        {view === 'docs' && <CompanyDocsSection profile={profile} lang={lang} />}
 
         {/* Pricing tab — Trade Rates */}
         {view === 'pricing' && (
