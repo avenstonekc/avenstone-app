@@ -116,6 +116,7 @@ export default function FilesTab({ job, profile }) {
   };
 
   const handleFileUploaded = newFile => {
+    if (!newFile?.id) return;
     setFiles(prev => {
       const updated = [newFile, ...prev];
       if (!searchQuery.trim()) setFilteredFiles(updated);

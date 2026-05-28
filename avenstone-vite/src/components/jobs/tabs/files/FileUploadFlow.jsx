@@ -132,10 +132,10 @@ export default function FileUploadFlow({ jobId, onClose, onUploaded, preloadedFi
           subcategory: item.subcategory || null,
           uploadSource: 'manual',
         });
-        if (result.error) {
-          errors.push(`${item.file.name}: ${result.error}`);
-        } else {
-          onUploaded(result.jobFile);
+        if (!result.ok) {
+          errors.push(`${item.file.name}: ${result.error || 'Upload failed'}`);
+        } else if (result.data) {
+          onUploaded(result.data);
         }
       } catch (err) {
         errors.push(`${item.file.name}: ${err?.message || 'Upload failed'}`);

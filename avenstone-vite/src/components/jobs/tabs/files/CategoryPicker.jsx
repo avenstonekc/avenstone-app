@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { sb, AV_TENANT } from '../../../../lib/supabase';
 
-const CATEGORIES = ['Photos', 'Documents', 'Receipts', 'Floor Plans', 'Change Orders', 'Communications'];
+const CATEGORIES = ['Photos', 'Documents', 'Invoices', 'Receipts', 'Floor Plans', 'Change Orders', 'Communications'];
 
 const ssty = {
   appearance: 'none',
