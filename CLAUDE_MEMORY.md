@@ -2001,6 +2001,17 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Cost-plus jobs: header on Financials tab only. Fixed-price: cbar also now Financials-only.
 - Commit: d8871c1. Pushed.
 
+[LOG — 2026-05-27 — DRAW_PACKAGE_ARC slice 3: file picker + package assembly]
+- DrawPackagePickerModal: checkboxes for job_files (all categories) + company_files (Insurance/License/Compliance only). File type icons, category grouping, select-all per group, running count footer.
+- build-draw-package edge fn rewrite (484 lines): accepts file_refs=[{id,source}], loadFileDetails fetches from job_files + company_files, fetchBytes creates signed URLs + fetches bytes. Photo grid (addPhotoPages): group by subcategory label, sort by PROOF_ORDER, 4-up 2x2 grid per page, placeholder box if fetch fails. Document pages (addDocumentPages): PDF copyPages or image full-page embed.
+- Merge order: cover sheet page 1 → photo pages → document pages. Single combined PDF.
+- included_file_ids saved back to draw_packages after assembly.
+- InvoicesSubTab: Build Package button now opens picker modal; direct-build state removed.
+- sbBuildDrawPackage updated: adds file_refs param (default []).
+- Davis test data: 4 Documents (PDFs in job-files) + 1 Receipt (JPEG in job-receipts), no photos. company_files compliance = 0.
+- Commit: 765201c. Pushed.
+- Slice 4: send (free-entry recipient) / download / shareable link.
+
 [LOG — 2026-05-27 — DRAW_PACKAGE_ARC slice 2: cover sheet PDF + Build Package button]
 - Edge function build-draw-package: pdf-lib cover sheet (navy #1A2540 header band, gold DRAW REQUEST title, draw # + date, Submitted To / Project blocks, itemized draw_line_items table, Work Billed / Less Retainage / NET DRAW REQUEST totals, optional cover note, footer). Uploads to private draw-packages bucket at {job_id}/{draw_id}/cover.pdf. Returns 1-year signed URL.
 - draw-packages storage bucket created (private, PDF only, 50MB). storage.objects RLS via can_access_job(split_part(name,'/',1)) — staff/owner of job only.
