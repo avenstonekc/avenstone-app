@@ -2000,3 +2000,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Fix: tab === 'financials' in JobDet.jsx line 205. One token change.
 - Cost-plus jobs: header on Financials tab only. Fixed-price: cbar also now Financials-only.
 - Commit: d8871c1. Pushed.
+
+[LOG — 2026-05-27 — DRAW_PACKAGE_ARC slice 1: decouple + schema]
+- Cost-plus jobs: Compose Draw no longer can open New Invoice modal. Draw lands as 'planned' on Draw Schedule (Draws sub-tab). Navigation after compose goes to Draws tab, not Ledger.
+- Billing model routed by jobs.cost_plus: cost-plus = Draws tab (Draw Schedule only), fixed-price = Invoices tab (Invoices only). Each hides the other's UI entirely.
+- FinancialsTab SUB_TABS now computed inside component — cost-plus gets 'draws' tab, fixed-price gets 'invoices' tab. ComposeDrawScr in FinancialsTab gated by job.cost_plus.
+- InvoicesSubTab: Draw Schedule section gated by job.cost_plus; Invoices section gated by !job.cost_plus. Invoice button removed from cost-plus draw rows (draws go through package flow). InvoiceComposerModal + MarkPaidModal gated by !job.cost_plus.
+- draw_schedules + compose_draw + void_draw money mechanics UNTOUCHED.
+- New draw_packages table: draft/previewed/sent/voided, included_file_ids JSONB, recipient_email/label, generated_pdf_path, photo_grid_density (default 4), cover_notes, created_by_id NOT NULL. RLS: get_my_tenant_id(). Migration 20260527110000.
+- Slices 2-4: cover sheet PDF, file picker + assembly (photos grid by PROOF_ARC category, docs append), send/download/share.
+- Future: PHASE_INVOICE_ARC reuses package machinery for fixed-price phase invoices.
+- Commits: fae5f4a (schema), 6854034 (decouple). Pushed.
