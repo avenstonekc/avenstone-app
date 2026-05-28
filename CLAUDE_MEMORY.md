@@ -1830,3 +1830,18 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   - LineItemModal.jsx, TransactionModal.jsx, DrawModal.jsx (financial data-entry — candidates)
   - LeadsScr.jsx, AddQuoteModal.jsx, AddSubToJobModal.jsx, ClientSignContractModal.jsx, CompletionSignoffModal.jsx, ContractModal.jsx, EngagementActionModal.jsx (lead/contract flows)
 - Future: audit which data-entry modals should also block backdrop-close. Priority candidates: LineItemModal, TransactionModal, FileUploadFlow, DrawModal (all can hold significant entered data).
+
+[LOG — 2026-05-28 — SUB_INVOICES_ARC v2 slice 1 (DB layer)]
+- New: jobs.pm_fee NUMERIC(12,2) DEFAULT 0, sub_invoices.accrual_transaction_id UUID FK → job_transactions ON DELETE SET NULL, idx_sub_invoices_accrual_tx. Migration: 20260527080000_sub_invoices_v2_schema.sql.
+- sbCreateSubInvoiceAccrualRow: idempotent, gated on cost_plus=true. Creates pending job_transactions (type=sub_payout) at approval. Phase 1B trigger auto-stamps reimbursement_status=unreimbursed + markup_pct. job_transactions.created_by is NOT NULL — must always pass AV_USER_ID or v_owner UUID.
+- sbApproveSubInvoice: calls sbCreateSubInvoiceAccrualRow after update (non-fatal). Returns data.accrual = { transaction_id, created }.
+- sbAddSubInvoicePayment: on new_status='paid', flips accrual to status='paid'.
+- sbVoidSubInvoicePayment: on new_status!='paid', reverts accrual from 'paid' → 'pending'. Loads sub_invoice_id from payment row before RPC call.
+- sbDisputeSubInvoice: cancels accrual on dispute; on resolve, restores to 'paid' or 'pending' based on current payment sum vs invoice amount.
+- sbLoadSubInvoices: now selects + returns accrual_transaction_id as accrualTransactionId.
+- Backfilled 2 invoices: Aguayo $27,900 (Davis, full amount — 0 payments); Mike ABC Electrical $425 (test-flow-001, remaining balance — $425 of $850 paid). Trigger confirmed working: unreimbursed stamped at INSERT.
+- Davis pm_fee set to $2,000. Verify: cost_plus=true, labor=22, material=22, pm_fee=2000.
+- Float Out Davis after backfill: $30,676 (paid spend) + $27,900 (Aguayo accrual) = $58,576.
+- Commits: 12df9e4 (schema), cfe386b (helpers). Pushed to main.
+- Open: SUB_INVOICES_ARC v2 slice 2 (UI) — InfoTab pm_fee input; Ledger Outstanding + Projected Profit cards; remove Float Out + Markup ★.
+- Design note: during partial payment, Float Out temporarily includes both the full accrual ($27,900 pending) AND each Phase 4a payment row (paid). Slice 2 must account for this in the new Outstanding calculation.
