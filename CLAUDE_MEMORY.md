@@ -1891,3 +1891,16 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   - Date helpers: startOfWeekMon, addDays, dateToISO, isSameDayLocal, fmtWeekDay, fmtMonthDay, truncate — pure JS, no date-fns.
 - Commit: d5bf62a. Build: ✓ clean (404 modules). Pushed to main.
 - Open: Visual verification on 999 Sandbox and Davis job.
+
+[LOG — 2026-05-27 — ScheduleTab Avenstone brand restyle (Slice C)]
+- Brand palette applied throughout ScheduleTab. Using #0A1F44 navy (per CLAUDE.md, not prompt's #1A2540 — these are different shades; existing btn-navy class uses #0A1F44).
+- Phase pills: card container with "Phase Progress" label + completion count sub-label. Per-state PILL_STYLE: sage (#DCE5D8/#2E4528 complete), amber (#FAEEDA/#6B4E14 in-progress), cream (#EBE6D2/#6B5F3F upcoming). Complete pills prefixed with ✓. Active filter → gold border 2px. Dim inactive to 0.55 opacity.
+- Week strip: wrapped in white card with gold-tinted EBE6D2 border. Day cells: cream #F5F2E8. Selected cell: gold border 1.5px #C9A84C. TODAY: small navy label only. Day chips: navy (sub_start), gold (material_delivery), sage (inspection), outline-navy (milestone).
+- Item cards: border changed to EBE6D2. TYPE_AVATAR circles: navy (sub_start), gold bg / navy icon (material_delivery), sage (inspection), navy+gold-ring outline (milestone). Status badges: sage (complete), amber (in-progress), cream (cancelled). Notes: cream bg #F5F2E8. Phase name in gold-dark #9E7E2A.
+- Section headers: navy 55% opacity, 0.05em tracking, marginTop 10px.
+- Past expander: cream pill with gold › chevron.
+- Empty state: gold dashed border card, cream bg, "Get the schedule rolling" h2, inviting subtitle, gold CTA button.
+- Commit: e7f9237. Build: ✓ clean. Pushed to main.
+- BLOCKED — DB seeding (Slice C Step 2): 999 Sandbox has 0 job_phases rows. Slice A (auto-seed phases) has NOT shipped. Schedule_items schema confirmed (phase_id nullable UUID ✓, is_milestone ✓, actual_finish_date ✓, created_by_id nullable ✓). Seed SQL ready to run once Slice A lands.
+- schema_audit: schedule_items has `created_by_id` (nullable UUID), NOT `created_by`. Do NOT use `created_by` in seed SQL — it doesn't exist.
+- Open: Visual verification in live app once deployed. Lucy Webb (no job_phases) → empty state + week strip renders; no pill section (orderedPhases.length === 0 guard is correct behavior until Slice A seeds her phases too).
