@@ -1981,3 +1981,16 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Davis pre-set: retainage_pct=10 via SQL UPDATE (confirmed live: {"retainage_pct":"10.00"}).
 - Build: ✓ clean. Commit: 0fd54f7. Pushed to main.
 - Open: Slice 2 shipped same session (see LOG above). Arc complete.
+
+[LOG — 2026-05-27 — Compose Draw retainage UX rework + Ledger Retainage Held card]
+- Operator-driven retainage: unchecked by default, per-draw % override (with Reset to job default), math base = expense_subtotal_with_markup NOT contract value
+- Hard 90%-of-contract cap removed; soft warnings (yellow = near, red = over) replace it. Doesn't block submission.
+- Phase-aware nudge: cream card appears when current job phase ≥ Drywall and retainage is unchecked
+- Release retainage flow: enabled when job phase is Final touches/Complete AND held > 0; shows as +$X line in draw summary
+- draw_schedules.retainage_held NUMERIC DEFAULT 0 added (migration 20260527100000). sbComposeDraw updates it after compose.
+- sbLoadJobDrawTotals returns held_retainage_total (sum of retainage_held across non-voided draws)
+- New Ledger stat card: Retainage Held (cost-plus jobs, amber, conditional on held > 0)
+- currentPhase logic: in_progress phase first, then latest completed, then null (handles Davis all-not_started gracefully)
+- Commits: c37c8e2 (Compose Draw rework), 2a23cf7 (Ledger card). Pushed to main.
+- BACKLOG: Create Invoice (fixed-price / phase-based) retainage flow — separate slice when needed.
+- Open: Davis phase nudge currently shows no nudge (all phases not_started, currentPhase=null). Will activate naturally when phases advance.
