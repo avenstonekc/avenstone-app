@@ -1144,6 +1144,10 @@ export const sbSubUpdatePhase = async (id, status) => {
       captureFailedIntent({ kind: 'sub_phase_update', payload: { id, status }, jobId: null, message: error.message, resumable: false }).catch(() => {});
       return { ok: false, error: error.message, data: null };
     }
+    if (status === 'complete' && data?.job_id) {
+      autoInvoiceMilestonesForPhases(data.job_id, [id])
+        .catch(err => console.warn('[milestoneInvoice] sbSubUpdatePhase hook failed:', err?.message));
+    }
     return { ok: true, error: null, data };
   } catch (e) {
     console.error('sbSubUpdatePhase', e);
@@ -3120,6 +3124,7 @@ export const derivePhaseStatus = async (jobId, tenantId) => {
     phaseToTrades[phaseName].push(trade);
   }
 
+  const prevComplete = new Set(phases.filter(p => p.status === 'complete').map(p => p.id));
   const updates = [];
   for (const phase of phases) {
     // Never decrement from complete
@@ -3166,6 +3171,15 @@ export const derivePhaseStatus = async (jobId, tenantId) => {
       sb.from('job_phases').update(patch).eq('id', id)
     )
   );
+
+  const newlyCompleted = updates
+    .filter(u => u.patch.status === 'complete')
+    .map(u => u.id)
+    .filter(id => !prevComplete.has(id));
+  if (newlyCompleted.length) {
+    autoInvoiceMilestonesForPhases(jobId, newlyCompleted)
+      .catch(err => console.warn('[milestoneInvoice] derivePhaseStatus hook failed:', err?.message));
+  }
 };
 
 // ─── Schedule item notification helpers ──────────────────────────────────────
@@ -3604,23 +3618,29 @@ export async function sbSavePaymentSchedule(jobId, contractTotal, milestones) {
     .single();
   if (se) return { ok: false, error: se.message };
 
-  // Replace milestones: delete existing, insert new
-  const { error: de } = await sb.from('payment_milestones').delete().eq('schedule_id', schedule.id);
+  // Only replace pending milestones — preserves invoiced/paid/released rows
+  const { error: de } = await sb.from('payment_milestones').delete()
+    .eq('schedule_id', schedule.id)
+    .eq('status', 'pending');
   if (de) return { ok: false, error: de.message };
 
-  if (milestones && milestones.length > 0) {
-    const rows = milestones.map((m, i) => ({
-      tenant_id: AV_TENANT,
-      schedule_id: schedule.id,
-      job_id: jobId,
-      phase_id: m.phase_id || null,
-      label: m.label,
-      pct: m.pct != null ? Number(m.pct) : null,
-      amount: m.pct != null ? Math.round((Number(m.pct) / 100) * contractTotal * 100) / 100 : (m.amount != null ? Number(m.amount) : null),
-      is_retainage: !!m.is_retainage,
-      milestone_order: i,
-      status: m.status || 'pending',
-    }));
+  const toInsert = (milestones || []).filter(m => !m.status || m.status === 'pending');
+  if (toInsert.length > 0) {
+    const rows = milestones.map((m, i) => {
+      if (m.status && m.status !== 'pending') return null;
+      return {
+        tenant_id:       AV_TENANT,
+        schedule_id:     schedule.id,
+        job_id:          jobId,
+        phase_id:        m.phase_id || null,
+        label:           m.label,
+        pct:             m.pct != null ? Number(m.pct) : null,
+        amount:          m.pct != null ? Math.round((Number(m.pct) / 100) * contractTotal * 100) / 100 : (m.amount != null ? Number(m.amount) : null),
+        is_retainage:    !!m.is_retainage,
+        milestone_order: i,
+        status:          'pending',
+      };
+    }).filter(Boolean);
     const { error: ie } = await sb.from('payment_milestones').insert(rows);
     if (ie) return { ok: false, error: ie.message };
   }
@@ -3751,6 +3771,106 @@ export async function sbCreateInvoice(jobId, invoice) {
     throw error;
   }
   return data;
+}
+
+// ─── Milestone invoice generation (PHASE_INVOICE_ARC slice 2) ────────────────
+// Creates a DRAFT invoice from a payment milestone.
+// Idempotent via payment_milestones.invoice_id — won't double-create.
+// Never sends — always status='draft'. Returns { ok, error, data: { invoice_id, created } }
+export async function sbGenerateMilestoneInvoice(milestoneId) {
+  if (!milestoneId) return { ok: false, error: 'milestoneId required', data: null };
+
+  const { data: ms, error: msErr } = await sb
+    .from('payment_milestones')
+    .select('id, label, amount, is_retainage, status, invoice_id, job_id')
+    .eq('id', milestoneId)
+    .single();
+  if (msErr) return { ok: false, error: msErr.message, data: null };
+  if (!ms) return { ok: false, error: 'Milestone not found', data: null };
+
+  if (ms.invoice_id) return { ok: true, error: null, data: { invoice_id: ms.invoice_id, created: false } };
+  if (ms.is_retainage) return { ok: false, error: 'Retainage milestones are released at final completion', data: null };
+
+  const jobId  = ms.job_id;
+  const amount = Number(ms.amount) || 0;
+  const today  = new Date().toISOString().slice(0, 10);
+  const due    = new Date(Date.now() + 30 * 86400 * 1000).toISOString().slice(0, 10);
+
+  let inv;
+  try {
+    inv = await sbCreateInvoice(jobId, {
+      invoice_date: today,
+      due_date:     due,
+      subtotal:     amount,
+      total_amount: amount,
+      notes:        `${ms.label} — payment milestone`,
+    });
+  } catch (e) {
+    return { ok: false, error: e.message, data: null };
+  }
+
+  await sb.from('invoice_line_items').insert({
+    tenant_id:     AV_TENANT,
+    invoice_id:    inv.id,
+    description:   ms.label,
+    quantity:      1,
+    unit_price:    amount,
+    line_total:    amount,
+    source_type:   'milestone',
+    source_id:     milestoneId,
+    display_order: 0,
+  }).catch(err => console.warn('[milestone] line item insert failed:', err.message));
+
+  const { error: linkErr } = await sb
+    .from('payment_milestones')
+    .update({ invoice_id: inv.id, status: 'invoiced' })
+    .eq('id', milestoneId)
+    .is('invoice_id', null);
+  if (linkErr) console.warn('[milestone] link update failed:', linkErr.message);
+
+  return { ok: true, error: null, data: { invoice_id: inv.id, created: true } };
+}
+
+// Private: fires milestone auto-invoices for phases that just transitioned to 'complete'.
+// Fixed-price jobs only. Fire-and-forget from derivePhaseStatus + sbSubUpdatePhase.
+async function autoInvoiceMilestonesForPhases(jobId, phaseIds) {
+  if (!phaseIds?.length || !jobId) return;
+
+  const { data: job } = await sb
+    .from('jobs')
+    .select('cost_plus, address')
+    .eq('id', jobId)
+    .single()
+    .catch(() => ({ data: null }));
+  if (!job || job.cost_plus) return;
+
+  const { data: milestones } = await sb
+    .from('payment_milestones')
+    .select('id, label, amount')
+    .in('phase_id', phaseIds)
+    .eq('job_id', jobId)
+    .eq('status', 'pending')
+    .eq('is_retainage', false)
+    .is('invoice_id', null);
+  if (!milestones?.length) return;
+
+  for (const m of milestones) {
+    const res = await sbGenerateMilestoneInvoice(m.id);
+    if (!res.ok || !res.data?.created) continue;
+    sbNotify(
+      'invoice_auto_drafted',
+      `Draft invoice ready — ${job.address || 'job'}`,
+      `"${m.label}" draft created. Review and send when ready.`,
+      jobId,
+      AV_USER_ID,
+    ).catch(() => {});
+    fireTodoEvent('invoice.auto_drafted', {
+      jobId,
+      invoiceId:    res.data.invoice_id,
+      milestoneId:  m.id,
+      triggerLabel: m.label,
+    }).catch(() => {});
+  }
 }
 
 export async function sbLoadInvoicesForJob(jobId) {
