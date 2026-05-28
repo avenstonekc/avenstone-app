@@ -152,7 +152,7 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
   const fg  = { marginBottom: 14 };
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay">
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
 
         {/* Header */}

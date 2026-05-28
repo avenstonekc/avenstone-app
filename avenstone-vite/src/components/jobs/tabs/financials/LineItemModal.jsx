@@ -77,7 +77,7 @@ export default function LineItemModal({ mode: initialMode, item = {}, job, onClo
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay">
       <div
         className="modal"
         style={{ maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}

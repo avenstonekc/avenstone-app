@@ -155,7 +155,7 @@ export default function FileUploadFlow({ jobId, onClose, onUploaded, preloadedFi
     : 0;
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay">
       <div
         className="modal"
         onClick={e => e.stopPropagation()}

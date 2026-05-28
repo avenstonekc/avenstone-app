@@ -109,7 +109,7 @@ export default function DrawModal({ job, existingDraws, draw, onClose, onSaved }
   const fg = { marginBottom: 14 };
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay">
       <div className="modal" style={{ maxWidth: 440, width: '100%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div className="modal-title" style={{ margin: 0 }}>{isEdit ? 'Edit Draw' : 'Add Draw'}</div>
