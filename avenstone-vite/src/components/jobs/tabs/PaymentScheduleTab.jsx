@@ -4,6 +4,7 @@ import {
   sbSavePaymentSchedule,
   sbLoadPhases,
   sbGenerateMilestoneInvoice,
+  sbReleaseRetainageMilestone,
 } from '../../../lib/supabase';
 import { f$ } from '../../../lib/utils';
 
@@ -40,6 +41,7 @@ export default function PaymentScheduleTab({ job, profile }) {
   const [generating, setGenerating]       = useState(null);
   const [genError, setGenError]           = useState(null);
   const [genSuccess, setGenSuccess]       = useState(null);
+  const [releasing, setReleasing]         = useState(false);
 
   const loadData = useCallback(async () => {
     if (!job?.id) return;
@@ -127,6 +129,17 @@ export default function PaymentScheduleTab({ job, profile }) {
     await loadData();
   };
 
+  const handleRelease = async (milestoneId) => {
+    setReleasing(true);
+    setGenError(null);
+    const { ok, error } = await sbReleaseRetainageMilestone(milestoneId);
+    setReleasing(false);
+    if (!ok) { setGenError(error || 'Failed to release retainage'); return; }
+    setGenSuccess('Retainage release');
+    setTimeout(() => setGenSuccess(null), 4000);
+    await loadData();
+  };
+
   const handleGenerate = async (milestoneId, label) => {
     setGenerating(milestoneId);
     setGenError(null);
@@ -140,9 +153,12 @@ export default function PaymentScheduleTab({ job, profile }) {
 
   const totalPct       = milestones.reduce((sum, m) => sum + (parseFloat(m.pct) || 0), 0);
   const pctWarning     = milestones.length > 0 && Math.abs(totalPct - 100) > 0.01;
-  const totalInvoiced  = milestones.filter(m => m.status === 'invoiced').reduce((s, m) => s + Number(m.amount || 0), 0);
-  const totalPaidAmt   = milestones.filter(m => ['paid', 'released'].includes(m.status)).reduce((s, m) => s + Number(m.amount || 0), 0);
-  const totalRemaining = milestones.filter(m => m.status === 'pending').reduce((s, m) => s + Number(m.amount || 0), 0);
+  const totalInvoiced      = milestones.filter(m => m.status === 'invoiced').reduce((s, m) => s + Number(m.amount || 0), 0);
+  const totalPaidAmt       = milestones.filter(m => ['paid', 'released'].includes(m.status)).reduce((s, m) => s + Number(m.amount || 0), 0);
+  const totalRemaining     = milestones.filter(m => m.status === 'pending' && !m.is_retainage).reduce((s, m) => s + Number(m.amount || 0), 0);
+  const totalRetainageHeld = milestones.filter(m => m.is_retainage && ['pending', 'invoiced'].includes(m.status)).reduce((s, m) => s + Number(m.amount || 0), 0);
+  const allOthersPaid      = milestones.filter(m => !m.is_retainage).every(m => m.status === 'paid');
+  const jobAtFinalPhase    = ['final_touches', 'complete'].includes(job?.status);
 
   if (job?.cost_plus) return <p style={{ color: '#0A1F44' }}>Not available for cost-plus jobs.</p>;
   if (loading) return <p style={{ color: '#0A1F44' }}>Loading payment schedule…</p>;
@@ -214,10 +230,11 @@ export default function PaymentScheduleTab({ job, profile }) {
             </div>
 
             {milestones.map((m) => {
-              const isPending   = m.status === 'pending';
-              const canEdit     = !readOnly && isPending && !m.invoice_id;
-              const pill        = STATUS_PILL[m.status] || STATUS_PILL.pending;
-              const canGenerate = !readOnly && isPending && !m.invoice_id && !m.is_retainage;
+              const isPending    = m.status === 'pending';
+              const canEdit      = !readOnly && isPending && !m.invoice_id;
+              const pill         = STATUS_PILL[m.status] || STATUS_PILL.pending;
+              const canGenerate  = !readOnly && isPending && !m.invoice_id && !m.is_retainage;
+              const canRelease   = !readOnly && m.is_retainage && isPending && !m.invoice_id && allOthersPaid && jobAtFinalPhase;
 
               return (
                 <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #E8E4DC', minWidth: 680 }}>
@@ -278,7 +295,16 @@ export default function PaymentScheduleTab({ job, profile }) {
                     {m.invoice_id && (
                       <span style={{ fontSize: 11, color: '#1E40AF' }}>Invoice created ↗</span>
                     )}
-                    {m.is_retainage && isPending && (
+                    {canRelease && (
+                      <button
+                        onClick={() => handleRelease(m.id)}
+                        disabled={releasing}
+                        style={{ ...btnRelease }}
+                      >
+                        {releasing ? '…' : 'Release & Invoice'}
+                      </button>
+                    )}
+                    {m.is_retainage && isPending && !canRelease && !m.invoice_id && (
                       <span style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>Held — released at completion</span>
                     )}
                   </div>
@@ -300,6 +326,9 @@ export default function PaymentScheduleTab({ job, profile }) {
               <span>Contract: <strong style={{ color: '#0A1F44' }}>{f$(contractTotal)}</strong></span>
               <span>Invoiced: <strong style={{ color: totalInvoiced > 0 ? '#1E40AF' : '#6B7280' }}>{f$(totalInvoiced)}</strong></span>
               <span>Paid: <strong style={{ color: totalPaidAmt > 0 ? '#065F46' : '#6B7280' }}>{f$(totalPaidAmt)}</strong></span>
+              {totalRetainageHeld > 0 && (
+                <span>Retainage held: <strong style={{ color: '#5B21B6' }}>{f$(totalRetainageHeld)}</strong></span>
+              )}
               <span>Remaining: <strong style={{ color: totalRemaining > 0 ? '#0A1F44' : '#9CA3AF' }}>{f$(totalRemaining)}</strong></span>
             </div>
           )}
@@ -331,5 +360,10 @@ const btnSecondary = {
 const btnGenerate = {
   background: '#0A1F44', color: '#fff', border: 'none', borderRadius: 6,
   padding: '4px 10px', fontWeight: 500, fontSize: 12, cursor: 'pointer',
+  whiteSpace: 'nowrap',
+};
+const btnRelease = {
+  background: '#5B21B6', color: '#fff', border: 'none', borderRadius: 6,
+  padding: '4px 10px', fontWeight: 600, fontSize: 12, cursor: 'pointer',
   whiteSpace: 'nowrap',
 };

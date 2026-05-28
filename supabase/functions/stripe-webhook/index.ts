@@ -101,13 +101,20 @@ async function handleInvoicePayment(
   if (newStatus === "paid") invoicePatch.paid_at = now;
   await sb.from("invoices").update(invoicePatch).eq("id", invoice.id as string);
 
-  // Step 6a — Sync linked payment_milestone to 'paid'
+  // Step 6a — Sync linked payment_milestone: non-retainage → 'paid', retainage → 'released'
   if (newStatus === "paid") {
     await sb.from("payment_milestones")
       .update({ status: "paid" })
       .eq("invoice_id", invoice.id as string)
       .eq("status", "invoiced")
+      .eq("is_retainage", false)
       .catch((err: Error) => console.error("milestone paid sync failed:", err.message));
+    await sb.from("payment_milestones")
+      .update({ status: "released" })
+      .eq("invoice_id", invoice.id as string)
+      .eq("status", "invoiced")
+      .eq("is_retainage", true)
+      .catch((err: Error) => console.error("milestone retainage released sync failed:", err.message));
   }
 
   // Step 6b — Cost-plus cascade: flip in_draw transactions to reimbursed when invoice fully paid
