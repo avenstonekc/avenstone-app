@@ -5152,6 +5152,22 @@ export async function sbGetBucketBalance(jobId) {
   };
 }
 
+export async function sbLoadJobDrawTotals(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+  const [{ data: job, error: jobErr }, { data: draws, error: drawErr }] = await Promise.all([
+    sb.from('jobs').select('contract_value, retainage_pct').eq('id', jobId).single(),
+    sb.from('draw_schedules').select('target_amount').eq('job_id', jobId).neq('status', 'voided'),
+  ]);
+  if (jobErr) return { ok: false, error: jobErr.message, data: null };
+  if (drawErr) return { ok: false, error: drawErr.message, data: null };
+  const total_drawn       = (draws || []).reduce((s, d) => s + Number(d.target_amount || 0), 0);
+  const contract_value    = Number(job.contract_value || 0);
+  const retainage_pct     = Number(job.retainage_pct || 0);
+  const billable_cap      = contract_value * (1 - retainage_pct / 100);
+  const retainage_releasable = contract_value * (retainage_pct / 100);
+  return { ok: true, error: null, data: { total_drawn, retainage_pct, billable_cap, retainage_releasable, contract_value } };
+}
+
 /**
  * Composes a cost-plus draw atomically: creates draw_schedules row,
  * draw_line_items rows, flips linked transactions to in_draw.
