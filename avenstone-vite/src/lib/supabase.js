@@ -1384,6 +1384,10 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     summary.projected_total_revenue = projected_total_revenue;
     summary.margin_pct           = margin_pct;
     summary.pm_fee               = pm_fee;
+    const projected_final_bill   = round2(total_cost_base * (1 + labor_markup / 100) + pm_fee);
+    const contract_variance      = round2(contract_total - projected_final_bill);
+    summary.projected_final_bill = projected_final_bill;
+    summary.contract_variance    = contract_variance;
   }
 
   return summary;

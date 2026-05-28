@@ -304,7 +304,13 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             const isCostPlus = job?.cost_plus === true && summary.received !== undefined;
             const cpBucketBalance = summary.bucket_balance ?? 0;
             const cpStats = [
-              { lb: 'Contract (signed)', v: f$(job.contract_value || 0), c: '#0A1F44', bold: true, note: `actuals + ${job.labor_markup_pct ?? 25}% markup determine final billing` },
+              { lb: 'Contract (signed)', v: f$(job.contract_value || 0), c: '#0A1F44', bold: true,
+                note: summary.projected_final_bill != null
+                  ? `${f$(summary.projected_final_bill)} projected · ${f$(Math.abs(summary.contract_variance ?? 0))} ${(summary.contract_variance ?? 0) >= 0 ? 'under' : 'over'}`
+                  : `actuals + ${job.labor_markup_pct ?? 25}% markup determine final billing`,
+                noteColor: summary.projected_final_bill != null
+                  ? ((summary.contract_variance ?? 0) >= 0 ? '#22c55e' : '#ef4444')
+                  : undefined },
               { lb: 'Received',          v: f$(summary.received ?? summary.total_in), c: (summary.received ?? summary.total_in) > 0 ? '#22c55e' : '#9CA3AF' },
               { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? '#ef4444' : '#9CA3AF' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: '#b45309', note: 'approved sub invoices unpaid' }] : []),
@@ -325,11 +331,11 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                 ];
             return (
               <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                {stats.map(({ lb, v, c, bold, note }) => (
+                {stats.map(({ lb, v, c, bold, note, noteColor }) => (
                   <div key={lb} style={{ flex: 1, minWidth: 90, background: '#fff', border: '1px solid #E8E4DC', padding: '10px 14px', borderRadius: 6 }}>
                     <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{lb}</div>
                     <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: c, fontWeight: bold ? 700 : 400 }}>{v}</div>
-                    {note && <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 3, lineHeight: 1.3 }}>{note}</div>}
+                    {note && <div style={{ fontSize: 9, color: noteColor || '#9CA3AF', marginTop: 3, lineHeight: 1.3 }}>{note}</div>}
                   </div>
                 ))}
               </div>
