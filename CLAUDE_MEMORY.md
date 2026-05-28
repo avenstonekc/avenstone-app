@@ -2083,3 +2083,10 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Fix: result.jobFile → result.data in FileUploadFlow; check !result.ok instead of result.error; guard handleFileUploaded in FilesTab against undefined.
 - Added 'Invoices' to CategoryPicker CATEGORIES and job_files CHECK constraint (migration 20260527150000). Invoices appears between Documents and Receipts.
 - Commit: 5ed1683. Pushed.
+
+[LOG — 2026-05-27 — Audit: file-helper return-shape callers — CLEAN]
+- Audited all callers of sbUploadJobFile, sbPhoto, sbUploadDoc, sbUploadFile, sbCreateFile.
+- sbUploadDoc returns {doc, error} (legacy compat shape). All callers (DocsTab, EstimateTab, ClientSignContractModal, CompletionSignoffModal, AiIntakeWizard, FloorPlanTab, AiCompanionChat, SubOnboardingWizard) correctly use .doc / destructure { doc, error }.
+- sbPhoto returns {ok, error, data}. All callers (MaterialsTab, NotesPhotosTab, ScheduleTab, COTab, LogsTab, SubJobView) correctly use .ok / .data.
+- sbUploadJobFile returns {ok, error, data}. SubInvoicesSection correctly uses up.ok / up.data.id / up.error. FileUploadFlow was the only broken caller (fixed 5ed1683).
+- No additional fixes needed. Audit clean.
