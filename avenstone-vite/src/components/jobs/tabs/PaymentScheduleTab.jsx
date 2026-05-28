@@ -86,7 +86,7 @@ export default function PaymentScheduleTab({ job, profile }) {
   const addMilestone = () => {
     setMilestones((prev) => [
       ...prev,
-      { id: Date.now(), label: '', pct: 0, amount: 0, phase_id: null, is_retainage: false, status: 'pending', invoice_id: null },
+      { id: crypto.randomUUID(), label: '', pct: 0, amount: 0, phase_id: null, is_retainage: false, status: 'pending', invoice_id: null, _saved: false },
     ]);
   };
 
@@ -106,7 +106,7 @@ export default function PaymentScheduleTab({ job, profile }) {
 
     setMilestones(
       template.map((t) => ({
-        id:           Date.now() + Math.random(),
+        id:           crypto.randomUUID(),
         label:        t.label,
         pct:          t.pct,
         amount:       round2(t.pct / 100 * contractTotal),
@@ -114,6 +114,7 @@ export default function PaymentScheduleTab({ job, profile }) {
         is_retainage: t.is_retainage,
         status:       'pending',
         invoice_id:   null,
+        _saved:       false,
       }))
     );
   };
@@ -233,8 +234,8 @@ export default function PaymentScheduleTab({ job, profile }) {
               const isPending    = m.status === 'pending';
               const canEdit      = !readOnly && isPending && !m.invoice_id;
               const pill         = STATUS_PILL[m.status] || STATUS_PILL.pending;
-              const canGenerate  = !readOnly && isPending && !m.invoice_id && !m.is_retainage;
-              const canRelease   = !readOnly && m.is_retainage && isPending && !m.invoice_id && allOthersPaid && jobAtFinalPhase;
+              const canGenerate  = !readOnly && isPending && !m.invoice_id && !m.is_retainage && m._saved !== false;
+              const canRelease   = !readOnly && m.is_retainage && isPending && !m.invoice_id && allOthersPaid && jobAtFinalPhase && m._saved !== false;
 
               return (
                 <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #E8E4DC', minWidth: 680 }}>

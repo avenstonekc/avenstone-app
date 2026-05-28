@@ -30,8 +30,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     { id: 'budget',      lb: 'Budget' },
     { id: 'co',          lb: 'Change Orders' },
     ...(job.cost_plus
-      ? [{ id: 'draws',    lb: 'Draws' }]
-      : [{ id: 'invoices', lb: 'Invoices' }, { id: 'payment_schedule', lb: 'Payment Schedule' }]),
+      ? [{ id: 'draws',   lb: 'Draws' }]
+      : [{ id: 'billing', lb: 'Invoices / Payment Schedule' }]),
     { id: 'sub_invoices', lb: 'Sub Invoices' },
     { id: 'materials',   lb: 'Materials' },
   ];
@@ -83,7 +83,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   useEffect(() => { if (sub !== 'sub_invoices') setOpenSubInvoiceOnMount(false); }, [sub]);
   // Reset to ledger if current sub-tab doesn't exist for this billing model
   useEffect(() => {
-    if (job.cost_plus && (sub === 'invoices' || sub === 'payment_schedule')) setSub('ledger');
+    if (job.cost_plus && sub === 'billing') setSub('ledger');
     if (!job.cost_plus && sub === 'draws') setSub('ledger');
   }, [job.cost_plus]);
   useEffect(() => {
@@ -201,9 +201,15 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
       {sub === 'co' && <COTab job={job} upd={upd} profile={profile} />}
 
       {sub === 'draws' && job.cost_plus && <InvoicesSubTab job={job} profile={profile} />}
-      {sub === 'invoices' && !job.cost_plus && <InvoicesSubTab job={job} profile={profile} />}
 
-      {sub === 'payment_schedule' && !job.cost_plus && <PaymentScheduleTab job={job} profile={profile} />}
+      {sub === 'billing' && !job.cost_plus && (
+        <div>
+          <PaymentScheduleTab job={job} profile={profile} />
+          <div style={{ borderTop: '2px solid #E8E4DC', margin: '28px 0 20px' }} />
+          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: '#0A1F44', marginBottom: 14 }}>Invoices</div>
+          <InvoicesSubTab job={job} profile={profile} />
+        </div>
+      )}
 
       {sub === 'sub_invoices' && <SubInvoicesSection job={job} profile={profile} openAddInvoiceOnMount={openSubInvoiceOnMount} />}
 
