@@ -3695,6 +3695,9 @@ export async function sbUpdateDrawSchedule(id, updates) {
 
 export async function sbDeleteDrawSchedule(id) {
   if (!id) throw new Error('id required');
+  // Reverse cascade before hard-delete: flip in_draw transactions → unreimbursed, delete draw_line_items
+  const { error: voidErr } = await sb.rpc('void_draw', { p_draw_id: id });
+  if (voidErr) throw voidErr;
   const { error } = await sb
     .from('draw_schedules')
     .delete()
@@ -3827,6 +3830,78 @@ export async function sbGenerateMilestoneInvoice(milestoneId) {
     .eq('id', milestoneId)
     .is('invoice_id', null);
   if (linkErr) console.warn('[milestone] link update failed:', linkErr.message);
+
+  return { ok: true, error: null, data: { invoice_id: inv.id, created: true } };
+}
+
+// Releases the retainage milestone and generates a draft invoice for it.
+// Gates: job at final_touches/complete + all non-retainage milestones paid.
+// Milestone → 'invoiced' (→ 'released' when invoice is paid via sync).
+export async function sbReleaseRetainageMilestone(milestoneId) {
+  if (!milestoneId) return { ok: false, error: 'milestoneId required', data: null };
+
+  const { data: ms, error: msErr } = await sb
+    .from('payment_milestones')
+    .select('id, label, amount, is_retainage, status, invoice_id, job_id')
+    .eq('id', milestoneId)
+    .single();
+  if (msErr) return { ok: false, error: msErr.message, data: null };
+  if (!ms) return { ok: false, error: 'Milestone not found', data: null };
+  if (!ms.is_retainage) return { ok: false, error: 'Not a retainage milestone', data: null };
+  if (ms.invoice_id) return { ok: true, error: null, data: { invoice_id: ms.invoice_id, created: false } };
+
+  const { data: job } = await sb.from('jobs').select('status, cost_plus, address').eq('id', ms.job_id).single();
+  if (!job) return { ok: false, error: 'Job not found', data: null };
+  if (job.cost_plus) return { ok: false, error: 'Cost-plus jobs do not use payment milestones', data: null };
+  if (!['final_touches', 'complete'].includes(job.status)) {
+    return { ok: false, error: 'Retainage releases only once the job reaches Final touches or Complete phase', data: null };
+  }
+
+  const { data: others } = await sb
+    .from('payment_milestones')
+    .select('status')
+    .eq('job_id', ms.job_id)
+    .eq('is_retainage', false);
+  const allPaid = (others || []).every(m => m.status === 'paid');
+  if (!allPaid) {
+    return { ok: false, error: 'All other milestones must be paid before releasing retainage', data: null };
+  }
+
+  const amount = Number(ms.amount) || 0;
+  const today  = new Date().toISOString().slice(0, 10);
+  const due    = new Date(Date.now() + 30 * 86400 * 1000).toISOString().slice(0, 10);
+
+  let inv;
+  try {
+    inv = await sbCreateInvoice(ms.job_id, {
+      invoice_date: today,
+      due_date:     due,
+      subtotal:     amount,
+      total_amount: amount,
+      notes:        `${ms.label} — final retainage release`,
+    });
+  } catch (e) {
+    return { ok: false, error: e.message, data: null };
+  }
+
+  await sb.from('invoice_line_items').insert({
+    tenant_id:     AV_TENANT,
+    invoice_id:    inv.id,
+    description:   ms.label,
+    quantity:      1,
+    unit_price:    amount,
+    line_total:    amount,
+    source_type:   'milestone',
+    source_id:     milestoneId,
+    display_order: 0,
+  }).catch(err => console.warn('[retainage] line item insert failed:', err.message));
+
+  const { error: linkErr } = await sb
+    .from('payment_milestones')
+    .update({ invoice_id: inv.id, status: 'invoiced' })
+    .eq('id', milestoneId)
+    .is('invoice_id', null);
+  if (linkErr) console.warn('[retainage] link update failed:', linkErr.message);
 
   return { ok: true, error: null, data: { invoice_id: inv.id, created: true } };
 }
@@ -4080,7 +4155,7 @@ export async function sbSendDrawPackage(drawPackageId, recipientEmail, recipient
 
 export async function sbLoadDrawPackagesForJob(jobId) {
   const { data } = await sb.from('draw_packages')
-    .select('id, draw_id, status, recipient_label, recipient_email, sent_at')
+    .select('id, draw_id, status, generated_pdf_path, recipient_label, recipient_email, sent_at')
     .eq('job_id', jobId)
     .order('created_at', { ascending: false });
   return data || [];
@@ -4203,13 +4278,20 @@ export async function sbMarkInvoicePaid(invoiceId, payment) {
     throw invErr;
   }
 
-  // Sync linked payment_milestone to 'paid'
+  // Sync linked payment_milestone: non-retainage → 'paid', retainage → 'released'
   if (newStatus === 'paid') {
     await sb.from('payment_milestones')
       .update({ status: 'paid' })
       .eq('invoice_id', invoice.id)
       .eq('status', 'invoiced')
+      .eq('is_retainage', false)
       .catch(err => console.warn('[milestone] paid sync failed:', err.message));
+    await sb.from('payment_milestones')
+      .update({ status: 'released' })
+      .eq('invoice_id', invoice.id)
+      .eq('status', 'invoiced')
+      .eq('is_retainage', true)
+      .catch(err => console.warn('[milestone] retainage released sync failed:', err.message));
   }
 
   if (invoice.draw_id) {
