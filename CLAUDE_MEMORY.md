@@ -1924,3 +1924,16 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - BLOCKED — DB seeding (Slice C Step 2): 999 Sandbox has 0 job_phases rows. Slice A (auto-seed phases) has NOT shipped. Schedule_items schema confirmed (phase_id nullable UUID ✓, is_milestone ✓, actual_finish_date ✓, created_by_id nullable ✓). Seed SQL ready to run once Slice A lands.
 - schema_audit: schedule_items has `created_by_id` (nullable UUID), NOT `created_by`. Do NOT use `created_by` in seed SQL — it doesn't exist.
 - Open: Visual verification in live app once deployed. Lucy Webb (no job_phases) → empty state + week strip renders; no pill section (orderedPhases.length === 0 guard is correct behavior until Slice A seeds her phases too).
+
+[LOG — 2026-05-27 — SCHEDULING_ARC v2 Slice A — auto-seed job_phases + backfill + sandbox demo seed]
+- Action: Re-added auto-seed of job_phases (regression from commit 02958bf). Wired into 3 creation paths + backfilled 5 existing jobs. Seeded 999 Sandbox with demo state.
+- Files:
+  - avenstone-vite/src/lib/supabase.js: Added sbSeedJobPhases() helper (line 487). Wired non-fatal call in sbSave() after job insert (line 74). Updated DEFAULT_PHASES to full lifecycle (line 482). Updated JOB_PHASE_TO_TMAP to match new names (line 3052).
+  - avenstone-vite/src/components/jobs/tabs/ScheduleTab.jsx: Added sbSeedJobPhases import (line 2). load() fallback: if phases empty after load, seed then reload (lines 166–184). Updated PHASE_ORDER to new 10 names (line 8).
+  - supabase/functions/ai-master-agent/index.ts: Inline DEFAULT_PHASES_SEED after create_job insert, non-fatal try/catch (line 867).
+- DEFAULT_PHASES changed: ['Demo',...,'Punch List'] → ['Lead','Proposal','Contract','Demo','Rough-ins','Inspections','Drywall','Finishes','Final touches','Complete']. Full lifecycle — sales + construction. JOB_PHASE_TO_TMAP co-updated; PHASE_ORDER co-updated.
+- Backfill: 5 jobs × 10 phases = 50 rows inserted (all not_started). Davis real job — no status changes. test-flow-001 already had 10 rows (skipped).
+- Sandbox 999 demo state: Lead/Proposal/Contract/Demo/Rough-ins → complete, Inspections/Drywall → in_progress, Finishes/Final touches/Complete → not_started.
+- Sandbox schedule_items: 10 items seeded (4 sub_start, 2 inspection, 2 material_delivery, 1 milestone) spanning Apr 28 → Jun 25 2026. All use created_by_id (NOT created_by — column doesn't exist).
+- Commits: feat: expand DEFAULT_PHASES to full lifecycle (7838e7b). Earlier wiring in prior commits this session.
+- Open: Visual verification of ScheduleTab on Lucy Webb and 999 Sandbox in live app. Phase pills should show all 10 phases; Sandbox should show mid-remodel demo state (5 complete + 2 in-progress).
