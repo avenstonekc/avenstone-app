@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity, sbLoadPhotosForEntity, sbCreateChecklistFromTemplate, sbLoadChecklistForScheduleItem, sbCheckResourceConflicts } from '../../../lib/supabase';
+import { AV_USER_ID, AV_TENANT, sb, sbLoadPhases, sbSeedJobPhases, sbLoadScheduleItems, sbCreateScheduleItem, sbUpdateScheduleItem, sbDeleteScheduleItem, derivePhaseStatus, sbPhoto, sbCountPhotosForEntity, sbLoadPhotosForEntity, sbCreateChecklistFromTemplate, sbLoadChecklistForScheduleItem, sbCheckResourceConflicts } from '../../../lib/supabase';
 import { getTemplateOptions } from '../../../lib/siteVisitTemplates';
 import SiteVisitChecklist from '../SiteVisitChecklist';
 import { Ic, fD } from '../../../lib/utils';
 
 // Phase display config — title-case keys match job_phases.phase_name in DB
-const PHASE_ORDER = ['Demo', 'Framing', 'Rough MEP', 'Insulation', 'Drywall', 'Paint', 'Flooring', 'Trim', 'Fixtures', 'Punch List'];
+const PHASE_ORDER = ['Lead', 'Proposal', 'Contract', 'Demo', 'Rough-ins', 'Inspections', 'Drywall', 'Finishes', 'Final touches', 'Complete'];
 
 // Brand-palette phase pill styles per status
 const PILL_STYLE = {
@@ -169,7 +169,13 @@ export default function ScheduleTab({ job }) {
         sbLoadPhases(job.id),
         sbLoadScheduleItems(job.id),
       ]);
-      setPhases(pData || []);
+      let phases = pData || [];
+      if (phases.length === 0) {
+        await sbSeedJobPhases(job.id, AV_TENANT);
+        const seeded = await sbLoadPhases(job.id);
+        phases = seeded || [];
+      }
+      setPhases(phases);
       setItems(iResult.data || []);
     } catch (e) {
       setErr('Failed to load schedule');

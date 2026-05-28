@@ -863,6 +863,18 @@ async function executeTool(
           created_at: new Date().toISOString(),
         }).select().single();
         if (error) return { error: error.message };
+        try {
+          const DEFAULT_PHASES_SEED = ['Lead','Proposal','Contract','Demo','Rough-ins','Inspections','Drywall','Finishes','Final touches','Complete'];
+          await sb.from("job_phases").insert(
+            DEFAULT_PHASES_SEED.map((name, i) => ({
+              tenant_id: tenantId,
+              job_id: data.id,
+              phase_name: name,
+              phase_order: i + 1,
+              status: "not_started",
+            }))
+          );
+        } catch (_) {}
         return { success: true, job_id: data.id, address: data.address, status: data.status };
       }
 
