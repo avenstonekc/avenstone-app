@@ -4203,6 +4203,15 @@ export async function sbMarkInvoicePaid(invoiceId, payment) {
     throw invErr;
   }
 
+  // Sync linked payment_milestone to 'paid'
+  if (newStatus === 'paid') {
+    await sb.from('payment_milestones')
+      .update({ status: 'paid' })
+      .eq('invoice_id', invoice.id)
+      .eq('status', 'invoiced')
+      .catch(err => console.warn('[milestone] paid sync failed:', err.message));
+  }
+
   if (invoice.draw_id) {
     const { data: draw } = await sb
       .from('draw_schedules')

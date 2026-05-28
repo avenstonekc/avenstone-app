@@ -138,8 +138,11 @@ export default function PaymentScheduleTab({ job, profile }) {
     await loadData();
   };
 
-  const totalPct = milestones.reduce((sum, m) => sum + (parseFloat(m.pct) || 0), 0);
-  const pctWarning = milestones.length > 0 && Math.abs(totalPct - 100) > 0.01;
+  const totalPct       = milestones.reduce((sum, m) => sum + (parseFloat(m.pct) || 0), 0);
+  const pctWarning     = milestones.length > 0 && Math.abs(totalPct - 100) > 0.01;
+  const totalInvoiced  = milestones.filter(m => m.status === 'invoiced').reduce((s, m) => s + Number(m.amount || 0), 0);
+  const totalPaidAmt   = milestones.filter(m => ['paid', 'released'].includes(m.status)).reduce((s, m) => s + Number(m.amount || 0), 0);
+  const totalRemaining = milestones.filter(m => m.status === 'pending').reduce((s, m) => s + Number(m.amount || 0), 0);
 
   if (job?.cost_plus) return <p style={{ color: '#0A1F44' }}>Not available for cost-plus jobs.</p>;
   if (loading) return <p style={{ color: '#0A1F44' }}>Loading payment schedule…</p>;
@@ -290,6 +293,16 @@ export default function PaymentScheduleTab({ job, profile }) {
               );
             })}
           </div>
+
+          {/* Billing progress summary */}
+          {milestones.length > 0 && (
+            <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 8, padding: '10px 16px', marginTop: 16, display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 12, color: '#6B7280' }}>
+              <span>Contract: <strong style={{ color: '#0A1F44' }}>{f$(contractTotal)}</strong></span>
+              <span>Invoiced: <strong style={{ color: totalInvoiced > 0 ? '#1E40AF' : '#6B7280' }}>{f$(totalInvoiced)}</strong></span>
+              <span>Paid: <strong style={{ color: totalPaidAmt > 0 ? '#065F46' : '#6B7280' }}>{f$(totalPaidAmt)}</strong></span>
+              <span>Remaining: <strong style={{ color: totalRemaining > 0 ? '#0A1F44' : '#9CA3AF' }}>{f$(totalRemaining)}</strong></span>
+            </div>
+          )}
 
           {!readOnly && (
             <div style={{ display: 'flex', gap: 10, marginTop: 16, alignItems: 'center' }}>
