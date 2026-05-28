@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice, deriveInvoiceStatus } from '../../../lib/supabase';
+import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice, deriveInvoiceStatus, sbLoadDrawPackagesForJob } from '../../../lib/supabase';
 import DrawPackagePickerModal from '../../modals/DrawPackagePickerModal';
 import { f$, fD } from '../../../lib/utils';
 import DrawModal from '../../modals/DrawModal';
@@ -29,6 +29,7 @@ const isStaff = profile => ['owner', 'project_manager', 'sales_rep'].includes(pr
 export default function InvoicesSubTab({ job, profile }) {
   const [draws, setDraws]       = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [drawPkgs, setDrawPkgs] = useState([]);
   const [loading, setLoading]   = useState(true);
 
   const [drawModal, setDrawModal]             = useState(false);
@@ -44,12 +45,14 @@ export default function InvoicesSubTab({ job, profile }) {
   const load = async () => {
     setLoading(true);
     try {
-      const [d, inv] = await Promise.all([
+      const [d, inv, pkgs] = await Promise.all([
         sbLoadDrawsForJob(job.id),
         sbLoadInvoicesForJob(job.id),
+        sbLoadDrawPackagesForJob(job.id),
       ]);
       setDraws(d);
       setInvoices(inv);
+      setDrawPkgs(pkgs);
     } catch (e) {
       console.error('InvoicesSubTab load error:', e);
     }
@@ -126,6 +129,8 @@ export default function InvoicesSubTab({ job, profile }) {
   const totalInvoiced  = draws.reduce((s, d) => s + Number(d.invoiced_amount || 0), 0);
   const totalPaid      = draws.reduce((s, d) => s + Number(d.paid_amount || 0), 0);
 
+  const pkgByDraw = drawPkgs.reduce((m, p) => { if (!m[p.draw_id]) m[p.draw_id] = p; return m; }, {});
+
   const staff = isStaff(profile);
 
   return (
@@ -159,7 +164,8 @@ export default function InvoicesSubTab({ job, profile }) {
             <>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
                 {draws.map(draw => {
-                  const st = DRAW_STATUS[draw.status] || DRAW_STATUS.planned;
+                  const st  = DRAW_STATUS[draw.status] || DRAW_STATUS.planned;
+                  const pkg = pkgByDraw[draw.id];
                   return (
                     <div key={draw.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, padding: '12px 14px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
@@ -168,6 +174,14 @@ export default function InvoicesSubTab({ job, profile }) {
                             <span style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF' }}>#{draw.draw_number}</span>
                             <span style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{draw.title}</span>
                             <span style={{ fontSize: 10, background: st.bg, color: st.color, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>{st.label}</span>
+                            {pkg?.status === 'sent' && (
+                              <span style={{ fontSize: 10, background: '#D1FAE5', color: '#065f46', padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>
+                                Sent to {pkg.recipient_label || pkg.recipient_email}
+                              </span>
+                            )}
+                            {pkg?.status === 'previewed' && !pkg?.sent_at && (
+                              <span style={{ fontSize: 10, background: '#DBEAFE', color: '#1e40af', padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>Package ready</span>
+                            )}
                           </div>
                           {draw.phase && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{draw.phase}</div>}
                           {draw.description && <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{draw.description}</div>}
@@ -179,7 +193,7 @@ export default function InvoicesSubTab({ job, profile }) {
                               className="btn btn-gold"
                               style={{ fontSize: 11, padding: '4px 10px' }}
                             >
-                              Build Package
+                              {pkg?.status === 'sent' ? 'Package' : pkg ? 'Package' : 'Build Package'}
                             </button>
                             <button onClick={() => openEditDraw(draw)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Edit</button>
                             <button onClick={() => handleDeleteDraw(draw)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>Delete</button>
@@ -331,7 +345,8 @@ export default function InvoicesSubTab({ job, profile }) {
         <DrawPackagePickerModal
           job={job}
           draw={pickerDraw}
-          onClose={() => setPickerDraw(null)}
+          existingPkg={pkgByDraw[pickerDraw.id] || null}
+          onClose={() => { setPickerDraw(null); load(); }}
         />
       )}
     </div>

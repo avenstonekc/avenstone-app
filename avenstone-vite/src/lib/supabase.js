@@ -3881,6 +3881,32 @@ export async function sbBuildDrawPackage(drawId, jobId, coverNotes = null, fileR
   return data; // { signed_url, draw_package_id }
 }
 
+export async function sbSendDrawPackage(drawPackageId, recipientEmail, recipientLabel, message = null) {
+  if (!drawPackageId) throw new Error('drawPackageId required');
+  if (!recipientEmail) throw new Error('recipientEmail required');
+  const { data, error } = await sb.functions.invoke('send-draw-package', {
+    body: { draw_package_id: drawPackageId, recipient_email: recipientEmail, recipient_label: recipientLabel || null, message: message || null },
+  });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error ?? 'Failed to send draw package');
+  return data; // { sent_to, label, pdf_url }
+}
+
+export async function sbLoadDrawPackagesForJob(jobId) {
+  const { data } = await sb.from('draw_packages')
+    .select('id, draw_id, status, recipient_label, recipient_email, sent_at')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false });
+  return data || [];
+}
+
+export async function sbGetDrawPackageSignedUrl(path, downloadName = null) {
+  const opts = downloadName ? { download: downloadName } : {};
+  const { data, error } = await sb.storage.from('draw-packages').createSignedUrl(path, 60 * 60 * 24 * 30, opts);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 export async function sbMarkInvoicePaid(invoiceId, payment) {
   if (!invoiceId) throw new Error('invoiceId required');
   if (!payment?.amount || payment.amount <= 0) throw new Error('Amount must be greater than zero');
