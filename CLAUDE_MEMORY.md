@@ -1865,6 +1865,16 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: 81093ad. Build: ✓ clean. Pushed to main.
 - Open: same outstanding math applies only to sub_payouts — if we ever accrue materials/other types as pending, those will need to be included in the outstanding filter too.
 
+[LOG — 2026-05-27 — Contract banner trajectory subtitle — cost-plus projected vs contract]
+- Action: Added live "$X projected · $Y under/over" subtitle to the Contract (signed) highlight card on cost-plus jobs.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx.
+- Changes:
+  - supabase.js sbLoadJobFinancialSummary: added projected_final_bill = total_cost_base × (1 + labor_markup/100) + pm_fee and contract_variance = contract_total - projected_final_bill. Both reuse existing local vars; no extra DB query.
+  - FinancialsTab.jsx: Contract (signed) card note now shows trajectory subtitle when summary.projected_final_bill is non-null; green if contract_variance ≥ 0 (under), red if negative (over). Static "actuals + X% markup" note used as fallback for fixed-price (no projected_final_bill on non-cost-plus summary). Card renderer updated to consume new noteColor prop with '#9CA3AF' fallback for backward compat.
+- Davis expected: "$73,463 projected · $24,025 under" in green.
+- Commit: 5dd23f1. Build: ✓ clean. Pushed to main.
+- Open: Visual verification on Davis job (cost-plus) and Lucy Webb (fixed-price, must show static note unchanged).
+
 [LOG — 2026-05-27 — SCHEDULING_ARC v2 Slice B — ScheduleTab visual rebuild]
 - Action: Full ScheduleTab visual overhaul. Phase progress bar replaced with clickable pills, WeekStrip added, ItemCard redesigned, groupByWeek logic updated.
 - Files: avenstone-vite/src/components/jobs/tabs/ScheduleTab.jsx (complete rewrite of display layer; ScheduleItemModal kept byte-for-byte).
