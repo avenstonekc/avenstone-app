@@ -47,7 +47,7 @@ function StatusBadge({ status }) {
 
 // ─── Main section ─────────────────────────────────────────────────────────────
 
-export default function SubInvoicesSection({ job, profile }) {
+export default function SubInvoicesSection({ job, profile, openAddInvoiceOnMount = false }) {
   const mob = isMob();
   const userRole = profile?.role;
 
@@ -58,6 +58,8 @@ export default function SubInvoicesSection({ job, profile }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showAddInvoice, setShowAddInvoice] = useState(false);
   const [addPaymentFor, setAddPaymentFor]   = useState(null); // invoice object
+
+  useEffect(() => { if (openAddInvoiceOnMount) setShowAddInvoice(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = async () => {
     setLoading(true);

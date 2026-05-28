@@ -1321,7 +1321,7 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
   const round2 = n => Math.round(n * 100) / 100;
   const cpFallback = costPlus ? { float_unreimbursed: 0, bucket_balance: 0, client_float_owed: 0, markup_earned: 0, outstanding_pending: 0, projected_profit: 0, projected_total_revenue: 0, margin_pct: 0, pm_fee: 0 } : {};
   const { data } = await sb.from('job_transactions')
-    .select('direction,amount,status,type,lien_waiver_required,lien_waiver_url,invoice_id,reimbursement_status')
+    .select('direction,amount,status,type,lien_waiver_required,lien_waiver_url,invoice_id,reimbursement_status,created_at')
     .eq('job_id', jobId).neq('status', 'void');
   if (!data) return { total_in: 0, total_out: 0, pending_out: 0, lien_waivers_missing: 0, contract_total: 0, client_owes: 0, ...cpFallback };
   const total_in   = data.filter(t => t.direction === 'in'  && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
@@ -1388,6 +1388,14 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     const contract_variance      = round2(contract_total - projected_final_bill);
     summary.projected_final_bill = projected_final_bill;
     summary.contract_variance    = contract_variance;
+
+    // Activity pulse timestamps — derived from already-fetched data + one schedule query
+    const outSorted = data.filter(t => t.direction === 'out' && t.created_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const inPaidSorted = data.filter(t => t.direction === 'in' && t.status === 'paid' && t.created_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
+    summary.last_expense_at = outSorted[0]?.created_at || null;
+    summary.last_payment_at = inPaidSorted[0]?.created_at || null;
+    const { data: lastSched } = await sb.from('schedule_items').select('updated_at,created_at').eq('job_id', jobId).order('updated_at', { ascending: false }).limit(1).maybeSingle();
+    summary.last_schedule_activity_at = lastSched?.updated_at || lastSched?.created_at || null;
   }
 
   return summary;

@@ -5,6 +5,7 @@ import MaterialsTab from './MaterialsTab';
 import TransactionModal from './financials/TransactionModal';
 import LineItemModal from './financials/LineItemModal';
 import SubInvoicesSection from './financials/SubInvoicesSection';
+import ComposeDrawScr from './ComposeDrawScr';
 import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo, sbMarkTransactionsPaid } from '../../../lib/supabase';
 import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
 import { f$, isMob } from '../../../lib/utils';
@@ -26,6 +27,24 @@ const TYPE_LABELS = {
 };
 
 const STATUS_COLOR = { paid: '#22c55e', pending: '#f59e0b', overdue: '#ef4444', void: '#9CA3AF', draft: '#9CA3AF', refunded: '#8b5cf6' };
+
+function PulseRow({ label, date }) {
+  const daysAgo = date ? Math.floor((Date.now() - new Date(date)) / 86400000) : null;
+  let tone, text;
+  if (daysAgo === null)      { text = 'never';        tone = 'neutral'; }
+  else if (daysAgo === 0)    { text = 'today';         tone = 'fresh';   }
+  else if (daysAgo === 1)    { text = '1d ago';        tone = 'fresh';   }
+  else if (daysAgo <= 7)     { text = `${daysAgo}d ago`; tone = 'fresh'; }
+  else if (daysAgo <= 14)    { text = `${daysAgo}d ago`; tone = 'warn';  }
+  else                       { text = `${daysAgo}d ago`; tone = 'stale'; }
+  const valueColor = tone === 'fresh' ? 'rgba(255,255,255,0.65)' : tone === 'warn' ? '#FAC775' : tone === 'stale' ? '#F7C1C1' : 'rgba(255,255,255,0.4)';
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, lineHeight: 1.5 }}>
+      <span style={{ opacity: 0.65, color: '#fff' }}>{label}</span>
+      <span style={{ fontWeight: 500, color: valueColor }}>{text}</span>
+    </div>
+  );
+}
 
 export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendingAction, clearPendingAction }) {
   const mob = isMob();
@@ -50,6 +69,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   const [catMap, setCatMap] = useState([]);
   const [pendingTodoId, setPendingTodoId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showComposeDraw, setShowComposeDraw] = useState(false);
+  const [openSubInvoiceOnMount, setOpenSubInvoiceOnMount] = useState(false);
 
   useEffect(() => {
     if (!pendingAction) return;
@@ -72,6 +93,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   }, [sub, job.id]);
 
   useEffect(() => { setSelectedIds(new Set()); }, [filterDir, filterStatus]);
+  useEffect(() => { if (sub !== 'sub_invoices') setOpenSubInvoiceOnMount(false); }, [sub]);
 
   const loadLedger = async () => {
     setLoading(true);
@@ -181,7 +203,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
 
       {sub === 'invoices' && <InvoicesSubTab job={job} profile={profile} />}
 
-      {sub === 'sub_invoices' && <SubInvoicesSection job={job} profile={profile} />}
+      {sub === 'sub_invoices' && <SubInvoicesSection job={job} profile={profile} openAddInvoiceOnMount={openSubInvoiceOnMount} />}
 
       {sub === 'materials' && <MaterialsTab job={job} />}
 
@@ -304,13 +326,6 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             const isCostPlus = job?.cost_plus === true && summary.received !== undefined;
             const cpBucketBalance = summary.bucket_balance ?? 0;
             const cpStats = [
-              { lb: 'Contract (signed)', v: f$(job.contract_value || 0), c: '#0A1F44', bold: true,
-                note: summary.projected_final_bill != null
-                  ? `${f$(summary.projected_final_bill)} projected · ${f$(Math.abs(summary.contract_variance ?? 0))} ${(summary.contract_variance ?? 0) >= 0 ? 'under' : 'over'}`
-                  : `actuals + ${job.labor_markup_pct ?? 25}% markup determine final billing`,
-                noteColor: summary.projected_final_bill != null
-                  ? ((summary.contract_variance ?? 0) >= 0 ? '#22c55e' : '#ef4444')
-                  : undefined },
               { lb: 'Received',          v: f$(summary.received ?? summary.total_in), c: (summary.received ?? summary.total_in) > 0 ? '#22c55e' : '#9CA3AF' },
               { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? '#ef4444' : '#9CA3AF' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: '#b45309', note: 'approved sub invoices unpaid' }] : []),
@@ -330,6 +345,33 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                   { lb: 'Paid Out',    v: f$(summary.total_out),                                          c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
                 ];
             return (
+              <>
+              {isCostPlus && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, background: '#0A1F44', color: '#fff', padding: '14px 18px', borderRadius: 8, marginBottom: 14 }}>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.55, marginBottom: 8, fontWeight: 600 }}>Quick actions</div>
+                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                      <button onClick={() => setShowComposeDraw(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 13px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: '#C9A84C', color: '#0A1F44', border: 'none' }}>
+                        Compose Draw
+                      </button>
+                      <button onClick={() => setModal({ mode: 'create', tx: {} })} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 13px', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)' }}>
+                        Add Receipt
+                      </button>
+                      <button onClick={() => { setSub('sub_invoices'); setOpenSubInvoiceOnMount(true); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 13px', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)' }}>
+                        Log Sub Invoice
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.55, marginBottom: 8, fontWeight: 600 }}>Activity pulse</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <PulseRow label="Last expense" date={summary.last_expense_at} />
+                      <PulseRow label="Last payment" date={summary.last_payment_at} />
+                      <PulseRow label="Last schedule update" date={summary.last_schedule_activity_at} />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
                 {stats.map(({ lb, v, c, bold, note, noteColor }) => (
                   <div key={lb} style={{ flex: 1, minWidth: 90, background: '#fff', border: '1px solid #E8E4DC', padding: '10px 14px', borderRadius: 6 }}>
@@ -339,6 +381,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                   </div>
                 ))}
               </div>
+              </>
             );
           })()}
 
@@ -512,6 +555,14 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
           job={job}
           onClose={() => setModal(null)}
           onSaved={() => { if (pendingTodoId) { sbCompleteTodo(pendingTodoId).catch(() => {}); setPendingTodoId(null); } setModal(null); loadLedger(); }}
+        />
+      )}
+
+      {showComposeDraw && (
+        <ComposeDrawScr
+          job={job}
+          onClose={() => setShowComposeDraw(false)}
+          onComposed={() => { setShowComposeDraw(false); loadLedger(); }}
         />
       )}
     </div>
