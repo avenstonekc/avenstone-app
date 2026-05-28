@@ -2136,3 +2136,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: 07feda5. Pushed.
 - Open: AI auto-map payment schedule from estimate line items (v2).
 - Open: client portal view of payment schedule progress for fixed-price clients.
+
+[LOG — 2026-05-28 — PHASE_INVOICE_ARC: UUID bug fix + Invoices/Payment Schedule tab merge]
+- Bug: "invalid input syntax for type uuid: 1779945786617.1738" on Generate Invoice for unsaved milestones.
+- Root cause: addMilestone() used id:Date.now() (int); applyTemplate() used id:Date.now()+Math.random() (float). Timestamp passed as milestoneId → sbGenerateMilestoneInvoice → invoice_line_items.source_id (UUID column) → Postgres type error.
+- Fix: crypto.randomUUID() in both functions. _saved:false flag on new milestones. canGenerate + canRelease guard with m._saved !== false. DB-loaded milestones via mapMilestone() have _saved=undefined → undefined !== false passes correctly.
+- Tab merge: FinancialsTab SUB_TABS 'invoices'+'payment_schedule' → single 'billing' tab. Render: PaymentScheduleTab on top, divider, "Invoices" heading, InvoicesSubTab below. billing model reset effect updated from 'invoices'/'payment_schedule' to 'billing'. Cost-plus Draws tab unaffected.
+- Files: PaymentScheduleTab.jsx, FinancialsTab.jsx.
+- Commit: 8a6a8f8. Pushed.
