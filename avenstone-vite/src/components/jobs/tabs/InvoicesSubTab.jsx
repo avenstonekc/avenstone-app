@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice, deriveInvoiceStatus } from '../../../lib/supabase';
+import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice, deriveInvoiceStatus, sbBuildDrawPackage } from '../../../lib/supabase';
 import { f$, fD } from '../../../lib/utils';
 import DrawModal from '../../modals/DrawModal';
 import InvoiceComposerModal from '../../modals/InvoiceComposerModal';
@@ -38,6 +38,7 @@ export default function InvoicesSubTab({ job, profile }) {
   const [markPaidInvoice, setMarkPaidInvoice]       = useState(null);
   const [resendingInvoiceId, setResendingInvoiceId] = useState(null);
   const [composeDrawOpen, setComposeDrawOpen]       = useState(false);
+  const [buildingPkg, setBuildingPkg]               = useState(new Set());
 
   const load = async () => {
     setLoading(true);
@@ -109,6 +110,18 @@ export default function InvoicesSubTab({ job, profile }) {
     }
   };
 
+  const handleBuildPackage = async draw => {
+    setBuildingPkg(prev => new Set(prev).add(draw.id));
+    try {
+      const result = await sbBuildDrawPackage(draw.id, job.id);
+      window.open(result.signed_url, '_blank');
+    } catch (e) {
+      alert(e.message || 'Failed to build package.');
+    } finally {
+      setBuildingPkg(prev => { const s = new Set(prev); s.delete(draw.id); return s; });
+    }
+  };
+
   const handleVoidInvoice = async inv => {
     const reason = window.prompt(`Reason for voiding invoice ${inv.invoice_number}:`);
     if (reason === null) return;
@@ -172,6 +185,14 @@ export default function InvoicesSubTab({ job, profile }) {
                         </div>
                         {staff && (
                           <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => handleBuildPackage(draw)}
+                              disabled={buildingPkg.has(draw.id)}
+                              className="btn btn-gold"
+                              style={{ fontSize: 11, padding: '4px 10px', opacity: buildingPkg.has(draw.id) ? 0.6 : 1 }}
+                            >
+                              {buildingPkg.has(draw.id) ? 'Building...' : 'Build Package'}
+                            </button>
                             <button onClick={() => openEditDraw(draw)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Edit</button>
                             <button onClick={() => handleDeleteDraw(draw)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>Delete</button>
                           </div>

@@ -3871,6 +3871,16 @@ export async function sbResendInvoice(invoiceId) {
   return data;
 }
 
+export async function sbBuildDrawPackage(drawId, jobId, coverNotes = null) {
+  if (!drawId || !jobId) throw new Error('drawId and jobId required');
+  const { data, error } = await sb.functions.invoke('build-draw-package', {
+    body: { draw_id: drawId, job_id: jobId, cover_notes: coverNotes },
+  });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error ?? 'Failed to build draw package');
+  return data; // { signed_url, draw_package_id }
+}
+
 export async function sbMarkInvoicePaid(invoiceId, payment) {
   if (!invoiceId) throw new Error('invoiceId required');
   if (!payment?.amount || payment.amount <= 0) throw new Error('Amount must be greater than zero');
