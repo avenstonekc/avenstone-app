@@ -2064,3 +2064,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Gotchas: job_phases.status valid values are 'not_started'/'in_progress'/'complete'/'blocked' — NOT 'completed'. sbLoadPhases returns phase_name field (not name). phase_id stored as TEXT from select value but DB expects UUID — pass null not '' for "No phase".
 - Commits: 72b31a0 (schema), 2bb5d84 (UI). Pushed.
 - Open: Slice 2 — link milestones to invoices (invoice_id FK). Slice 3 — AI auto-map from estimate line items. Slice 4 — client portal payment view.
+
+[LOG — 2026-05-27 — DRAW_PACKAGE_ARC slice 5: preview-before-save, Files home, thumbnails, drop Invoiced]
+- InvoicesSubTab: removed 'Invoiced' column from draw schedule rows + footer. Draw IS the invoice on cost-plus — leftover from pre-decouple era. Now shows Target + Paid only.
+- Package modal flow: pick → Preview (ephemeral — builds PDF, opens in tab, does NOT create job_files) → Save Package (builds + creates job_files 'Draws' entry) → deliver.
+- Delivery actions (Download / Copy Link / Send Package) gated: only enabled after Save. Action panel (green) appears only when hasSaved.
+- sbSaveDrawPackageToFiles helper: delete+insert upsert pattern keyed on related_entity_id. Creates job_files row: category='Draws', name='Draw N Package', storage_bucket='draw-packages', related_entity_type='draw_package'.
+- job_files category CHECK constraint updated: 'Draws' added (migration 20260527140000, verified).
+- Photo picker: thumbnail grid (80x80px, signed URLs from storage_bucket, lazy per-thumb, gold border+checkmark when selected, subcategory overlay). Non-photo groups: clean filename rows, no badges.
+- File picker excludes category='Draws' to avoid circular inclusion.
+- Commits: b321ff2 (migration), 4f854cd (drop Invoiced), b6f9145 (modal+helper). Pushed.
+- Open: verify package appears in Files tab under 'Draws' after Save (depends on FilesTab showing 'Draws' category — check if it filters categories). Cover sheet visual polish deferred. Master Agent auto-select photos for draw — future.
