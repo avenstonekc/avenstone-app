@@ -11,26 +11,117 @@ const PILL_COLOR   = { not_started: '#9CA3AF', pending: '#9CA3AF', in_progress: 
 // Schedule item config
 const TYPE_LABELS = { material_delivery: 'Material Delivery', sub_start: 'Sub Start', site_visit: 'Site Visit', inspection: 'Inspection', milestone: 'Milestone', delay: 'Delay' };
 const TYPE_ICON = { material_delivery: 'box', sub_start: 'check', site_visit: 'eye', inspection: 'clip', milestone: 'sched', delay: 'warn' };
-const STATUS_STYLE = {
-  scheduled:   { bg: '#EFF6FF', color: '#1D4ED8' },
-  in_progress: { bg: '#FEF3C7', color: '#92400E' },
-  complete:    { bg: '#D1FAE5', color: '#065F46' },
-  cancelled:   { bg: '#F3F4F6', color: '#6B7280' },
+
+const TYPE_CHIP_COLORS = {
+  sub_start:         { bg: '#534AB7', color: '#fff' },
+  material_delivery: { bg: '#D85A30', color: '#fff' },
+  inspection:        { bg: '#1D9E75', color: '#fff' },
+  milestone:         { bg: '#378ADD', color: '#fff' },
+  site_visit:        { bg: '#6B7280', color: '#fff' },
+  delay:             { bg: '#888780', color: '#fff' },
+};
+const TYPE_ICON_BG    = { sub_start: '#EDE9FF', material_delivery: '#FEF2EE', inspection: '#E6F9F4', milestone: '#EBF4FF', site_visit: '#F3F4F6', delay: '#FFFBEB' };
+const TYPE_ICON_COLOR = { sub_start: '#534AB7', material_delivery: '#D85A30', inspection: '#1D9E75', milestone: '#378ADD', site_visit: '#6B7280', delay: '#D97706' };
+const STATUS_BADGE = {
+  in_progress: { label: 'IN PROGRESS', bg: '#FEF3C7', color: '#92400E' },
+  complete:    { label: 'COMPLETE',    bg: '#D1FAE5', color: '#065F46' },
+  cancelled:   { label: 'CANCELLED',  bg: '#F3F4F6', color: '#6B7280' },
 };
 
-function groupByWeek(items) {
-  const today = new Date().toISOString().slice(0, 10);
+// ── Date helpers ───────────────────────────────────────────────────────────────
+function startOfWeekMon(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+function dateToISO(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+function isSameDayLocal(isoStr, date) { return isoStr === dateToISO(date); }
+const WEEKDAY_ABBR = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const MONTH_ABBR   = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtWeekDay(date) { return WEEKDAY_ABBR[date.getDay()]; }
+function fmtMonthDay(date) { return `${MONTH_ABBR[date.getMonth()]} ${date.getDate()}`; }
+function truncate(str, len) { return str.length > len ? str.slice(0, len) + '…' : str; }
+
+function groupByWeek(items, today) {
+  const weekStart     = dateToISO(startOfWeekMon(today));
+  const nextWeekStart = dateToISO(addDays(startOfWeekMon(today), 7));
+  const afterNext     = dateToISO(addDays(startOfWeekMon(today), 14));
   const groups = { thisWeek: [], nextWeek: [], later: [], noDate: [], past: [] };
   for (const item of items) {
     if (item.status === 'cancelled') continue;
     if (!item.scheduled_date) { groups.noDate.push(item); continue; }
-    if (item.scheduled_date < today) { groups.past.push(item); continue; }
-    const diff = Math.floor((new Date(item.scheduled_date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000);
-    if (diff <= 6)  { groups.thisWeek.push(item); continue; }
-    if (diff <= 13) { groups.nextWeek.push(item); continue; }
+    const d = item.scheduled_date;
+    if (d < weekStart)      { groups.past.push(item); continue; }
+    if (d < nextWeekStart)  { groups.thisWeek.push(item); continue; }
+    if (d < afterNext)      { groups.nextWeek.push(item); continue; }
     groups.later.push(item);
   }
   return groups;
+}
+
+// ── WeekStrip ─────────────────────────────────────────────────────────────────
+function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate, onSelectDate }) {
+  const monday = startOfWeekMon(addDays(today, weekOffset * 7));
+  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  const todayStr = dateToISO(today);
+  const selectedStr = selectedDate ? dateToISO(selectedDate) : null;
+  const navBtn = { background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4, padding: '3px 10px', fontSize: 13, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' };
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+          {fmtMonthDay(monday)} – {fmtMonthDay(addDays(monday, 6))}
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button style={navBtn} onClick={() => onWeekOffsetChange(weekOffset - 1)}>‹</button>
+          <button style={{ ...navBtn, fontSize: 11 }} onClick={() => onWeekOffsetChange(0)}>Today</button>
+          <button style={navBtn} onClick={() => onWeekOffsetChange(weekOffset + 1)}>›</button>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+        {days.map(day => {
+          const dayStr = dateToISO(day);
+          const dayItems = items.filter(i => i.scheduled_date === dayStr && i.status !== 'cancelled');
+          const isToday = dayStr === todayStr;
+          const isSelected = dayStr === selectedStr;
+          return (
+            <button key={dayStr} onClick={() => onSelectDate(isSelected ? null : day)}
+              style={{ background: '#F7F5F0', border: isSelected ? '1px solid #1D9E75' : '0.5px solid #E8E4DC',
+                borderRadius: 6, padding: '6px 4px', minHeight: 72, cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontFamily: 'inherit' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#374151', letterSpacing: 0.3 }}>
+                {fmtWeekDay(day)} {day.getDate()}
+              </div>
+              {isToday && <div style={{ fontSize: 9, fontWeight: 700, color: '#0A1F44', lineHeight: 1 }}>TODAY</div>}
+              {dayItems.slice(0, 3).map(item => {
+                const chip = TYPE_CHIP_COLORS[item.type] || { bg: '#888780', color: '#fff' };
+                return (
+                  <div key={item.id} style={{ background: chip.bg, color: chip.color, fontSize: 9,
+                    borderRadius: 3, padding: '1px 4px', overflow: 'hidden', whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis', maxWidth: '100%', width: '100%', textAlign: 'left' }}>
+                    {truncate(item.title, 10)}
+                  </div>
+                );
+              })}
+              {dayItems.length > 3 && <div style={{ fontSize: 9, color: '#9CA3AF' }}>+{dayItems.length - 3}</div>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function ScheduleTab({ job }) {
@@ -40,9 +131,15 @@ export default function ScheduleTab({ job }) {
   const [err,    setErr]            = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [pastExpanded, setPastExpanded] = useState(false);
-  const [cancelConfirm, setCancelConfirm] = useState(null); // item awaiting confirm
+  const [cancelConfirm, setCancelConfirm] = useState(null);
   const [showModal, setShowModal]   = useState(false);
   const [editItem, setEditItem]     = useState(null);
+  const [phaseFilter,  setPhaseFilter]  = useState(null);
+  const [weekOffset,   setWeekOffset]   = useState(0);
+  const [selectedDate, setSelectedDate] = useState(null);
+
+  // Must be above early return — hook ordering rule
+  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
 
   useEffect(() => { load(); }, []);
 
@@ -74,7 +171,6 @@ export default function ScheduleTab({ job }) {
   // ── Cancel item flow ──────────────────────────────────────────────────────
   const requestCancel = async (item) => {
     if (item.type === 'sub_start' && item.trade) {
-      // Check if the mapped phase is already complete (asymmetry warning)
       const { data: mapRow } = await sb
         .from('trade_phase_map')
         .select('phase_name')
@@ -147,12 +243,19 @@ export default function ScheduleTab({ job }) {
 
   if (!loaded) return <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading schedule...</div>;
 
-  // ── Phase pill data ───────────────────────────────────────────────────────
+  // ── Derived data ──────────────────────────────────────────────────────────
+  const phaseNameMap = Object.fromEntries(phases.map(p => [p.id, p.phase_name]));
   const phaseMap = Object.fromEntries(phases.map(p => [p.phase_name, p]));
   const orderedPhases = PHASE_ORDER.map(name => phaseMap[name]).filter(Boolean);
 
-  // ── Week groups ───────────────────────────────────────────────────────────
-  const groups = groupByWeek(items);
+  const hasFilter = phaseFilter !== null;
+  const phaseFiltered = hasFilter ? items.filter(i => i.phase_id === phaseFilter) : items;
+  const dayFiltered = selectedDate
+    ? phaseFiltered.filter(i => i.scheduled_date && isSameDayLocal(i.scheduled_date, selectedDate) && i.status !== 'cancelled')
+    : null;
+  const groups = dayFiltered ? null : groupByWeek(phaseFiltered, today);
+
+  const openEdit = (item) => { setEditItem(item); setShowModal(true); };
 
   return (
     <div>
@@ -169,55 +272,64 @@ export default function ScheduleTab({ job }) {
         <div style={{ background: '#D1FAE5', border: '1px solid #A7F3D0', color: '#065F46', padding: '8px 14px', fontSize: 13, marginBottom: 12, borderRadius: 4 }}>{successMsg}</div>
       )}
 
-      {/* ── Phase progress bar (read-only) ── */}
+      {/* ── Phase pills (clickable filter) ── */}
       {orderedPhases.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '14px 16px', marginBottom: 16, borderRadius: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Phase Progress</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            {orderedPhases.map(ph => {
-              const col = PILL_COLOR[ph.status] || '#9CA3AF';
-              const prog = phaseProgressMap[ph.id];
-              return (
-                <div key={ph.id} style={{ textAlign: 'center', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 72 }}>
-                  <div style={{ background: col + '20', border: `1.5px solid ${col}`, borderRadius: 20, padding: '4px 12px', fontSize: 11, fontWeight: 700, color: col, whiteSpace: 'nowrap', lineHeight: 1.4 }}>
-                    {ph.phase_name}
-                  </div>
-                  {prog?.total > 0 && (
-                    <div style={{ width: '100%', marginTop: 4 }}>
-                      <div style={{ background: '#E8E4DC', height: 4, borderRadius: 2, overflow: 'hidden', width: '100%' }}>
-                        <div style={{ background: prog.isDelayed ? '#EF4444' : '#C9A84C', height: 4, borderRadius: 2, width: `${prog.pct}%`, transition: 'width 0.4s' }} />
-                      </div>
-                      <div style={{ fontSize: 9, color: prog.isDelayed ? '#EF4444' : '#9CA3AF', marginTop: 2, fontWeight: prog.isDelayed ? 700 : 400 }}>
-                        {prog.completed}/{prog.total}{prog.isDelayed ? ' · late' : ''}
-                      </div>
-                    </div>
-                  )}
-                  {ph.status === 'in_progress' && ph.started_at && (
-                    <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>Started {fD(ph.started_at)}</div>
-                  )}
-                  {ph.status === 'complete' && ph.completed_at && (
-                    <div style={{ fontSize: 10, color: '#22c55e', marginTop: 2 }}>Done {fD(ph.completed_at)}</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 10, fontStyle: 'italic' }}>Phases auto-update from schedule items below.</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+          {orderedPhases.map(ph => {
+            const col = PILL_COLOR[ph.status] || '#9CA3AF';
+            const isActive = phaseFilter === ph.id;
+            return (
+              <button key={ph.id} onClick={() => setPhaseFilter(isActive ? null : ph.id)}
+                aria-pressed={isActive}
+                style={{ background: col + '20', border: `${isActive ? '2px' : '1.5px'} solid ${col}`, borderRadius: 20,
+                  padding: '4px 12px', fontSize: 11, fontWeight: 700, color: col, whiteSpace: 'nowrap',
+                  cursor: 'pointer', opacity: hasFilter && !isActive ? 0.65 : 1,
+                  transition: 'opacity 0.15s', fontFamily: 'inherit', lineHeight: 1.4 }}>
+                {ph.phase_name}
+              </button>
+            );
+          })}
+          {hasFilter && (
+            <button onClick={() => setPhaseFilter(null)}
+              style={{ fontSize: 11, color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', fontFamily: 'inherit' }}>
+              × Clear
+            </button>
+          )}
         </div>
       )}
+
+      {/* ── Week strip ── */}
+      <WeekStrip
+        items={phaseFiltered}
+        today={today}
+        weekOffset={weekOffset}
+        onWeekOffsetChange={setWeekOffset}
+        selectedDate={selectedDate}
+        onSelectDate={setSelectedDate}
+      />
 
       {/* ── Schedule items section ── */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>Schedule Items</div>
-          <button
-            className="btn btn-gold"
-            style={{ fontSize: 12, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
-            onClick={() => { setEditItem(null); setShowModal(true); }}
-          >
-            <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.plus}</span>
-            Add schedule item
-          </button>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>
+            {selectedDate ? `${fmtWeekDay(selectedDate)}, ${fmtMonthDay(selectedDate)}` : 'Schedule Items'}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {selectedDate && (
+              <button onClick={() => setSelectedDate(null)}
+                style={{ fontSize: 11, color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', fontFamily: 'inherit' }}>
+                × All
+              </button>
+            )}
+            <button
+              className="btn btn-gold"
+              style={{ fontSize: 12, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
+              onClick={() => { setEditItem(null); setShowModal(true); }}
+            >
+              <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.plus}</span>
+              Add schedule item
+            </button>
+          </div>
         </div>
 
         {items.filter(i => i.status !== 'cancelled').length === 0 ? (
@@ -229,6 +341,12 @@ export default function ScheduleTab({ job }) {
               + Add schedule item
             </button>
           </div>
+        ) : dayFiltered ? (
+          dayFiltered.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 20px', color: '#9CA3AF', fontSize: 13 }}>No items on this day.</div>
+          ) : (
+            <ItemGroup label="" items={dayFiltered} phaseNameMap={phaseNameMap} onEdit={openEdit} onCancel={requestCancel} />
+          )
         ) : (
           <>
             {[
@@ -237,9 +355,8 @@ export default function ScheduleTab({ job }) {
               { key: 'later',    label: 'Later' },
               { key: 'noDate',   label: 'No Date Set' },
             ].map(({ key, label }) => groups[key].length > 0 && (
-              <ItemGroup key={key} label={label} items={groups[key]}
-                onEdit={item => { setEditItem(item); setShowModal(true); }}
-                onCancel={requestCancel}
+              <ItemGroup key={key} label={label} items={groups[key]} phaseNameMap={phaseNameMap}
+                onEdit={openEdit} onCancel={requestCancel}
               />
             ))}
 
@@ -253,9 +370,8 @@ export default function ScheduleTab({ job }) {
                   Past ({groups.past.length} item{groups.past.length !== 1 ? 's' : ''})
                 </button>
                 {pastExpanded && (
-                  <ItemGroup label="Past" items={groups.past}
-                    onEdit={item => { setEditItem(item); setShowModal(true); }}
-                    onCancel={requestCancel}
+                  <ItemGroup label="Past" items={groups.past} phaseNameMap={phaseNameMap}
+                    onEdit={openEdit} onCancel={requestCancel}
                   />
                 )}
               </div>
@@ -294,38 +410,45 @@ export default function ScheduleTab({ job }) {
 }
 
 // ── Item group ────────────────────────────────────────────────────────────────
-function ItemGroup({ label, items, onEdit, onCancel }) {
+function ItemGroup({ label, items, phaseNameMap, onEdit, onCancel }) {
   if (!items.length) return null;
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{label}</div>
-      {items.map(item => <ItemCard key={item.id} item={item} onEdit={onEdit} onCancel={onCancel} />)}
+      {label && <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{label}</div>}
+      {items.map(item => (
+        <ItemCard key={item.id} item={item} phaseName={phaseNameMap?.[item.phase_id]} onEdit={onEdit} onCancel={onCancel} />
+      ))}
     </div>
   );
 }
 
 // ── Item card ─────────────────────────────────────────────────────────────────
-function ItemCard({ item, onEdit, onCancel }) {
-  const st   = STATUS_STYLE[item.status] || STATUS_STYLE.scheduled;
-  const icon = Ic[TYPE_ICON[item.type]] || Ic.cal;
-
+function ItemCard({ item, phaseName, onEdit, onCancel }) {
+  const iconKey = TYPE_ICON[item.type] || 'cal';
+  const icon = Ic[iconKey];
+  const iconBg    = TYPE_ICON_BG[item.type]    || '#F7F5F0';
+  const iconColor = TYPE_ICON_COLOR[item.type] || '#0A1F44';
+  const badge = STATUS_BADGE[item.status] || null;
   return (
-    <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4, padding: '12px 14px', marginBottom: 8, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#F7F5F0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
-        <span style={{ width: 14, height: 14, display: 'flex', color: '#0A1F44' }}>{icon}</span>
+    <div style={{ background: '#fff', border: '0.5px solid #E8E4DC', borderRadius: 8, padding: '12px 14px', marginBottom: 8, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+        <span style={{ width: 14, height: 14, display: 'flex', color: iconColor }}>{icon}</span>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
           <div style={{ fontWeight: 600, fontSize: 13, color: '#0A1F44' }}>{item.title}</div>
-          <span style={{ background: st.bg, color: st.color, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
-            {item.status?.replace(/_/g, ' ')}
-          </span>
+          {badge && (
+            <span style={{ background: badge.bg, color: badge.color, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+              {badge.label}
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ color: '#6B7280', fontWeight: 500 }}>{TYPE_LABELS[item.type]}</span>
           {item.scheduled_date && <span>{fD(item.scheduled_date)}{item.scheduled_time ? ` ${item.scheduled_time.slice(0, 5)}` : ''}{item.scheduled_end_date ? ` → ${fD(item.scheduled_end_date)}` : ''}</span>}
           {item.trade && <span style={{ background: '#F7F5F0', padding: '1px 6px', borderRadius: 10 }}>{item.trade}</span>}
           {item.assigned_sub?.full_name && <span>→ {item.assigned_sub.full_name}</span>}
+          {phaseName && <span style={{ color: '#B8975A' }}>{phaseName}</span>}
         </div>
         {item.notes && (
           <div style={{ fontSize: 12, color: '#6B7280', marginTop: 5, background: '#F7F5F0', padding: '6px 8px', borderRadius: 4, lineHeight: 1.4 }}>
@@ -334,16 +457,8 @@ function ItemCard({ item, onEdit, onCancel }) {
         )}
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: 2 }}>
-        <button
-          className="btn btn-ghost"
-          style={{ padding: '6px 12px', fontSize: 12, minHeight: 36 }}
-          onClick={() => onEdit(item)}
-        >Edit</button>
-        <button
-          className="btn btn-ghost"
-          style={{ padding: '6px 12px', fontSize: 12, minHeight: 36, color: '#6B7280' }}
-          onClick={() => onCancel(item)}
-        >Cancel</button>
+        <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12, minHeight: 36 }} onClick={() => onEdit(item)}>Edit</button>
+        <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12, minHeight: 36, color: '#6B7280' }} onClick={() => onCancel(item)}>Cancel</button>
       </div>
     </div>
   );
