@@ -2053,3 +2053,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: ✓ clean. Commits: (slice 4 multi-file commit) 8a7c3f5. Pushed to main.
 - DRAW_PACKAGE_ARC complete (4 slices): decouple+schema → cover sheet → file picker+assembly → send/download/share
 - Open: PHASE_INVOICE_ARC (fixed-price) reuses this package machinery. Stripe payment collection on draw packages — deferred. Smart auto-assembly (pre-select files since last draw), funder presets — v2.
+
+[LOG — 2026-05-27 — PHASE_INVOICE_ARC slice 1: payment schedule schema + builder]
+- Action: Fixed-price jobs now have a payment schedule builder tab in Financials.
+- Schema: payment_schedules (UNIQUE on job_id, contract_total, created_by_id NOT NULL) + payment_milestones (phase_id nullable FK → job_phases, pct, amount, is_retainage, invoice_id FK for slice 2, status enum pending/invoiced/paid/released). 8 RLS policies mirroring draw_schedules pattern. Migration 20260527120001, applied 13/13 green.
+- Test job seeded: Tester McTester, 11291 Hemlock Test KS, $36,000, cost_plus=false. Phases seeded (Rough-ins, Drywall, Final touches, Complete) with status='complete'.
+- supabase.js new helpers: sbLoadPaymentSchedule, sbSavePaymentSchedule (upsert on job_id conflict + delete+reinsert milestones), sbDeletePaymentSchedule.
+- PaymentScheduleTab.jsx: % milestones + phase dropdown + computed $ amount + retainage checkbox + status pills (invoiced/paid/released). Standard template: 25/25/25/15/10 (last line is_retainage=true). % total warning (amber banner) when not 100. Read-only for sub/client roles. Non-pending rows lock inputs + show status pill.
+- FinancialsTab wiring: import + 'payment_schedule' sub-tab added for !cost_plus jobs (alongside 'invoices'). Render guard `{sub === 'payment_schedule' && !job.cost_plus && <PaymentScheduleTab ...>}`. Billing-model reset effect updated to also clear 'payment_schedule' when switching to cost_plus.
+- Gotchas: job_phases.status valid values are 'not_started'/'in_progress'/'complete'/'blocked' — NOT 'completed'. sbLoadPhases returns phase_name field (not name). phase_id stored as TEXT from select value but DB expects UUID — pass null not '' for "No phase".
+- Commits: 72b31a0 (schema), 2bb5d84 (UI). Pushed.
+- Open: Slice 2 — link milestones to invoices (invoice_id FK). Slice 3 — AI auto-map from estimate line items. Slice 4 — client portal payment view.
