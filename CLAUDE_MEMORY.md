@@ -1855,3 +1855,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Files: avenstone-vite/src/components/jobs/JobDet.jsx, avenstone-vite/src/components/jobs/tabs/InfoTab.jsx, avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx.
 - Commit: 7b51dec. Build: ✓ clean (404 modules). Pushed to main.
 - Open: Visual verification in live Davis job (Outstanding card should show $27,900 Aguayo accrual; Projected Profit should reflect labor_markup_pct=22% + pm_fee=$2,000). Lucy Webb (fixed-price) stat row unchanged (non-cost-plus array path).
+
+[LOG — 2026-05-27 — Ledger Highlight cards hotfix — pending accruals flow into card math]
+- Bug: bucket_balance was set to `round2(bucket)` = $45,000 (raw deposits) before outstanding_pending was computed, so it never factored in. FinancialsTab computed `surplus = bucket_balance - float_unreimbursed` and always showed green "Bucket Credit" — client obligation was understated by $27,900.
+- Three sub-bugs: (1) bucket_balance order-of-operations; (2) no sign-aware "Client Owes" swap for cost-plus; (3) margin_pct was Math.round(×100) → whole number instead of 1 decimal.
+- Fix — supabase.js: moved outstanding_pending computation above bucket_balance assignment; bucket_balance = round2(bucket - (total_out + outstanding_pending)) — signed, negative = client owes; client_float_owed = max(0, -bucket_balance); margin_pct uses ×1000/10 for 1 decimal; exposed received + paid_out as named fields on summary.
+- Fix — FinancialsTab.jsx: replaced surplus-based "Bucket Credit" logic with sign-aware swap — negative bucket_balance → "Client Owes" (red, subtitle "request a draw"); positive → "Bucket Credit" (green).
+- Davis after fix: Outstanding $27,900, Projected Profit $14,886.73 (20.3% margin), Client Owes $13,576.03 — real-time draw-request signal.
+- Commit: 81093ad. Build: ✓ clean. Pushed to main.
+- Open: same outstanding math applies only to sub_payouts — if we ever accrue materials/other types as pending, those will need to be included in the outstanding filter too.
