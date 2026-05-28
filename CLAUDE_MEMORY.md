@@ -2075,3 +2075,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - File picker excludes category='Draws' to avoid circular inclusion.
 - Commits: b321ff2 (migration), 4f854cd (drop Invoiced), b6f9145 (modal+helper). Pushed.
 - Open: verify package appears in Files tab under 'Draws' after Save (depends on FilesTab showing 'Draws' category — check if it filters categories). Cover sheet visual polish deferred. Master Agent auto-select photos for draw — future.
+
+[LOG — 2026-05-27 — Fix upload white-screen + add Invoices category]
+- Root cause: FileUploadFlow.jsx line 138 called onUploaded(result.jobFile) but sbUploadJobFile returns {ok, data} — result.jobFile is undefined. Undefined spread into files array → view components read .id off undefined → white screen.
+- Files WERE landing in storage+DB before crash — pure post-commit UI crash, data layer never broken.
+- Linked to UNIFIED_FILES migration: old callers used result.jobFile shape; new sbUploadJobFile returns result.data. Any other callers of sbUploadJobFile should be audited for the same mismatch.
+- Fix: result.jobFile → result.data in FileUploadFlow; check !result.ok instead of result.error; guard handleFileUploaded in FilesTab against undefined.
+- Added 'Invoices' to CategoryPicker CATEGORIES and job_files CHECK constraint (migration 20260527150000). Invoices appears between Documents and Receipts.
+- Commit: 5ed1683. Pushed.
