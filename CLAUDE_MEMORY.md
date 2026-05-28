@@ -1864,3 +1864,20 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Davis after fix: Outstanding $27,900, Projected Profit $14,886.73 (20.3% margin), Client Owes $13,576.03 — real-time draw-request signal.
 - Commit: 81093ad. Build: ✓ clean. Pushed to main.
 - Open: same outstanding math applies only to sub_payouts — if we ever accrue materials/other types as pending, those will need to be included in the outstanding filter too.
+
+[LOG — 2026-05-27 — SCHEDULING_ARC v2 Slice B — ScheduleTab visual rebuild]
+- Action: Full ScheduleTab visual overhaul. Phase progress bar replaced with clickable pills, WeekStrip added, ItemCard redesigned, groupByWeek logic updated.
+- Files: avenstone-vite/src/components/jobs/tabs/ScheduleTab.jsx (complete rewrite of display layer; ScheduleItemModal kept byte-for-byte).
+- Changes:
+  - Phase progress bar (the container with mini bars below pills) CUT entirely.
+  - Phase pills now clickable — phaseFilter state (null=all, phase_id=filtered). Active pill shows 2px border. Inactive pills dim to 0.65 opacity when filter active. × Clear button appears.
+  - WeekStrip: Mon-Sun 7-column grid between pills and item list. Each day cell shows type-colored chips (max 3 + overflow count), TODAY label (no background highlight), click to day-filter. Week nav (‹ / Today / ›) by weekOffset state.
+  - selectedDate state: when set → flat filtered list for that day; when null → grouped week buckets.
+  - groupByWeek updated from "within N days" rolling window to Mon-Sun week boundaries (startOfWeekMon helper).
+  - STATUS_STYLE (all-states badges) replaced with STATUS_BADGE (null for 'scheduled' — no badge rendered).
+  - ItemCard: type-specific 28px avatar circle with tinted bg/icon (TYPE_ICON_BG/COLOR), conditional status badge only for non-null STATUS_BADGE entries, phase name in gold (#B8975A) when item.phase_id is set.
+  - ItemGroup updated: accepts phaseNameMap prop, passes phaseName to ItemCard.
+  - phaseProgressMap useMemo kept (data layer preserved — moves with other hooks above early return).
+  - Date helpers: startOfWeekMon, addDays, dateToISO, isSameDayLocal, fmtWeekDay, fmtMonthDay, truncate — pure JS, no date-fns.
+- Commit: d5bf62a. Build: ✓ clean (404 modules). Pushed to main.
+- Open: Visual verification on 999 Sandbox and Davis job.
