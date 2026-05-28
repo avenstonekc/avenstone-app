@@ -198,6 +198,14 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
                   />
                   <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>PM Fee ($)</div>
+                  <input type="number" step="100" min="0"
+                    value={inf.pm_fee ?? 0}
+                    onChange={e => { const v = Number(e.target.value || 0); setInf(p => ({ ...p, pm_fee: v })); upd({ pm_fee: v }); }}
+                    style={{ width: 80, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
+                  />
+                </div>
               </div>
             )}
           </div>
