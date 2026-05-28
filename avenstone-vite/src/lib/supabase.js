@@ -3966,6 +3966,32 @@ export async function sbLoadDrawPackagesForJob(jobId) {
   return data || [];
 }
 
+export async function sbSaveDrawPackageToFiles(jobId, drawPackageId, pdfPath, drawNumber) {
+  if (!jobId || !drawPackageId || !pdfPath) return { ok: false, error: 'Missing required params' };
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return { ok: false, error: 'Not authenticated' };
+  // Delete-then-insert to upsert by related_entity_id (no unique constraint on column)
+  await sb.from('job_files').delete()
+    .eq('related_entity_type', 'draw_package')
+    .eq('related_entity_id', drawPackageId);
+  const { data, error } = await sb.from('job_files').insert({
+    tenant_id: AV_TENANT,
+    job_id: jobId,
+    uploaded_by_id: user.id,
+    name: `Draw ${drawNumber} Package`,
+    storage_path: pdfPath,
+    storage_bucket: 'draw-packages',
+    mime_type: 'application/pdf',
+    category: 'Draws',
+    client_visible: false,
+    related_entity_type: 'draw_package',
+    related_entity_id: drawPackageId,
+    lifecycle_status: 'active',
+  }).select('id').single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, file_id: data.id };
+}
+
 export async function sbGetDrawPackageSignedUrl(path, downloadName = null) {
   const opts = downloadName ? { download: downloadName } : {};
   const { data, error } = await sb.storage.from('draw-packages').createSignedUrl(path, 60 * 60 * 24 * 30, opts);
