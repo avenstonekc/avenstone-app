@@ -35,6 +35,7 @@ import AiPmDashboard from './components/dashboard/AiPmDashboard';
 import MyTodosScreen from './components/todos/MyTodosScreen';
 import BugReportsScr from './components/admin/BugReportsScr';
 import CompanyFilesScr from './components/company-files/CompanyFilesScr';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -283,6 +284,7 @@ export default function App() {
             </div>
           </div>
 
+          <ErrorBoundary>
           <div className="pg-wrap">
             {pg === 'home' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}
@@ -318,6 +320,7 @@ export default function App() {
               </div>
             )}
           </div>
+          </ErrorBoundary>
 
           <div className="bot-nav">
             {[
