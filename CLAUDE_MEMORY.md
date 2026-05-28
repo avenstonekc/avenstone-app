@@ -1815,3 +1815,18 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Float Out: $11,529.03 → $30,676.03. Bucket Credit: $33,470.97 → $14,323.97 (correct — matches $45k deposit − $30,676 float).
 - Verify: 23 rows, all reimbursement_status='unreimbursed', SUM=$30,676.03 confirmed via SQL.
 - Open: InfoTab dead-checkbox bug is the root cause. Until fully confirmed fixed (commit 501d25e), future InfoTab saves on cost-plus jobs may still re-orphan rows. Audit other recently-touched cost-plus jobs (test-flow-001, sandbox) for similar orphan rows if observed.
+
+[LOG — 2026-05-27 — Sub invoice modals — disable backdrop click-to-close]
+- AddInvoiceModal, AddPaymentModal, InvoiceDetailPanel, and the New Sub Contact mini-modal (nested inside AddInvoiceModal) no longer close on stray outside clicks. Reported during real-job onboarding — entered data was being lost.
+- Pattern removed: `onClick={e => e.target === e.currentTarget && onClose()}` on 4 overlay divs in SubInvoicesSection.jsx. X button, Cancel button, and successful save paths are the only dismiss paths now.
+- No ESC key listeners existed — nothing to preserve.
+- File: avenstone-vite/src/components/jobs/tabs/financials/SubInvoicesSection.jsx. Commit: d61e752. Pushed to main.
+- Other modals with the same backdrop-close pattern (NOT fixed — need per-modal owner review):
+  - BugReportDetailModal.jsx (read-only — backdrop-close probably fine)
+  - AiKnowledgeScr.jsx, SequencesScr.jsx, UserMgmt.jsx (short forms — debatable)
+  - CompanyFilesScr.jsx (2 modals), CalScr.jsx, ScheduleTab.jsx (data-entry — candidates for same fix)
+  - JobDet.jsx, JobsScr.jsx, COTab.jsx, FinancialsTab.jsx, LogsTab.jsx (various — job-context forms)
+  - FileDetailPanel.jsx, FileUploadFlow.jsx (file flows — losing upload state could hurt)
+  - LineItemModal.jsx, TransactionModal.jsx, DrawModal.jsx (financial data-entry — candidates)
+  - LeadsScr.jsx, AddQuoteModal.jsx, AddSubToJobModal.jsx, ClientSignContractModal.jsx, CompletionSignoffModal.jsx, ContractModal.jsx, EngagementActionModal.jsx (lead/contract flows)
+- Future: audit which data-entry modals should also block backdrop-close. Priority candidates: LineItemModal, TransactionModal, FileUploadFlow, DrawModal (all can hold significant entered data).
