@@ -1994,3 +1994,9 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commits: c37c8e2 (Compose Draw rework), 2a23cf7 (Ledger card). Pushed to main.
 - BACKLOG: Create Invoice (fixed-price / phase-based) retainage flow — separate slice when needed.
 - Open: Davis phase nudge currently shows no nudge (all phases not_started, currentPhase=null). Will activate naturally when phases advance.
+
+[LOG — 2026-05-27 — Operator header gate fix]
+- Bug: Quick Actions + Activity Pulse header was rendering on all tabs except Schedule (tab !== 'sched' gate was too permissive).
+- Fix: tab === 'financials' in JobDet.jsx line 205. One token change.
+- Cost-plus jobs: header on Financials tab only. Fixed-price: cbar also now Financials-only.
+- Commit: d8871c1. Pushed.
