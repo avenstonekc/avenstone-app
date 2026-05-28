@@ -4,10 +4,12 @@ import { Ic, fD } from '../../../../lib/utils';
 const CAT_COLORS = {
   Photos:          '#3B82F6',
   Documents:       '#6366F1',
+  Invoices:        '#0EA5E9',
   Receipts:        '#22C55E',
   'Floor Plans':   '#F59E0B',
   'Change Orders': '#EF4444',
   Communications:  '#8B5CF6',
+  Draws:           '#C9A84C',
 };
 
 function fileIcon(mime) {

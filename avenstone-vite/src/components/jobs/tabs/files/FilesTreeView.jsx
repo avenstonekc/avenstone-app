@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Ic, fD } from '../../../../lib/utils';
 import { FileRow, CAT_COLORS } from './FilesRecentView';
 
-const CAT_ORDER = ['Photos', 'Documents', 'Receipts', 'Floor Plans', 'Change Orders', 'Communications'];
+const CAT_ORDER = ['Photos', 'Documents', 'Invoices', 'Receipts', 'Floor Plans', 'Change Orders', 'Communications', 'Draws'];
 
 function groupByTree(files) {
   const tree = {};
