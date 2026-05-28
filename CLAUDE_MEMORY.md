@@ -1937,3 +1937,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Sandbox schedule_items: 10 items seeded (4 sub_start, 2 inspection, 2 material_delivery, 1 milestone) spanning Apr 28 → Jun 25 2026. All use created_by_id (NOT created_by — column doesn't exist).
 - Commits: feat: expand DEFAULT_PHASES to full lifecycle (7838e7b). Earlier wiring in prior commits this session.
 - Open: Visual verification of ScheduleTab on Lucy Webb and 999 Sandbox in live app. Phase pills should show all 10 phases; Sandbox should show mid-remodel demo state (5 complete + 2 in-progress).
+
+[LOG — 2026-05-27 — Bulk-fix backdrop-close on 4 data-entry modals]
+- LineItemModal, TransactionModal, DrawModal, FileUploadFlow no longer close on stray outside clicks
+- All 4 used bare onClick={onClose} on overlay — even clicks inside form fields would bubble and close (worse than sub invoice modals which had currentTarget guard)
+- TransactionModal and DrawModal already had stopPropagation on inner modal div; that's now redundant but harmless — left in place
+- Same pattern as sub invoice modals (commit d61e752): just remove onClick from overlay, keep X / Cancel / Save as the only close paths
+- Remaining modals with the anti-pattern (CompanyFilesScr 2x, CalScr, ScheduleTab, BugReportDetailModal, ~10 others) NOT touched — assess case by case if user reports issues
+- Commit: b250405. Build: ✓ clean. Pushed to main.
