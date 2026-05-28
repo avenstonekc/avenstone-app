@@ -109,6 +109,7 @@ export const sbLoad = async repName => {
         default_markup_pct: Number(j.default_markup_pct || 0),
         labor_markup_pct: Number(j.labor_markup_pct || 0),
         material_markup_pct: Number(j.material_markup_pct || 0),
+        pm_fee: Number(j.pm_fee || 0),
         client_user_id: j.client_user_id || null,
         photos: (ph || []).map(jf => ({
           id: jf.id,  // job_files.id — used by sbDeleteJobPhoto and sbLabelPhoto
@@ -126,7 +127,7 @@ export const sbLoad = async repName => {
 
 export const sbUpd = async (id, ch) => {
   try {
-    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email','cost_plus','default_markup_pct','labor_markup_pct','material_markup_pct'];
+    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email','cost_plus','default_markup_pct','labor_markup_pct','material_markup_pct','pm_fee'];
     const p = {};
     ok.forEach(k => { if (ch[k] !== undefined) p[k] = ch[k]; });
     if (Object.keys(p).length) await sb.from('jobs').update(p).eq('id', id);
@@ -1318,9 +1319,9 @@ export const sbLoadJobTransactions = async (jobId, filters = {}) => {
 };
 export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTotal = 0, costPlus = false } = {}) => {
   const round2 = n => Math.round(n * 100) / 100;
-  const cpFallback = costPlus ? { float_unreimbursed: 0, bucket_balance: 0, client_float_owed: 0, markup_earned: 0 } : {};
+  const cpFallback = costPlus ? { float_unreimbursed: 0, bucket_balance: 0, client_float_owed: 0, markup_earned: 0, outstanding_pending: 0, projected_profit: 0, projected_total_revenue: 0, margin_pct: 0, pm_fee: 0 } : {};
   const { data } = await sb.from('job_transactions')
-    .select('direction,amount,status,lien_waiver_required,lien_waiver_url,invoice_id,reimbursement_status')
+    .select('direction,amount,status,type,lien_waiver_required,lien_waiver_url,invoice_id,reimbursement_status')
     .eq('job_id', jobId).neq('status', 'void');
   if (!data) return { total_in: 0, total_out: 0, pending_out: 0, lien_waivers_missing: 0, contract_total: 0, client_owes: 0, ...cpFallback };
   const total_in   = data.filter(t => t.direction === 'in'  && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
@@ -1332,7 +1333,7 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
   const summary = { total_in, total_out, pending_out, lien_waivers_missing, contract_total, client_owes };
 
   if (costPlus) {
-    // Bucket balance — inbound rows not attached to an invoice (raw client deposits)
+    // Raw client deposits (inbound, not attached to an invoice)
     // Unreimbursed — outbound rows still waiting to be billed in a draw
     let bucket = 0;
     let unreimbursed = 0;
@@ -1351,10 +1352,38 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
       markup_earned = round2((markupRows || []).reduce((s, r) => s + (Number(r.markup_amount) || 0), 0));
     }
 
-    summary.float_unreimbursed = round2(unreimbursed);
-    summary.bucket_balance     = round2(bucket);
-    summary.client_float_owed  = round2(Math.max(0, unreimbursed - bucket));
-    summary.markup_earned      = markup_earned;
+    // Outstanding — approved sub invoices accrued but not yet paid (pending sub_payout rows)
+    const outstanding_pending = round2(
+      data.filter(t => t.direction === 'out' && t.status === 'pending' && t.type === 'sub_payout')
+          .reduce((s, t) => s + Number(t.amount || 0), 0)
+    );
+
+    // Projected profit — (Paid Out + Outstanding) × labor markup rate + flat PM fee
+    const { data: jobRow } = await sb.from('jobs').select('labor_markup_pct,pm_fee').eq('id', jobId).single();
+    const labor_markup = Number(jobRow?.labor_markup_pct || 0);
+    const pm_fee = Number(jobRow?.pm_fee || 0);
+    const total_cost_base = round2(total_out + outstanding_pending);
+    const projected_profit = round2(total_cost_base * (labor_markup / 100) + pm_fee);
+    const projected_total_revenue = round2(total_cost_base + projected_profit);
+    const margin_pct = projected_total_revenue > 0
+      ? Math.round((projected_profit / projected_total_revenue) * 1000) / 10
+      : 0;
+
+    // Bucket balance — signed: positive = client has prepaid more than current obligations,
+    // negative = client owes (request a draw). Includes both paid and pending obligations.
+    const bucket_balance = round2(bucket - (total_out + outstanding_pending));
+
+    summary.received             = round2(bucket);
+    summary.paid_out             = round2(total_out);
+    summary.float_unreimbursed   = round2(unreimbursed);
+    summary.bucket_balance       = bucket_balance;
+    summary.client_float_owed    = round2(Math.max(0, -bucket_balance));
+    summary.markup_earned        = markup_earned;
+    summary.outstanding_pending  = outstanding_pending;
+    summary.projected_profit     = projected_profit;
+    summary.projected_total_revenue = projected_total_revenue;
+    summary.margin_pct           = margin_pct;
+    summary.pm_fee               = pm_fee;
   }
 
   return summary;

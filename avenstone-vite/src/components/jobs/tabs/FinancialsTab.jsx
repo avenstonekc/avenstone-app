@@ -301,15 +301,18 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
           {/* Stat bar — cost-plus-aware */}
           {summary && (() => {
             const owes = summary.client_owes;
-            const isCostPlus = job?.cost_plus === true && summary.float_unreimbursed !== undefined;
-            const surplus = isCostPlus ? summary.bucket_balance - summary.float_unreimbursed : 0;
+            const isCostPlus = job?.cost_plus === true && summary.received !== undefined;
+            const cpBucketBalance = summary.bucket_balance ?? 0;
             const cpStats = [
-              { lb: 'Contract (signed)', v: f$(summary.contract_total), c: '#0A1F44', bold: true, note: `actuals + ${job.labor_markup_pct ?? 25}% markup determine final billing` },
-              { lb: 'Received',          v: f$(summary.total_in),       c: summary.total_in > 0 ? '#22c55e' : '#9CA3AF' },
-              { lb: 'Paid Out',          v: f$(summary.total_out),      c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
-              ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: '#b45309' }] : []),
+              { lb: 'Contract (signed)', v: f$(job.contract_value || 0), c: '#0A1F44', bold: true, note: `actuals + ${job.labor_markup_pct ?? 25}% markup determine final billing` },
+              { lb: 'Received',          v: f$(summary.received ?? summary.total_in), c: (summary.received ?? summary.total_in) > 0 ? '#22c55e' : '#9CA3AF' },
+              { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? '#ef4444' : '#9CA3AF' },
+              ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: '#b45309', note: 'approved sub invoices unpaid' }] : []),
               { lb: 'Projected Profit',  v: f$(summary.projected_profit), c: summary.projected_profit > 0 ? '#22c55e' : '#9CA3AF', note: `${summary.margin_pct ?? 0}% margin · +${f$(summary.pm_fee ?? 0)} PM` },
-              { lb: 'Bucket Credit',     v: f$(Math.max(0, surplus)),   c: '#22c55e' },
+              ...(cpBucketBalance >= 0
+                ? [{ lb: 'Bucket Credit', v: f$(cpBucketBalance), c: '#22c55e', note: 'client prepaid balance' }]
+                : [{ lb: 'Client Owes',   v: f$(Math.abs(cpBucketBalance)), c: '#ef4444', note: 'request a draw' }]
+              ),
             ];
             const stats = isCostPlus
               ? cpStats
