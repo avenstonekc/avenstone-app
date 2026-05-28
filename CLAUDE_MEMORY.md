@@ -2101,3 +2101,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: 81d2afb. Pushed.
 - Slice 3: invoice review + send (existing invoice UI + Stripe + portal) + payment status sync back to milestone.status='paid'.
 - Slice 4: phase-based retainage release (is_retainage=true milestone → invoice on job.status='complete').
+
+[LOG — 2026-05-28 — PHASE_INVOICE_ARC slice 3: review/send + payment sync]
+- Milestone draft invoices reuse existing invoice flow with zero new send UI: they ARE normal invoices rows, appear in InvoicesSubTab for fixed-price jobs, flow through InvoiceComposerModal (Edit→Send) and MarkPaidModal.
+- Invoices status lifecycle (from DB): draft → sent → viewed → partially_paid → paid → void. deriveInvoiceStatus adds 'overdue' for past-due sent invoices.
+- Payment sync — TWO paths:
+  1. sbMarkInvoicePaid (supabase.js): after invPatch update, syncs payment_milestones.status='paid' WHERE invoice_id=invoice.id AND status='invoiced'
+  2. stripe-webhook handleInvoicePayment (index.ts): same sync after step 6 invoice update (new step 6a)
+- PaymentScheduleTab: summary bar shows Contract/Invoiced/Paid/Remaining from milestone statuses. Invoiced=milestones with status='invoiced', Paid=paid+released, Remaining=pending.
+- Commit: c56b3aa. Pushed.
+- Slice 4: retainage release — is_retainage=true milestone, held until job.status='complete', then auto-generate invoice (same sbGenerateMilestoneInvoice).
