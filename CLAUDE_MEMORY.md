@@ -1865,6 +1865,16 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: 81093ad. Build: ✓ clean. Pushed to main.
 - Open: same outstanding math applies only to sub_payouts — if we ever accrue materials/other types as pending, those will need to be included in the outstanding filter too.
 
+[LOG — 2026-05-27 — Cost-plus FinancialsTab operator header]
+- Replaced redundant Contract (signed) stat card on cost-plus jobs with two-column navy operator header
+- Quick Actions: Compose Draw (gold primary → ComposeDrawScr overlay), Add Receipt (→ TransactionModal create), Log Sub Invoice (→ switch to sub_invoices tab + auto-opens AddInvoiceModal via openAddInvoiceOnMount prop)
+- Activity Pulse: last expense / last payment / last schedule update with semantic stale-aging (0-7d neutral white, 8-14d amber #FAC775, 15+d red #F7C1C1)
+- sbLoadJobFinancialSummary: added created_at to existing job_transactions select; computes last_expense_at + last_payment_at from fetched data; one extra query for last_schedule_activity_at from schedule_items
+- SubInvoicesSection: added openAddInvoiceOnMount prop + useEffect to auto-open AddInvoiceModal on mount; FinancialsTab resets flag when leaving sub_invoices tab
+- Fixed-price jobs: existing stat bar (Contract, Received, Client Owes, Pending Out, Paid Out) unchanged
+- Commit: 4012e1a. Build: ✓ clean. Pushed to main.
+- Open: Visual verification on Davis (cost-plus) and Lucy Webb (fixed-price, banner must be unchanged)
+
 [LOG — 2026-05-27 — Contract banner trajectory subtitle — cost-plus projected vs contract]
 - Action: Added live "$X projected · $Y under/over" subtitle to the Contract (signed) highlight card on cost-plus jobs.
 - Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx.
