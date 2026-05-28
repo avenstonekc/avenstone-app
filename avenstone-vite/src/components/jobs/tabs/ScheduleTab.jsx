@@ -230,6 +230,9 @@ export default function ScheduleTab({ job }) {
   const handleSaved = async (savedItem, prevItem, notifyOnSave) => {
     if (!prevItem) {
       setItems(prev => [savedItem, ...prev]);
+      if (phaseFilter !== null && savedItem.phase_id !== phaseFilter) {
+        setPhaseFilter(savedItem.phase_id || null);
+      }
       if (notifyOnSave !== false) {
         import('../../../lib/supabase').then(({ sbNotifyScheduleItemCreated }) =>
           sbNotifyScheduleItemCreated(savedItem, job).catch(e => console.error('[notify create]', e))

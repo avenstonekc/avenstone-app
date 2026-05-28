@@ -475,4 +475,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 **Phase Invoice Arc + Draw fixes + Davis repair (2026-05-28)**
 - `arc-logs-2026-05-28 · 2026-05-28` — PHASE_INVOICE_ARC all 4 slices, DRAW_PACKAGE_ARC slice 5 + package fixes, draw delete cascade fix, Davis draw state machine diagnosis + repair
 
+**Schedule item invisible after create (2026-05-28)**
+- `schedule-filter-hide · 2026-05-28` — Bug: second schedule item appeared to fail on create (Hemlock test job). Audit confirmed all inserts landed fine in DB (3 rows created within 2 min). Root cause: phaseFilter state was active on Demo phase; newly-created Rough-ins item was added to items[] state and modal closed, but phaseFiltered = items.filter(i => i.phase_id === phaseFilter) excluded it — user saw no change in list. Fix: in handleSaved (ScheduleTab.jsx), on create path, if phaseFilter active and new item's phase_id !== phaseFilter, auto-follow filter to new item's phase (or clear to null if item has no phase). Write path untouched.
+
+---
+
+## Symptom index addition
+
+- "schedule item saves (DB row created) but doesn't appear in the list after modal closes" → **silent-filter-hide** — phaseFilter was active on a different phase; item inserted fine but filtered out of phaseFiltered derived state. Fix: auto-follow filter to new item's phase in handleSaved. See `schedule-filter-hide · 2026-05-28`.
+
 ---
