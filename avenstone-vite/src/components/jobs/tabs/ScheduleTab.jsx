@@ -540,6 +540,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     notify_client:      item?.notify_client   ?? true,
     notify_sub:         item?.notify_sub      ?? true,
     status:             item?.status          || 'scheduled',
+    phase_id:           item?.phase_id        || '',
   });
   const [notifyOnSave, setNotifyOnSave] = useState(true);
   const [showEndDate, setShowEndDate]   = useState(!!item?.scheduled_end_date);
@@ -549,6 +550,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
   const [conflictOverride, setConflictOverride] = useState(false);
   const [trades, setTrades]             = useState([]);
   const [subs, setSubs]                 = useState([]);
+  const [phases, setPhases]             = useState([]);
   const [entityPhotoCount, setEntityPhotoCount] = useState(0);
   const [entityPhotos, setEntityPhotos] = useState([]);
   const [uploading, setUploading]       = useState(false);
@@ -564,6 +566,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
       sbLoadActiveTradeStrings().then(setTrades);
       sbLoadActiveSubs().then(setSubs);
     });
+    sbLoadPhases(job.id).then(data => setPhases(Array.isArray(data) ? data : []));
     if (!isNew && PHOTO_GATE_TYPES.includes(item.type)) {
       sbCountPhotosForEntity('schedule_item', item.id).then(setEntityPhotoCount);
       sbLoadPhotosForEntity('schedule_item', item.id).then(setEntityPhotos);
@@ -662,6 +665,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
       assigned_sub_id:    form.assigned_sub_id    || null,
       trade:              form.trade              || null,
       notes:              form.notes.trim()       || null,
+      phase_id:           form.phase_id           || null,
     };
 
     let result;
@@ -762,6 +766,17 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
             {subs.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
           </select>
         </div>
+
+        {/* Phase */}
+        {phases.length > 0 && (
+          <div className="fg">
+            <label className="flbl">Phase</label>
+            <select className="finp" style={ssty} value={form.phase_id || ''} onChange={e => setField('phase_id', e.target.value || null)}>
+              <option value="">— No phase —</option>
+              {phases.map(p => <option key={p.id} value={p.id}>{p.phase_name}</option>)}
+            </select>
+          </div>
+        )}
 
         {/* Notes */}
         <div className="fg">

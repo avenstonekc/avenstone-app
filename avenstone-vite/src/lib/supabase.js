@@ -2412,6 +2412,7 @@ export const sbUpdateScheduleItem = async (id, patch) => {
       scheduled_end_date: patch.scheduled_end_date !== undefined ? (patch.scheduled_end_date || null) : undefined,
       assigned_sub_id:    patch.assigned_sub_id    !== undefined ? (patch.assigned_sub_id    || null) : undefined,
       trade:              patch.trade              !== undefined ? (patch.trade              || null) : undefined,
+      phase_id:           patch.phase_id           !== undefined ? (patch.phase_id           || null) : undefined,
     };
     // strip undefined keys so we don't accidentally null un-patched columns
     Object.keys(clean).forEach(k => clean[k] === undefined && delete clean[k]);
