@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice, deriveInvoiceStatus, sbLoadDrawPackagesForJob } from '../../../lib/supabase';
+import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice, deriveInvoiceStatus, sbLoadDrawPackagesForJob, sbGetDrawPackageSignedUrl, sbSendDrawPackage } from '../../../lib/supabase';
 import DrawPackagePickerModal from '../../modals/DrawPackagePickerModal';
 import { f$, fD } from '../../../lib/utils';
 import DrawModal from '../../modals/DrawModal';
@@ -41,6 +41,15 @@ export default function InvoicesSubTab({ job, profile }) {
   const [resendingInvoiceId, setResendingInvoiceId] = useState(null);
   const [composeDrawOpen, setComposeDrawOpen]       = useState(false);
   const [pickerDraw, setPickerDraw]                 = useState(null);
+
+  // Inline package actions
+  const [previewingPkgId, setPreviewingPkgId] = useState(null);
+  const [sendDrawId, setSendDrawId]           = useState(null);
+  const [sendEmail, setSendEmail]             = useState('');
+  const [sendLabel, setSendLabel]             = useState('');
+  const [sendMsg, setSendMsg]                 = useState('');
+  const [sending, setSending]                 = useState(false);
+  const [sendError, setSendError]             = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -89,6 +98,46 @@ export default function InvoicesSubTab({ job, profile }) {
     } catch (e) {
       alert(e.message || 'Delete failed.');
     }
+  };
+
+  const handlePreviewPkg = async (pkg) => {
+    if (!pkg?.generated_pdf_path) return;
+    setPreviewingPkgId(pkg.id);
+    try {
+      const url = await sbGetDrawPackageSignedUrl(pkg.generated_pdf_path);
+      window.open(url, '_blank');
+    } catch (e) {
+      alert(e.message || 'Preview failed.');
+    } finally { setPreviewingPkgId(null); }
+  };
+
+  const handleDownloadPkg = async (pkg, draw) => {
+    if (!pkg?.generated_pdf_path) return;
+    try {
+      const name = `draw-${draw.draw_number}.pdf`;
+      const url = await sbGetDrawPackageSignedUrl(pkg.generated_pdf_path, name);
+      window.location.href = url;
+    } catch (e) { alert(e.message || 'Download failed.'); }
+  };
+
+  const openSendPanel = (drawId) => {
+    setSendDrawId(drawId);
+    setSendEmail('');
+    setSendLabel('');
+    setSendMsg('');
+    setSendError(null);
+  };
+
+  const handleInlineSend = async (pkgId) => {
+    if (!sendEmail.trim()) { setSendError('Email required.'); return; }
+    setSending(true); setSendError(null);
+    try {
+      await sbSendDrawPackage(pkgId, sendEmail.trim(), sendLabel.trim(), sendMsg.trim() || null);
+      setSendDrawId(null);
+      load();
+    } catch (e) {
+      setSendError(e.message || 'Send failed.');
+    } finally { setSending(false); }
   };
 
   const handleDeleteInvoice = async inv => {
@@ -187,13 +236,20 @@ export default function InvoicesSubTab({ job, profile }) {
                         </div>
                         {staff && (
                           <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                            <button
-                              onClick={() => setPickerDraw(draw)}
-                              className="btn btn-gold"
-                              style={{ fontSize: 11, padding: '4px 10px' }}
-                            >
-                              {pkg?.status === 'sent' ? 'Package' : pkg ? 'Package' : 'Build Package'}
-                            </button>
+                            {pkg?.generated_pdf_path ? (
+                              <>
+                                <button onClick={() => handlePreviewPkg(pkg)} disabled={previewingPkgId === pkg.id} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>
+                                  {previewingPkgId === pkg.id ? '…' : 'Preview'}
+                                </button>
+                                <button onClick={() => handleDownloadPkg(pkg, draw)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Download</button>
+                                <button onClick={() => sendDrawId === draw.id ? setSendDrawId(null) : openSendPanel(draw.id)} className="btn btn-navy" style={{ fontSize: 11, padding: '4px 10px' }}>
+                                  {sendDrawId === draw.id ? 'Cancel' : pkg.status === 'sent' ? 'Resend' : 'Send'}
+                                </button>
+                                <button onClick={() => setPickerDraw(draw)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Rebuild</button>
+                              </>
+                            ) : (
+                              <button onClick={() => setPickerDraw(draw)} className="btn btn-gold" style={{ fontSize: 11, padding: '4px 10px' }}>Build Package</button>
+                            )}
                             <button onClick={() => openEditDraw(draw)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Edit</button>
                             <button onClick={() => handleDeleteDraw(draw)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>Delete</button>
                           </div>
@@ -212,6 +268,33 @@ export default function InvoicesSubTab({ job, profile }) {
                       </div>
                       {draw.target_date && (
                         <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 8 }}>Due: {fD(draw.target_date)}</div>
+                      )}
+                      {/* Inline send panel */}
+                      {sendDrawId === draw.id && pkg?.generated_pdf_path && (
+                        <div style={{ marginTop: 10, padding: '10px 12px', background: '#F0F9FF', borderRadius: 6, border: '1px solid #BAE6FD' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#0A1F44', marginBottom: 8 }}>Send Draw #{draw.draw_number} Package</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                            <div>
+                              <div style={{ fontSize: 10, color: '#6B7280', marginBottom: 3 }}>Recipient email *</div>
+                              <input className="finp" type="email" placeholder="bank@example.com" value={sendEmail} onChange={e => setSendEmail(e.target.value)} style={{ width: '100%', fontSize: 12 }} />
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 10, color: '#6B7280', marginBottom: 3 }}>Recipient label</div>
+                              <input className="finp" type="text" placeholder="First National Bank" value={sendLabel} onChange={e => setSendLabel(e.target.value)} style={{ width: '100%', fontSize: 12 }} />
+                            </div>
+                          </div>
+                          <div style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 10, color: '#6B7280', marginBottom: 3 }}>Message (optional)</div>
+                            <textarea className="finp" rows={2} placeholder="Please find our draw package attached." value={sendMsg} onChange={e => setSendMsg(e.target.value)} style={{ width: '100%', fontSize: 12, resize: 'vertical' }} />
+                          </div>
+                          {sendError && <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 6 }}>{sendError}</div>}
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                            <button onClick={() => setSendDrawId(null)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Cancel</button>
+                            <button onClick={() => handleInlineSend(pkg.id)} disabled={sending} className="btn btn-gold" style={{ fontSize: 11, padding: '4px 12px', opacity: sending ? 0.6 : 1 }}>
+                              {sending ? 'Sending…' : `Send to ${sendLabel || sendEmail || 'recipient'}`}
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
