@@ -1960,3 +1960,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: 5c37e30. Build: clean. Pushed to main.
 - Open: Verify phase_id in live app — add item with phase, confirm DB write and pill count advances
 - Open: derivePhaseStatus only triggers on sub_start type; other item types with phase_id don't auto-advance status (by design)
+
+[LOG — 2026-05-27 — RETAINAGE_ARC slice 2 (Compose Draw integration)]
+- Compose Draw now honors jobs.retainage_pct.
+- New helper sbLoadJobDrawTotals (supabase.js): returns total_drawn, retainage_pct, billable_cap (contract × (1-pct/100)), retainage_releasable (contract × pct/100), contract_value. Loads in parallel with sbGetBucketBalance.
+- ComposeDrawScr: holdRetainage checkbox (default checked) caps draw at remainingBillable = billableCap - totalDrawn. releaseRetainage checkbox enables at ≥95% of billableCap (final draw trigger). Net draw amount display + submit both use finalDrawAmount.
+- No RPC change — cap enforced client-side before passing targetAmount to sbComposeDraw/compose_draw.
+- Retainage controls hidden when retainage_pct = 0 (zero-retainage jobs unchanged).
+- Davis (retainage_pct=10, contract=$97,488): billableCap=$87,739.20, releasable=$9,748.80. First draw from $0 drawn.
+- Commit: 355fdcc. Build: ✓ clean. Pushed to main.
+- Open: client portal draw breakdown should surface retainage held/released per draw.
+- Open: invoice PDF should show "Less retainage (10%) — released upon final walkthrough completion".
