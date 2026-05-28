@@ -2090,3 +2090,14 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - sbPhoto returns {ok, error, data}. All callers (MaterialsTab, NotesPhotosTab, ScheduleTab, COTab, LogsTab, SubJobView) correctly use .ok / .data.
 - sbUploadJobFile returns {ok, error, data}. SubInvoicesSection correctly uses up.ok / up.data.id / up.error. FileUploadFlow was the only broken caller (fixed 5ed1683).
 - No additional fixes needed. Audit clean.
+
+[LOG — 2026-05-28 — PHASE_INVOICE_ARC slice 2: auto-draft + manual generate]
+- sbGenerateMilestoneInvoice (supabase.js): creates draft invoice from milestone. Idempotent via invoice_id. Skips retainage (slice 4). Calls sbCreateInvoice internally + inserts line item (source_type='milestone') + links milestone.invoice_id + sets status='invoiced'.
+- autoInvoiceMilestonesForPhases (private, supabase.js): fires when job_phases → complete. Checks cost_plus=false. Calls sbGenerateMilestoneInvoice for each matching pending non-retainage milestone. Fires sbNotify + fireTodoEvent on each auto-draft.
+- Option A hook: derivePhaseStatus now tracks prevComplete set → after batch updates computes newlyCompleted phase IDs → fires autoInvoiceMilestonesForPhases. Also hooked into sbSubUpdatePhase when status='complete'.
+- Option B: "Generate Invoice" button per pending milestone in PaymentScheduleTab. Hidden for retainage. Shows status badge on every row. Shows "Invoice created ↗" when invoice_id exists. Shows "Held — released at completion" for retainage pending rows.
+- sbSavePaymentSchedule: now only deletes+re-inserts pending milestones — preserves invoiced/paid/released rows so Save doesn't wipe invoice links.
+- Tester McTester job_id: b5c413fa-5a89-40a0-b88a-37a6e69993e6. cost_plus=false, status=in_progress. 5 milestones (25/25/25/15/10). Rough-ins/Drywall/Final touches/Complete phases linked.
+- Commit: 81d2afb. Pushed.
+- Slice 3: invoice review + send (existing invoice UI + Stripe + portal) + payment status sync back to milestone.status='paid'.
+- Slice 4: phase-based retainage release (is_retainage=true milestone → invoice on job.status='complete').
