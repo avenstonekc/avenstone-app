@@ -477,6 +477,28 @@ export const sbUpdCO = async (id, ch) => {
     return { ok: false, error: e.message || 'Unknown error' };
   }
 };
+
+// Creates a pending job_transactions row at CO cost for cost-plus financial accrual.
+// Idempotent — skips if accrual_transaction_id already set on the CO.
+export const sbCreateCOAccrualRow = async (coId, jobId, amount, createdBy) => {
+  try {
+    const { data: existing } = await sb.from('change_orders')
+      .select('accrual_transaction_id').eq('id', coId).single();
+    if (existing?.accrual_transaction_id) return { ok: true, skipped: true };
+    const { data: tx, error: txErr } = await sb.from('job_transactions').insert({
+      job_id: jobId, tenant_id: AV_TENANT,
+      direction: 'out', type: 'change_order',
+      amount, status: 'pending',
+      change_order_id: coId,
+      description: 'CO accrual — approved, pending payment',
+      created_by: createdBy, created_at: new Date().toISOString(),
+      date_incurred: new Date().toISOString().slice(0, 10),
+    }).select().single();
+    if (txErr) return { ok: false, error: txErr.message };
+    await sb.from('change_orders').update({ accrual_transaction_id: tx.id }).eq('id', coId);
+    return { ok: true, data: tx };
+  } catch (e) { return { ok: false, error: e.message }; }
+};
 export const getJobCoTotal = (job) => Number(job?.co_total || 0);
 
 // ─── Phases ───────────────────────────────────────────────────────────────────
@@ -1370,9 +1392,9 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
       markup_earned = round2((markupRows || []).reduce((s, r) => s + (Number(r.markup_amount) || 0), 0));
     }
 
-    // Outstanding — approved sub invoices accrued but not yet paid (pending sub_payout rows)
+    // Outstanding — pending sub_payout and change_order accrual rows
     const outstanding_pending = round2(
-      data.filter(t => t.direction === 'out' && t.status === 'pending' && t.type === 'sub_payout')
+      data.filter(t => t.direction === 'out' && t.status === 'pending' && (t.type === 'sub_payout' || t.type === 'change_order'))
           .reduce((s, t) => s + Number(t.amount || 0), 0)
     );
 
