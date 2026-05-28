@@ -6,26 +6,44 @@ import { Ic, fD } from '../../../lib/utils';
 
 // Phase display config — title-case keys match job_phases.phase_name in DB
 const PHASE_ORDER = ['Demo', 'Framing', 'Rough MEP', 'Insulation', 'Drywall', 'Paint', 'Flooring', 'Trim', 'Fixtures', 'Punch List'];
-const PILL_COLOR   = { not_started: '#9CA3AF', pending: '#9CA3AF', in_progress: '#C9A84C', complete: '#22c55e', blocked: '#ef4444' };
+
+// Brand-palette phase pill styles per status
+const PILL_STYLE = {
+  not_started: { bg: '#EBE6D2', border: '#C4BC9E', color: '#6B5F3F' },
+  pending:     { bg: '#EBE6D2', border: '#C4BC9E', color: '#6B5F3F' },
+  in_progress: { bg: '#FAEEDA', border: '#C9A84C', color: '#6B4E14' },
+  complete:    { bg: '#DCE5D8', border: '#8FAF86', color: '#2E4528' },
+  blocked:     { bg: '#FEE2E2', border: '#FCA5A5', color: '#991B1B' },
+};
 
 // Schedule item config
 const TYPE_LABELS = { material_delivery: 'Material Delivery', sub_start: 'Sub Start', site_visit: 'Site Visit', inspection: 'Inspection', milestone: 'Milestone', delay: 'Delay' };
 const TYPE_ICON = { material_delivery: 'box', sub_start: 'check', site_visit: 'eye', inspection: 'clip', milestone: 'sched', delay: 'warn' };
 
+// Brand-palette day chips (WeekStrip)
 const TYPE_CHIP_COLORS = {
-  sub_start:         { bg: '#534AB7', color: '#fff' },
-  material_delivery: { bg: '#D85A30', color: '#fff' },
-  inspection:        { bg: '#1D9E75', color: '#fff' },
-  milestone:         { bg: '#378ADD', color: '#fff' },
-  site_visit:        { bg: '#6B7280', color: '#fff' },
-  delay:             { bg: '#888780', color: '#fff' },
+  sub_start:         { bg: '#0A1F44', color: '#fff',    border: 'none' },
+  material_delivery: { bg: '#C9A84C', color: '#0A1F44', border: 'none' },
+  inspection:        { bg: '#DCE5D8', color: '#2E4528', border: 'none' },
+  milestone:         { bg: 'transparent', color: '#0A1F44', border: '1px solid #0A1F44' },
+  site_visit:        { bg: '#EBE6D2', color: '#6B5F3F', border: 'none' },
+  delay:             { bg: '#FEE2E2', color: '#991B1B', border: 'none' },
 };
-const TYPE_ICON_BG    = { sub_start: '#EDE9FF', material_delivery: '#FEF2EE', inspection: '#E6F9F4', milestone: '#EBF4FF', site_visit: '#F3F4F6', delay: '#FFFBEB' };
-const TYPE_ICON_COLOR = { sub_start: '#534AB7', material_delivery: '#D85A30', inspection: '#1D9E75', milestone: '#378ADD', site_visit: '#6B7280', delay: '#D97706' };
+
+// Brand-palette avatar circles (ItemCard)
+const TYPE_AVATAR = {
+  sub_start:         { bg: '#0A1F44', color: '#fff',    outline: 'none' },
+  material_delivery: { bg: '#C9A84C', color: '#0A1F44', outline: 'none' },
+  inspection:        { bg: '#DCE5D8', color: '#2E4528', outline: 'none' },
+  milestone:         { bg: '#0A1F44', color: '#fff',    outline: '2px solid #C9A84C' },
+  site_visit:        { bg: '#EBE6D2', color: '#6B5F3F', outline: 'none' },
+  delay:             { bg: '#FEE2E2', color: '#991B1B', outline: 'none' },
+};
+
 const STATUS_BADGE = {
-  in_progress: { label: 'IN PROGRESS', bg: '#FEF3C7', color: '#92400E' },
-  complete:    { label: 'COMPLETE',    bg: '#D1FAE5', color: '#065F46' },
-  cancelled:   { label: 'CANCELLED',  bg: '#F3F4F6', color: '#6B7280' },
+  in_progress: { label: 'IN PROGRESS', bg: '#FAEEDA', color: '#6B4E14' },
+  complete:    { label: 'COMPLETE',    bg: '#DCE5D8', color: '#2E4528' },
+  cancelled:   { label: 'CANCELLED',  bg: '#EBE6D2', color: '#6B5F3F' },
 };
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
@@ -77,11 +95,11 @@ function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate,
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const todayStr = dateToISO(today);
   const selectedStr = selectedDate ? dateToISO(selectedDate) : null;
-  const navBtn = { background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4, padding: '3px 10px', fontSize: 13, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' };
+  const navBtn = { background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4, padding: '3px 10px', fontSize: 13, color: '#0A1F44', cursor: 'pointer', fontFamily: 'inherit' };
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+    <div style={{ background: '#fff', border: '1px solid #EBE6D2', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>
           {fmtMonthDay(monday)} – {fmtMonthDay(addDays(monday, 6))}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -98,17 +116,19 @@ function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate,
           const isSelected = dayStr === selectedStr;
           return (
             <button key={dayStr} onClick={() => onSelectDate(isSelected ? null : day)}
-              style={{ background: '#F7F5F0', border: isSelected ? '1px solid #1D9E75' : '0.5px solid #E8E4DC',
+              style={{ background: '#F5F2E8', border: isSelected ? '1.5px solid #C9A84C' : '0.5px solid #EBE6D2',
                 borderRadius: 6, padding: '6px 4px', minHeight: 72, cursor: 'pointer',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontFamily: 'inherit' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#374151', letterSpacing: 0.3 }}>
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontFamily: 'inherit',
+                transition: 'border-color 0.12s' }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#0A1F44', letterSpacing: 0.3, opacity: 0.8 }}>
                 {fmtWeekDay(day)} {day.getDate()}
               </div>
               {isToday && <div style={{ fontSize: 9, fontWeight: 700, color: '#0A1F44', lineHeight: 1 }}>TODAY</div>}
               {dayItems.slice(0, 3).map(item => {
-                const chip = TYPE_CHIP_COLORS[item.type] || { bg: '#888780', color: '#fff' };
+                const chip = TYPE_CHIP_COLORS[item.type] || { bg: '#EBE6D2', color: '#6B5F3F', border: 'none' };
                 return (
                   <div key={item.id} style={{ background: chip.bg, color: chip.color, fontSize: 9,
+                    border: chip.border || 'none',
                     borderRadius: 3, padding: '1px 4px', overflow: 'hidden', whiteSpace: 'nowrap',
                     textOverflow: 'ellipsis', maxWidth: '100%', width: '100%', textAlign: 'left' }}>
                     {truncate(item.title, 10)}
@@ -273,30 +293,41 @@ export default function ScheduleTab({ job }) {
       )}
 
       {/* ── Phase pills (clickable filter) ── */}
-      {orderedPhases.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-          {orderedPhases.map(ph => {
-            const col = PILL_COLOR[ph.status] || '#9CA3AF';
-            const isActive = phaseFilter === ph.id;
-            return (
-              <button key={ph.id} onClick={() => setPhaseFilter(isActive ? null : ph.id)}
-                aria-pressed={isActive}
-                style={{ background: col + '20', border: `${isActive ? '2px' : '1.5px'} solid ${col}`, borderRadius: 20,
-                  padding: '4px 12px', fontSize: 11, fontWeight: 700, color: col, whiteSpace: 'nowrap',
-                  cursor: 'pointer', opacity: hasFilter && !isActive ? 0.65 : 1,
-                  transition: 'opacity 0.15s', fontFamily: 'inherit', lineHeight: 1.4 }}>
-                {ph.phase_name}
-              </button>
-            );
-          })}
-          {hasFilter && (
-            <button onClick={() => setPhaseFilter(null)}
-              style={{ fontSize: 11, color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', fontFamily: 'inherit' }}>
-              × Clear
-            </button>
-          )}
-        </div>
-      )}
+      {orderedPhases.length > 0 && (() => {
+        const doneCount = orderedPhases.filter(p => p.status === 'complete').length;
+        return (
+          <div style={{ background: '#fff', border: '1px solid #EBE6D2', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#0A1F44', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase Progress</div>
+              <div style={{ fontSize: 11, color: 'rgba(10,31,68,0.55)' }}>
+                {doneCount} of {orderedPhases.length} phases complete
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              {orderedPhases.map(ph => {
+                const ps = PILL_STYLE[ph.status] || PILL_STYLE.not_started;
+                const isActive = phaseFilter === ph.id;
+                return (
+                  <button key={ph.id} onClick={() => setPhaseFilter(isActive ? null : ph.id)}
+                    aria-pressed={isActive}
+                    style={{ background: ps.bg, border: `${isActive ? '2px' : '1px'} solid ${isActive ? '#C9A84C' : ps.border}`,
+                      borderRadius: 20, padding: '4px 11px', fontSize: 11, fontWeight: 600, color: ps.color, whiteSpace: 'nowrap',
+                      cursor: 'pointer', opacity: hasFilter && !isActive ? 0.55 : 1,
+                      transition: 'opacity 0.12s, border-color 0.12s', fontFamily: 'inherit', lineHeight: 1.4 }}>
+                    {ph.status === 'complete' ? '✓ ' : ''}{ph.phase_name}
+                  </button>
+                );
+              })}
+              {hasFilter && (
+                <button onClick={() => setPhaseFilter(null)}
+                  style={{ fontSize: 11, color: 'rgba(10,31,68,0.5)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 4px', fontFamily: 'inherit' }}>
+                  × Clear
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Week strip ── */}
       <WeekStrip
@@ -333,10 +364,11 @@ export default function ScheduleTab({ job }) {
         </div>
 
         {items.filter(i => i.status !== 'cancelled').length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px', background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4 }}>
-            <span style={{ width: 36, height: 36, display: 'block', margin: '0 auto 10px', opacity: 0.3, color: '#374151' }}>{Ic.cal}</span>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No schedule items yet</div>
-            <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 16 }}>Add your first delivery, inspection, or sub start.</div>
+          <div style={{ textAlign: 'center', padding: '36px 24px', background: '#F5F2E8', border: '1px dashed #C9A84C', borderRadius: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#0A1F44', marginBottom: 6 }}>Get the schedule rolling</div>
+            <div style={{ fontSize: 13, color: 'rgba(10,31,68,0.6)', marginBottom: 20, lineHeight: 1.5 }}>
+              Add your first delivery, inspection, or sub start to start tracking progress.
+            </div>
             <button className="btn btn-gold" style={{ fontSize: 12 }} onClick={() => { setEditItem(null); setShowModal(true); }}>
               + Add schedule item
             </button>
@@ -364,9 +396,11 @@ export default function ScheduleTab({ job }) {
               <div>
                 <button
                   onClick={() => setPastExpanded(v => !v)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9CA3AF', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 0', marginBottom: 4 }}
+                  style={{ background: '#F5F2E8', border: '1px solid #EBE6D2', borderRadius: 20, cursor: 'pointer',
+                    fontSize: 11, color: '#0A1F44', display: 'flex', alignItems: 'center', gap: 4,
+                    padding: '4px 12px', marginBottom: 6, fontFamily: 'inherit', fontWeight: 500 }}
                 >
-                  <span style={{ display: 'inline-block', transform: pastExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>›</span>
+                  <span style={{ display: 'inline-block', transform: pastExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', color: '#C9A84C', fontSize: 14, lineHeight: 1 }}>›</span>
                   Past ({groups.past.length} item{groups.past.length !== 1 ? 's' : ''})
                 </button>
                 {pastExpanded && (
@@ -414,7 +448,7 @@ function ItemGroup({ label, items, phaseNameMap, onEdit, onCancel }) {
   if (!items.length) return null;
   return (
     <div style={{ marginBottom: 16 }}>
-      {label && <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{label}</div>}
+      {label && <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(10,31,68,0.55)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, marginTop: 10 }}>{label}</div>}
       {items.map(item => (
         <ItemCard key={item.id} item={item} phaseName={phaseNameMap?.[item.phase_id]} onEdit={onEdit} onCancel={onCancel} />
       ))}
@@ -426,13 +460,13 @@ function ItemGroup({ label, items, phaseNameMap, onEdit, onCancel }) {
 function ItemCard({ item, phaseName, onEdit, onCancel }) {
   const iconKey = TYPE_ICON[item.type] || 'cal';
   const icon = Ic[iconKey];
-  const iconBg    = TYPE_ICON_BG[item.type]    || '#F7F5F0';
-  const iconColor = TYPE_ICON_COLOR[item.type] || '#0A1F44';
+  const av = TYPE_AVATAR[item.type] || { bg: '#EBE6D2', color: '#6B5F3F', outline: 'none' };
   const badge = STATUS_BADGE[item.status] || null;
   return (
-    <div style={{ background: '#fff', border: '0.5px solid #E8E4DC', borderRadius: 8, padding: '12px 14px', marginBottom: 8, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <div style={{ width: 28, height: 28, borderRadius: '50%', background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
-        <span style={{ width: 14, height: 14, display: 'flex', color: iconColor }}>{icon}</span>
+    <div style={{ background: '#fff', border: '0.5px solid #EBE6D2', borderRadius: 8, padding: '12px 14px', marginBottom: 8, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: av.bg, outline: av.outline, outlineOffset: 1,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+        <span style={{ width: 14, height: 14, display: 'flex', color: av.color }}>{icon}</span>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
@@ -443,15 +477,15 @@ function ItemCard({ item, phaseName, onEdit, onCancel }) {
             </span>
           )}
         </div>
-        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ color: '#6B7280', fontWeight: 500 }}>{TYPE_LABELS[item.type]}</span>
+        <div style={{ fontSize: 11, color: 'rgba(10,31,68,0.55)', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ color: '#0A1F44', fontWeight: 500, opacity: 0.7 }}>{TYPE_LABELS[item.type]}</span>
           {item.scheduled_date && <span>{fD(item.scheduled_date)}{item.scheduled_time ? ` ${item.scheduled_time.slice(0, 5)}` : ''}{item.scheduled_end_date ? ` → ${fD(item.scheduled_end_date)}` : ''}</span>}
-          {item.trade && <span style={{ background: '#F7F5F0', padding: '1px 6px', borderRadius: 10 }}>{item.trade}</span>}
+          {item.trade && <span style={{ background: '#F5F2E8', padding: '1px 6px', borderRadius: 10, color: '#6B5F3F' }}>{item.trade}</span>}
           {item.assigned_sub?.full_name && <span>→ {item.assigned_sub.full_name}</span>}
-          {phaseName && <span style={{ color: '#B8975A' }}>{phaseName}</span>}
+          {phaseName && <span style={{ color: '#9E7E2A', fontWeight: 500 }}>{phaseName}</span>}
         </div>
         {item.notes && (
-          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 5, background: '#F7F5F0', padding: '6px 8px', borderRadius: 4, lineHeight: 1.4 }}>
+          <div style={{ fontSize: 12, color: 'rgba(10,31,68,0.65)', marginTop: 5, background: '#F5F2E8', padding: '6px 8px', borderRadius: 4, lineHeight: 1.4 }}>
             {item.notes.slice(0, 120)}{item.notes.length > 120 ? '…' : ''}
           </div>
         )}
