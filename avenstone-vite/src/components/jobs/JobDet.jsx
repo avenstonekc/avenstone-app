@@ -201,7 +201,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             )}
           </div>
         )}
-        {(rev > 0 || job.cost_plus) && (job.cost_plus ? (
+        {(rev > 0 || job.cost_plus) && tab !== 'sched' && (job.cost_plus ? (
           <div style={{ display: 'flex', background: 'rgba(255,255,255,0.08)', marginTop: 10 }}>
             {/* Quick Actions */}
             <div style={{ flex: 1, padding: '10px 14px', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
