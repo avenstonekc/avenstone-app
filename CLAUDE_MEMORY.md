@@ -1845,3 +1845,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commits: 12df9e4 (schema), cfe386b (helpers). Pushed to main.
 - Open: SUB_INVOICES_ARC v2 slice 2 (UI) — InfoTab pm_fee input; Ledger Outstanding + Projected Profit cards; remove Float Out + Markup ★.
 - Design note: during partial payment, Float Out temporarily includes both the full accrual ($27,900 pending) AND each Phase 4a payment row (paid). Slice 2 must account for this in the new Outstanding calculation.
+
+[LOG — 2026-05-27 — SUB_INVOICES_ARC v2 slice 2 (UI layer)]
+- Action: Slice 2 UI shipped. PM Fee input in InfoTab, Outstanding + Projected Profit on FinancialsTab Ledger.
+- supabase.js (slice 1 session): sbLoad return + pm_fee: Number(j.pm_fee || 0); sbUpd allowlist + 'pm_fee'; sbLoadJobFinancialSummary extended — selects `type` on job_transactions, computes outstanding_pending (pending sub_payout accruals only), loads jobs.labor_markup_pct + jobs.pm_fee, computes projected_profit = total_cost_base × (labor_markup / 100) + pm_fee, projected_total_revenue, margin_pct. All existing Phase 4 fields preserved for backward compat.
+- JobDet.jsx: pm_fee: Number(job.pm_fee || 0) added to inf initialization (line 96).
+- InfoTab.jsx: PM Fee ($) input added to cost-plus section after material_markup_pct block. step=100, min=0, width=80, same onChange/setInf/upd pattern as other markup inputs.
+- FinancialsTab.jsx: isCostPlus stats array replaced. New cards: Contract (signed), Received, Paid Out, Outstanding (auto-hidden when outstanding_pending === 0, amber), Projected Profit (green, subtitle: "{margin_pct}% margin · +${pm_fee} PM"), Bucket Credit (demoted to secondary). Float Out + Markup ★ removed. Fixed-price array unchanged.
+- Files: avenstone-vite/src/components/jobs/JobDet.jsx, avenstone-vite/src/components/jobs/tabs/InfoTab.jsx, avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx.
+- Commit: 7b51dec. Build: ✓ clean (404 modules). Pushed to main.
+- Open: Visual verification in live Davis job (Outstanding card should show $27,900 Aguayo accrual; Projected Profit should reflect labor_markup_pct=22% + pm_fee=$2,000). Lucy Webb (fixed-price) stat row unchanged (non-cost-plus array path).
