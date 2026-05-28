@@ -1945,3 +1945,8 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Same pattern as sub invoice modals (commit d61e752): just remove onClick from overlay, keep X / Cancel / Save as the only close paths
 - Remaining modals with the anti-pattern (CompanyFilesScr 2x, CalScr, ScheduleTab, BugReportDetailModal, ~10 others) NOT touched — assess case by case if user reports issues
 - Commit: b250405. Build: ✓ clean. Pushed to main.
+
+[LOG — 2026-05-27 — ScheduleTab — remove operator header]
+- Action: Hid the cost-plus operator header (Quick Actions + Activity Pulse) on Schedule tab. One-line guard `tab !== 'sched'` added to the condition in JobDet.jsx line 204. Header stays on Financials and all other tabs.
+- File: avenstone-vite/src/components/jobs/JobDet.jsx (1 line changed)
+- Commit: f0cd6de. Pushed.
