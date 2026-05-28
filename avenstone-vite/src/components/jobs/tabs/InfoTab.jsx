@@ -206,6 +206,15 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
                     style={{ width: 80, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
                   />
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Retainage (%)</div>
+                  <input type="number" step="0.5" min="0" max="50"
+                    value={inf.retainage_pct ?? 0}
+                    onChange={e => { const v = Math.min(50, Math.max(0, Number(e.target.value || 0))); setInf(p => ({ ...p, retainage_pct: v })); upd({ retainage_pct: v }); }}
+                    style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
+                  />
+                  <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+                </div>
               </div>
             )}
           </div>

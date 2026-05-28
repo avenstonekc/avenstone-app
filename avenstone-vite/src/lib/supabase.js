@@ -111,6 +111,7 @@ export const sbLoad = async repName => {
         labor_markup_pct: Number(j.labor_markup_pct || 0),
         material_markup_pct: Number(j.material_markup_pct || 0),
         pm_fee: Number(j.pm_fee || 0),
+        retainage_pct: Number(j.retainage_pct || 0),
         client_user_id: j.client_user_id || null,
         photos: (ph || []).map(jf => ({
           id: jf.id,  // job_files.id — used by sbDeleteJobPhoto and sbLabelPhoto
@@ -128,7 +129,7 @@ export const sbLoad = async repName => {
 
 export const sbUpd = async (id, ch) => {
   try {
-    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email','cost_plus','default_markup_pct','labor_markup_pct','material_markup_pct','pm_fee'];
+    const ok = ['status','scope','sqft','client_name','client_phone','client_email','assigned_rep','assigned_subs','contract_value','co_total','target_completion','contract_signed','contract_signed_at','client_notify','referring_realtor_name','referring_realtor_phone','referring_realtor_email','cost_plus','default_markup_pct','labor_markup_pct','material_markup_pct','pm_fee','retainage_pct'];
     const p = {};
     ok.forEach(k => { if (ch[k] !== undefined) p[k] = ch[k]; });
     if (Object.keys(p).length) await sb.from('jobs').update(p).eq('id', id);
