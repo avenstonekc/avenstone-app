@@ -6,6 +6,7 @@ import TransactionModal from './financials/TransactionModal';
 import LineItemModal from './financials/LineItemModal';
 import SubInvoicesSection from './financials/SubInvoicesSection';
 import ComposeDrawScr from './ComposeDrawScr';
+import PaymentScheduleTab from './PaymentScheduleTab';
 import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo, sbMarkTransactionsPaid } from '../../../lib/supabase';
 import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
 import { f$, isMob } from '../../../lib/utils';
@@ -30,7 +31,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     { id: 'co',          lb: 'Change Orders' },
     ...(job.cost_plus
       ? [{ id: 'draws',    lb: 'Draws' }]
-      : [{ id: 'invoices', lb: 'Invoices' }]),
+      : [{ id: 'invoices', lb: 'Invoices' }, { id: 'payment_schedule', lb: 'Payment Schedule' }]),
     { id: 'sub_invoices', lb: 'Sub Invoices' },
     { id: 'materials',   lb: 'Materials' },
   ];
@@ -82,7 +83,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   useEffect(() => { if (sub !== 'sub_invoices') setOpenSubInvoiceOnMount(false); }, [sub]);
   // Reset to ledger if current sub-tab doesn't exist for this billing model
   useEffect(() => {
-    if (job.cost_plus && sub === 'invoices') setSub('ledger');
+    if (job.cost_plus && (sub === 'invoices' || sub === 'payment_schedule')) setSub('ledger');
     if (!job.cost_plus && sub === 'draws') setSub('ledger');
   }, [job.cost_plus]);
   useEffect(() => {
@@ -201,6 +202,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
 
       {sub === 'draws' && job.cost_plus && <InvoicesSubTab job={job} profile={profile} />}
       {sub === 'invoices' && !job.cost_plus && <InvoicesSubTab job={job} profile={profile} />}
+
+      {sub === 'payment_schedule' && !job.cost_plus && <PaymentScheduleTab job={job} profile={profile} />}
 
       {sub === 'sub_invoices' && <SubInvoicesSection job={job} profile={profile} openAddInvoiceOnMount={openSubInvoiceOnMount} />}
 

@@ -3571,6 +3571,72 @@ export async function sbCreateDrawSchedule(jobId, draw) {
   return data;
 }
 
+// ─── PAYMENT SCHEDULES (PHASE_INVOICE_ARC) ───────────────────────────────────
+
+export async function sbLoadPaymentSchedule(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required' };
+  const { data: schedule, error: se } = await sb
+    .from('payment_schedules')
+    .select('*')
+    .eq('job_id', jobId)
+    .maybeSingle();
+  if (se) return { ok: false, error: se.message };
+  if (!schedule) return { ok: true, data: null };
+  const { data: milestones, error: me } = await sb
+    .from('payment_milestones')
+    .select('*')
+    .eq('schedule_id', schedule.id)
+    .order('milestone_order', { ascending: true });
+  if (me) return { ok: false, error: me.message };
+  return { ok: true, data: { schedule, milestones: milestones || [] } };
+}
+
+export async function sbSavePaymentSchedule(jobId, contractTotal, milestones) {
+  if (!jobId) return { ok: false, error: 'jobId required' };
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return { ok: false, error: 'Not authenticated' };
+
+  // Upsert the schedule row
+  const { data: schedule, error: se } = await sb
+    .from('payment_schedules')
+    .upsert({ job_id: jobId, tenant_id: AV_TENANT, contract_total: contractTotal, created_by_id: user.id }, { onConflict: 'job_id' })
+    .select()
+    .single();
+  if (se) return { ok: false, error: se.message };
+
+  // Replace milestones: delete existing, insert new
+  const { error: de } = await sb.from('payment_milestones').delete().eq('schedule_id', schedule.id);
+  if (de) return { ok: false, error: de.message };
+
+  if (milestones && milestones.length > 0) {
+    const rows = milestones.map((m, i) => ({
+      tenant_id: AV_TENANT,
+      schedule_id: schedule.id,
+      job_id: jobId,
+      phase_id: m.phase_id || null,
+      label: m.label,
+      pct: m.pct != null ? Number(m.pct) : null,
+      amount: m.pct != null ? Math.round((Number(m.pct) / 100) * contractTotal * 100) / 100 : (m.amount != null ? Number(m.amount) : null),
+      is_retainage: !!m.is_retainage,
+      milestone_order: i,
+      status: m.status || 'pending',
+    }));
+    const { error: ie } = await sb.from('payment_milestones').insert(rows);
+    if (ie) return { ok: false, error: ie.message };
+  }
+
+  return { ok: true, data: schedule };
+}
+
+export async function sbDeletePaymentSchedule(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required' };
+  const { error } = await sb.from('payment_schedules').delete().eq('job_id', jobId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function sbLoadDrawsForJob(jobId) {
   if (!jobId) throw new Error('jobId required');
   const { data, error } = await sb
