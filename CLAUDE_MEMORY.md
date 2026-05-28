@@ -2001,6 +2001,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Cost-plus jobs: header on Financials tab only. Fixed-price: cbar also now Financials-only.
 - Commit: d8871c1. Pushed.
 
+[LOG — 2026-05-27 — DRAW_PACKAGE_ARC slice 2: cover sheet PDF + Build Package button]
+- Edge function build-draw-package: pdf-lib cover sheet (navy #1A2540 header band, gold DRAW REQUEST title, draw # + date, Submitted To / Project blocks, itemized draw_line_items table, Work Billed / Less Retainage / NET DRAW REQUEST totals, optional cover note, footer). Uploads to private draw-packages bucket at {job_id}/{draw_id}/cover.pdf. Returns 1-year signed URL.
+- draw-packages storage bucket created (private, PDF only, 50MB). storage.objects RLS via can_access_job(split_part(name,'/',1)) — staff/owner of job only.
+- sbBuildDrawPackage(drawId, jobId, coverNotes?) in supabase.js — invokes edge fn, returns { signed_url, draw_package_id }.
+- InvoicesSubTab: Build Package button (btn-gold) on cost-plus draw rows. Calls sbBuildDrawPackage, opens signed URL in new tab. Loading state per draw.
+- draw_packages row created (created_by_id: user.id) if not exists; updated to status='previewed' after PDF stored.
+- Commit: 9cde944. Pushed.
+- Next slice 3: file picker (photos grid + docs append) + send/download.
+
 [LOG — 2026-05-27 — DRAW_PACKAGE_ARC slice 1: decouple + schema]
 - Cost-plus jobs: Compose Draw no longer can open New Invoice modal. Draw lands as 'planned' on Draw Schedule (Draws sub-tab). Navigation after compose goes to Draws tab, not Ledger.
 - Billing model routed by jobs.cost_plus: cost-plus = Draws tab (Draw Schedule only), fixed-price = Invoices tab (Invoices only). Each hides the other's UI entirely.
