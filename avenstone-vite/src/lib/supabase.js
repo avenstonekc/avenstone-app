@@ -1402,6 +1402,8 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     summary.projected_total_revenue = projected_total_revenue;
     summary.margin_pct           = margin_pct;
     summary.pm_fee               = pm_fee;
+    const { data: drawRows } = await sb.from('draw_schedules').select('retainage_held').eq('job_id', jobId).neq('status', 'voided');
+    summary.retainage_held = round2((drawRows || []).reduce((s, d) => s + Number(d.retainage_held || 0), 0));
     const projected_final_bill   = round2(total_cost_base * (1 + labor_markup / 100) + pm_fee);
     const contract_variance      = round2(contract_total - projected_final_bill);
     summary.projected_final_bill = projected_final_bill;
@@ -5157,16 +5159,17 @@ export async function sbLoadJobDrawTotals(jobId) {
   if (!jobId) return { ok: false, error: 'jobId required', data: null };
   const [{ data: job, error: jobErr }, { data: draws, error: drawErr }] = await Promise.all([
     sb.from('jobs').select('contract_value, retainage_pct').eq('id', jobId).single(),
-    sb.from('draw_schedules').select('target_amount').eq('job_id', jobId).neq('status', 'voided'),
+    sb.from('draw_schedules').select('target_amount, retainage_held').eq('job_id', jobId).neq('status', 'voided'),
   ]);
   if (jobErr) return { ok: false, error: jobErr.message, data: null };
   if (drawErr) return { ok: false, error: drawErr.message, data: null };
-  const total_drawn       = (draws || []).reduce((s, d) => s + Number(d.target_amount || 0), 0);
-  const contract_value    = Number(job.contract_value || 0);
-  const retainage_pct     = Number(job.retainage_pct || 0);
-  const billable_cap      = contract_value * (1 - retainage_pct / 100);
+  const total_drawn          = (draws || []).reduce((s, d) => s + Number(d.target_amount || 0), 0);
+  const held_retainage_total = (draws || []).reduce((s, d) => s + Number(d.retainage_held || 0), 0);
+  const contract_value       = Number(job.contract_value || 0);
+  const retainage_pct        = Number(job.retainage_pct || 0);
+  const billable_cap         = contract_value * (1 - retainage_pct / 100);
   const retainage_releasable = contract_value * (retainage_pct / 100);
-  return { ok: true, error: null, data: { total_drawn, retainage_pct, billable_cap, retainage_releasable, contract_value } };
+  return { ok: true, error: null, data: { total_drawn, held_retainage_total, retainage_pct, billable_cap, retainage_releasable, contract_value } };
 }
 
 /**
@@ -5177,7 +5180,7 @@ export async function sbLoadJobDrawTotals(jobId) {
  *               display_order, notes }]
  * Returns { ok, error, data: { draw_id, draw_number, line_count, tx_flipped } }.
  */
-export async function sbComposeDraw({ jobId, title, description, targetAmount, applyBucket, lineItems }) {
+export async function sbComposeDraw({ jobId, title, description, targetAmount, applyBucket, lineItems, retainageHeld = 0 }) {
   if (!jobId) return { ok: false, error: 'jobId required', data: null };
   if (!Array.isArray(lineItems) || lineItems.length === 0) {
     return { ok: false, error: 'At least one line item required', data: null };
@@ -5193,6 +5196,9 @@ export async function sbComposeDraw({ jobId, title, description, targetAmount, a
   });
 
   if (error) return { ok: false, error: error.message, data: null };
+  if (data?.draw_id && retainageHeld > 0) {
+    await sb.from('draw_schedules').update({ retainage_held: retainageHeld }).eq('id', data.draw_id);
+  }
   return { ok: true, error: null, data };
 }
 

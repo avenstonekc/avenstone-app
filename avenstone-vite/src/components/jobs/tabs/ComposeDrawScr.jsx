@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { sbLoadUnreimbursedExpenses, sbGetBucketBalance, sbComposeDraw, sbLoadJobDrawTotals } from '../../../lib/supabase';
+import { sbLoadUnreimbursedExpenses, sbGetBucketBalance, sbComposeDraw, sbLoadJobDrawTotals, sbLoadPhases } from '../../../lib/supabase';
 import { f$, fD } from '../../../lib/utils';
 
 const NAVY   = '#0A1F44';
@@ -35,9 +35,11 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
   const [selectedIds, setSelectedIds]   = useState(() => new Set());
   const [submitting, setSubmitting]     = useState(false);
   const [submitError, setSubmitError]   = useState(null);
-  const [drawTotals, setDrawTotals]     = useState(null);
-  const [holdRetainage, setHoldRetainage]       = useState(true);
-  const [releaseRetainage, setReleaseRetainage] = useState(false);
+  const [drawTotals, setDrawTotals]                     = useState(null);
+  const [phases, setPhases]                             = useState([]);
+  const [holdRetainage, setHoldRetainage]               = useState(false);
+  const [releaseRetainage, setReleaseRetainage]         = useState(false);
+  const [retainagePctOverride, setRetainagePctOverride] = useState(null);
 
   const nextForwardId = () => `fwd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const addForwardLine = () => {
@@ -54,6 +56,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
   useEffect(() => { load(); }, [job.id]);
   useEffect(() => {
     sbLoadJobDrawTotals(job.id).then(r => { if (r.ok) setDrawTotals(r.data); });
+    sbLoadPhases(job.id).then(data => setPhases(data || []));
   }, [job.id]);
 
   // Seed markup overrides when expense list changes
@@ -139,18 +142,29 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
     [subtotal, balance.bucket, applyBucket],
   );
 
-  // Retainage math — only active when retainage_pct > 0
-  const retainagePct       = drawTotals?.retainage_pct ?? 0;
+  // Retainage — operator-driven, math base = expense subtotal with markup (not contract value)
+  const jobRetainagePct    = drawTotals?.retainage_pct ?? 0;
+  const retainagePct       = retainagePctOverride !== null ? retainagePctOverride : jobRetainagePct;
   const totalDrawn         = drawTotals?.total_drawn ?? 0;
-  const billableCap        = drawTotals?.billable_cap ?? Infinity;
-  const releasableAmount   = round2(drawTotals?.retainage_releasable ?? 0);
-  const remainingBillable  = round2(Math.max(0, billableCap - totalDrawn));
-  const cappedAmount       = (retainagePct > 0 && holdRetainage)
-    ? round2(Math.min(netDue, remainingBillable))
-    : netDue;
-  const wouldBeCapped      = retainagePct > 0 && holdRetainage && netDue > remainingBillable;
-  const releaseEnabled     = retainagePct > 0 && totalDrawn >= billableCap * 0.95;
-  const finalDrawAmount    = round2(cappedAmount + (retainagePct > 0 && releaseRetainage ? releasableAmount : 0));
+  const contractValue      = drawTotals?.contract_value ?? 0;
+  const heldRetainageTotal = round2(drawTotals?.held_retainage_total ?? 0);
+  const retainagePerDraw   = (jobRetainagePct > 0 && holdRetainage) ? round2(subtotal * retainagePct / 100) : 0;
+  const NUDGE_PHASES       = ['Drywall', 'Finishes', 'Final touches', 'Complete'];
+  const RELEASE_PHASES     = ['Final touches', 'Complete'];
+  const currentPhase       = phases.find(p => p.status === 'in_progress')
+    || [...phases].filter(p => p.status === 'complete').sort((a, b) => b.phase_order - a.phase_order)[0]
+    || null;
+  const showRetainageNudge   = jobRetainagePct > 0 && !holdRetainage && currentPhase && NUDGE_PHASES.includes(currentPhase.phase_name);
+  const canReleaseRetainage  = jobRetainagePct > 0 && RELEASE_PHASES.includes(currentPhase?.phase_name) && heldRetainageTotal > 0;
+  const finalDrawAmount      = round2(netDue - retainagePerDraw + (jobRetainagePct > 0 && releaseRetainage ? heldRetainageTotal : 0));
+  const newTotalDrawn        = round2(totalDrawn + finalDrawAmount);
+  const overContract         = contractValue > 0 && newTotalDrawn > contractValue;
+  const nearContract         = contractValue > 0 && !overContract && newTotalDrawn > contractValue * 0.9;
+  const contractWarning      = overContract
+    ? `⚠ This draw brings total billed to ${f$(newTotalDrawn)} — exceeds signed contract of ${f$(contractValue)}. Consider a change order if scope grew.`
+    : nearContract
+    ? `⚠ Total billed after this draw: ${f$(newTotalDrawn)} of ${f$(contractValue)}. If retainage hasn't been held, consider holding on this or upcoming draws.`
+    : null;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -162,6 +176,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
       description:  description.trim() || null,
       lineItems,
       targetAmount: finalDrawAmount,
+      retainageHeld: retainagePerDraw,
       applyBucket,
     });
     setSubmitting(false);
@@ -493,6 +508,18 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                   </div>
                 )}
 
+                {retainagePerDraw > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#b45309' }}>
+                    <span>Hold {retainagePct}% retainage</span>
+                    <span style={{ fontWeight: 700 }}>−{f$(retainagePerDraw)}</span>
+                  </div>
+                )}
+                {releaseRetainage && heldRetainageTotal > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#22c55e' }}>
+                    <span>Release held retainage</span>
+                    <span style={{ fontWeight: 700 }}>+{f$(heldRetainageTotal)}</span>
+                  </div>
+                )}
                 <div style={{ borderTop: `2px solid ${BORDER}`, paddingTop: 10, display: 'flex', justifyContent: 'space-between', fontSize: 15 }}>
                   <span style={{ fontWeight: 700, color: NAVY }}>Net draw amount</span>
                   <span style={{ fontWeight: 700, color: finalDrawAmount >= 0 ? NAVY : '#22c55e', fontSize: 17 }}>{f$(finalDrawAmount)}</span>
@@ -501,56 +528,74 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
             </div>
 
             {/* ── Retainage controls (cost-plus jobs with retainage_pct > 0) ── */}
-            {retainagePct > 0 && (
+            {jobRetainagePct > 0 && (
               <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 24 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Retainage</div>
 
+                {/* Phase-aware nudge */}
+                {showRetainageNudge && (
+                  <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 6, padding: '8px 12px', marginBottom: 10, fontSize: 12, color: NAVY }}>
+                    💡 You're in the {currentPhase.phase_name} phase. Consider holding {jobRetainagePct}% retainage on this draw.
+                  </div>
+                )}
+
                 {/* Hold retainage row */}
                 <div style={{ marginBottom: 10 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#374151', cursor: 'pointer', flexWrap: 'wrap' }}>
                     <input
                       type="checkbox"
                       checked={holdRetainage}
-                      onChange={e => setHoldRetainage(e.target.checked)}
-                      style={{ width: 14, height: 14, cursor: 'pointer' }}
+                      onChange={e => { setHoldRetainage(e.target.checked); if (!e.target.checked) setReleaseRetainage(false); }}
+                      style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }}
                     />
-                    Hold {retainagePct}% retainage until final walkthrough
+                    <span>Hold</span>
+                    <input
+                      type="number"
+                      value={retainagePctOverride !== null ? retainagePctOverride : jobRetainagePct}
+                      onChange={e => setRetainagePctOverride(Number(e.target.value))}
+                      min="0" max="50" step="0.5"
+                      style={{ width: 52, fontSize: 13, padding: '2px 5px', border: `1px solid ${BORDER}`, borderRadius: 4, textAlign: 'right' }}
+                    />
+                    <span>% retainage from this draw</span>
                   </label>
-                  {wouldBeCapped && (
-                    <div style={{ marginTop: 5, marginLeft: 22, fontSize: 11, color: '#b45309', background: '#FEF3C7', borderRadius: 4, padding: '4px 8px' }}>
-                      This draw would exceed the {f$(round2(billableCap))} billable cap. Capped at {f$(remainingBillable)}.
+                  {retainagePctOverride !== null && retainagePctOverride !== jobRetainagePct && (
+                    <div style={{ marginTop: 3, marginLeft: 22, fontSize: 10, color: '#9CA3AF' }}>
+                      Job default: {jobRetainagePct}% — <button onClick={() => setRetainagePctOverride(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C9A84C', fontSize: 10, fontWeight: 600, padding: 0 }}>Reset</button>
                     </div>
                   )}
                 </div>
 
                 {/* Release retainage row */}
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: releaseEnabled ? '#374151' : '#9CA3AF', cursor: releaseEnabled ? 'pointer' : 'not-allowed' }}>
-                    <input
-                      type="checkbox"
-                      checked={releaseRetainage}
-                      onChange={e => setReleaseRetainage(e.target.checked)}
-                      disabled={!releaseEnabled}
-                      style={{ width: 14, height: 14, cursor: releaseEnabled ? 'pointer' : 'not-allowed' }}
-                    />
-                    Release held retainage ({f$(releasableAmount)}) — final draw
-                  </label>
-                  {!releaseEnabled && (
-                    <div style={{ marginTop: 4, marginLeft: 22, fontSize: 11, color: '#9CA3AF' }}>
-                      Available when prior draws reach ~95% of {f$(round2(billableCap))} billable cap.
-                    </div>
-                  )}
-                </div>
-
-                {/* Summary line */}
-                <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, fontSize: 12, fontWeight: 500, color: NAVY }}>
-                  <span>This draw: <strong>{f$(finalDrawAmount)}</strong></span>
-                  <span style={{ color: '#6B7280' }}>After this: {f$(round2(totalDrawn + finalDrawAmount))} of {f$(round2(drawTotals?.contract_value ?? 0))}</span>
-                </div>
+                {holdRetainage && (
+                  <div style={{ marginBottom: 4 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: canReleaseRetainage ? '#374151' : '#9CA3AF', cursor: canReleaseRetainage ? 'pointer' : 'not-allowed' }}>
+                      <input
+                        type="checkbox"
+                        checked={releaseRetainage}
+                        onChange={e => setReleaseRetainage(e.target.checked)}
+                        disabled={!canReleaseRetainage}
+                        style={{ width: 14, height: 14, cursor: canReleaseRetainage ? 'pointer' : 'not-allowed' }}
+                      />
+                      Release held retainage ({f$(heldRetainageTotal)}) — final draw
+                    </label>
+                    {!canReleaseRetainage && (
+                      <div style={{ marginTop: 4, marginLeft: 22, fontSize: 11, color: '#9CA3AF' }}>
+                        {heldRetainageTotal === 0
+                          ? 'No retainage held on prior draws.'
+                          : 'Available when job reaches Final touches or Complete phase.'}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
             {/* ── Action bar ────────────────────────────────────── */}
+            {contractWarning && (
+              <div style={{ background: overContract ? '#FEE2E2' : '#FEF3C7', border: `1px solid ${overContract ? '#fca5a5' : '#FCD34D'}`, borderRadius: 8, padding: '10px 14px', fontSize: 12, color: overContract ? '#991b1b' : '#92400e', marginBottom: 12 }}>
+                {contractWarning}
+              </div>
+            )}
             {submitError && (
               <div style={{
                 background: '#FEE2E2', border: '1px solid #fca5a5', borderRadius: 8,
