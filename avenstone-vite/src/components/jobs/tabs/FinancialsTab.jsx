@@ -10,14 +10,7 @@ import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineIte
 import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
 import { f$, isMob } from '../../../lib/utils';
 
-const SUB_TABS = [
-  { id: 'ledger',      lb: 'Ledger' },
-  { id: 'budget',      lb: 'Budget' },
-  { id: 'co',          lb: 'Change Orders' },
-  { id: 'invoices',    lb: 'Invoices' },
-  { id: 'sub_invoices', lb: 'Sub Invoices' },
-  { id: 'materials',   lb: 'Materials' },
-];
+// SUB_TABS is computed inside the component — cost_plus aware
 
 const TYPE_LABELS = {
   client_payment: 'Client Payment', client_deposit: 'Deposit', client_refund: 'Refund',
@@ -30,6 +23,17 @@ const STATUS_COLOR = { paid: '#22c55e', pending: '#f59e0b', overdue: '#ef4444', 
 
 export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendingAction, clearPendingAction, financialsAction, clearFinancialsAction }) {
   const mob = isMob();
+  // Cost-plus: Draws tab instead of Invoices. Fixed-price: Invoices tab, no Draws.
+  const SUB_TABS = [
+    { id: 'ledger',      lb: 'Ledger' },
+    { id: 'budget',      lb: 'Budget' },
+    { id: 'co',          lb: 'Change Orders' },
+    ...(job.cost_plus
+      ? [{ id: 'draws',    lb: 'Draws' }]
+      : [{ id: 'invoices', lb: 'Invoices' }]),
+    { id: 'sub_invoices', lb: 'Sub Invoices' },
+    { id: 'materials',   lb: 'Materials' },
+  ];
   const [sub, setSub] = useState('ledger');
   const [txs, setTxs] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -76,6 +80,11 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
 
   useEffect(() => { setSelectedIds(new Set()); }, [filterDir, filterStatus]);
   useEffect(() => { if (sub !== 'sub_invoices') setOpenSubInvoiceOnMount(false); }, [sub]);
+  // Reset to ledger if current sub-tab doesn't exist for this billing model
+  useEffect(() => {
+    if (job.cost_plus && sub === 'invoices') setSub('ledger');
+    if (!job.cost_plus && sub === 'draws') setSub('ledger');
+  }, [job.cost_plus]);
   useEffect(() => {
     if (!financialsAction) return;
     if (financialsAction.kind === 'compose_draw') { setSub('ledger'); setShowComposeDraw(true); }
@@ -190,7 +199,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
 
       {sub === 'co' && <COTab job={job} upd={upd} profile={profile} />}
 
-      {sub === 'invoices' && <InvoicesSubTab job={job} profile={profile} />}
+      {sub === 'draws' && job.cost_plus && <InvoicesSubTab job={job} profile={profile} />}
+      {sub === 'invoices' && !job.cost_plus && <InvoicesSubTab job={job} profile={profile} />}
 
       {sub === 'sub_invoices' && <SubInvoicesSection job={job} profile={profile} openAddInvoiceOnMount={openSubInvoiceOnMount} />}
 
@@ -527,11 +537,11 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
         />
       )}
 
-      {showComposeDraw && (
+      {showComposeDraw && job.cost_plus && (
         <ComposeDrawScr
           job={job}
           onClose={() => setShowComposeDraw(false)}
-          onComposed={() => { setShowComposeDraw(false); loadLedger(); }}
+          onComposed={() => { setShowComposeDraw(false); setSub('draws'); loadLedger(); }}
         />
       )}
     </div>
