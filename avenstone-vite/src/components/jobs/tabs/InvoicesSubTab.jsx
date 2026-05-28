@@ -126,7 +126,6 @@ export default function InvoicesSubTab({ job, profile }) {
   };
 
   const totalScheduled = draws.reduce((s, d) => s + Number(d.target_amount || 0), 0);
-  const totalInvoiced  = draws.reduce((s, d) => s + Number(d.invoiced_amount || 0), 0);
   const totalPaid      = draws.reduce((s, d) => s + Number(d.paid_amount || 0), 0);
 
   const pkgByDraw = drawPkgs.reduce((m, p) => { if (!m[p.draw_id]) m[p.draw_id] = p; return m; }, {});
@@ -200,10 +199,9 @@ export default function InvoicesSubTab({ job, profile }) {
                           </div>
                         )}
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                         {[
                           ['Target', f$(draw.target_amount), '#0A1F44'],
-                          ['Invoiced', draw.invoiced_amount > 0 ? f$(draw.invoiced_amount) : '—', '#6B7280'],
                           ['Paid', draw.paid_amount > 0 ? f$(draw.paid_amount) : '—', draw.paid_amount > 0 ? '#22c55e' : '#6B7280'],
                         ].map(([lb, val, c]) => (
                           <div key={lb} style={{ textAlign: 'center' }}>
@@ -222,7 +220,6 @@ export default function InvoicesSubTab({ job, profile }) {
 
               <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: '#6B7280', display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
                 <span>Total scheduled: <strong style={{ color: '#0A1F44' }}>{f$(totalScheduled)}</strong></span>
-                <span>Total invoiced: <strong style={{ color: '#6B7280' }}>{f$(totalInvoiced)}</strong></span>
                 <span>Total paid: <strong style={{ color: totalPaid > 0 ? '#22c55e' : '#6B7280' }}>{f$(totalPaid)}</strong></span>
               </div>
             </>
