@@ -1950,3 +1950,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Action: Hid the cost-plus operator header (Quick Actions + Activity Pulse) on Schedule tab. One-line guard `tab !== 'sched'` added to the condition in JobDet.jsx line 204. Header stays on Financials and all other tabs.
 - File: avenstone-vite/src/components/jobs/JobDet.jsx (1 line changed)
 - Commit: f0cd6de. Pushed.
+
+[LOG — 2026-05-27 — SCHEDULING_ARC slice 5: phase_id picker]
+- Add/Edit Schedule Item form now includes phase dropdown (after "Assign to Sub," before "Notes")
+- Loads phases via sbLoadPhases(job.id) on modal mount — plain array return, already sorted by phase_order
+- All 10 lifecycle phases selectable + "No phase" option (saves null); dropdown hidden if no phases loaded
+- phase_id added to form state (preloads from item.phase_id on edit), payload (null-coalesced on save), and sbUpdateScheduleItem clean object
+- Closes the loop on Slice 3 phase progress: pills can finally advance from UI item changes
+- Commit: 5c37e30. Build: clean. Pushed to main.
+- Open: Verify phase_id in live app — add item with phase, confirm DB write and pill count advances
+- Open: derivePhaseStatus only triggers on sub_start type; other item types with phase_id don't auto-advance status (by design)
