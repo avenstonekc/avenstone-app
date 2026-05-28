@@ -325,6 +325,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
               { lb: 'Received',          v: f$(summary.received ?? summary.total_in), c: (summary.received ?? summary.total_in) > 0 ? '#22c55e' : '#9CA3AF' },
               { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? '#ef4444' : '#9CA3AF' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: '#b45309', note: 'approved sub invoices unpaid' }] : []),
+              ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: '#b45309', note: 'released at final draw' }] : []),
               { lb: 'Projected Profit',  v: f$(summary.projected_profit), c: summary.projected_profit > 0 ? '#22c55e' : '#9CA3AF', note: `${summary.margin_pct ?? 0}% margin · +${f$(summary.pm_fee ?? 0)} PM` },
               ...(cpBucketBalance >= 0
                 ? [{ lb: 'Bucket Credit', v: f$(cpBucketBalance), c: '#22c55e', note: 'client prepaid balance' }]
