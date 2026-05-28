@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, AI_PM_URL, sbNotify, authHeader } from '../../lib/supabase';
+import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, AI_PM_URL, sbNotify, authHeader, sbLoadCostPlusActivityPulse } from '../../lib/supabase';
 import { Ic, sc, sl, f$, STATS, isMob } from '../../lib/utils';
 import InfoTab from './tabs/InfoTab';
 import ScheduleTab from './tabs/ScheduleTab';
@@ -37,12 +37,19 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
   const [showAiPmConfirm, setShowAiPmConfirm] = useState(false);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [completionCopied, setCompletionCopied] = useState(false);
+  const [financialsAction, setFinancialsAction] = useState(null);
+  const [cpPulse, setCpPulse] = useState(null);
 
   useEffect(() => {
     if (pendingAction?.kind === 'transaction_save' || pendingAction?.kind === 'line_item_save') {
       setTab('financials');
     }
   }, [pendingAction]);
+
+  useEffect(() => {
+    if (!job.cost_plus) return;
+    sbLoadCostPlusActivityPulse(job.id).then(setCpPulse).catch(() => {});
+  }, [job.id, job.cost_plus]);
 
   const reviewLink = `${window.location.origin}?review=${job.id}&rt=${AV_TENANT}`;
   const completionLink = `${window.location.origin}?completion=${job.id}`;
@@ -115,6 +122,16 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
   const cv = Number(job.contract_value || 0);
   const rev = cv + coT;
 
+  const pulseTone = (date) => {
+    if (!date) return { text: 'never', color: 'rgba(255,255,255,0.35)' };
+    const d = Math.floor((Date.now() - new Date(date)) / 86400000);
+    if (d === 0) return { text: 'today',    color: 'rgba(255,255,255,0.65)' };
+    if (d === 1) return { text: '1d ago',   color: 'rgba(255,255,255,0.65)' };
+    if (d <= 7)  return { text: `${d}d ago`, color: 'rgba(255,255,255,0.65)' };
+    if (d <= 14) return { text: `${d}d ago`, color: '#FAC775' };
+    return               { text: `${d}d ago`, color: '#F7C1C1' };
+  };
+
   return (
     <>
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F7F5F0' }}>
@@ -184,11 +201,48 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             )}
           </div>
         )}
-        {rev > 0 && <div className="cbar">
-          <div className="cc"><div className="cc-l">Contract</div><div className="cc-v" style={{ color: '#fff' }}>{f$(cv)}</div></div>
-          {coT > 0 && <div className="cc"><div className="cc-l">COs</div><div className="cc-v" style={{ color: '#f59e0b' }}>+{f$(coT)}</div></div>}
-          {coT > 0 && <div className="cc"><div className="cc-l">Revised</div><div className="cc-v" style={{ color: '#C9A84C' }}>{f$(rev)}</div></div>}
-        </div>}
+        {(rev > 0 || job.cost_plus) && (job.cost_plus ? (
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.08)', marginTop: 10 }}>
+            {/* Quick Actions */}
+            <div style={{ flex: 1, padding: '10px 14px', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 600, marginBottom: 7 }}>Quick actions</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button onClick={() => { setTab('financials'); setFinancialsAction({ kind: 'compose_draw' }); }} style={{ padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'inherit' }}>
+                  Compose Draw
+                </button>
+                <button onClick={() => { setTab('financials'); setFinancialsAction({ kind: 'add_receipt' }); }} style={{ padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: 500, cursor: 'pointer', background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)', fontFamily: 'inherit' }}>
+                  Add Receipt
+                </button>
+                <button onClick={() => { setTab('financials'); setFinancialsAction({ kind: 'log_sub_invoice' }); }} style={{ padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: 500, cursor: 'pointer', background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)', fontFamily: 'inherit' }}>
+                  Log Sub Invoice
+                </button>
+              </div>
+            </div>
+            {/* Activity Pulse */}
+            <div style={{ flex: 1, padding: '10px 14px' }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 600, marginBottom: 7 }}>Activity pulse</div>
+              {[
+                { label: 'Last expense',         date: cpPulse?.last_expense_at },
+                { label: 'Last payment',          date: cpPulse?.last_payment_at },
+                { label: 'Last schedule update',  date: cpPulse?.last_schedule_activity_at },
+              ].map(({ label, date }) => {
+                const { text, color } = pulseTone(cpPulse ? date : undefined);
+                return (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, lineHeight: 1.6 }}>
+                    <span style={{ color: 'rgba(255,255,255,0.55)' }}>{label}</span>
+                    <span style={{ fontWeight: 500, color }}>{cpPulse ? text : '—'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="cbar">
+            <div className="cc"><div className="cc-l">Contract</div><div className="cc-v" style={{ color: '#fff' }}>{f$(cv)}</div></div>
+            {coT > 0 && <div className="cc"><div className="cc-l">COs</div><div className="cc-v" style={{ color: '#f59e0b' }}>+{f$(coT)}</div></div>}
+            {coT > 0 && <div className="cc"><div className="cc-l">Revised</div><div className="cc-v" style={{ color: '#C9A84C' }}>{f$(rev)}</div></div>}
+          </div>
+        ))}
       </div>
 
       {/* Tab bar */}
@@ -261,7 +315,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} setTab={setTab} />}
         {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
         {tab === 'subs' && <SubsTab job={job} profile={profile} setTab={setTab} />}
-        {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} />}
+        {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} financialsAction={financialsAction} clearFinancialsAction={() => setFinancialsAction(null)} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} sub={fieldSub} setSub={setFieldSub} />}

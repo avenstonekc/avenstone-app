@@ -71,6 +71,7 @@ export const sbSave = async j => {
       referring_realtor_email: j.referring_realtor_email || '',
     });
     if (error) return { ok: false, error: error.message };
+    sbSeedJobPhases(j.id, AV_TENANT).catch(() => {});
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message || 'Unknown error' }; }
 };
@@ -478,10 +479,26 @@ export const sbUpdCO = async (id, ch) => {
 export const getJobCoTotal = (job) => Number(job?.co_total || 0);
 
 // ─── Phases ───────────────────────────────────────────────────────────────────
-export const DEFAULT_PHASES = ['Demo','Framing','Rough MEP','Insulation','Drywall','Paint','Flooring','Trim','Fixtures','Punch List'];
+export const DEFAULT_PHASES = ['Lead','Proposal','Contract','Demo','Rough-ins','Inspections','Drywall','Finishes','Final touches','Complete'];
 export const sbLoadPhases = async jid => {
   const { data } = await sb.from('job_phases').select('*').eq('job_id', jid).order('phase_order', { ascending: true });
   return data || [];
+};
+export const sbSeedJobPhases = async (jobId, tenantId) => {
+  try {
+    const { count } = await sb.from('job_phases').select('id', { count: 'exact', head: true }).eq('job_id', String(jobId));
+    if (count > 0) return { ok: true, seeded: false };
+    const rows = DEFAULT_PHASES.map((name, i) => ({
+      tenant_id: tenantId,
+      job_id: String(jobId),
+      phase_name: name,
+      phase_order: i + 1,
+      status: 'not_started',
+    }));
+    const { error } = await sb.from('job_phases').insert(rows);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, seeded: true };
+  } catch (e) { return { ok: false, error: e.message || 'Unknown error' }; }
 };
 export async function sbLoadJobPhaseProgress(jobId) {
   if (!jobId) return { ok: false, error: 'jobId required' };
@@ -1399,6 +1416,19 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
   }
 
   return summary;
+};
+export const sbLoadCostPlusActivityPulse = async (jobId) => {
+  const [{ data: txs }, { data: lastSched }] = await Promise.all([
+    sb.from('job_transactions').select('direction,status,created_at').eq('job_id', jobId).neq('status', 'void'),
+    sb.from('schedule_items').select('updated_at,created_at').eq('job_id', jobId).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const out = (txs || []).filter(t => t.direction === 'out' && t.created_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const inPaid = (txs || []).filter(t => t.direction === 'in' && t.status === 'paid' && t.created_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return {
+    last_expense_at: out[0]?.created_at || null,
+    last_payment_at: inPaid[0]?.created_at || null,
+    last_schedule_activity_at: lastSched?.updated_at || lastSched?.created_at || null,
+  };
 };
 export const sbCreateTransaction = async tx => {
   const { data, error } = await sb.from('job_transactions').insert({ ...tx, tenant_id: AV_TENANT, created_by: AV_USER_ID, created_at: new Date().toISOString() }).select().single();
@@ -3017,18 +3047,14 @@ export const sbLoadScheduleItemsForSub = async (subId) => {
 // 'complete' even if its driver sub_start item is later cancelled.
 // Idempotent: calling twice in a row is a no-op.
 
-// Maps job_phases.phase_name (title-case, 10 granular) → trade_phase_map.phase_name (lowercase, 5 condensed).
-// Multiple job_phases can map to the same tmap key (e.g. Paint/Flooring/Trim/Fixtures → 'finish').
-// Insulation and Punch List have no trade driver — they never auto-advance.
+// Maps job_phases.phase_name → trade_phase_map.phase_name (lowercase condensed tmap key).
+// Sales lifecycle phases (Lead/Proposal/Contract/Inspections/Complete) have no trade driver — manual-only.
 const JOB_PHASE_TO_TMAP = {
-  'Demo':      'demo',
-  'Framing':   'framing',
-  'Rough MEP': 'rough_mep',
-  'Drywall':   'drywall',
-  'Paint':     'finish',
-  'Flooring':  'finish',
-  'Trim':      'finish',
-  'Fixtures':  'finish',
+  'Demo':          'demo',
+  'Rough-ins':     'rough_mep',
+  'Drywall':       'drywall',
+  'Finishes':      'finish',
+  'Final touches': 'finish',
 };
 
 export const derivePhaseStatus = async (jobId, tenantId) => {
