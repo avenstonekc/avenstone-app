@@ -1,5 +1,5 @@
 /**
- * SUB_INVOICES_ARC Phase 1 — Supabase helpers for sub invoice AP workflow.
+ * SUB_INVOICES_ARC Phase 1–v2 — Supabase helpers for sub invoice AP workflow.
  *
  * All helpers:
  *  - Return { ok, error, data } — never throw
@@ -7,9 +7,14 @@
  *  - Await all state-change operations and return the real DB result
  *
  * Status is DERIVED via compute_sub_invoice_status() — not stored on the row.
- * Phase 4 (cash accounting) will wire sbAddSubInvoicePayment to also write
- * a job_transactions row. The transaction_id FK exists on sub_invoice_payments
- * now; it will be populated then.
+ *
+ * v2 additions:
+ *  - sbCreateSubInvoiceAccrualRow: creates a pending job_transactions row when
+ *    a sub invoice is approved on a cost_plus job (Float Out visibility).
+ *  - sbApproveSubInvoice now calls sbCreateSubInvoiceAccrualRow after approval.
+ *  - sbAddSubInvoicePayment flips the accrual row to 'paid' on full payment.
+ *  - sbVoidSubInvoicePayment reverts the accrual to 'pending' if invoice is no longer paid.
+ *  - sbDisputeSubInvoice cancels the accrual on dispute; restores it on resolve.
  */
 
 import { sb, AV_TENANT, AV_USER_ID, sbSaveContact } from './supabase.js';
@@ -154,12 +159,31 @@ export async function sbAddSubInvoicePayment({
     if (error) return { ok: false, error: error.message };
 
     const row = Array.isArray(data) ? data[0] : data;
+    const newStatus = row.new_status;
+
+    // On full payment, flip the accrual row to 'paid'
+    if (newStatus === 'paid') {
+      const { data: si } = await sb
+        .from('sub_invoices')
+        .select('accrual_transaction_id')
+        .eq('id', subInvoiceId)
+        .single();
+
+      if (si?.accrual_transaction_id) {
+        await sb
+          .from('job_transactions')
+          .update({ status: 'paid', date_paid: paidDate })
+          .eq('id', si.accrual_transaction_id)
+          .eq('status', 'pending');
+      }
+    }
+
     return {
       ok: true,
       data: {
         paymentId:     row.payment_id,
         transactionId: row.transaction_id,
-        newStatus:     row.new_status,
+        newStatus,
       },
     };
   } catch (e) {
@@ -181,18 +205,44 @@ export async function sbAddSubInvoicePayment({
  */
 export async function sbVoidSubInvoicePayment({ paymentId, voidReason }) {
   try {
+    // Load sub_invoice_id before voiding so we can check accrual after
+    const { data: payment } = await sb
+      .from('sub_invoice_payments')
+      .select('sub_invoice_id')
+      .eq('id', paymentId)
+      .single();
+
     const { data, error } = await sb.rpc('void_sub_invoice_payment_with_ledger', {
       p_payment_id:  paymentId,
       p_void_reason: voidReason || null,
     });
     if (error) return { ok: false, error: error.message };
     const row = Array.isArray(data) ? data[0] : data;
+    const newStatus = row.new_status;
+
+    // If invoice is no longer fully paid, revert the accrual row back to 'pending'
+    if (newStatus !== 'paid' && payment?.sub_invoice_id) {
+      const { data: si } = await sb
+        .from('sub_invoices')
+        .select('accrual_transaction_id')
+        .eq('id', payment.sub_invoice_id)
+        .single();
+
+      if (si?.accrual_transaction_id) {
+        await sb
+          .from('job_transactions')
+          .update({ status: 'pending', date_paid: null })
+          .eq('id', si.accrual_transaction_id)
+          .eq('status', 'paid');
+      }
+    }
+
     return {
       ok: true,
       data: {
         paymentId:     row.payment_id,
         transactionId: row.transaction_id,
-        newStatus:     row.new_status,
+        newStatus,
       },
     };
   } catch (e) {
@@ -201,12 +251,105 @@ export async function sbVoidSubInvoicePayment({ paymentId, voidReason }) {
 }
 
 /**
+ * Creates a pending job_transactions row representing the accrued cost of an
+ * approved sub invoice. Idempotent: if sub_invoices.accrual_transaction_id is
+ * already populated, returns that row without creating a new one.
+ *
+ * Only fires on cost_plus jobs — fixed-price jobs don't need it.
+ * The Phase 1B trigger (set_cost_plus_defaults_on_jt) stamps
+ * reimbursement_status='unreimbursed' + markup_pct automatically on INSERT.
+ *
+ * @param {string} subInvoiceId
+ * @param {number} [overrideAmount]  backfill only — partial remaining balance
+ * @returns {Promise<{ok:boolean, error?:string, data?:{transaction_id:string|null, created:boolean}}>}
+ */
+export async function sbCreateSubInvoiceAccrualRow(subInvoiceId, overrideAmount) {
+  if (!subInvoiceId) return { ok: false, error: 'subInvoiceId required', data: null };
+
+  // Load sub invoice
+  const { data: si, error: siErr } = await sb
+    .from('sub_invoices')
+    .select('id, job_id, tenant_id, amount, invoice_number, sub_contact_id, accrual_transaction_id')
+    .eq('id', subInvoiceId)
+    .single();
+
+  if (siErr) return { ok: false, error: siErr.message, data: null };
+  if (!si) return { ok: false, error: 'Sub invoice not found', data: null };
+
+  // Idempotency — already has an accrual row
+  if (si.accrual_transaction_id) {
+    return { ok: true, error: null, data: { transaction_id: si.accrual_transaction_id, created: false } };
+  }
+
+  // Load job to check cost_plus
+  const { data: job } = await sb
+    .from('jobs')
+    .select('id, cost_plus')
+    .eq('id', si.job_id)
+    .single();
+
+  if (!job?.cost_plus) {
+    return { ok: true, error: null, data: { transaction_id: null, created: false } };
+  }
+
+  // Resolve payee name
+  let payeeName = 'Subcontractor';
+  if (si.sub_contact_id) {
+    const { data: contact } = await sb
+      .from('contacts')
+      .select('name')
+      .eq('id', si.sub_contact_id)
+      .single();
+    if (contact?.name) payeeName = contact.name;
+  }
+
+  const accrualAmount = overrideAmount !== undefined ? overrideAmount : Number(si.amount);
+
+  // Insert pending job_transactions row.
+  // Trigger stamps reimbursement_status='unreimbursed' + markup_pct automatically.
+  const { data: tx, error: txErr } = await sb
+    .from('job_transactions')
+    .insert({
+      tenant_id:           si.tenant_id,
+      job_id:              si.job_id,
+      direction:           'out',
+      type:                'sub_payout',
+      status:              'pending',
+      amount:              accrualAmount,
+      date_incurred:       new Date().toISOString().slice(0, 10),
+      description:         `Accrued — ${si.invoice_number || 'sub invoice'} (approved, not yet paid)`,
+      payer_or_payee_name: payeeName,
+      invoice_id:          null,
+      created_by:          AV_USER_ID,
+    })
+    .select('id')
+    .single();
+
+  if (txErr) return { ok: false, error: txErr.message, data: null };
+
+  // Link sub_invoice → accrual row
+  const { error: linkErr } = await sb
+    .from('sub_invoices')
+    .update({ accrual_transaction_id: tx.id })
+    .eq('id', si.id);
+
+  if (linkErr) {
+    // Roll back the insert if link fails
+    await sb.from('job_transactions').delete().eq('id', tx.id);
+    return { ok: false, error: `Failed to link accrual: ${linkErr.message}`, data: null };
+  }
+
+  return { ok: true, error: null, data: { transaction_id: tx.id, created: true } };
+}
+
+/**
  * Approve an invoice. Sets approved_at + approved_by_id.
+ * On cost_plus jobs, also creates a pending accrual job_transactions row.
  * RLS restricts UPDATE to owner/PM — role gate is enforced at the DB level.
  *
  * @param {object} params
  * @param {string}  params.subInvoiceId
- * @returns {Promise<{ok:boolean, error?:string, data?:{approvedAt:string}}>}
+ * @returns {Promise<{ok:boolean, error?:string, data?:{approvedAt:string, accrual:{transaction_id:string|null,created:boolean}|null}}>}
  */
 export async function sbApproveSubInvoice({ subInvoiceId }) {
   try {
@@ -228,7 +371,20 @@ export async function sbApproveSubInvoice({ subInvoiceId }) {
       .eq('id', subInvoiceId);
 
     if (updateErr) return { ok: false, error: updateErr.message };
-    return { ok: true, data: { approvedAt: now } };
+
+    // Create accrual row (non-fatal if it fails)
+    const accrualResult = await sbCreateSubInvoiceAccrualRow(subInvoiceId);
+    if (!accrualResult.ok) {
+      console.error('sbApproveSubInvoice accrual creation failed:', accrualResult.error);
+    }
+
+    return {
+      ok: true,
+      data: {
+        approvedAt: now,
+        accrual: accrualResult.ok ? accrualResult.data : null,
+      },
+    };
   } catch (e) {
     return { ok: false, error: e.message || 'sbApproveSubInvoice failed' };
   }
@@ -249,7 +405,7 @@ export async function sbDisputeSubInvoice({ subInvoiceId, disputed, disputeReaso
   try {
     const { data: inv, error: fetchErr } = await sb
       .from('sub_invoices')
-      .select('voided_at')
+      .select('voided_at, accrual_transaction_id')
       .eq('id', subInvoiceId)
       .single();
 
@@ -276,6 +432,37 @@ export async function sbDisputeSubInvoice({ subInvoiceId, disputed, disputeReaso
       .eq('id', subInvoiceId);
 
     if (updateErr) return { ok: false, error: updateErr.message };
+
+    // Accrual row cascade: cancel on dispute, restore on resolve
+    if (inv.accrual_transaction_id) {
+      if (disputed) {
+        await sb
+          .from('job_transactions')
+          .update({ status: 'cancelled' })
+          .eq('id', inv.accrual_transaction_id)
+          .in('status', ['pending', 'paid']);
+      } else {
+        // Resolve: determine appropriate restore state from current payment sum
+        const { data: payments } = await sb
+          .from('sub_invoice_payments')
+          .select('amount')
+          .eq('sub_invoice_id', subInvoiceId)
+          .is('voided_at', null);
+        const { data: siAmt } = await sb
+          .from('sub_invoices')
+          .select('amount')
+          .eq('id', subInvoiceId)
+          .single();
+        const paidSum = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+        const fullyPaid = siAmt && paidSum >= Number(siAmt.amount);
+        await sb
+          .from('job_transactions')
+          .update({ status: fullyPaid ? 'paid' : 'pending' })
+          .eq('id', inv.accrual_transaction_id)
+          .eq('status', 'cancelled');
+      }
+    }
+
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message || 'sbDisputeSubInvoice failed' };
@@ -374,6 +561,7 @@ export async function sbLoadSubInvoices({ jobId }) {
         invoice_file_id,
         lien_waiver_file_id,
         related_schedule_item_id,
+        accrual_transaction_id,
         approved_at,
         approved_by_id,
         disputed,
@@ -435,6 +623,7 @@ export async function sbLoadSubInvoices({ jobId }) {
           invoiceFileId:           inv.invoice_file_id,
           lienWaiverFileId:        inv.lien_waiver_file_id,
           relatedScheduleItemId:   inv.related_schedule_item_id,
+          accrualTransactionId:    inv.accrual_transaction_id,
           description:             inv.description,
           lineItems:               inv.line_items,
           submittedVia:            inv.submitted_via,
