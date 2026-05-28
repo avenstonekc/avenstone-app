@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_TENANT, sbBuildDrawPackage, sbSendDrawPackage, sbSaveDrawPackageToFiles } from '../../lib/supabase';
+import { sb, AV_TENANT, sbBuildDrawPackage, sbSendDrawPackage, sbSaveDrawPackageToFiles, sbGetDrawPackageSignedUrl } from '../../lib/supabase';
 
 const COMPLIANCE_CATS = ['Insurance', 'License', 'Compliance'];
 
@@ -40,17 +40,13 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
   const [loading, setLoading]         = useState(true);
   const [selected, setSelected]       = useState(new Set());
 
-  // Build/preview state
-  const [previewing, setPreviewing]   = useState(false);
-  const [previewUrl, setPreviewUrl]   = useState(null);
-  const [previewPkgId, setPreviewPkgId] = useState(null);
-  const [previewPath, setPreviewPath] = useState(null);
-  const [buildError, setBuildError]   = useState(null);
-
-  // Save state
+  // Build/save state
   const [saving, setSaving]           = useState(false);
   const [savedThisSession, setSavedThisSession] = useState(false);
   const [saveError, setSaveError]     = useState(null);
+  const [savedPath, setSavedPath]     = useState(null);
+  const [savedPkgId, setSavedPkgId]  = useState(null);
+  const [previewing, setPreviewing]   = useState(false);
 
   // Send form
   const [sendOpen, setSendOpen]       = useState(false);
@@ -65,10 +61,9 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
   const [copied, setCopied]           = useState(false);
   const [copying, setCopying]         = useState(false);
 
-  // A package exists (saved in this session OR existing with PDF path)
   const hasSaved = savedThisSession || !!(existingPkg?.generated_pdf_path);
-  const activePkgId = previewPkgId || existingPkg?.id;
-  const activePath  = previewPath  || existingPkg?.generated_pdf_path;
+  const activePkgId = savedPkgId || existingPkg?.id;
+  const activePath  = savedPath  || existingPkg?.generated_pdf_path;
 
   useEffect(() => { loadFiles(); }, [job.id]);
 
@@ -98,7 +93,7 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
       setJobFiles(jfRes.data || []);
       setCompFiles(cfRes.data || []);
     } catch (e) {
-      setBuildError(e.message || 'Failed to load files.');
+      setSaveError(e.message || 'Failed to load files.');
     }
     setLoading(false);
   };
@@ -128,59 +123,51 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
     return refs;
   };
 
-  const handlePreview = async () => {
-    setPreviewing(true); setBuildError(null);
-    try {
-      const result = await sbBuildDrawPackage(draw.id, job.id, null, buildFileRefs());
-      setPreviewUrl(result.signed_url);
-      setPreviewPkgId(result.draw_package_id);
-      setPreviewPath(`${job.id}/${draw.id}/cover.pdf`);
-      window.open(result.signed_url, '_blank');
-    } catch (e) {
-      setBuildError(e.message || 'Preview failed.');
-    } finally { setPreviewing(false); }
-  };
-
   const handleSave = async () => {
-    setSaving(true); setSaveError(null); setBuildError(null);
+    setSaving(true); setSaveError(null);
     try {
       const result = await sbBuildDrawPackage(draw.id, job.id, null, buildFileRefs());
-      setPreviewUrl(result.signed_url);
-      setPreviewPkgId(result.draw_package_id);
       const pdfPath = `${job.id}/${draw.id}/cover.pdf`;
-      setPreviewPath(pdfPath);
       const saveRes = await sbSaveDrawPackageToFiles(job.id, result.draw_package_id, pdfPath, draw.draw_number);
       if (!saveRes.ok) throw new Error(saveRes.error);
+      setSavedPkgId(result.draw_package_id);
+      setSavedPath(pdfPath);
       setSavedThisSession(true);
     } catch (e) {
       setSaveError(e.message || 'Save failed.');
     } finally { setSaving(false); }
   };
 
+  const handlePreviewSaved = async () => {
+    if (!activePath) return;
+    setPreviewing(true);
+    try {
+      const url = await sbGetDrawPackageSignedUrl(activePath);
+      window.open(url, '_blank');
+    } catch (e) {
+      setSaveError(e.message || 'Preview failed.');
+    } finally { setPreviewing(false); }
+  };
+
   const handleDownload = async () => {
-    if (!hasSaved || !activePath) return;
+    if (!activePath) return;
     try {
       const filename = `draw-${draw.draw_number}${draw.title ? '-' + draw.title.replace(/\s+/g, '-') : ''}.pdf`;
-      const { data } = await sb.storage.from('draw-packages').createSignedUrl(activePath, 120, { download: filename });
-      if (data?.signedUrl) window.location.href = data.signedUrl;
+      const url = await sbGetDrawPackageSignedUrl(activePath, filename);
+      window.location.href = url;
     } catch (e) { alert(e.message || 'Download failed.'); }
   };
 
   const handleCopyLink = async () => {
-    if (!hasSaved || !activePath) return;
+    if (!activePath) return;
     setCopying(true);
     try {
-      const { data } = await sb.storage.from('draw-packages').createSignedUrl(activePath, 60 * 60 * 24 * 30);
-      if (data?.signedUrl) {
-        await navigator.clipboard.writeText(data.signedUrl);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      }
+      const url = await sbGetDrawPackageSignedUrl(activePath);
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     } catch {
-      if (previewUrl) {
-        await navigator.clipboard.writeText(previewUrl).catch(() => {});
-        setCopied(true); setTimeout(() => setCopied(false), 2500);
-      }
+      /* ignore */
     } finally { setCopying(false); }
   };
 
@@ -197,7 +184,6 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
     } finally { setSending(false); }
   };
 
-  // Group files by category
   const jobGroups = {};
   for (const f of jobFiles) {
     const c = f.category || 'Other';
@@ -216,7 +202,7 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
           <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{draw.title || job.address}</div>
         </div>
 
-        {/* Action Panel — only when package exists */}
+        {/* Action Panel — only when package is saved */}
         {hasSaved && (
           <div style={{ padding: '12px 20px', borderBottom: '1px solid #E8E4DC', flexShrink: 0, background: '#F0FDF4' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -231,9 +217,9 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
                 )}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {previewUrl && (
-                  <button onClick={() => window.open(previewUrl, '_blank')} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Preview</button>
-                )}
+                <button onClick={handlePreviewSaved} disabled={previewing} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>
+                  {previewing ? '…' : 'Preview'}
+                </button>
                 <button onClick={handleDownload} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Download</button>
                 <button onClick={handleCopyLink} disabled={copying} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: copied ? '#065f46' : undefined }}>
                   {copied ? 'Copied!' : copying ? '…' : 'Copy Link'}
@@ -344,12 +330,9 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
             {selected.size === 0 ? 'Cover sheet only' : `${selected.size} file${selected.size > 1 ? 's' : ''} selected`}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {(buildError || saveError) && <span style={{ fontSize: 11, color: '#ef4444' }}>{buildError || saveError}</span>}
+            {saveError && <span style={{ fontSize: 11, color: '#ef4444' }}>{saveError}</span>}
             <button onClick={onClose} className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 14px' }}>Close</button>
-            <button onClick={handlePreview} disabled={previewing || saving} className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 14px', opacity: previewing ? 0.6 : 1 }}>
-              {previewing ? 'Building...' : 'Preview'}
-            </button>
-            <button onClick={handleSave} disabled={saving || previewing} className="btn btn-gold" style={{ fontSize: 12, padding: '6px 16px', opacity: saving ? 0.6 : 1 }}>
+            <button onClick={handleSave} disabled={saving} className="btn btn-gold" style={{ fontSize: 12, padding: '6px 16px', opacity: saving ? 0.6 : 1 }}>
               {saving ? 'Saving...' : savedThisSession ? 'Resave' : 'Save Package'}
             </button>
           </div>
