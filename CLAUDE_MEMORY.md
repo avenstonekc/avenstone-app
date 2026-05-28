@@ -2111,3 +2111,18 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - PaymentScheduleTab: summary bar shows Contract/Invoiced/Paid/Remaining from milestone statuses. Invoiced=milestones with status='invoiced', Paid=paid+released, Remaining=pending.
 - Commit: c56b3aa. Pushed.
 - Slice 4: retainage release — is_retainage=true milestone, held until job.status='complete', then auto-generate invoice (same sbGenerateMilestoneInvoice).
+
+[LOG — 2026-05-28 — PHASE_INVOICE_ARC slice 4: retainage release — ARC COMPLETE]
+- sbReleaseRetainageMilestone: validates is_retainage=true, gates on job.status IN ('final_touches','complete') + all non-retainage milestones paid; creates draft invoice via sbCreateInvoice; sets milestone status='invoiced'.
+- Payment sync fix (slices 3+4): sbMarkInvoicePaid + stripe-webhook now split: non-retainage milestones→'paid', retainage milestones→'released'. Previously both went to 'paid' (fixed).
+- PaymentScheduleTab: "Release & Invoice" button (purple #5B21B6) when canRelease; "Held — released at completion" until eligible. canRelease = is_retainage + pending + !invoice_id + allOthersPaid + jobAtFinalPhase.
+- Summary bar: Retainage held (purple) shown distinct from Remaining; Remaining now excludes retainage milestones. totalRetainageHeld = retainage milestones with status in ('pending','invoiced').
+- PHASE_INVOICE_ARC COMPLETE (4 slices shipped):
+  1. Slice 1: payment_schedules + payment_milestones schema, PaymentScheduleTab UI, standard template
+  2. Slice 2: sbGenerateMilestoneInvoice, auto-draft on phase completion, manual Generate Invoice button, status lifecycle
+  3. Slice 3: draft invoices appear in InvoicesSubTab, payment sync (→paid) in sbMarkInvoicePaid + stripe-webhook, billing progress summary bar
+  4. Slice 4: sbReleaseRetainageMilestone, retainage→'released' on payment, summary shows Retainage Held
+- Both billing models complete: cost-plus = draw packages (DRAW_PACKAGE_ARC), fixed-price = phase invoices (PHASE_INVOICE_ARC), routed by cost_plus flag.
+- Commit: 07feda5. Pushed.
+- Open: AI auto-map payment schedule from estimate line items (v2).
+- Open: client portal view of payment schedule progress for fixed-price clients.
