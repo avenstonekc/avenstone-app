@@ -364,7 +364,7 @@ function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onRe
   const overPaid = inv.paidSum > inv.amount;
 
   return (
-    <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <div className="modal" style={{ maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
         {/* Voided banner */}
         {isVoided && (
@@ -761,7 +761,7 @@ function AddInvoiceModal({ job, onClose, onSaved }) {
 
   return (
     <>
-      <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="overlay">
         <div className="modal" style={{ maxWidth: 560, maxHeight: '92vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div className="modal-title" style={{ margin: 0 }}>Add Invoice</div>
@@ -955,8 +955,7 @@ function AddInvoiceModal({ job, onClose, onSaved }) {
 
       {/* ── New sub with details mini-modal ── */}
       {showNewSub && (
-        <div className="overlay" style={{ zIndex: 1100 }}
-          onClick={e => e.target === e.currentTarget && setShowNewSub(false)}>
+        <div className="overlay" style={{ zIndex: 1100 }}>
           <div className="modal" style={{ maxWidth: 360 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <div className="modal-title" style={{ margin: 0 }}>New Sub Contact</div>
@@ -1052,7 +1051,7 @@ function AddPaymentModal({ inv, onClose, onSaved }) {
   const ssty = { appearance: 'none', paddingRight: 28 };
 
   return (
-    <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <div className="modal" style={{ maxWidth: 400 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div>
