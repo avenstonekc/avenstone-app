@@ -1971,3 +1971,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: 355fdcc. Build: ✓ clean. Pushed to main.
 - Open: client portal draw breakdown should surface retainage held/released per draw.
 - Open: invoice PDF should show "Less retainage (10%) — released upon final walkthrough completion".
+
+[LOG — 2026-05-27 — RETAINAGE_ARC slice 1 — schema + InfoTab field]
+- Action: Added jobs.retainage_pct column, wired to InfoTab input adjacent to PM Fee.
+- Migration: 20260527090000_jobs_retainage_pct.sql — NUMERIC(5,2) DEFAULT 0 CHECK(0-50). Applied + verified green (apply_migration.js). Commit: e82f07a.
+- supabase.js: retainage_pct added to sbLoad return (Number(j.retainage_pct || 0)) and sbUpd allowlist. Commit: 0fd54f7.
+- JobDet.jsx: retainage_pct: Number(job.retainage_pct || 0) added to inf state initialization.
+- InfoTab.jsx: "Retainage (%)" input added after PM Fee in cost-plus section. step=0.5, min=0, max=50, width=64. Same dual-setter pattern (setInf + upd). Clamps to 0-50 in onChange via Math.min/max.
+- Davis pre-set: retainage_pct=10 via SQL UPDATE (confirmed live: {"retainage_pct":"10.00"}).
+- Build: ✓ clean. Commit: 0fd54f7. Pushed to main.
+- Open: Slice 2 shipped same session (see LOG above). Arc complete.
