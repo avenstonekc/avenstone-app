@@ -2102,6 +2102,16 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Slice 3: invoice review + send (existing invoice UI + Stripe + portal) + payment status sync back to milestone.status='paid'.
 - Slice 4: phase-based retainage release (is_retainage=true milestone → invoice on job.status='complete').
 
+[LOG — 2026-05-28 — Draw package fixes + draw delete cascade repair]
+- CONSTRAINT FIX: job_files_related_entity_type_check now includes 'draw_package'. Save Package was crashing with constraint violation. Migration: 20260528100000. Commits: 9c50bfa + eefa7de.
+- SAVE-FIRST FLOW: Removed ephemeral Preview button from DrawPackagePickerModal footer. Footer: [Close] [Save Package]. Action panel Preview opens saved file via sbGetDrawPackageSignedUrl (fresh URL). Commit: 308d7e2.
+- INLINE ACTIONS: Draw rows now show [Preview] [Download] [Send] [Rebuild] when pkg.generated_pdf_path is set. Inline send panel expands in the card. sbLoadDrawPackagesForJob now selects generated_pdf_path. Commit: 92419dd.
+- FILES TAB: Added 'Draws' (gold) and 'Invoices' (sky blue) to CAT_COLORS + CAT_ORDER. Commit: 6202d71.
+- DRAW DELETE CASCADE BUG: sbDeleteDrawSchedule was doing a hard DELETE. FK ON DELETE SET NULL NULLed draw_id on linked transactions but left reimbursement_status='in_draw'. Those orphaned transactions were invisible to both the unreimbursed pool and any draw → negative net draw on recompose. Fixed: call void_draw RPC first (in_draw→unreimbursed, clears draw_id, deletes draw_line_items, marks cancelled), then hard-delete. Commit: eefa7de.
+- DAVIS REPAIR: 22 orphaned transactions (draw_id=NULL, in_draw status) fixed: UPDATE set reimbursement_status='unreimbursed'. 24 rows flipped; 1 CO correctly stays in_draw (live Draw #1).
+- RETAINAGE_HELD: void_draw does NOT reverse retainage_held on draw_schedules. Not causing visible bugs (cancelled draws filtered from rollup). Defer until confirmed needed.
+- LESSON: draw delete must reverse full cascade before removing the row. Hard FK SET NULL is not enough — clears pointer but not status.
+
 [LOG — 2026-05-28 — PHASE_INVOICE_ARC slice 3: review/send + payment sync]
 - Milestone draft invoices reuse existing invoice flow with zero new send UI: they ARE normal invoices rows, appear in InvoicesSubTab for fixed-price jobs, flow through InvoiceComposerModal (Edit→Send) and MarkPaidModal.
 - Invoices status lifecycle (from DB): draft → sent → viewed → partially_paid → paid → void. deriveInvoiceStatus adds 'overdue' for past-due sent invoices.
