@@ -1865,6 +1865,16 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commit: 81093ad. Build: ✓ clean. Pushed to main.
 - Open: same outstanding math applies only to sub_payouts — if we ever accrue materials/other types as pending, those will need to be included in the outstanding filter too.
 
+[LOG — 2026-05-27 — Cost-plus cbar swap + Contract card restore (fixup)]
+- Fixup for prior operator header commit: prior commit added a second navy block inside FinancialsTab ledger sub-tab instead of replacing the .cbar in JobDet
+- Correct approach: JobDet.jsx .cbar renders Quick Actions + Activity Pulse for cost-plus jobs; fixed-price .cbar (Contract/COs/Revised) unchanged
+- financialsAction state in JobDet dispatches to FinancialsTab via prop → useEffect opens compose_draw / add_receipt / log_sub_invoice modals
+- sbLoadCostPlusActivityPulse: lightweight 2-query function (job_transactions + schedule_items) for header timestamps without re-running full summary
+- pulseTone helper in JobDet computes relative date + color inline (no shared component)
+- FinancialsTab: removed duplicate operator header; restored Contract (signed) as first cpStats card with trajectory subtitle
+- Commit: b687dbd. Build: ✓ clean. Pushed to main.
+- Open: Visual verification — Davis cbar = Quick Actions + Pulse; Contract card first in stat row; Lucy Webb cbar = CONTRACT $X unchanged
+
 [LOG — 2026-05-27 — Cost-plus FinancialsTab operator header]
 - Replaced redundant Contract (signed) stat card on cost-plus jobs with two-column navy operator header
 - Quick Actions: Compose Draw (gold primary → ComposeDrawScr overlay), Add Receipt (→ TransactionModal create), Log Sub Invoice (→ switch to sub_invoices tab + auto-opens AddInvoiceModal via openAddInvoiceOnMount prop)
