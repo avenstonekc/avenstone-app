@@ -2031,3 +2031,25 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Slices 2-4: cover sheet PDF, file picker + assembly (photos grid by PROOF_ARC category, docs append), send/download/share.
 - Future: PHASE_INVOICE_ARC reuses package machinery for fixed-price phase invoices.
 - Commits: fae5f4a (schema), 6854034 (decouple). Pushed.
+
+[LOG — 2026-05-27 — DRAW_PACKAGE_ARC slice 4: send / download / share — ARC COMPLETE]
+- Action: Draw packages now deliverable. Download, email-to-free-entry-recipient, Copy Link (30-day signed URL). DRAW_PACKAGE_ARC complete (4 slices).
+- NEW supabase/functions/send-draw-package/index.ts:
+  - Auth → load draw_packages + draw_schedules + job + tenant → generate 30-day signed URL from draw-packages bucket
+  - Resend email: branded HTML (navy/gold) with Work Billed / Less Retainage / NET DRAW REQUEST breakdown table + "View Draw Package →" gold button
+  - FROM: `${businessName} <notifications@avenstonekc.com>`. Subject: `Draw Package: Draw #N — Title from ${businessName}`
+  - Updates draw_packages: status='sent', recipient_email, recipient_label, sent_at=now()
+  - Returns { ok, sent_to, label, pdf_url, email_warning? }
+- supabase.js new helpers: sbSendDrawPackage, sbLoadDrawPackagesForJob, sbGetDrawPackageSignedUrl
+- InvoicesSubTab changes: imports sbLoadDrawPackagesForJob; parallel-loads drawPkgs in load(); pkgByDraw lookup; draw rows show "Sent to [label]" / "Package ready" status badges; button label adapts; modal close refreshes data + passes existingPkg
+- DrawPackagePickerModal full rewrite (Slice 4):
+  - existingPkg prop — detects pre-existing packages
+  - Package Action Panel (green #F0FDF4) with Preview / Download / Copy Link / Send Package buttons
+  - handleDownload: createSignedUrl(path, 120, { download: filename }) → window.location.href
+  - handleCopyLink: createSignedUrl(path, 60×60×24×30) → clipboard (authenticated staff, RLS allows access)
+  - handleSend: inline form (recipEmail + recipLabel + optional message) → sbSendDrawPackage → sentInfo
+  - Confirm gate: user fills recipient before clicking Send (money request to third party)
+  - Footer: "Rebuild" / "Build Package" + "Close" buttons
+- Build: ✓ clean. Commits: (slice 4 multi-file commit) 8a7c3f5. Pushed to main.
+- DRAW_PACKAGE_ARC complete (4 slices): decouple+schema → cover sheet → file picker+assembly → send/download/share
+- Open: PHASE_INVOICE_ARC (fixed-price) reuses this package machinery. Stripe payment collection on draw packages — deferred. Smart auto-assembly (pre-select files since last draw), funder presets — v2.
