@@ -39,7 +39,7 @@ const QUERIES: Record<string, QueryFn> = {
   recent_bug_reports: async (sb) => {
     const { data, error } = await sb
       .from('bug_reports')
-      .select('id, title, description, status, classification, created_at, user_id')
+      .select('id, description, status, user_id, user_role, route, created_at, screenshot_url, auto_fix_commit, auto_fix_notes, vercel_deployment_id')
       .order('created_at', { ascending: false })
       .limit(20);
     if (error) throw new Error(error.message);
@@ -49,8 +49,8 @@ const QUERIES: Record<string, QueryFn> = {
   recent_auto_fix_attempts: async (sb) => {
     const { data, error } = await sb
       .from('auto_fix_attempts')
-      .select('id, bug_report_id, status, commit_hash, attempt_number, started_at, completed_at, result_summary')
-      .order('started_at', { ascending: false })
+      .select('id, bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at')
+      .order('created_at', { ascending: false })
       .limit(20);
     if (error) throw new Error(error.message);
     return { rows: data || [] };
@@ -67,15 +67,10 @@ const QUERIES: Record<string, QueryFn> = {
     return { rows: data || [] };
   },
 
-  failed_intents_last_24h: async (sb) => {
-    const { data, error } = await sb
-      .from('failed_intents')
-      .select('id, intent_kind, error_message, payload, created_at')
-      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (error) throw new Error(error.message);
-    return { rows: data || [] };
+  failed_intents_last_24h: async (_sb) => {
+    // failed_intents table does not exist in the live DB (stale reference from pre-v2 queue layer).
+    // Stubbed to return empty rather than error so callers don't crash.
+    return { rows: [], note: 'failed_intents table does not exist — stale reference from queue layer (retired 2026-05-09)' };
   },
 
   schema_for_table: async (sb, params) => {
