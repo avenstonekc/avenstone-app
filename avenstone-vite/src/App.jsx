@@ -59,7 +59,8 @@ const resolveDeepLinkTab = s => (s && (VALID_TAB.has(s) ? s : DEEP_LINK_TAB_ALIA
 const TYPE_TAB = {
   co_submitted: 'financials', co_approved: 'financials', co_rejected: 'financials',
   schedule_item_created: 'sched', schedule_item_changed: 'sched',
-  note_posted: 'msgs',
+  note_posted: 'field',
+  assigned_to_job: 'subs',
   draw_sent: 'financials', draw_approved: 'financials', draw_rejected: 'financials', payment_received: 'financials',
 };
 const _initJobId = _params.get('job') || null;
