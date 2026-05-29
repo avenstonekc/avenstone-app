@@ -206,13 +206,10 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 - **Open drift findings (2026-05-27 scan — NOT fixed, queued for a dedicated slice):**
   - **Write drift (0 — fully closed 2026-05-27):** `notifications.priority` both halves fixed: field-opus-result-webhook:106 (dd1a78b) + supabase.js:2406 (62c5d6f). No remaining write drift.
-  - **Missing tables (2, was 3 — itb_invitees closed 2026-05-27):**
-    - `failed_intents` — read at `field-opus-db-query/index.ts:71`. Table never created; likely stale reference.
+  - **Missing tables (1, was 2 — failed_intents stubbed 2026-05-28):**
     - `quote_requests` — read at `ai-pm-nightly/index.ts:76`. Function DISABLED. Deferred until re-enable.
-  - **Read drift — auto_fix_attempts (7 cols, all at `field-opus-db-query/index.ts:50`):** Code selects `bug_report_id, status, commit_hash, attempt_number, started_at, completed_at, result_summary` — none exist. Actual columns: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`. field-opus-db-query query is stale against the shipped schema.
-  - **Read drift — bug_reports (2 cols, `field-opus-db-query/index.ts:40`):** `title` and `classification` selected but don't exist in `bug_reports` schema. Same stale field-opus-db-query query.
-  - **Read drift — jobs (1 col):** `assigned_pm_id` selected at `supabase.js:2608` (also 2710, 3084 — all reads in notification fan-out path) but actual column is `assigned_pm` (UUID, not TEXT). Simple rename fix. (Line 2575 in memory was stale — corrected 2026-05-27 rot sweep.)
-  - **Priority:** `jobs.assigned_pm_id` (supabase.js) is highest — live user-facing code. `field-opus-db-query` queries are dev-console-only (Kalin-only auth).
+  - **Read drift — CLOSED 2026-05-28:** All field-opus-db-query stale refs fixed (auto_fix_attempts cols, bug_reports title+classification). `assigned_pm_id` → `assigned_pm` renamed in supabase.js notification fan-out. **Read drift count: 0.**
+  - **Priority:** All live-code drift now closed. Only remaining open item is the DISABLED ai-pm-nightly quote_requests ref.
 
 - **Tool-payload drift detector refinement (Path B)** — Detector shipped 2026-05-21 in commit 94708e1. Initial run: 14 advertised-not-written findings, all expected false positives in 3 categories:
   1. WHERE-clause keys (e.g. update_job.job_id used in .eq() not .update payload)
@@ -477,6 +474,9 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 **Schedule item invisible after create (2026-05-28)**
 - `schedule-filter-hide · 2026-05-28` — Bug: second schedule item appeared to fail on create (Hemlock test job). Audit confirmed all inserts landed fine in DB (3 rows created within 2 min). Root cause: phaseFilter state was active on Demo phase; newly-created Rough-ins item was added to items[] state and modal closed, but phaseFiltered = items.filter(i => i.phase_id === phaseFilter) excluded it — user saw no change in list. Fix: in handleSaved (ScheduleTab.jsx), on create path, if phaseFilter active and new item's phase_id !== phaseFilter, auto-follow filter to new item's phase (or clear to null if item has no phase). Write path untouched.
+
+**Column drift fix slice (2026-05-28)**
+- `column-drift-fix-2026-05-28 · 2026-05-28` — Fixed all open read-drift findings from 2026-05-27 scan. (1) supabase.js: `assigned_pm_id` → `assigned_pm` at 3 sites in notification fan-out (comment + select projection + 2 recipient collectors). PM was silently excluded from all schedule item notifications. (2) field-opus-db-query/index.ts: fixed `recent_bug_reports` (dropped nonexistent `title`, `classification`; using real cols), fixed `recent_auto_fix_attempts` (replaced all 7 stale col names with real schema: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`; order by `created_at`), stubbed `failed_intents_last_24h` (table never existed — returns `{ rows: [], note }` instead of crashing). Open drift after this slice: 1 (quote_requests in disabled ai-pm-nightly — deferred).
 
 ---
 
