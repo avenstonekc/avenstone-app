@@ -512,4 +512,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - What shipped: (1) `_initJobId = _params.get('job') || null` at module level; (2) `_initPg` forces 'jobs' when `_initJobId` is set; (3) `useState(_initJobId)` seeds `pendingJobId` from URL on boot — existing `pendingJobId` bridge in JobsScr handles the open; (4) `jobBootRef` (true when booted from URL) — first `viewportJobId` set uses `replaceState` instead of `pushState` to avoid duplicate history entry; (5) `jobFromPopRef` — when popstate opens a job, skips redundant pushState in the `[viewportJobId]` effect; (6) `[viewportJobId]` effect: `pushState ?job=<id>` on open, `replaceState` without `?job=` on close; (7) popstate handler extended: reads `?job=` — if present sets `setPendingJobId` + `jobFromPopRef.current = true`; if absent and on jobs page increments `jobsSelClear` to close current job; (8) pg→URL effect clears `?job=` when navigating away from jobs page; (9) `onJobOpen` in App validates `jobs.some(j => j.id === id)` before setting `viewportJobId` — guards against stale/invalid URL job IDs.
 - Patterns reused from P1: pgInitRef/pgFromPopRef pattern mirrored as jobBootRef/jobFromPopRef. No new concepts introduced.
 - Build: green (407 modules, 492ms).
-- Open (S4 remaining): P3 (tab deep-link — `?tab=` → pendingTab prop to JobDet), P4 (notification bell opens correct tab).
+- Open (S4 remaining): P4 (wire notification handler to use the parsed-but-discarded tab) — fix for CO/schedule notifications landing on wrong tab.
+
+**[LOG — 2026-05-28] S4 Phase 3 — tab↔URL sync shipped (commit 63c4fd8).**
+- Action: Synced JobDet tab to URL as `?tab=<id>` so refresh/deep-link opens the correct tab.
+- Files: `App.jsx` (+38/-5), `JobDet.jsx` (+13/-2), `JobsScr.jsx` (+2/-2).
+- What shipped: (1) `VALID_TAB` set + `_initTab` at module level in App; (2) `pendingTab` state seeded from `_initTab`; (3) `viewportTab` state + `[viewportTab]` effect — pushState on user clicks, replaceState on first tab after job open; (4) `tabBootRef` set in `[viewportJobId]` when job opens; (5) `tabFromPopRef` prevents double-push on popstate; (6) `pendingTab`/`clearPendingTab`/`onTabChange` threaded App → JobsScr → JobDet; (7) `tabInitRef2` in JobDet skips initial `info` mount-fire to prevent corrupting URL before pendingTab settles; (8) popstate handler reads `?tab=`, sets pendingTab + tabFromPopRef; (9) pg effect and job-close path both clear `?tab=`.
+- Invalid `?tab=` → defaults to info via VALID_TAB check in App and TABS.some() in JobDet. No crash.
+- Back ordering: tab entries → Back walks tabs → Back from first tab-push closes job.
+- Build: green (407 modules, 547ms).
