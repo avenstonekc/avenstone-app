@@ -242,6 +242,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Tool-schema vs insert-payload mismatch detector — extend `tools/audit_schema_vs_code.js` to walk edge-fn `input_schema.properties` and cross-reference against the executor's actual `.insert()` payloads. Catches the silent-LLM-token-waste class surfaced by 2026-05-12 job_notes cleanup (note_type advertised in tool schema, dropped on insert).
 - Drift detector enhancement — Phase 1 shipped 2026-05-12 (decodes `.map()`/`.flatMap()` callback payloads). Phase 2 shipped 2026-05-13 (decodes ObjectPattern-rest `const {..., ...patch} = x || {}` + ConditionalExpression branch union). Phase 3a shipped 2026-05-19 (binding.kind=param early return + sbUpdateScanOverrides static refactor). Phase 3b shipped 2026-05-27 (Bucket A: array-of-ObjectExpression batch-insert resolution; Bucket C: intentional-skips docs block). Skipped: 34 → 15 → 9 → 0. CLOSED.
 - Capture-time incomplete-scan detection — RoomPlan is returning wall-segment rings with multi-foot gaps (missing wall captures). The 2026-05-17 stitcher fix makes rendering robust, but the rep should be warned at scan time when a room's segment ring has a gap > ~3 ft so they can rescan that wall. Anti-surprise alignment — catch the bad scan in the field, not in the office PDF.
+- TODO_NOTIFICATIONS_ARC (blueprint shipped 2026-05-28, see TODO_NOTIFICATIONS_ARC.md) — notify on todos assigned-to-me-by-others OR written by master agent (NOT self-created); high-priority → push; tap → deep-link to the todo. 3–5 prompts, audit-first. On-thesis: agent surfacing work proactively.
 
 ---
 
@@ -530,3 +531,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - S4 arc COMPLETE: P1 (pg↔URL), P2 (job↔URL), P3 (tab↔URL + pendingTab prop), P4 (notification tab-awareness). No router library introduced across all 4 phases.
 - Build: green (407 modules, 524ms).
 - **Post-ship correction (commit cbe5947):** Real-usage testing found two wrong mappings. `note_posted` was mapped to `'msgs'` (Messages tab) — notes actually render in `FieldTab` as a sub-tab; corrected to `'field'`. `assigned_to_job` (sub assigned to job) was unmapped, falling back to info; now routes to `'subs'`. todo_delegated deep-linking to a specific todo scoped but NOT built (requires (a) todo_id in notification row and (b) pendingTodoId highlight in MyTodosScreen — 2-prompt arc, not just wiring). Flag: "sub assigned" notifications may be noise to the assigner who triggered the assignment — candidate for a future notification-relevance pass.
+
+**[LOG — 2026-05-28] Full session summary.**
+- **Repo relocated** out of OneDrive to canonical `C:\Users\Kalin\GitHub\avenstone-app`. OneDrive clones deleted. Build verified clean at new location.
+- **gen:types tooling shipped** — `tools/gen_types.js` + `npm run gen:types` + `src/types/database.types.ts` (86 tables). Compile-time drift backstop. CLAUDE.md updated with regen discipline.
+- **Drift slice closed** — `assigned_pm_id` → `assigned_pm` in supabase.js notification fan-out (PM was silently excluded from schedule notifications). `field-opus-db-query` stale columns fixed (bug_reports, auto_fix_attempts, failed_intents stubbed). Read drift: 0. 1 remaining: quote_requests in disabled ai-pm-nightly (deferred).
+- **46% bundle cut** — `vite.config.js` manualChunks + lazy-loaded FloorPlanTab/AiIntakeWizard/TakeoffWizard. Main bundle 452 kB → 206 kB gzip.
+- **supabase.js split DEFERRED** — plan written to `avenstone-vite/SUPABASE_SPLIT_PLAN.md`, organic extraction only.
+- **S4 URL routing COMPLETE** — 4 phases, App.jsx only, no router library: P1 (pg↔URL + Back/Forward), P2 (job↔URL), P3 (tab↔URL + pendingTab prop through JobsScr→JobDet), P4 (notification type→tab mapping for bell + push deep-links).
+- **Known open (not yet fixed):** CO/schedule/draw notifications don't fire in practice per real-usage testing (trigger logic gap, separate arc). "sub assigned" notification goes to assigner — noise, future relevance pass. todo_delegated doesn't deep-link to specific todo — scoped in TODO_NOTIFICATIONS_ARC.
