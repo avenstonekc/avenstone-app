@@ -46,11 +46,18 @@ const REVIEW_TENANT = _params.get('rt');
 const COMPLETION_JOB = _params.get('completion');
 const INVITE_TYPE   = new URLSearchParams(window.location.hash.replace('#', '')).get('type');
 
+const VALID_PG = new Set([
+  'home', 'jobs', 'todos', 'calendar', 'leads', 'pipeline', 'reports', 'stats',
+  'field-agent', 'subs', 'team', 'company-files', 'ai-knowledge', 'ai-pm',
+  'sequences', 'owner-portal', 'admin-bugs',
+]);
+const _initPg = VALID_PG.has(_params.get('pg')) ? _params.get('pg') : 'home';
+
 export default function App() {
   const [session, setSessionState] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [pg, setPg] = useState('home');
+  const [pg, setPg] = useState(_initPg);
   const [jobs, setJobs] = useState(() => ll('av_j', []));
   const [notifs, setNotifs] = useState([]);
   const [showNotif, setShowNotif] = useState(false);
@@ -60,6 +67,7 @@ export default function App() {
   const [jobsSelClear, setJobsSelClear] = useState(0);
   const [pendingAction, setPendingAction] = useState(null);
   const [viewportJobId, setViewportJobId] = useState(null);
+  const pgInitRef = useRef(false);
 
   // Initialize bug context ring buffers once on mount
   useEffect(() => { initBugContext(); }, []);
@@ -68,6 +76,32 @@ export default function App() {
   useEffect(() => {
     pushBreadcrumb({ type: 'nav', label: pg, route: pg });
   }, [pg]);
+
+  // Sync pg → URL so refresh/share preserves screen
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!pgInitRef.current) {
+      pgInitRef.current = true;
+      // First render: normalize URL with replaceState (no new history entry)
+      if (params.get('pg') !== pg) {
+        params.set('pg', pg);
+        window.history.replaceState(null, '', '?' + params.toString());
+      }
+      return;
+    }
+    params.set('pg', pg);
+    window.history.pushState(null, '', '?' + params.toString());
+  }, [pg]);
+
+  // Sync URL → pg on browser back/forward
+  useEffect(() => {
+    const onPop = () => {
+      const p = new URLSearchParams(window.location.search).get('pg');
+      setPg(VALID_PG.has(p) ? p : 'home');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session: s } }) => {
