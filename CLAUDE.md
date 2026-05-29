@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Business model:** white-label multi-tenant platform. Avenstone is the first tenant (GC config). Other tenants — painting, tile, roofing, plumbing, electrical, single-trade specialists — run leaner configs on the same codebase.
 
-- Local path: `C:\Users\Kalin\OneDrive\Documents\GitHub\avenstone-app`
+- Local path: `C:\Users\Kalin\GitHub\avenstone-app`
 - Live app: `https://avenstone-app.vercel.app`
 - GitHub: `avenstonekc/avenstone-app`
 - Supabase project ref: `cbfftukmhqvvjlrlnltk`

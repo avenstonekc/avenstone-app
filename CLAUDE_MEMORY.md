@@ -488,3 +488,6 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - "schedule item saves (DB row created) but doesn't appear in the list after modal closes" → **silent-filter-hide** — phaseFilter was active on a different phase; item inserted fine but filtered out of phaseFiltered derived state. Fix: auto-follow filter to new item's phase in handleSaved. See `schedule-filter-hide · 2026-05-28`.
 
 ---
+
+**Repo relocation + session cleanup (2026-05-28)**
+- `repo-relocation · 2026-05-28` — Repo relocated out of OneDrive to canonical `C:\Users\Kalin\GitHub\avenstone-app`. Both OneDrive duplicate clones (Documents\GitHub\avenstone-app and Desktop\Avenstone) deleted. Divergence/sync-corruption risk resolved. Build verified clean at new location (407 modules, 1.13s). notify-sms function abandoned (Desktop-clone only, needs rewrite). BACKLOG: SMS notifications arc for client + sub comms. 3 stashes present: stash@{2} contains a plaintext PAT — drop after confirming rotated; stash@{0} doc-only (likely stale); stash@{1} interrupted CaptureQualityReport refactor (parked).
