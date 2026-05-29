@@ -52,6 +52,16 @@ const VALID_PG = new Set([
   'sequences', 'owner-portal', 'admin-bugs',
 ]);
 const VALID_TAB = new Set(['info','estimate','subs','financials','sched','field','msgs','files','scanner','session']);
+// deep-link segment → tab id (buildDeepLink emits 'schedule' but tab id is 'sched')
+const DEEP_LINK_TAB_ALIASES = { schedule: 'sched' };
+const resolveDeepLinkTab = s => (s && (VALID_TAB.has(s) ? s : DEEP_LINK_TAB_ALIASES[s])) || null;
+// notification type → tab id for in-app bell clicks
+const TYPE_TAB = {
+  co_submitted: 'financials', co_approved: 'financials', co_rejected: 'financials',
+  schedule_item_created: 'sched', schedule_item_changed: 'sched',
+  note_posted: 'msgs',
+  draw_sent: 'financials', draw_approved: 'financials', draw_rejected: 'financials', payment_received: 'financials',
+};
 const _initJobId = _params.get('job') || null;
 const _initTab = VALID_TAB.has(_params.get('tab')) ? _params.get('tab') : null;
 const _initPg = _initJobId ? 'jobs' : (VALID_PG.has(_params.get('pg')) ? _params.get('pg') : 'home');
@@ -246,6 +256,8 @@ export default function App() {
         if (jobMatch) {
           setPendingJobId(jobMatch[1]);
           setPg('jobs');
+          const tab = resolveDeepLinkTab(jobMatch[2]);
+          if (tab) setPendingTab(tab);
           return;
         }
         // /todo/<todoId> — navigate to todos screen
@@ -265,7 +277,11 @@ export default function App() {
   };
   const onClickNotif = async n => {
     if (!n.read) { await sbMarkNotifsRead([n.id]); setNotifs(p => p.map(x => x.id === n.id ? { ...x, read: true } : x)); }
-    if (n.job_id) { setPendingJobId(n.job_id); setPg('jobs'); }
+    if (n.job_id) {
+      setPendingJobId(n.job_id); setPg('jobs');
+      const tab = TYPE_TAB[n.type] || null;
+      if (tab) setPendingTab(tab);
+    }
     setShowNotif(false);
   };
 
