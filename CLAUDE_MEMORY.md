@@ -521,3 +521,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Invalid `?tab=` → defaults to info via VALID_TAB check in App and TABS.some() in JobDet. No crash.
 - Back ordering: tab entries → Back walks tabs → Back from first tab-push closes job.
 - Build: green (407 modules, 547ms).
+
+**[LOG — 2026-05-28] S4 Phase 4 — notification tab deep-link shipped (commit 695d184). S4 COMPLETE.**
+- Action: Fixed long-standing bug where CO/schedule/todo push notifications and in-app bell clicks all landed on the info tab regardless of notification type.
+- Files: `App.jsx` only (+17/-1). No push.js change needed.
+- What shipped: (1) `resolveDeepLinkTab(s)` — maps deep-link segment to TABS id: VALID_TAB pass-through, plus alias `schedule→sched`; `todos` not a job tab → null → falls back to info. (2) `TYPE_TAB` — maps notification `type` to tab id for bell clicks (co_*→financials, schedule_item_*→sched, note_posted→msgs, draw_*/payment_received→financials). (3) Push `onDeepLink` handler: `resolveDeepLinkTab(jobMatch[2])` → `setPendingTab(tab)` alongside existing `setPendingJobId`+`setPg`. (4) `onClickNotif` bell handler: `TYPE_TAB[n.type]` → `setPendingTab(tab)`.
+- Audit findings: push.js already passes full `action.notification.data.deep_link` string through unchanged — no native path change needed. Notification rows have no `deep_link` column (type+job_id only) — bell uses TYPE_TAB map. Tab-name mismatch: buildDeepLink emits `schedule` but tab id is `sched` — fixed via alias in resolveDeepLinkTab client-side (edge fn untouched).
+- S4 arc COMPLETE: P1 (pg↔URL), P2 (job↔URL), P3 (tab↔URL + pendingTab prop), P4 (notification tab-awareness). No router library introduced across all 4 phases.
+- Build: green (407 modules, 524ms).
