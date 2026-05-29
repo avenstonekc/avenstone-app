@@ -51,7 +51,9 @@ const VALID_PG = new Set([
   'field-agent', 'subs', 'team', 'company-files', 'ai-knowledge', 'ai-pm',
   'sequences', 'owner-portal', 'admin-bugs',
 ]);
+const VALID_TAB = new Set(['info','estimate','subs','financials','sched','field','msgs','files','scanner','session']);
 const _initJobId = _params.get('job') || null;
+const _initTab = VALID_TAB.has(_params.get('tab')) ? _params.get('tab') : null;
 const _initPg = _initJobId ? 'jobs' : (VALID_PG.has(_params.get('pg')) ? _params.get('pg') : 'home');
 
 export default function App() {
@@ -68,10 +70,14 @@ export default function App() {
   const [jobsSelClear, setJobsSelClear] = useState(0);
   const [pendingAction, setPendingAction] = useState(null);
   const [viewportJobId, setViewportJobId] = useState(null);
+  const [pendingTab, setPendingTab] = useState(_initTab);
+  const [viewportTab, setViewportTab] = useState(null);
   const pgInitRef = useRef(false);
   const pgFromPopRef = useRef(false);
   const jobBootRef = useRef(!!_initJobId);
   const jobFromPopRef = useRef(false);
+  const tabBootRef = useRef(false);
+  const tabFromPopRef = useRef(false);
 
   // Initialize bug context ring buffers once on mount
   useEffect(() => { initBugContext(); }, []);
@@ -99,11 +105,11 @@ export default function App() {
       return;
     }
     params.set('pg', pg);
-    if (pg !== 'jobs') params.delete('job');
+    if (pg !== 'jobs') { params.delete('job'); params.delete('tab'); }
     window.history.pushState(null, '', '?' + params.toString());
   }, [pg]);
 
-  // Sync URL → pg + job on browser back/forward
+  // Sync URL → pg + job + tab on browser back/forward
   useEffect(() => {
     const onPop = () => {
       const params = new URLSearchParams(window.location.search);
@@ -115,6 +121,9 @@ export default function App() {
       if (j) {
         jobFromPopRef.current = true;
         setPendingJobId(j);
+        const t = params.get('tab');
+        tabFromPopRef.current = true;
+        setPendingTab(VALID_TAB.has(t) ? t : 'info');
       } else if (newPg === 'jobs') {
         setJobsSelClear(c => c + 1);
       }
@@ -127,6 +136,7 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (viewportJobId) {
+      tabBootRef.current = true;
       if (jobBootRef.current) {
         jobBootRef.current = false;
         if (params.get('job') !== viewportJobId) {
@@ -142,12 +152,34 @@ export default function App() {
       params.set('job', viewportJobId);
       window.history.pushState(null, '', '?' + params.toString());
     } else {
+      setViewportTab(null);
       if (params.has('job')) {
         params.delete('job');
+        params.delete('tab');
         window.history.replaceState(null, '', '?' + params.toString());
       }
     }
   }, [viewportJobId]);
+
+  // Sync open tab → URL (?tab=<id>)
+  useEffect(() => {
+    if (!viewportTab) return;
+    const params = new URLSearchParams(window.location.search);
+    const write = () => {
+      if (viewportTab === 'info') { params.delete('tab'); } else { params.set('tab', viewportTab); }
+      return '?' + params.toString();
+    };
+    if (tabBootRef.current) {
+      tabBootRef.current = false;
+      window.history.replaceState(null, '', write());
+      return;
+    }
+    if (tabFromPopRef.current) {
+      tabFromPopRef.current = false;
+      return;
+    }
+    window.history.pushState(null, '', write());
+  }, [viewportTab]);
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session: s } }) => {
@@ -369,7 +401,7 @@ export default function App() {
             {pg === 'home' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
-            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('home')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} onJobOpen={(id) => { if (jobs.some(j => j.id === id)) setViewportJobId(id); }} onJobClose={() => setViewportJobId(null)} />}
+            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('home')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} onJobOpen={(id) => { if (jobs.some(j => j.id === id)) setViewportJobId(id); }} onJobClose={() => setViewportJobId(null)} pendingTab={pendingTab} clearPendingTab={() => setPendingTab(null)} onTabChange={(t) => setViewportTab(t)} />}
             {pg === 'subs' && isStaff && <SubDir profile={profile} />}
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}

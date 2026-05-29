@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, AI_PM_URL, sbNotify, authHeader, sbLoadCostPlusActivityPulse } from '../../lib/supabase';
 import { Ic, sc, sl, f$, STATS, isMob } from '../../lib/utils';
 import InfoTab from './tabs/InfoTab';
@@ -28,7 +28,7 @@ const TABS = [
   { id: 'session',    lb: 'Consultation', ic: 'eye' },
 ];
 
-export default function JobDet({ job, upd, del, back, profile, pendingAction, clearPendingAction }) {
+export default function JobDet({ job, upd, del, back, profile, pendingAction, clearPendingAction, pendingTab, clearPendingTab, onTabChange }) {
   const [tab, setTab] = useState('info');
   const [fieldSub, setFieldSub] = useState('notes');
   const [showSt, setShowSt] = useState(false);
@@ -46,6 +46,19 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
       setTab('financials');
     }
   }, [pendingAction]);
+
+  useEffect(() => {
+    if (pendingTab && TABS.some(t => t.id === pendingTab)) {
+      setTab(pendingTab);
+      clearPendingTab?.();
+    }
+  }, [pendingTab]);
+
+  const tabInitRef2 = useRef(true);
+  useEffect(() => {
+    if (tabInitRef2.current) { tabInitRef2.current = false; return; }
+    onTabChange?.(tab);
+  }, [tab]);
 
   useEffect(() => {
     if (!job.cost_plus) return;
