@@ -505,3 +505,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Build: green (407 modules, 577ms, no new chunks).
 - Open (S4 remaining phases): P2 (job deep-link — `?job=` → open JobDet), P3 (tab deep-link — `?tab=` → open specific JobDet tab), P4 (notification tab auto-open fix). No router introduced across all 4 phases.
 - **Bug fix (2026-05-28):** Back always returned to home. Root cause: `[pg]` effect called `pushState` on EVERY pg change including popstate-driven ones — each Back pop was immediately re-pushed, collapsing history. Fix: added `pgFromPopRef`; popstate handler sets it `true` before `setPg`; `[pg]` effect skips `pushState` and clears the flag when set. History now stacks correctly.
+
+**[LOG — 2026-05-28] S4 Phase 2 — job↔URL sync shipped (commit 75bd84f).**
+- Action: Synced selected job to URL as `?job=<id>` so refresh and deep-link open the correct JobDet. No router library.
+- Files: `avenstone-vite/src/App.jsx` only (+45/-6 lines).
+- What shipped: (1) `_initJobId = _params.get('job') || null` at module level; (2) `_initPg` forces 'jobs' when `_initJobId` is set; (3) `useState(_initJobId)` seeds `pendingJobId` from URL on boot — existing `pendingJobId` bridge in JobsScr handles the open; (4) `jobBootRef` (true when booted from URL) — first `viewportJobId` set uses `replaceState` instead of `pushState` to avoid duplicate history entry; (5) `jobFromPopRef` — when popstate opens a job, skips redundant pushState in the `[viewportJobId]` effect; (6) `[viewportJobId]` effect: `pushState ?job=<id>` on open, `replaceState` without `?job=` on close; (7) popstate handler extended: reads `?job=` — if present sets `setPendingJobId` + `jobFromPopRef.current = true`; if absent and on jobs page increments `jobsSelClear` to close current job; (8) pg→URL effect clears `?job=` when navigating away from jobs page; (9) `onJobOpen` in App validates `jobs.some(j => j.id === id)` before setting `viewportJobId` — guards against stale/invalid URL job IDs.
+- Patterns reused from P1: pgInitRef/pgFromPopRef pattern mirrored as jobBootRef/jobFromPopRef. No new concepts introduced.
+- Build: green (407 modules, 492ms).
+- Open (S4 remaining): P3 (tab deep-link — `?tab=` → pendingTab prop to JobDet), P4 (notification bell opens correct tab).
