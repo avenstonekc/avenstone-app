@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY, ADDRESS_AUTOCOMPLETE_URL, AI_ERROR_LOGGER_URL, AV_USER_ID, AV_TENANT, captureFailedIntent, sbCompleteTodo } from '../../lib/supabase';
 import { sbCreateJobCompanyFileRefs } from '../../lib/companyFiles';
 import { Ic, STATS, sc, sl, f$, isMob, ls } from '../../lib/utils';
 import JobDet from './JobDet';
-import AiIntakeWizard from '../ai/AiIntakeWizard';
+
+const AiIntakeWizard = lazy(() => import('../ai/AiIntakeWizard'));
 
 class JobDetBoundary extends Error {}
 
@@ -155,7 +156,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
         {!loading && filtered.length > 0 && !mob && <div className="card"><table className="tbl"><thead><tr><th>Property</th><th>Status</th><th>Contract</th><th>Rep</th><th>Target</th></tr></thead><tbody>{filtered.map(j => { const rev = Number(j.contract_value || 0) + Number(j.co_total || 0); return <tr key={j.id} onClick={() => setSel(j.id)}><td><div className="cell-a">{j.address}</div>{j.client_name && <div className="cell-b">{j.client_name}{j.client_phone ? ' · ' + j.client_phone : ''}</div>}</td><td><span className="badge" style={{ background: sc(j.status) + '15', color: sc(j.status) }}><span className="bdot" style={{ background: sc(j.status) }} />{sl(j.status)}</span></td><td>{rev > 0 ? <span style={{ fontWeight: 700, color: '#0A1F44' }}>{f$(rev)}</span> : <span style={{ color: '#9CA3AF', fontSize: 12 }}>—</span>}</td><td>{j.assigned_rep ? <span className="tag">{j.assigned_rep}</span> : <span style={{ color: '#9CA3AF', fontSize: 12 }}>—</span>}</td><td style={{ color: '#9CA3AF', fontSize: 12 }}>{j.target_completion || '—'}</td></tr>; })}</tbody></table></div>}
         {!loading && filtered.length > 0 && mob && filtered.map(j => { const rev = Number(j.contract_value || 0) + Number(j.co_total || 0); return <div key={j.id} className="jcard" style={{ borderLeftColor: sc(j.status) }} onClick={() => setSel(j.id)}><div style={{ fontWeight: 600, fontSize: 15, color: '#0A1F44', marginBottom: 3 }}>{j.address}</div>{j.client_name && <div style={{ fontSize: 12, color: '#C9A84C', fontWeight: 500, marginBottom: 10 }}>{j.client_name}</div>}<div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}><span className="badge" style={{ background: sc(j.status) + '15', color: sc(j.status) }}><span className="bdot" style={{ background: sc(j.status) }} />{sl(j.status)}</span>{rev > 0 && <span style={{ fontWeight: 700, fontSize: 14, color: '#0A1F44' }}>{f$(rev)}</span>}{j.photos?.length > 0 && <span style={{ fontSize: 11, color: '#9CA3AF' }}>{j.photos.length} photos</span>}{j.assigned_rep && <span className="tag">{j.assigned_rep}</span>}</div></div>; })}
       </div>
-      {showIntake && <AiIntakeWizard profile={profile} onClose={() => setShowIntake(false)} onJobCreated={newJob => { setJobs(prev => [newJob, ...prev]); setShowIntake(false); }} />}
+      {showIntake && <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: 'rgba(10,31,68,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, color: '#fff' }}>Loading…</div>}><AiIntakeWizard profile={profile} onClose={() => setShowIntake(false)} onJobCreated={newJob => { setJobs(prev => [newJob, ...prev]); setShowIntake(false); }} /></Suspense>}
       {showNew && <div className="overlay" onClick={() => { setShowNew(false); setAddrSuggestions([]); }}>
         <div className="modal" onClick={e => e.stopPropagation()}>
           <div className="modal-title">New Project</div>

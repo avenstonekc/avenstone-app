@@ -1,10 +1,11 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
 import { ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes } from '../../../lib/supabase';
 import { Ic, f$ } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
-import TakeoffWizard from './TakeoffWizard';
 import ScopeTab from './ScopeTab';
+
+const TakeoffWizard = lazy(() => import('./TakeoffWizard'));
 
 const NAV = '#0A1F44';
 const GOLD = '#C9A84C';
@@ -507,7 +508,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
 
       {sub === 'build'    && renderBuild()}
       {sub === 'scope'    && <ScopeTab job={job} setSub={setSub} />}
-      {sub === 'takeoff'  && <TakeoffWizard job={job} setSub={setSub} onAccepted={() => setLineItemsLoaded(false)} />}
+      {sub === 'takeoff'  && <Suspense fallback={<div style={{ padding: 32, textAlign: 'center', color: '#888' }}>Loading…</div>}><TakeoffWizard job={job} setSub={setSub} onAccepted={() => setLineItemsLoaded(false)} /></Suspense>}
       {sub === 'items'    && renderItems()}
       {sub === 'proposal' && renderProposal()}
     </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { AV_USER_ID, AV_TENANT, ANON_KEY, NOTIFY_REALTOR_URL, AI_PM_URL, sbNotify, authHeader, sbLoadCostPlusActivityPulse } from '../../lib/supabase';
 import { Ic, sc, sl, f$, STATS, isMob } from '../../lib/utils';
 import InfoTab from './tabs/InfoTab';
@@ -11,8 +11,9 @@ import FinancialsTab from './tabs/FinancialsTab';
 import FieldTab from './tabs/FieldTab';
 import EstimateTab from './tabs/EstimateTab';
 import SubsTab from './tabs/SubsTab';
-import FloorPlanTab from './tabs/FloorPlanTab';
 import CompanyFileExpirationBanner from '../common/CompanyFileExpirationBanner';
+
+const FloorPlanTab = lazy(() => import('./tabs/FloorPlanTab'));
 
 const TABS = [
   { id: 'info',       lb: 'Info',         ic: 'info' },
@@ -321,7 +322,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} sub={fieldSub} setSub={setFieldSub} />}
         {tab === 'files' && <FilesTab job={job} profile={profile} />}
-        {tab === 'scanner' && <FloorPlanTab job={job} profile={profile} />}
+        {tab === 'scanner' && <Suspense fallback={<div style={{ padding: 32, textAlign: 'center', color: '#888' }}>Loading…</div>}><FloorPlanTab job={job} profile={profile} /></Suspense>}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} setTab={setTab} />}
       </div>
 
