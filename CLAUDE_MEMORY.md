@@ -504,3 +504,4 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Existing params preserved: `?review=`, `?completion=`, `?st=`, `?pro=` cause early returns before pg sync code runs — no interference. Capacitor push deep-link path (`registerForPush` onDeepLink) untouched.
 - Build: green (407 modules, 577ms, no new chunks).
 - Open (S4 remaining phases): P2 (job deep-link — `?job=` → open JobDet), P3 (tab deep-link — `?tab=` → open specific JobDet tab), P4 (notification tab auto-open fix). No router introduced across all 4 phases.
+- **Bug fix (2026-05-28):** Back always returned to home. Root cause: `[pg]` effect called `pushState` on EVERY pg change including popstate-driven ones — each Back pop was immediately re-pushed, collapsing history. Fix: added `pgFromPopRef`; popstate handler sets it `true` before `setPg`; `[pg]` effect skips `pushState` and clears the flag when set. History now stacks correctly.
