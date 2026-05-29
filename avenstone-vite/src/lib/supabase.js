@@ -2713,14 +2713,14 @@ export async function sbCascadeScheduleChange(sourceItemId, reason = 'predecesso
     const queue = [{ id: sourceItemId, finishDate: srcFinish }];
     let maxDepth = 0;
 
-    // Cache job rows (job_id → { assigned_pm_id, client_user_id, address })
+    // Cache job rows (job_id → { assigned_pm, client_user_id, address })
     const jobCache = {};
     const _getJob = async (jobId) => {
       if (!jobId) return null;
       if (jobCache[jobId]) return jobCache[jobId];
       const { data } = await sb
         .from('jobs')
-        .select('id, assigned_pm_id, client_user_id, address')
+        .select('id, assigned_pm, client_user_id, address')
         .eq('id', jobId)
         .single();
       if (data) jobCache[jobId] = data;
@@ -2822,7 +2822,7 @@ export async function sbCascadeScheduleChange(sourceItemId, reason = 'predecesso
             const title = `Schedule update — ${job?.address || 'job'}`;
             const recipients = new Set();
             if (item.assigned_sub_id) recipients.add(item.assigned_sub_id);
-            if (job?.assigned_pm_id)  recipients.add(job.assigned_pm_id);
+            if (job?.assigned_pm)  recipients.add(job.assigned_pm);
             if (AV_USER_ID) recipients.delete(AV_USER_ID);
             await Promise.all([...recipients].map(uid =>
               sbNotifyUser(uid, 'schedule_item_changed', title, body, item.job_id).catch(() => {})
@@ -3202,7 +3202,7 @@ const _collectRecipients = async (item, job, includeClient) => {
   if (item.notify_sub !== false && item.assigned_sub_id) ids.add(item.assigned_sub_id);
   if (includeClient && item.notify_client && job?.client_user_id) ids.add(job.client_user_id);
   // Staff: PM assigned to job
-  if (job?.assigned_pm_id) ids.add(job.assigned_pm_id);
+  if (job?.assigned_pm) ids.add(job.assigned_pm);
   // Exclude the acting user so they don't self-notify
   if (AV_USER_ID) ids.delete(AV_USER_ID);
   return [...ids].filter(Boolean);
