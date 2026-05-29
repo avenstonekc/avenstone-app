@@ -68,6 +68,7 @@ export default function App() {
   const [pendingAction, setPendingAction] = useState(null);
   const [viewportJobId, setViewportJobId] = useState(null);
   const pgInitRef = useRef(false);
+  const pgFromPopRef = useRef(false);
 
   // Initialize bug context ring buffers once on mount
   useEffect(() => { initBugContext(); }, []);
@@ -89,6 +90,11 @@ export default function App() {
       }
       return;
     }
+    // popstate already moved the URL — don't push again or Back collapses
+    if (pgFromPopRef.current) {
+      pgFromPopRef.current = false;
+      return;
+    }
     params.set('pg', pg);
     window.history.pushState(null, '', '?' + params.toString());
   }, [pg]);
@@ -97,6 +103,7 @@ export default function App() {
   useEffect(() => {
     const onPop = () => {
       const p = new URLSearchParams(window.location.search).get('pg');
+      pgFromPopRef.current = true;
       setPg(VALID_PG.has(p) ? p : 'home');
     };
     window.addEventListener('popstate', onPop);
