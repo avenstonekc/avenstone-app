@@ -226,6 +226,18 @@ npm run migrate path/to/migration.sql --verify "table.column,index:idx_name"
 
 Confirm the PAT is accessible first (one-time): `npm run migrate --selftest`
 
+### Generated TypeScript types
+
+After every migration, regenerate the DB types:
+```bash
+npm run gen:types   # run from avenstone-vite/
+```
+This calls `tools/gen_types.js`, which reads the PAT from `C:/Users/Kalin/supabase-token.txt` and writes `avenstone-vite/src/types/database.types.ts`. Commit the regenerated file alongside the migration commit.
+
+**Why:** schema drift (wrong column name, missing column) surfaces as a TypeScript compile error at `npm run build` instead of a runtime PostgREST `42703` in production. The generated `Database` interface is the structural backstop for the recurring drift class.
+
+**Discipline:** `gen:types` after every migration is the same rule as `information_schema` verification — commit presence ≠ type accuracy. Regen and commit is proof of alignment.
+
 ---
 
 ## iOS Build Pipeline (Codemagic → TestFlight)
