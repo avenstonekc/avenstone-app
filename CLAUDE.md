@@ -544,6 +544,25 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
    - **Room-name-backwards UX bug** — StructureBuilder returns rooms in spatial order, not scan order. Naming modal shows them in the rebuilt order so what Kalin types ends up on the wrong room. Fix: render a thumbnail/centroid mini-map per room in the naming list so the rep can see which room they're labeling.
    - **Single-room PDF parity** — chain dims and label collision logic only run in worldMode. Single-room scans use the older per-seg path. Bring to parity once multi-room is solid.
 
+**Normalized geometry — canonical render source (Stage 2 shipped 2026-05-31):**
+`normalized_geometry JSONB` is stored on both `job_lidar_scans` and `floor_plans`. Shape:
+```
+{
+  rooms: [{ id, name, type, polygon, centroid, area_sqft, worldX, worldZ, height, floor }],
+  walls: [{ id, p1:[x,z], p2:[x,z], room_id, classification, adjoining_room_ids, thickness_ft }],
+  doors: [{ id, p1, p2, midpoint, width, nx, nz, room_ids[] }],
+  windows: [{ id, p1, p2, midpoint, width, room_id }],
+  metadata: { total_area_sqft, room_count, normalize_version }
+}
+```
+**Primary/fallback contract:**
+- `pdf.js buildFloorPlanPDF`: calls `normalizeFloorPlan(scan)` (post-override) → if ok, uses normalized geometry as primary render source (skips `_snapToOrtho`, uses Shoelace `area_sqft` for SF labels and summary). Falls back to legacy raw path (unchanged) if normalize fails.
+- `sbSaveJobLidarScan`: inline normalize fires post-INSERT (fire-and-safe), attaches result to in-memory return value so the caller has it without waiting for the async DB update.
+- `sbCreateFloorPlan`: copies `rawScan.normalized_geometry` directly into the `floor_plans` insert; falls back to inline compute if absent.
+- **Consumers must NOT mix**: `rooms[i].sqft` (raw bounding-box) vs `normalized_geometry.data.rooms[i].area_sqft` (Shoelace polygon). Use normalized for accuracy.
+- **Still on legacy raw reads** (migrate next arc): takeoff wizard, `FloorPlanCanvas.jsx`, historical rows (fall to legacy fallback path, correct behavior).
+- **`total_sqft` column cutover deferred** — still stores raw bounding-box sum. Do not change until consumers are migrated.
+
 2. **LiDAR Phase 4 — wing editor + large-space stitching.** Spaces over ~1,500 sqft scan in wings. Editor tab lets you position and connect wings into one plan. GPS anchoring helps align sessions spatially. Window/door type editing lives here.
 
 3. **Sub portal upgrades** — PM-Sub direct chat thread (separate from general job messages, spec'd April 15 but not yet built), phase start/complete confirmation, CO submission by sub.
