@@ -1693,11 +1693,13 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode,
     return { ok: false, error: error.message, data: null };
   }
   // Fire-and-safe: normalize geometry inline, non-blocking
+  let normGeom = null;
   try {
     const normalized = normalizeFloorPlan({ rooms, scanner_version: null });
     if (normalized.ok) {
+      normGeom = normalized.data;
       sb.from('job_lidar_scans')
-        .update({ normalized_geometry: normalized.data })
+        .update({ normalized_geometry: normGeom })
         .eq('id', data.id)
         .eq('tenant_id', AV_TENANT)
         .then(({ error: normErr }) => {
@@ -1709,7 +1711,8 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode,
   } catch (normEx) {
     console.warn('[normalize-scan] inline normalize threw:', normEx);
   }
-  return { ok: true, error: null, data };
+  // Attach normalized_geometry to in-memory record so callers (e.g. sbCreateFloorPlan) can copy it
+  return { ok: true, error: null, data: normGeom ? { ...data, normalized_geometry: normGeom } : data };
 };
 export const sbGetJobLidarScans = async jobId => {
   const { data } = await sb.from('job_lidar_scans').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
@@ -4946,6 +4949,18 @@ export async function sbCreateFloorPlan({ jobId, contactId, name, rawScan, pdfBl
     const { data: { user } } = await sb.auth.getUser();
     if (!user) return { ok: false, error: 'not authenticated' };
 
+    // Copy normalized geometry from the scan record if present; else compute as fallback
+    let normalizedGeometry = rawScan.normalized_geometry ?? null;
+    if (!normalizedGeometry) {
+      try {
+        const normResult = normalizeFloorPlan({ rooms: rawScan.rooms || [], scanner_version: null });
+        if (normResult.ok) normalizedGeometry = normResult.data;
+        else console.warn('[normalize-scan] floor_plans fallback normalize error:', normResult.error);
+      } catch (ne) {
+        console.warn('[normalize-scan] floor_plans fallback normalize threw:', ne);
+      }
+    }
+
     const { data: fp, error: insErr } = await sb
       .from('floor_plans')
       .insert({
@@ -4955,6 +4970,7 @@ export async function sbCreateFloorPlan({ jobId, contactId, name, rawScan, pdfBl
         created_by: user.id,
         name,
         raw_scan: rawScan,
+        normalized_geometry: normalizedGeometry,
         layout_overrides: {},
         current_pdf_version: 1,
         status: 'draft',
