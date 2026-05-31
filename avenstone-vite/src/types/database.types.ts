@@ -1672,6 +1672,7 @@ export type Database = {
           job_id: string | null
           layout_overrides: Json
           name: string
+          normalized_geometry: Json | null
           raw_scan: Json
           status: string
           tenant_id: string
@@ -1687,6 +1688,7 @@ export type Database = {
           job_id?: string | null
           layout_overrides?: Json
           name: string
+          normalized_geometry?: Json | null
           raw_scan: Json
           status?: string
           tenant_id: string
@@ -1702,6 +1704,7 @@ export type Database = {
           job_id?: string | null
           layout_overrides?: Json
           name?: string
+          normalized_geometry?: Json | null
           raw_scan?: Json
           status?: string
           tenant_id?: string
@@ -2240,6 +2243,7 @@ export type Database = {
           height_source: string | null
           id: string
           job_id: string
+          normalized_geometry: Json | null
           outline_data: Json | null
           quality_deductions: Json | null
           quality_grade: string | null
@@ -2262,6 +2266,7 @@ export type Database = {
           height_source?: string | null
           id?: string
           job_id: string
+          normalized_geometry?: Json | null
           outline_data?: Json | null
           quality_deductions?: Json | null
           quality_grade?: string | null
@@ -2284,6 +2289,7 @@ export type Database = {
           height_source?: string | null
           id?: string
           job_id?: string
+          normalized_geometry?: Json | null
           outline_data?: Json | null
           quality_deductions?: Json | null
           quality_grade?: string | null
