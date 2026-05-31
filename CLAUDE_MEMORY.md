@@ -558,3 +558,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **supabase.js split DEFERRED** — plan written to `avenstone-vite/SUPABASE_SPLIT_PLAN.md`, organic extraction only.
 - **S4 URL routing COMPLETE** — 4 phases, App.jsx only, no router library: P1 (pg↔URL + Back/Forward), P2 (job↔URL), P3 (tab↔URL + pendingTab prop through JobsScr→JobDet), P4 (notification type→tab mapping for bell + push deep-links).
 - **Known open (not yet fixed):** CO/schedule/draw notifications don't fire in practice per real-usage testing (trigger logic gap, separate arc). "sub assigned" notification goes to assigner — noise, future relevance pass. todo_delegated doesn't deep-link to specific todo — scoped in TODO_NOTIFICATIONS_ARC.
+
+**[LOG — 2026-05-31] normalize-scan edge bundle fix (commit 1d15d67).**
+- Action: Fixed HTTP 400 deploy failure for `normalize-scan`. All 51 other functions had deployed clean.
+- Root cause: GitHub Actions workflow uploads only `index.ts` per function via `-F "file=@${entry}"`. Supabase bundler receives a single file at `/source/index.ts` and cannot resolve `./normalize.js` — the sibling was never uploaded. File presence in the local directory is irrelevant; the workflow never uploads it.
+- Fix: Rewrote `supabase/functions/normalize-scan/index.ts` to be fully self-contained — inlined all of `normalize.js` (constants, helpers, `normalizeFloorPlan`) as typed TypeScript functions, removed the `import { normalizeFloorPlan } from './normalize.js'` line. `normalize.js` remains in the directory (used by the browser-side import in `supabase.js` and as a reference/test target) but is no longer imported by the edge function.
+- Verification: Local deploy not possible (no CLI/token in this environment). Verified by push to main → GitHub Actions run pending (commit 1d15d67).
+- 51 other functions: unaffected (all upload single-file index.ts with no local siblings).
+- normalize-scan status: NOT wired as a DB trigger. Callable via API only. Still not a trigger.
