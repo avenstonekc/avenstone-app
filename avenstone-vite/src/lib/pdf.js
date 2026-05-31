@@ -981,7 +981,7 @@ const _drawTitleColumn = (doc, H, job, floorName, floorNum, totalFloors, pageNum
 };
 
 // ─── Floor page renderer ──────────────────────────────────────────────────────
-const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, totalPages, W, H, logoDataUrl, layout_hints = {}, hints_by_name = {}, wallClassByRoomAndSeg = {}) => {
+const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, totalPages, W, H, logoDataUrl, layout_hints = {}, hints_by_name = {}, wallClassByRoomAndSeg = {}, normFloor = null) => {
   const navy = [10, 31, 68];
 
   _drawTitleColumn(doc, H, job, floor.floorName, floorNum, totalFloors, pageNum, totalPages, logoDataUrl);
@@ -1005,8 +1005,31 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
   let dimBoxes = [];
 
   if (worldMode) {
-    console.log(`[LIDAR_PDF_STAGE] snapping to ortho (${drawableRooms.length} rooms)`);
-    const snappedRooms = _snapToOrtho(drawableRooms);
+    let snappedRooms;
+    if (normFloor) {
+      // Normalized path: walls are already world-space + ortho-snapped — skip _snapToOrtho.
+      // Reconstruct rooms with worldX/worldZ=0 so _processAllRooms handles rotation+origin only.
+      console.log(`[LIDAR_PDF_STAGE] normalized path (${normFloor.rooms.length} rooms)`);
+      snappedRooms = normFloor.rooms
+        .filter(r => normFloor.walls.some(w => w.room_id === r.id))
+        .map(r => ({
+          ...r,
+          sqft: Math.round(r.area_sqft),
+          worldX: 0, worldZ: 0,
+          wallSegments: normFloor.walls
+            .filter(w => w.room_id === r.id)
+            .map(w => ({ x1: w.p1[0], z1: w.p1[1], x2: w.p2[0], z2: w.p2[1] })),
+          doorSegments: normFloor.doors
+            .filter(d => d.room_ids?.includes(r.id))
+            .map(d => ({ x1: d.p1[0], z1: d.p1[1], x2: d.p2[0], z2: d.p2[1], nx: d.nx || 0, nz: d.nz || 0, width: d.width || 3 })),
+          windowSegments: normFloor.windows
+            .filter(w => w.room_id === r.id)
+            .map(w => ({ x1: w.p1[0], z1: w.p1[1], x2: w.p2[0], z2: w.p2[1] })),
+        }));
+    } else {
+      console.log(`[LIDAR_PDF_STAGE] snapping to ortho (${drawableRooms.length} rooms)`);
+      snappedRooms = _snapToOrtho(drawableRooms);
+    }
     console.log('[LIDAR_PDF_STAGE] processing all rooms');
     const processed = _processAllRooms(snappedRooms);
     if (!processed) return;
@@ -1394,7 +1417,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
 };
 
 // ─── Summary page (room details table, grouped by floor) — portrait letter 612×792 ──
-const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl) => {
+const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl, normData = null) => {
   const W = 612;
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
   const M = 48;
@@ -1414,10 +1437,12 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl) 
   doc.text(job.address || '', W - M, 22, { align: 'right' });
 
   const allRooms = floors.flatMap(f => f.rooms);
-  const totalSqft = allRooms.reduce((s, r) => {
-    const poly = _polyAreaFromSegs(r.wallSegments || []);
-    return s + (poly > 0 ? Math.round(poly) : (r.sqft || 0));
-  }, 0);
+  const totalSqft = normData
+    ? Math.round(normData.metadata.total_area_sqft)
+    : allRooms.reduce((s, r) => {
+        const poly = _polyAreaFromSegs(r.wallSegments || []);
+        return s + (poly > 0 ? Math.round(poly) : (r.sqft || 0));
+      }, 0);
   doc.text(`${totalSqft.toLocaleString()} sq ft total  ·  ${allRooms.length} room${allRooms.length !== 1 ? 's' : ''}`, W - M, 36, { align: 'right' });
   let y = 70;
 
@@ -1425,6 +1450,7 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl) 
   const HEADERS = ['Room', 'Floor Area', 'Perimeter', 'Wall Area', 'Ceiling', 'Doors', 'Win.'];
 
   let gTotFloor = 0, gTotPerim = 0, gTotWallArea = 0, gTotDoors = 0, gTotWin = 0;
+  let globalRoomIdx = 0;
 
   for (const floor of floors) {
     if (floors.length > 1) {
@@ -1472,6 +1498,8 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl) 
 
     for (let roomIdx = 0; roomIdx < floor.rooms.length; roomIdx++) {
       const room = floor.rooms[roomIdx];
+      const normRoom = normData?.rooms[globalRoomIdx];
+      globalRoomIdx++;
       if (y > 720) { doc.addPage(); y = M + 10; }
       const wallSegs = room.wallSegments || [];
       const worldMode = room.worldX !== undefined && room.worldX !== null;
@@ -1481,9 +1509,14 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl) 
         y += 12; continue;
       }
       const proc = worldMode ? null : _processWalls(wallSegs);
-      let sqft = room.sqft || 0;
-      if (worldMode) { const p = _polyAreaFromSegs(wallSegs); if (p > 0) sqft = Math.round(p); }
-      else if (proc) { const p = _polyAreaFromSegs(proc.segs); if (p > 0) sqft = Math.round(p); }
+      let sqft;
+      if (normRoom) {
+        sqft = Math.round(normRoom.area_sqft);
+      } else {
+        sqft = room.sqft || 0;
+        if (worldMode) { const p = _polyAreaFromSegs(wallSegs); if (p > 0) sqft = Math.round(p); }
+        else if (proc) { const p = _polyAreaFromSegs(proc.segs); if (p > 0) sqft = Math.round(p); }
+      }
       const perim = _perimeterFromSegs(wallSegs);
       const wallArea = Math.round(wallSegs.reduce((s, seg) => s + Math.hypot(seg.x2-seg.x1, seg.z2-seg.z1) * (room.height || 0), 0));
       const doorCount = _keptFloorDoors.filter(d => d._ri === roomIdx).length;
@@ -1544,12 +1577,13 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
     const scan = applyEditOverrides(rawScan);
 
     // Phase 1+2: normalize → wall classification + layout hints. Falls back silently if malformed.
-    let layout_hints = {}, hints_by_name = {}, wallClassByRoomAndSeg = {};
+    let layout_hints = {}, hints_by_name = {}, wallClassByRoomAndSeg = {}, normalizedData = null;
     try {
       const normalized = normalizeFloorPlan(scan);
       if (normalized.ok) {
+        normalizedData = normalized.data;
         // Wall classification lookup: { room_id: ['exterior','interior',...] } in wall-segment order
-        for (const wall of normalized.data.walls) {
+        for (const wall of normalizedData.walls) {
           if (!wallClassByRoomAndSeg[wall.room_id]) wallClassByRoomAndSeg[wall.room_id] = [];
           wallClassByRoomAndSeg[wall.room_id].push(wall.classification);
         }
@@ -1568,6 +1602,29 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
       }
     } catch (e) {
       console.warn('[LIDAR_PDF_HINTS] normalize/hints failed, using legacy rendering:', e.message);
+    }
+
+    // Group normalized geometry by floor for per-floor rendering
+    const normByFloor = {};
+    if (normalizedData) {
+      const roomFloorMap = Object.fromEntries(normalizedData.rooms.map(r => [r.id, r.floor ?? 0]));
+      for (const room of normalizedData.rooms) {
+        const fi = room.floor ?? 0;
+        if (!normByFloor[fi]) normByFloor[fi] = { rooms: [], walls: [], doors: [], windows: [] };
+        normByFloor[fi].rooms.push(room);
+      }
+      for (const wall of normalizedData.walls) {
+        const fi = roomFloorMap[wall.room_id] ?? 0;
+        if (normByFloor[fi]) normByFloor[fi].walls.push(wall);
+      }
+      for (const door of normalizedData.doors) {
+        const fi = roomFloorMap[door.room_ids?.[0]] ?? 0;
+        if (normByFloor[fi]) normByFloor[fi].doors.push(door);
+      }
+      for (const win of normalizedData.windows) {
+        const fi = roomFloorMap[win.room_id] ?? 0;
+        if (normByFloor[fi]) normByFloor[fi].windows.push(win);
+      }
     }
 
     const rooms = scan.rooms || [];
@@ -1589,12 +1646,12 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
       console.log(`[LIDAR_PDF_STAGE] rendering floor page ${fi + 1}/${totalFloors} — ${floor.floorName}`);
       console.log(`[LIDAR_DEBUG] page ${fi + 1} orientation: W=${W} H=${H}`);
       if (fi > 0) doc.addPage('letter', 'landscape');
-      _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H, logoDataUrl, layout_hints, hints_by_name, wallClassByRoomAndSeg);
+      _renderFloorPage(doc, floor, { ...job, captured_at: scan.created_at }, fi + 1, totalFloors, fi + 1, totalPages, W, H, logoDataUrl, layout_hints, hints_by_name, wallClassByRoomAndSeg, normByFloor[floor.floorIndex] ?? null);
     });
 
     console.log('[LIDAR_PDF_STAGE] rendering summary page');
     doc.addPage('letter', 'portrait');
-    _renderSummaryPage(doc, floors, job, totalPages, totalPages, logoDataUrl);
+    _renderSummaryPage(doc, floors, job, totalPages, totalPages, logoDataUrl, normalizedData);
 
     console.log('[LIDAR_PDF_STAGE] buildFloorPlanPDF complete');
     return doc;
