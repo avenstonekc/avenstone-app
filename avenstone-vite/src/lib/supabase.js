@@ -6,6 +6,7 @@ import { checkAndAutoInvoice } from './autoInvoice.js';
 import { countPhotosForEntity } from './photoGate.js';
 import { getTemplateItems } from './siteVisitTemplates.js';
 import { captureTradeActualsForJob } from './tradeActuals.js';
+import { normalizeFloorPlan } from './floorPlan/normalize.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -1690,6 +1691,23 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode,
   if (error) {
     captureFailedIntent({ kind: 'lidar_scan_save', payload: {}, jobId: jobId || null, message: error.message, resumable: false }).catch(() => {});
     return { ok: false, error: error.message, data: null };
+  }
+  // Fire-and-safe: normalize geometry inline, non-blocking
+  try {
+    const normalized = normalizeFloorPlan({ rooms, scanner_version: null });
+    if (normalized.ok) {
+      sb.from('job_lidar_scans')
+        .update({ normalized_geometry: normalized.data })
+        .eq('id', data.id)
+        .eq('tenant_id', AV_TENANT)
+        .then(({ error: normErr }) => {
+          if (normErr) console.warn('[normalize-scan] update failed:', normErr.message);
+        });
+    } else {
+      console.warn('[normalize-scan] normalizeFloorPlan error:', normalized.error);
+    }
+  } catch (normEx) {
+    console.warn('[normalize-scan] inline normalize threw:', normEx);
   }
   return { ok: true, error: null, data };
 };
