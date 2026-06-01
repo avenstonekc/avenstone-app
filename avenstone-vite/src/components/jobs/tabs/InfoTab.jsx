@@ -13,6 +13,7 @@ function ClientLinkButton({ job }) {
   const [copying, setCopying] = useState(false);
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState('');
+  const [fallbackUrl, setFallbackUrl] = useState('');
   const send = async () => {
     setSending(true); setErr('');
     const res = await sbSendClientLink(job.client_email, job.client_name, job.address, job.id);
@@ -21,18 +22,37 @@ function ClientLinkButton({ job }) {
     setSending(false);
   };
   const copyLink = async () => {
-    setCopying(true); setErr('');
+    setCopying(true); setErr(''); setFallbackUrl('');
+    // Step 1: generate the link server-side
+    let url;
     try {
       const res = await sbGetClientLink(job.client_email, job.client_name, job.address, job.id);
-      if (res.error || !res.url) { setErr(res.error || 'Could not generate link'); return; }
-      await navigator.clipboard.writeText(res.url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
-    } catch (e) {
-      setErr('Copy failed');
-    } finally {
+      if (res.error || !res.url) { setErr(res.error || 'Could not generate link'); setCopying(false); return; }
+      url = res.url;
+    } catch (_) {
+      setErr('Could not generate link');
       setCopying(false);
+      return;
     }
+    // Step 2: try clipboard API (may fail after async await due to gesture timeout)
+    let ok = false;
+    try { await navigator.clipboard.writeText(url); ok = true; } catch (_) {}
+    // Step 3: execCommand fallback (no gesture restriction, works in most contexts)
+    if (!ok) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch (_) {}
+    }
+    // Step 4: both failed — surface the URL so user can copy manually
+    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 3000); }
+    else { setFallbackUrl(url); }
+    setCopying(false);
   };
   return (
     <div style={{ gridColumn: '1/-1', background: '#F7F5F0', border: '1px solid #E8E4DC', padding: '12px 14px', marginTop: 4 }}>
@@ -53,6 +73,17 @@ function ClientLinkButton({ job }) {
         </div>
       </div>
       {err && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{err}</div>}
+      {fallbackUrl && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 4 }}>Couldn't auto-copy — tap to select, then copy manually:</div>
+          <input
+            readOnly
+            value={fallbackUrl}
+            onClick={e => e.target.select()}
+            style={{ width: '100%', fontSize: 11, padding: '6px 8px', border: '1px solid #C9A84C', borderRadius: 4, background: '#fff', color: '#0A1F44', boxSizing: 'border-box' }}
+          />
+        </div>
+      )}
     </div>
   );
 }
