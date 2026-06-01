@@ -629,6 +629,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - computePerimeter untouched (raw fallback). acceptTakeoffDraft, multiplier, write path untouched. Multiplier discrepancy ($16k vs $17k gap) still OPEN — orthogonal fix needed separately.
 - CLAUDE.md updated: takeoff wizard migrated to normalized_geometry (canonical); raw is fallback only.
 
+**[LOG — 2026-06-01] CLIENT_LINK_COPY — Copy link button + link_only mode (commit 7ba558d).**
+- Action: `send-client-link` edge fn gained `link_only: true` mode — generates Supabase magic link, returns `{ ok: true, url }`, skips Resend email. Default (no flag) unchanged. `sbGetClientLink` helper added to supabase.js. `ClientLinkButton` in InfoTab now shows "Copy link" + "Send to client" side by side.
+- Token scheme: Supabase `auth.admin.generateLink({ type: "magiclink", email })` → returns `action_link` URL. Supabase processes the auth, creates session, redirects to app. App.jsx sees `role=client` → renders ClientPortal. No URL param; pure Supabase magic link auth.
+- Copy link gated on `client_email` — required because `generateLink` needs an email to identify/create the Supabase auth account. Cannot mint a link without it.
+- Verification: manually copied URL from link_only response and opened in incognito — Supabase auth page processes the token, session is set, app loads at ClientPortal. End-to-end confirmed.
+- Files: `supabase/functions/send-client-link/index.ts`, `avenstone-vite/src/lib/supabase.js`, `avenstone-vite/src/components/jobs/tabs/InfoTab.jsx`.
+
 **[LOG — 2026-06-01] Gate-override .catch crash fix (commit 5ddf969).**
 - Action: Fixed runtime crash "J.from(...).select(...).single(...).catch is not a function" in the Override and Advance modal.
 - File: `avenstone-vite/src/lib/supabase.js:4624` (inside `sbAdvancePhase`).
