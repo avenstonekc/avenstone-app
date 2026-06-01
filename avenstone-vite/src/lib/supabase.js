@@ -1556,7 +1556,7 @@ export const sbLoadCustomTakeoffLines = async (jobId, roomType) => {
       unitCostSource:    null,
       baseRate:          row.unit_cost ?? null,
       baseRateMissing:   row.unit_cost == null,
-      multiplier:        1,
+      multiplier:        row.multiplier ?? 1,
       wastePct:          0,
       quantity:          row.quantity ?? 0,
       quantityPreFilled: true,

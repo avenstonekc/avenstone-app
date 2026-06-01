@@ -322,7 +322,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
 
   // ── Sub-view: Line items ────────────────────────────────────────────────────
   const renderItems = () => {
-    const total = lineItems.reduce((s, li) => s + (parseFloat(li.quantity || 0) * parseFloat(li.unit_cost || 0) * (1 + parseFloat(li.markup_pct || 0) / 100)), 0);
+    const total = lineItems.reduce((s, li) => s + Number(li.client_price ?? 0), 0);
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -341,7 +341,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
               ))}
             </div>
             {lineItems.map((li, i) => {
-              const lineTotal = parseFloat(li.quantity || 0) * parseFloat(li.unit_cost || 0) * (1 + parseFloat(li.markup_pct || 0) / 100);
+              const lineTotal = Number(li.client_price ?? 0);
               return (
                 <div key={li.id || i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 80px 32px', padding: '8px 12px', gap: 8, borderTop: `1px solid ${BORDER}`, alignItems: 'center', background: i % 2 === 0 ? '#fff' : CREAM }}>
                   <div style={{ fontSize: 13, color: NAV }}>{li.description}</div>
