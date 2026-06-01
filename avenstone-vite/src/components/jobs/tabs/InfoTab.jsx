@@ -34,24 +34,15 @@ function ClientLinkButton({ job }) {
       setCopying(false);
       return;
     }
-    // Step 2: try clipboard API (may fail after async await due to gesture timeout)
+    // Step 2: try clipboard API (may fail after async gap — gesture context may be stale).
+    // execCommand fallback removed: invisible/collapsed textarea elements fail to receive
+    // focus+selection, so execCommand copies stale page selection instead of url and
+    // returns true anyway (false positive). Always show the URL inline as a reliable fallback.
     let ok = false;
     try { await navigator.clipboard.writeText(url); ok = true; } catch (_) {}
-    // Step 3: execCommand fallback (no gesture restriction, works in most contexts)
-    if (!ok) {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = url;
-        ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0';
-        document.body.appendChild(ta);
-        ta.focus(); ta.select();
-        ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-      } catch (_) {}
-    }
-    // Step 4: both failed — surface the URL so user can copy manually
     if (ok) { setCopied(true); setTimeout(() => setCopied(false), 3000); }
-    else { setFallbackUrl(url); }
+    // Always surface the URL so user can verify what was copied or copy manually if clipboard failed.
+    setFallbackUrl(url);
     setCopying(false);
   };
   return (
@@ -75,12 +66,14 @@ function ClientLinkButton({ job }) {
       {err && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{err}</div>}
       {fallbackUrl && (
         <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 4 }}>Couldn't auto-copy — tap to select, then copy manually:</div>
+          <div style={{ fontSize: 11, color: copied ? '#22c55e' : '#6B7280', marginBottom: 4 }}>
+            {copied ? '✓ Copied — link also shown below:' : 'Auto-copy failed — tap to select and copy:'}
+          </div>
           <input
             readOnly
             value={fallbackUrl}
             onClick={e => e.target.select()}
-            style={{ width: '100%', fontSize: 11, padding: '6px 8px', border: '1px solid #C9A84C', borderRadius: 4, background: '#fff', color: '#0A1F44', boxSizing: 'border-box' }}
+            style={{ width: '100%', fontSize: 11, padding: '6px 8px', border: `1px solid ${copied ? '#22c55e' : '#C9A84C'}`, borderRadius: 4, background: '#fff', color: '#0A1F44', boxSizing: 'border-box' }}
           />
         </div>
       )}
