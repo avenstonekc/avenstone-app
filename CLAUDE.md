@@ -161,7 +161,7 @@ Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
 All URLs exported from `src/lib/supabase.js`. Function names are self-documenting.
 
 - **AI:** `ai-companion`, `ai-intake`, `ai-pm-nightly`, `ai-field-agent`, `ai-home-companion`, `ai-master-agent`, `ai-project-manager`, `ai-estimator`, `ai-generate-sequence`, `ai-sub-onboard`, `ai-sub-pricing`, `ai-error-logger`, `process-transcript`, `measure-guide`, `generate-estimate-from-session`
-- **Email / SMS / Push:** `send-contract-email`, `send-invite`, `send-client-link`, `send-bid-invite`, `send-estimate-email`, `send-contact-sms`, `notify-email`, `notify-sms`, `notify-realtor`, `send-push`, `missed-call-textback`
+- **Email / SMS / Push:** `send-contract-email`, `send-invite`, `send-client-link`, `send-bid-invite`, `send-estimate-email`, `send-contact-sms`, `notify-email`, `notify-sms`, `notify-realtor`, `send-push`, `missed-call-textback`, `create-client-login`
 - **Integrations / Payments / Data:** `create-payment-link`, `stripe-webhook`, `ghl-webhook`, `twilio-inbound`, `address-autocomplete`, `get-contractor-profile`, `get-job-status`, `sequence-runner`
 
 ### Edge Function Deploy
@@ -384,6 +384,13 @@ Always filter by `AV_TENANT`. Always handle loading, empty, and error states.
 - Roles: `owner`, `project_manager`, `sales_rep`, `sub`, `client`
 - `profile` object passed as prop throughout — contains `id`, `tenant_id`, `role`, `full_name`
 - Session globals: `AV_TENANT`, `AV_USER_ID` — set on login, imported from `supabase.js`
+
+**Client portal auth (2026-06-01 — magic link RETIRED):**
+- Client portal uses email + password login. PM sets the password via `ClientLoginButton` in InfoTab → calls `create-client-login` edge function.
+- `create-client-login`: finds auth user via `get_auth_user_id_by_email` RPC (SECURITY DEFINER on auth.users). Sets password (`updateUserById` + `email_confirm: true`). Upserts profile with `role=client`, `tenant_id`. Links `jobs.client_user_id`.
+- `ClientPortal.jsx` job query includes `.eq('tenant_id', AV_TENANT)` — strict tenant isolation. Client sees ONLY jobs in their own tenant.
+- DO NOT use magic links for client portal access — they redirect to wrong project/tenant. Magic link helpers in `supabase.js` (sbSendClientLink/sbGetClientLink) kept for email send flow only.
+- `get_auth_user_id_by_email` RPC is the ONLY reliable way to look up a Supabase auth user by email from within an edge function. GoTrue `?email=` filter and `listUsers()` are unreliable in the edge function context.
 
 ### Job statuses (in order)
 `lead → proposal → contract → in_progress → final_touches → complete`
