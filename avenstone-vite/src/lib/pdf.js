@@ -2,8 +2,11 @@ import jsPDF from 'jspdf';
 import { floorLabel as _floorLabel } from './captureTypes.js';
 import logoUrl from '../assets/logo.png';
 import polylabel from 'polylabel';
+import polygonClipping from 'polygon-clipping';
 import { normalizeFloorPlan } from './floorPlan/normalize.js';
 import { computeLayoutHints } from './floorPlan/layoutCheck.js';
+
+const FLOOR_TINT = [248, 245, 240];
 
 const _loadLogo = () => new Promise(resolve => {
   fetch(logoUrl)
@@ -914,7 +917,7 @@ const _drawPoché = (doc, x1, y1, x2, y2, thick) => {
 };
 
 // Erase (white) rectangle at a door/window/opening gap.
-const _eraseGap = (doc, p1x, p1y, p2x, p2y, wallThick) => {
+const _eraseGap = (doc, p1x, p1y, p2x, p2y, wallThick, fillRgb = [255, 255, 255]) => {
   const dw = Math.hypot(p2x - p1x, p2y - p1y);
   if (dw < 1) return;
   const ux = (p2x - p1x) / dw, uy = (p2y - p1y) / dw;
@@ -928,7 +931,7 @@ const _eraseGap = (doc, p1x, p1y, p2x, p2y, wallThick) => {
     [mx - ux * hw - px * T, my - uy * hw - py * T],
     [mx + ux * hw - px * T, my + uy * hw - py * T],
   ];
-  doc.setFillColor(255, 255, 255);
+  doc.setFillColor(...fillRgb);
   doc.lines([[c[1][0]-c[0][0], c[1][1]-c[0][1]], [c[2][0]-c[1][0], c[2][1]-c[1][1]], [c[3][0]-c[2][0], c[3][1]-c[2][1]]], c[0][0], c[0][1], [1, 1], 'F', true);
 };
 
@@ -1137,14 +1140,45 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       return { room, segs, x: oX + Math.min(...rxs) * scale, y: oY + Math.min(...rzs) * scale, w: (Math.max(...rxs) - Math.min(...rxs)) * scale, h: (Math.max(...rzs) - Math.min(...rzs)) * scale };
     }).filter(Boolean);
 
-    // ── Room fill tint ────────────────────────────────────────────────────────
-    doc.setFillColor(248, 245, 240);
-    for (const { segs } of roomLayouts) {
-      if (segs.length < 3) continue;
-      const ring = _walkRingFromSegs(segs);
-      if (ring.length < 3) continue;
-      const pts = ring.map(p => [oX + p.x * scale, oY + p.z * scale]);
-      doc.lines(pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true);
+    // ── Floor fill — unified footprint ───────────────────────────────────────
+    // Union all room rings into one continuous surface so doorway thresholds
+    // are covered and per-room fill transitions don't produce diagonal artifacts.
+    {
+      const polys = [];
+      for (const { segs } of roomLayouts) {
+        if (segs.length < 3) continue;
+        const ring = _walkRingFromSegs(segs);
+        if (ring.length < 3) continue;
+        polys.push([ring.map(p => [p.x, p.z])]);
+      }
+      doc.setFillColor(...FLOOR_TINT);
+      let unionResult = null;
+      try {
+        if (polys.length > 0) unionResult = polygonClipping.union(...polys);
+      } catch (e) {
+        console.warn('[LIDAR_PDF] polygon union failed, falling back to per-room fill:', e.message);
+      }
+      if (unionResult) {
+        for (const poly of unionResult) {
+          let ring = poly[0]; // outer ring (ignore holes)
+          if (ring.length > 1) {
+            const f = ring[0], l = ring[ring.length - 1];
+            if (f[0] === l[0] && f[1] === l[1]) ring = ring.slice(0, -1);
+          }
+          if (ring.length < 3) continue;
+          const pts = ring.map(([x, z]) => [oX + x * scale, oY + z * scale]);
+          doc.lines(pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true);
+        }
+      } else {
+        // fallback: fill per room (original behaviour)
+        for (const { segs } of roomLayouts) {
+          if (segs.length < 3) continue;
+          const ring = _walkRingFromSegs(segs);
+          if (ring.length < 3) continue;
+          const pts = ring.map(p => [oX + p.x * scale, oY + p.z * scale]);
+          doc.lines(pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true);
+        }
+      }
     }
 
     // ── Draw walls (poché) ────────────────────────────────────────────────────
@@ -1165,7 +1199,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       const p2x = oX + door.x2 * scale, p2y = oY + door.z2 * scale;
       const dw = Math.hypot(p2x - p1x, p2y - p1y);
       if (dw < 4) continue;
-      _eraseGap(doc, p1x, p1y, p2x, p2y, FEAT_WALL_T);
+      _eraseGap(doc, p1x, p1y, p2x, p2y, FEAT_WALL_T, FLOOR_TINT);
       // Door symbol: garage/overhead (≥6ft in garage room), bi-fold (4–6ft), or swing arc (<4ft)
       const roomName = snappedRooms[door.ri]?.name || '';
       const isGarageDoor = (door.width || 0) >= 6 && /garage/i.test(roomName);
@@ -1237,7 +1271,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       const p1x = oX + op.x1 * scale, p1y = oY + op.z1 * scale;
       const p2x = oX + op.x2 * scale, p2y = oY + op.z2 * scale;
       if (Math.hypot(p2x - p1x, p2y - p1y) < 3) continue;
-      _eraseGap(doc, p1x, p1y, p2x, p2y, FEAT_WALL_T);
+      _eraseGap(doc, p1x, p1y, p2x, p2y, FEAT_WALL_T, FLOOR_TINT);
     }
 
     // ── Chain dimension lines — top / bottom / right edges (left omitted: title column) ───
