@@ -610,3 +610,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Files: `docs/FLOOR_PLAN_EDITOR_ARC.md` (created/overwritten), `avenstone-vite/src/components/jobs/tabs/FloorPlanTab.jsx` (Edit button hidden).
 - Decision: Editor parked. Existing manual editor (FloorPlanEditorScr) confirmed dead-end — broken N/S/E/W on angled scans, doesn't reliably save, non-corrupting (writes layout_overrides only, never normalized_geometry). Chosen future model: click-to-reference + talk-to-instruct → AI ops → geometryOps → normalized_geometry. Direction always "toward [clicked object]", never compass — kills the angled-scan problem. Image-in/image-out REJECTED (hallucinated dimensions, unfit for permits/bids). Connection/join logic is the hard deferred part. geometryOps Phase 1 (40 tests) stays built as the engine.
 - Open: Editor revisit — start tiny: add_wall + add_opening POC on ONE real scan ONLY after takeoff wizard / scan→takeoff→bid pipeline runs smooth.
+
+**[LOG — 2026-06-01] pdf.js unified floor fill (commit d4745ef).**
+- Action: Replaced per-room ring fills with a single unified footprint fill via polygon-clipping union. Fixed doorway erase color. Render-only.
+- Files: `avenstone-vite/src/lib/pdf.js` only.
+- Root cause of white doorways: `_eraseGap` painted a white rectangle over the door opening, erasing the floor fill that had been painted below. Root cause of diagonal shading: per-room ring polygons built from wall segments — adjacent rooms' chord edges at doorways didn't align exactly, producing mismatched fill boundaries.
+- Fix — unified fill: `polygonClipping.union(...polys)` where each poly is a room ring from `_walkRingFromSegs`. Fills the result MultiPolygon once with `FLOOR_TINT`. Fallback to per-room fill if union throws (console.warn). `polygon-clipping` was already a dep (v0.15.7, used in FloorPlanEditorScr).
+- Fix — doorway erase: `_eraseGap` gained optional `fillRgb` param (default white). Door and opening erases now pass `FLOOR_TINT` so the erasure reveals floor color, not white. Window erases remain white (exterior). Slanted stair wall untouched (real geometry, intentionally uncorrected).
+- Draw order unchanged: unified floor fill → walls (poché) → erase openings → symbols → labels.
