@@ -9,6 +9,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Paginate auth.users to find the real auth user ID for an email.
+// listUsers() only returns 50 by default — must paginate to avoid missing users.
+async function findAuthUserId(sb: any, email: string): Promise<string | null> {
+  let page = 1;
+  while (true) {
+    const { data } = await sb.auth.admin.listUsers({ page, perPage: 100 });
+    if (!data?.users?.length) return null;
+    const match = data.users.find((u: any) => u.email === email);
+    if (match) return match.id;
+    if (!data.nextPage) return null;
+    page++;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -31,11 +45,9 @@ Deno.serve(async (req) => {
 
     const sb = createClient(SB_URL, SB_SERVICE, { auth: { autoRefreshToken: false, persistSession: false } });
 
-    // Find existing user by email via profiles — avoids listUsers() pagination limit
-    // Use limit(1) to handle duplicate email rows without throwing
+    // Check profiles table first to catch staff-role guard (guards only, not for ID resolution)
     const { data: profileRows } = await sb.from("profiles").select("id, role").eq("email", email).limit(1);
     const profileRow = profileRows?.[0] ?? null;
-    let userId: string | null = profileRow?.id ?? null;
 
     if (profileRow) {
       const isStaff = profileRow.role && ["owner", "project_manager", "sales_rep"].includes(profileRow.role);
@@ -45,8 +57,14 @@ Deno.serve(async (req) => {
           { status: 409, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
-      // Set password on existing auth user and confirm email immediately
-      const { error: updateError } = await sb.auth.admin.updateUserById(userId!, {
+    }
+
+    // Auth is the authoritative source for user IDs — paginate to handle >50 users
+    let userId: string | null = await findAuthUserId(sb, email);
+
+    if (userId) {
+      // Auth user exists — set password + confirm email immediately
+      const { error: updateError } = await sb.auth.admin.updateUserById(userId, {
         password,
         email_confirm: true,
       });
@@ -56,10 +74,13 @@ Deno.serve(async (req) => {
           { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
-      // Ensure profile is role=client and linked to correct tenant
-      await sb.from("profiles").update({ tenant_id, full_name: client_name || "", role: "client", email }).eq("id", userId);
+      // Ensure profile row is correct (creates if missing, updates if stale)
+      await sb.from("profiles").upsert(
+        { id: userId, tenant_id, full_name: client_name || "", email, role: "client" },
+        { onConflict: "id" }
+      );
     } else {
-      // Create new auth user with email+password, confirmed immediately — no email round-trip
+      // No auth user found — create with email+password, confirmed immediately
       const { data, error } = await sb.auth.admin.createUser({
         email,
         password,
