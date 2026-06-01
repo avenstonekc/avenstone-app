@@ -669,3 +669,34 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - EstimateTab.jsx: "Line items" view was manually computing quantity × unit_cost × (1+markup_pct), missing the multiplier. Fixed to use li.client_price (DB-generated, always correct).
 - Materials unaffected: material lines always push multiplier: 1; waste is correct and unchanged.
 - Confirmed consumers: FinancialsTab reads client_price ?? total_cost (generated, auto-correct). Proposal uses AI-extracted propLineItems amounts (not estimate_line_items). TakeoffWizard display reads line.multiplier (correct). LineItemModal/AddCustomLineModal always multiplier=1.
+
+**[LOG — 2026-06-01] WASTE_AUDIT — material waste audited correct, no fix needed.**
+- Traced waste_pct through takeoff.js. Two sources: (A) `trade_taxonomy.default_waste_pct` → `getWastePct()` → stored as metadata on labor lines; NEVER applied to any quantity or cost formula (buildQuantity called with `wastePct: 0`). (B) `takeoff_unit_costs.waste_pct` → `evaluateFormula()` → `wasteFactor = 1 + pct/100` baked into `matQty` → stored as `quantity` in estimate_line_items. DB `total_cost = quantity × unit_cost × multiplier` correctly includes waste. Labor intentionally zero (comment takeoff.js:494-495). Demo uses `areaSf_noWaste` path. No changes made.
+- Cosmetic note: waste badge in TakeoffWizard renders on labor lines when `trade_taxonomy.default_waste_pct > 0` — shows "+X% waste" but has zero effect on the cost. Harmless; not a bug.
+
+**[LOG — 2026-06-01] SEND_CLIENT_LINK_FIX — three robustness fixes to send-client-link edge fn.**
+- Fix 1 — listUsers() pagination: prior code did a single `admin.listUsers()` call (max 50 users) and searched for matching email — silently missed any user past position 50. Fixed: query `profiles.select('id').eq('email', email).limit(1)` instead.
+- Fix 2 — maybeSingle() on duplicate-email profiles: `profiles` can have >1 row per email (duplicate auth accounts). `.maybeSingle()` throws "multiple rows". Fixed: use `.limit(1)` returning array, take index [0].
+- Fix 3 — CORS headers on all error paths: early returns (missing email, lookup fail) omitted `Access-Control-Allow-Origin`, making the browser report a CORS error that masked the real error. Fixed: CORS headers added to every `Response` constructor in the function.
+- File: `supabase/functions/send-client-link/index.ts`.
+
+---
+
+## 2026-06-01 SESSION SUMMARY
+
+### Shipped this session
+1. **Scanner ring fix (RING_FIX_ARC)** — normalize.js: greedy chain walk → segment-adjacency boundary trace. Correct for concave/U-shapes (angle-sort fails on non-star-shaped rooms). Self-intersection detector. Backfill dry-run: 0 corrupted rows. area_sqft trustworthy in DB. See LOG RING_FIX_ARC.
+2. **pdf.js render** — unified polygon-union floor fill via polygon-clipping (killed doorway white-gaps + diagonal shading); SF total header reconciled to match table; all-room SF labels including Hallway; full room names; horizontal shrink-to-fit labels; uniform 2x4 wall thickness. Slanted stair wall intentionally untouched. See LOGs pdf.js render fixes + unified floor fill.
+3. **Takeoff geometry migration** — `buildTakeoffDraft` reads `area_sqft` + wall metrics from `normalized_geometry` via `computeMetricsFromNormalized`. Room matched by **index** (not id — ids differ between normGeom and scan.rooms). Raw path kept as fallback for legacy scans. Concave L-shape: 80 → 65 sqft verified. See LOG TAKEOFF_NORM_STEP1+2.
+4. **Material waste audit** — Traced end-to-end. `takeoff_unit_costs.waste_pct` correctly bakes into stored material `quantity`. Labor intentionally zero. No fix needed. See LOG WASTE_AUDIT.
+5. **Floor multiplier fix (MULTIPLIER_FIX)** — Option B: added `estimate_line_items.multiplier` column (DEFAULT 1.0). Generated `total_cost`/`client_price` now include multiplier. `acceptTakeoffDraft` persists `line.multiplier`. `sbLoadCustomTakeoffLines` reads `row.multiplier` on re-edit. `unit_cost` stays catalog base rate. Dormant today (floor=0 default); defused ahead of floor-selector UI. information_schema verified. See LOG MULTIPLIER_FIX.
+6. **Editor parked** — FloorPlanEditorScr confirmed dead-end (broken on angled scans, doesn't save). Edit button hidden. Future model: click-to-reference + talk-to-instruct → AI ops → geometryOps. Image-gen rejected (hallucinated dims). geometryOps.js Phase 1 (40 tests) stays as engine. See `docs/FLOOR_PLAN_EDITOR_ARC.md` and LOG FLOOR_PLAN_EDITOR_PARKED.
+7. **send-client-link robustness** — listUsers() pagination bug fixed; maybeSingle() duplicate-email throw fixed; CORS headers on all error paths. See LOG SEND_CLIENT_LINK_FIX.
+8. **Gate-override .catch crash** — commit 5ddf969 applies try/catch around supabase builder (`.catch()` is not a method on the builder). Kalin has NOT confirmed modal works end-to-end — see Open below.
+
+### Open / Broken (do not mark resolved)
+- **CLIENT PORTAL ACCESS BROKEN — TOP PRIORITY.** Magic link via `generateLink` redirects to wrong tenant/project (data-isolation failure). Multiple fix attempts failed this session. There is NO working client auth path. No prior email-setup flow to restore. Needs a fresh design: client auth method that scopes the client strictly to their own job + tenant and lands them in ClientPortal with correct data. Do NOT mark resolved until end-to-end test passes with correct job + tenant scoping in incognito.
+- **Gate-override modal** — commit 5ddf969 exists (supabase builder `.catch()` → try/catch). Kalin has not confirmed the Override and Advance modal is no longer throwing. Verify in practice before closing.
+- **Floor-selector UI** — `multiplier` column and generated expressions are correct; the wizard Prompt B floor override UI is not yet built. When built: use `room.floor` (-1 basement / 0 first / 1 second) to drive `resolveMultiplier`; it will now persist correctly.
+- **Split/merge/relabel room tool** — not built. Spec: 3 ops via geometryOps, commit straight to `normalized_geometry` (prior version kept for undo), UI on Scanner/FloorPlan tab before takeoff. Required for open-plan problem: kitchen+living scanned as one room cannot be split without this tool.
+- **Cosmetics (low priority):** waste badge shows on labor lines (harmless — trade_taxonomy metadata, no effect on calcs); PDF scale bar overlaps dimension chain.
