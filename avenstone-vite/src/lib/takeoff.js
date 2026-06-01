@@ -268,7 +268,7 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   // 2. Scans → flatten rooms (most recent 5 scans, newest first)
   const { data: scans } = await sb
     .from('job_lidar_scans')
-    .select('id, rooms, height_meters, capture_mode')
+    .select('id, rooms, height_meters, capture_mode, normalized_geometry')
     .eq('job_id', jobId)
     .order('created_at', { ascending: false })
     .limit(5);
@@ -276,11 +276,25 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
   const allRooms = [];
   for (const scan of (scans || [])) {
     const scanCeilingFt = scan.height_meters ? scan.height_meters * 3.28084 : null;
+    // normalized_geometry is { rooms, walls, ... } stored as .data (without ok wrapper).
+    // Rooms are in the same order as scan.rooms — match by index, not by id.
+    const normGeom = scan.normalized_geometry ?? null;
     (scan.rooms || []).forEach((room, idx) => {
-      // room.height is ceiling height in feet when present (from RoomPlan)
-      const ceilingFt = room.height ?? scanCeilingFt ?? 8;
-      const perimeterLf = computePerimeter(room);
-      const areaSf = room.sqft ?? 0;
+      const normRoom = normGeom?.rooms?.[idx] ?? null;
+      let areaSf, perimeterLf, ceilingFt, wallAreaSf;
+      if (normRoom?.area_sqft != null) {
+        // Normalized path: use Shoelace area + wall metrics from classified walls.
+        areaSf    = normRoom.area_sqft;
+        ceilingFt = normRoom.height ?? scanCeilingFt ?? 8;
+        ({ perimeterLf, wallAreaSf } = computeMetricsFromNormalized(normRoom, normGeom.walls));
+      } else {
+        // Raw fallback: legacy scans or scans where normalization hasn't run yet.
+        ceilingFt = room.height ?? scanCeilingFt ?? 8;
+        const rawPerimeter = computePerimeter(room);
+        areaSf    = room.sqft ?? 0;
+        perimeterLf = Math.round(rawPerimeter * 100) / 100;
+        wallAreaSf  = Math.round(rawPerimeter * ceilingFt * 100) / 100;
+      }
       allRooms.push({
         roomId: `${scan.id}_${idx}`,
         roomLabel: room.name || `Room ${idx + 1}`,
@@ -289,8 +303,8 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
         floorLabel: floorLabel(0),
         captureMode: scan.capture_mode ?? null,
         areaSf,
-        wallAreaSf:  Math.round(perimeterLf * ceilingFt * 100) / 100,
-        perimeterLf: Math.round(perimeterLf * 100) / 100,
+        wallAreaSf,
+        perimeterLf,
         height:  ceilingFt,
         doors:   room.doors   ?? 0,
         windows: room.windows ?? 0,
