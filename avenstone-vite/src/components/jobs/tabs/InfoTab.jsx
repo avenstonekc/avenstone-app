@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbSendClientLink, sbGetClientLink, sbLoadDocs } from '../../../lib/supabase';
+import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbCreateClientLogin, sbLoadDocs } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildGenericPDF } from '../../../lib/pdf';
 import ContractModal from '../../modals/ContractModal';
@@ -7,76 +7,63 @@ import CompletionSignoffModal from '../../modals/CompletionSignoffModal';
 import PhaseAdvanceCard from '../PhaseAdvanceCard';
 import JobTodosBlock from '../JobTodosBlock';
 
-function ClientLinkButton({ job }) {
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [copying, setCopying] = useState(false);
-  const [copied, setCopied] = useState(false);
+function ClientLoginButton({ job }) {
+  const [open, setOpen] = useState(false);
+  const [pwd, setPwd] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
   const [err, setErr] = useState('');
-  const [fallbackUrl, setFallbackUrl] = useState('');
-  const send = async () => {
-    setSending(true); setErr('');
-    const res = await sbSendClientLink(job.client_email, job.client_name, job.address, job.id);
-    if (res.error) setErr(res.error);
-    else setSent(true);
-    setSending(false);
-  };
-  const copyLink = async () => {
-    setCopying(true); setErr(''); setFallbackUrl('');
-    // Step 1: generate the link server-side
-    let url;
+
+  const save = async () => {
+    if (!pwd || pwd.length < 6) { setErr('Password must be at least 6 characters'); return; }
+    setSaving(true); setErr('');
     try {
-      const res = await sbGetClientLink(job.client_email, job.client_name, job.address, job.id);
-      if (res.error || !res.url) { setErr(res.error || 'Could not generate link'); setCopying(false); return; }
-      url = res.url;
-    } catch (_) {
-      setErr('Could not generate link');
-      setCopying(false);
-      return;
-    }
-    // Step 2: try clipboard API (may fail after async gap — gesture context may be stale).
-    // execCommand fallback removed: invisible/collapsed textarea elements fail to receive
-    // focus+selection, so execCommand copies stale page selection instead of url and
-    // returns true anyway (false positive). Always show the URL inline as a reliable fallback.
-    let ok = false;
-    try { await navigator.clipboard.writeText(url); ok = true; } catch (_) {}
-    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 3000); }
-    // Always surface the URL so user can verify what was copied or copy manually if clipboard failed.
-    setFallbackUrl(url);
-    setCopying(false);
+      const res = await sbCreateClientLogin(job.client_email, pwd, job.client_name, job.id);
+      if (res.ok) { setDone(true); setOpen(false); setPwd(''); }
+      else setErr(res.error || 'Failed to create login');
+    } catch (_) { setErr('Failed to create login'); }
+    setSaving(false);
   };
+
   return (
     <div style={{ gridColumn: '1/-1', background: '#F7F5F0', border: '1px solid #E8E4DC', padding: '12px 14px', marginTop: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>Client Portal</div>
-          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>Send {job.client_name || job.client_email} a magic link to view progress and message you</div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px', whiteSpace: 'nowrap' }} onClick={copyLink} disabled={copying}>
-            {copied ? '✓ Copied!' : copying ? 'Getting...' : 'Copy link'}
-          </button>
-          {sent ? (
-            <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600, display: 'flex', alignItems: 'center' }}>✓ Sent!</div>
-          ) : (
-            <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px', whiteSpace: 'nowrap' }} onClick={send} disabled={sending}>{sending ? 'Sending...' : 'Send to client'}</button>
-          )}
-        </div>
-      </div>
-      {err && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{err}</div>}
-      {fallbackUrl && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 11, color: copied ? '#22c55e' : '#6B7280', marginBottom: 4 }}>
-            {copied ? '✓ Copied — link also shown below:' : 'Auto-copy failed — tap to select and copy:'}
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>Client Portal Access</div>
+          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+            {done
+              ? <span>Login active — <strong style={{ color: '#0A1F44' }}>{job.client_email}</strong> can sign in now</span>
+              : `Set a password so ${job.client_name || job.client_email} can log into their portal`}
           </div>
+        </div>
+        <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px', flexShrink: 0, whiteSpace: 'nowrap' }} onClick={() => { setOpen(o => !o); setErr(''); setPwd(''); }}>
+          {open ? 'Cancel' : done ? 'Reset password' : 'Set login'}
+        </button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
-            readOnly
-            value={fallbackUrl}
-            onClick={e => e.target.select()}
-            style={{ width: '100%', fontSize: 11, padding: '6px 8px', border: `1px solid ${copied ? '#22c55e' : '#C9A84C'}`, borderRadius: 4, background: '#fff', color: '#0A1F44', boxSizing: 'border-box' }}
+            type="password"
+            value={pwd}
+            onChange={e => setPwd(e.target.value)}
+            placeholder="Password (min 6 chars)"
+            className="finp"
+            style={{ flex: 1, minWidth: 160, fontSize: 13, padding: '7px 10px' }}
+            onKeyDown={e => e.key === 'Enter' && save()}
+            autoFocus
           />
+          <button className="btn btn-navy" style={{ fontSize: 11, padding: '7px 16px', flexShrink: 0 }} onClick={save} disabled={saving || !pwd}>
+            {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       )}
+      {done && !open && (
+        <div style={{ fontSize: 11, color: '#22c55e', marginTop: 6, lineHeight: 1.5 }}>
+          ✓ Login active. Give {job.client_name || 'the client'} their credentials:<br />
+          <strong>Email:</strong> {job.client_email} · <strong>Password:</strong> the one you just set
+        </div>
+      )}
+      {err && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{err}</div>}
     </div>
   );
 }
@@ -184,7 +171,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
       )}
 
       {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && job.client_email && (
-        <div style={{ marginTop: 16 }}><ClientLinkButton job={job} /></div>
+        <div style={{ marginTop: 16 }}><ClientLoginButton job={job} /></div>
       )}
       {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && job.status_token && (
         <div style={{ marginTop: 8 }}><StatusLinkButton token={job.status_token} /></div>

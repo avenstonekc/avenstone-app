@@ -27,7 +27,8 @@ export const SUPABASE_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co';
 export const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ';
 const FN = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1';
 export const INVITE_URL        = `${FN}/send-invite`;
-export const CLIENT_LINK_URL   = `${FN}/send-client-link`;
+export const CLIENT_LINK_URL          = `${FN}/send-client-link`;
+export const CREATE_CLIENT_LOGIN_URL  = `${FN}/create-client-login`;
 export const PAYMENT_LINK_URL  = `${FN}/create-payment-link`;
 export const AI_ESTIMATOR_URL  = `${FN}/ai-estimator`;
 export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
@@ -1056,7 +1057,20 @@ export const sbPostStaffMessage = async (jid, content) => {
 };
 
 
-// ─── Client link ──────────────────────────────────────────────────────────────
+// ─── Client portal auth ───────────────────────────────────────────────────────
+// PM/owner sets email+password for a client — creates or updates auth user,
+// sets role=client, links to job. login works immediately (email_confirm: true).
+export const sbCreateClientLogin = async (email, password, clientName, jobId) => {
+  const res = await fetch(CREATE_CLIENT_LOGIN_URL, {
+    method: 'POST',
+    headers: authHeader(),
+    body: JSON.stringify({ email, password, client_name: clientName, job_id: jobId, tenant_id: AV_TENANT }),
+  });
+  return res.json();
+};
+
+// Legacy magic-link helpers — kept for send-client-link backward compat (email flow).
+// NOT used for client portal access — portal auth is now email+password via sbCreateClientLogin.
 export const sbSendClientLink = async (email, clientName, jobAddress, jobId) => {
   const res = await fetch(CLIENT_LINK_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, client_name: clientName, job_address: jobAddress, job_id: jobId, tenant_id: AV_TENANT }) });
   return res.json();

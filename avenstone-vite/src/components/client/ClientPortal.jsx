@@ -316,7 +316,7 @@ export default function ClientPortal({ profile, signOut }) {
 
   useEffect(() => {
     if (!profile?.id) return;
-    sb.from('jobs').select('*').or(`client_user_id.eq.${profile.id},client_email.eq.${profile.email}`).then(({ data }) => { setJobs(data || []); setLoading(false); });
+    sb.from('jobs').select('*').or(`client_user_id.eq.${profile.id},client_email.eq.${profile.email}`).eq('tenant_id', AV_TENANT).then(({ data }) => { setJobs(data || []); setLoading(false); });
   }, [profile?.id]);
 
   const job = sel ? jobs.find(j => j.id === sel) : null;
