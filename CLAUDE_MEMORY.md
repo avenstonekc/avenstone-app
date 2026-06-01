@@ -486,6 +486,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 ## Symptom index addition
 
+- "J.from(...).select(...).single(...).catch is not a function" → supabase query builder has no `.catch()`; use `try { const { data } = await sb..single(); } catch (_) {}` or destructure `{ data, error }`. Antipattern in sbAdvancePhase fixed 2026-06-01.
 - "schedule item saves (DB row created) but doesn't appear in the list after modal closes" → **silent-filter-hide** — phaseFilter was active on a different phase; item inserted fine but filtered out of phaseFiltered derived state. Fix: auto-follow filter to new item's phase in handleSaved. See `schedule-filter-hide · 2026-05-28`.
 
 ---
@@ -618,3 +619,10 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Fix — unified fill: `polygonClipping.union(...polys)` where each poly is a room ring from `_walkRingFromSegs`. Fills the result MultiPolygon once with `FLOOR_TINT`. Fallback to per-room fill if union throws (console.warn). `polygon-clipping` was already a dep (v0.15.7, used in FloorPlanEditorScr).
 - Fix — doorway erase: `_eraseGap` gained optional `fillRgb` param (default white). Door and opening erases now pass `FLOOR_TINT` so the erasure reveals floor color, not white. Window erases remain white (exterior). Slanted stair wall untouched (real geometry, intentionally uncorrected).
 - Draw order unchanged: unified floor fill → walls (poché) → erase openings → symbols → labels.
+
+**[LOG — 2026-06-01] Gate-override .catch crash fix (commit 5ddf969).**
+- Action: Fixed runtime crash "J.from(...).select(...).single(...).catch is not a function" in the Override and Advance modal.
+- File: `avenstone-vite/src/lib/supabase.js:4624` (inside `sbAdvancePhase`).
+- Root cause: `sb.from('jobs').select('address').eq('id', jobId).single().catch(...)` — supabase-js builder is thenable but does NOT expose `.catch()`. Calling `.catch()` on it throws at runtime. The antipattern appeared exactly once in this path (other `.catch()` calls in the same function are on real async function return values — fine).
+- Fix: replaced with `let jobRow = null; try { const { data } = await sb..single(); jobRow = data; } catch (_) {}`. Query logic unchanged; behavior preserved (override reason logs, phase advances, errors surface). Min-10-char validation in modal unaffected.
+- Symptom index note: add "J.from(...).single(...).catch is not a function" → supabase builder has no .catch; use try/catch or { data, error } destructure.
