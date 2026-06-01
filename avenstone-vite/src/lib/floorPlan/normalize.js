@@ -245,42 +245,134 @@ export function classifyAndStandardizeWalls(walls, rooms, options = {}) {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
+const _RING_SNAP = 0.1;   // matches normalize grid
+const _RING_EPS  = 0.05;  // half-cell — after snapping, coincident points are exactly equal
+
 /**
- * Reconstruct a room polygon from wall segments via a greedy chain walk.
- * Matches the same algorithm in pdf.js _segsToPolyPoints.
- * Returns [[x,z], ...].
+ * Reconstruct a room polygon from wall segments using segment-adjacency boundary
+ * tracing. Replaces the old greedy nearest-neighbor chain walk, which produced
+ * self-intersecting polygons on concave rooms (L/U-shapes) by bridging chords
+ * across the interior when Euclidean distance was ambiguous.
+ *
+ * Algorithm:
+ *  1. Pre-snap all segment endpoints to the 0.1 ft grid (eliminates float noise).
+ *  2. Walk by exact connectivity: from the current exit point, find the one unused
+ *     segment whose endpoint is within _RING_EPS (= 0.05 ft, half a grid cell).
+ *     After snapping, coincident points are exactly equal; distinct ones ≥ 0.1 ft.
+ *  3. Genuine-gap fallback: if no exact match exists at a step (real scanner gap),
+ *     set needs_review = true and fall back to nearest-neighbor for that step only.
+ *     This handles scan defects without blocking normalize (it must never throw).
+ *
+ * Returns { polygon: [[x,z],...], needs_review: boolean }.
+ * Convex rooms: identical output to the old walk (exact matches everywhere).
+ * Concave rooms: correct topological ring regardless of shape.
  */
 function _wallSegsToPolygon(wallSegs) {
-  if (!wallSegs || wallSegs.length === 0) return [];
-  if (wallSegs.length === 1) {
-    const s = wallSegs[0];
-    return [[s.x1, s.z1], [s.x2, s.z2]];
-  }
-  const rem = wallSegs.map(s => ({ x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2 }));
-  const poly = [];
-  let cur = rem.shift();
-  poly.push([cur.x1, cur.z1]);
-  let cx = cur.x2, cz = cur.z2;
+  if (!wallSegs || wallSegs.length === 0) return { polygon: [], needs_review: false };
 
-  while (rem.length) {
-    let bestIdx = -1, bestDist = Infinity, bestFlip = false;
-    for (let i = 0; i < rem.length; i++) {
-      const d1 = Math.hypot(rem[i].x1 - cx, rem[i].z1 - cz);
-      const d2 = Math.hypot(rem[i].x2 - cx, rem[i].z2 - cz);
-      if (d1 < bestDist) { bestDist = d1; bestIdx = i; bestFlip = false; }
-      if (d2 < bestDist) { bestDist = d2; bestIdx = i; bestFlip = true; }
+  // Pre-snap every endpoint to the grid before walking
+  const segs = wallSegs.map(s => ({
+    x1: Math.round(s.x1 / _RING_SNAP) * _RING_SNAP,
+    z1: Math.round(s.z1 / _RING_SNAP) * _RING_SNAP,
+    x2: Math.round(s.x2 / _RING_SNAP) * _RING_SNAP,
+    z2: Math.round(s.z2 / _RING_SNAP) * _RING_SNAP,
+  }));
+
+  if (segs.length === 1) {
+    return { polygon: [[segs[0].x1, segs[0].z1], [segs[0].x2, segs[0].z2]], needs_review: false };
+  }
+
+  const n = segs.length;
+  const used = new Array(n).fill(false);
+  let needs_review = false;
+
+  // Exact-match: find unused segment with an endpoint within _RING_EPS of [cx, cz]
+  const findNext = (cx, cz) => {
+    for (let j = 0; j < n; j++) {
+      if (used[j]) continue;
+      if (Math.hypot(segs[j].x1 - cx, segs[j].z1 - cz) < _RING_EPS) return { idx: j, flip: false };
+      if (Math.hypot(segs[j].x2 - cx, segs[j].z2 - cz) < _RING_EPS) return { idx: j, flip: true };
     }
-    if (bestIdx === -1) break;
-    const n = rem.splice(bestIdx, 1)[0];
-    if (bestFlip) {
-      poly.push([n.x2, n.z2]);
-      cx = n.x1; cz = n.z1;
+    return null;
+  };
+
+  // Greedy fallback: nearest unused segment (only used on genuine scanner gaps)
+  const findNearest = (cx, cz) => {
+    let bestIdx = -1, bestDist = Infinity, bestFlip = false;
+    for (let j = 0; j < n; j++) {
+      if (used[j]) continue;
+      const d1 = Math.hypot(segs[j].x1 - cx, segs[j].z1 - cz);
+      const d2 = Math.hypot(segs[j].x2 - cx, segs[j].z2 - cz);
+      if (d1 < bestDist) { bestDist = d1; bestIdx = j; bestFlip = false; }
+      if (d2 < bestDist) { bestDist = d2; bestIdx = j; bestFlip = true; }
+    }
+    return bestIdx >= 0 ? { idx: bestIdx, flip: bestFlip } : null;
+  };
+
+  // Start at segment 0: enter at p1, exit at p2
+  used[0] = true;
+  const polygon = [[segs[0].x1, segs[0].z1]];
+  let cx = segs[0].x2, cz = segs[0].z2;
+  let usedCount = 1;
+
+  while (usedCount < n) {
+    // Stop if we've closed the ring
+    if (Math.hypot(cx - polygon[0][0], cz - polygon[0][1]) < _RING_EPS) break;
+
+    let next = findNext(cx, cz);
+    if (!next) {
+      // Genuine scanner gap — fall back to nearest for this step only
+      needs_review = true;
+      next = findNearest(cx, cz);
+      if (!next) break;
+    }
+
+    used[next.idx] = true;
+    usedCount++;
+    if (next.flip) {
+      polygon.push([segs[next.idx].x2, segs[next.idx].z2]);
+      cx = segs[next.idx].x1; cz = segs[next.idx].z1;
     } else {
-      poly.push([n.x1, n.z1]);
-      cx = n.x2; cz = n.z2;
+      polygon.push([segs[next.idx].x1, segs[next.idx].z1]);
+      cx = segs[next.idx].x2; cz = segs[next.idx].z2;
     }
   }
-  return poly;
+
+  return { polygon, needs_review };
+}
+
+// ── Self-intersection detection ───────────────────────────────────────────────
+
+function _sign(a, b, c) {
+  return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+}
+
+function _properCrossing(a, b, c, d) {
+  // Proper crossing: a and b strictly on opposite sides of line cd,
+  // AND c and d strictly on opposite sides of line ab.
+  const s1 = _sign(c, d, a), s2 = _sign(c, d, b);
+  const s3 = _sign(a, b, c), s4 = _sign(a, b, d);
+  return ((s1 > 0) !== (s2 > 0)) && ((s3 > 0) !== (s4 > 0));
+}
+
+/**
+ * Returns true if any pair of non-adjacent edges in the polygon properly cross.
+ * Used by the backfill to detect corrupted rings from the old greedy walk.
+ * O(n²) — trivial for room-sized polygons (n ≤ ~20).
+ * polygon: [[x,z], ...]
+ */
+export function isPolygonSelfIntersecting(polygon) {
+  const n = polygon.length;
+  if (n < 4) return false;   // triangles cannot self-intersect
+  for (let i = 0; i < n; i++) {
+    const a = polygon[i], b = polygon[(i + 1) % n];
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;   // adjacent pair sharing vertex 0
+      const c = polygon[j], d = polygon[(j + 1) % n];
+      if (_properCrossing(a, b, c, d)) return true;
+    }
+  }
+  return false;
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -370,7 +462,7 @@ export function normalizeFloorPlan(rawScan, options = {}) {
         x1: wx + s.x1, z1: wz + s.z1,
         x2: wx + s.x2, z2: wz + s.z2,
       }));
-      const rawPoly = _wallSegsToPolygon(wallSegsWorld);
+      const { polygon: rawPoly, needs_review: ringNeedsReview } = _wallSegsToPolygon(wallSegsWorld);
       const polygon = rawPoly.map(pt => snapToGrid(pt));
       const centroid = polygonCentroid(polygon);
       const areaSqft = polygonAreaSqft(polygon);
@@ -386,6 +478,7 @@ export function normalizeFloorPlan(rawScan, options = {}) {
         worldZ: wz,
         height: room.height ?? null,
         floor: room.floor ?? 0,
+        ...(ringNeedsReview ? { needs_review: true } : {}),
       });
     });
 
