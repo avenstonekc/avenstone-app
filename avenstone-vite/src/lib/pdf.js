@@ -1092,19 +1092,31 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     }).filter(Boolean);
 
     // ── Room fill tint ────────────────────────────────────────────────────────
+    // Uses angle-sort of unique wall endpoints (not the greedy chain walk) so
+    // L-shaped rooms fill completely even when the chain walk would bridge a gap
+    // and create a self-intersecting polygon with a diagonal partial fill.
     doc.setFillColor(248, 245, 240);
-    for (const { room, segs } of roomLayouts) {
+    for (const { segs } of roomLayouts) {
       if (segs.length < 3) continue;
-      const poly = _segsToPolyPoints(segs, room.sqft);
-      if (poly.length < 3) continue;
-      const pts = poly.map(p => [oX + p.x * scale, oY + p.z * scale]);
+      const EPS = 0.1; // ft — same as normalisation grid
+      const eps = [];
+      for (const s of segs) {
+        for (const pt of [{ x: s.x1, z: s.z1 }, { x: s.x2, z: s.z2 }]) {
+          if (!eps.some(e => Math.hypot(e.x - pt.x, e.z - pt.z) < EPS)) eps.push(pt);
+        }
+      }
+      if (eps.length < 3) continue;
+      const cx = eps.reduce((a, p) => a + p.x, 0) / eps.length;
+      const cz = eps.reduce((a, p) => a + p.z, 0) / eps.length;
+      eps.sort((a, b) => Math.atan2(a.z - cz, a.x - cx) - Math.atan2(b.z - cz, b.x - cx));
+      const pts = eps.map(p => [oX + p.x * scale, oY + p.z * scale]);
       doc.lines(pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true);
     }
 
     // ── Draw walls (poché) ────────────────────────────────────────────────────
     for (const { room, segs } of roomLayouts) {
       segs.forEach((seg, si) => {
-        const thick = isInteriorWall(room, si, seg) ? 3 : 6;
+        const thick = 6; // uniform 2x4 wall width (~3.5" at plan scale)
         _drawPoché(doc, oX + seg.x1 * scale, oY + seg.z1 * scale, oX + seg.x2 * scale, oY + seg.z2 * scale, thick);
       });
     }
@@ -1351,40 +1363,28 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       return room.sqft || 0;
     })();
 
-    const aspect = w > 0 && h > 0 ? Math.max(w, h) / Math.min(w, h) : 1;
-    // Phase 2 uses 1.5:1 threshold; legacy fallback is 3:1
-    let narrow = hint ? hint.label_rotation === 90 : aspect > 3;
-    // Content from hint (abbreviated, formatted) or legacy fallback
-    const nameTxt = hint ? hint.label_text : (room.name || '—');
+    // Always use full room name — bypass computeLayoutHints abbreviation.
+    // Always render horizontal — shrink font to fit rather than rotating.
+    const nameTxt = room.name || (hint ? hint.label_text : '—');
     const sfTxt = hint ? hint.sf_text : (sqft > 0 ? `${sqft.toLocaleString()} sq ft` : null);
     const showSf = room.sf_visible !== false && (hint ? (!hint.sf_inline_with_label && !!sfTxt) : sqft > 0);
 
-    let fs = Math.max(7, Math.min(11, (narrow ? h : w) / 8));
+    // Shrink-to-fit: start from w/8, then cap so text stays within 85% of room width.
+    let fs = Math.min(11, w / 8);
+    const fitFs = w * 0.85 / Math.max(1, nameTxt.length * 0.55);
+    fs = Math.max(6, Math.min(fs, fitFs));
     const nameW = nameTxt.length * fs * 0.55, nameH = fs + 2;
 
-    // Wall-margin test: if label box clips a wall, try rotated; log if neither fits.
+    // Wall-margin check: if label clips a wall, log but keep horizontal (no rotation).
     if (roomPoly && segs && segs.length >= 3) {
       const lw = nameW + 8, lh = 18;
-      if (!narrow) {
-        if (!_labelFitsInRoom(labelX, labelY, lw, lh, roomPoly, segs)) {
-          if (_labelFitsInRoom(labelX, labelY, lh, lw, roomPoly, segs)) {
-            narrow = true;
-          } else {
-            console.log(`[LIDAR_PDF_LABEL] room "${nameTxt}" no clean placement`);
-          }
-        }
-      } else {
-        // Narrow (rotated) label — swap dims for the margin check.
-        if (!_labelFitsInRoom(labelX, labelY, lh, lw, roomPoly, segs)) {
-          const ring = roomPoly.map(p => [p.x, p.z]);
-          const [plx, plz] = polylabel([ring], 0.5);
-          labelX = oX + plx * scale; labelY = oY + plz * scale;
-        }
+      if (!_labelFitsInRoom(labelX, labelY, lw, lh, roomPoly, segs)) {
+        console.log(`[LIDAR_PDF_LABEL] room "${nameTxt}" no clean horizontal placement`);
       }
     }
 
     // Collision check against dim labels
-    if (!narrow && _labelCollides(labelX, labelY - 4, nameW, nameH)) {
+    if (_labelCollides(labelX, labelY - 4, nameW, nameH)) {
       if (roomPoly && segs && segs.length >= 3) {
         const ring = roomPoly.map(p => [p.x, p.z]);
         const [plx, plz] = polylabel([ring], 0.5);
@@ -1400,15 +1400,11 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     }
 
     doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(...navy);
-    if (narrow) {
-      doc.text(nameTxt, labelX, labelY, { align: 'center', baseline: 'middle', angle: 90 });
-    } else {
-      doc.text(nameTxt, labelX, labelY - 4, { align: 'center', baseline: 'middle' });
-      existingBoxes.push({ x: labelX - nameW/2, y: labelY - 4 - nameH/2, w: nameW, h: nameH });
-      if (showSf && sfTxt) {
-        doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
-        doc.text(sfTxt, labelX, labelY + 7, { align: 'center', baseline: 'middle' });
-      }
+    doc.text(nameTxt, labelX, labelY - 4, { align: 'center', baseline: 'middle' });
+    existingBoxes.push({ x: labelX - nameW/2, y: labelY - 4 - nameH/2, w: nameW, h: nameH });
+    if (showSf && sfTxt) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(100, 100, 100);
+      doc.text(sfTxt, labelX, labelY + 7, { align: 'center', baseline: 'middle' });
     }
   }
 
