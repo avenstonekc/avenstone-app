@@ -1,7 +1,7 @@
 // Quick smoke test for normalize.js — run with: node --input-type=module _smoke.mjs
 // Or: node avenstone-vite/src/lib/floorPlan/_smoke.mjs
 
-import { snapToGrid, polygonCentroid, polygonAreaSqft, dedupeDoors, normalizeFloorPlan, classifyAndStandardizeWalls } from './normalize.js';
+import { snapToGrid, polygonCentroid, polygonAreaSqft, dedupeDoors, normalizeFloorPlan, classifyAndStandardizeWalls, isPolygonSelfIntersecting } from './normalize.js';
 
 let passed = 0;
 let failed = 0;
@@ -336,6 +336,104 @@ console.log('\nclassifyAndStandardizeWalls');
     const classified = classifyAndStandardizeWalls(walls, rooms, { adjacencyToleranceFt: 0.05 });
     assert('wall 0.1 ft off boundary not adjoining outside 0.05 tolerance', !classified[0].adjoining_room_ids.includes('r1'));
   }
+}
+
+// ── isPolygonSelfIntersecting + ring construction ─────────────────────────────
+console.log('\nisPolygonSelfIntersecting + ring construction');
+{
+  // Rectangle regression: 4 segments in order → valid ring, no needs_review
+  const rectScan = {
+    rooms: [{
+      id: 'rect', name: 'Rect', worldX: 0, worldZ: 0,
+      wallSegments: [
+        {x1:0,z1:0,x2:10,z2:0}, {x1:10,z1:0,x2:10,z2:10},
+        {x1:10,z1:10,x2:0,z2:10}, {x1:0,z1:10,x2:0,z2:0},
+      ],
+      doorSegments: [], windowSegments: [],
+    }],
+  };
+  const rectResult = normalizeFloorPlan(rectScan);
+  assert('rectangle: ok', rectResult.ok === true);
+  const rectRoom = rectResult.data.rooms[0];
+  assert('rectangle: area ≈ 100 sqft', approx(rectRoom.area_sqft, 100, 1));
+  assert('rectangle: no needs_review flag', !rectRoom.needs_review);
+  assert('rectangle: polygon not self-intersecting', !isPolygonSelfIntersecting(rectRoom.polygon));
+
+  // L-shape: 6 segments in scrambled order → area = 75 sqft, no self-intersection
+  const lScan = {
+    rooms: [{
+      id: 'lshape', name: 'L-Shape', worldX: 0, worldZ: 0,
+      wallSegments: [
+        {x1:5,z1:10,x2:0,z2:10},   // top (scrambled order)
+        {x1:0,z1:0,x2:10,z2:0},    // bottom
+        {x1:10,z1:5,x2:5,z2:5},    // inner horizontal
+        {x1:0,z1:10,x2:0,z2:0},    // left side
+        {x1:10,z1:0,x2:10,z2:5},   // right side
+        {x1:5,z1:5,x2:5,z2:10},    // inner vertical
+      ],
+      doorSegments: [], windowSegments: [],
+    }],
+  };
+  const lResult = normalizeFloorPlan(lScan);
+  assert('L-shape: ok', lResult.ok === true);
+  const lRoom = lResult.data.rooms[0];
+  assert('L-shape: area ≈ 75 sqft', approx(lRoom.area_sqft, 75, 1));
+  assert('L-shape: no needs_review', !lRoom.needs_review);
+  assert('L-shape: polygon not self-intersecting', !isPolygonSelfIntersecting(lRoom.polygon));
+
+  // U-shape: 8 segments → area = 32 sqft, no self-intersection
+  const uScan = {
+    rooms: [{
+      id: 'ushape', name: 'U-Shape', worldX: 0, worldZ: 0,
+      wallSegments: [
+        {x1:0,z1:0,x2:8,z2:0},    // bottom
+        {x1:8,z1:0,x2:8,z2:6},    // right outer
+        {x1:8,z1:6,x2:6,z2:6},    // right inner top
+        {x1:6,z1:6,x2:6,z2:2},    // right inner side
+        {x1:6,z1:2,x2:2,z2:2},    // inner bottom
+        {x1:2,z1:2,x2:2,z2:6},    // left inner side
+        {x1:2,z1:6,x2:0,z2:6},    // left inner top
+        {x1:0,z1:6,x2:0,z2:0},    // left outer
+      ],
+      doorSegments: [], windowSegments: [],
+    }],
+  };
+  const uResult = normalizeFloorPlan(uScan);
+  assert('U-shape: ok', uResult.ok === true);
+  const uRoom = uResult.data.rooms[0];
+  assert('U-shape: area ≈ 32 sqft', approx(uRoom.area_sqft, 32, 1));
+  assert('U-shape: no needs_review', !uRoom.needs_review);
+  assert('U-shape: polygon not self-intersecting', !isPolygonSelfIntersecting(uRoom.polygon));
+
+  // Gapped room: one endpoint 0.2 ft off (> _RING_EPS) → needs_review=true, no throw
+  const gapScan = {
+    rooms: [{
+      id: 'gapped', name: 'Gapped', worldX: 0, worldZ: 0,
+      wallSegments: [
+        {x1:0,z1:0,x2:5,z2:0},
+        {x1:5,z1:0,x2:5,z2:5},
+        {x1:5,z1:5,x2:0,z2:5},
+        {x1:0.2,z1:5,x2:0.2,z2:0},  // 0.2 ft gap at start endpoint
+      ],
+      doorSegments: [], windowSegments: [],
+    }],
+  };
+  const gapResult = normalizeFloorPlan(gapScan);
+  assert('gapped room: ok (no throw)', gapResult.ok === true);
+  const gapRoom = gapResult.data.rooms[0];
+  assert('gapped room: needs_review = true', gapRoom.needs_review === true);
+
+  // isPolygonSelfIntersecting: bowtie → true
+  const bowtie = [[0,0],[10,10],[10,0],[0,10]];
+  assert('bowtie polygon is self-intersecting', isPolygonSelfIntersecting(bowtie) === true);
+
+  // isPolygonSelfIntersecting: convex square → false
+  const square = [[0,0],[10,0],[10,10],[0,10]];
+  assert('convex square is not self-intersecting', isPolygonSelfIntersecting(square) === false);
+
+  // isPolygonSelfIntersecting: triangle (<4 pts) → false
+  const tri = [[0,0],[5,10],[10,0]];
+  assert('triangle (<4 pts) → false', isPolygonSelfIntersecting(tri) === false);
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────

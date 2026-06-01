@@ -152,37 +152,72 @@ function classifyAndStandardizeWalls(walls: any[], rooms: any[], options: any = 
   });
 }
 
-function _wallSegsToPolygon(wallSegs: any[]): [number, number][] {
-  if (!wallSegs || wallSegs.length === 0) return [];
-  if (wallSegs.length === 1) {
-    const s = wallSegs[0];
-    return [[s.x1, s.z1], [s.x2, s.z2]];
-  }
-  const rem = wallSegs.map((s: any) => ({ x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2 }));
-  const poly: [number, number][] = [];
-  let cur = rem.shift()!;
-  poly.push([cur.x1, cur.z1]);
-  let cx = cur.x2, cz = cur.z2;
+const _RING_SNAP = 0.1;
+const _RING_EPS  = 0.05;
 
-  while (rem.length) {
-    let bestIdx = -1, bestDist = Infinity, bestFlip = false;
-    for (let i = 0; i < rem.length; i++) {
-      const d1 = Math.hypot(rem[i].x1 - cx, rem[i].z1 - cz);
-      const d2 = Math.hypot(rem[i].x2 - cx, rem[i].z2 - cz);
-      if (d1 < bestDist) { bestDist = d1; bestIdx = i; bestFlip = false; }
-      if (d2 < bestDist) { bestDist = d2; bestIdx = i; bestFlip = true; }
+function _wallSegsToPolygon(wallSegs: any[]): { polygon: [number, number][]; needs_review: boolean } {
+  if (!wallSegs || wallSegs.length === 0) return { polygon: [], needs_review: false };
+
+  const segs = wallSegs.map((s: any) => ({
+    x1: Math.round(s.x1 / _RING_SNAP) * _RING_SNAP,
+    z1: Math.round(s.z1 / _RING_SNAP) * _RING_SNAP,
+    x2: Math.round(s.x2 / _RING_SNAP) * _RING_SNAP,
+    z2: Math.round(s.z2 / _RING_SNAP) * _RING_SNAP,
+  }));
+
+  if (segs.length === 1) {
+    return { polygon: [[segs[0].x1, segs[0].z1], [segs[0].x2, segs[0].z2]], needs_review: false };
+  }
+
+  const n = segs.length;
+  const used = new Array(n).fill(false);
+  let needs_review = false;
+
+  const findNext = (cx: number, cz: number): { idx: number; flip: boolean } | null => {
+    for (let j = 0; j < n; j++) {
+      if (used[j]) continue;
+      if (Math.hypot(segs[j].x1 - cx, segs[j].z1 - cz) < _RING_EPS) return { idx: j, flip: false };
+      if (Math.hypot(segs[j].x2 - cx, segs[j].z2 - cz) < _RING_EPS) return { idx: j, flip: true };
     }
-    if (bestIdx === -1) break;
-    const n = rem.splice(bestIdx, 1)[0];
-    if (bestFlip) {
-      poly.push([n.x2, n.z2]);
-      cx = n.x1; cz = n.z1;
+    return null;
+  };
+
+  const findNearest = (cx: number, cz: number): { idx: number; flip: boolean } | null => {
+    let bestIdx = -1, bestDist = Infinity, bestFlip = false;
+    for (let j = 0; j < n; j++) {
+      if (used[j]) continue;
+      const d1 = Math.hypot(segs[j].x1 - cx, segs[j].z1 - cz);
+      const d2 = Math.hypot(segs[j].x2 - cx, segs[j].z2 - cz);
+      if (d1 < bestDist) { bestDist = d1; bestIdx = j; bestFlip = false; }
+      if (d2 < bestDist) { bestDist = d2; bestIdx = j; bestFlip = true; }
+    }
+    return bestIdx >= 0 ? { idx: bestIdx, flip: bestFlip } : null;
+  };
+
+  used[0] = true;
+  const polygon: [number, number][] = [[segs[0].x1, segs[0].z1]];
+  let cx = segs[0].x2, cz = segs[0].z2;
+  let usedCount = 1;
+
+  while (usedCount < n) {
+    if (Math.hypot(cx - polygon[0][0], cz - polygon[0][1]) < _RING_EPS) break;
+    let next = findNext(cx, cz);
+    if (!next) {
+      needs_review = true;
+      next = findNearest(cx, cz);
+      if (!next) break;
+    }
+    used[next.idx] = true;
+    usedCount++;
+    if (next.flip) {
+      polygon.push([segs[next.idx].x2, segs[next.idx].z2]);
+      cx = segs[next.idx].x1; cz = segs[next.idx].z1;
     } else {
-      poly.push([n.x1, n.z1]);
-      cx = n.x2; cz = n.z2;
+      polygon.push([segs[next.idx].x1, segs[next.idx].z1]);
+      cx = segs[next.idx].x2; cz = segs[next.idx].z2;
     }
   }
-  return poly;
+  return { polygon, needs_review };
 }
 
 function normalizeFloorPlan(rawScan: any, options: any = {}): { ok: boolean; data?: any; error?: string } {
@@ -240,7 +275,7 @@ function normalizeFloorPlan(rawScan: any, options: any = {}): { ok: boolean; dat
         x1: wx + s.x1, z1: wz + s.z1,
         x2: wx + s.x2, z2: wz + s.z2,
       }));
-      const rawPoly = _wallSegsToPolygon(wallSegsWorld);
+      const { polygon: rawPoly, needs_review: ringNeedsReview } = _wallSegsToPolygon(wallSegsWorld);
       const polygon = rawPoly.map((pt: [number, number]) => snapToGrid(pt));
       const centroid = polygonCentroid(polygon);
       const areaSqft = polygonAreaSqft(polygon);
@@ -256,6 +291,7 @@ function normalizeFloorPlan(rawScan: any, options: any = {}): { ok: boolean; dat
         worldZ: wz,
         height: room.height ?? null,
         floor: room.floor ?? 0,
+        ...(ringNeedsReview ? { needs_review: true } : {}),
       });
     });
 
