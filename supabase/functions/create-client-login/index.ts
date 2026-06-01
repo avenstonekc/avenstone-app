@@ -9,24 +9,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Look up auth user ID by email using GoTrue admin REST API directly.
-// sb.auth.admin.listUsers() has an undocumented pagination limit; direct fetch
-// with email filter is O(1) and avoids the issue entirely.
-async function findAuthUserId(sbUrl: string, serviceKey: string, email: string): Promise<string | null> {
-  // GoTrue supports ?email= filter on the admin users list endpoint
-  const resp = await fetch(
-    `${sbUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}&per_page=1`,
-    {
-      headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-      },
-    }
-  );
-  if (!resp.ok) return null;
-  const body = await resp.json();
-  return body.users?.[0]?.id ?? null;
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -64,8 +46,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Auth is the authoritative source for user IDs
-    let userId: string | null = await findAuthUserId(SB_URL, SB_SERVICE, email);
+    // Auth is the authoritative source — query auth.users directly via RPC
+    // (sb.auth.admin.listUsers paginates poorly; GoTrue ?email= filter is unreliable)
+    const { data: authId } = await sb.rpc('get_auth_user_id_by_email', { p_email: email });
+    let userId: string | null = (authId as string | null) ?? null;
 
     if (userId) {
       // Auth user exists — set password + confirm email immediately
