@@ -636,6 +636,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Verification: manually copied URL from link_only response and opened in incognito — Supabase auth page processes the token, session is set, app loads at ClientPortal. End-to-end confirmed.
 - Files: `supabase/functions/send-client-link/index.ts`, `avenstone-vite/src/lib/supabase.js`, `avenstone-vite/src/components/jobs/tabs/InfoTab.jsx`.
 
+**[LOG — 2026-06-01] CLIENT_LINK_COPY_FIX — robust clipboard copy (commit 64179fb).**
+- Root cause: `navigator.clipboard.writeText()` called AFTER `await sbGetClientLink()` (async network round-trip). Browser clipboard API requires a synchronous user-gesture context; by the time the await resolves, that context is expired → `NotAllowedError`. Also fails on `http://localhost` (secure context required). Link generation itself worked fine.
+- Fix: three-tier fallback chain in `ClientLinkButton.copyLink`: (1) `navigator.clipboard.writeText` — try/catch; (2) `document.execCommand('copy')` via temp `<textarea>` — no gesture restriction, works in most contexts; (3) if both fail, `setFallbackUrl(url)` → render a read-only `<input>` with the URL pre-selected on click, gold border. User always gets the link.
+- Distinct error messages: generation failure → `setErr('Could not generate link')`; auto-copy failure → `setFallbackUrl(url)` (no err, URL shown inline). Two different states, two different UIs.
+- `Send to client` button unchanged.
+- File: `avenstone-vite/src/components/jobs/tabs/InfoTab.jsx` only.
+
 **[LOG — 2026-06-01] Gate-override .catch crash fix (commit 5ddf969).**
 - Action: Fixed runtime crash "J.from(...).select(...).single(...).catch is not a function" in the Override and Advance modal.
 - File: `avenstone-vite/src/lib/supabase.js:4624` (inside `sbAdvancePhase`).
