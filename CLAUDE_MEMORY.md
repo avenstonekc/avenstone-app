@@ -658,3 +658,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - StatusLinkButton: guarded on `job.status_token`; builds `https://avenstone-app.vercel.app/?st=${token}` for clipboard copy.
 - Both guarded on role: `['owner', 'sales_rep', 'project_manager']`.
 - No logic changes — placement only.
+
+**[LOG — 2026-06-01] MULTIPLIER_FIX — floor-multiplier drop bug defused via Option B (explicit column) (commits 7943c5c, 277f7b2).**
+- Action: Defused the dormant floor-multiplier drop bug. Labor floor multiplier (1.30 basement / 1.15 second-floor) was computed in the wizard and shown to the rep but never persisted — acceptTakeoffDraft wrote unit_cost = base rate and total_cost was generated as quantity × unit_cost, silently dropping the premium. Dormant today (floor hardcoded to 0); defused so a future floor-selector UI cannot ship a silent under-bill.
+- Option A rejected: baking multiplier into unit_cost would cause double-application when sbLoadCustomTakeoffLines reads unit_cost back as baseRate on re-edit.
+- Migration: 20260601120000_add_multiplier_to_estimate_line_items.sql. Added multiplier NUMERIC(5,2) NOT NULL DEFAULT 1.0. Dropped and re-added generated columns: total_cost = quantity × unit_cost × multiplier, client_price = quantity × unit_cost × multiplier × (1 + markup_pct/100). Existing rows get multiplier=1.0 via DEFAULT — no backfill needed (no live row ever had a non-1.0 multiplier). Verified via information_schema: generation_expression confirmed.
+- takeoff.js: acceptTakeoffDraft insert payload now includes multiplier: line.multiplier ?? 1. unit_cost stays = catalog base rate.
+- supabase.js: sbLoadCustomTakeoffLines reads row.multiplier ?? 1 instead of hardcoded 1 — re-editing a saved takeoff now preserves the floor level.
+- EstimateTab.jsx: "Line items" view was manually computing quantity × unit_cost × (1+markup_pct), missing the multiplier. Fixed to use li.client_price (DB-generated, always correct).
+- Materials unaffected: material lines always push multiplier: 1; waste is correct and unchanged.
+- Confirmed consumers: FinancialsTab reads client_price ?? total_cost (generated, auto-correct). Proposal uses AI-extracted propLineItems amounts (not estimate_line_items). TakeoffWizard display reads line.multiplier (correct). LineItemModal/AddCustomLineModal always multiplier=1.
