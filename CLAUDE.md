@@ -562,6 +562,7 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 - **Consumers must NOT mix**: `rooms[i].sqft` (raw bounding-box) vs `normalized_geometry.data.rooms[i].area_sqft` (Shoelace polygon). Use normalized for accuracy.
 - **Still on legacy raw reads** (migrate next arc): takeoff wizard, `FloorPlanCanvas.jsx`, historical rows (fall to legacy fallback path, correct behavior).
 - **`total_sqft` column cutover deferred** — still stores raw bounding-box sum. Do not change until consumers are migrated.
+- **`rooms[i].polygon` ring is canonical and topologically correct (2026-06-01).** `_wallSegsToPolygon` uses a segment-adjacency boundary trace (pre-snap endpoints to 0.1 ft grid, exact endpoint match EPS=0.05 ft). Angle-sort was rejected — fails on U-shapes (not star-shaped from centroid). Do not substitute angle-sort. If the trace falls back to greedy (genuine scanner gap), the room gets `needs_review: true`. Backfill script: `node scripts/backfill-normalize-rings.js` (dry run) / `--write` (apply). isPolygonSelfIntersecting export available from normalize.js.
 
 2. **LiDAR Phase 4 — wing editor + large-space stitching.** Spaces over ~1,500 sqft scan in wings. Editor tab lets you position and connect wings into one plan. GPS anchoring helps align sessions spatially. Window/door type editing lives here.
 
