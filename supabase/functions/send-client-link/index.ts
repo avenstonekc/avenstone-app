@@ -13,30 +13,41 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
     const { email, client_name, job_address, job_id, tenant_id, link_only } = await req.json();
-    if (!email || !job_id || !tenant_id) return new Response("missing fields", { status: 400 });
+    if (!email || !job_id || !tenant_id) {
+      return new Response("missing fields", { status: 400, headers: corsHeaders });
+    }
 
     const sb = createClient(SB_URL, SB_SERVICE, { auth: { autoRefreshToken: false, persistSession: false } });
 
-    // Ensure client has an auth account
-    const { data: existingUsers } = await sb.auth.admin.listUsers();
-    let userId: string | null = null;
-    const existing = existingUsers?.users?.find((u: any) => u.email === email);
+    // Look up existing user via profiles table — avoids listUsers() pagination limit (50-user default)
+    const { data: profileRow } = await sb.from("profiles").select("id, role").eq("email", email).maybeSingle();
+    let userId: string | null = profileRow?.id || null;
 
-    if (existing) {
-      userId = existing.id;
-      const { data: existingProfile } = await sb.from("profiles").select("role").eq("id", userId).single();
-      const isStaff = existingProfile?.role && ["owner", "project_manager", "sales_rep"].includes(existingProfile.role);
+    if (profileRow) {
+      const isStaff = profileRow.role && ["owner", "project_manager", "sales_rep"].includes(profileRow.role);
       if (isStaff) {
-        return new Response(JSON.stringify({ ok: false, error: "Cannot send client link to a staff email — would overwrite their staff role" }), { status: 409, headers: { "Content-Type": "application/json" } });
+        return new Response(
+          JSON.stringify({ ok: false, error: "Cannot send client link to a staff email — would overwrite their staff role" }),
+          { status: 409, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
       }
-      await sb.from("profiles").upsert({ id: userId, tenant_id, full_name: client_name || "", email, role: "client" }, { onConflict: "id" });
+      await sb.from("profiles").update({ tenant_id, full_name: client_name || "", role: "client" }).eq("id", userId);
     } else {
       const { data, error } = await sb.auth.admin.inviteUserByEmail(email, {
         data: { full_name: client_name || "", role: "client", tenant_id },
       });
-      if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { "Content-Type": "application/json" } });
+      if (error) {
+        return new Response(
+          JSON.stringify({ error: error.message }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
       userId = data.user.id;
       await sb.from("profiles").upsert({ id: userId, tenant_id, full_name: client_name || "", email, role: "client" }, { onConflict: "id" });
     }
@@ -45,8 +56,14 @@ Deno.serve(async (req) => {
     await sb.from("jobs").update({ client_user_id: userId }).eq("id", job_id);
 
     // Generate magic link
-    const { data: linkData } = await sb.auth.admin.generateLink({ type: "magiclink", email });
-    const loginUrl = linkData?.properties?.action_link || APP_URL;
+    const { data: linkData, error: linkError } = await sb.auth.admin.generateLink({ type: "magiclink", email });
+    if (linkError || !linkData?.properties?.action_link) {
+      return new Response(
+        JSON.stringify({ ok: false, error: linkError?.message || "Failed to generate magic link" }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    const loginUrl = linkData.properties.action_link;
 
     // link_only mode: return the URL without emailing
     if (link_only) {
@@ -88,7 +105,7 @@ Deno.serve(async (req) => {
     const data = await res.json();
     return new Response(JSON.stringify({ ...data, user_id: userId }), {
       status: res.status,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   } catch (err) {
     console.error("send-client-link error:", err);
