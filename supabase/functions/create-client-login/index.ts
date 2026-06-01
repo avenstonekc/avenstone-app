@@ -9,18 +9,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Paginate auth.users to find the real auth user ID for an email.
-// listUsers() only returns 50 by default — must paginate to avoid missing users.
-async function findAuthUserId(sb: any, email: string): Promise<string | null> {
-  let page = 1;
-  while (true) {
-    const { data } = await sb.auth.admin.listUsers({ page, perPage: 100 });
-    if (!data?.users?.length) return null;
-    const match = data.users.find((u: any) => u.email === email);
-    if (match) return match.id;
-    if (!data.nextPage) return null;
-    page++;
-  }
+// Look up auth user ID by email using GoTrue admin REST API directly.
+// sb.auth.admin.listUsers() has an undocumented pagination limit; direct fetch
+// with email filter is O(1) and avoids the issue entirely.
+async function findAuthUserId(sbUrl: string, serviceKey: string, email: string): Promise<string | null> {
+  // GoTrue supports ?email= filter on the admin users list endpoint
+  const resp = await fetch(
+    `${sbUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}&per_page=1`,
+    {
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+      },
+    }
+  );
+  if (!resp.ok) return null;
+  const body = await resp.json();
+  return body.users?.[0]?.id ?? null;
 }
 
 Deno.serve(async (req) => {
@@ -59,8 +64,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Auth is the authoritative source for user IDs — paginate to handle >50 users
-    let userId: string | null = await findAuthUserId(sb, email);
+    // Auth is the authoritative source for user IDs
+    let userId: string | null = await findAuthUserId(SB_URL, SB_SERVICE, email);
 
     if (userId) {
       // Auth user exists — set password + confirm email immediately
