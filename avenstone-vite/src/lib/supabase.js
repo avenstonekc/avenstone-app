@@ -4621,7 +4621,8 @@ export async function sbAdvancePhase(jobId, opts = {}) {
     return { ok: false, error: advErr.message, data: null };
   }
 
-  const { data: jobRow } = await sb.from('jobs').select('address').eq('id', jobId).single().catch(() => ({ data: null }));
+  let jobRow = null;
+  try { const { data } = await sb.from('jobs').select('address').eq('id', jobId).single(); jobRow = data; } catch (_) {}
   sbNotify(
     'phase_advanced',
     `Phase advanced — ${jobRow?.address || 'job'}`,
