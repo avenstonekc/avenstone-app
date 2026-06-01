@@ -138,6 +138,13 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         </div>
       )}
 
+      {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && job.client_email && (
+        <div style={{ marginTop: 16 }}><ClientLinkButton job={job} /></div>
+      )}
+      {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && job.status_token && (
+        <div style={{ marginTop: 8 }}><StatusLinkButton token={job.status_token} /></div>
+      )}
+
 {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && ['complete', 'final_touches'].includes(job.status) && (
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginTop: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
