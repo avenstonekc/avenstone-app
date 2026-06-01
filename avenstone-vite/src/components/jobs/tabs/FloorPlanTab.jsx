@@ -106,13 +106,6 @@ export default function FloorPlanTab({ job, profile }) {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
-                <button
-                  className="btn btn-navy"
-                  style={{ fontSize: '12px', padding: '4px 12px', height: '28px' }}
-                  onClick={() => setEditingPlanId(plan.id)}
-                >
-                  Edit
-                </button>
                 {plan.current_pdf_url ? (
                   <a
                     href={plan.current_pdf_url}
