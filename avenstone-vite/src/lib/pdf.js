@@ -1469,7 +1469,7 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl, 
 
   const allRooms = floors.flatMap(f => f.rooms);
   const totalSqft = normData
-    ? Math.round(normData.metadata.total_area_sqft)
+    ? normData.rooms.reduce((s, r) => s + Math.round(r.area_sqft), 0)
     : allRooms.reduce((s, r) => {
         const poly = _polyAreaFromSegs(r.wallSegments || []);
         return s + (poly > 0 ? Math.round(poly) : (r.sqft || 0));
