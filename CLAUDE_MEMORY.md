@@ -635,3 +635,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Root cause: `sb.from('jobs').select('address').eq('id', jobId).single().catch(...)` — supabase-js builder is thenable but does NOT expose `.catch()`. Calling `.catch()` on it throws at runtime. The antipattern appeared exactly once in this path (other `.catch()` calls in the same function are on real async function return values — fine).
 - Fix: replaced with `let jobRow = null; try { const { data } = await sb..single(); jobRow = data; } catch (_) {}`. Query logic unchanged; behavior preserved (override reason logs, phase advances, errors surface). Min-10-char validation in modal unaffected.
 - Symptom index note: add "J.from(...).single(...).catch is not a function" → supabase builder has no .catch; use try/catch or { data, error } destructure.
+
+**[LOG — 2026-06-01] CLIENT_PORTAL_BUTTON_PLACEMENT — ClientLinkButton + StatusLinkButton dead code, now rendered (commit 2c4e8a0).**
+- Action: Placed two fully-built-but-never-rendered buttons in InfoTab.jsx JSX so PMs can send clients their portal magic link and copy the realtor status link.
+- File: `avenstone-vite/src/components/jobs/tabs/InfoTab.jsx` (7 lines added after the Contract card section, before the Completion Sign-off card).
+- Root cause: Both buttons (defined at InfoTab.jsx:10-37 and :39-58) were complete — had click handlers, API calls, state management — but no JSX placement existed in the return tree, so they never appeared in the UI.
+- ClientLinkButton: guarded on `job.client_email`; calls `sbSendClientLink(job.client_email, job.client_name, job.address, job.id)` → `send-client-link` edge function → emails magic link to ClientPortal.
+- StatusLinkButton: guarded on `job.status_token`; builds `https://avenstone-app.vercel.app/?st=${token}` for clipboard copy.
+- Both guarded on role: `['owner', 'sales_rep', 'project_manager']`.
+- No logic changes — placement only.
