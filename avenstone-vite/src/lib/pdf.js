@@ -642,6 +642,52 @@ const _segsToPolyPoints = (segs, storedSqftEst) => {
   return poly;
 };
 
+// Segment-adjacency ring walk — replaces angle-sort for concave rooms.
+// Operates on already-processed segs (render coordinate space, {x1,z1,x2,z2}).
+// Pre-snaps to 0.1 ft grid; exact endpoint match wins, falls back to nearest.
+// Returns [{x, z}, ...] in walk order — same format as _segsToPolyPoints.
+const _walkRingFromSegs = (segs) => {
+  if (!segs || segs.length === 0) return [];
+  const SNAP = 0.1, EPS2 = 0.0025; // 0.05 ft squared
+  const n = segs.length;
+  const s = segs.map(seg => ({
+    x1: Math.round(seg.x1 / SNAP) * SNAP,
+    z1: Math.round(seg.z1 / SNAP) * SNAP,
+    x2: Math.round(seg.x2 / SNAP) * SNAP,
+    z2: Math.round(seg.z2 / SNAP) * SNAP,
+  }));
+  const used = new Array(n).fill(false);
+  used[0] = true;
+  const poly = [{ x: s[0].x1, z: s[0].z1 }];
+  let cx = s[0].x2, cz = s[0].z2;
+  let count = 1;
+  while (count < n) {
+    const dx0 = cx - poly[0].x, dz0 = cz - poly[0].z;
+    if (dx0 * dx0 + dz0 * dz0 < EPS2) break; // closed
+    let bestJ = -1, bestDist = Infinity, bestFlip = false;
+    for (let j = 0; j < n; j++) {
+      if (used[j]) continue;
+      const d1 = (s[j].x1 - cx) ** 2 + (s[j].z1 - cz) ** 2;
+      const d2 = (s[j].x2 - cx) ** 2 + (s[j].z2 - cz) ** 2;
+      if (d1 < EPS2) { bestJ = j; bestFlip = false; break; } // exact match
+      if (d2 < EPS2) { bestJ = j; bestFlip = true; break; }  // exact match
+      if (d1 < bestDist) { bestDist = d1; bestJ = j; bestFlip = false; }
+      if (d2 < bestDist) { bestDist = d2; bestJ = j; bestFlip = true; }
+    }
+    if (bestJ < 0) break;
+    used[bestJ] = true;
+    count++;
+    if (bestFlip) {
+      poly.push({ x: s[bestJ].x2, z: s[bestJ].z2 });
+      cx = s[bestJ].x1; cz = s[bestJ].z1;
+    } else {
+      poly.push({ x: s[bestJ].x1, z: s[bestJ].z1 });
+      cx = s[bestJ].x2; cz = s[bestJ].z2;
+    }
+  }
+  return poly;
+};
+
 const _polyCentroid = (poly) => {
   if (!poly.length) return { x: 0, z: 0 };
   let A = 0, cx = 0, cz = 0;
@@ -1092,24 +1138,12 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     }).filter(Boolean);
 
     // ── Room fill tint ────────────────────────────────────────────────────────
-    // Uses angle-sort of unique wall endpoints (not the greedy chain walk) so
-    // L-shaped rooms fill completely even when the chain walk would bridge a gap
-    // and create a self-intersecting polygon with a diagonal partial fill.
     doc.setFillColor(248, 245, 240);
     for (const { segs } of roomLayouts) {
       if (segs.length < 3) continue;
-      const EPS = 0.1; // ft — same as normalisation grid
-      const eps = [];
-      for (const s of segs) {
-        for (const pt of [{ x: s.x1, z: s.z1 }, { x: s.x2, z: s.z2 }]) {
-          if (!eps.some(e => Math.hypot(e.x - pt.x, e.z - pt.z) < EPS)) eps.push(pt);
-        }
-      }
-      if (eps.length < 3) continue;
-      const cx = eps.reduce((a, p) => a + p.x, 0) / eps.length;
-      const cz = eps.reduce((a, p) => a + p.z, 0) / eps.length;
-      eps.sort((a, b) => Math.atan2(a.z - cz, a.x - cx) - Math.atan2(b.z - cz, b.x - cx));
-      const pts = eps.map(p => [oX + p.x * scale, oY + p.z * scale]);
+      const ring = _walkRingFromSegs(segs);
+      if (ring.length < 3) continue;
+      const pts = ring.map(p => [oX + p.x * scale, oY + p.z * scale]);
       doc.lines(pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true);
     }
 
@@ -1335,7 +1369,8 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     let labelX, labelY;
     let roomPoly = null;
     if (segs && segs.length >= 3) {
-      roomPoly = _segsToPolyPoints(segs, room.sqft);
+      roomPoly = _walkRingFromSegs(segs);
+      if (roomPoly.length < 3) roomPoly = _segsToPolyPoints(segs, room.sqft);
       if (roomPoly.length >= 3) {
         // polylabel on the already-transformed polygon — same coord space as renderer
         const ring = roomPoly.map(p => [p.x, p.z]);
