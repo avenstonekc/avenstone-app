@@ -566,3 +566,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Verification: Local deploy not possible (no CLI/token in this environment). Verified by push to main → GitHub Actions run pending (commit 1d15d67).
 - 51 other functions: unaffected (all upload single-file index.ts with no local siblings).
 - normalize-scan status: NOT wired as a DB trigger. Callable via API only. Still not a trigger.
+
+**[LOG — 2026-05-31] pdf.js cosmetic render fixes — 4 changes (commit 4e91a11).**
+- Action: Four render-only fixes in `avenstone-vite/src/lib/pdf.js`. No geometry/normalize/data layer touched.
+- Files: `avenstone-vite/src/lib/pdf.js` only (+33/-37 lines net).
+- Fix 1 — Full room names: `nameTxt` was `hint.label_text` (abbreviated by `computeLayoutHints`/`abbreviateRoomName` in layoutCheck.js — ABBREV_TABLE maps "Bathroom"→"BA" etc). Changed to `room.name || hint.label_text` — always prefer the canonical room name.
+- Fix 2 — Horizontal shrink-to-fit labels: `narrow` flag (line 1356) drove 90° rotation when `hint.label_rotation === 90` or `aspect > 3`. Removed the narrow/rotation path entirely. Font size now computes shrink-to-fit: `fs = max(6, min(11, w/8, w*0.85/(name.length*0.55)))`. Wall-margin test simplified to log-only (no rotate). Labels always render left-to-right.
+- Fix 3 — Uniform 2x4 wall thickness: `const thick = isInteriorWall(...) ? 3 : 6` → `const thick = 6`. All walls draw at the exterior weight. At typical plan scale, 6 PDF pts ≈ 3.5" actual (2x4 stud wall). Interior/exterior distinction removed from the render layer.
+- Fix 4 — Flat uniform room fill: Root cause of hallway diagonal was `_segsToPolyPoints` greedy chain walk bridging a gap in the segment ring (scanner drift or floating-point after rotation), producing a self-intersecting polygon that jsPDF's non-zero winding fill renders with a diagonal partial fill. Fix: replaced the chain-walk fill with angle-sort of unique wall endpoints around their arithmetic centroid. For star-shaped rooms (all real rooms), angle-sort produces a simple polygon. Self-intersection impossible. Rectangular rooms: behavior identical to before. L-shaped hallway: fills correctly edge-to-edge. **This is a polygon-order fix, not a fill-style change.**
+- Open: takeoff wizard + FloorPlanCanvas still on legacy raw reads (next arc). `total_sqft` column cutover deferred. Multi-session capture gate separate. Historical rows hit legacy fallback path (correct behavior).
