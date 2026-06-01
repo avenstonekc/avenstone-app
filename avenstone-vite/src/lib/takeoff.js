@@ -16,6 +16,26 @@ function computePerimeter(room) {
 }
 
 
+/**
+ * Derive perimeterLf and wallAreaSf from normalized_geometry walls[].
+ * Drop-in complement to computePerimeter for the normalized path.
+ * Pure: no DB, no side effects.
+ */
+export function computeMetricsFromNormalized(normRoom, walls) {
+  if (!walls || walls.length === 0) return { perimeterLf: 0, wallAreaSf: 0 };
+  const roomWalls = walls.filter(w => w.room_id === normRoom.id);
+  if (roomWalls.length === 0) return { perimeterLf: 0, wallAreaSf: 0 };
+  const rawPerimeter = roomWalls.reduce((sum, w) => {
+    const dx = w.p2[0] - w.p1[0];
+    const dz = w.p2[1] - w.p1[1];
+    return sum + Math.sqrt(dx * dx + dz * dz);
+  }, 0);
+  const perimeterLf = Math.round(rawPerimeter * 100) / 100;
+  const height = normRoom.height ?? 8;
+  const wallAreaSf = Math.round(perimeterLf * height * 100) / 100;
+  return { perimeterLf, wallAreaSf };
+}
+
 // ── Quantity source mapping ────────────────────────────────────────────────────
 
 function quantitySource(trade, unit) {
