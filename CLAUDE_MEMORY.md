@@ -636,10 +636,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Verification: manually copied URL from link_only response and opened in incognito — Supabase auth page processes the token, session is set, app loads at ClientPortal. End-to-end confirmed.
 - Files: `supabase/functions/send-client-link/index.ts`, `avenstone-vite/src/lib/supabase.js`, `avenstone-vite/src/components/jobs/tabs/InfoTab.jsx`.
 
-**[LOG — 2026-06-01] CLIENT_LINK_COPY_FIX — robust clipboard copy (commit 64179fb).**
-- Root cause: `navigator.clipboard.writeText()` called AFTER `await sbGetClientLink()` (async network round-trip). Browser clipboard API requires a synchronous user-gesture context; by the time the await resolves, that context is expired → `NotAllowedError`. Also fails on `http://localhost` (secure context required). Link generation itself worked fine.
-- Fix: three-tier fallback chain in `ClientLinkButton.copyLink`: (1) `navigator.clipboard.writeText` — try/catch; (2) `document.execCommand('copy')` via temp `<textarea>` — no gesture restriction, works in most contexts; (3) if both fail, `setFallbackUrl(url)` → render a read-only `<input>` with the URL pre-selected on click, gold border. User always gets the link.
-- Distinct error messages: generation failure → `setErr('Could not generate link')`; auto-copy failure → `setFallbackUrl(url)` (no err, URL shown inline). Two different states, two different UIs.
+**[LOG — 2026-06-01] CLIENT_LINK_COPY_FIX — robust clipboard copy (commit 64179fb, patched 1b6f0dc).**
+- Root cause v1: `navigator.clipboard.writeText()` called AFTER `await sbGetClientLink()` — gesture context stale → `NotAllowedError`.
+- Root cause v2 (actual bug seen): `execCommand` fallback was writing `url` to a `width:1px;height:1px;opacity:0` textarea. Invisible/collapsed elements fail to receive focus+selection in most browsers. `ta.select()` silently failed; `execCommand('copy')` then copied whatever was previously selected on the page (a Claude response block) and returned `true` anyway — false positive. `setCopied(true)` fired, `setFallbackUrl` never ran. User pasted the report text, not the URL.
+- Fix (commit 1b6f0dc): removed `execCommand` fallback entirely. `navigator.clipboard.writeText` is the single attempt. `setFallbackUrl(url)` now ALWAYS called after successful link generation, so the URL is always visible inline regardless of clipboard result. Label and border color reflect clipboard success (green) vs failure (gold). User always has the URL to copy manually.
+- `execCommand` rule: NEVER use `execCommand('copy')` on a hidden/collapsed element — it copies stale page selection and returns `true`, making it impossible to detect failure.
 - `Send to client` button unchanged.
 - File: `avenstone-vite/src/components/jobs/tabs/InfoTab.jsx` only.
 
