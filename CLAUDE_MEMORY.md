@@ -620,6 +620,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Fix — doorway erase: `_eraseGap` gained optional `fillRgb` param (default white). Door and opening erases now pass `FLOOR_TINT` so the erasure reveals floor color, not white. Window erases remain white (exterior). Slanted stair wall untouched (real geometry, intentionally uncorrected).
 - Draw order unchanged: unified floor fill → walls (poché) → erase openings → symbols → labels.
 
+**[LOG — 2026-06-01] TAKEOFF_NORM_STEP1 — pure computeMetricsFromNormalized helper (commit dbc9293).**
+- Action: Added pure helper to `takeoff.js` + `takeoff.test.mjs` (10/10 passing). Step 1 of 2 for takeoff geometry migration.
+- Files: `avenstone-vite/src/lib/takeoff.js` (+20 lines, helper only), `avenstone-vite/src/lib/takeoff.test.mjs` (new, 10 tests).
+- Helper: `computeMetricsFromNormalized(normRoom, walls) → { perimeterLf, wallAreaSf }`. Filters walls by `room_id`, sums `hypot(p2-p1)`, multiplies by `normRoom.height ?? 8`. Output shape/rounding matches raw-path output exactly (Math.round(x*100)/100 for both fields). Guards: null/empty walls → zeros; no matching room_id → zeros. Pure: no DB, no supabase.js import.
+- computePerimeter (raw fallback) and buildTakeoffDraft untouched.
+- Open (step 2): integrate into buildTakeoffDraft — extend scan query to select `normalized_geometry`, swap `room.sqft` → `normRoom.area_sqft`, call helper for wall metrics, raw fallback for scans without normalized_geometry. Multiplier discrepancy fix is SEPARATE (orthogonal code path — do after geometry migration).
+
 **[LOG — 2026-06-01] Gate-override .catch crash fix (commit 5ddf969).**
 - Action: Fixed runtime crash "J.from(...).select(...).single(...).catch is not a function" in the Override and Advance modal.
 - File: `avenstone-vite/src/lib/supabase.js:4624` (inside `sbAdvancePhase`).
