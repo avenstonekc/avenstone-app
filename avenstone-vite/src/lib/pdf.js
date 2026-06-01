@@ -1401,8 +1401,8 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     // Always use full room name — bypass computeLayoutHints abbreviation.
     // Always render horizontal — shrink font to fit rather than rotating.
     const nameTxt = room.name || (hint ? hint.label_text : '—');
-    const sfTxt = hint ? hint.sf_text : (sqft > 0 ? `${sqft.toLocaleString()} sq ft` : null);
-    const showSf = room.sf_visible !== false && (hint ? (!hint.sf_inline_with_label && !!sfTxt) : sqft > 0);
+    const sfTxt = sqft > 0 ? `${sqft.toLocaleString()} sq ft` : null;
+    const showSf = room.sf_visible !== false && !!sfTxt;
 
     // Shrink-to-fit: start from w/8, then cap so text stays within 85% of room width.
     let fs = Math.min(11, w / 8);
