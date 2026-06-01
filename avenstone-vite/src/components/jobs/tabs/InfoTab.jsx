@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbSendClientLink, sbLoadDocs } from '../../../lib/supabase';
+import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbSendClientLink, sbGetClientLink, sbLoadDocs } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildGenericPDF } from '../../../lib/pdf';
 import ContractModal from '../../modals/ContractModal';
@@ -10,6 +10,8 @@ import JobTodosBlock from '../JobTodosBlock';
 function ClientLinkButton({ job }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [err, setErr] = useState('');
   const send = async () => {
     setSending(true); setErr('');
@@ -18,6 +20,20 @@ function ClientLinkButton({ job }) {
     else setSent(true);
     setSending(false);
   };
+  const copyLink = async () => {
+    setCopying(true); setErr('');
+    try {
+      const res = await sbGetClientLink(job.client_email, job.client_name, job.address, job.id);
+      if (res.error || !res.url) { setErr(res.error || 'Could not generate link'); return; }
+      await navigator.clipboard.writeText(res.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    } catch (e) {
+      setErr('Copy failed');
+    } finally {
+      setCopying(false);
+    }
+  };
   return (
     <div style={{ gridColumn: '1/-1', background: '#F7F5F0', border: '1px solid #E8E4DC', padding: '12px 14px', marginTop: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -25,11 +41,16 @@ function ClientLinkButton({ job }) {
           <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>Client Portal</div>
           <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>Send {job.client_name || job.client_email} a magic link to view progress and message you</div>
         </div>
-        {sent ? (
-          <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600 }}>✓ Link sent!</div>
-        ) : (
-          <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px', flexShrink: 0, whiteSpace: 'nowrap' }} onClick={send} disabled={sending}>{sending ? 'Sending...' : 'Send Client Link'}</button>
-        )}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px', whiteSpace: 'nowrap' }} onClick={copyLink} disabled={copying}>
+            {copied ? '✓ Copied!' : copying ? 'Getting...' : 'Copy link'}
+          </button>
+          {sent ? (
+            <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600, display: 'flex', alignItems: 'center' }}>✓ Sent!</div>
+          ) : (
+            <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px', whiteSpace: 'nowrap' }} onClick={send} disabled={sending}>{sending ? 'Sending...' : 'Send to client'}</button>
+          )}
+        </div>
       </div>
       {err && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{err}</div>}
     </div>

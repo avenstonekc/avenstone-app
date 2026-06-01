@@ -14,7 +14,7 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   try {
-    const { email, client_name, job_address, job_id, tenant_id } = await req.json();
+    const { email, client_name, job_address, job_id, tenant_id, link_only } = await req.json();
     if (!email || !job_id || !tenant_id) return new Response("missing fields", { status: 400 });
 
     const sb = createClient(SB_URL, SB_SERVICE, { auth: { autoRefreshToken: false, persistSession: false } });
@@ -47,6 +47,14 @@ Deno.serve(async (req) => {
     // Generate magic link
     const { data: linkData } = await sb.auth.admin.generateLink({ type: "magiclink", email });
     const loginUrl = linkData?.properties?.action_link || APP_URL;
+
+    // link_only mode: return the URL without emailing
+    if (link_only) {
+      return new Response(JSON.stringify({ ok: true, url: loginUrl }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
     const greeting = client_name ? `Hi ${client_name.split(" ")[0]},` : "Hi,";
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>

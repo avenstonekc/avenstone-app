@@ -1061,6 +1061,10 @@ export const sbSendClientLink = async (email, clientName, jobAddress, jobId) => 
   const res = await fetch(CLIENT_LINK_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, client_name: clientName, job_address: jobAddress, job_id: jobId, tenant_id: AV_TENANT }) });
   return res.json();
 };
+export const sbGetClientLink = async (email, clientName, jobAddress, jobId) => {
+  const res = await fetch(CLIENT_LINK_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ email, client_name: clientName, job_address: jobAddress, job_id: jobId, tenant_id: AV_TENANT, link_only: true }) });
+  return res.json();
+};
 
 // ─── Sub pricing ──────────────────────────────────────────────────────────────
 export const sbLoadSubPricing = async (subId) => {
