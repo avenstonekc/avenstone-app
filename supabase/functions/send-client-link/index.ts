@@ -26,8 +26,10 @@ Deno.serve(async (req) => {
     const sb = createClient(SB_URL, SB_SERVICE, { auth: { autoRefreshToken: false, persistSession: false } });
 
     // Look up existing user via profiles table — avoids listUsers() pagination limit (50-user default)
-    const { data: profileRow } = await sb.from("profiles").select("id, role").eq("email", email).maybeSingle();
-    let userId: string | null = profileRow?.id || null;
+    // Use limit(1) instead of maybeSingle() to handle duplicate email rows without throwing
+    const { data: profileRows } = await sb.from("profiles").select("id, role").eq("email", email).limit(1);
+    const profileRow = profileRows?.[0] ?? null;
+    let userId: string | null = profileRow?.id ?? null;
 
     if (profileRow) {
       const isStaff = profileRow.role && ["owner", "project_manager", "sales_rep"].includes(profileRow.role);
