@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis, sbCreateCOFromOhShit } from '../../../lib/supabase';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { Ic, f$, isMob } from '../../../lib/utils';
 import GapResolutionModal from '../consultation/GapResolutionModal';
@@ -75,6 +75,10 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const [result, setResult] = useState(null);
   const [ohShitToggled, setOhShitToggled] = useState({});
   const [ohShitDbRows, setOhShitDbRows] = useState([]);
+  const [convertingMomentId, setConvertingMomentId] = useState(null);
+  const [convertAmt, setConvertAmt] = useState('');
+  const [convertSaving, setConvertSaving] = useState(false);
+  const [convertMsgs, setConvertMsgs] = useState({});
   const [sessions, setSessions] = useState([]);
   const [viewSession, setViewSession] = useState(null);
   const [err, setErr] = useState('');
@@ -270,6 +274,32 @@ export default function ConsultationTab({ job, profile, setTab }) {
     } finally {
       setGenerating(false);
     }
+  };
+
+  // ─── Convert oh-shit moment to a pending change order ─────────────────────
+
+  const handleConvertToCO = async (momentId, defaultAmt) => {
+    if (convertingMomentId !== momentId) {
+      setConvertingMomentId(momentId);
+      setConvertAmt(String(defaultAmt || ''));
+      setConvertMsgs(prev => ({ ...prev, [momentId]: '' }));
+      return;
+    }
+    setConvertSaving(true);
+    const result = await sbCreateCOFromOhShit({
+      ohShitMomentId: momentId,
+      jobId: job.id,
+      amount: convertAmt !== '' ? Number(convertAmt) : defaultAmt,
+    });
+    setConvertSaving(false);
+    if (result.ok) {
+      setOhShitDbRows(prev => prev.map(r => r.id === momentId ? { ...r, converted_to_co_id: result.data.id } : r));
+      setConvertMsgs(prev => ({ ...prev, [momentId]: 'CO created — approve it in the Change Orders tab.' }));
+      setConvertingMomentId(null);
+    } else {
+      setConvertMsgs(prev => ({ ...prev, [momentId]: result.error }));
+    }
+    setConvertSaving(false);
   };
 
   // ─── Save Estimate to job_estimates ───────────────────────────────────────
@@ -645,6 +675,62 @@ export default function ConsultationTab({ job, profile, setTab }) {
                         <span style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Include in proposal</span>
                       </label>
                     </div>
+                    {/* CO conversion row — owner/PM only, requires a persisted DB row */}
+                    {dbRow?.id && ['owner', 'project_manager'].includes(profile?.role) && (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #F3F4F6', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                        {dbRow.converted_to_co_id ? (
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#15803d', background: '#D1FAE5', borderRadius: 6, padding: '3px 10px' }}>
+                            → CO created
+                          </span>
+                        ) : convertingMomentId === dbRow.id ? (
+                          <>
+                            <span style={{ fontSize: 12, color: '#374151' }}>Amount: $</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={convertAmt}
+                              onChange={e => setConvertAmt(e.target.value)}
+                              style={{ width: 90, padding: '4px 8px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 13, fontFamily: 'DM Sans, sans-serif' }}
+                            />
+                            <button
+                              className="btn btn-gold"
+                              style={{ fontSize: 12, padding: '4px 12px' }}
+                              disabled={convertSaving}
+                              onClick={() => handleConvertToCO(dbRow.id, 0)}
+                            >
+                              {convertSaving ? 'Creating…' : 'Create CO'}
+                            </button>
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 12, padding: '4px 10px' }}
+                              disabled={convertSaving}
+                              onClick={() => { setConvertingMomentId(null); setConvertMsgs(prev => ({ ...prev, [dbRow.id]: '' })); }}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 12, padding: '4px 12px', border: '1px solid #D1D5DB' }}
+                            onClick={() => {
+                              const low = Number(m.estimated_cost_low || m.cost_low || 0);
+                              const high = Number(m.estimated_cost_high || m.cost_high || 0);
+                              const mid = Math.round(((low + high) / 2) * 100) / 100;
+                              handleConvertToCO(dbRow.id, mid);
+                            }}
+                          >
+                            → Create CO from this risk
+                          </button>
+                        )}
+                        {convertMsgs[dbRow.id] ? (
+                          <span style={{ fontSize: 12, color: convertMsgs[dbRow.id].startsWith('CO created') ? '#15803d' : '#ef4444' }}>
+                            {convertMsgs[dbRow.id]}
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 );
               })}
