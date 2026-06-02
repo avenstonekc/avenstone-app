@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
 import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate } from '../../../lib/supabase';
 import { markupRateForCategory } from '../../../lib/markupConfig';
 import { Ic, f$ } from '../../../lib/utils';
-import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
+import { buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
 
@@ -170,25 +170,43 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
     await sendEstimatorMessage(prompt, estFile || null);
   };
 
+  const _buildProposalDoc = () => {
+    const lp = Number(job.labor_markup_pct || 0);
+    const mp = Number(job.material_markup_pct || 0);
+    const lastAI = estMessages.filter(m => m.role === 'assistant').pop();
+    const flags = lastAI
+      ? (lastAI.content.match(/\[FLAG:[^\]]+\]/g) || []).map(f => f.replace(/^\[FLAG:\s*/, '').replace(/\]$/, ''))
+      : [];
+    return buildProposalPDF(job, lineItems, propOhShit, {
+      laborPct: lp, materialPct: mp, categoryConfig,
+      pmFee: Number(propPmFee || 0), proposalNum: propNum, schedule: propSchedule, flags,
+    });
+  };
+
   const saveEstimatePDF = async () => {
+    if (!lineItems.length) { setEstSaveMsg('No line items — run the estimator first'); return; }
     setEstSaving(true); setEstSaveMsg('');
-    const doc = await buildEstimatePDF(job, estMessages);
-    const blob = doc.output('blob');
-    const file = new File([blob], `Estimate — ${job.address}.pdf`, { type: 'application/pdf' });
-    const r = await sbUploadDoc(job.id, file, 'other');
-    setEstSaveMsg(r.doc ? 'Saved to Documents' : 'Save failed — try again');
+    try {
+      const blob = _buildProposalDoc().output('blob');
+      const file = new File([blob], `Proposal — ${job.address}.pdf`, { type: 'application/pdf' });
+      const r = await sbUploadDoc(job.id, file, 'proposal');
+      if (r.doc && setDocs) setDocs(p => [r.doc, ...p]);
+      setEstSaveMsg(r.doc ? 'Saved to Documents' : 'Save failed — try again');
+    } catch (e) { setEstSaveMsg('Save failed — try again'); }
     setEstSaving(false); setTimeout(() => setEstSaveMsg(''), 3000);
   };
 
   const sendEstimateToClient = async () => {
     if (!job.client_email) { setEstSaveMsg('No client email on this job'); return; }
+    if (!lineItems.length) { setEstSaveMsg('No line items — run the estimator first'); return; }
     setEstSendingClient(true); setEstSaveMsg('');
-    const doc = await buildEstimatePDF(job, estMessages);
-    const blob = doc.output('blob');
-    await sbSendEstimateEmail(job, blob);
-    const file = new File([blob], `Estimate — ${job.address}.pdf`, { type: 'application/pdf' });
-    await sbUploadDoc(job.id, file, 'other');
-    setEstSaveMsg(`Sent to ${job.client_email}`);
+    try {
+      const blob = _buildProposalDoc().output('blob');
+      await sbSendEstimateEmail(job, blob);
+      const file = new File([blob], `Proposal — ${job.address}.pdf`, { type: 'application/pdf' });
+      await sbUploadDoc(job.id, file, 'proposal');
+      setEstSaveMsg(`Sent to ${job.client_email}`);
+    } catch (e) { setEstSaveMsg('Send failed — try again'); }
     setEstSendingClient(false); setTimeout(() => setEstSaveMsg(''), 4000);
   };
 
@@ -318,7 +336,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {estSaveMsg && <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>{estSaveMsg}</span>}
-            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving}>{estSaving ? 'Saving…' : 'Save Draft (Internal)'}</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
             <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', sqft: '', special: '' }); }}>Reset</button>
@@ -440,7 +458,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
     <div>
       {propErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', borderRadius: 4, fontSize: 13, marginBottom: 16 }}>{propErr}</div>}
       {propLoading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF', fontSize: 13 }}>Extracting line items from estimate…</div>
+        <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF', fontSize: 13 }}>Loading proposal data…</div>
       ) : lineItems.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <div style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>No line items yet — generate an estimate in Build or add items in Line Items.</div>
