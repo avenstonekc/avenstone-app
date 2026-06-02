@@ -842,3 +842,47 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - ARCHITECTURE COMPLETE: estimate_line_items now has EXACTLY ONE write path (sbCommitEstimate) across all four sources: takeoff, consultation, ai, manual. The nuclear full-replace pattern (delete-all-then-insert-all for a job) is fully retired. Takeoff isolation (notes LIKE 'takeoff:%') is the only scoped delete remaining.
 - KNOWN GAP (markup_pct in LineItemModal UI): The modal still renders a Markup % input field. sbCommitEstimate zeros it, so the value entered is never stored. Field remains cosmetically functional until Slice 5 adds proposal-time markup. No UI change needed now.
 - KNOWN GAP (Slice 5): Budget sub-tab still shows cost not marked-up total. markup_pct=0 on all rows from all paths. Expected until Slice 5 ships.
+
+[LOG - 2026-06-02] ESTIMATE_FLOW_ARC Slice 5 — per-category markup config (5-part batch)
+- Commits (in order): ee041ec (Part 1), 95824b2 (Part 2), 427fb54 (Part 3), 316b074 (Part 4), 05baafc (Part 5). All pushed to main.
+- Files: supabase/migrations/20260602150000_markup_category_config.sql (new), avenstone-vite/src/lib/markupConfig.js (new), avenstone-vite/src/lib/markupConfig.test.js (new), avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx, avenstone-vite/src/components/jobs/JobDet.jsx, avenstone-vite/src/components/modals/SettingsModal.jsx
+
+- Part 1 — DB migration + shared mapper + unit tests:
+  - New table `markup_category_config` (tenant_id, category CHECK 6 values, markup_mode CHECK 3 values, UNIQUE(tenant_id, category)). RLS: mcc_tenant_read (SELECT), mcc_owner_write (ALL for owner/PM). Seeded Avenstone tenant with 6 rows matching trigger defaults.
+  - New `markupConfig.js`: exports DEFAULT_CATEGORY_CONFIG, normalizeCategoryKey, markupRateForCategory.
+  - `normalizeCategoryKey` handles both estimate categories AND ledger types via LEDGER_ALIASES (sub_payout→sub, material_purchase→materials, material→materials, supply→materials, equipment_rental→equipment, fuel→equipment, change_order→other).
+  - `markupRateForCategory(category, { laborPct, materialPct, categoryConfig })` — single source of truth. Returns Number(laborPct) for labor_rate mode, Number(materialPct) for material_rate mode, 0 for flat.
+  - DEFAULT_CATEGORY_CONFIG = { labor: 'labor_rate', sub: 'labor_rate', materials: 'material_rate', equipment: 'material_rate', permit: 'material_rate', other: 'material_rate' } — reproduces trigger mapping exactly, zero breaking change for callers without DB config.
+  - 39 unit tests pass (node markupConfig.test.js). Houston anchor verified: with equal rates (22/22), ALL categories return 22 regardless of bucket (algebraic no-op).
+
+- Part 2 — Unified markup bucketing in sbLoadJobFinancialSummary + sbLoadClientActualSpend:
+  - Both functions now import markupRateForCategory and normalizeCategoryKey. All per-transaction markup is computed via the shared mapper.
+  - sbLoadJobFinancialSummary: loads material_markup_pct + tenant_id; projected_markup sums markupRateForCategory per cost txn; projected_final_bill = total_cost_base + projected_markup + pm_fee.
+  - sbLoadClientActualSpend: per-transaction markupAmount via markupRateForCategory; firmProjectedTotal = costSubtotal + markupAmount + pendingMarkupAmount + pmFee.
+  - Three previously-divergent markup implementations now converge on one function.
+
+- Part 3 — Proposal-time markup restored in EstimateTab renderItems():
+  - lineClientPrice(li) = total_cost × (1 + markupRateForCategory(li.category, ...) / 100).
+  - categoryConfig loaded via sbLoadCategoryConfig in the initial useEffect Promise.all.
+  - Markup visibility lost in Slice 4 (markup_pct=0 contract) is now fully restored at proposal time.
+
+- Part 4 — sbSetContractFromEstimate (estimate→contract bridge):
+  - Sums lineClientPrice per line + pmFee → writes jobs.contract_value + job_estimates.estimate_data.contract_total.
+  - "Accept Estimate →" button in EstimateTab header: owner/PM gated, confirmation if contract_value already set.
+  - EstimateTab receives profile prop (JobDet.jsx passes it through).
+  - SAFETY: tested on test job only. Never run against Houston job 58345dc5 during development.
+
+- Part 5 — Markup tab in SettingsModal:
+  - Tab visible to owner + project_manager only.
+  - 6 category rows (labor/sub/materials/equipment/permit fees/other), each with a select: labor_rate / material_rate / flat.
+  - flat = 0% pass-through (permits, self-performed work).
+  - Save calls sbSaveCategoryConfig; reloads on tab open via sbLoadCategoryConfig.
+
+- Architecture decisions (locked):
+  - `flat` mode = 0% markup = pass-through. Permits and self-performed work pass through at cost.
+  - `normalizeCategoryKey` is the bridge between estimate categories and ledger types — callers never need to know the alias mapping.
+  - DEFAULT_CATEGORY_CONFIG ensures zero breaking change for callers without DB config (trigger-equivalent behavior).
+  - estimate→contract is one coded path (sbSetContractFromEstimate). No side-door ingest.
+  - markup_pct=0 on all estimate_line_items rows remains the contract. Markup is applied at proposal/display time only.
+
+- Open: npm run gen:types needed to add markup_category_config to database.types.ts (deferred to next session).

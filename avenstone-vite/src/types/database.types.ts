@@ -1462,6 +1462,7 @@ export type Database = {
           id: string
           job_id: string
           markup_pct: number
+          multiplier: number
           notes: string | null
           phase: string | null
           quantity: number
@@ -1483,6 +1484,7 @@ export type Database = {
           id?: string
           job_id: string
           markup_pct?: number
+          multiplier?: number
           notes?: string | null
           phase?: string | null
           quantity?: number
@@ -1504,6 +1506,7 @@ export type Database = {
           id?: string
           job_id?: string
           markup_pct?: number
+          multiplier?: number
           notes?: string | null
           phase?: string | null
           quantity?: number
@@ -3230,6 +3233,38 @@ export type Database = {
           },
           {
             foreignKeyName: "jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      markup_category_config: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          markup_mode: string
+          tenant_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          markup_mode: string
+          tenant_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          markup_mode?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "markup_category_config_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -5887,10 +5922,29 @@ export type Database = {
         Args: { p_invoice_id: string }
         Returns: string
       }
+      edit_sub_invoice_with_ledger: {
+        Args: {
+          p_amount?: number
+          p_description?: string
+          p_due_date?: string
+          p_invoice_date?: string
+          p_invoice_id: string
+          p_line_items?: Json
+        }
+        Returns: {
+          new_amount: number
+          new_status: string
+        }[]
+      }
+      get_auth_user_id_by_email: { Args: { p_email: string }; Returns: string }
       get_job_co_total: { Args: { p_job_id: string }; Returns: number }
       get_my_role: { Args: never; Returns: string }
       get_my_tenant_id: { Args: never; Returns: string }
       next_invoice_number: { Args: { p_tenant_id: string }; Returns: string }
+      resync_sub_invoice_accrual: {
+        Args: { p_effective_date?: string; p_invoice_id: string }
+        Returns: undefined
+      }
       reverse_draw_paid_cascade: {
         Args: { p_invoice_id: string }
         Returns: number
