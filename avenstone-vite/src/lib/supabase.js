@@ -1557,6 +1557,54 @@ export const sbSaveCategoryConfig = async (tenantId, configMap) => {
   return { ok: !error, error: error?.message || null };
 };
 
+/**
+ * Converts the current estimate_line_items into a contract value.
+ * Sums total_cost per line, applies per-category markup via markupRateForCategory,
+ * adds pm_fee, then writes the result to:
+ *   jobs.contract_value
+ *   job_estimates.estimate_data.contract_total  (upserted)
+ *
+ * @returns {{ ok: boolean, error: string|null, data: { contract_total: number }|null }}
+ */
+export const sbSetContractFromEstimate = async (jobId) => {
+  try {
+    const [{ data: items }, { data: jobRow }] = await Promise.all([
+      sb.from('estimate_line_items').select('category,total_cost').eq('job_id', jobId).eq('tenant_id', AV_TENANT),
+      sb.from('jobs').select('labor_markup_pct,material_markup_pct,pm_fee,tenant_id').eq('id', jobId).single(),
+    ]);
+    if (!jobRow) return { ok: false, error: 'Job not found', data: null };
+
+    const laborPct    = Number(jobRow.labor_markup_pct   || 0);
+    const materialPct = Number(jobRow.material_markup_pct || 0);
+    const pmFee       = Number(jobRow.pm_fee              || 0);
+    const categoryConfig = await sbLoadCategoryConfig(jobRow.tenant_id);
+
+    const markedUpSum = (items || []).reduce((sum, li) => {
+      const cost = Number(li.total_cost ?? 0);
+      const rate = markupRateForCategory(li.category, { laborPct, materialPct, categoryConfig });
+      return sum + cost * (1 + rate / 100);
+    }, 0);
+    const contractTotal = Math.round((markedUpSum + pmFee) * 100) / 100;
+
+    const [jobUpd, estRow] = await Promise.all([
+      sb.from('jobs').update({ contract_value: contractTotal }).eq('id', jobId).eq('tenant_id', AV_TENANT),
+      sb.from('job_estimates').select('estimate_data').eq('job_id', jobId).maybeSingle(),
+    ]);
+    if (jobUpd.error) return { ok: false, error: jobUpd.error.message, data: null };
+
+    const existingData = estRow.data?.estimate_data ?? {};
+    const { error: estErr } = await sb.from('job_estimates').upsert(
+      { job_id: jobId, tenant_id: AV_TENANT, estimate_data: { ...existingData, contract_total: contractTotal }, updated_at: new Date().toISOString() },
+      { onConflict: 'job_id' }
+    );
+    if (estErr) return { ok: false, error: estErr.message, data: null };
+
+    return { ok: true, error: null, data: { contract_total: contractTotal } };
+  } catch (e) {
+    return { ok: false, error: e.message || 'sbSetContractFromEstimate failed', data: null };
+  }
+};
+
 export const sbLoadCustomTakeoffLines = async (jobId, roomType) => {
   const prefix = `takeoff:custom:${roomType}:`;
   const { data } = await sb.from('estimate_line_items').select('*').eq('job_id', jobId).like('notes', `${prefix}%`);

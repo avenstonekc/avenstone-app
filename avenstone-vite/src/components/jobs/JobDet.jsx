@@ -328,7 +328,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
           </div>
         )}
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} setTab={setTab} />}
-        {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} />}
+        {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} profile={profile} />}
         {tab === 'subs' && <SubsTab job={job} profile={profile} setTab={setTab} />}
         {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} financialsAction={financialsAction} clearFinancialsAction={() => setFinancialsAction(null)} />}
         {tab === 'sched' && <ScheduleTab job={job} />}

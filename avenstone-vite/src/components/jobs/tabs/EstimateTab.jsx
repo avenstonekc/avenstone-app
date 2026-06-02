@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate } from '../../../lib/supabase';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
 import { Ic, f$ } from '../../../lib/utils';
@@ -22,7 +22,7 @@ const SUB_TABS = [
   { id: 'proposal', lb: 'Proposal' },
 ];
 
-export default function EstimateTab({ job, photos, docs, setDocs }) {
+export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
   const [sub, setSub] = useState('build');
 
   // ── AI Estimator state ──────────────────────────────────────────────────────
@@ -43,6 +43,8 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
   const [showLineItemModal, setShowLineItemModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [categoryConfig, setCategoryConfig] = useState(null);
+  const [acceptingEstimate, setAcceptingEstimate] = useState(false);
+  const [acceptMsg, setAcceptMsg] = useState('');
 
   // ── Proposal state ──────────────────────────────────────────────────────────
   const [propLoading, setPropLoading] = useState(false);
@@ -270,6 +272,22 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
     setLineItems(items || []);
   };
 
+  const handleAcceptEstimate = async () => {
+    if (!lineItems.length) return;
+    if (job.contract_value && job.contract_value > 0) {
+      if (!window.confirm(`This job already has a contract value of $${Number(job.contract_value).toLocaleString()}. Replace it with the estimate total?`)) return;
+    }
+    setAcceptingEstimate(true); setAcceptMsg('');
+    const result = await sbSetContractFromEstimate(job.id);
+    if (result.ok) {
+      setAcceptMsg(`Contract set to $${Number(result.data.contract_total).toLocaleString()}`);
+      setTimeout(() => setAcceptMsg(''), 5000);
+    } else {
+      setAcceptMsg(`Error: ${result.error}`);
+    }
+    setAcceptingEstimate(false);
+  };
+
   // ── Sub-view: Build ─────────────────────────────────────────────────────────
   const renderBuild = () => (
     <div>
@@ -356,8 +374,25 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <span style={{ fontSize: 13, color: '#6B7280' }}>{lineItems.length} line item{lineItems.length !== 1 ? 's' : ''}</span>
-          <button className="btn btn-navy" style={{ fontSize: 12 }} onClick={() => { setEditingItem(null); setShowLineItemModal(true); }}>+ Add line item</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {['owner', 'project_manager'].includes(profile?.role) && lineItems.length > 0 && (
+              <button
+                className="btn btn-gold"
+                style={{ fontSize: 12 }}
+                onClick={handleAcceptEstimate}
+                disabled={acceptingEstimate}
+              >
+                {acceptingEstimate ? 'Setting…' : 'Accept Estimate →'}
+              </button>
+            )}
+            <button className="btn btn-navy" style={{ fontSize: 12 }} onClick={() => { setEditingItem(null); setShowLineItemModal(true); }}>+ Add line item</button>
+          </div>
         </div>
+        {acceptMsg && (
+          <div style={{ padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 10, background: acceptMsg.startsWith('Error') ? '#FEE2E2' : '#D1FAE5', color: acceptMsg.startsWith('Error') ? '#991b1b' : '#065f46' }}>
+            {acceptMsg}
+          </div>
+        )}
         {lineItems.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#9CA3AF', fontSize: 14 }}>
             No line items yet — run the AI Estimator in Build, or add manually.
