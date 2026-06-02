@@ -15,7 +15,7 @@ import { sb, AV_TENANT, AI_EXTRACT_SUB_INVOICE_URL, sbUploadJobFile, sbSignJobFi
 import {
   sbLoadSubInvoices, sbCreateSubInvoice, sbApproveSubInvoice,
   sbDisputeSubInvoice, sbAddSubInvoicePayment, sbVoidSubInvoicePayment,
-  sbVoidSubInvoice, sbUnvoidSubInvoice, sbCreateSubContact,
+  sbVoidSubInvoice, sbUnvoidSubInvoice, sbCreateSubContact, sbEditSubInvoice,
 } from '../../../../lib/subInvoices';
 import { f$, isMob } from '../../../../lib/utils';
 
@@ -294,6 +294,7 @@ export default function SubInvoicesSection({ job, profile, openAddInvoiceOnMount
           onVoidPayment={handleVoidPayment}
           onVoidInvoice={() => handleVoidInvoice(selectedInvoice)}
           onUnvoidInvoice={() => handleUnvoidInvoice(selectedInvoice)}
+          onEditSaved={load}
           mob={mob}
         />
       )}
@@ -359,11 +360,64 @@ function InvoiceRow({ inv, selected, onClick }) {
 
 // ─── InvoiceDetailPanel ───────────────────────────────────────────────────────
 
-function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onResolveDispute, onAddPayment, onVoidPayment, onVoidInvoice, onUnvoidInvoice, mob }) {
+const BLANK_ROW = () => ({ description: '', qty: '', unit_price: '', total: '' });
+
+function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onResolveDispute, onAddPayment, onVoidPayment, onVoidInvoice, onUnvoidInvoice, onEditSaved, mob }) {
   const canManage = isManager(userRole);
   const isVoided = inv.status === 'voided';
   const nonVoidedPayments = inv.payments.filter(p => !p.voidedAt);
   const overPaid = inv.paidSum > inv.amount;
+
+  const [editing, setEditing]       = useState(false);
+  const [editRows, setEditRows]     = useState([]);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError]   = useState(null);
+
+  const openEditor = () => {
+    const seed = Array.isArray(inv.lineItems) && inv.lineItems.length > 0
+      ? inv.lineItems.map(li => ({
+          description: li.description || '',
+          qty:         li.qty != null ? String(li.qty) : '',
+          unit_price:  li.unit_price != null ? String(li.unit_price) : '',
+          total:       li.total != null ? String(li.total) : '',
+        }))
+      : [{ description: '', qty: '', unit_price: '', total: String(inv.amount) }];
+    setEditRows(seed);
+    setEditError(null);
+    setEditing(true);
+  };
+
+  const updateRow = (idx, field, value) => {
+    setEditRows(prev => {
+      const next = prev.map((r, i) => i === idx ? { ...r, [field]: value } : r);
+      // Auto-compute total when both qty and unit_price are numeric
+      if (field === 'qty' || field === 'unit_price') {
+        const row = next[idx];
+        const q = parseFloat(row.qty);
+        const u = parseFloat(row.unit_price);
+        if (!isNaN(q) && !isNaN(u)) next[idx] = { ...row, total: String(+(q * u).toFixed(2)) };
+      }
+      return next;
+    });
+  };
+
+  const editTotal = editRows.reduce((s, r) => s + (parseFloat(r.total) || 0), 0);
+
+  const saveEdit = async () => {
+    const lineItems = editRows.map(r => ({
+      description: r.description,
+      qty:         r.qty !== '' ? parseFloat(r.qty) : null,
+      unit_price:  r.unit_price !== '' ? parseFloat(r.unit_price) : null,
+      total:       parseFloat(r.total) || 0,
+    }));
+    setEditSaving(true);
+    setEditError(null);
+    const res = await sbEditSubInvoice({ subInvoiceId: inv.id, lineItems });
+    setEditSaving(false);
+    if (!res.ok) { setEditError(res.error); return; }
+    setEditing(false);
+    await onEditSaved();
+  };
 
   return (
     <div className="overlay">
@@ -435,27 +489,83 @@ function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onRe
           )}
         </div>
 
-        {/* Line items (if present) */}
-        {Array.isArray(inv.lineItems) && inv.lineItems.length > 0 && (
+        {/* Line items — editor or read-only view */}
+        {editing ? (
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase',
-              letterSpacing: 1, marginBottom: 6 }}>Line Items</div>
+              letterSpacing: 1, marginBottom: 6 }}>Edit Line Items</div>
+            {editError && (
+              <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626',
+                padding: '6px 10px', fontSize: 11, borderRadius: 4, marginBottom: 8 }}>
+                {editError}
+              </div>
+            )}
             <div style={{ border: '1px solid #E8E4DC', borderRadius: 4, overflow: 'hidden', fontSize: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr 1fr 1fr',
                 background: '#F7F5F0', padding: '6px 10px', fontWeight: 700, color: '#374151', fontSize: 10 }}>
-                {['Description', 'Qty', 'Unit Price', 'Total'].map(h => <div key={h}>{h}</div>)}
+                {['Description', 'Qty', 'Unit $', 'Total'].map(h => <div key={h}>{h}</div>)}
               </div>
-              {inv.lineItems.map((li, i) => (
+              {editRows.map((row, i) => (
                 <div key={i} style={{ display: 'grid', gridTemplateColumns: '3fr 1fr 1fr 1fr',
-                  padding: '6px 10px', borderTop: '1px solid #F3F0EB', color: '#374151' }}>
-                  <div>{li.description}</div>
-                  <div>{li.qty ?? '—'}</div>
-                  <div>{li.unit_price != null ? f$(li.unit_price) : '—'}</div>
-                  <div style={{ fontWeight: 600 }}>{f$(li.total)}</div>
+                  padding: '4px 6px', borderTop: '1px solid #F3F0EB', gap: 4, alignItems: 'center' }}>
+                  <input value={row.description} onChange={e => updateRow(i, 'description', e.target.value)}
+                    placeholder="Description"
+                    style={{ fontSize: 12, padding: '4px 6px', border: '1px solid #E8E4DC', borderRadius: 4, width: '100%', boxSizing: 'border-box' }} />
+                  <input value={row.qty} onChange={e => updateRow(i, 'qty', e.target.value)}
+                    placeholder="—" type="number" min="0"
+                    style={{ fontSize: 12, padding: '4px 6px', border: '1px solid #E8E4DC', borderRadius: 4, width: '100%', boxSizing: 'border-box' }} />
+                  <input value={row.unit_price} onChange={e => updateRow(i, 'unit_price', e.target.value)}
+                    placeholder="—" type="number" min="0" step="0.01"
+                    style={{ fontSize: 12, padding: '4px 6px', border: '1px solid #E8E4DC', borderRadius: 4, width: '100%', boxSizing: 'border-box' }} />
+                  <input value={row.total} onChange={e => updateRow(i, 'total', e.target.value)}
+                    placeholder="0" type="number" min="0" step="0.01"
+                    style={{ fontSize: 12, padding: '4px 6px', border: '1px solid #E8E4DC', borderRadius: 4, width: '100%', boxSizing: 'border-box', fontWeight: 600 }} />
                 </div>
               ))}
+              {/* Row total + add row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '6px 10px', background: '#F7F5F0', borderTop: '1px solid #E8E4DC' }}>
+                <button onClick={() => setEditRows(r => [...r, BLANK_ROW()])}
+                  style={{ fontSize: 11, padding: '3px 10px', background: '#0A1F44', color: '#C9A84C',
+                    border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>+ Row</button>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#0A1F44' }}>
+                  Total: {f$(editTotal)}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={saveEdit} disabled={editSaving} className="btn btn-navy"
+                style={{ fontSize: 12, padding: '7px 16px' }}>
+                {editSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+              <button onClick={() => { setEditing(false); setEditError(null); }}
+                className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 16px' }}>
+                Cancel
+              </button>
             </div>
           </div>
+        ) : (
+          Array.isArray(inv.lineItems) && inv.lineItems.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase',
+                letterSpacing: 1, marginBottom: 6 }}>Line Items</div>
+              <div style={{ border: '1px solid #E8E4DC', borderRadius: 4, overflow: 'hidden', fontSize: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr 1fr 1fr',
+                  background: '#F7F5F0', padding: '6px 10px', fontWeight: 700, color: '#374151', fontSize: 10 }}>
+                  {['Description', 'Qty', 'Unit Price', 'Total'].map(h => <div key={h}>{h}</div>)}
+                </div>
+                {inv.lineItems.map((li, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '3fr 1fr 1fr 1fr',
+                    padding: '6px 10px', borderTop: '1px solid #F3F0EB', color: '#374151' }}>
+                    <div>{li.description}</div>
+                    <div>{li.qty ?? '—'}</div>
+                    <div>{li.unit_price != null ? f$(li.unit_price) : '—'}</div>
+                    <div style={{ fontWeight: 600 }}>{f$(li.total)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
         )}
 
         {/* Payment history */}
@@ -512,7 +622,7 @@ function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onRe
         </div>
 
         {/* Action buttons (owner/PM only) */}
-        {canManage && (
+        {canManage && !editing && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {/* Voided invoice — only Restore is available */}
             {isVoided ? (
@@ -529,6 +639,11 @@ function InvoiceDetailPanel({ inv, userRole, onClose, onApprove, onDispute, onRe
                 {(inv.status === 'approved' || inv.status === 'partially_paid') && (
                   <button onClick={onAddPayment} className="btn btn-gold" style={{ fontSize: 12, padding: '7px 16px' }}>
                     + Add Payment
+                  </button>
+                )}
+                {!inv.disputed && (
+                  <button onClick={openEditor} className="btn btn-ghost" style={{ fontSize: 12, padding: '7px 16px' }}>
+                    ✎ Edit
                   </button>
                 )}
                 {!inv.disputed && inv.status !== 'paid' && (
