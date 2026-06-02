@@ -939,3 +939,25 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Item 4 — Non-cost-plus Overview double-count (NO BUG): Audited ClientPortal.jsx line 648: `const contractTotal = Number(job.contract_value || 0) + Number(job.co_total || 0)`. For fixed-price jobs: COTab updates `co_total` but does NOT bump `contract_value` (opposite of cost-plus where contract_value grows by the marked-up CO price). So for fixed-price: `contract_value` = original signed amount; `co_total` = approved CO amounts; `contract_value + co_total` = full authorized total (correct, no double-count). This is deliberately DIFFERENT from cost-plus (where contract_value already includes COs, so adding co_total would double-count). No fix. Rule: do NOT symmetrize this formula — fixed-price and cost-plus use fundamentally different data models for COs.
 
 - RULE (record permanently): Fixed-price vs cost-plus CO accounting is ASYMMETRIC. Fixed-price: contract_value stays at original signed value; co_total accumulates approved COs; authorized total = contract_value + co_total. Cost-plus: contract_value grows by the marked-up CO price on approval; co_total stores raw CO amount; authorized total = contract_value (already includes COs); adding co_total is a double-count. Never compute authorized total the same way for both job types.
+
+[LOG - 2026-06-02] CO_TOTAL_DOUBLE_COUNT_FIX — trg_sync_co_total bug + sbLoadJobFinancialSummary hardening + backfill
+- Action: Three-part fix for co_total double-count on cost-plus jobs. Discovered during e2e_test_run.js diagnostic.
+- Commits: 20a339f (Part 1), f7c187b (Part 2), 8a3e39e (Part 3). All pushed to main.
+- Files: supabase/migrations/20260602170000_gate_co_total_trigger_cost_plus.sql (new), supabase/migrations/20260602180000_backfill_co_total_cost_plus.sql (new), avenstone-vite/src/lib/supabase.js (line 1439).
+
+- Root cause: `sync_job_co_total()` in 20260423_financial_bug_fixes.sql ran `UPDATE jobs SET co_total = get_job_co_total(job_id)` on ALL jobs with no cost_plus check. For cost-plus jobs, COTab._doApCO already bumps contract_value by the marked-up CO price. The trigger also set co_total = raw CO amount. sbLoadJobFinancialSummary then added both: contract_total = contract_value + co_total → double-counted the CO. Houston: $102,002 + $3,700 = $105,702 (wrong). Should be $102,002.
+
+- Part 1 — Gate trigger (migration 20260602170000):
+  - Rewrote `sync_job_co_total()`: adds `IF NOT COALESCE((SELECT cost_plus FROM jobs WHERE id = v_job_id), false) THEN` guard around the UPDATE. Cost-plus jobs: function is a no-op. Fixed-price: trigger behavior unchanged. Verified via pg_get_functiondef: cost_plus guard confirmed live.
+
+- Part 2 — Harden read (supabase.js:1439):
+  - Changed `const contract_total = Number(contractValue || 0) + Number(coTotal || 0)` → `const contract_total = costPlus ? Number(contractValue || 0) : Number(contractValue || 0) + Number(coTotal || 0)`. Defense in depth: even if something else writes co_total on a cost-plus job, the read will ignore it.
+
+- Part 3 — Backfill (migration 20260602180000):
+  - 3 jobs were polluted by the old trigger: test-flow-001 ($2,500), Houston ($3,700), 999 Test Lane ($1,150). All zeroed. Houston contract_value=$102,002 unchanged. Idempotent migration.
+
+- PERMANENT RULE: co_total MUST be 0 for cost-plus jobs. contract_value absorbs the marked-up CO price at approval (COTab._doApCO). Only fixed-price jobs maintain co_total. Do NOT unify fixed-price and cost-plus CO paths. Do NOT revert to the unguarded trigger.
+
+- Client portal (sbLoadClientActualSpend): uses `authorized_contract = Number(j.contract_value ?? 0)` directly (never adds co_total) — was already correct. Unaffected by this fix.
+
+- Fixed-price regression: trigger still fires for cost-plus=false jobs (path unchanged). No fixed-price jobs with approved COs exist — regression verified logically. Behavior: trigger updates co_total = sum(approved CO amounts), contract_value unchanged. This asymmetry is permanent.
