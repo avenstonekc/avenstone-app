@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbSaveEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis } from '../../../lib/supabase';
+import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { Ic, f$, isMob } from '../../../lib/utils';
 import GapResolutionModal from '../consultation/GapResolutionModal';
 import MeasurePanel from '../consultation/MeasurePanel';
@@ -296,19 +297,30 @@ export default function ConsultationTab({ job, profile, setTab }) {
 
       // Persist line items for Budget vs Actual
       const trades = result.estimate?.trades || [];
-      const lineItems = trades.flatMap(trade =>
+      const commitItems = trades.flatMap(trade =>
         (trade.line_items || []).map(li => ({
-          phase:       trade.trade,
+          source:      'consultation',
           trade:       trade.trade,
           category:    'labor',
           description: li.description || trade.trade,
           quantity:    Number(li.qty  ?? 1),
           unit:        li.unit  || null,
           unit_cost:   Number(li.unit_cost ?? li.total ?? 0),
+          multiplier:  1.0,
           markup_pct:  0,
+          notes:       null,
+          waste_pct:   null,
         }))
       );
-      if (lineItems.length) await sbSaveEstimateLineItems(job.id, estRow?.id || null, lineItems);
+      if (commitItems.length) {
+        const commitResult = await sbCommitEstimate(sb, tenantId, userId, {
+          source:     'consultation',
+          jobId:      job.id,
+          estimateId: estRow?.id || null,
+          items:      commitItems,
+        });
+        if (!commitResult.ok) throw new Error(commitResult.error);
+      }
 
       setEstimateSaved(true);
       setTab?.('estimate');
