@@ -1,5 +1,6 @@
 import { useState, useEffect, Fragment } from 'react';
-import { sb, AV_TENANT, sbLoadQbCategoryMap, sbUpsertQbCategoryMap } from '../../lib/supabase';
+import { sb, AV_TENANT, sbLoadQbCategoryMap, sbUpsertQbCategoryMap, sbLoadCategoryConfig, sbSaveCategoryConfig } from '../../lib/supabase';
+import { DEFAULT_CATEGORY_CONFIG } from '../../lib/markupConfig';
 import PushEnableButton from '../shared/PushEnableButton';
 import { TextToSpeech, QueueStrategy } from '@capacitor-community/text-to-speech';
 
@@ -40,6 +41,9 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
   const [qbSaving, setQbSaving] = useState(null);
   const [allVoices, setAllVoices] = useState([]);
   const [voicesLoading, setVoicesLoading] = useState(false);
+  const [markupCfg, setMarkupCfg] = useState({ ...DEFAULT_CATEGORY_CONFIG });
+  const [markupSaving, setMarkupSaving] = useState(false);
+  const [markupMsg, setMarkupMsg] = useState('');
   const [selectedVoiceUri, setSelectedVoiceUri] = useState(() => {
     try { return localStorage.getItem('av_tts_voice_uri') || ''; } catch { return ''; }
   });
@@ -53,6 +57,21 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
       .catch(() => setAllVoices([]))
       .finally(() => setVoicesLoading(false));
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'markup' || !['owner', 'project_manager'].includes(profile?.role)) return;
+    sbLoadCategoryConfig(AV_TENANT).then(cfg => {
+      if (cfg) setMarkupCfg({ ...DEFAULT_CATEGORY_CONFIG, ...cfg });
+    });
+  }, [tab]);
+
+  const saveMarkupConfig = async () => {
+    setMarkupSaving(true); setMarkupMsg('');
+    const result = await sbSaveCategoryConfig(AV_TENANT, markupCfg);
+    setMarkupMsg(result.ok ? 'Saved' : `Error: ${result.error}`);
+    setMarkupSaving(false);
+    if (result.ok) setTimeout(() => setMarkupMsg(''), 2500);
+  };
 
   useEffect(() => {
     if (tab !== 'quickbooks' || profile?.role !== 'owner') return;
@@ -124,7 +143,7 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18, lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ display: 'flex', border: '1px solid #E8E4DC', borderRadius: 4, overflow: 'hidden', marginBottom: 16 }}>
-          {[['profile', 'Profile'], ['notifs', 'Notifications'], ['security', 'Security'], ['voice', 'Voice'], ...(profile?.role === 'owner' ? [['company', 'My Profile'], ['quickbooks', 'QuickBooks']] : [])].map(([v, lb]) => (
+          {[['profile', 'Profile'], ['notifs', 'Notifications'], ['security', 'Security'], ['voice', 'Voice'], ...(['owner', 'project_manager'].includes(profile?.role) ? [['markup', 'Markup']] : []), ...(profile?.role === 'owner' ? [['company', 'My Profile'], ['quickbooks', 'QuickBooks']] : [])].map(([v, lb]) => (
             <button key={v} onClick={() => setTab(v)} style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', background: tab === v ? '#0A1F44' : 'transparent', color: tab === v ? '#C9A84C' : '#9CA3AF' }}>{lb}</button>
           ))}
         </div>
@@ -267,6 +286,46 @@ export default function SettingsModal({ profile, setProfile, onClose }) {
             </>
           );
         })()}
+
+        {tab === 'markup' && ['owner', 'project_manager'].includes(profile?.role) && <>
+          <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 14, lineHeight: 1.6 }}>
+            Choose which markup rate each cost category uses. <strong>Flat</strong> = 0% (pass-through — permits, self-performed).
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Category</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Rate bucket</div>
+            {[
+              ['labor',     'Labor'],
+              ['sub',       'Subcontractor'],
+              ['materials', 'Materials'],
+              ['equipment', 'Equipment'],
+              ['permit',    'Permit / Fees'],
+              ['other',     'Other'],
+            ].map(([cat, label]) => (
+              <Fragment key={cat}>
+                <div style={{ fontSize: 13, color: '#374151', fontWeight: 500 }}>{label}</div>
+                <select
+                  className="finp"
+                  style={{ fontSize: 12, padding: '5px 7px' }}
+                  value={markupCfg[cat] || 'material_rate'}
+                  onChange={e => setMarkupCfg(m => ({ ...m, [cat]: e.target.value }))}
+                >
+                  <option value="labor_rate">Labor rate</option>
+                  <option value="material_rate">Material rate</option>
+                  <option value="flat">Flat (pass-through)</option>
+                </select>
+              </Fragment>
+            ))}
+          </div>
+          {markupMsg && (
+            <div style={{ fontSize: 12, padding: '6px 10px', borderRadius: 4, marginBottom: 10, background: markupMsg.startsWith('Error') ? '#FEE2E2' : '#D1FAE5', color: markupMsg.startsWith('Error') ? '#991b1b' : '#065f46' }}>
+              {markupMsg}
+            </div>
+          )}
+          <button className="btn btn-navy" style={{ width: '100%' }} onClick={saveMarkupConfig} disabled={markupSaving}>
+            {markupSaving ? 'Saving…' : 'Save Markup Config'}
+          </button>
+        </>}
 
         {tab === 'quickbooks' && profile?.role === 'owner' && <>
           <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 12, lineHeight: 1.6 }}>Map each transaction type to a QuickBooks account and class. Changes save on blur.</div>
