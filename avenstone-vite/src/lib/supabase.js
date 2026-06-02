@@ -7,6 +7,7 @@ import { countPhotosForEntity } from './photoGate.js';
 import { getTemplateItems } from './siteVisitTemplates.js';
 import { captureTradeActualsForJob } from './tradeActuals.js';
 import { normalizeFloorPlan } from './floorPlan/normalize.js';
+import { markupRateForCategory, normalizeCategoryKey, DEFAULT_CATEGORY_CONFIG } from './markupConfig.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -1421,12 +1422,23 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
           .reduce((s, t) => s + Number(t.amount || 0), 0)
     );
 
-    // Projected profit — (Paid Out + Outstanding) × labor markup rate + flat PM fee
-    const { data: jobRow } = await sb.from('jobs').select('labor_markup_pct,pm_fee').eq('id', jobId).single();
-    const labor_markup = Number(jobRow?.labor_markup_pct || 0);
+    // Projected profit — per-category markup rate via shared markupRateForCategory mapper
+    const { data: jobRow } = await sb.from('jobs').select('labor_markup_pct,material_markup_pct,pm_fee,tenant_id').eq('id', jobId).single();
+    const laborMarkupPct   = Number(jobRow?.labor_markup_pct   || 0);
+    const materialMarkupPct = Number(jobRow?.material_markup_pct || 0);
     const pm_fee = Number(jobRow?.pm_fee || 0);
+    const categoryConfig = await sbLoadCategoryConfig(jobRow?.tenant_id);
     const total_cost_base = round2(total_out + outstanding_pending);
-    const projected_profit = round2(total_cost_base * (labor_markup / 100) + pm_fee);
+
+    const allCostTxns = [
+      ...data.filter(t => t.direction === 'out' && t.status === 'paid'),
+      ...data.filter(t => t.direction === 'out' && t.status === 'pending' && (t.type === 'sub_payout' || t.type === 'change_order')),
+    ];
+    const projected_markup = round2(allCostTxns.reduce((sum, t) => {
+      const rate = markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig });
+      return sum + (Number(t.amount) || 0) * rate / 100;
+    }, 0));
+    const projected_profit = round2(projected_markup + pm_fee);
     const projected_total_revenue = round2(total_cost_base + projected_profit);
     const margin_pct = projected_total_revenue > 0
       ? Math.round((projected_profit / projected_total_revenue) * 1000) / 10
@@ -1449,7 +1461,7 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     summary.pm_fee               = pm_fee;
     const { data: drawRows } = await sb.from('draw_schedules').select('retainage_held').eq('job_id', jobId).neq('status', 'voided');
     summary.retainage_held = round2((drawRows || []).reduce((s, d) => s + Number(d.retainage_held || 0), 0));
-    const projected_final_bill   = round2(total_cost_base * (1 + labor_markup / 100) + pm_fee);
+    const projected_final_bill   = round2(total_cost_base + projected_markup + pm_fee);
     const contract_variance      = round2(contract_total - projected_final_bill);
     summary.projected_final_bill = projected_final_bill;
     summary.contract_variance    = contract_variance;
@@ -5781,15 +5793,20 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
   const estContractTotal = estResult.data?.estimate_data?.contract_total;
   const originalSignedContract = estContractTotal != null && estContractTotal !== '' ? Number(estContractTotal) || null : null;
 
-  const MATERIAL_TYPES = new Set(['material_purchase', 'material', 'supply']);
+  // Load per-category markup config for this tenant; falls back to trigger-equivalent defaults
+  const categoryConfig = await sbLoadCategoryConfig(tenantId);
+  const _cfg = categoryConfig ?? DEFAULT_CATEGORY_CONFIG;
+
   let materialSubtotal = 0;
   let laborSubtotal = 0;
+  let markupAmount = 0;
 
   const transactions = txns.map(t => {
     const amt = Number(t.amount ?? 0);
-    const isMaterial = MATERIAL_TYPES.has(t.type);
-    if (isMaterial) materialSubtotal += amt;
-    else laborSubtotal += amt;
+    const mode = _cfg[normalizeCategoryKey(t.type)] ?? 'material_rate';
+    if (mode === 'labor_rate') laborSubtotal += amt;
+    else materialSubtotal += amt; // material_rate and flat both go to material display bucket
+    markupAmount += amt * markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig }) / 100;
     return {
       date: t.date_incurred,
       payee: t.payer_or_payee_name || t.description || '—',
@@ -5798,15 +5815,17 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     };
   });
 
-  const materialMarkup = materialSubtotal * materialMarkupPct / 100;
-  const laborMarkup = laborSubtotal * laborMarkupPct / 100;
   const costSubtotal = materialSubtotal + laborSubtotal;
-  const markupAmount = materialMarkup + laborMarkup;
   const markedUpTotal = costSubtotal + markupAmount;
 
   // Outstanding = approved-not-yet-paid accrual rows (drawn down by the sub-invoice RPCs)
-  const outstandingPending = (pendingOutboundResult.data || [])
-    .reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
+  // Split by bucket so firmProjectedTotal uses per-category rates
+  let pendingMarkupAmount = 0;
+  const outstandingPending = (pendingOutboundResult.data || []).reduce((sum, t) => {
+    const amt = Number(t.amount ?? 0);
+    pendingMarkupAmount += amt * markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig }) / 100;
+    return sum + amt;
+  }, 0);
 
   // paid_to_date = what the client has actually remitted (draw receipts)
   const paidToDate = (inboundResult.data || [])
@@ -5817,9 +5836,9 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     .reduce((sum, si) => sum + Number(si.amount ?? 0), 0);
 
   const pmFee = Number(j.pm_fee || 0);
-  // firm_projected_total matches internal projected_final_bill: cost × (1 + markup) + pm_fee
+  // firm_projected_total = paid cost + outstanding cost + per-category markup on both + pm_fee
   const totalCostBase = costSubtotal + outstandingPending;
-  const firmProjectedTotal = totalCostBase * (1 + laborMarkupPct / 100) + pmFee;
+  const firmProjectedTotal = totalCostBase + markupAmount + pendingMarkupAmount + pmFee;
   const remainingBalance = firmProjectedTotal - paidToDate;
 
   return {
