@@ -764,3 +764,26 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Root cause: Overview computed contract_value + co_total (double-counts the CO since contract_value already includes marked-up CO price) and remaining = that − paid. Financials used sbLoadClientActualSpend. Two independent calcs diverged by $24k on 8617 Houston.
 - Fix: Overview cost_plus card now reads original_signed_contract / authorized_contract / paid_to_date / remaining_balance from actualSpend state. actualSpend loaded via a dedicated useEffect that fires on tab='overview' OR tab='financials' for cost_plus jobs, guarded by loaded.spend flag. Non-cost_plus Overview unchanged.
 - RULE: Overview and Financials client cards must read the same helper output. Never compute contract_value + co_total or contract − paid independently in ClientPortal for cost_plus jobs.
+
+[LOG - 2026-06-02] SUB_INVOICE_LINE_ITEM_EDIT
+- Action: Allow editing sub invoice line items (existing + new rows) across all non-voided, non-disputed states, with atomic accrual resync.
+- Commits: c345c8b, d15acef, 6cae846 (all pushed to main)
+- Files: supabase/migrations/20260602130000_extract_resync_sub_invoice_accrual.sql, supabase/migrations/20260602140000_add_edit_sub_invoice_with_ledger.sql, avenstone-vite/src/lib/subInvoices.js, avenstone-vite/src/components/jobs/tabs/financials/SubInvoicesSection.jsx
+
+- Commit 1 — refactor(sub-invoices): extract resync_sub_invoice_accrual, shared by payment + void RPCs
+  - New DB function `resync_sub_invoice_accrual(p_invoice_id, p_effective_date DEFAULT CURRENT_DATE)`: fetches invoice amount + accrual_transaction_id; no-op if voided or no accrual row; computes paid_sum from non-voided payments; remaining = GREATEST(0, amount − paid_sum); UPDATEs job_transactions accrual row.
+  - Rewrote add_sub_invoice_payment_with_ledger: replaced inline accrual block with PERFORM resync_sub_invoice_accrual(p_sub_invoice_id, p_paid_date). Removed v_paid_sum/v_remaining vars.
+  - Rewrote void_sub_invoice_payment_with_ledger: replaced inline accrual block + v_si RECORD + second SELECT with PERFORM resync_sub_invoice_accrual(v_pmt.sub_invoice_id). Removed v_si, v_paid_sum, v_remaining vars.
+  - Verified: pg_get_functiondef confirms 3 functions; both RPCs have PERFORM resync, no inline block.
+
+- Commit 2 — feat(sub-invoices): edit line items (existing + new) across all states with accrual resync + paid-floor guard
+  - New RPC `edit_sub_invoice_with_ledger(p_invoice_id, p_amount, p_line_items, p_invoice_date, p_due_date, p_description)`: voided/disputed guards; if p_line_items: new_amount = SUM(item->>'total'); elif p_amount: new_amount = p_amount; else: existing amount; floor guard (RAISE EXCEPTION if new_amount < paid_sum); UPDATE sub_invoices; PERFORM resync_sub_invoice_accrual; returns (new_amount, new_status).
+  - sbEditSubInvoice in subInvoices.js rewritten to call `edit_sub_invoice_with_ledger` RPC for financial fields. relatedScheduleItemId still uses direct .update() if needed. Returns { ok, newAmount, newStatus } on success.
+
+- Commit 3 — feat(sub-invoices): line-item edit UI on invoice detail panel, owner/PM gated
+  - InvoiceDetailPanel gains editing state + inline editor: seeds from inv.lineItems (or single row if no line items); auto-computes total when qty × unit_price both non-empty; + Row button adds blank row; live total shown; Save/Cancel buttons.
+  - Edit button gated: canManage && !isVoided && !inv.disputed. Hidden while editing (action buttons hidden when editing=true).
+  - Floor error surface inline in editor (keeps editor open on failure).
+  - On success: calls onEditSaved() (= load() in parent) to refresh invoice list.
+
+- Architecture note: sub_invoices.amount is an INDEPENDENT column (no trigger derives it from line_items). The edit RPC derives new_amount from SUM(line_items[i].total) when line_items provided. Always goes through the RPC so accrual stays consistent.
