@@ -161,22 +161,7 @@ export async function sbAddSubInvoicePayment({
     const row = Array.isArray(data) ? data[0] : data;
     const newStatus = row.new_status;
 
-    // On full payment, flip the accrual row to 'paid'
-    if (newStatus === 'paid') {
-      const { data: si } = await sb
-        .from('sub_invoices')
-        .select('accrual_transaction_id')
-        .eq('id', subInvoiceId)
-        .single();
-
-      if (si?.accrual_transaction_id) {
-        await sb
-          .from('job_transactions')
-          .update({ status: 'paid', date_paid: paidDate })
-          .eq('id', si.accrual_transaction_id)
-          .eq('status', 'pending');
-      }
-    }
+    // Accrual drawdown is now handled atomically inside the RPC.
 
     return {
       ok: true,
