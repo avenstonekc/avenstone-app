@@ -1,5 +1,6 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes } from '../../../lib/supabase';
+import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { Ic, f$ } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
@@ -228,16 +229,29 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
         if (r.doc && setDocs) setDocs(p => [r.doc, ...p]);
       }
       if (propLineItems.length) {
-        const items = propLineItems.map(li => ({
-          phase: li.trade || null,
-          trade: li.trade || null,
-          category: 'materials',
+        // AI estimator lines are labor lump sums (trade-level aggregates, not material SKUs).
+        // markup_pct=0: markup is a proposal-time concern (ESTIMATE_FLOW_ARC Slice 5).
+        // Budget sub-tab will show cost, not marked-up total, until Slice 5 ships.
+        const commitItems = propLineItems.map(li => ({
+          source:      'ai',
+          trade:       li.trade || 'General',
+          category:    'labor',
           description: li.description || li.trade || 'Line item',
-          quantity: 1,
-          unit_cost: Number(li.amount || 0),
-          markup_pct: Number(propMargin || 0),
+          quantity:    1,
+          unit:        null,
+          unit_cost:   Number(li.amount || 0),
+          multiplier:  1.0,
+          markup_pct:  0,
+          notes:       null,
+          waste_pct:   null,
         }));
-        await sbSaveEstimateLineItems(job.id, null, items);
+        const commitResult = await sbCommitEstimate(sb, AV_TENANT, AV_USER_ID, {
+          source:     'ai',
+          jobId:      job.id,
+          estimateId: null,
+          items:      commitItems,
+        });
+        if (!commitResult.ok) console.error('AI estimate commit failed:', commitResult.error);
       }
     } catch (e) { console.error('Proposal PDF error:', e); }
     setPropGenerating(false);
