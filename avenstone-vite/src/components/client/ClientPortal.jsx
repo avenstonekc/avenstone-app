@@ -284,7 +284,7 @@ export default function ClientPortal({ profile, signOut }) {
   const [payingNext, setPayingNext] = useState(false);
   const [msgs, setMsgs] = useState([]);
   const [jobSubs, setJobSubs] = useState([]);
-  const [loaded, setLoaded] = useState({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false, notes: false, updates: false });
+  const [loaded, setLoaded] = useState({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false, notes: false, updates: false, spend: false });
   const [updates, setUpdates] = useState([]);
   const [msgTxt, setMsgTxt] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
@@ -386,11 +386,18 @@ export default function ClientPortal({ profile, signOut }) {
       setDrawBreakdown(result.ok ? result.data : []);
       setDrawBreakdownLoading(false);
     });
-    // Actual-spend ledger for cost-plus jobs
+  }, [job?.id, tab]);
+
+  // Actual-spend helper — fires on overview OR financials tab for cost_plus jobs (once per job open)
+  useEffect(() => {
+    if (!job || !job.cost_plus) return;
+    if (tab !== 'overview' && tab !== 'financials') return;
+    if (loaded.spend) return;
     setActualSpendLoading(true);
     sbLoadClientActualSpend(sb, job.id, AV_TENANT).then(result => {
       setActualSpend(result.ok ? result.data : null);
       setActualSpendLoading(false);
+      setLoaded(p => ({ ...p, spend: true }));
     });
   }, [job?.id, tab]);
 
@@ -416,7 +423,7 @@ export default function ClientPortal({ profile, signOut }) {
 
   const openJob = id => {
     setSel(id); setTab('overview');
-    setLoaded({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false });
+    setLoaded({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false, notes: false, updates: false, spend: false });
     setPhases([]); setPhotos([]); setDocs([]); setPayments([]); setMsgs([]); setJobSubs([]);
     setTotalPaid(0); setPayingNext(false);
     setRatings({}); setRatingDone({}); setJobReview(null); setCostItems([]); setCostInvoices([]); setDrawBreakdown(null); setActualSpend(null); setNotes([]); setNoteText('');
@@ -616,8 +623,28 @@ export default function ClientPortal({ profile, signOut }) {
               );
             })()}
 
-            {/* D) Quick Stats Row */}
-            {Number(job.contract_value || 0) > 0 && (() => {
+            {/* D) Quick Stats Row — cost_plus reads from the same helper as Financials tab */}
+            {(() => {
+              if (job.cost_plus && actualSpend) {
+                const s = actualSpend;
+                const contractLabel = s.original_signed_contract != null ? 'Original Contract' : 'Authorized Contract';
+                const contractVal = s.original_signed_contract != null ? s.original_signed_contract : s.authorized_contract;
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: '#E8E4DC', marginBottom: 16 }}>
+                    {[
+                      { lb: contractLabel, val: f$(contractVal) },
+                      { lb: 'Paid to Date', val: f$(s.paid_to_date), green: s.paid_to_date > 0 },
+                      { lb: 'Remaining Balance', val: f$(Math.max(0, s.remaining_balance)) },
+                    ].map(({ lb, val, green }) => (
+                      <div key={lb} style={{ background: '#fff', padding: '14px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
+                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: green ? '#22c55e' : '#0A1F44', fontWeight: 700 }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+              if (!Number(job.contract_value || 0)) return null;
               const contractTotal = Number(job.contract_value || 0) + Number(job.co_total || 0);
               const paid = loaded.payments ? totalPaid : 0;
               const remaining = contractTotal - paid;
