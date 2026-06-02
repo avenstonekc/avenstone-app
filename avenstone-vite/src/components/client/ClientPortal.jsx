@@ -908,20 +908,39 @@ export default function ClientPortal({ profile, signOut }) {
                 permit: 'Permit',
                 other: 'Other',
               };
+              // 4-card grid: always show Original Contract + Paid to Date + Projected Total; add Authorized Budget if COs exist
+              const headlineCards = [
+                { lb: 'Original Contract', val: f$(s.original_contract) },
+                ...(s.co_total > 0 ? [{ lb: 'Authorized Budget', val: f$(authorizedBudget) }] : []),
+                { lb: 'Paid to Date', val: f$(s.paid_to_date) },
+                { lb: 'Current Projected Total', val: f$(s.firm_projected_total), gold: true },
+              ];
               return (
                 <div style={{ marginBottom: 24 }}>
-                  {/* Headline rows */}
-                  <div style={{ display: 'grid', gridTemplateColumns: s.co_total > 0 ? 'repeat(3,1fr)' : 'repeat(2,1fr)', gap: 1, background: '#E8E4DC', marginBottom: 20 }}>
-                    {[
-                      { lb: 'Original Contract', val: f$(s.original_contract) },
-                      ...(s.co_total > 0 ? [{ lb: 'Authorized Budget', val: f$(authorizedBudget) }] : []),
-                      { lb: 'Actual Spend + Markup', val: f$(s.current_total), gold: true },
-                    ].map(({ lb, val, gold }) => (
+                  {/* Headline cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${headlineCards.length},1fr)`, gap: 1, background: '#E8E4DC', marginBottom: 16 }}>
+                    {headlineCards.map(({ lb, val, gold }) => (
                       <div key={lb} style={{ background: '#fff', padding: '14px 12px', textAlign: 'center' }}>
                         <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
                         <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 15, color: gold ? '#C9A84C' : '#0A1F44', fontWeight: 700 }}>{val}</div>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Potential additional work disclosure */}
+                  {s.potential_additional > 0 && (
+                    <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 12 }}>
+                      <div style={{ fontWeight: 700, color: '#92400E', marginBottom: 4 }}>Potential Additional Work</div>
+                      <div style={{ color: '#78350F', lineHeight: 1.5 }}>
+                        {f$(s.potential_additional)} in submitted invoices is pending approval and not yet included in the projected total above. This amount may be added once reviewed.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Remaining balance line */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#F7F5F0', borderRadius: 8, marginBottom: 20, fontSize: 13 }}>
+                    <span style={{ color: '#6B7280' }}>Remaining Balance</span>
+                    <span style={{ fontWeight: 700, color: '#0A1F44', fontFamily: "'DM Serif Display',serif" }}>{f$(Math.max(0, s.remaining_balance))}</span>
                   </div>
 
                   {/* Transaction ledger */}

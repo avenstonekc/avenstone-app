@@ -5720,7 +5720,8 @@ export async function sbLoadClientDrawBreakdown(jobId) {
 export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
   if (!jobId) return { ok: false, error: 'jobId required', data: null };
 
-  const [txnResult, jobResult] = await Promise.all([
+  const [paidOutboundResult, pendingOutboundResult, inboundResult, jobResult, pendingReviewResult] = await Promise.all([
+    // Paid outbound — the ledger rows
     sbClient
       .from('job_transactions')
       .select('id, date_incurred, payer_or_payee_name, type, description, amount')
@@ -5729,17 +5730,43 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
       .eq('direction', 'out')
       .eq('status', 'paid')
       .order('date_incurred', { ascending: true }),
+    // Pending outbound sub_payout/change_order — the accrual rows
+    sbClient
+      .from('job_transactions')
+      .select('amount, type')
+      .eq('job_id', jobId)
+      .eq('tenant_id', tenantId)
+      .eq('direction', 'out')
+      .eq('status', 'pending')
+      .in('type', ['sub_payout', 'change_order']),
+    // Inbound paid with no invoice — client draw receipts (= paid_to_date)
+    sbClient
+      .from('job_transactions')
+      .select('amount')
+      .eq('job_id', jobId)
+      .eq('tenant_id', tenantId)
+      .eq('direction', 'in')
+      .eq('status', 'paid')
+      .is('invoice_id', null),
     sbClient
       .from('jobs')
       .select('contract_value, co_total, labor_markup_pct, material_markup_pct, default_markup_pct')
       .eq('id', jobId)
       .single(),
+    // Pending-review sub_invoices (submitted but not yet approved) — potential additional work
+    sbClient
+      .from('sub_invoices')
+      .select('amount')
+      .eq('job_id', jobId)
+      .eq('tenant_id', tenantId)
+      .is('approved_at', null)
+      .is('voided_at', null),
   ]);
 
-  if (txnResult.error) return { ok: false, error: txnResult.error.message, data: null };
+  if (paidOutboundResult.error) return { ok: false, error: paidOutboundResult.error.message, data: null };
   if (jobResult.error) return { ok: false, error: jobResult.error.message, data: null };
 
-  const txns = txnResult.data || [];
+  const txns = paidOutboundResult.data || [];
   const j = jobResult.data;
 
   const materialMarkupPct = Number(j.material_markup_pct ?? j.default_markup_pct ?? 0);
@@ -5770,6 +5797,23 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
   const markupAmount = materialMarkup + laborMarkup;
   const markedUpTotal = costSubtotal + markupAmount;
 
+  // Outstanding = approved-not-yet-paid accrual rows (drawn down by the sub-invoice RPCs)
+  const outstandingPending = (pendingOutboundResult.data || [])
+    .reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
+
+  // paid_to_date = what the client has actually remitted (draw receipts)
+  const paidToDate = (inboundResult.data || [])
+    .reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
+
+  // potential_additional = submitted-but-unapproved sub invoices (not yet in firm_projected_total)
+  const potentialAdditional = (pendingReviewResult.data || [])
+    .reduce((sum, si) => sum + Number(si.amount ?? 0), 0);
+
+  // firm_projected_total mirrors internal math: total cost base × (1 + labor_markup_pct/100), no pm_fee
+  const totalCostBase = costSubtotal + outstandingPending;
+  const firmProjectedTotal = totalCostBase * (1 + laborMarkupPct / 100);
+  const remainingBalance = firmProjectedTotal - paidToDate;
+
   return {
     ok: true,
     error: null,
@@ -5785,6 +5829,11 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
       original_contract: originalContract,
       co_total: coTotal,
       current_total: markedUpTotal,
+      paid_to_date: paidToDate,
+      outstanding_pending: outstandingPending,
+      potential_additional: potentialAdditional,
+      firm_projected_total: firmProjectedTotal,
+      remaining_balance: remainingBalance,
     },
   };
 }
