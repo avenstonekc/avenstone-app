@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { markupRateForCategory } from './markupConfig.js';
 import { floorLabel as _floorLabel } from './captureTypes.js';
 import logoUrl from '../assets/logo.png';
 import polylabel from 'polylabel';
@@ -186,85 +187,198 @@ export const buildEstimatePDF = (job, messages) => {
 // ─── Proposal PDF ─────────────────────────────────────────────────────────────
 const LIKELIHOOD_ORDER = { high: 3, medium: 2, low: 1 };
 
-export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, margin = 25, proposalNum = '001', schedule = [], ohShitMoments = [] } = {}) => {
+// Reads DB estimate_line_items rows (description, trade, category, total_cost, quantity, unit).
+// Applies per-category markup via markupRateForCategory — same math as the Line Items sub-tab.
+export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
+  laborPct = 0, materialPct = 0, categoryConfig = null,
+  pmFee = 0, proposalNum = '001', schedule = [], flags = [],
+} = {}) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
-  const W = 612, M = 48;
+  const W = 612, M = 48, CW = W - M * 2;
+  const SAFE_BOTTOM = 728;
+  const fmt = n => `$${Math.round(Number(n || 0)).toLocaleString()}`;
 
+  const chkPage = (y, h = 16) => { if (y + h > SAFE_BOTTOM) { doc.addPage(); return M + 8; } return y; };
+
+  const clientPrice = li => {
+    const cost = Number(li.total_cost ?? 0);
+    const rate = markupRateForCategory(li.category, { laborPct, materialPct, categoryConfig });
+    return cost * (1 + rate / 100);
+  };
+
+  // ── Header ──────────────────────────────────────────────────────────────────
   doc.setFillColor(...navy); doc.rect(0, 0, W, 80, 'F');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...gold);
   doc.text('AVENSTONE GROUP', M, 34);
   doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(...gold);
   doc.text('PROPOSAL', M, 50);
   doc.setTextColor(200, 200, 200); doc.setFontSize(9);
-  doc.text('avenstonekc.com · Kansas City, MO', W - M, 34, { align: 'right' });
+  doc.text('avenstonekc.com  ·  Kansas City, MO', W - M, 34, { align: 'right' });
   doc.text(`Proposal #: ${proposalNum}`, W - M, 50, { align: 'right' });
 
+  // ── Job block ───────────────────────────────────────────────────────────────
   let y = 100;
-  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(...navy);
-  doc.text(job.address || '', M, y); y += 16;
-  if (job.client_name) { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray); doc.text(`Client: ${job.client_name}`, M, y); y += 14; }
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(...navy);
+  doc.text(job.address || '', M, y); y += 18;
+  if (job.client_name) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray);
+    doc.text(`Client: ${job.client_name}`, M, y); y += 14;
+  }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray);
-  doc.text(`Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, M, y); y += 24;
-  doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 20;
+  doc.text(`Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, M, y);
+  y += 20;
+  doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 16;
 
-  const sub = lineItems.reduce((a, l) => a + Number(l.amount || 0), 0);
-  const profit = Math.round(sub * (Number(margin) / 100));
-  const total = sub + Number(pmFee || 0) + profit;
-  const fmt = n => `$${Number(n || 0).toLocaleString()}`;
-
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
-  [['Subtotal', fmt(sub)], ['PM Fee', fmt(pmFee)], [`Profit (${margin}%)`, fmt(profit)], ['TOTAL', fmt(total)]].forEach(([lb, val]) => {
-    doc.text(lb, M, y); doc.text(val, W - M, y, { align: 'right' }); y += 14;
-  });
-  y += 10; doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 16;
-
-  if (lineItems.length) {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
-    doc.text('SCOPE & PRICING', M, y); y += 14;
-    let lastTrade = null;
-    lineItems.forEach(li => {
-      if (li.trade !== lastTrade) {
-        if (y > 720) { doc.addPage(); y = 48; }
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
-        doc.text(li.trade || '', M, y); y += 12; lastTrade = li.trade;
-      }
-      if (y > 720) { doc.addPage(); y = 48; }
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(55, 65, 81);
-      doc.text(`  ${li.description || ''}`, M, y);
-      doc.text(fmt(li.amount), W - M, y, { align: 'right' });
-      y += 12;
-    });
-    y += 8;
+  // ── Flags callout ───────────────────────────────────────────────────────────
+  if (flags && flags.length) {
+    const flagLines = flags.map(f => doc.splitTextToSize(`⚠  ${f}`, CW - 16));
+    const boxH = 14 + flagLines.reduce((s, ls) => s + ls.length * 10, 0) + 8;
+    doc.setFillColor(254, 243, 199); doc.setDrawColor(...gold); doc.setLineWidth(1);
+    doc.rect(M, y, CW, boxH, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(120, 80, 0);
+    doc.text('NOTICE — ESTIMATE ASSUMPTIONS', M + 8, y + 11);
+    let fy = y + 22;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(80, 50, 0);
+    flagLines.forEach(ls => { doc.text(ls, M + 8, fy); fy += ls.length * 10; });
+    y += boxH + 12;
   }
 
+  // ── Compute totals ──────────────────────────────────────────────────────────
+  const items = lineItems || [];
+  const hardCostTotal = items.reduce((s, li) => s + Number(li.total_cost ?? 0), 0);
+  const clientSubtotal = items.reduce((s, li) => s + clientPrice(li), 0);
+  const markupTotal = clientSubtotal - hardCostTotal;
+  const grandTotal = clientSubtotal + Number(pmFee || 0);
+
+  // ── Line items grouped by trade ─────────────────────────────────────────────
+  const trades = [];
+  const tradeMap = {};
+  items.forEach(li => {
+    const t = li.trade || 'GENERAL';
+    if (!tradeMap[t]) { tradeMap[t] = []; trades.push(t); }
+    tradeMap[t].push(li);
+  });
+
+  if (trades.length) {
+    y = chkPage(y, 28);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
+    doc.text('SCOPE & PRICING', M, y); y += 14;
+
+    // Table header
+    doc.setFillColor(...navy); doc.rect(M, y - 10, CW, 16, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...gold);
+    doc.text('DESCRIPTION', M + 4, y);
+    doc.text('QTY / UNIT', M + 330, y);
+    doc.text('PRICE', W - M, y, { align: 'right' });
+    y += 10;
+
+    let rowIdx = 0;
+    trades.forEach(trade => {
+      const tItems = tradeMap[trade];
+      const tradeSub = tItems.reduce((s, li) => s + clientPrice(li), 0);
+
+      // Trade header row
+      y = chkPage(y, 20);
+      doc.setFillColor(232, 226, 210);
+      doc.rect(M, y - 2, CW, 16, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
+      doc.text(trade, M + 4, y + 10);
+      y += 16;
+
+      tItems.forEach(li => {
+        const price = clientPrice(li);
+        const isAllowance = /allowance/i.test(li.description || '');
+        const descLines = doc.splitTextToSize(li.description || '', 316);
+        const rowH = Math.max(14, descLines.length * 10 + 6) + (isAllowance ? 10 : 0);
+
+        y = chkPage(y, rowH);
+        doc.setFillColor(rowIdx % 2 === 0 ? 255 : 250, rowIdx % 2 === 0 ? 255 : 249, rowIdx % 2 === 0 ? 255 : 247);
+        doc.rect(M, y - 2, CW, rowH, 'F');
+
+        doc.setFont('helvetica', isAllowance ? 'italic' : 'normal'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81);
+        descLines.forEach((line, idx) => doc.text(line, M + 4, y + 8 + idx * 10));
+
+        const qtyStr = [li.quantity != null ? String(li.quantity) : '', li.unit || ''].filter(Boolean).join(' ');
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...gray);
+        doc.text(qtyStr, M + 330, y + 8);
+
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...navy);
+        doc.text(fmt(price), W - M, y + 8, { align: 'right' });
+
+        if (isAllowance) {
+          doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(146, 100, 14);
+          doc.text('(allowance)', W - M, y + 18, { align: 'right' });
+        }
+
+        y += rowH;
+        rowIdx++;
+      });
+
+      // Trade subtotal
+      y = chkPage(y, 16);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...gray);
+      doc.text(`${trade} subtotal`, M + 4, y + 8);
+      doc.setTextColor(...navy);
+      doc.text(fmt(tradeSub), W - M, y + 8, { align: 'right' });
+      doc.setDrawColor(220, 215, 200); doc.setLineWidth(0.5); doc.line(M, y + 13, W - M, y + 13);
+      y += 18;
+    });
+    y += 6;
+  }
+
+  // ── Summary block ───────────────────────────────────────────────────────────
+  y = chkPage(y, 80);
+  doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 14;
+
+  [
+    ['Hard Cost Subtotal', fmt(hardCostTotal)],
+    ['Markup', fmt(markupTotal)],
+    ['PM Fee', fmt(pmFee)],
+  ].forEach(([label, val]) => {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...gray);
+    doc.text(label, M, y);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(...navy);
+    doc.text(val, W - M, y, { align: 'right' });
+    y += 15;
+  });
+
+  y += 4;
+  doc.setFillColor(...navy); doc.rect(M, y - 2, CW, 24, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
+  doc.text('GRAND TOTAL', M + 8, y + 16);
+  doc.setTextColor(...gold);
+  doc.text(fmt(grandTotal), W - M - 4, y + 16, { align: 'right' });
+  y += 34;
+
+  // ── Disclosed change-order risks ────────────────────────────────────────────
   const includedMoments = (ohShitMoments || [])
     .filter(m => m.included_in_proposal)
     .sort((a, b) => (LIKELIHOOD_ORDER[b.likelihood] || 0) - (LIKELIHOOD_ORDER[a.likelihood] || 0) || (b.estimated_cost_high || 0) - (a.estimated_cost_high || 0));
 
   if (includedMoments.length) {
-    if (y > 640) { doc.addPage(); y = 48; }
-    doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 16;
+    y = chkPage(y, 60);
+    doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 14;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
-    doc.text('POSSIBLE CHANGE ORDERS — DISCLOSED UP FRONT', M, y); y += 14;
+    doc.text('POSSIBLE CHANGE ORDERS — DISCLOSED UP FRONT', M, y); y += 12;
     doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
-    const subhead = 'Construction sometimes uncovers conditions we can\'t see until demo begins. We disclose these now so there are no surprises later. If any of these conditions are encountered, a change order will be issued at the disclosed range.';
-    const subLines = doc.splitTextToSize(subhead, W - M * 2);
-    doc.text(subLines, M, y); y += subLines.length * 10 + 10;
+    const subhead = "Construction sometimes uncovers conditions we can't see until demo begins. We disclose these now so there are no surprises later. If any of these conditions are encountered, a change order will be issued at the disclosed range.";
+    const subLines = doc.splitTextToSize(subhead, CW);
+    doc.text(subLines, M, y); y += subLines.length * 10 + 8;
 
     includedMoments.forEach((m, i) => {
-      const rowHeight = 14 + 10 + (m.how_to_present ? 10 + Math.ceil(doc.splitTextToSize(m.how_to_present, W - M * 2 - 100).length * 10) : 0) + 14;
-      if (y + rowHeight > 730) { doc.addPage(); y = 48; }
+      const estH = 36 + (m.how_to_present ? Math.ceil(doc.splitTextToSize(m.how_to_present, CW - 100).length * 10) : 0);
+      y = chkPage(y, estH);
       if (i > 0) { doc.setDrawColor(232, 228, 220); doc.setLineWidth(0.5); doc.line(M, y - 4, W - M, y - 4); }
 
-      const likelihoodLabel = (m.likelihood || 'medium').charAt(0).toUpperCase() + (m.likelihood || 'medium').slice(1);
-      const likelihoodColor = m.likelihood === 'high' ? [185, 28, 28] : m.likelihood === 'low' ? [21, 128, 61] : [146, 64, 14];
+      const likeCfg = { high: [185, 28, 28], low: [21, 128, 61], medium: [146, 64, 14] };
+      const likeColor = likeCfg[m.likelihood] || likeCfg.medium;
+      const likeLbl = (m.likelihood || 'medium').charAt(0).toUpperCase() + (m.likelihood || 'medium').slice(1);
 
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
-      doc.text(m.condition || '', M, y, { maxWidth: W - M * 2 - 100 });
-
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...likelihoodColor);
-      doc.text(`${likelihoodLabel} likelihood`, W - M, y, { align: 'right' });
+      doc.text(m.condition || '', M, y, { maxWidth: CW - 100 });
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...likeColor);
+      doc.text(`${likeLbl} likelihood`, W - M, y, { align: 'right' });
       y += 12;
 
       const lo = Number(m.estimated_cost_low || 0), hi = Number(m.estimated_cost_high || 0);
@@ -272,32 +386,34 @@ export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, marg
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(55, 65, 81);
         doc.text(`Estimated cost if encountered: $${lo.toLocaleString()} – $${hi.toLocaleString()}`, M, y); y += 11;
       }
-
       if (m.how_to_present) {
         doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
-        const lines = doc.splitTextToSize(m.how_to_present, W - M * 2);
+        const lines = doc.splitTextToSize(m.how_to_present, CW);
         doc.text(lines, M, y); y += lines.length * 10;
       }
       y += 10;
     });
   }
 
+  // ── Payment schedule ────────────────────────────────────────────────────────
   if (schedule.length) {
-    if (y > 680) { doc.addPage(); y = 48; }
+    y = chkPage(y, 60);
     doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 14;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
     doc.text('PAYMENT SCHEDULE', M, y); y += 14;
     schedule.forEach(ps => {
-      if (y > 720) { doc.addPage(); y = 48; }
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
+      y = chkPage(y, 14);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...navy);
       doc.text(ps.milestone || '', M, y);
+      doc.setTextColor(...gray);
       doc.text(ps.timing || '', W / 2, y, { align: 'center' });
       doc.setFont('helvetica', 'bold'); doc.setTextColor(...gold);
       doc.text(fmt(ps.amount), W - M, y, { align: 'right' });
-      y += 12;
+      y += 13;
     });
   }
 
+  // ── Footers ─────────────────────────────────────────────────────────────────
   const pages = doc.getNumberOfPages();
   const now = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   for (let i = 1; i <= pages; i++) {
@@ -306,7 +422,7 @@ export const buildProposalPDF = (job, lineItems, scopeSummary, { pmFee = 0, marg
     doc.setFontSize(8); doc.setTextColor(...gold); doc.setFont('helvetica', 'bold');
     doc.text('AVENSTONE GROUP LLC', M, 788);
     doc.setTextColor(180, 180, 180); doc.setFont('helvetica', 'normal');
-    doc.text(`Page ${i} of ${pages}`, W / 2, 788, { align: 'center' });
+    doc.text(`Page ${i} of ${pages}  ·  Valid 30 days from date of issue`, W / 2, 788, { align: 'center' });
     doc.text(now, W - M, 788, { align: 'right' });
   }
   return doc;

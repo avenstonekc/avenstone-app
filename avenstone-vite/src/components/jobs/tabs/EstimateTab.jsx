@@ -1,6 +1,5 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
 import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate } from '../../../lib/supabase';
-import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
 import { Ic, f$ } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
@@ -88,6 +87,14 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
       });
     }
   }, [sub, lineItemsLoaded, job.id]);
+
+  // Auto-init proposal when navigating there with line items ready
+  useEffect(() => {
+    if (sub === 'proposal' && lineItems.length > 0 && !propReady && !propLoading) {
+      openProposal();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sub, lineItems.length]);
 
   // Load estimator history on mount
   useEffect(() => {
@@ -188,44 +195,65 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
   const openProposal = async () => {
     setSub('proposal');
     if (propReady) return;
-    const lastAI = estMessages.filter(m => m.role === 'assistant').pop();
-    if (!lastAI) return;
+    if (!lineItems.length) return;
     setPropLoading(true); setPropErr('');
     try {
-      const extractMsgs = [...estMessages, { role: 'user', content: 'EXTRACT_JSON_FOR_PROPOSAL' }];
-      const res = await fetch(AI_ESTIMATOR_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({ messages: extractMsgs }),
-      });
-      const data = await res.json();
-      const raw = data.content || '';
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error('Could not parse proposal data');
-      const parsed = JSON.parse(match[0]);
-      setPropLineItems(parsed.line_items || []);
-      const sub2 = (parsed.line_items || []).reduce((a, l) => a + Number(l.amount || 0), 0);
-      const dep = Math.round(sub2 * 0.15);
-      const mid = Math.min(5000, Math.round(sub2 * 0.35));
-      const bal = sub2 - dep - mid;
-      setPropSchedule([
-        { milestone: 'Deposit — Contract Signing', timing: 'Due at signing', amount: dep },
-        { milestone: 'Draw 1 — Rough-In Complete', timing: 'Upon rough-in approval', amount: mid },
-        { milestone: 'Final Payment — Project Complete', timing: 'Upon completion', amount: bal > 0 ? bal : 0 },
-      ]);
-      setPropNum(`${new Date().getFullYear()}-${String(Math.floor(Math.random() * 900) + 100)}`);
       const moments = await sbLoadOhShitMoments(job.id);
       setPropOhShit(moments);
       if (moments.length) setPropOhShitExpanded(true);
+      setPropNum(`${new Date().getFullYear()}-${String(Math.floor(Math.random() * 900) + 100)}`);
+
+      // Populate preview list from DB rows — map to {trade, description, qty_label, amount (client price), category}
+      const lp = Number(job.labor_markup_pct || 0);
+      const mp = Number(job.material_markup_pct || 0);
+      const previewItems = lineItems.map(li => {
+        const cost = Number(li.total_cost ?? 0);
+        const rate = markupRateForCategory(li.category, { laborPct: lp, materialPct: mp, categoryConfig });
+        return {
+          trade:       li.trade || 'GENERAL',
+          description: li.description || '',
+          qty_label:   [li.quantity != null ? String(li.quantity) : '1', li.unit || ''].filter(Boolean).join(' '),
+          amount:      Math.round(cost * (1 + rate / 100)),
+          category:    li.category,
+        };
+      });
+      setPropLineItems(previewItems);
+
+      // Payment schedule based on grand total (client prices + PM fee)
+      const clientTotal = previewItems.reduce((s, li) => s + Number(li.amount || 0), 0);
+      const grand = clientTotal + Number(propPmFee || 0);
+      const dep = Math.round(grand * 0.15);
+      const mid = Math.min(5000, Math.round(grand * 0.35));
+      const bal = Math.max(0, grand - dep - mid);
+      setPropSchedule([
+        { milestone: 'Deposit — Contract Signing', timing: 'Due at signing', amount: dep },
+        { milestone: 'Draw 1 — Rough-In Complete', timing: 'Upon rough-in approval', amount: mid },
+        { milestone: 'Final Payment — Project Complete', timing: 'Upon completion', amount: bal },
+      ]);
       setPropReady(true);
-    } catch (e) { setPropErr(e.message || 'Failed to extract proposal data'); }
+    } catch (e) { setPropErr(e.message || 'Failed to load proposal data'); }
     setPropLoading(false);
   };
 
   const generateProposalPDF = async (download = true) => {
     setPropGenerating(true);
     try {
-      const doc = buildProposalPDF(job, propLineItems, [], { pmFee: Number(propPmFee || 0), margin: Number(propMargin || 25), proposalNum: propNum, schedule: propSchedule, ohShitMoments: propOhShit });
+      const lp = Number(job.labor_markup_pct || 0);
+      const mp = Number(job.material_markup_pct || 0);
+      // Extract AI assumption flags from the narrative (if available) as styled callouts
+      const lastAI = estMessages.filter(m => m.role === 'assistant').pop();
+      const flags = lastAI
+        ? (lastAI.content.match(/\[FLAG:[^\]]+\]/g) || []).map(f => f.replace(/^\[FLAG:\s*/, '').replace(/\]$/, ''))
+        : [];
+      const doc = buildProposalPDF(job, lineItems, propOhShit, {
+        laborPct:       lp,
+        materialPct:    mp,
+        categoryConfig,
+        pmFee:          Number(propPmFee || 0),
+        proposalNum:    propNum,
+        schedule:       propSchedule,
+        flags,
+      });
       if (download) {
         doc.save(`Proposal — ${job.address}.pdf`);
       } else {
@@ -233,32 +261,6 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
         const file = new File([blob], `Proposal — ${job.address}.pdf`, { type: 'application/pdf' });
         const r = await sbUploadDoc(job.id, file, 'proposal');
         if (r.doc && setDocs) setDocs(p => [r.doc, ...p]);
-      }
-      if (propLineItems.length) {
-        // markup_pct=0: markup is a proposal-time concern (ESTIMATE_FLOW_ARC Slice 5).
-        // Budget sub-tab will show cost, not marked-up total, until Slice 5 ships.
-        const commitItems = propLineItems.map(li => ({
-          source:      'ai',
-          trade:       li.trade || 'General',
-          // Use the AI-emitted category when present; fall back to regex on description for
-          // any line items from older API calls that predate the schema field.
-          category:    li.category ?? (/material|allowance/i.test(li.description || '') ? 'materials' : 'labor'),
-          description: li.description || li.trade || 'Line item',
-          quantity:    1,
-          unit:        null,
-          unit_cost:   Number(li.amount || 0),
-          multiplier:  1.0,
-          markup_pct:  0,
-          notes:       null,
-          waste_pct:   null,
-        }));
-        const commitResult = await sbCommitEstimate(sb, AV_TENANT, AV_USER_ID, {
-          source:     'ai',
-          jobId:      job.id,
-          estimateId: null,
-          items:      commitItems,
-        });
-        if (!commitResult.ok) console.error('AI estimate commit failed:', commitResult.error);
       }
     } catch (e) { console.error('Proposal PDF error:', e); }
     setPropGenerating(false);
@@ -316,7 +318,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {estSaveMsg && <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>{estSaveMsg}</span>}
-            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving}>{estSaving ? 'Saving…' : 'Save Draft (Internal)'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
             <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', sqft: '', special: '' }); }}>Reset</button>
@@ -439,31 +441,37 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
       {propErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', borderRadius: 4, fontSize: 13, marginBottom: 16 }}>{propErr}</div>}
       {propLoading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF', fontSize: 13 }}>Extracting line items from estimate…</div>
+      ) : lineItems.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 0' }}>
+          <div style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>No line items yet — generate an estimate in Build or add items in Line Items.</div>
+          <button className="btn btn-navy" onClick={() => setSub('build')}>Go to Build →</button>
+        </div>
       ) : !propReady ? (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <div style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>Run the AI Estimator in Build first, then come back here.</div>
-          <button className="btn btn-navy" onClick={() => setSub('build')}>Go to Build →</button>
+          <div style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>{lineItems.length} line items ready.</div>
+          <button className="btn btn-navy" onClick={openProposal}>Build Proposal →</button>
         </div>
       ) : (
         <Fragment>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
             <div className="fg"><label className="flbl">Proposal #</label><input className="finp" value={propNum} onChange={e => setPropNum(e.target.value)} /></div>
             <div className="fg"><label className="flbl">PM Fee ($)</label><input className="finp" type="number" value={propPmFee} onChange={e => setPropPmFee(e.target.value)} /></div>
-            <div className="fg"><label className="flbl">Profit Margin (%)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="range" min="15" max="40" step="1" value={propMargin} onChange={e => setPropMargin(e.target.value)} style={{ flex: 1 }} />
-                <span style={{ fontSize: 14, fontWeight: 700, color: NAV, minWidth: 36 }}>{propMargin}%</span>
-              </div>
-            </div>
           </div>
-          {propLineItems.length > 0 && (() => {
-            const subTotal = propLineItems.reduce((a, l) => a + Number(l.amount || 0), 0);
+          {lineItems.length > 0 && (() => {
+            const _lp = Number(job.labor_markup_pct || 0);
+            const _mp = Number(job.material_markup_pct || 0);
+            const hardCost = lineItems.reduce((s, li) => s + Number(li.total_cost ?? 0), 0);
+            const clientSub = lineItems.reduce((s, li) => {
+              const cost = Number(li.total_cost ?? 0);
+              const rate = markupRateForCategory(li.category, { laborPct: _lp, materialPct: _mp, categoryConfig });
+              return s + cost * (1 + rate / 100);
+            }, 0);
+            const markup = clientSub - hardCost;
             const pm = Number(propPmFee) || 0;
-            const profit = Math.round(subTotal * (Number(propMargin) / 100));
-            const total = subTotal + pm + profit;
+            const grand = clientSub + pm;
             return (
               <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 6, padding: 16, marginBottom: 20, display: 'flex' }}>
-                {[['Subtotal', '$' + subTotal.toLocaleString()], ['PM Fee', '$' + pm.toLocaleString()], ['Profit (' + propMargin + '%)', '$' + profit.toLocaleString()], ['TOTAL', '$' + total.toLocaleString()]].map(([lbl, val], i) => (
+                {[['Hard Cost', '$' + Math.round(hardCost).toLocaleString()], ['Markup', '$' + Math.round(markup).toLocaleString()], ['PM Fee', '$' + pm.toLocaleString()], ['GRAND TOTAL', '$' + Math.round(grand).toLocaleString()]].map(([lbl, val], i) => (
                   <div key={i} style={{ flex: 1, textAlign: 'center', borderRight: i < 3 ? `1px solid ${BORDER}` : 'none', padding: '0 8px' }}>
                     <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{lbl}</div>
                     <div style={{ fontSize: i === 3 ? 18 : 14, fontWeight: 700, color: i === 3 ? GOLD : NAV }}>{val}</div>
@@ -544,8 +552,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
             <button onClick={() => setPropSchedule([...propSchedule, { milestone: '', timing: 'At milestone', amount: '' }])} style={{ fontSize: 11, color: GOLD, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>+ Add milestone</button>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => generateProposalPDF(true)} disabled={propGenerating || propLineItems.length === 0}>{propGenerating ? 'Generating…' : 'Download PDF'}</button>
-            <button className="btn btn-gold" style={{ flex: 1 }} onClick={() => generateProposalPDF(false)} disabled={propGenerating || propLineItems.length === 0}>{propGenerating ? 'Generating…' : 'Save to Documents'}</button>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => generateProposalPDF(true)} disabled={propGenerating || lineItems.length === 0}>{propGenerating ? 'Generating…' : 'Download PDF'}</button>
+            <button className="btn btn-gold" style={{ flex: 1 }} onClick={() => generateProposalPDF(false)} disabled={propGenerating || lineItems.length === 0}>{propGenerating ? 'Generating…' : 'Save to Documents'}</button>
           </div>
         </Fragment>
       )}
