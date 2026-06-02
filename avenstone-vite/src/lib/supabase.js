@@ -502,6 +502,50 @@ export const sbCreateCOAccrualRow = async (coId, jobId, amount, createdBy) => {
     return { ok: true, data: tx };
   } catch (e) { return { ok: false, error: e.message }; }
 };
+// Converts a predicted oh-shit moment into a pending change order via the same path COTab uses.
+// Double-convert guarded: returns error if converted_to_co_id is already set on the moment.
+// Approval still goes through the normal COTab approval → contract_value bump + accrual cascade.
+export const sbCreateCOFromOhShit = async ({ ohShitMomentId, jobId, amount, markupPct } = {}) => {
+  try {
+    const [{ data: moment, error: mErr }, { data: jobRow, error: jErr }] = await Promise.all([
+      sb.from('oh_shit_moments').select('*').eq('id', ohShitMomentId).eq('tenant_id', AV_TENANT).single(),
+      sb.from('jobs').select('default_markup_pct,cost_plus').eq('id', jobId).single(),
+    ]);
+    if (mErr || !moment) return { ok: false, error: 'Oh-shit moment not found', data: null };
+    if (jErr || !jobRow) return { ok: false, error: 'Job not found', data: null };
+    if (moment.converted_to_co_id) return { ok: false, error: 'This risk has already been converted to a change order.', data: null };
+
+    const midpoint = Math.round(((Number(moment.estimated_cost_low || 0) + Number(moment.estimated_cost_high || 0)) / 2) * 100) / 100;
+    const coAmount = amount != null ? Number(amount) : midpoint;
+    const coMarkupPct = markupPct != null ? Number(markupPct) : (Number(jobRow.default_markup_pct) || null);
+
+    const { count } = await sb.from('change_orders').select('id', { count: 'exact', head: true }).eq('job_id', jobId);
+    const coNumber = `CO-${String((count || 0) + 1).padStart(3, '0')}`;
+
+    const r = await sbCO({
+      job_id: jobId,
+      co_number: coNumber,
+      description: moment.condition,
+      amount: coAmount,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      submitted_by: AV_USER_ID,
+      oh_shit_moment_id: ohShitMomentId,
+      ...(jobRow.cost_plus ? { markup_pct: coMarkupPct } : {}),
+    });
+    if (!r.ok) return r;
+
+    const { error: updErr } = await sb.from('oh_shit_moments')
+      .update({ converted_to_co_id: r.data.id })
+      .eq('id', ohShitMomentId);
+    if (updErr) return { ok: false, error: updErr.message, data: null };
+
+    return { ok: true, error: null, data: r.data };
+  } catch (e) {
+    return { ok: false, error: e.message || 'sbCreateCOFromOhShit failed', data: null };
+  }
+};
+
 export const getJobCoTotal = (job) => Number(job?.co_total || 0);
 
 // ─── Phases ───────────────────────────────────────────────────────────────────
