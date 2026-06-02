@@ -456,40 +456,46 @@ export async function sbEditSubInvoice({
   relatedScheduleItemId,
 }) {
   try {
-    // If changing amount, validate against already-paid sum
-    if (amount !== undefined) {
-      const { data: payments } = await sb
-        .from('sub_invoice_payments')
-        .select('amount')
-        .eq('sub_invoice_id', subInvoiceId)
-        .is('voided_at', null);
+    const args = arguments[0];
+    const hasFinancial = amount !== undefined || 'lineItems' in args ||
+      invoiceDate !== undefined || 'dueDate' in args || 'description' in args;
 
-      const paidSum = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
-      if (amount < paidSum) {
-        return {
-          ok: false,
-          error: `New amount ($${amount.toFixed(2)}) is less than already-paid sum ($${paidSum.toFixed(2)}). Void payment(s) first.`,
-        };
+    // Route financial edits through the RPC so accrual resyncs atomically
+    if (hasFinancial) {
+      const { data, error: rpcErr } = await sb.rpc('edit_sub_invoice_with_ledger', {
+        p_invoice_id:   subInvoiceId,
+        p_amount:       'lineItems' in args ? null : (amount ?? null),
+        p_line_items:   'lineItems' in args ? (lineItems ?? null) : null,
+        p_invoice_date: invoiceDate ?? null,
+        p_due_date:     'dueDate' in args ? (dueDate ?? null) : null,
+        p_description:  'description' in args ? (description ?? null) : null,
+      });
+
+      if (rpcErr) return { ok: false, error: rpcErr.message };
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) return { ok: false, error: 'edit_sub_invoice_with_ledger returned no row' };
+
+      // If relatedScheduleItemId also changed, patch it now
+      if ('relatedScheduleItemId' in args) {
+        const { error: linkErr } = await sb
+          .from('sub_invoices')
+          .update({ related_schedule_item_id: relatedScheduleItemId ?? null })
+          .eq('id', subInvoiceId);
+        if (linkErr) return { ok: false, error: linkErr.message };
       }
+
+      return { ok: true, newAmount: row.new_amount, newStatus: row.new_status };
     }
 
-    // Build patch from only the fields that were explicitly passed
-    const patch = {};
-    if (amount !== undefined)                   patch.amount = amount;
-    if (invoiceDate !== undefined)              patch.invoice_date = invoiceDate;
-    if ('dueDate' in arguments[0])             patch.due_date = dueDate ?? null;
-    if ('description' in arguments[0])         patch.description = description ?? null;
-    if ('lineItems' in arguments[0])           patch.line_items = lineItems ?? null;
-    if ('relatedScheduleItemId' in arguments[0]) patch.related_schedule_item_id = relatedScheduleItemId ?? null;
+    // Only relatedScheduleItemId changed — no financial fields, no accrual needed
+    if ('relatedScheduleItemId' in args) {
+      const { error: linkErr } = await sb
+        .from('sub_invoices')
+        .update({ related_schedule_item_id: relatedScheduleItemId ?? null })
+        .eq('id', subInvoiceId);
+      if (linkErr) return { ok: false, error: linkErr.message };
+    }
 
-    if (Object.keys(patch).length === 0) return { ok: true }; // nothing to update
-
-    const { error: updateErr } = await sb
-      .from('sub_invoices')
-      .update(patch)
-      .eq('id', subInvoiceId);
-
-    if (updateErr) return { ok: false, error: updateErr.message };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message || 'sbEditSubInvoice failed' };
