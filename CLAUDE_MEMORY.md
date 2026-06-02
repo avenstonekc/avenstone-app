@@ -733,3 +733,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Verification: pg_get_functiondef confirmed for both RPCs. Accrual 97205011 confirmed $21,400 pending. Stale-row query confirmed empty.
 - Architecture note: accrual row is now the source of truth for "how much of this invoice is still pending." sbLoadJobFinancialSummary reads it correctly without any change — the fix was entirely on the write side (RPCs + JS callers).
 - Open: None. Both RPCs verified live. Backfill complete.
+
+[LOG - 2026-06-02] CLIENT_PORTAL_FINANCIALS_ENHANCEMENT
+- Action: Added paid_to_date, firm_projected_total, potential_additional, and remaining_balance to the client portal Financials tab (cost_plus jobs). Extended sbLoadClientActualSpend with 3 new parallel fetches. Restructured headline card grid from 2-3 cards to 4 cards.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/client/ClientPortal.jsx
+- Commit: a02301b — feat(client-portal): add paid-to-date, projected total, and potential-work disclosure to cost-plus financials
+- Data sources: paid_to_date = SUM(inbound, direction='in', invoice_id IS NULL, status='paid'); outstanding_pending = SUM(pending outbound sub_payout/change_order accrual rows); potential_additional = SUM(sub_invoices where approved_at IS NULL, voided_at IS NULL); firm_projected_total = (costSubtotal + outstandingPending) × (1 + labor_markup_pct/100), NO pm_fee; remaining_balance = firm_projected_total − paid_to_date.
+- Card grid: [Original Contract] [Authorized Budget (if co_total>0)] [Paid to Date] [Current Projected Total]. Potential additional work shows as an amber disclosure block if >0. Remaining balance shown as a gray line below.
+- Math: firm_projected_total uses SINGLE labor_markup_pct (matches sbLoadJobFinancialSummary math, no pm_fee for client). The existing ledger footer uses split material/labor markup for per-line categorization — these two numbers coexist (ledger = what's been paid; projected = where it's heading). pm_fee excluded from client view (confirmed $2,000 on Houston). Build: green (524ms).
+- Open: All zeros on Houston (no transactions, no sub_invoices yet). Need a job with live data to verify rendered numbers.
