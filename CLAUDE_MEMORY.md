@@ -712,3 +712,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **Floor-selector UI** — `multiplier` column and generated expressions are correct; the wizard Prompt B floor override UI is not yet built. When built: use `room.floor` (-1 basement / 0 first / 1 second) to drive `resolveMultiplier`; it will now persist correctly.
 - **Split/merge/relabel room tool** — not built. Spec: 3 ops via geometryOps, commit straight to `normalized_geometry` (prior version kept for undo), UI on Scanner/FloorPlan tab before takeoff. Required for open-plan problem: kitchen+living scanned as one room cannot be split without this tool.
 - **Cosmetics (low priority):** waste badge shows on labor lines (harmless — trade_taxonomy metadata, no effect on calcs); PDF scale bar overlaps dimension chain.
+
+---
+
+[LOG - 2026-06-02] CLIENT_PORTAL_SPEND_LEDGER
+- Action: Replaced estimate_line_items ESTIMATE view in ClientPortal.jsx Financials tab with a live actual-spend ledger sourced from job_transactions.
+- Files: avenstone-vite/src/components/client/ClientPortal.jsx, avenstone-vite/src/lib/supabase.js
+- Commit: 49d29a2 — feat(client-portal): cost-plus actual-spend ledger replaces estimate view
+- Decision: Two markup rates (labor_markup_pct / material_markup_pct) exist on jobs table. Transactions categorized by type (material_purchase → material_markup_pct; sub_payout → labor_markup_pct). Footer shows single rolled-up markup line with rate labels; if both rates match, shows "+22%"; if they differ shows "labor +22% / materials +20%". original_contract = jobs.contract_value. current_total = cost_subtotal + markup_amount (NOT original_contract + co_total + markup_amount — that formula was wrong for cost-plus). Draw history and legacy fallback sections unchanged.
+- New helper: sbLoadClientActualSpend(sbClient, jobId, tenantId) in supabase.js — accepts sb+tenantId as params to avoid circular import. Returns { ok, error, data: { transactions, cost_subtotal, material_subtotal, labor_subtotal, material_markup_pct, labor_markup_pct, markup_amount, marked_up_total, original_contract, co_total, current_total } }.
+- Open: Kalin needs to verify in client portal for 8617 Houston (cost_plus=true, labor_markup_pct=22, material_markup_pct=22, contract_value=102002, co_total=3700). Log in as kalinspratling@gmail.com / TestClient2026! → Financials tab.
