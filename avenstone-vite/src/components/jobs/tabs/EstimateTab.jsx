@@ -1,6 +1,7 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig } from '../../../lib/supabase';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
+import { markupRateForCategory } from '../../../lib/markupConfig';
 import { Ic, f$ } from '../../../lib/utils';
 import { buildEstimatePDF, buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
@@ -41,6 +42,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
   const [lineItemsLoaded, setLineItemsLoaded] = useState(false);
   const [showLineItemModal, setShowLineItemModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [categoryConfig, setCategoryConfig] = useState(null);
 
   // ── Proposal state ──────────────────────────────────────────────────────────
   const [propLoading, setPropLoading] = useState(false);
@@ -60,7 +62,8 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
     Promise.all([
       sbLoadEstimateLineItems(job.id),
       sbLoadJobRoomScopes(job.id),
-    ]).then(([items, scopes]) => {
+      sbLoadCategoryConfig(job.tenant_id || AV_TENANT),
+    ]).then(([items, scopes, cfg]) => {
       if (items?.length) {
         setLineItems(items);
         setLineItemsLoaded(true);
@@ -70,6 +73,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
       } else {
         setSub('build');
       }
+      if (cfg) setCategoryConfig(cfg);
     });
   }, [job.id]);
 
@@ -340,7 +344,14 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
 
   // ── Sub-view: Line items ────────────────────────────────────────────────────
   const renderItems = () => {
-    const total = lineItems.reduce((s, li) => s + Number(li.client_price ?? 0), 0);
+    const laborPct    = Number(job.labor_markup_pct    || 0);
+    const materialPct = Number(job.material_markup_pct || 0);
+    const lineClientPrice = (li) => {
+      const cost = Number(li.total_cost ?? 0);
+      const rate = markupRateForCategory(li.category, { laborPct, materialPct, categoryConfig });
+      return cost * (1 + rate / 100);
+    };
+    const total = lineItems.reduce((s, li) => s + lineClientPrice(li), 0);
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -359,7 +370,7 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
               ))}
             </div>
             {lineItems.map((li, i) => {
-              const lineTotal = Number(li.client_price ?? 0);
+              const lineTotal = lineClientPrice(li);
               return (
                 <div key={li.id || i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 80px 32px', padding: '8px 12px', gap: 8, borderTop: `1px solid ${BORDER}`, alignItems: 'center', background: i % 2 === 0 ? '#fff' : CREAM }}>
                   <div style={{ fontSize: 13, color: NAV }}>{li.description}</div>
