@@ -5720,7 +5720,7 @@ export async function sbLoadClientDrawBreakdown(jobId) {
 export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
   if (!jobId) return { ok: false, error: 'jobId required', data: null };
 
-  const [paidOutboundResult, pendingOutboundResult, inboundResult, jobResult, pendingReviewResult] = await Promise.all([
+  const [paidOutboundResult, pendingOutboundResult, inboundResult, jobResult, pendingReviewResult, estResult] = await Promise.all([
     // Paid outbound — the ledger rows
     sbClient
       .from('job_transactions')
@@ -5761,6 +5761,13 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
       .eq('tenant_id', tenantId)
       .is('approved_at', null)
       .is('voided_at', null),
+    // Original signed contract — lives in job_estimates.estimate_data.contract_total (nullable)
+    // contract_value already includes marked-up CO prices so cannot be recovered by subtraction
+    sbClient
+      .from('job_estimates')
+      .select('estimate_data')
+      .eq('job_id', jobId)
+      .maybeSingle(),
   ]);
 
   if (paidOutboundResult.error) return { ok: false, error: paidOutboundResult.error.message, data: null };
@@ -5771,8 +5778,12 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
 
   const materialMarkupPct = Number(j.material_markup_pct ?? j.default_markup_pct ?? 0);
   const laborMarkupPct = Number(j.labor_markup_pct ?? j.default_markup_pct ?? 0);
-  const originalContract = Number(j.contract_value ?? 0);
+  // authorized_contract = jobs.contract_value = original signed + all approved CO marked-up prices
+  const authorizedContract = Number(j.contract_value ?? 0);
   const coTotal = Number(j.co_total ?? 0);
+  // original_signed_contract from job_estimates — null when no row or field absent
+  const estContractTotal = estResult.data?.estimate_data?.contract_total;
+  const originalSignedContract = estContractTotal != null && estContractTotal !== '' ? Number(estContractTotal) || null : null;
 
   const MATERIAL_TYPES = new Set(['material_purchase', 'material', 'supply']);
   let materialSubtotal = 0;
@@ -5826,7 +5837,8 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
       labor_markup_pct: laborMarkupPct,
       markup_amount: markupAmount,
       marked_up_total: markedUpTotal,
-      original_contract: originalContract,
+      authorized_contract: authorizedContract,
+      original_signed_contract: originalSignedContract,
       co_total: coTotal,
       current_total: markedUpTotal,
       paid_to_date: paidToDate,

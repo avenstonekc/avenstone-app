@@ -896,7 +896,6 @@ export default function ClientPortal({ profile, signOut }) {
               const markupLabel = markupEqual
                 ? `+${s.labor_markup_pct}%`
                 : `labor +${s.labor_markup_pct}% / materials +${s.material_markup_pct}%`;
-              const authorizedBudget = s.original_contract + s.co_total;
               const TYPE_LABEL = {
                 material_purchase: 'Materials',
                 material: 'Materials',
@@ -908,10 +907,14 @@ export default function ClientPortal({ profile, signOut }) {
                 permit: 'Permit',
                 other: 'Other',
               };
-              // 4-card grid: always show Original Contract + Paid to Date + Projected Total; add Authorized Budget if COs exist
+              // Headline cards:
+              // - "Original Contract" only when job_estimates has the signed contract total
+              // - "Authorized Contract" = contract_value (includes approved CO marked-up prices)
+              // - No "Authorized Budget" card — contract_value already contains COs; adding co_total would double-count
+              const hasOriginal = s.original_signed_contract !== null;
               const headlineCards = [
-                { lb: 'Original Contract', val: f$(s.original_contract) },
-                ...(s.co_total > 0 ? [{ lb: 'Authorized Budget', val: f$(authorizedBudget) }] : []),
+                ...(hasOriginal ? [{ lb: 'Original Contract', val: f$(s.original_signed_contract) }] : []),
+                { lb: 'Authorized Contract', val: f$(s.authorized_contract), caption: hasOriginal ? 'incl. approved change orders' : null },
                 { lb: 'Paid to Date', val: f$(s.paid_to_date) },
                 { lb: 'Current Projected Total', val: f$(s.firm_projected_total), gold: true },
               ];
@@ -919,10 +922,11 @@ export default function ClientPortal({ profile, signOut }) {
                 <div style={{ marginBottom: 24 }}>
                   {/* Headline cards */}
                   <div style={{ display: 'grid', gridTemplateColumns: `repeat(${headlineCards.length},1fr)`, gap: 1, background: '#E8E4DC', marginBottom: 16 }}>
-                    {headlineCards.map(({ lb, val, gold }) => (
+                    {headlineCards.map(({ lb, val, gold, caption }) => (
                       <div key={lb} style={{ background: '#fff', padding: '14px 12px', textAlign: 'center' }}>
                         <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
                         <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 15, color: gold ? '#C9A84C' : '#0A1F44', fontWeight: 700 }}>{val}</div>
+                        {caption && <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 3 }}>{caption}</div>}
                       </div>
                     ))}
                   </div>
