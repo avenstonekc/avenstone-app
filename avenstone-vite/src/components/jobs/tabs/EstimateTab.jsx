@@ -240,12 +240,9 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
         const commitItems = propLineItems.map(li => ({
           source:      'ai',
           trade:       li.trade || 'General',
-          // AI estimator JSON has no category field; system prompt reliably tags material/allowance
-          // lines in the description. This regex infers category from that convention.
-          // FRAGILE: if the AI omits the keyword on a material line, it mislabels as labor and
-          // gets the wrong markup bucket. Long-term fix (backlogged): add explicit 'category' to
-          // the ai-estimator JSON schema (Option B from the Slice-4b audit).
-          category:    /material|allowance/i.test(li.description || '') ? 'materials' : 'labor',
+          // Use the AI-emitted category when present; fall back to regex on description for
+          // any line items from older API calls that predate the schema field.
+          category:    li.category ?? (/material|allowance/i.test(li.description || '') ? 'materials' : 'labor'),
           description: li.description || li.trade || 'Line item',
           quantity:    1,
           unit:        null,

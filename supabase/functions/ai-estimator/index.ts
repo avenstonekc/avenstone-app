@@ -215,7 +215,8 @@ When you receive the message "EXTRACT_JSON_FOR_PROPOSAL", respond with ONLY vali
       "trade": "DEMO / TEAROUT",
       "description": "Full demo and haul — kitchen, 2 baths (1,200 SF @ $2.50/SF)",
       "qty_label": "1 LS",
-      "amount": 3000
+      "amount": 3000,
+      "category": "labor"
     }
   ],
   "flags": ["any missing info or concerns — empty array if none"],
@@ -228,7 +229,8 @@ Rules for JSON extraction:
 - amounts are numbers (no $ sign, no commas)
 - subtotal is the sum of all amounts
 - scope_summary bullets are client-facing (professional language, no pricing)
-- If there are multiple line items per trade, each gets its own object with the same "trade" value`;
+- If there are multiple line items per trade, each gets its own object with the same "trade" value
+- "category" must be exactly "labor" or "materials" for every line item — labor/subcontractor lines get "labor"; material purchases, allowances, equipment, and permits get "materials"`;
 
 Deno.serve(async (req) => {
   const corsHeaders = {
