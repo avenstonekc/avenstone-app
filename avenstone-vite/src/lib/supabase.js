@@ -1436,7 +1436,7 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
   const total_out  = data.filter(t => t.direction === 'out' && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
   const pending_out = data.filter(t => t.direction === 'out' && t.status === 'pending').reduce((s, t) => s + Number(t.amount || 0), 0);
   const lien_waivers_missing = data.filter(t => t.lien_waiver_required && !t.lien_waiver_url).length;
-  const contract_total = Number(contractValue || 0) + Number(coTotal || 0);
+  const contract_total = costPlus ? Number(contractValue || 0) : Number(contractValue || 0) + Number(coTotal || 0);
   const client_owes = contract_total - total_in;
   const summary = { total_in, total_out, pending_out, lien_waivers_missing, contract_total, client_owes };
 
