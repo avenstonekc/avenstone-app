@@ -1527,6 +1527,24 @@ export const sbLoadEstimateLineItems = async (jobId) => {
   const { data } = await sb.from('estimate_line_items').select('*').eq('job_id', jobId).order('display_order');
   return data || [];
 };
+
+// Per-category markup config — maps estimate categories to 'labor_rate'|'material_rate'|'flat'.
+// Falls back to DEFAULT_CATEGORY_CONFIG from markupConfig.js when no DB rows exist for the tenant.
+export const sbLoadCategoryConfig = async (tenantId) => {
+  const { data } = await sb.from('markup_category_config').select('category,markup_mode').eq('tenant_id', tenantId);
+  if (!data || !data.length) return null; // caller falls back to DEFAULT_CATEGORY_CONFIG
+  return Object.fromEntries(data.map(r => [r.category, r.markup_mode]));
+};
+
+// Upsert all six category rows in one call. configMap: { labor: 'labor_rate', sub: 'labor_rate', ... }
+export const sbSaveCategoryConfig = async (tenantId, configMap) => {
+  const rows = Object.entries(configMap).map(([category, markup_mode]) => ({
+    tenant_id: tenantId, category, markup_mode,
+  }));
+  const { error } = await sb.from('markup_category_config').upsert(rows, { onConflict: 'tenant_id,category' });
+  return { ok: !error, error: error?.message || null };
+};
+
 export const sbLoadCustomTakeoffLines = async (jobId, roomType) => {
   const prefix = `takeoff:custom:${roomType}:`;
   const { data } = await sb.from('estimate_line_items').select('*').eq('job_id', jobId).like('notes', `${prefix}%`);
