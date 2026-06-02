@@ -1,14 +1,16 @@
 /**
  * NormalizedEstimateInput — the canonical input shape for sbCommitEstimate.
  *
- * ESTIMATE_FLOW_ARC — Slice 1 (2026-06-02). Not yet wired to production paths;
- * slices 2–4 migrate takeoff / consultation / AI estimator onto this helper.
- * sbSaveEstimateLineItems is retained unchanged until slice 4 completes.
+ * ESTIMATE_FLOW_ARC — Slices 1–4b (2026-06-02). All four write paths (takeoff,
+ * consultation, AI estimator, manual editor) are now on this helper.
+ * sbSaveEstimateLineItems has been removed.
  *
  * Design principles:
  *
  * category — REQUIRED, caller resolves. Never hardcode 'labor' or 'materials'.
  *   Each path must determine the correct value from its own data before calling.
+ *   source='manual' additionally allows 'equipment', 'sub', 'permit', 'other'
+ *   (the manual editor exposes these to the user; no DB CHECK on the column).
  *
  * multiplier — REQUIRED, no default. Caller must supply even if 1.0.
  *   Floor premium (basement 1.30 / second-floor 1.15) is ONLY derivable from
@@ -37,9 +39,10 @@
  *   Non-takeoff sources do NOT touch takeoff rows.
  *
  * @typedef {Object} NormalizedEstimateInput
- * @property {'takeoff'|'ai'|'consultation'|'plan_upload'} source
+ * @property {'takeoff'|'ai'|'consultation'|'plan_upload'|'manual'} source
  * @property {string}       trade
- * @property {'labor'|'materials'} category   — REQUIRED, caller resolves
+ * @property {'labor'|'materials'|'equipment'|'sub'|'permit'|'other'} category — REQUIRED, caller resolves
+ * @property {string|null}  [phase]            — optional; defaults to trade when absent
  * @property {string}       description
  * @property {number}       quantity
  * @property {string|null}  unit
@@ -50,8 +53,9 @@
  * @property {number|null}  waste_pct          — informational, not stored
  */
 
-const VALID_SOURCES    = ['takeoff', 'ai', 'consultation', 'plan_upload'];
-const VALID_CATEGORIES = ['labor', 'materials'];
+const VALID_SOURCES    = ['takeoff', 'ai', 'consultation', 'plan_upload', 'manual'];
+// 'equipment'/'sub'/'permit'/'other' are manual-editor categories; no DB CHECK on estimate_line_items.category
+const VALID_CATEGORIES = ['labor', 'materials', 'equipment', 'sub', 'permit', 'other'];
 
 /**
  * Commit normalized estimate line items to estimate_line_items.
@@ -165,7 +169,7 @@ export async function sbCommitEstimate(supabase, tenantId, userId, { source, job
         tenant_id:     tenantId,
         job_id:        jobId,
         estimate_id:   estimateId ?? null,
-        phase:         it.trade,
+        phase:         it.phase ?? it.trade,
         category:      it.category,
         trade:         it.trade,
         description:   it.description,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { sbSaveEstimateLineItems, sbLoadEstimateLineItems, sbLoadActiveTradeStrings, AV_USER_ID, AV_TENANT, captureFailedIntent } from '../../../../lib/supabase';
+import { sb, sbLoadActiveTradeStrings, AV_USER_ID, AV_TENANT, captureFailedIntent } from '../../../../lib/supabase';
+import { sbCommitEstimate } from '../../../../lib/commitEstimate';
 import { f$ } from '../../../../lib/utils';
 
 const lbl = { display: 'block', fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' };
@@ -29,27 +30,34 @@ export default function LineItemModal({ mode: initialMode, item = {}, job, onClo
     setError('');
     setSaving(true);
     try {
-      const existing = await sbLoadEstimateLineItems(job.id);
-      const newItem = {
-        id: item.id ?? crypto.randomUUID(),
-        phase: phase.trim(),
-        trade: trade.trim(),
+      // EDIT: delete the existing row by id, then insert the updated version via sbCommitEstimate.
+      // ADD: insert directly via sbCommitEstimate (no prior delete needed).
+      if (initialMode === 'edit') {
+        const { error: delErr } = await sb.from('estimate_line_items').delete().eq('id', item.id).eq('tenant_id', AV_TENANT);
+        if (delErr) throw delErr;
+      }
+      const commitItem = {
+        source:      'manual',
+        phase:       phase.trim() || null,
+        trade:       trade.trim(),
         category,
         description: description.trim(),
-        quantity: parseFloat(quantity) || 0,
-        unit: unit.trim(),
-        unit_cost: parseFloat(unitCost) || 0,
-        markup_pct: parseFloat(markupPct) || 0,
-        display_order: item.display_order ?? (existing.length + 1),
-        notes: notes.trim(),
+        quantity:    parseFloat(quantity) || 0,
+        unit:        unit.trim() || null,
+        unit_cost:   parseFloat(unitCost) || 0,
+        // Preserve existing floor premium on edits; new items have no geometry — pass 1.0 deliberately.
+        multiplier:  item.multiplier ?? 1.0,
+        markup_pct:  0,
+        notes:       notes.trim() || null,
+        waste_pct:   null,
       };
-      let updated;
-      if (initialMode === 'edit') {
-        updated = existing.map(i => i.id === item.id ? newItem : i);
-      } else {
-        updated = [...existing, newItem];
-      }
-      await sbSaveEstimateLineItems(job.id, null, updated);
+      const commitResult = await sbCommitEstimate(sb, AV_TENANT, AV_USER_ID, {
+        source:     'manual',
+        jobId:      job.id,
+        estimateId: null,
+        items:      [commitItem],
+      });
+      if (!commitResult.ok) throw new Error(commitResult.error);
       onSaved();
     } catch (e) {
       const msg = e.message || 'Failed to save line item.';
@@ -65,9 +73,8 @@ export default function LineItemModal({ mode: initialMode, item = {}, job, onClo
     setSaving(true);
     setError('');
     try {
-      const existing = await sbLoadEstimateLineItems(job.id);
-      const filtered = existing.filter(i => i.id !== item.id);
-      await sbSaveEstimateLineItems(job.id, null, filtered);
+      const { error } = await sb.from('estimate_line_items').delete().eq('id', item.id).eq('tenant_id', AV_TENANT);
+      if (error) throw error;
       onSaved();
     } catch (e) {
       setError(e.message || 'Failed to delete line item.');
