@@ -229,13 +229,17 @@ export default function EstimateTab({ job, photos, docs, setDocs }) {
         if (r.doc && setDocs) setDocs(p => [r.doc, ...p]);
       }
       if (propLineItems.length) {
-        // AI estimator lines are labor lump sums (trade-level aggregates, not material SKUs).
         // markup_pct=0: markup is a proposal-time concern (ESTIMATE_FLOW_ARC Slice 5).
         // Budget sub-tab will show cost, not marked-up total, until Slice 5 ships.
         const commitItems = propLineItems.map(li => ({
           source:      'ai',
           trade:       li.trade || 'General',
-          category:    'labor',
+          // AI estimator JSON has no category field; system prompt reliably tags material/allowance
+          // lines in the description. This regex infers category from that convention.
+          // FRAGILE: if the AI omits the keyword on a material line, it mislabels as labor and
+          // gets the wrong markup bucket. Long-term fix (backlogged): add explicit 'category' to
+          // the ai-estimator JSON schema (Option B from the Slice-4b audit).
+          category:    /material|allowance/i.test(li.description || '') ? 'materials' : 'labor',
           description: li.description || li.trade || 'Line item',
           quantity:    1,
           unit:        null,
