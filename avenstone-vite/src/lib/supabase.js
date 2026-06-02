@@ -1523,28 +1523,6 @@ export const sbUploadLienWaiverTx = async (file, jobId) => {
 };
 
 // ─── Estimate line items (Budget vs Actual — Phase 4) ────────────────────────
-export const sbSaveEstimateLineItems = async (jobId, estimateId, items) => {
-  await sb.from('estimate_line_items').delete().eq('job_id', jobId);
-  if (!items || !items.length) return { error: null };
-  const rows = items.map((it, i) => ({
-    tenant_id:    AV_TENANT,
-    job_id:       jobId,
-    estimate_id:  estimateId || null,
-    phase:        it.phase        || null,
-    category:     it.category     || null,
-    trade:        it.trade        || null,
-    description:  it.description  || it.trade || 'Line item',
-    quantity:     Number(it.quantity   ?? it.qty ?? 1),
-    unit:         it.unit         || null,
-    unit_cost:    Number(it.unit_cost  ?? it.amount ?? 0),
-    markup_pct:   Number(it.markup_pct ?? 0),
-    display_order: i,
-    notes:        it.notes        || null,
-    created_by:   AV_USER_ID,
-  }));
-  const { error } = await sb.from('estimate_line_items').insert(rows);
-  return { error };
-};
 export const sbLoadEstimateLineItems = async (jobId) => {
   const { data } = await sb.from('estimate_line_items').select('*').eq('job_id', jobId).order('display_order');
   return data || [];
