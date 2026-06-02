@@ -5750,7 +5750,7 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
       .is('invoice_id', null),
     sbClient
       .from('jobs')
-      .select('contract_value, co_total, labor_markup_pct, material_markup_pct, default_markup_pct')
+      .select('contract_value, co_total, labor_markup_pct, material_markup_pct, default_markup_pct, pm_fee')
       .eq('id', jobId)
       .single(),
     // Pending-review sub_invoices (submitted but not yet approved) — potential additional work
@@ -5820,9 +5820,10 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
   const potentialAdditional = (pendingReviewResult.data || [])
     .reduce((sum, si) => sum + Number(si.amount ?? 0), 0);
 
-  // firm_projected_total mirrors internal math: total cost base × (1 + labor_markup_pct/100), no pm_fee
+  const pmFee = Number(j.pm_fee || 0);
+  // firm_projected_total matches internal projected_final_bill: cost × (1 + markup) + pm_fee
   const totalCostBase = costSubtotal + outstandingPending;
-  const firmProjectedTotal = totalCostBase * (1 + laborMarkupPct / 100);
+  const firmProjectedTotal = totalCostBase * (1 + laborMarkupPct / 100) + pmFee;
   const remainingBalance = firmProjectedTotal - paidToDate;
 
   return {
