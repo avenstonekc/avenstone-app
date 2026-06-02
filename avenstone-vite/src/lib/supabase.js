@@ -5705,3 +5705,86 @@ export async function sbLoadClientDrawBreakdown(jobId) {
 
   return { ok: true, error: null, data: visible };
 }
+
+/**
+ * Loads actual-spend ledger for a cost-plus job.
+ * Returns outbound paid transactions with job-level markup applied.
+ * Accepts sb + tenantId as params — no direct supabase.js imports to avoid circular deps.
+ *
+ * Returns { ok, error, data: {
+ *   transactions, cost_subtotal, material_subtotal, labor_subtotal,
+ *   material_markup_pct, labor_markup_pct, markup_amount, marked_up_total,
+ *   original_contract, co_total, current_total
+ * }}
+ */
+export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+
+  const [txnResult, jobResult] = await Promise.all([
+    sbClient
+      .from('job_transactions')
+      .select('id, date_incurred, payer_or_payee_name, type, description, amount')
+      .eq('job_id', jobId)
+      .eq('tenant_id', tenantId)
+      .eq('direction', 'out')
+      .eq('status', 'paid')
+      .order('date_incurred', { ascending: true }),
+    sbClient
+      .from('jobs')
+      .select('contract_value, co_total, labor_markup_pct, material_markup_pct, default_markup_pct')
+      .eq('id', jobId)
+      .single(),
+  ]);
+
+  if (txnResult.error) return { ok: false, error: txnResult.error.message, data: null };
+  if (jobResult.error) return { ok: false, error: jobResult.error.message, data: null };
+
+  const txns = txnResult.data || [];
+  const j = jobResult.data;
+
+  const materialMarkupPct = Number(j.material_markup_pct ?? j.default_markup_pct ?? 0);
+  const laborMarkupPct = Number(j.labor_markup_pct ?? j.default_markup_pct ?? 0);
+  const originalContract = Number(j.contract_value ?? 0);
+  const coTotal = Number(j.co_total ?? 0);
+
+  const MATERIAL_TYPES = new Set(['material_purchase', 'material', 'supply']);
+  let materialSubtotal = 0;
+  let laborSubtotal = 0;
+
+  const transactions = txns.map(t => {
+    const amt = Number(t.amount ?? 0);
+    const isMaterial = MATERIAL_TYPES.has(t.type);
+    if (isMaterial) materialSubtotal += amt;
+    else laborSubtotal += amt;
+    return {
+      date: t.date_incurred,
+      payee: t.payer_or_payee_name || t.description || '—',
+      category: t.type,
+      amount: amt,
+    };
+  });
+
+  const materialMarkup = materialSubtotal * materialMarkupPct / 100;
+  const laborMarkup = laborSubtotal * laborMarkupPct / 100;
+  const costSubtotal = materialSubtotal + laborSubtotal;
+  const markupAmount = materialMarkup + laborMarkup;
+  const markedUpTotal = costSubtotal + markupAmount;
+
+  return {
+    ok: true,
+    error: null,
+    data: {
+      transactions,
+      cost_subtotal: costSubtotal,
+      material_subtotal: materialSubtotal,
+      labor_subtotal: laborSubtotal,
+      material_markup_pct: materialMarkupPct,
+      labor_markup_pct: laborMarkupPct,
+      markup_amount: markupAmount,
+      marked_up_total: markedUpTotal,
+      original_contract: originalContract,
+      co_total: coTotal,
+      current_total: markedUpTotal,
+    },
+  };
+}

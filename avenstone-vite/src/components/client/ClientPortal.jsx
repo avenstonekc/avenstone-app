@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 // Note: legacy `payments` compat view is deprecated. ClientPortal reads invoices + job_transactions directly.
 // Compat view still alive in DB until verified no consumers remain. — Phase 6a, 2026-05-06
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates, sbLoadClientMilestones, sbLoadClientDrawBreakdown } from '../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates, sbLoadClientMilestones, sbLoadClientDrawBreakdown, sbLoadClientActualSpend } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
@@ -307,6 +307,8 @@ export default function ClientPortal({ profile, signOut }) {
   const [budgetItems, setBudgetItems] = useState([]);
   const [drawBreakdown, setDrawBreakdown] = useState(null);
   const [drawBreakdownLoading, setDrawBreakdownLoading] = useState(false);
+  const [actualSpend, setActualSpend] = useState(null);
+  const [actualSpendLoading, setActualSpendLoading] = useState(false);
   const [staffOwnerId, setStaffOwnerId] = useState(null);
   const [jobReview, setJobReview] = useState(null);
   const [reviewForm, setReviewForm] = useState({ quality: 0, communication: 0, timeliness: 0, would_recommend: null, text: '' });
@@ -384,6 +386,12 @@ export default function ClientPortal({ profile, signOut }) {
       setDrawBreakdown(result.ok ? result.data : []);
       setDrawBreakdownLoading(false);
     });
+    // Actual-spend ledger for cost-plus jobs
+    setActualSpendLoading(true);
+    sbLoadClientActualSpend(sb, job.id, AV_TENANT).then(result => {
+      setActualSpend(result.ok ? result.data : null);
+      setActualSpendLoading(false);
+    });
   }, [job?.id, tab]);
 
   useEffect(() => {
@@ -411,7 +419,7 @@ export default function ClientPortal({ profile, signOut }) {
     setLoaded({ phases: false, photos: false, docs: false, payments: false, msgs: false, subs: false });
     setPhases([]); setPhotos([]); setDocs([]); setPayments([]); setMsgs([]); setJobSubs([]);
     setTotalPaid(0); setPayingNext(false);
-    setRatings({}); setRatingDone({}); setJobReview(null); setCostItems([]); setCostInvoices([]); setDrawBreakdown(null); setNotes([]); setNoteText('');
+    setRatings({}); setRatingDone({}); setJobReview(null); setCostItems([]); setCostInvoices([]); setDrawBreakdown(null); setActualSpend(null); setNotes([]); setNoteText('');
     setReviewForm({ quality: 0, communication: 0, timeliness: 0, would_recommend: null, text: '' }); setReviewDone(false);
     sbLoadJobReview(id).then(r => setJobReview(r || false));
   };
@@ -878,26 +886,88 @@ export default function ClientPortal({ profile, signOut }) {
           </div>}
 
           {tab === 'financials' && job?.cost_plus && <div>
-            {budgetItems.length > 0 && (() => {
-              const totalBudget = budgetItems.reduce((s, li) => s + Number(li.client_price ?? li.total_cost ?? 0), 0);
+            {/* ── Actual-spend ledger (cost-plus) ── */}
+            {actualSpendLoading && (
+              <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading financials...</div>
+            )}
+            {!actualSpendLoading && actualSpend && (() => {
+              const s = actualSpend;
+              const markupEqual = s.labor_markup_pct === s.material_markup_pct;
+              const markupLabel = markupEqual
+                ? `+${s.labor_markup_pct}%`
+                : `labor +${s.labor_markup_pct}% / materials +${s.material_markup_pct}%`;
+              const authorizedBudget = s.original_contract + s.co_total;
+              const TYPE_LABEL = {
+                material_purchase: 'Materials',
+                material: 'Materials',
+                supply: 'Materials',
+                sub_payout: 'Labor',
+                labor: 'Labor',
+                subcontractor: 'Labor',
+                equipment: 'Equipment',
+                permit: 'Permit',
+                other: 'Other',
+              };
               return (
                 <div style={{ marginBottom: 24 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Estimate</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {budgetItems.map(li => (
-                      <div key={li.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{li.description}</div>
-                          {li.phase && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{li.phase}{li.trade ? ` · ${li.trade}` : ''}</div>}
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44', fontFamily: "'DM Serif Display',serif" }}>{f$(Number(li.client_price ?? li.total_cost ?? 0))}</div>
+                  {/* Headline rows */}
+                  <div style={{ display: 'grid', gridTemplateColumns: s.co_total > 0 ? 'repeat(3,1fr)' : 'repeat(2,1fr)', gap: 1, background: '#E8E4DC', marginBottom: 20 }}>
+                    {[
+                      { lb: 'Original Contract', val: f$(s.original_contract) },
+                      ...(s.co_total > 0 ? [{ lb: 'Authorized Budget', val: f$(authorizedBudget) }] : []),
+                      { lb: 'Actual Spend + Markup', val: f$(s.current_total), gold: true },
+                    ].map(({ lb, val, gold }) => (
+                      <div key={lb} style={{ background: '#fff', padding: '14px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
+                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 15, color: gold ? '#C9A84C' : '#0A1F44', fontWeight: 700 }}>{val}</div>
                       </div>
                     ))}
-                    <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>Total Estimate</div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0A1F44', fontFamily: "'DM Serif Display',serif" }}>{f$(totalBudget)}</div>
-                    </div>
                   </div>
+
+                  {/* Transaction ledger */}
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>What We've Spent</div>
+                  {!s.transactions.length && (
+                    <div className="empty">{Ic.doc}<div className="empty-t">No expenses recorded yet</div><div>Paid expenses will appear here as work progresses</div></div>
+                  )}
+                  {s.transactions.length > 0 && (
+                    <div style={{ background: '#fff', border: '1px solid #E8E4DC', marginBottom: 16 }}>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #F3F0EB' }}>
+                              <th style={{ textAlign: 'left', padding: '10px 12px 10px 16px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>Date</th>
+                              <th style={{ textAlign: 'left', padding: '10px 12px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Payee</th>
+                              <th style={{ textAlign: 'left', padding: '10px 12px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</th>
+                              <th style={{ textAlign: 'right', padding: '10px 16px 10px 12px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {s.transactions.map((t, i) => (
+                              <tr key={i} style={{ borderBottom: '1px solid #F7F5F0' }}>
+                                <td style={{ padding: '9px 12px 9px 16px', color: '#6B7280', whiteSpace: 'nowrap' }}>{t.date ? fD(t.date) : '—'}</td>
+                                <td style={{ padding: '9px 12px', color: '#374151', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.payee}</td>
+                                <td style={{ padding: '9px 12px', color: '#6B7280', whiteSpace: 'nowrap' }}>{TYPE_LABEL[t.category] || t.category || '—'}</td>
+                                <td style={{ padding: '9px 16px 9px 12px', textAlign: 'right', color: '#0A1F44', fontWeight: 600, whiteSpace: 'nowrap' }}>{f$(t.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Footer */}
+                      <div style={{ borderTop: '2px solid #E8E4DC', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
+                          <span>Subtotal (cost)</span><span>{f$(s.cost_subtotal)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
+                          <span>Markup ({markupLabel})</span><span>+{f$(s.markup_amount)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: '#0A1F44', borderTop: '1px solid #F3F0EB', paddingTop: 8, marginTop: 2 }}>
+                          <span>Total</span><span style={{ fontFamily: "'DM Serif Display',serif" }}>{f$(s.marked_up_total)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
