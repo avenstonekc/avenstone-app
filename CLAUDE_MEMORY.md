@@ -828,3 +828,17 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 - KNOWN GAP (expected until Slice 5): Budget sub-tab shows cost not marked-up total for AI/consultation paths. markup_pct=0 on all rows. This is correct behavior until proposal-time markup (Slice 5) ships.
 - OPEN (follow-up slice): LineItemModal.jsx still calls sbSaveEstimateLineItems at lines 52 and 70. It is a manual CRUD editor — not an estimator path. sbSaveEstimateLineItems was NOT removed from supabase.js. Remove only after LineItemModal is migrated to sbCommitEstimate in a dedicated slice.
+
+[LOG - 2026-06-02] ESTIMATE_FLOW_ARC Slice 4b — AI category fix, LineItemModal wired, sbSaveEstimateLineItems retired
+- Commits: 909cb38 (Part 1 — AI category), 0e4fb48 (Part 2 — LineItemModal), fda107f (Part 3 — retire helper). Pushed.
+- Files: EstimateTab.jsx, commitEstimate.js, LineItemModal.jsx, supabase.js
+
+- Part 1 — AI category fix: Replaced `category: 'labor'` hardcode in generateProposalPDF with `/material|allowance/i.test(li.description)` resolver. AI JSON has no category field; system prompt tags material/allowance lines in description text. Regex resolves correctly for demo (labor), LVP Flooring Material (materials), tile labor (labor), Toilet Allowance (materials). FRAGILE: AI may omit keyword on some material lines (e.g., "Drywall Board") → mislabels as labor. BACKLOGGED (Option B): add explicit `category` field to ai-estimator JSON schema in index.ts.
+
+- Part 2 — LineItemModal (source='manual'): Added 'manual' to VALID_SOURCES. Extended VALID_CATEGORIES to include equipment/sub/permit/other (modal exposes 6 categories; no DB CHECK on estimate_line_items.category). Added optional `phase` to NormalizedEstimateInput (defaults to trade when absent — preserves modal's separate phase/trade fields). EDIT mode: delete-by-id + sbCommitEstimate insert (surgical, not full-replace). DELETE: direct sb delete by id. Multiplier preserved from item.multiplier on edits (floor premium not overwritten); 1.0 explicit for new items. markup_pct zeroed by sbCommitEstimate. Category is user-chosen from modal picker — no gap.
+
+- Part 3 — sbSaveEstimateLineItems retired: Zero active callers confirmed in src/ (grep found only the comment in commitEstimate.js, not a call). Function removed from supabase.js. Stale import removed from EstimateTab. sbLoadEstimateLineItems retained (EstimateTab/reloadLineItems still uses it).
+
+- ARCHITECTURE COMPLETE: estimate_line_items now has EXACTLY ONE write path (sbCommitEstimate) across all four sources: takeoff, consultation, ai, manual. The nuclear full-replace pattern (delete-all-then-insert-all for a job) is fully retired. Takeoff isolation (notes LIKE 'takeoff:%') is the only scoped delete remaining.
+- KNOWN GAP (markup_pct in LineItemModal UI): The modal still renders a Markup % input field. sbCommitEstimate zeros it, so the value entered is never stored. Field remains cosmetically functional until Slice 5 adds proposal-time markup. No UI change needed now.
+- KNOWN GAP (Slice 5): Budget sub-tab still shows cost not marked-up total. markup_pct=0 on all rows from all paths. Expected until Slice 5 ships.
