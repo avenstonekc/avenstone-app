@@ -742,3 +742,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Card grid: [Original Contract] [Authorized Budget (if co_total>0)] [Paid to Date] [Current Projected Total]. Potential additional work shows as an amber disclosure block if >0. Remaining balance shown as a gray line below.
 - Math: firm_projected_total uses SINGLE labor_markup_pct (matches sbLoadJobFinancialSummary math, no pm_fee for client). The existing ledger footer uses split material/labor markup for per-line categorization — these two numbers coexist (ledger = what's been paid; projected = where it's heading). pm_fee excluded from client view (confirmed $2,000 on Houston). Build: green (524ms).
 - Open: All zeros on Houston (no transactions, no sub_invoices yet). Need a job with live data to verify rendered numbers.
+
+[LOG - 2026-06-02] CLIENT_PORTAL_ORIGINAL_CONTRACT_FIX
+- Action: Fixed "Original Contract" card showing contract_value (post-CO total) instead of the true original signed contract. Removed the wrong "Authorized Budget" card (was double-counting COs). Rebuilt headline card grid.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/client/ClientPortal.jsx
+- Commit: 5a0684c — fix(client-portal): show true original signed contract from job_estimates, fall back to authorized contract when absent
+- ASYMMETRY RULE (record permanently): contract_value grows by the MARKED-UP CO price when a CO is approved (Kalin updates manually). co_total stores the RAW CO amount (maintained by trg_sync_co_total trigger on change_orders). They are NOT symmetric: contract_value − co_total ≠ original signed contract. For Houston: $102,002 − $3,700 = $98,302 (WRONG). True original = $97,488 (from job_estimates). NEVER compute original from subtraction. Always read job_estimates.estimate_data->>'contract_total'.
+- "Authorized Budget" was: contract_value + co_total = $102,002 + $3,700 = $105,702 — WRONG (double-counted CO since contract_value already has the marked-up CO price baked in). Card removed entirely.
+- New card structure (cost_plus only):
+  - IF job_estimates has contract_total: ["Original Contract" (original_signed_contract), "Authorized Contract" (contract_value, captioned "incl. approved change orders"), "Paid to Date", "Current Projected Total" (gold)]
+  - IF no job_estimates row: ["Authorized Contract" (contract_value), "Paid to Date", "Current Projected Total" (gold)]
+- Coverage: 1 of 4 cost_plus jobs has job_estimates.estimate_data.contract_total (Houston $97,488). 3 jobs hit fallback (single Authorized Contract card). Verified: subtraction gives $98,302, job_estimates gives $97,488 — confirms job_estimates is the only reliable source.
+- sbLoadClientActualSpend: renamed original_contract → authorized_contract; added original_signed_contract (null when no row). Added 6th parallel fetch: job_estimates.estimate_data (maybeSingle). Build: green (491ms).
