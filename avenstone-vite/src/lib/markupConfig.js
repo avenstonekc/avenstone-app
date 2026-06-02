@@ -29,6 +29,7 @@ const LEDGER_ALIASES = {
   supply:             'materials',
   equipment_rental:   'equipment',
   fuel:               'equipment',
+  other_expense:      'other',
   change_order:       'other',
 };
 
