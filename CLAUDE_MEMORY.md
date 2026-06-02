@@ -754,3 +754,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   - IF no job_estimates row: ["Authorized Contract" (contract_value), "Paid to Date", "Current Projected Total" (gold)]
 - Coverage: 1 of 4 cost_plus jobs has job_estimates.estimate_data.contract_total (Houston $97,488). 3 jobs hit fallback (single Authorized Contract card). Verified: subtraction gives $98,302, job_estimates gives $97,488 — confirms job_estimates is the only reliable source.
 - sbLoadClientActualSpend: renamed original_contract → authorized_contract; added original_signed_contract (null when no row). Added 6th parallel fetch: job_estimates.estimate_data (maybeSingle). Build: green (491ms).
+
+---
+
+[LOG - 2026-06-02] OVERVIEW_FINANCIALS_DRIFT_FIX
+- Action: Killed contract/remaining drift between Overview and Financials tabs on the client portal.
+- Files: avenstone-vite/src/components/client/ClientPortal.jsx
+- Commit: 155f176 — fix(client-portal): Overview summary reads same financials helper as Financials tab
+- Root cause: Overview computed contract_value + co_total (double-counts the CO since contract_value already includes marked-up CO price) and remaining = that − paid. Financials used sbLoadClientActualSpend. Two independent calcs diverged by $24k on 8617 Houston.
+- Fix: Overview cost_plus card now reads original_signed_contract / authorized_contract / paid_to_date / remaining_balance from actualSpend state. actualSpend loaded via a dedicated useEffect that fires on tab='overview' OR tab='financials' for cost_plus jobs, guarded by loaded.spend flag. Non-cost_plus Overview unchanged.
+- RULE: Overview and Financials client cards must read the same helper output. Never compute contract_value + co_total or contract − paid independently in ClientPortal for cost_plus jobs.
