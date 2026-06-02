@@ -787,3 +787,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   - On success: calls onEditSaved() (= load() in parent) to refresh invoice list.
 
 - Architecture note: sub_invoices.amount is an INDEPENDENT column (no trigger derives it from line_items). The edit RPC derives new_amount from SUM(line_items[i].total) when line_items provided. Always goes through the RPC so accrual stays consistent.
+
+---
+
+[LOG - 2026-06-02] CLIENT_PORTAL_PM_FEE_FIX
+- Action: Added pm_fee to sbLoadClientActualSpend so client firm_projected_total matches internal projected_final_bill.
+- Files: avenstone-vite/src/lib/supabase.js
+- Commit: 04812a7 — fix(client-portal): include PM fee in client projected total to match internal projection
+- Formula: firmProjectedTotal = (costSubtotal + outstandingPending) × (1 + laborMarkupPct/100) + pmFee. Matches supabase.js:1452 internal formula exactly.
+- RULE: pm_fee is folded into the total only — never itemized on the client portal. No "PM fee" line item should ever appear in the client spend ledger or any client-facing card.
+- Verified: Houston projected $83,114.24 (was $81,114.24), remaining $38,114.24 (was $36,114.24). Matches internal FinancialsTab.
