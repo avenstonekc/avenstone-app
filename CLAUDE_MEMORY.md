@@ -797,3 +797,22 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Formula: firmProjectedTotal = (costSubtotal + outstandingPending) × (1 + laborMarkupPct/100) + pmFee. Matches supabase.js:1452 internal formula exactly.
 - RULE: pm_fee is folded into the total only — never itemized on the client portal. No "PM fee" line item should ever appear in the client spend ledger or any client-facing card.
 - Verified: Houston projected $83,114.24 (was $81,114.24), remaining $38,114.24 (was $36,114.24). Matches internal FinancialsTab.
+
+[LOG - 2026-06-02] ESTIMATE_FLOW_ARC Slice 1 — NormalizedEstimateInput + sbCommitEstimate keystone
+- Action: Built `avenstone-vite/src/lib/commitEstimate.js` — the single canonical write path for estimate_line_items. Not yet wired to production callers; slices 2–4 migrate takeoff / consultation / AI estimator; sbSaveEstimateLineItems removed at end of slice 4.
+- Commit: 2721668 — feat(estimate-flow): NormalizedEstimateInput + sbCommitEstimate keystone (not yet wired)
+- Files: avenstone-vite/src/lib/commitEstimate.js (204 lines, new file)
+
+- Design decisions (locked):
+  - multiplier REQUIRED — no silent default. Callers must pass even if 1.0. Guards the basement-floor-premium underbid bug: sbCommitEstimate hard-rejects any item where multiplier is missing or non-numeric.
+  - markup_pct FORCED to 0 on every row regardless of caller input. Markup is a proposal-time concern applied once from a single rate source (Slice 5). console.warn fires if caller passes non-zero. NEVER bake propMargin into line items at commit time.
+  - source='takeoff' scoped-delete: WHERE notes LIKE 'takeoff:%' — identical to acceptTakeoffDraft. Non-takeoff sources do NOT touch takeoff rows.
+  - Notes format for source='takeoff': 'takeoff:<roomType>:<roomId>' (labor), 'takeoff:<roomType>:<roomId>:<trade>' (materials), 'takeoff:custom:<roomType>:<roomId>' (custom), + optional ' PENDING RATE' suffix. Must match acceptTakeoffDraft byte-for-byte.
+  - Returns { ok, error, data: { inserted_count, line_item_ids } }. Accepts sb/tenantId/userId as explicit params (no circular import).
+
+- Floor-premium limitation (known boundary — do not rediscover as a bug):
+  Floor multiplier (basement 1.30 / second-floor 1.15) is ONLY derivable from LiDAR scan geometry (room.floor integer in normalized_geometry). Consultation and AI estimator paths have no floor geometry and commit multiplier=1.0 by design — explicit caller decision, not a silent default. Upgrade path: takeoff wizard (reads room.floor, maps via resolveMultiplier()). If non-scan floor premium is ever needed, floor level must be added to consultation_measurements or the AI extraction schema BEFORE a non-takeoff caller can pass a meaningful multiplier.
+
+- Smoke test (job 4460936c, 107 Brentwood Dr, Belton MO): 2 rows inserted, all values verified, 2 rows deleted. total_cost, multiplier, markup_pct, tenant_id all PASS.
+- STEP 3: sbCommitEstimate has zero production callers (grep); sbSaveEstimateLineItems untouched at supabase.js:1526; build green (640ms).
+- Pending (slices 2–4): migrate acceptTakeoffDraft, ConsultationTab, EstimateTab onto sbCommitEstimate. Remove sbSaveEstimateLineItems at end of slice 4.
