@@ -4,7 +4,7 @@ import { f$ } from '../../lib/utils';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export default function MarkPaidModal({ invoice, onClose, onSaved }) {
+export default function MarkPaidModal({ invoice, onClose, onSaved, onSubmit }) {
   const outstanding = Number(invoice.total_amount) - Number(invoice.amount_paid);
 
   const [amount, setAmount]               = useState(outstanding.toFixed(2));
@@ -23,13 +23,18 @@ export default function MarkPaidModal({ invoice, onClose, onSaved }) {
     if (!isValid) return;
     setSaving(true);
     try {
-      await sbMarkInvoicePaid(invoice.id, {
+      const payment = {
         amount:         amountNum,
         payment_method: paymentMethod,
         date_paid:      datePaid,
         reference:      reference.trim() || undefined,
         notes:          notes.trim() || undefined,
-      });
+      };
+      if (onSubmit) {
+        await onSubmit(payment);
+      } else {
+        await sbMarkInvoicePaid(invoice.id, payment);
+      }
       onSaved();
       onClose();
     } catch (e) {

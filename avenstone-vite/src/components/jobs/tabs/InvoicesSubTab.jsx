@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice, deriveInvoiceStatus, sbLoadDrawPackagesForJob, sbGetDrawPackageSignedUrl, sbSendDrawPackage } from '../../../lib/supabase';
+import { sbLoadDrawsForJob, sbDeleteDrawSchedule, sbLoadInvoicesForJob, sbDeleteInvoice, sbVoidInvoice, sbResendInvoice, deriveInvoiceStatus, sbLoadDrawPackagesForJob, sbGetDrawPackageSignedUrl, sbSendDrawPackage, sbMarkDrawPaid } from '../../../lib/supabase';
 import DrawPackagePickerModal from '../../modals/DrawPackagePickerModal';
 import { f$, fD } from '../../../lib/utils';
 import DrawModal from '../../modals/DrawModal';
@@ -38,6 +38,7 @@ export default function InvoicesSubTab({ job, profile }) {
   const [editInvoice, setEditInvoice]         = useState(null);
   const [prefillDrawId, setPrefillDrawId]     = useState(null);
   const [markPaidInvoice, setMarkPaidInvoice]       = useState(null);
+  const [markPaidDraw, setMarkPaidDraw]             = useState(null);
   const [resendingInvoiceId, setResendingInvoiceId] = useState(null);
   const [composeDrawOpen, setComposeDrawOpen]       = useState(false);
   const [pickerDraw, setPickerDraw]                 = useState(null);
@@ -250,6 +251,15 @@ export default function InvoicesSubTab({ job, profile }) {
                             ) : (
                               <button onClick={() => setPickerDraw(draw)} className="btn btn-gold" style={{ fontSize: 11, padding: '4px 10px' }}>Build Package</button>
                             )}
+                            {!['paid', 'cancelled'].includes(draw.status) && (
+                              <button
+                                onClick={() => setMarkPaidDraw(draw)}
+                                className="btn btn-ghost"
+                                style={{ fontSize: 11, padding: '4px 10px', color: '#065f46', borderColor: '#6EE7B7' }}
+                              >
+                                Mark Paid
+                              </button>
+                            )}
                             <button onClick={() => openEditDraw(draw)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Edit</button>
                             <button onClick={() => handleDeleteDraw(draw)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>Delete</button>
                           </div>
@@ -410,6 +420,20 @@ export default function InvoicesSubTab({ job, profile }) {
           invoice={markPaidInvoice}
           onClose={() => setMarkPaidInvoice(null)}
           onSaved={load}
+        />
+      )}
+
+      {markPaidDraw && job.cost_plus && (
+        <MarkPaidModal
+          invoice={{
+            id:             markPaidDraw.id,
+            invoice_number: `Draw #${markPaidDraw.draw_number}`,
+            total_amount:   markPaidDraw.target_amount,
+            amount_paid:    markPaidDraw.paid_amount,
+          }}
+          onClose={() => setMarkPaidDraw(null)}
+          onSaved={() => { setMarkPaidDraw(null); load(); }}
+          onSubmit={payment => sbMarkDrawPaid(markPaidDraw.id, payment)}
         />
       )}
 

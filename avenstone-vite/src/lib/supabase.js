@@ -4471,6 +4471,74 @@ export async function sbMarkInvoicePaid(invoiceId, payment) {
 }
 
 // ---------------------------------------------------------------------------
+// Draw Payments (cost-plus: draw IS the billable document — no invoice needed)
+// ---------------------------------------------------------------------------
+
+export async function sbMarkDrawPaid(drawId, payment) {
+  if (!drawId) throw new Error('drawId required');
+  if (!payment?.amount || payment.amount <= 0) throw new Error('Amount must be greater than zero');
+  if (!payment?.payment_method) throw new Error('Payment method required');
+
+  const { data: draw, error: loadErr } = await sb
+    .from('draw_schedules')
+    .select('id, tenant_id, job_id, draw_number, title, target_amount, paid_amount, status')
+    .eq('id', drawId)
+    .single();
+  if (loadErr) throw loadErr;
+  if (!draw) throw new Error('Draw not found');
+  if (draw.status === 'paid') throw new Error('Draw is already fully paid');
+  if (draw.status === 'cancelled') throw new Error('Cannot mark a cancelled draw as paid');
+
+  const paidAmount    = Number(payment.amount);
+  const currentPaid   = Number(draw.paid_amount);
+  const targetAmount  = Number(draw.target_amount);
+  const newAmountPaid = currentPaid + paidAmount;
+
+  if (newAmountPaid > targetAmount + 0.01) {
+    const remaining = (targetAmount - currentPaid).toFixed(2);
+    throw new Error(`Payment exceeds draw balance — $${remaining} remaining`);
+  }
+
+  const dateISO = payment.date_paid ?? new Date().toISOString().slice(0, 10);
+  const refNote = payment.reference ? ` (${payment.reference})` : '';
+
+  // invoice_id must stay null — sbLoadJobFinancialSummary + sbLoadClientActualSpend
+  // both bucket inbound payments by `invoice_id IS NULL` for cost-plus jobs.
+  const txRow = {
+    tenant_id:      draw.tenant_id,
+    job_id:         draw.job_id,
+    draw_id:        drawId,
+    invoice_id:     null,
+    direction:      'in',
+    type:           'client_payment',
+    status:         'paid',
+    amount:         paidAmount,
+    description:    `Draw #${draw.draw_number} — ${draw.title} payment${refNote}`,
+    date_incurred:  dateISO,
+    date_paid:      dateISO,
+    payment_method: payment.payment_method,
+    notes:          payment.notes ?? null,
+    created_by:     AV_USER_ID,
+  };
+
+  const { data: tx, error: txErr } = await sb
+    .from('job_transactions')
+    .insert(txRow)
+    .select()
+    .single();
+  if (txErr) throw txErr;
+
+  const newStatus = newAmountPaid >= targetAmount - 0.01 ? 'paid' : 'in_progress';
+  const { error: drawErr } = await sb
+    .from('draw_schedules')
+    .update({ paid_amount: newAmountPaid, status: newStatus, updated_at: new Date().toISOString() })
+    .eq('id', drawId);
+  if (drawErr) throw drawErr;
+
+  return { tx, newStatus, newAmountPaid };
+}
+
+// ---------------------------------------------------------------------------
 // Material Orders (EXECUTION_ARC Phase 2)
 // ---------------------------------------------------------------------------
 
