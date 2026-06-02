@@ -885,4 +885,43 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
   - estimate→contract is one coded path (sbSetContractFromEstimate). No side-door ingest.
   - markup_pct=0 on all estimate_line_items rows remains the contract. Markup is applied at proposal/display time only.
 
-- Open: npm run gen:types needed to add markup_category_config to database.types.ts (deferred to next session).
+- Open: None. gen:types run and committed (765709b).
+
+[LOG - 2026-06-02] ESTIMATE_FLOW_ARC Slice 6 — oh-shit → CO loop closed
+- Commits: c6ede4b (migration), d877563 (helper), cc798c5 (UI). All pushed to main. DB types regenerated and committed in final batch commit.
+- Files: supabase/migrations/20260602160000_oh_shit_co_lineage.sql (new), avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/jobs/tabs/ConsultationTab.jsx
+
+- Migration: added change_orders.oh_shit_moment_id UUID REFERENCES oh_shit_moments(id) + oh_shit_moments.converted_to_co_id TEXT REFERENCES change_orders(id) (TEXT because change_orders.id is TEXT). Both indexed. 4/4 verify PASS.
+
+- sbCreateCOFromOhShit({ ohShitMomentId, jobId, amount?, markupPct? }):
+  - Loads moment + job in parallel. Guards: moment not found → error; converted_to_co_id already set → "already converted" error.
+  - Computes amount = caller value → midpoint ((low+high)/2) → 0. markup_pct = caller value → job.default_markup_pct (same source as COTab). co_number auto from count+1.
+  - Creates CO via sbCO (the same thin insert wrapper COTab uses) with oh_shit_moment_id set. Not a parallel path.
+  - Writes oh_shit_moments.converted_to_co_id = new CO id.
+  - Returns { ok, error, data: co }. CO lands status='pending' — approval still goes through normal COTab flow.
+
+- ConsultationTab UI:
+  - "Create CO from this risk" button per moment row (owner/PM gated, requires dbRow?.id to exist).
+  - On click: shows inline amount input pre-filled with midpoint + "Create CO" / "Cancel".
+  - On success: moment row shows "→ CO created" badge (reads ohShitDbRows.converted_to_co_id), button disabled. Message: "CO created — approve it in the Change Orders tab."
+  - Double-convert: after conversion, converted_to_co_id is set and the button is replaced by the badge.
+
+- Verification (Cost Plus Sandbox job 5ebd7c3c, default_markup_pct=15):
+  - oh_shit_moment created: id 6eda27d9, cost range $800-$1200. PASS
+  - CO created: id f7eaa480, co_number CO-TEST-001, amount $1000 (midpoint), description from condition, status=pending, oh_shit_moment_id=6eda27d9, markup_pct=15. PASS
+  - converted_to_co_id written: 6eda27d9.converted_to_co_id = f7eaa480. PASS
+  - Bidirectional join: CO → moment → CO round-trips correctly. PASS
+  - Double-convert guard: already_converted=true confirmed. PASS
+  - Approval cascade: status=approved, contract_value=$1150 (=$1000×1.15), accrual job_transaction row (type=change_order, amount=$1000, status=pending, change_order_id=f7eaa480). PASS
+  - FK enforcement verified: DELETE change_orders raised 23503 (cannot delete while oh_shit_moments.converted_to_co_id references it). PASS
+  - Cleanup: all 3 test rows deleted, contract_value reset to 0. PASS
+
+- PRINCIPLE (record permanently): The anti-surprise loop is closed end-to-end:
+  1. Predict at AI consultation → stored as oh_shit_moment
+  2. Disclose in proposal → included_in_proposal flag + PDF rendering
+  3. Convert to CO on materialization → sbCreateCOFromOhShit, reuses COTab's CO path (not a parallel path)
+  4. Flows to financials via the unified markup engine → sbCreateCOAccrualRow + contract_value bump at approval
+
+- Architecture decision (locked): Conversion reuses sbCO and the existing approval cascade. No new write path for CO-from-risk. oh_shit_moment_id nullable — normal COs leave it null. No touch to Houston, markup mapper, sub-invoice accrual, or sbCommitEstimate.
+
+- Open: None.

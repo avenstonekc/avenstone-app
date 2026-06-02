@@ -339,6 +339,7 @@ export type Database = {
           id: string
           job_id: string | null
           markup_pct: number | null
+          oh_shit_moment_id: string | null
           reason: string | null
           status: string | null
           submitted_by: string | null
@@ -357,6 +358,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           markup_pct?: number | null
+          oh_shit_moment_id?: string | null
           reason?: string | null
           status?: string | null
           submitted_by?: string | null
@@ -375,6 +377,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           markup_pct?: number | null
+          oh_shit_moment_id?: string | null
           reason?: string | null
           status?: string | null
           submitted_by?: string | null
@@ -407,6 +410,13 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_orders_oh_shit_moment_id_fkey"
+            columns: ["oh_shit_moment_id"]
+            isOneToOne: false
+            referencedRelation: "oh_shit_moments"
             referencedColumns: ["id"]
           },
           {
@@ -3470,6 +3480,7 @@ export type Database = {
       oh_shit_moments: {
         Row: {
           condition: string
+          converted_to_co_id: string | null
           created_at: string | null
           estimated_cost_high: number | null
           estimated_cost_low: number | null
@@ -3483,6 +3494,7 @@ export type Database = {
         }
         Insert: {
           condition: string
+          converted_to_co_id?: string | null
           created_at?: string | null
           estimated_cost_high?: number | null
           estimated_cost_low?: number | null
@@ -3496,6 +3508,7 @@ export type Database = {
         }
         Update: {
           condition?: string
+          converted_to_co_id?: string | null
           created_at?: string | null
           estimated_cost_high?: number | null
           estimated_cost_low?: number | null
@@ -3508,6 +3521,13 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "oh_shit_moments_converted_to_co_id_fkey"
+            columns: ["converted_to_co_id"]
+            isOneToOne: false
+            referencedRelation: "change_orders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "oh_shit_moments_job_id_fkey"
             columns: ["job_id"]
