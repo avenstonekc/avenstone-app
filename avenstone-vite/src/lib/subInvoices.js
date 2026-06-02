@@ -190,13 +190,6 @@ export async function sbAddSubInvoicePayment({
  */
 export async function sbVoidSubInvoicePayment({ paymentId, voidReason }) {
   try {
-    // Load sub_invoice_id before voiding so we can check accrual after
-    const { data: payment } = await sb
-      .from('sub_invoice_payments')
-      .select('sub_invoice_id')
-      .eq('id', paymentId)
-      .single();
-
     const { data, error } = await sb.rpc('void_sub_invoice_payment_with_ledger', {
       p_payment_id:  paymentId,
       p_void_reason: voidReason || null,
@@ -205,22 +198,7 @@ export async function sbVoidSubInvoicePayment({ paymentId, voidReason }) {
     const row = Array.isArray(data) ? data[0] : data;
     const newStatus = row.new_status;
 
-    // If invoice is no longer fully paid, revert the accrual row back to 'pending'
-    if (newStatus !== 'paid' && payment?.sub_invoice_id) {
-      const { data: si } = await sb
-        .from('sub_invoices')
-        .select('accrual_transaction_id')
-        .eq('id', payment.sub_invoice_id)
-        .single();
-
-      if (si?.accrual_transaction_id) {
-        await sb
-          .from('job_transactions')
-          .update({ status: 'pending', date_paid: null })
-          .eq('id', si.accrual_transaction_id)
-          .eq('status', 'paid');
-      }
-    }
+    // Accrual inverse cascade is now handled atomically inside the RPC.
 
     return {
       ok: true,
