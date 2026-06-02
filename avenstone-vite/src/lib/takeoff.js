@@ -1,4 +1,5 @@
 import { sb, AV_TENANT, sbSaveEstimate, sbSaveTenantUnitCostOverride, sbResolveTodosBySource, sbLoadJobRoomScopes, sbLoadScopeSubsets } from './supabase';
+import { sbCommitEstimate } from './commitEstimate';
 import { floorLabel } from './captureTypes';
 import { runCompute } from './computeFns';
 
@@ -880,15 +881,10 @@ export async function acceptTakeoffDraft({ draft, edits, excluded, customLines, 
     }
   }
 
-  // 4. Delete existing takeoff-sourced line items for this job (notes prefix isolates
-  //    them from AI estimator / consultation rows — those are untouched).
-  await sb.from('estimate_line_items')
-    .delete()
-    .eq('job_id', draft.jobId)
-    .like('notes', 'takeoff:%');
-
-  // 5. Build row payloads — excluded lines are omitted
-  const rows = resolvedLines.filter(l => !l.isExcluded).map((line, i) => {
+  // 4. Build NormalizedEstimateInput items and commit through sbCommitEstimate.
+  //    sbCommitEstimate handles the scoped delete (notes LIKE 'takeoff:%') internally
+  //    for source='takeoff' — do NOT also delete here; delete fires exactly once.
+  const commitItems = resolvedLines.filter(l => !l.isExcluded).map((line) => {
     const qty    = line.resolvedQty  ?? 1;
     const rate   = line.resolvedRate ?? 0;
     const noRate = line.resolvedRate == null;
@@ -902,39 +898,39 @@ export async function acceptTakeoffDraft({ draft, edits, excluded, customLines, 
         ? `takeoff:${draft.roomType}:${line.roomId}:${line.trade}`
         : `takeoff:${draft.roomType}:${line.roomId}`;
     }
-    const notes = noRate ? `${noteBase} PENDING RATE` : noteBase;
 
     return {
-      tenant_id:    tenantId,
-      job_id:       draft.jobId,
-      estimate_id:  jobEstimateId,
-      phase:        line.trade,
-      category:     line.category,
-      trade:        line.trade,
-      description:  line.isCustom
+      source:      'takeoff',
+      trade:       line.trade,
+      category:    line.category,
+      description: line.isCustom
         ? (line.description ?? line.templateNotes ?? line.trade)
         : (line.category === 'materials'
           ? (line.materialName ?? line.trade)
           : (line.templateNotes ?? line.trade)),
-      quantity:     qty,
-      unit:         line.unit ?? null,
-      unit_cost:    rate,
-      multiplier:   line.multiplier ?? 1,
-      markup_pct:   0,
-      display_order: i,
-      notes,
-      created_by:   userId,
+      quantity:    qty,
+      unit:        line.unit ?? null,
+      unit_cost:   rate,
+      multiplier:  line.multiplier ?? 1,
+      markup_pct:  0,
+      notes:       noRate ? `${noteBase} PENDING RATE` : noteBase,
+      waste_pct:   null,
     };
   });
 
-  // 6. Insert all rows
-  const { error: insertError } = await sb.from('estimate_line_items').insert(rows);
-  if (insertError) {
-    errors.push({ type: 'insert', error: insertError.message ?? insertError });
+  const commitResult = await sbCommitEstimate(sb, tenantId, userId, {
+    source:     'takeoff',
+    jobId:      draft.jobId,
+    estimateId: jobEstimateId,
+    items:      commitItems,
+  });
+
+  if (!commitResult.ok) {
+    errors.push({ type: 'insert', error: commitResult.error });
     return { jobEstimateId, lineItemCount: 0, overrideCount, errors };
   }
 
-  // 7. Resolve estimate-related todos. Two passes:
+  // 5. Resolve estimate-related todos. Two passes:
   //    a) by job_estimates ID → catches estimate_no_proposal_24h
   //    b) by jobs ID         → catches any job-level estimate todos from older rule shapes
   if (jobEstimateId) {
@@ -942,7 +938,7 @@ export async function acceptTakeoffDraft({ draft, edits, excluded, customLines, 
   }
   await sbResolveTodosBySource('jobs', draft.jobId);
 
-  return { jobEstimateId, lineItemCount: rows.length, overrideCount, errors };
+  return { jobEstimateId, lineItemCount: commitResult.data?.inserted_count ?? 0, overrideCount, errors };
 }
 
 function emptyDraft(jobId, roomType) {
