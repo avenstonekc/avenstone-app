@@ -816,3 +816,15 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Smoke test (job 4460936c, 107 Brentwood Dr, Belton MO): 2 rows inserted, all values verified, 2 rows deleted. total_cost, multiplier, markup_pct, tenant_id all PASS.
 - STEP 3: sbCommitEstimate has zero production callers (grep); sbSaveEstimateLineItems untouched at supabase.js:1526; build green (640ms).
 - Pending (slices 2–4): migrate acceptTakeoffDraft, ConsultationTab, EstimateTab onto sbCommitEstimate. Remove sbSaveEstimateLineItems at end of slice 4.
+
+[LOG - 2026-06-02] ESTIMATE_FLOW_ARC Slices 2–4 — all three estimator paths wired through sbCommitEstimate
+- Action: Migrated all three production estimator write paths off sbSaveEstimateLineItems onto sbCommitEstimate.
+- Commits: 9c6e719 (Slice 2 takeoff), 4b51579 (Slice 3 consultation), b073eb8 (Slice 4 AI estimator). Pushed.
+- Files: avenstone-vite/src/lib/takeoff.js, avenstone-vite/src/components/jobs/tabs/ConsultationTab.jsx, avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx
+
+- Slice 2 (takeoff/acceptTakeoffDraft): Replaced manual delete+build+insert (steps 4/5/6) with sbCommitEstimate(source='takeoff'). Delete isolation fires exactly once inside sbCommitEstimate — removed duplicate delete in acceptTakeoffDraft. Notes format and multiplier derivation identical; lineItemCount now uses commitResult.data.inserted_count.
+- Slice 3 (ConsultationTab/saveEstimate): Replaced sbSaveEstimateLineItems with sbCommitEstimate(source='consultation'). Added explicit multiplier=1.0 (no floor geometry). markup_pct removed from caller payload (forced 0 by sbCommitEstimate). Throws on commitResult.ok=false.
+- Slice 4 (EstimateTab/generateProposalPDF): Fixed category 'materials'→'labor' (AI lines are labor lump sums, not material SKUs — was a latent bug). Removed markup_pct=propMargin baked into DB rows (propMargin was embedding bid margin in estimate_line_items at commit time — violates the Slice 1 design contract). Added explicit multiplier=1.0. Added sb/AV_TENANT/AV_USER_ID imports (were missing). commit failure logs to console.error but does not throw (PDF generation already succeeded).
+
+- KNOWN GAP (expected until Slice 5): Budget sub-tab shows cost not marked-up total for AI/consultation paths. markup_pct=0 on all rows. This is correct behavior until proposal-time markup (Slice 5) ships.
+- OPEN (follow-up slice): LineItemModal.jsx still calls sbSaveEstimateLineItems at lines 52 and 70. It is a manual CRUD editor — not an estimator path. sbSaveEstimateLineItems was NOT removed from supabase.js. Remove only after LineItemModal is migrated to sbCommitEstimate in a dedicated slice.
