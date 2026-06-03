@@ -6025,3 +6025,40 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     },
   };
 }
+
+// ── ANTI_SURPRISE_ENGINE_ARC helpers ─────────────────────────────────────────
+
+export async function sbLoadPlaybookItemsForWorkType(workType) {
+  if (!workType) return { ok: false, error: 'workType required', data: null };
+  const { data, error } = await sb
+    .from('tenant_playbook_items')
+    .select('*')
+    .eq('tenant_id', AV_TENANT)
+    .eq('work_type', workType)
+    .order('sort_order');
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || [] };
+}
+
+export async function sbLoadPlaybookWorkTypes() {
+  const { data, error } = await sb
+    .from('tenant_playbook_items')
+    .select('work_type')
+    .eq('tenant_id', AV_TENANT)
+    .order('work_type');
+  if (error) return { ok: false, error: error.message, data: null };
+  const types = [...new Set((data || []).map(r => r.work_type))];
+  return { ok: true, error: null, data: types };
+}
+
+export async function sbGetWalkthroughPrepActions(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+  const { data, error } = await sb
+    .from('scheduled_actions')
+    .select('id, kind, status, fire_at, fired_at, payload, rule_key, created_at')
+    .eq('related_job_id', jobId)
+    .eq('kind', 'walkthrough_prep')
+    .order('fire_at');
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || [] };
+}
