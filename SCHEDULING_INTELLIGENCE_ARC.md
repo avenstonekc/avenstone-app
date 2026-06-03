@@ -313,3 +313,203 @@ Total full arc: ~37 prompts. MVA (1+2+4+5): ~11 prompts.
 - A slip on any task auto-cascades, auto-flags affected subs, auto-recalculates cost of delay, auto-updates the client portal — without the PM doing anything.
 - The Gantt looks better than Procore's. Drag-to-reschedule is smoother than MS Project's.
 - All of this works on a phone in a truck.
+
+---
+
+## Scheduling Intelligence + Proactive PM Layer (vision captured 2026-06-02)
+
+### Thesis
+
+The phases above make the schedule accurate. This layer makes the schedule *intelligent*. The difference: accuracy means the system reflects reality; intelligence means the system anticipates what will go wrong before the PM notices, and acts.
+
+A PM's most expensive mistakes aren't bad decisions — they're forgotten ones. The countertop that wasn't ordered. The sub who was assumed confirmed. The inspector window that was missed. This layer closes the loop between "what the schedule says" and "what the PM needs to do right now."
+
+Anti-surprise is not just about the client. It starts with the PM.
+
+---
+
+### Capability 1 — AI auto-schedule draft
+
+**What it does:** When a PM creates a new job with a known scope (rooms, trades, rough sqft), the AI generates a first-draft schedule — tasks already dependency-linked, durations pre-filled based on trade/scope/size — ready for the PM to adjust, not invent from scratch.
+
+**Inputs:** job scope (from ConsultationTab or estimate), trade list, rough sqft, job start date.
+
+**AI behavior:** calls the same `sbComputeJobSchedule` path (Phase 1+2) but populates it from a trade-duration knowledge base rather than waiting for manual entry. PM reviews and adjusts — the AI draft is a starting point, never a final decision.
+
+**Trade-duration knowledge base:**
+- Platform defaults per trade per size bucket (e.g. "Tile — Wall/shower in a 60 sqft bathroom = 2 days labor, 3 days including delivery window")
+- Tenant override rows for actual observed durations on real jobs
+- Over time, historical completion data (Phase 9) replaces hardcoded defaults with learned actuals
+
+**Handoff:** PM sees a draft Gantt on first load of the Schedule tab for a new job. One-tap "Accept draft" commits it. Individual tasks editable before or after accept.
+
+**Cost model:** one Sonnet call per job creation (not per tab load). ~$0.003/job. Rate-limited at the job creation step, not automatic on every view.
+
+**Dependencies:** Phase 1 (dependency schema), Phase 11 (Gantt UI) for the visual review step. Can ship a text-list draft before Phase 11.
+
+---
+
+### Capability 2 — Self-adjusting / guideline schedule
+
+**What it does:** As tasks complete (or slip), the schedule cascades automatically and the PM is never staring at a stale plan. But the system treats the schedule as living guidelines, not a legal contract — PM can override any cascade suggestion.
+
+**This is Phase 2 (cascade engine) elevated to a product framing, not new code.** The key shift: the PM experience is "the system kept up with what happened" rather than "I have to manually push dates around." Cascade preview is shown before commit. PM can accept, modify, or discard.
+
+**Guideline framing:** the UI language matters. "Suggested new date: Aug 14 (3-day slip from framing delay)" — not "YOUR SCHEDULE IS WRONG." The system offers, the PM decides.
+
+**Auto-accept option:** PM can opt-in to auto-accept cascades with no resource conflicts (low-risk adjustments). Conflicts always require PM approval. Default is manual approval for every cascade.
+
+---
+
+### Capability 3 — Proactive PM pokes
+
+**What it does:** The system watches the schedule and proactively notifies the PM about risks *before* they become problems. Notifications are specific, actionable, and timed right.
+
+**Trigger examples (not exhaustive):**
+- "Tile install is scheduled for Monday. Tile hasn't been ordered yet and lead time is 5 days. Order today or push the date."
+- "Blake (tile) hasn't confirmed Friday's start. Last ping was 3 days ago. Confirm or reassign."
+- "Framing is 2 days behind. This pushes your projected end date to Sep 3, which is 8 days past the contract deadline."
+- "Inspection window opens Thursday. Have you requested the permit yet?"
+- "Countertop template measurement is scheduled in 4 days. Is the base cabinet install complete?"
+
+**Delivery:** push notification (in-app + mobile) + HomeScr poke card. Not email-only — PMs are in the field.
+
+**Poke anatomy:** one sentence diagnosis + one sentence action. No walls of text. Tappable to the relevant task.
+
+**Timing model:** pokes fire at configurable lead times per poke type. Default: 48h before deadline for ordering, 72h for unconfirmed subs, immediate for cascades that blow the contract date. Tenant-configurable in settings.
+
+**Rate limiting:** max 3 pokes per PM per day per job. Poke deduplication: same trigger within 12h = suppressed. Don't spam.
+
+**Cost model:** logic runs as a cron job (nightly or every 6h). Pure SQL checks + a light Haiku call only if a narrative is needed (most pokes are template-generated, not AI-generated). Cost = negligible.
+
+**Dependencies:** Phase 5 (lead-time), Phase 8 (sub confirmation SLA), Phase 2 (cascade/slip detection).
+
+---
+
+### Capability 4 — Sub portal automation
+
+**What it does:** The same proactive poke layer that notifies the PM also notifies the sub directly — eliminating the manual coordination PM currently does on every job.
+
+**PM currently does manually:**
+- "Hey Blake, still on for Friday?" (confirmation ping)
+- "We're pushed to Tuesday now, is that okay?" (cascade notification)
+- "We need your material list by Wednesday" (material request)
+- "The inspection passed — you're clear to start drywall" (gate clearance)
+
+**System takes over:**
+- Unconfirmed sub 72h before start → auto-ping to sub portal + SMS. Sub confirms in-app, one tap.
+- Cascade that moves a sub's start date → auto-notification to sub with new date + confirmation request.
+- Inspection pass → auto-ungate downstream subs and notify.
+- Material list needed → auto-request via sub portal with deadline.
+
+**Delivery:** sub portal (existing) + push + SMS. Sub sees "Your next job" card with confirm/decline.
+
+**PM visibility:** PM dashboard shows sub response status at a glance. "Blake confirmed. Dave hasn't responded (72h)." No dig-into-job required for status check.
+
+**Scope boundary:** sub portal automation is a coordination layer — it routes the right message to the right person at the right time. It does not replace human judgment on schedule decisions. PM still owns the schedule; subs still own their availability. The system just stops PMs from having to manually ping everyone on every job every day.
+
+**Dependencies:** Phase 8 (sub confirmation SLA), push/SMS infrastructure (already exists), sub portal (exists). Capability 3 poke engine is the shared logic layer.
+
+---
+
+### Capability 5 — Sub scorecards
+
+**What it does:** Every sub gets a performance record built from real job history. PMs see sub quality before booking. Subs know their record is being tracked.
+
+**Metrics tracked:**
+- On-time start rate (scheduled start vs actual start, per job)
+- Completion vs estimate (scheduled duration vs actual duration)
+- No-show rate (started late by > 24h with no prior notice)
+- Material readiness (arrived with correct materials vs had to leave to get materials)
+- Quality callbacks (flagged via PM review or failed inspection)
+- Response rate (confirmed within SLA vs ignored/late)
+
+**UI surfaces:**
+- Sub picker shows scorecard badges at booking time — "Blake: 92% on-time, 4.8 on quality"
+- Sub detail page shows full breakdown with per-job history
+- PM dashboard: weekly "sub reliability" widget — who's your most reliable vs. who's slipping
+
+**Data source:** `schedule_completion_history` (Phase 9) + sub confirmation log (Phase 8) + PM review events (new lightweight review step at task close). No survey, no 5-star rating — just observed behavior from data already in the system.
+
+**Tenant-private:** scorecards are per-tenant. Avenstone's data stays in Avenstone. No cross-tenant sub reputation sharing (for now).
+
+**Dependencies:** Phase 8 (sub confirmation data), Phase 9 (completion history). Can ship basic on-time/no-show metrics from Phase 8 alone before Phase 9 is live.
+
+---
+
+### Capability 6 — PM self-scorecard / self-anti-surprise
+
+**What it does:** The system learns the PM's own recurring failure patterns and warns them proactively. The anti-surprise loop turned inward.
+
+**Insight examples:**
+- "You've delayed countertop orders on the last 3 projects. Average cost: 11 days total slip, $3,800 in carry. Your countertop lead time is typically 12 days — order date suggested: today."
+- "You've missed the framing inspection window on 2 of your last 4 jobs. Reminder set 5 days before permit expiry."
+- "Blake has a 68% on-time start rate for you specifically (better with other PMs — may be a scheduling-fit issue, not a reliability issue)."
+- "Your last 4 projects ran 8% over the scheduled end date. Your current job is 4% ahead of pace — on track."
+
+**PM receives this as:** a weekly personal briefing card on HomeScr. Not a judgment — a mirror. "Here's what your data shows."
+
+**Personalization engine:** builds per-PM pattern history from completed jobs. Needs ~5 completed jobs before patterns are meaningful. `job_pm_pattern_history` table (new) — per (user_id, pattern_type) running stats.
+
+**Self-anti-surprise framing:** the vision is that a PM using this system for 2 years becomes a better PM — not because of training or manual process, but because the system quietly learned what they forget and started catching it for them.
+
+**Cost model:** weekly cron, Haiku narrative call per PM. ~$0.001/PM/week. Negligible.
+
+**Dependencies:** Phase 9 (historical completion data), Phase 5 (lead-time data for order-timing patterns), Capability 5 (sub-fit detection needs both PM and sub history).
+
+---
+
+### Architecture additions (this layer)
+
+```
+poke_engine (new — cron + trigger)
+    │
+    ├─► schedule_poke_log (new) — deduplication + delivery record
+    │        tenant_id, job_id, poke_type, target_user_id, fired_at, acked_at
+    │
+    ├─► sub_scorecard_stats (materialized view) — refreshed nightly
+    │        contact_id, tenant_id, on_time_rate, no_show_rate, avg_slip_days
+    │
+    ├─► job_pm_pattern_history (new) — per-PM rolling pattern stats
+    │        user_id, tenant_id, pattern_type, event_count, impact_sum, last_updated
+    │
+    └─► ai_schedule_draft (edge fn, new)
+             input: job_id, scope_summary, trade_list, start_date
+             output: draft schedule_items array → written on PM confirm
+```
+
+All new tables include `tenant_id NOT NULL` + RLS. Sub scorecard stats are tenant-private.
+
+---
+
+### Sequencing (this layer, after Phase 8+9)
+
+```
+Capability 3 (proactive PM pokes)     ← earliest win; minimal dependencies
+   ↓
+Capability 4 (sub portal automation)  ← extends poke engine to subs
+   ↓
+Capability 5 (sub scorecards)         ← needs Phase 8+9 data accumulation
+   ↓
+Capability 6 (PM self-scorecard)      ← needs 5+ completed jobs per PM
+   ↓
+Capability 1 (AI auto-schedule draft) ← needs trade-duration KB + Phase 1 schema
+   ↓
+Capability 2 (self-adjusting)         ← IS Phase 2 — UX framing, no new code
+```
+
+Minimum viable intelligence layer: **Capability 3 alone**. Every PM poke that fires correctly is a surprise that didn't happen. Ship Capability 3 as soon as Phase 2+5+8 are live.
+
+---
+
+### Open questions
+
+1. **Poke suppression policy** — who decides which pokes are too noisy? Tenant-level config (PM can mute categories) vs. system-level defaults only. Starting point: system defaults + global mute toggle. Per-category control is Phase 2 of poke settings.
+
+2. **Sub scorecard visibility to subs** — do subs see their own scorecard? Argument for: transparency builds trust and gives subs agency to improve. Argument against: low scorecards create friction at booking time if subs can see them and dispute. Starting position: PM-only visibility. Sub self-view as an explicit opt-in feature later.
+
+3. **PM self-scorecard opt-out** — some PMs may not want a weekly "here's what you do wrong" card. Default: opt-in with nudge on first pattern detection. Hard disable in profile settings.
+
+4. **AI draft confidence signal** — when the AI drafts a schedule, it should surface its confidence: "Based on 12 similar bathroom tile jobs, typical duration is 3 days ± 1 day" vs. "No historical data for this trade/size combination — duration is a rough estimate." Confidence signal prevents PMs from over-trusting the draft.
+
+5. **Multi-PM jobs** — scorecards and pokes are currently per-PM. Jobs with multiple PMs (PM + field super) need a delivery model. Start with primary PM only (assigned rep); extend to team delivery later.
