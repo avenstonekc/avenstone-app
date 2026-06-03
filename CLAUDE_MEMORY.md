@@ -1058,3 +1058,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commits: bebbb52, 1a9052e, 295bb5b, 8bf9027, 87c46a8, e48104e. All pushed.
 - Open: Cabinets/vanities fuzzy match gap only in SQL simulation (JS edge fn handles it); push double-trigger idempotency still needed before volume; site_visit_checklist_items reconciliation deferred to P2.
 - ANTI_SURPRISE_ENGINE_ARC.md updated with Phase 1 shipped block.
+
+[LOG - 2026-06-03] ANTI_SURPRISE_ENGINE_ARC_P1_5 — Phase 1.5: PlaybookChecklist UI wired
+- Action: Closed the generation→UI gap. job_walkthrough_items table (per-job per-trade execution layer, seeded from tenant_playbook_items on first open). PlaybookChecklist.jsx (full-screen overlay: item-by-item pass/fail/skip, must_document gate on completion, per-item camera capture="environment" attaching to job_files as entity_type='job_walkthrough_item'). TodoCard.jsx: walkthrough_prep type gets "Start Walkthrough" button → onOpenWalkthrough callback. HomeScr+App.jsx thread onOpenWalkthrough → walkthroughProps state → PlaybookChecklist overlay at App level.
+- Migration: job_walkthrough_items (3 RLS policies, 2 indexes, ON DELETE CASCADE from jobs), extended job_files_related_entity_type_check to include 'job_walkthrough_item'. Constraint: 20260604100000.
+- Verified on 7b44611a Plumbing-Rough-in: 10 items seeded from playbook, 3 marked pass (completed_at+by_id set), pressure test item got photo attached (job_files id=01dfee7c), related_entity_type='job_walkthrough_item', related_entity_id=afbd39b3. State persists across sessions (no recreate on reopen).
+- Dispatcher updated: todo payload now includes kind='open_walkthrough' and jobId for future handleResume routing.
+- Commits: 9471ad1 (migration), fd0dc79 (UI+helpers).
+- Open: MyTodosScreen does not yet pass onOpenWalkthrough (todos shown outside HomeScr won't have the button — add when wiring that screen). Push double-trigger still pending. cancelFail function takes itemId arg but is defined as unused closure — harmless but could be simplified.
