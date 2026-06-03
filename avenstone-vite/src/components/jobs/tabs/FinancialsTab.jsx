@@ -22,6 +22,10 @@ const TYPE_LABELS = {
 
 const STATUS_COLOR = { paid: '#22c55e', pending: '#f59e0b', overdue: '#ef4444', void: '#9CA3AF', draft: '#9CA3AF', refunded: '#8b5cf6' };
 
+// Fraction of contract value in unreimbursed costs that triggers a draw-request nudge.
+// Overridable at the job level in the future; currently a module constant.
+const DRAW_NUDGE_THRESHOLD = 0.10;
+
 export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendingAction, clearPendingAction, financialsAction, clearFinancialsAction }) {
   const mob = isMob();
   // Cost-plus: Draws tab instead of Invoices. Fixed-price: Invoices tab, no Draws.
@@ -58,6 +62,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showComposeDraw, setShowComposeDraw] = useState(false);
   const [openSubInvoiceOnMount, setOpenSubInvoiceOnMount] = useState(false);
+  const [dismissedDrawNudge, setDismissedDrawNudge] = useState(false);
 
   useEffect(() => {
     if (!pendingAction) return;
@@ -369,6 +374,34 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                     {note && <div style={{ fontSize: 9, color: noteColor || '#9CA3AF', marginTop: 3, lineHeight: 1.3 }}>{note}</div>}
                   </div>
                 ))}
+              </div>
+            );
+          })()}
+
+          {/* Draw-request nudge — cost-plus only, non-blocking */}
+          {job.cost_plus && isManager && summary && !dismissedDrawNudge && (() => {
+            const unreimb = summary.float_unreimbursed || 0;
+            const cv = Number(job.contract_value) || 0;
+            if (unreimb < DRAW_NUDGE_THRESHOLD * cv) return null;
+            const pct = cv > 0 ? Math.round(unreimb / cv * 100) : 0;
+            return (
+              <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderLeft: '4px solid #F59E0B', borderRadius: 8, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>Consider composing a draw</div>
+                  <div style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>
+                    Carrying {f$(unreimb)} unreimbursed — {pct}% of contract. PM&rsquo;s call.
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button
+                    onClick={() => setDismissedDrawNudge(true)}
+                    style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #FCD34D', borderRadius: 6, background: 'transparent', color: '#92400e', cursor: 'pointer' }}
+                  >Dismiss</button>
+                  <button
+                    onClick={() => setShowComposeDraw(true)}
+                    style={{ fontSize: 11, padding: '4px 12px', border: 'none', borderRadius: 6, background: '#92400e', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+                  >Compose Draw →</button>
+                </div>
               </div>
             );
           })()}
