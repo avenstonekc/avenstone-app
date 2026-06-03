@@ -14,7 +14,7 @@ function timeAgo(iso) {
   return `${d}d ago`;
 }
 
-export default function TodoCard({ todo, onRemove, setPendingAction }) {
+export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkthrough }) {
   const [showSnooze, setShowSnooze] = useState(false);
   const [snoozing, setSnoozing] = useState(false);
   const [bugStatus, setBugStatus] = useState(null);
@@ -59,7 +59,8 @@ export default function TodoCard({ todo, onRemove, setPendingAction }) {
     setSnoozing(false);
   };
 
-  const isFailedIntent = todo.type === 'failed_intent';
+  const isFailedIntent    = todo.type === 'failed_intent';
+  const isWalkthroughPrep = todo.type === 'walkthrough_prep';
   const accentColor = isFailedIntent ? AMBER : (SEV_COLOR[todo.priority] || '#C9A84C');
 
   const handleResume = () => {
@@ -165,6 +166,14 @@ export default function TodoCard({ todo, onRemove, setPendingAction }) {
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {isWalkthroughPrep && onOpenWalkthrough && todo.payload?.work_type && (
+          <button
+            style={{ ...btnBase, background: '#0A1F44', border: '1px solid #0A1F44', color: '#C9A84C', fontWeight: 700 }}
+            onClick={() => onOpenWalkthrough(todo.job_id, todo.payload.work_type, todo.id)}
+          >
+            📋 Start Walkthrough
+          </button>
+        )}
         {renderResumeArea()}
         <button style={{ ...btnBase, background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#16a34a' }} onClick={handleDone}>
           ✓ Done

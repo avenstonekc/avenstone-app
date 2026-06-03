@@ -6062,3 +6062,80 @@ export async function sbGetWalkthroughPrepActions(jobId) {
   if (error) return { ok: false, error: error.message, data: null };
   return { ok: true, error: null, data: data || [] };
 }
+
+// ── PlaybookChecklist helpers (ANTI_SURPRISE_ENGINE_ARC Phase 1.5) ────────────
+
+// Loads existing job_walkthrough_items for (jobId, workType).
+// If none exist, seeds rows from tenant_playbook_items so state persists across opens.
+export async function sbLoadOrCreateWalkthroughItems(jobId, workType) {
+  if (!jobId || !workType) return { ok: false, error: 'jobId and workType required', data: null };
+
+  const { data: existing, error: loadErr } = await sb
+    .from('job_walkthrough_items')
+    .select('*')
+    .eq('job_id', jobId)
+    .eq('work_type', workType)
+    .order('sort_order');
+  if (loadErr) return { ok: false, error: loadErr.message, data: null };
+  if (existing?.length) return { ok: true, error: null, data: existing };
+
+  // Seed from tenant playbook
+  const { data: playbook, error: pbErr } = await sb
+    .from('tenant_playbook_items')
+    .select('id, label, photo_required, must_document, sort_order')
+    .eq('tenant_id', AV_TENANT)
+    .eq('work_type', workType)
+    .order('sort_order');
+  if (pbErr) return { ok: false, error: pbErr.message, data: null };
+  if (!playbook?.length) return { ok: false, error: `No playbook items for: ${workType}`, data: null };
+
+  const rows = playbook.map(p => ({
+    tenant_id:       AV_TENANT,
+    job_id:          jobId,
+    work_type:       workType,
+    playbook_item_id: p.id,
+    label:           p.label,
+    photo_required:  p.photo_required,
+    must_document:   p.must_document,
+    sort_order:      p.sort_order,
+    status:          'pending',
+  }));
+
+  const { data: inserted, error: insertErr } = await sb
+    .from('job_walkthrough_items')
+    .insert(rows)
+    .select();
+  if (insertErr) return { ok: false, error: insertErr.message, data: null };
+  return { ok: true, error: null, data: (inserted || []).sort((a, b) => a.sort_order - b.sort_order) };
+}
+
+export async function sbUpdateWalkthroughItem(itemId, updates) {
+  if (!itemId) return { ok: false, error: 'itemId required', data: null };
+  const patch = { ...updates, updated_at: new Date().toISOString() };
+  if (updates.status && updates.status !== 'pending') {
+    patch.completed_at = new Date().toISOString();
+    patch.completed_by_id = AV_USER_ID;
+  }
+  const { data, error } = await sb
+    .from('job_walkthrough_items')
+    .update(patch)
+    .eq('id', itemId)
+    .select()
+    .single();
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data };
+}
+
+// Returns job_files rows attached to the given walkthrough item IDs.
+export async function sbLoadWalkthroughItemPhotos(itemIds) {
+  if (!itemIds?.length) return { ok: true, error: null, data: [] };
+  const { data, error } = await sb
+    .from('job_files')
+    .select('id, related_entity_id, name, mime_type, created_at')
+    .eq('related_entity_type', 'job_walkthrough_item')
+    .in('related_entity_id', itemIds)
+    .eq('lifecycle_status', 'active')
+    .order('created_at');
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || [] };
+}

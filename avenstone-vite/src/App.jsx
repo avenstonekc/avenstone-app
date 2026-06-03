@@ -36,6 +36,7 @@ import MyTodosScreen from './components/todos/MyTodosScreen';
 import BugReportsScr from './components/admin/BugReportsScr';
 import CompanyFilesScr from './components/company-files/CompanyFilesScr';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import PlaybookChecklist from './components/jobs/PlaybookChecklist';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -80,6 +81,7 @@ export default function App() {
   const [pendingNew, setPendingNew] = useState(false);
   const [jobsSelClear, setJobsSelClear] = useState(0);
   const [pendingAction, setPendingAction] = useState(null);
+  const [walkthroughProps, setWalkthroughProps] = useState(null);
   const [viewportJobId, setViewportJobId] = useState(null);
   const [pendingTab, setPendingTab] = useState(_initTab);
   const [viewportTab, setViewportTab] = useState(null);
@@ -415,7 +417,7 @@ export default function App() {
 
           <ErrorBoundary>
           <div className="pg-wrap">
-            {pg === 'home' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
+            {pg === 'home' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} onOpenWalkthrough={(jobId, workType, todoId) => setWalkthroughProps({ jobId, workType, todoId })} />}
             {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
             {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('home')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} onJobOpen={(id) => { if (jobs.some(j => j.id === id)) setViewportJobId(id); }} onJobClose={() => setViewportJobId(null)} pendingTab={pendingTab} clearPendingTab={() => setPendingTab(null)} onTabChange={(t) => setViewportTab(t)} onAgentDrawPoke={(data) => setPendingAction({ kind: 'agent_draw_poke', ...data })} />}
@@ -472,6 +474,14 @@ export default function App() {
       {showSettings && <SettingsModal profile={profile} setProfile={setProfile} onClose={() => setShowSettings(false)} />}
       {profile?.role === 'owner' && <MasterAgent profile={profile} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} suggestedJobId={viewportJobId} jobs={jobs} onAgentAction={(action) => setPendingAction(action)} />}
       <FieldOpusPanel profile={profile} />
+      {walkthroughProps && (
+        <PlaybookChecklist
+          jobId={walkthroughProps.jobId}
+          workType={walkthroughProps.workType}
+          todoId={walkthroughProps.todoId}
+          onClose={() => setWalkthroughProps(null)}
+        />
+      )}
     </>
   );
 }

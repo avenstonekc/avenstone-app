@@ -41,7 +41,7 @@ function formatSchedDate(dateStr) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob }) {
+export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob, onOpenWalkthrough }) {
   const mob = isMob();
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -253,7 +253,7 @@ export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob }) 
             <EmptyState text="All clear. Nothing needs your attention." />
           ) : (
             activeTodos.map(t => (
-              <TodoCard key={t.id} todo={t} onRemove={removeTodo} setPendingAction={setPendingAction} />
+              <TodoCard key={t.id} todo={t} onRemove={removeTodo} setPendingAction={setPendingAction} onOpenWalkthrough={onOpenWalkthrough} />
             ))
           )}
         </div>

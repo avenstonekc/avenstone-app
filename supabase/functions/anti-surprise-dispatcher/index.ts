@@ -146,7 +146,9 @@ async function dispatchWalkthroughPrep(sb: any, action: any, now: string) {
     related_entity_type:   "scheduled_actions",
     related_entity_id:     action.id,
     payload: {
+      kind:         "open_walkthrough",
       work_type:    workType,
+      jobId:        action.related_job_id,
       items:        payload.items || [],
     },
   });
