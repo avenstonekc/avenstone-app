@@ -1050,3 +1050,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Verified: 2 source draws retainage_held=$500 each → fire RPC on release draw → both zeroed atomically → sbLoadFinancialSummary retainage_held=$0.
 - Commits: 9ace569 (migration 1), 2474f29 (migration 2), aa85090 (JS wiring). All pushed.
 - Open: PhaseAdvanceCard override button visual fix (styling only, separate commit 8867825, already shipped). UI for composing a retainage-release draw (isRetainageRelease checkbox) not yet wired — sbComposeDraw accepts it, no UI surface yet.
+
+[LOG - 2026-06-03] ANTI_SURPRISE_ENGINE_ARC_P1 — Phase 1: Knowledge layer + generation + dispatch
+- Action: Shipped the first vertical slice of the Anti-Surprise Engine. tenant_playbook_items (10 Avenstone trade checklists, 89 items with photo_required/must_document flags), anti-surprise-generator edge fn (nightly 3am UTC, resolves trades from estimate_line_items, fuzzy word-prefix match to playbook, writes scheduled_actions walkthrough_prep rows), anti-surprise-dispatcher edge fn (every 15min, fires ripe rows, creates todo+notification for PM), 3 client helpers.
+- Constraint fixes found at build time: scheduled_actions.kind and .source needed walkthrough_prep/anti_surprise_engine added; notifications_type_check was stale — DROPPED (open type system). todos.source uses 'engine'.
+- Verified end-to-end on 999 Test Lane: 9 scheduled_actions generated, all 9 fired, 9 todos + 9 notifications created.
+- Commits: bebbb52, 1a9052e, 295bb5b, 8bf9027, 87c46a8, e48104e. All pushed.
+- Open: Cabinets/vanities fuzzy match gap only in SQL simulation (JS edge fn handles it); push double-trigger idempotency still needed before volume; site_visit_checklist_items reconciliation deferred to P2.
+- ANTI_SURPRISE_ENGINE_ARC.md updated with Phase 1 shipped block.

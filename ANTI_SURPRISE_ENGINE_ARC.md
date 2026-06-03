@@ -45,6 +45,27 @@ Three layers:
 | 5 — Vigilance dispatcher generalization + draw-poke | wire ai-pm-nightly's 14 SQL rules + draw-poke float rule into the general dispatcher on a daily pg_cron; surface-on-signon | 3–5 | Planned |
 | 0 (prereq) — Push idempotency fix | dedupe the two unconditional push triggers / add push_sent guard | 1 | Planned |
 
+## Phase 1 shipped (2026-06-03)
+
+**Commits:** bebbb52 (schema+seed), 1a9052e (edge fns), 295bb5b (pg_cron), 8bf9027 (helpers), 87c46a8 (kind constraint), e48104e (notification type open + dispatcher fix)
+
+**What shipped:**
+- `tenant_playbook_items` table — 10 Avenstone trade checklists, 89 items, photo_required + must_document flags per item.
+- `anti-surprise-generator` edge fn — nightly 3am UTC pg_cron. Sweeps jobs with `status='contract'` updated in last 25h. Resolves trades from `estimate_line_items` (fallback: `job_sub_engagements`). Fuzzy word-prefix match to `tenant_playbook_items.work_type`. Writes one `scheduled_actions` row per matched trade (kind=`walkthrough_prep`, dedup via rule_key). Also accepts `force_job_ids` for testing/re-generation.
+- `anti-surprise-dispatcher` edge fn — every 15min pg_cron. Reads all ripe `scheduled_actions` (fire_at <= now, status=scheduled). Dispatches `walkthrough_prep` rows → creates todo + notification for target PM, marks fired. Skips `company_file_expiration` (handled by company-files-watchdog). Processes 50 rows max per run.
+- 3 client helpers: `sbLoadPlaybookItemsForWorkType`, `sbLoadPlaybookWorkTypes`, `sbGetWalkthroughPrepActions`.
+- Constraint fixes: `scheduled_actions.kind` extended with `walkthrough_prep`; `source` extended with `anti_surprise_engine`; `notifications.type_check` dropped (open type system — enum was stale).
+
+**Verified end-to-end on 999 Test Lane (job 7b44611a):**
+- 9 `scheduled_actions` rows generated (Demo, Drywall-Hang, Electrical-Rough-in, Framing, HVAC-Install, Paint-Interior, Plumbing-Rough-in, Tile-Floor, Tile-Wall/shower)
+- Backdated fire_at → dispatcher fired all 9 → 9 todos (source=engine, priority=medium, status=open) + 9 notifications created
+- Cabinets/vanities missed by SQL LIKE (SQL approximation of JS word-prefix; "VANITY & FIXTURES" doesn't LIKE-match "Cabinets"). The deployed edge function handles this correctly via JS fuzzy match.
+
+**Open issues found:**
+- `notifications_type_check` was stale (hadn't tracked ai-pm-nightly types either) — dropped; all future types are free text.
+- `todos.source_check` allows `'engine'` but not `'anti_surprise_engine'` — using `'engine'` in dispatcher.
+- Cabinets/vanities SQL LIKE gap is only in the verification SQL above; actual edge fn JS matcher handles it.
+
 ## Open questions (NOT decided — resolve in-phase)
 
 - "Fully OFF" coaching: can coaching ever be fully silenced, or only quieted-with-capture-always-on? Locked direction is capture-never-stops; the tone floor is undecided.
