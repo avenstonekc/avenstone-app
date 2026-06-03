@@ -961,3 +961,83 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Client portal (sbLoadClientActualSpend): uses `authorized_contract = Number(j.contract_value ?? 0)` directly (never adds co_total) — was already correct. Unaffected by this fix.
 
 - Fixed-price regression: trigger still fires for cost-plus=false jobs (path unchanged). No fixed-price jobs with approved COs exist — regression verified logically. Behavior: trigger updates co_total = sum(approved CO amounts), contract_value unchanged. This asymmetry is permanent.
+
+[LOG - 2026-06-02] PROPOSAL_PDF_REBUILD — DB-driven proposal PDF replaces fragile AI JSON extraction
+- Action: Rebuilt proposal PDF to read estimate_line_items DB rows directly, eliminating EXTRACT_JSON_FOR_PROPOSAL round-trip that failed with 8192-token truncation on large estimates.
+- Commits: 29c1ad9. Pushed to main.
+- Files: avenstone-vite/src/lib/pdf.js, avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx
+
+- Root cause of old failure: generateProposalPDF() called ai-estimator with EXTRACT_JSON_FOR_PROPOSAL. For a 102-line estimate, the 18k-char narrative + JSON response exceeded the 8192-token output limit. JSON was cut mid-object → JSON.parse threw → propLineItems stayed [] → PDF buttons disabled. Additionally, the old buildProposalPDF read li.amount (AI JSON field), which was undefined on DB rows → $0 on every line.
+
+- pdf.js — buildProposalPDF rebuilt (~190 lines):
+  - New signature: buildProposalPDF(job, lineItems, ohShitMoments, { laborPct, materialPct, categoryConfig, pmFee, proposalNum, schedule, flags })
+  - Reads DB columns (total_cost, category, trade, description, quantity, unit) not AI JSON fields
+  - Per-line client price: total_cost × (1 + markupRateForCategory(li.category, {laborPct, materialPct}) / 100)
+  - Layout: navy header, job block, flags callout (gold border), line items grouped by trade (navy headers, cream trade rows, zebra body, allowance italic+tag, trade subtotals), summary block (Hard Cost / Markup / PM Fee / GRAND TOTAL navy bar), oh shit moments, payment schedule, footer
+  - chkPage(y, h) helper replaces scattered inline y>720 checks. SAFE_BOTTOM=728.
+  - Summary: hardCostTotal + markupTotal + pmFee = grandTotal
+
+- EstimateTab.jsx — 9 targeted edits:
+  1. Removed sbCommitEstimate import (no longer needed — PDF doesn't commit anymore)
+  2. Added auto-init useEffect: navigating to proposal sub-tab with line items auto-calls openProposal()
+  3. openProposal() rewritten: no AI call, populates propLineItems from DB lineItems with markupRateForCategory pricing
+  4. generateProposalPDF() rewritten: passes DB lineItems to buildProposalPDF, no sbCommitEstimate call
+  5. Build-tab "Save PDF" button relabeled "Save Draft (Internal)" — raw markdown dump, internal use only
+  6. Not-ready guard updated: shows line item count + "Build Proposal" button when items exist but propReady=false
+  7. Removed profit margin slider (was duplicate of markup % logic)
+  8. Summary block recomputed from lineItems + markupRateForCategory (consistent with Line Items sub-tab)
+  9. PDF button disabled state: propLineItems.length === 0 → lineItems.length === 0
+
+- Also fixed: 7 estimate_line_items rows on 999 Test Lane test job recategorized from 'materials' to 'labor'. Root cause was test commit script regex overfitting (/drain/, /board/, /register/). NOT a production bug — production commit path uses li.category ?? (/material|allowance/i.test()) which is correct.
+
+- PATTERN: EXTRACT_JSON_FOR_PROPOSAL was the wrong architecture for large estimates. DB rows are the canonical source for proposal rendering. Any future work on the proposal flow must read estimate_line_items directly, not parse AI JSON.
+
+[LOG - 2026-06-02] PROPOSAL_PDF_UNIFY — Build "Save PDF" and Proposal tab now produce the same structured PDF
+- Action: Fixed incomplete state from 29c1ad9. Build-tab "Save PDF" still called buildEstimatePDF (raw markdown dump). sendEstimateToClient also sent raw markdown to client email. Both now use _buildProposalDoc() → buildProposalPDF from DB lineItems.
+- Commit: 74c8c37. Pushed to main.
+- Files: avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx
+
+- Root cause of incompleteness: 29c1ad9 correctly rebuilt buildProposalPDF and openProposal() but left saveEstimatePDF() and sendEstimateToClient() calling the old buildEstimatePDF (the raw AI narrative dump). The Build-tab button was relabeled but not rewired.
+
+- Changes:
+  1. Removed buildEstimatePDF from import (retired from EstimateTab use)
+  2. Added _buildProposalDoc() private helper: extracts [FLAG:] tags from AI narrative, calls buildProposalPDF(job, lineItems, propOhShit, {lp, mp, pmFee, propNum, schedule, flags})
+  3. saveEstimatePDF() now calls _buildProposalDoc() → saves as 'proposal' type (was 'other')
+  4. sendEstimateToClient() now calls _buildProposalDoc() → sends structured PDF to client
+  5. Both gated on lineItems.length === 0 (empty state guard)
+  6. Button relabeled "Save PDF" (no longer "Save Draft (Internal)")
+  7. Loading spinner text fixed: "Extracting line items from estimate…" → "Loading proposal data…"
+
+- ARCHITECTURE: _buildProposalDoc() is the single entry point for all PDF generation in EstimateTab. It reads DB lineItems, uses propOhShit/propSchedule/propNum/propPmFee from state (populated by openProposal(); sensible defaults if not yet called). buildEstimatePDF (raw AI markdown dump) is dead code in pdf.js — do not wire it back up.
+
+- VERIFY (pending): Both "Save PDF" (Build tab) and "Download PDF"/"Save to Documents" (Proposal tab) should produce the same branded structured PDF. No ai-estimator network call on either path.
+
+[LOG - 2026-06-02] MARK_DRAW_PAID — cost-plus draw paid directly, no Send/Stripe required
+- Action: Added "Mark Paid" button to draw rows on Draws tab (cost-plus jobs). Reused MarkPaidModal via onSubmit override. Added sbMarkDrawPaid helper.
+- Commit: 031bef0. Pushed to main.
+- Files: avenstone-vite/src/lib/supabase.js, avenstone-vite/src/components/modals/MarkPaidModal.jsx, avenstone-vite/src/components/jobs/tabs/InvoicesSubTab.jsx
+
+- ARCHITECTURE: On cost-plus jobs the DRAW is the billable document — no invoice needed.
+  - sbMarkDrawPaid writes: (1) job_transactions direction='in', type='client_payment', invoice_id=NULL, draw_id=draw.id; (2) draw_schedules.paid_amount + status update.
+  - invoice_id MUST be NULL — sbLoadJobFinancialSummary and sbLoadClientActualSpend bucket inbound payments by invoice_id IS NULL for cost-plus jobs. If invoice_id is set, the payment is invisible to bucket_credit and paid_to_date.
+  - draw_id is set on the transaction for tracking/reporting but does not affect bucket math.
+
+- MarkPaidModal: added optional onSubmit prop. If provided, calls it instead of sbMarkInvoicePaid. Reuses full form: amount, method, date, reference, notes, partial-payment validation.
+
+- InvoicesSubTab: Mark Paid button shows on draw rows where status not in ['paid','cancelled']. Passes synthetic invoice-like object (id, invoice_number='Draw #N', total_amount, amount_paid) for form display. Send/Stripe path untouched — optional for online payment, not required for cash/check.
+
+- Verified on 999 Test Lane Draw #1 ($25k): bucket_credit=$25k, float=-$25k, draw.status=paid, job_transactions invoice_id=null. All checks pass.
+
+- COST-PLUS INCOME RULE: Always write draw payments as direction='in', invoice_id=NULL. Never attach them to an invoice. This is what makes them visible in bucket_credit and paid_to_date.
+
+
+[LOG - 2026-06-03] FIELD_TAB_DEFAULT_AND_MATERIALS — Field tab default + Materials sub-tab removal
+- Action: Changed Field tab default landing from Notes → Daily Logs. Removed Materials sub-tab from Field tab (Financials→Materials is now the single home).
+- Commit: ea78306. Pushed to main.
+- Files: avenstone-vite/src/components/jobs/JobDet.jsx (line 33: useState('notes') → useState('logs')), avenstone-vite/src/components/jobs/tabs/FieldTab.jsx (removed MaterialsTab import, removed materials entry from SUB_TABS, removed render line).
+
+- AUDIT VERDICT: SAME. Both Field→Materials and Financials→Materials rendered the identical MaterialsTab component (MaterialsTab.jsx). Both called sbLoadMaterialOrdersForJob / sbUpdateMaterialOrder against the material_orders table. Field→Materials was a pure duplicate view — no unique data, no unique writes. Safe to remove.
+
+- DATA SOURCE (MaterialsTab): table=material_orders, reads via sbLoadMaterialOrdersForJob (supabase.js:4581), writes status transitions via sbUpdateMaterialOrder (supabase.js:4604). Also calls sbPhoto for delivery photos (entity_type='material_order'). AddQuoteModal handles new order creation.
+
+- Financials→Materials: FinancialsTab.jsx:43 — unchanged, still imports and renders MaterialsTab.
