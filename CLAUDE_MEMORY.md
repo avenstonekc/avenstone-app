@@ -1066,3 +1066,10 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Dispatcher updated: todo payload now includes kind='open_walkthrough' and jobId for future handleResume routing.
 - Commits: 9471ad1 (migration), fd0dc79 (UI+helpers).
 - Open: MyTodosScreen does not yet pass onOpenWalkthrough (todos shown outside HomeScr won't have the button — add when wiring that screen). Push double-trigger still pending. cancelFail function takes itemId arg but is defined as unused closure — harmless but could be simplified.
+
+[LOG - 2026-06-03] ANTI_SURPRISE_ENGINE_ARC_P0 — Phase 0: Push double-ping fix
+- Audit finding: NOT a true double-send. on_notification_insert_push → trigger_notify_push() sends {record: row_to_json(NEW)} to send-push, but send-push expects top-level {user_id,...} and always returns 400 'user_id required'. This trigger has NEVER delivered a push. The working path is trg_notification_push_fanout → notification-push-fanout → send-push (correctly destructures record before calling send-push).
+- Fix: DROP on_notification_insert_push (dead weight, added ~50ms HTTP fail on every notification INSERT). No push_sent guard needed (no double-send was occurring; AFTER row triggers fire exactly once by Postgres semantics).
+- Added walkthrough_prep + phase_advanced to PUSH_TYPES in notification-push-fanout so engine notifications reach PM phones.
+- Verified: 3 triggers remain (on_notification_insert conditional, on_notification_insert_sms, trg_notification_push_fanout). Test INSERT confirmed exactly 1 push trigger active.
+- Migration: 20260604200000_drop_dead_push_trigger.sql. Commit: 9e6173b.
