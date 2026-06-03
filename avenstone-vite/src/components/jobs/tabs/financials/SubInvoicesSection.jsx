@@ -32,6 +32,9 @@ const STATUS_CFG = {
 
 const METHOD_LABELS = { check: 'Check', ach: 'ACH', cash: 'Cash', card: 'Card', other: 'Other' };
 
+// Status group order for the "All" view: pending first, outstanding second, paid third, voided last
+const STATUS_SORT_ORDER = { pending_review: 0, approved: 1, partially_paid: 1, disputed: 1, paid: 2, voided: 3 };
+
 const isManager = (role) => role === 'owner' || role === 'project_manager';
 
 function StatusBadge({ status }) {
@@ -54,7 +57,7 @@ export default function SubInvoicesSection({ job, profile, openAddInvoiceOnMount
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [err, setErr]           = useState(null);
-  const [view, setView]         = useState('pending');   // 'pending' | 'outstanding' | 'paid' | 'voided'
+  const [view, setView]         = useState('all');   // 'all' | 'pending' | 'outstanding' | 'paid' | 'voided'
   const [selectedId, setSelectedId] = useState(null);
   const [showAddInvoice, setShowAddInvoice] = useState(false);
   const [addPaymentFor, setAddPaymentFor]   = useState(null); // invoice object
@@ -97,6 +100,16 @@ export default function SubInvoicesSection({ job, profile, openAddInvoiceOnMount
       paidCount:        paidInvoices.length,
     };
   }, [partitioned]);
+
+  // All invoices sorted: pending → outstanding → paid → voided; secondary sort invoiceDate desc
+  const allList = useMemo(() => {
+    return [...invoices].sort((a, b) => {
+      const ga = STATUS_SORT_ORDER[a.status] ?? 99;
+      const gb = STATUS_SORT_ORDER[b.status] ?? 99;
+      if (ga !== gb) return ga - gb;
+      return (b.invoiceDate || '').localeCompare(a.invoiceDate || '');
+    });
+  }, [invoices]);
 
   const selectedInvoice = invoices.find(i => i.id === selectedId) || null;
 
@@ -158,6 +171,7 @@ export default function SubInvoicesSection({ job, profile, openAddInvoiceOnMount
   // ── Render ───────────────────────────────────────────────────────────────────
 
   const viewList = [
+    { id: 'all',         label: `All (${invoices.length})` },
     { id: 'pending',     label: `Pending Review (${partitioned.pending.length})` },
     { id: 'outstanding', label: `Outstanding (${partitioned.outstanding.length})` },
     { id: 'paid',        label: `Paid (${partitioned.paid.length})` },
@@ -166,7 +180,10 @@ export default function SubInvoicesSection({ job, profile, openAddInvoiceOnMount
       ? [{ id: 'voided', label: `Voided (${partitioned.voided.length})` }]
       : []),
   ];
-  const currentList = view === 'voided' ? partitioned.voided : (partitioned[view] || []);
+  const currentList =
+    view === 'all'    ? allList :
+    view === 'voided' ? partitioned.voided :
+    (partitioned[view] || []);
 
   return (
     <div>
@@ -245,19 +262,20 @@ export default function SubInvoicesSection({ job, profile, openAddInvoiceOnMount
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && currentList.length === 0 && (
+      {/* Empty state — on 'all' only fires when there are genuinely zero invoices */}
+      {!loading && currentList.length === 0 && (view === 'all' ? invoices.length === 0 : true) && (
         <div style={{ textAlign: 'center', padding: '32px 16px', background: '#fff',
           border: '1px solid #E8E4DC', borderRadius: 6 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-            {view === 'pending' ? 'No invoices pending review' :
+            {view === 'all'         ? 'No sub invoices yet' :
+             view === 'pending'     ? 'No invoices pending review' :
              view === 'outstanding' ? 'No outstanding invoices' :
-             view === 'voided' ? 'No voided invoices' :
+             view === 'voided'      ? 'No voided invoices' :
              'No paid invoices yet'}
           </div>
           <div style={{ fontSize: 12, color: '#9CA3AF' }}>
-            {view === 'pending'
-              ? 'Click + Add Invoice to enter one manually. PDF upload ships in Phase 3.'
+            {view === 'all' || view === 'pending'
+              ? 'Click + Add Invoice to enter one manually.'
               : view === 'outstanding'
               ? 'All invoices are either pending review or fully paid.'
               : view === 'voided'
