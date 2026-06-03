@@ -4436,22 +4436,18 @@ export async function sbMarkInvoicePaid(invoiceId, payment) {
   if (invoice.draw_id) {
     const { data: draw } = await sb
       .from('draw_schedules')
-      .select('target_amount, invoiced_amount, paid_amount, status')
+      .select('target_amount')
       .eq('id', invoice.draw_id)
       .single();
     if (draw) {
-      const newDrawPaid = Number(draw.paid_amount) + paidAmount;
-      const drawPatch = {
-        paid_amount: newDrawPaid,
-        updated_at:  new Date().toISOString(),
-      };
-      if (
-        newDrawPaid >= Number(draw.target_amount) - 0.01 &&
-        Number(draw.invoiced_amount) >= Number(draw.target_amount) - 0.01
-      ) {
-        drawPatch.status = 'paid';
-      }
-      await sb.from('draw_schedules').update(drawPatch).eq('id', invoice.draw_id);
+      // Atomic: flips paid_amount/status and (if is_retainage_release) zeros sibling
+      // retainage_held in one transaction. p_min_invoiced_amount preserves the existing
+      // gate: draw only reaches 'paid' when invoiced_amount >= target_amount too.
+      await sb.rpc('mark_draw_paid_release_retainage', {
+        p_draw_id:             invoice.draw_id,
+        p_paid_amount:         paidAmount,
+        p_min_invoiced_amount: Number(draw.target_amount),
+      }).catch(err => console.warn('[draw] mark_draw_paid_release_retainage failed:', err?.message));
     }
   }
 
@@ -4528,13 +4524,14 @@ export async function sbMarkDrawPaid(drawId, payment) {
     .single();
   if (txErr) throw txErr;
 
-  const newStatus = newAmountPaid >= targetAmount - 0.01 ? 'paid' : 'in_progress';
-  const { error: drawErr } = await sb
-    .from('draw_schedules')
-    .update({ paid_amount: newAmountPaid, status: newStatus, updated_at: new Date().toISOString() })
-    .eq('id', drawId);
+  const { data: rpcResult, error: drawErr } = await sb.rpc('mark_draw_paid_release_retainage', {
+    p_draw_id:     drawId,
+    p_paid_amount: paidAmount,
+    // p_min_invoiced_amount omitted — direct draw payment path, no invoice gate
+  });
   if (drawErr) throw drawErr;
 
+  const newStatus = rpcResult.new_status;
   return { tx, newStatus, newAmountPaid };
 }
 
@@ -5762,7 +5759,7 @@ export async function sbLoadJobDrawTotals(jobId) {
  *               display_order, notes }]
  * Returns { ok, error, data: { draw_id, draw_number, line_count, tx_flipped } }.
  */
-export async function sbComposeDraw({ jobId, title, description, targetAmount, applyBucket, lineItems, retainageHeld = 0 }) {
+export async function sbComposeDraw({ jobId, title, description, targetAmount, applyBucket, lineItems, retainageHeld = 0, isRetainageRelease = false }) {
   if (!jobId) return { ok: false, error: 'jobId required', data: null };
   if (!Array.isArray(lineItems) || lineItems.length === 0) {
     return { ok: false, error: 'At least one line item required', data: null };
@@ -5778,8 +5775,11 @@ export async function sbComposeDraw({ jobId, title, description, targetAmount, a
   });
 
   if (error) return { ok: false, error: error.message, data: null };
-  if (data?.draw_id && retainageHeld > 0) {
-    await sb.from('draw_schedules').update({ retainage_held: retainageHeld }).eq('id', data.draw_id);
+  if (data?.draw_id && (retainageHeld > 0 || isRetainageRelease)) {
+    await sb.from('draw_schedules').update({
+      ...(retainageHeld > 0     && { retainage_held: retainageHeld }),
+      ...(isRetainageRelease     && { is_retainage_release: true }),
+    }).eq('id', data.draw_id);
   }
   return { ok: true, error: null, data };
 }
