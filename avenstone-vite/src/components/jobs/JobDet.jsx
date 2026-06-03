@@ -28,7 +28,7 @@ const TABS = [
   { id: 'session',    lb: 'Consultation', ic: 'eye' },
 ];
 
-export default function JobDet({ job, upd, del, back, profile, pendingAction, clearPendingAction, pendingTab, clearPendingTab, onTabChange }) {
+export default function JobDet({ job, upd, del, back, profile, pendingAction, clearPendingAction, pendingTab, clearPendingTab, onTabChange, onAgentDrawPoke }) {
   const [tab, setTab] = useState('info');
   const [fieldSub, setFieldSub] = useState('notes');
   const [showSt, setShowSt] = useState(false);
@@ -44,6 +44,10 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
   useEffect(() => {
     if (pendingAction?.kind === 'transaction_save' || pendingAction?.kind === 'line_item_save') {
       setTab('financials');
+    } else if (pendingAction?.kind === 'financials_compose_draw') {
+      setTab('financials');
+      setFinancialsAction({ kind: 'compose_draw' });
+      clearPendingAction?.();
     }
   }, [pendingAction]);
 
@@ -330,7 +334,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} setTab={setTab} />}
         {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} profile={profile} />}
         {tab === 'subs' && <SubsTab job={job} profile={profile} setTab={setTab} />}
-        {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} financialsAction={financialsAction} clearFinancialsAction={() => setFinancialsAction(null)} />}
+        {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} financialsAction={financialsAction} clearFinancialsAction={() => setFinancialsAction(null)} onAgentDrawPoke={onAgentDrawPoke} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
         {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} sub={fieldSub} setSub={setFieldSub} />}

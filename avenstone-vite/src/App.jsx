@@ -418,7 +418,7 @@ export default function App() {
             {pg === 'home' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
             {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
-            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('home')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} onJobOpen={(id) => { if (jobs.some(j => j.id === id)) setViewportJobId(id); }} onJobClose={() => setViewportJobId(null)} pendingTab={pendingTab} clearPendingTab={() => setPendingTab(null)} onTabChange={(t) => setViewportTab(t)} />}
+            {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('home')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} onJobOpen={(id) => { if (jobs.some(j => j.id === id)) setViewportJobId(id); }} onJobClose={() => setViewportJobId(null)} pendingTab={pendingTab} clearPendingTab={() => setPendingTab(null)} onTabChange={(t) => setViewportTab(t)} onAgentDrawPoke={(data) => setPendingAction({ kind: 'agent_draw_poke', ...data })} />}
             {pg === 'subs' && isStaff && <SubDir profile={profile} />}
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
@@ -470,7 +470,7 @@ export default function App() {
 
       {showNotif && <NotifPanel notifs={notifs} onClose={() => setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif} />}
       {showSettings && <SettingsModal profile={profile} setProfile={setProfile} onClose={() => setShowSettings(false)} />}
-      {profile?.role === 'owner' && <MasterAgent profile={profile} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} suggestedJobId={viewportJobId} jobs={jobs} />}
+      {profile?.role === 'owner' && <MasterAgent profile={profile} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} suggestedJobId={viewportJobId} jobs={jobs} onAgentAction={(action) => setPendingAction(action)} />}
       <FieldOpusPanel profile={profile} />
     </>
   );

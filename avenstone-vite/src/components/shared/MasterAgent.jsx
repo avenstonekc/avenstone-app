@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbLinkBugToTodo, SUBMIT_BUG_REPORT_URL } from '../../lib/supabase';
 import MasterAgentErrorCard from './MasterAgentErrorCard';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
-import { Ic } from '../../lib/utils';
+import { Ic, f$ } from '../../lib/utils';
 import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
 import { TextToSpeech, QueueStrategy } from '@capacitor-community/text-to-speech';
 import { validatePendingCard, formatCardAnswers } from '../../lib/agentCards';
@@ -473,7 +473,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
 
 const MAX_TEXTAREA_H = 140; // 5 lines × (16px × 1.5 line-height) + 20px vertical padding
 
-export default function MasterAgent({ profile, pendingAction, clearPendingAction, suggestedJobId, jobs }) {
+export default function MasterAgent({ profile, pendingAction, clearPendingAction, suggestedJobId, jobs, onAgentAction }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -544,6 +544,21 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     if (pendingAction?.kind === 'master_agent_tool_call') {
       setInput(pendingAction.payload?.user_message || '');
       setOpen(true);
+      clearPendingAction?.();
+    } else if (pendingAction?.kind === 'agent_draw_poke') {
+      const { jobId, jobName, unreimb, contractValue } = pendingAction;
+      const pct = contractValue > 0 ? Math.round(unreimb / contractValue * 100) : 0;
+      setOpen(true);
+      setMessages(prev => [...prev, {
+        type: 'ai',
+        text: `${jobName} is carrying ${f$(unreimb)} in unreimbursed costs (${pct}% of contract). Want me to draft a draw?`,
+        actions: [],
+      }]);
+      setPendingConfirm({
+        tool: 'draw_poke_confirm',
+        input: { jobId },
+        description: `Draft a draw for ${jobName} — ${f$(unreimb)} unreimbursed (${pct}% of contract). Open the draw composer now?`,
+      });
       clearPendingAction?.();
     }
   }, [pendingAction]);
@@ -831,6 +846,12 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     if (!pendingConfirm || loading) return;
     const action = pendingConfirm;
     setPendingConfirm(null);
+    // Client-side confirms — handled without calling the edge function.
+    if (action.tool === 'draw_poke_confirm') {
+      setMessages(prev => [...prev, { type: 'user', text: 'Draft it.' }]);
+      onAgentAction?.({ kind: 'financials_compose_draw', jobId: action.input?.jobId });
+      return;
+    }
     setMessages((prev) => [...prev, { type: 'user', text: 'Confirmed.' }]);
     await callMaster({
       user_id: profile?.id,

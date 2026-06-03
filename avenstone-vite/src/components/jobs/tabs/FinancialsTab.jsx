@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import COTab from './COTab';
 import InvoicesSubTab from './InvoicesSubTab';
 import MaterialsTab from './MaterialsTab';
@@ -22,11 +22,14 @@ const TYPE_LABELS = {
 
 const STATUS_COLOR = { paid: '#22c55e', pending: '#f59e0b', overdue: '#ef4444', void: '#9CA3AF', draft: '#9CA3AF', refunded: '#8b5cf6' };
 
-// Fraction of contract value in unreimbursed costs that triggers a draw-request nudge.
+// Fraction of contract value in unreimbursed costs that triggers a draw-request nudge (passive banner).
 // Overridable at the job level in the future; currently a module constant.
 const DRAW_NUDGE_THRESHOLD = 0.10;
+// Agent poke threshold — fires when unreimbursed costs reach within 10% of total contract ceiling.
+// Higher bar than the passive nudge; structured for per-job config (adaptive guardrails arc).
+const DRAW_POKE_THRESHOLD = 0.90;
 
-export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendingAction, clearPendingAction, financialsAction, clearFinancialsAction }) {
+export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendingAction, clearPendingAction, financialsAction, clearFinancialsAction, onAgentDrawPoke }) {
   const mob = isMob();
   // Cost-plus: Draws tab instead of Invoices. Fixed-price: Invoices tab, no Draws.
   const SUB_TABS = [
@@ -63,6 +66,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   const [showComposeDraw, setShowComposeDraw] = useState(false);
   const [openSubInvoiceOnMount, setOpenSubInvoiceOnMount] = useState(false);
   const [dismissedDrawNudge, setDismissedDrawNudge] = useState(false);
+  const drawPokedRef = useRef(false); // fire agent poke once per mount
 
   useEffect(() => {
     if (!pendingAction) return;
@@ -108,6 +112,20 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     setTxs(data);
     setSummary(sum);
     setLoading(false);
+    // Agent draw poke — cost-plus only, owner/PM only, fires once per mount
+    if (job.cost_plus && sum && !drawPokedRef.current) {
+      const unreimb = sum.float_unreimbursed || 0;
+      const cv = Number(job.contract_value) || 0;
+      if (cv > 0 && unreimb >= DRAW_POKE_THRESHOLD * cv) {
+        drawPokedRef.current = true;
+        onAgentDrawPoke?.({
+          jobId: job.id,
+          jobName: job.scope || job.client_name || '(job)',
+          unreimb,
+          contractValue: cv,
+        });
+      }
+    }
   };
 
   const loadBudget = async () => {
