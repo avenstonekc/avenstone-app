@@ -1073,3 +1073,10 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Added walkthrough_prep + phase_advanced to PUSH_TYPES in notification-push-fanout so engine notifications reach PM phones.
 - Verified: 3 triggers remain (on_notification_insert conditional, on_notification_insert_sms, trg_notification_push_fanout). Test INSERT confirmed exactly 1 push trigger active.
 - Migration: 20260604200000_drop_dead_push_trigger.sql. Commit: 9e6173b.
+
+[LOG - 2026-06-03] ANTI_SURPRISE_ENGINE_ARC_P1_6 — Phase 1.6: Field tab Walkthroughs sub-tab
+- Action: Added Walkthroughs sub-tab to JobDet's Field tab as the durable home base. sbLoadJobWalkthroughs helper (SA canonical list LEFT JOIN JWI progress state → covers un-started walkthroughs). WalkthroughsTab.jsx: per-walkthrough card showing status (not_started/in_progress/complete), progress bar, must-doc pending badge, tap to open PlaybookChecklist. FieldTab tab bar now scrollable (overflowX:auto) for 4 tabs on mobile.
+- Prop chain threaded: App.jsx → JobsScr → JobDet → FieldTab → WalkthroughsTab (onOpenWalkthrough). Same walkthroughProps/PlaybookChecklist overlay reused — home-screen todo still works unchanged.
+- Source of truth: scheduled_actions walkthrough_prep rows (canonical, includes un-started). job_walkthrough_items used only for progress state (lazily seeded on first open).
+- Verified on 7b44611a: 9 walkthroughs in list — 7 not_started, 2 in_progress. Plumbing shows 3 pass/7 pending with pressure-test photo still linked to item afbd39b3. Sub-tab order: Daily Logs | Walkthroughs | Photos | Notes.
+- Commit: f68fa1d. Pushed.
