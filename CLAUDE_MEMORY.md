@@ -1041,3 +1041,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - DATA SOURCE (MaterialsTab): table=material_orders, reads via sbLoadMaterialOrdersForJob (supabase.js:4581), writes status transitions via sbUpdateMaterialOrder (supabase.js:4604). Also calls sbPhoto for delivery photos (entity_type='material_order'). AddQuoteModal handles new order creation.
 
 - Financials→Materials: FinancialsTab.jsx:43 — unchanged, still imports and renders MaterialsTab.
+
+[LOG - 2026-06-03] RETAINAGE_RELEASE_ZERO — Cost-plus retainage release zeroing fix
+- Action: Fixed bug where sbLoadFinancialSummary permanently reported stale retainage_held after a retainage-release draw was paid. draw_schedules.retainage_held was set at compose time and never cleared by any pay flow.
+- Migrations: 20260603200000_retainage_release_draw.sql (ADD COLUMN is_retainage_release BOOLEAN NOT NULL DEFAULT false + initial RPC), 20260603200100_retainage_release_rpc_invoiced_check.sql (replace RPC with 3-param version preserving invoiced_amount gate).
+- RPC: mark_draw_paid_release_retainage(p_draw_id, p_paid_amount, p_min_invoiced_amount DEFAULT NULL). Atomic: status flip + sibling retainage_held=0 in one PG transaction. Triggers only when is_retainage_release=true AND new_status='paid'.
+- Files: supabase.js — sbMarkDrawPaid now calls RPC instead of standalone UPDATE; sbMarkInvoicePaid draw branch calls RPC with p_min_invoiced_amount=target_amount (preserves invoiced_amount gate); sbComposeDraw accepts isRetainageRelease=false arg.
+- Verified: 2 source draws retainage_held=$500 each → fire RPC on release draw → both zeroed atomically → sbLoadFinancialSummary retainage_held=$0.
+- Commits: 9ace569 (migration 1), 2474f29 (migration 2), aa85090 (JS wiring). All pushed.
+- Open: PhaseAdvanceCard override button visual fix (styling only, separate commit 8867825, already shipped). UI for composing a retainage-release draw (isRetainageRelease checkbox) not yet wired — sbComposeDraw accepts it, no UI surface yet.
