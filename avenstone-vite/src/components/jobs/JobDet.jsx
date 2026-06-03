@@ -30,7 +30,7 @@ const TABS = [
 
 export default function JobDet({ job, upd, del, back, profile, pendingAction, clearPendingAction, pendingTab, clearPendingTab, onTabChange, onAgentDrawPoke }) {
   const [tab, setTab] = useState('info');
-  const [fieldSub, setFieldSub] = useState('notes');
+  const [fieldSub, setFieldSub] = useState('logs');
   const [showSt, setShowSt] = useState(false);
   const [editInf, setEditInf] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
