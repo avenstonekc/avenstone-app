@@ -111,3 +111,39 @@ The master agent already exists. Page agents and actor agents are the generaliza
 ---
 
 *Blueprint only. This is the north-star architecture — captured 2026-06-02 so the whole vision is preserved as one coherent picture. Do NOT build from this doc without a scoped implementation plan.*
+
+---
+
+## Lead Marketplace / Job-Routing Layer (future business model — PRIVACY-GATED)
+
+### The idea
+
+Jobs flow through Avenstone, so the system has geographic + trade demand signal (where deck jobs, tree work, remodels, etc. are happening). Potential second business model: a lead marketplace where jobs get routed to Avenstone users to bid on — built to be automatic, since the app is already automation-first. Recruit homeowners/clients onto the platform; users bid on projects in their area/trade; bidding can be automated.
+
+### CRITICAL PRIVACY BOUNDARY (the make-or-break)
+
+The line between a legitimate marketplace and a lawsuit is CONSENT + DATA OWNERSHIP:
+
+**FORBIDDEN:** harvesting a tenant's private client/job data (who they served, where, what for) to generate leads, marketing, or route to other tenants WITHOUT that tenant's and/or that client's consent. Tenant A's client data is Tenant A's — using it to advertise or feed competitors behind their back = breach of trust + legal exposure. DO NOT build the harvesting version.
+
+**ALLOWED (consented models):**
+
+1. **HOMEOWNER OPT-IN** — homeowners post jobs INTO the marketplace ("I want a deck"); they consented to be a lead. Tenants bid. (Angi/Thumbtack model, but with Avenstone's estimating/PM tools attached — that's the differentiator.)
+2. **TENANT OPT-IN** — a tenant explicitly opts to contribute leads (overflow, declined jobs) into the network for others to bid. Consented contribution.
+
+Per-tenant learning (a business's own data making ITS OWN experience smarter) has NO privacy issue and is the safe core — the marketplace is a SEPARATE opt-in layer on top, never a repurposing of private tenant data.
+
+### Why it's strategically big
+
+- Second revenue model (marketplace/lead fees) on top of SaaS subscriptions.
+- The differentiator vs existing lead marketplaces: leads land in a system that already has estimating, scheduling, draws, sub management — a contractor can go from lead → bid → run the job without leaving the app. Auto-bid possible because the tooling's already there.
+- Network effect: more contractors + more homeowners → more matches → more value.
+
+### Open questions
+
+- Consent UX: how homeowners post + consent; how tenants opt in to contribute.
+- Anonymized market intelligence (demand heatmaps by trade/area) — is aggregated/anonymized demand data shareable as a product feature without exposing any individual job/client? (Likely yes if truly aggregated; needs care.)
+- Marketplace economics (lead fees, bid model, take rate).
+- Regulatory: lead-gen / contractor referral laws vary by state.
+
+*Blueprint only. Big strategic arc, post-PMF. Captured 2026-06-02. The privacy boundary above is NON-NEGOTIABLE — the per-tenant brain is the safe core; the marketplace is a consented opt-in layer, never built by harvesting private tenant data.*
