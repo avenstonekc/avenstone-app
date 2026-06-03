@@ -78,3 +78,19 @@ Three layers:
 ## Cost guardrails
 
 Detection + generation = pure SQL, no model spend. Optional Haiku phrasing pass off critical path only. Reactive scheduling agent = Sonnet (judgment). No Opus on any automatic/background path (CLAUDE.md rule). State call-volume implication when each phase's generation cadence is set.
+
+---
+
+## Governing principles (added 2026-06-03, post Phase 1.5)
+
+**P1 — Build to the ceiling, dial down. Never build the floor and dial up.** Every feature is built at maximum thoroughness/safeguard as the default. Intensity is a SETTING layered on top, never a constraint baked into the foundation. Rationale: large companies want the big safeguards (liability, turnover, disputes); owner-operators want it dumbed down ("walk the job, check check check, snap snap snap"). Same engine, tunable intensity. You can always hide a safeguard an operator doesn't want; you can't add one a company never built in. No feature may be architected in a way that PREVENTS later toning-down (e.g. don't hardcode the PM as the only walkthrough owner; don't assume all playbook items always show).
+
+**P2 — An incomplete checklist is a live obligation. It never silently dies.** Any walkthrough/checklist left incomplete schedules a follow-up reminder (via scheduled_actions) and chases the responsible actor (sub or PM) until completed or explicitly closed. Losing part of a checklist to incompletion — with no reminder — is the exact failure the engine exists to prevent (a hidden gap with a false sense of "handled").
+
+**P3 — Distinguish in-progress-as-expected from abandoned.** Most incompleteness is legitimate: the work isn't finished yet (e.g. tile waterproofing done today, grout in 3 days — the checklist SHOULD be partial). Reminders must not dumb-nag on a fixed timer. For mid-flight work, the reminder re-fires when the RELATED work is next scheduled (depends on schedule-lock, Phase 2). Must-document items escalate hardest. The nudge→escalation ladder reuses the PROOF_ARC snooze-then-escalate / request-approval primitive (gentle nudge → louder → up to PM/owner).
+
+## Named but deferred slices (build foundation NOT to exclude these)
+
+- **Intensity dial** — per-tenant / per-operator setting controlling how thorough walkthroughs/coaching are (which playbook flags active, how many items surface, coaching tone). Rides on existing must_document / photo_required flags. Build after foundation complete. Foundation must not prevent it.
+- **Sub-delegation (request-from-sub vs do-it-yourself)** — when a walkthrough fires, the PM can either send the sub a request to upload the required photos/checklist OR do it themselves on site. Sub does their own walkthrough on their phone, proof comes from who did the work. Own slice; depends on sub portal + request/notification path. Foundation must not assume the walkthrough owner is always the PM.
+- **Schedule-lock (→ Phase 2, dependency engine)** — walkthroughs lock to schedule items: "tile started today → fire the tile walkthrough now." Also fixes the trade-as-one-lump flaw (a trade's work spans phases days apart — waterproofing vs grout — so checklists should tie to schedule POINTS, not one flat per-trade lump). Reminders (P3) re-fire off these schedule points.
