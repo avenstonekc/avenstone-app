@@ -141,7 +141,7 @@ async function dispatchWalkthroughPrep(sb: any, action: any, now: string) {
     title,
     notes:                 body,
     priority:              "medium",
-    source:                "anti_surprise_engine",
+    source:                "engine",
     status:                "open",
     related_entity_type:   "scheduled_actions",
     related_entity_id:     action.id,
