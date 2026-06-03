@@ -28,7 +28,7 @@ const TABS = [
   { id: 'session',    lb: 'Consultation', ic: 'eye' },
 ];
 
-export default function JobDet({ job, upd, del, back, profile, pendingAction, clearPendingAction, pendingTab, clearPendingTab, onTabChange, onAgentDrawPoke }) {
+export default function JobDet({ job, upd, del, back, profile, pendingAction, clearPendingAction, pendingTab, clearPendingTab, onTabChange, onAgentDrawPoke, onOpenWalkthrough }) {
   const [tab, setTab] = useState('info');
   const [fieldSub, setFieldSub] = useState('logs');
   const [showSt, setShowSt] = useState(false);
@@ -337,7 +337,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} financialsAction={financialsAction} clearFinancialsAction={() => setFinancialsAction(null)} onAgentDrawPoke={onAgentDrawPoke} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
         {tab === 'msgs' && <MessagesTab job={job} profile={profile} />}
-        {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} sub={fieldSub} setSub={setFieldSub} />}
+        {tab === 'field' && <FieldTab job={job} upd={upd} profile={profile} sub={fieldSub} setSub={setFieldSub} onOpenWalkthrough={onOpenWalkthrough} />}
         {tab === 'files' && <FilesTab job={job} profile={profile} />}
         {tab === 'scanner' && <Suspense fallback={<div style={{ padding: 32, textAlign: 'center', color: '#888' }}>Loading…</div>}><FloorPlanTab job={job} profile={profile} /></Suspense>}
         {tab === 'session' && <ConsultationTab job={job} profile={profile} setTab={setTab} />}

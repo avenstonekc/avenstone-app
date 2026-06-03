@@ -6126,6 +6126,66 @@ export async function sbUpdateWalkthroughItem(itemId, updates) {
   return { ok: true, error: null, data };
 }
 
+// Returns all walkthroughs for a job: sources from scheduled_actions (canonical list,
+// includes un-started) joined with job_walkthrough_items (progress state, lazily seeded).
+// status: 'not_started' | 'in_progress' | 'complete'
+export async function sbLoadJobWalkthroughs(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+
+  const [{ data: actions, error: actErr }, { data: items, error: itemsErr }] = await Promise.all([
+    sb.from('scheduled_actions')
+      .select('id, payload, status')
+      .eq('related_job_id', jobId)
+      .eq('kind', 'walkthrough_prep')
+      .order('created_at'),
+    sb.from('job_walkthrough_items')
+      .select('work_type, status, must_document')
+      .eq('job_id', jobId),
+  ]);
+  if (actErr) return { ok: false, error: actErr.message, data: null };
+  if (itemsErr) return { ok: false, error: itemsErr.message, data: null };
+
+  // Group items by work_type
+  const byWorkType = {};
+  for (const item of (items || [])) {
+    const k = item.work_type;
+    if (!byWorkType[k]) byWorkType[k] = { total: 0, resolved: 0, mustDocPending: 0 };
+    byWorkType[k].total++;
+    if (item.status !== 'pending') byWorkType[k].resolved++;
+    if (item.must_document && item.status === 'pending') byWorkType[k].mustDocPending++;
+  }
+
+  const walkthroughs = (actions || []).map(action => {
+    const p  = action.payload || {};
+    const wt = p.work_type || '';
+    const stats = byWorkType[wt];
+    const itemCount  = Number(p.item_count || 0);
+    const mustDocCount = Number(p.must_doc || 0);
+
+    let wStatus = 'not_started';
+    if (stats) {
+      if (stats.resolved === stats.total && stats.total > 0 && stats.mustDocPending === 0) {
+        wStatus = 'complete';
+      } else {
+        wStatus = 'in_progress';
+      }
+    }
+
+    return {
+      work_type:      wt,
+      action_id:      action.id,
+      item_count:     itemCount,
+      must_doc_count: mustDocCount,
+      resolved:       stats?.resolved || 0,
+      total:          stats?.total    || itemCount,
+      must_doc_pending: stats?.mustDocPending ?? (wStatus === 'not_started' ? mustDocCount : 0),
+      status:         wStatus,
+    };
+  }).sort((a, b) => a.work_type.localeCompare(b.work_type));
+
+  return { ok: true, error: null, data: walkthroughs };
+}
+
 // Returns job_files rows attached to the given walkthrough item IDs.
 export async function sbLoadWalkthroughItemPhotos(itemIds) {
   if (!itemIds?.length) return { ok: true, error: null, data: [] };

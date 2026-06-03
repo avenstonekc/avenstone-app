@@ -32,7 +32,7 @@ function ErrorBoundary({ back, children }) {
   }
 }
 
-export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew, clearSel, pendingAction, clearPendingAction, onJobOpen, onJobClose, pendingTab, clearPendingTab, onTabChange, onAgentDrawPoke }) {
+export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew, clearSel, pendingAction, clearPendingAction, onJobOpen, onJobClose, pendingTab, clearPendingTab, onTabChange, onAgentDrawPoke, onOpenWalkthrough }) {
   const [sel, setSel] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
@@ -115,7 +115,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   const selJ = jobs.find(j => j.id === sel);
   if (selJ) return (
     <ErrorBoundary back={() => setSel(null)}>
-      <JobDet job={selJ} upd={ch => upd(selJ.id, ch)} del={() => del(selJ.id)} back={() => setSel(null)} profile={profile} pendingAction={pendingAction} clearPendingAction={clearPendingAction} pendingTab={pendingTab} clearPendingTab={clearPendingTab} onTabChange={onTabChange} onAgentDrawPoke={onAgentDrawPoke} />
+      <JobDet job={selJ} upd={ch => upd(selJ.id, ch)} del={() => del(selJ.id)} back={() => setSel(null)} profile={profile} pendingAction={pendingAction} clearPendingAction={clearPendingAction} pendingTab={pendingTab} clearPendingTab={clearPendingTab} onTabChange={onTabChange} onAgentDrawPoke={onAgentDrawPoke} onOpenWalkthrough={onOpenWalkthrough} />
     </ErrorBoundary>
   );
 
