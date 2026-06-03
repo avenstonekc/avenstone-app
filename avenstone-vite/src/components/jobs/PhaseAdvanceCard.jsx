@@ -119,13 +119,13 @@ export default function PhaseAdvanceCard({ jobId, onAdvanced = () => {} }) {
 
         {/* Advance button */}
         <button
-          className={gs.allPassed ? 'btn btn-navy' : 'btn btn-ghost'}
+          className={gs.allPassed ? 'btn btn-navy' : 'btn btn-gold'}
           style={{ width: '100%' }}
           disabled={advancing || loading}
           onClick={handleAdvanceClick}
         >
           {advancing ? 'Advancing…' : `Advance to ${gs.nextPhaseLabel}`}
-          {!gs.allPassed && !advancing && <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>— override required</span>}
+          {!gs.allPassed && !advancing && <span style={{ marginLeft: 6, fontSize: 13, opacity: 1 }}>— tap to override</span>}
         </button>
 
         {error && (
