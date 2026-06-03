@@ -89,25 +89,71 @@ function groupByWeek(items, today) {
   return groups;
 }
 
-// ── WeekStrip ─────────────────────────────────────────────────────────────────
-function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate, onSelectDate }) {
+// ── WeekStrip (week + 30-day views) ──────────────────────────────────────────
+const MONTH_DAY_LABELS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+
+function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate, onSelectDate, calView = 'week', onCalViewChange }) {
+  const isMonth = calView === 'month';
+  // In month view nav advances 4 weeks per click; week view advances 1.
+  const navStep = isMonth ? 4 : 1;
+  const dayCount = isMonth ? 35 : 7;
+
   const monday = startOfWeekMon(addDays(today, weekOffset * 7));
-  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  const days = Array.from({ length: dayCount }, (_, i) => addDays(monday, i));
   const todayStr = dateToISO(today);
   const selectedStr = selectedDate ? dateToISO(selectedDate) : null;
+
+  const firstDay = days[0];
+  const lastDay  = days[days.length - 1];
+  const headerLabel = `${fmtMonthDay(firstDay)} – ${fmtMonthDay(lastDay)}`;
+
   const navBtn = { background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4, padding: '3px 10px', fontSize: 13, color: '#0A1F44', cursor: 'pointer', fontFamily: 'inherit' };
+  const maxChips = isMonth ? 2 : 3;
+  const chipFontSize = isMonth ? 8 : 9;
+  const chipTrunc  = isMonth ? 7 : 10;
+  const cellMinH   = isMonth ? 52 : 72;
+  const cellPad    = isMonth ? '4px 3px' : '6px 4px';
+
   return (
     <div style={{ background: '#fff', border: '1px solid #EBE6D2', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>
-          {fmtMonthDay(monday)} – {fmtMonthDay(addDays(monday, 6))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* View toggle */}
+          <div style={{ display: 'flex', gap: 1, background: '#F5F2E8', borderRadius: 6, padding: 2 }}>
+            {[['week', 'Week'], ['month', '30 Day']].map(([v, label]) => (
+              <button
+                key={v}
+                onClick={() => onCalViewChange(v)}
+                style={{
+                  fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 4,
+                  background: calView === v ? '#0A1F44' : 'transparent',
+                  color: calView === v ? '#C9A84C' : 'rgba(10,31,68,0.5)',
+                  border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'background 0.12s, color 0.12s',
+                }}
+              >{label}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>{headerLabel}</div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button style={navBtn} onClick={() => onWeekOffsetChange(weekOffset - 1)}>‹</button>
+          <button style={navBtn} onClick={() => onWeekOffsetChange(weekOffset - navStep)}>‹</button>
           <button style={{ ...navBtn, fontSize: 11 }} onClick={() => onWeekOffsetChange(0)}>Today</button>
-          <button style={navBtn} onClick={() => onWeekOffsetChange(weekOffset + 1)}>›</button>
+          <button style={navBtn} onClick={() => onWeekOffsetChange(weekOffset + navStep)}>›</button>
         </div>
       </div>
+
+      {/* Month view: weekday header row */}
+      {isMonth && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+          {MONTH_DAY_LABELS.map(d => (
+            <div key={d} style={{ fontSize: 9, fontWeight: 700, color: 'rgba(10,31,68,0.4)', textAlign: 'center', letterSpacing: 0.5 }}>{d}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Day grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
         {days.map(day => {
           const dayStr = dateToISO(day);
@@ -116,26 +162,29 @@ function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate,
           const isSelected = dayStr === selectedStr;
           return (
             <button key={dayStr} onClick={() => onSelectDate(isSelected ? null : day)}
-              style={{ background: '#F5F2E8', border: isSelected ? '1.5px solid #C9A84C' : '0.5px solid #EBE6D2',
-                borderRadius: 6, padding: '6px 4px', minHeight: 72, cursor: 'pointer',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontFamily: 'inherit',
-                transition: 'border-color 0.12s' }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#0A1F44', letterSpacing: 0.3, opacity: 0.8 }}>
-                {fmtWeekDay(day)} {day.getDate()}
+              style={{
+                background: isToday ? '#F0EAD6' : '#F5F2E8',
+                border: isSelected ? '1.5px solid #C9A84C' : isToday ? '1px solid #C9A84C' : '0.5px solid #EBE6D2',
+                borderRadius: 6, padding: cellPad, minHeight: cellMinH, cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                fontFamily: 'inherit', transition: 'border-color 0.12s',
+              }}>
+              <div style={{ fontSize: isMonth ? 9 : 10, fontWeight: isToday ? 700 : 600, color: isToday ? '#C9A84C' : '#0A1F44', letterSpacing: 0.3 }}>
+                {isMonth ? day.getDate() : `${fmtWeekDay(day)} ${day.getDate()}`}
               </div>
-              {isToday && <div style={{ fontSize: 9, fontWeight: 700, color: '#0A1F44', lineHeight: 1 }}>TODAY</div>}
-              {dayItems.slice(0, 3).map(item => {
+              {isToday && !isMonth && <div style={{ fontSize: 9, fontWeight: 700, color: '#0A1F44', lineHeight: 1 }}>TODAY</div>}
+              {dayItems.slice(0, maxChips).map(item => {
                 const chip = TYPE_CHIP_COLORS[item.type] || { bg: '#EBE6D2', color: '#6B5F3F', border: 'none' };
                 return (
-                  <div key={item.id} style={{ background: chip.bg, color: chip.color, fontSize: 9,
-                    border: chip.border || 'none',
-                    borderRadius: 3, padding: '1px 4px', overflow: 'hidden', whiteSpace: 'nowrap',
-                    textOverflow: 'ellipsis', maxWidth: '100%', width: '100%', textAlign: 'left' }}>
-                    {truncate(item.title, 10)}
+                  <div key={item.id} style={{ background: chip.bg, color: chip.color, fontSize: chipFontSize,
+                    border: chip.border || 'none', borderRadius: 3, padding: '1px 3px',
+                    overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                    maxWidth: '100%', width: '100%', textAlign: 'left' }}>
+                    {truncate(item.title, chipTrunc)}
                   </div>
                 );
               })}
-              {dayItems.length > 3 && <div style={{ fontSize: 9, color: '#9CA3AF' }}>+{dayItems.length - 3}</div>}
+              {dayItems.length > maxChips && <div style={{ fontSize: chipFontSize, color: '#9CA3AF' }}>+{dayItems.length - maxChips}</div>}
             </button>
           );
         })}
@@ -157,6 +206,7 @@ export default function ScheduleTab({ job }) {
   const [phaseFilter,  setPhaseFilter]  = useState(null);
   const [weekOffset,   setWeekOffset]   = useState(0);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [calView,      setCalView]      = useState('week');
 
   // Must be above early return — hook ordering rule
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
@@ -338,7 +388,7 @@ export default function ScheduleTab({ job }) {
         );
       })()}
 
-      {/* ── Week strip ── */}
+      {/* ── Week / 30-Day strip ── */}
       <WeekStrip
         items={phaseFiltered}
         today={today}
@@ -346,6 +396,8 @@ export default function ScheduleTab({ job }) {
         onWeekOffsetChange={setWeekOffset}
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
+        calView={calView}
+        onCalViewChange={setCalView}
       />
 
       {/* ── Schedule items section ── */}
