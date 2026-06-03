@@ -13,6 +13,9 @@ const PUSH_TYPES = new Set([
   'co_submitted',
   'co_approved',
   'co_rejected',
+  // Anti-surprise engine types
+  'walkthrough_prep',
+  'phase_advanced',
 ]);
 
 interface NotificationRow {
@@ -39,6 +42,8 @@ function buildTitle(n: NotificationRow): string {
     case 'co_submitted':          return 'Change order submitted';
     case 'co_approved':           return 'Change order approved';
     case 'co_rejected':           return 'Change order rejected';
+    case 'walkthrough_prep':      return n.title || 'Walkthrough checklist ready';
+    case 'phase_advanced':        return n.title || 'Job phase advanced';
     default:                      return 'Avenstone notification';
   }
 }
@@ -56,6 +61,9 @@ function buildDeepLink(n: NotificationRow): string {
     case 'co_approved':
     case 'co_rejected':
       return n.job_id ? `/job/${n.job_id}/financials` : '/jobs';
+    case 'walkthrough_prep':
+    case 'phase_advanced':
+      return n.job_id ? `/job/${n.job_id}` : '/today';
     default:
       return '/today';
   }
