@@ -2919,10 +2919,11 @@ export async function sbCascadeScheduleChange(sourceItemId, reason = 'predecesso
       for (const { id: currentId, finishDate: currentFinish } of batch) {
         if (!currentFinish) continue;
 
-        // Find items with currentId in their predecessor_ids
+        // Find items with currentId in their predecessor_ids, scoped to same job
         const { data: downstream, error: dsErr } = await sb
           .from('schedule_items')
           .select('id, job_id, title, type, trade, scheduled_date, scheduled_end_date, predecessor_ids, lag_days, duration_days, assigned_sub_id, actual_finish_date, status')
+          .eq('job_id', src.job_id)
           .contains('predecessor_ids', [currentId])
           .neq('status', 'cancelled');
         if (dsErr) return { ok: false, error: `query downstream of ${currentId}: ${dsErr.message}` };
