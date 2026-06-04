@@ -69,16 +69,17 @@ function JobThumb({ url, size = 44 }) {
 }
 
 // ── Revenue chart ─────────────────────────────────────────────────────────────
-function RevenueChart({ data }) {
+function RevenueChart({ data, mob }) {
   if (!data?.length) return (
     <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: '#9CA3AF', fontSize: 13, fontFamily: 'DM Sans, sans-serif' }}>No revenue data yet</div>
   );
   const maxRev = Math.max(...data.map(d => d.revenue), 1);
   const N = data.length;
-  const W = 1000; const H = 120;
+  const W = 1000; const H = mob ? 90 : 120;
+  const PAD = 20; // padding so edge dots never clip
   const pts = data.map((d, i) => ({
-    x: N === 1 ? W / 2 : (i / (N - 1)) * (W - 10) + 5,
+    x: N === 1 ? W / 2 : PAD + (i / (N - 1)) * (W - PAD * 2),
     y: H - 10 - (d.revenue / maxRev) * (H - 20),
     revenue: d.revenue,
   }));
@@ -110,9 +111,9 @@ function RevenueChart({ data }) {
               fontFamily: 'DM Sans, sans-serif' }}>{fShort(v)}</div>
           ))}
         </div>
-        <div style={{ flex: 1, height: 120 }}>
-          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
-            style={{ width: '100%', height: 120, display: 'block' }}>
+        <div style={{ flex: 1, height: H }}>
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" overflow="visible"
+            style={{ width: '100%', height: H, display: 'block', overflow: 'visible' }}>
             <defs>
               <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={NAVY} stopOpacity="0.15" />
@@ -153,10 +154,11 @@ function RevenueChart({ data }) {
 }
 
 // ── Main screen ───────────────────────────────────────────────────────────────
-export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, setPendingAction }) {
+export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWalkthrough, setPendingAction }) {
   const mob = isMob();
   const [dash, setDash] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [walkExpanded, setWalkExpanded] = useState(false);
   const [err, setErr] = useState(null);
 
   const firstName = profile?.full_name?.split(' ')[0] || 'there';
@@ -344,31 +346,73 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, setPendin
                   color: WHITE, fontWeight: 400 }}>Aven AI Insights</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {/* Walkthroughs — navigates to To-dos */}
-                {ai.walkthroughsPending > 0 && (
-                  <div onClick={() => onNavigate?.('todos')} style={{ display: 'flex',
-                    alignItems: 'center', justifyContent: 'space-between', gap: 10,
-                    background: 'rgba(217,119,6,0.15)', borderRadius: 8, padding: '9px 12px',
-                    border: '1px solid rgba(217,119,6,0.3)', cursor: 'pointer',
-                    transition: 'background 0.12s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(217,119,6,0.25)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(217,119,6,0.15)'}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 13 }}>⚠</span>
-                      <span style={{ fontSize: 13, color: '#FCD34D', fontWeight: 500 }}>
-                        {ai.walkthroughsPending} walkthrough{ai.walkthroughsPending !== 1 ? 's' : ''} need completion
-                      </span>
+
+                {/* ── Walkthroughs — expandable list ── */}
+                {ai.walkthroughsPending > 0 && (() => {
+                  const wt = ai.walkthroughTodos || [];
+                  return (
+                    <div>
+                      <div onClick={() => setWalkExpanded(v => !v)} style={{ display: 'flex',
+                        alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                        background: 'rgba(217,119,6,0.15)', borderRadius: walkExpanded ? '8px 8px 0 0' : 8,
+                        padding: '9px 12px', border: '1px solid rgba(217,119,6,0.3)',
+                        borderBottom: walkExpanded ? 'none' : '1px solid rgba(217,119,6,0.3)',
+                        cursor: 'pointer', transition: 'background 0.12s' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(217,119,6,0.25)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(217,119,6,0.15)'}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 13 }}>⚠</span>
+                          <span style={{ fontSize: 13, color: '#FCD34D', fontWeight: 500 }}>
+                            {ai.walkthroughsPending} walkthrough{ai.walkthroughsPending !== 1 ? 's' : ''} need completion
+                          </span>
+                        </div>
+                        <span style={{ color: '#FCD34D', fontSize: 12,
+                          transform: walkExpanded ? 'rotate(90deg)' : 'none',
+                          display: 'inline-block', transition: 'transform 0.15s' }}>›</span>
+                      </div>
+                      {walkExpanded && wt.length > 0 && (
+                        <div style={{ background: 'rgba(217,119,6,0.08)',
+                          border: '1px solid rgba(217,119,6,0.3)', borderTop: 'none',
+                          borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
+                          {wt.map((w, i) => {
+                            const jobMatch = activeJobs.find(j => j.id === w.job_id);
+                            const addr = jobMatch?.address || w.job_id?.substring(0, 8) + '…';
+                            const street = addr.indexOf(',') >= 0 ? addr.substring(0, addr.indexOf(',')) : addr;
+                            return (
+                              <div key={w.id}
+                                onClick={() => onOpenWalkthrough?.(w.job_id, w.work_type, w.id)}
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '9px 12px', cursor: 'pointer',
+                                  borderTop: i > 0 ? '1px solid rgba(217,119,6,0.15)' : 'none',
+                                  transition: 'background 0.1s' }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: '#FCD34D',
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {w.work_type}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 1 }}>
+                                    {street}
+                                  </div>
+                                </div>
+                                <span style={{ color: '#FCD34D', fontSize: 12, fontWeight: 700,
+                                  flexShrink: 0, marginLeft: 8 }}>Start →</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <span style={{ color: '#FCD34D', fontSize: 12, opacity: 0.7 }}>→</span>
-                  </div>
-                )}
+                  );
+                })()}
+
                 {/* Projects behind — navigates to Projects */}
                 {ai.jobsBehind > 0 && (
                   <div onClick={() => onNavigate?.('projects')} style={{ display: 'flex',
                     alignItems: 'center', justifyContent: 'space-between', gap: 10,
                     background: 'rgba(239,68,68,0.15)', borderRadius: 8, padding: '9px 12px',
-                    border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer',
-                    transition: 'background 0.12s' }}
+                    border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer', transition: 'background 0.12s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -380,13 +424,13 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, setPendin
                     <span style={{ color: '#FCA5A5', fontSize: 12, opacity: 0.7 }}>→</span>
                   </div>
                 )}
-                {/* Open to-dos — always shown, navigates to To-dos */}
+
+                {/* Open to-dos — navigates to To-dos page */}
                 {ai.openTodos > 0 && (
                   <div onClick={() => onNavigate?.('todos')} style={{ display: 'flex',
                     alignItems: 'center', justifyContent: 'space-between', gap: 10,
                     background: 'rgba(201,168,76,0.12)', borderRadius: 8, padding: '9px 12px',
-                    border: '1px solid rgba(201,168,76,0.25)', cursor: 'pointer',
-                    transition: 'background 0.12s' }}
+                    border: '1px solid rgba(201,168,76,0.25)', cursor: 'pointer', transition: 'background 0.12s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(201,168,76,0.22)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'rgba(201,168,76,0.12)'}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -398,7 +442,8 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, setPendin
                     <span style={{ color: GOLD, fontSize: 12, opacity: 0.7 }}>→</span>
                   </div>
                 )}
-                {/* All-clear when nothing */}
+
+                {/* All-clear */}
                 {!ai.walkthroughsPending && !ai.jobsBehind && !ai.openTodos && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8,
                     background: 'rgba(34,197,94,0.12)', borderRadius: 8, padding: '10px 12px' }}>
@@ -442,7 +487,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, setPendin
           marginTop: 16 }}>
           <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16,
             color: NAVY, marginBottom: 14 }}>Revenue (last 6 months)</div>
-          <RevenueChart data={revenue} />
+          <RevenueChart data={revenue} mob={mob} />
         </div>
       </div>
     </div>

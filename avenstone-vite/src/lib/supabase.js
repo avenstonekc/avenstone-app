@@ -6284,8 +6284,9 @@ export async function sbLoadOwnerDashboard(tenantId) {
     sb.from('schedule_items').select('job_id').eq('tenant_id', tenantId)
       .eq('status', 'scheduled').lt('scheduled_date', today),
 
-    sb.from('todos').select('type').eq('tenant_id', tenantId)
-      .eq('status', 'open').eq('source', 'engine'),
+    sb.from('todos').select('id, type, job_id, title, payload')
+      .eq('tenant_id', tenantId).eq('status', 'open').eq('source', 'engine')
+      .eq('type', 'walkthrough_prep').limit(20),
 
     sb.from('job_transactions').select('direction, amount, status, created_at')
       .eq('tenant_id', tenantId).gte('created_at', sixtyAgo),
@@ -6376,7 +6377,17 @@ export async function sbLoadOwnerDashboard(tenantId) {
       monthlyRevenue,
       activeJobs: activeJobsWithThumbs,
       health: { activeProjects, newLeads, estimates, jobsBehind },
-      aiInsights: { walkthroughsPending, jobsBehind, openTodos: openTodosRes.count ?? 0 },
+      aiInsights: {
+        walkthroughsPending,
+        jobsBehind,
+        openTodos: openTodosRes.count ?? 0,
+        walkthroughTodos: (engineTodosRes.data || []).map(t => ({
+          id: t.id,
+          job_id: t.job_id,
+          work_type: t.payload?.work_type || t.title?.split(' walkthrough')[0] || 'Walkthrough',
+          title: t.title,
+        })),
+      },
     },
   };
 }
