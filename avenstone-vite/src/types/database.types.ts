@@ -1295,6 +1295,7 @@ export type Database = {
           draw_number: number
           id: string
           invoiced_amount: number
+          is_retainage_release: boolean
           job_id: string
           paid_amount: number
           phase: string | null
@@ -1315,6 +1316,7 @@ export type Database = {
           draw_number: number
           id?: string
           invoiced_amount?: number
+          is_retainage_release?: boolean
           job_id: string
           paid_amount?: number
           phase?: string | null
@@ -1335,6 +1337,7 @@ export type Database = {
           draw_number?: number
           id?: string
           invoiced_amount?: number
+          is_retainage_release?: boolean
           job_id?: string
           paid_amount?: number
           phase?: string | null
@@ -3058,6 +3061,89 @@ export type Database = {
             columns: ["phase_id"]
             isOneToOne: false
             referencedRelation: "job_phases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_walkthrough_items: {
+        Row: {
+          completed_at: string | null
+          completed_by_id: string | null
+          created_at: string
+          id: string
+          job_id: string
+          label: string
+          must_document: boolean
+          notes: string | null
+          photo_required: boolean
+          playbook_item_id: string | null
+          sort_order: number
+          status: string
+          tenant_id: string
+          updated_at: string
+          work_type: string
+        }
+        Insert: {
+          completed_at?: string | null
+          completed_by_id?: string | null
+          created_at?: string
+          id?: string
+          job_id: string
+          label: string
+          must_document?: boolean
+          notes?: string | null
+          photo_required?: boolean
+          playbook_item_id?: string | null
+          sort_order?: number
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          work_type: string
+        }
+        Update: {
+          completed_at?: string | null
+          completed_by_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string
+          label?: string
+          must_document?: boolean
+          notes?: string | null
+          photo_required?: boolean
+          playbook_item_id?: string | null
+          sort_order?: number
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          work_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_walkthrough_items_completed_by_id_fkey"
+            columns: ["completed_by_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_walkthrough_items_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_walkthrough_items_playbook_item_id_fkey"
+            columns: ["playbook_item_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_playbook_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_walkthrough_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -5424,6 +5510,47 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_playbook_items: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          must_document: boolean
+          photo_required: boolean
+          sort_order: number
+          tenant_id: string
+          work_type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+          must_document?: boolean
+          photo_required?: boolean
+          sort_order?: number
+          tenant_id: string
+          work_type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          must_document?: boolean
+          photo_required?: boolean
+          sort_order?: number
+          tenant_id?: string
+          work_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_playbook_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_trade_visibility: {
         Row: {
           active: boolean
@@ -5667,6 +5794,44 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trade_dependencies: {
+        Row: {
+          created_at: string
+          id: string
+          lag_days: number
+          notes: string | null
+          predecessor_trade: string
+          successor_trade: string
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lag_days?: number
+          notes?: string | null
+          predecessor_trade: string
+          successor_trade: string
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lag_days?: number
+          notes?: string | null
+          predecessor_trade?: string
+          successor_trade?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_dependencies_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -5960,6 +6125,14 @@ export type Database = {
       get_job_co_total: { Args: { p_job_id: string }; Returns: number }
       get_my_role: { Args: never; Returns: string }
       get_my_tenant_id: { Args: never; Returns: string }
+      mark_draw_paid_release_retainage: {
+        Args: {
+          p_draw_id: string
+          p_min_invoiced_amount?: number
+          p_paid_amount: number
+        }
+        Returns: Json
+      }
       next_invoice_number: { Args: { p_tenant_id: string }; Returns: string }
       resync_sub_invoice_accrual: {
         Args: { p_effective_date?: string; p_invoice_id: string }
