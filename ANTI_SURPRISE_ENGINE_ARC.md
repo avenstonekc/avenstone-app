@@ -94,3 +94,23 @@ Detection + generation = pure SQL, no model spend. Optional Haiku phrasing pass 
 - **Intensity dial** — per-tenant / per-operator setting controlling how thorough walkthroughs/coaching are (which playbook flags active, how many items surface, coaching tone). Rides on existing must_document / photo_required flags. Build after foundation complete. Foundation must not prevent it.
 - **Sub-delegation (request-from-sub vs do-it-yourself)** — when a walkthrough fires, the PM can either send the sub a request to upload the required photos/checklist OR do it themselves on site. Sub does their own walkthrough on their phone, proof comes from who did the work. Own slice; depends on sub portal + request/notification path. Foundation must not assume the walkthrough owner is always the PM.
 - **Schedule-lock (→ Phase 2, dependency engine)** — walkthroughs lock to schedule items: "tile started today → fire the tile walkthrough now." Also fixes the trade-as-one-lump flaw (a trade's work spans phases days apart — waterproofing vs grout — so checklists should tie to schedule POINTS, not one flat per-trade lump). Reminders (P3) re-fire off these schedule points.
+
+---
+
+## Future slice — Selection / Decision Deadlines (rides Phase 2.3 lead-time layer)
+
+Client/PM selections (tile, vanities, paint colors, fixtures, LVP) are a major hidden schedule-killer in remodeling — the slow decision is invisible until the install date arrives and nothing's been ordered. This slice surfaces selection deadlines WEEKS early by back-calculating from the dependency chain + material lead times.
+
+Mechanism (rides existing machinery, not a new system):
+- The dependency chain (trade_dependencies) knows the install date for a trade.
+- The lead-time layer (Phase 2.3) knows material_delivery must precede sub_start by lead_days (e.g. vanities 21d, tile 14d).
+- Selection is one link further UPSTREAM: selection → order → delivery → install. So selection_deadline = install_date − lead_days − procurement_buffer.
+- The system fires a task at the PM weeks ahead: "Pick tile with client for [job] — needed by [date] to stay on schedule." Slow client decisions get chased before they become delays.
+
+Logging: when a selection is made, log it per job (tile = X, color = Y, vanity = Z, date decided, optional photo). Likely a job_selections table (same "capture the facts about this job" family as walkthroughs/playbook). Aven AI can later reference logged selections.
+
+Scope-driven: which selections a job needs is driven by job scope (a deck build has no tile selection). Same Layer-1 × Layer-2 model as the keystone.
+
+Open questions (resolve at build): procurement buffer size beyond lead time; does the CLIENT get pinged or only the PM; exact job_selections schema; which trades require a selection step.
+
+Dependencies: needs the trade_dependencies table (keystone Slice 1) AND the lead-time layer (Phase 2.3) first. This is ~Phase 2.4. Captured here so the back-calculation machinery is built knowing this consumes it.
