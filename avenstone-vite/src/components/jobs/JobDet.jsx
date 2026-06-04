@@ -12,6 +12,7 @@ import FieldTab from './tabs/FieldTab';
 import EstimateTab from './tabs/EstimateTab';
 import SubsTab from './tabs/SubsTab';
 import CompanyFileExpirationBanner from '../common/CompanyFileExpirationBanner';
+import ProjectDetailHeader from './ProjectDetailHeader';
 
 const FloorPlanTab = lazy(() => import('./tabs/FloorPlanTab'));
 
@@ -263,6 +264,11 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
           </div>
         ))}
       </div>
+
+      {/* Project detail header — KPI strip + phase strip + PM contact (PM/owner roles) */}
+      {['owner', 'project_manager', 'sales_rep'].includes(profile?.role) && (
+        <ProjectDetailHeader job={job} profile={profile} />
+      )}
 
       {/* Tab bar */}
       <div className="tabbar">

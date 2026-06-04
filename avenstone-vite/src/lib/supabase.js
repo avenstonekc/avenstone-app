@@ -6357,6 +6357,52 @@ export async function sbLoadOwnerDashboard(tenantId) {
   };
 }
 
+// ── Project Detail enrichment (ROLE_DASHBOARDS_ARC) ─────────────────────────
+// Loads phases, financial KPIs, next milestone, thumbnail, and PM contact for
+// the ProjectDetailHeader. Self-contained; caller passes jobId + assignedPmId.
+// Returns { ok, error, data: { phases, paid_to_date, next_milestone, thumbnail_url, pm_profile } }
+export async function sbLoadProjectDetail(jobId, assignedPmId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const baseQueries = [
+      sb.from('job_phases').select('id,phase_name,phase_order,status').eq('job_id', jobId).order('phase_order', { ascending: true }),
+      sb.from('job_transactions').select('direction,status,amount').eq('job_id', jobId),
+      sb.from('schedule_items').select('id,title,type,scheduled_date,status,is_milestone').eq('job_id', jobId).neq('status', 'cancelled').order('scheduled_date', { ascending: true }),
+      sb.from('photos').select('url').eq('job_id', jobId).order('created_at', { ascending: true }).limit(1),
+    ];
+    const [phasesRes, txnsRes, schedRes, photoRes, pmRes] = await Promise.all([
+      ...baseQueries,
+      assignedPmId
+        ? sb.from('profiles').select('id,full_name,email,phone').eq('id', assignedPmId).single()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    const paid_to_date = (txnsRes.data || [])
+      .filter(t => t.direction === 'in' && t.status === 'paid')
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
+
+    // Next milestone: first non-complete inspection or milestone item, prefer future dates
+    const milestones = (schedRes.data || []).filter(s =>
+      s.status !== 'complete' && (s.is_milestone || s.type === 'inspection' || s.type === 'milestone')
+    );
+    const nextMilestone = milestones.find(s => s.scheduled_date >= today) || milestones[0] || null;
+
+    return {
+      ok: true, error: null,
+      data: {
+        phases: phasesRes.data || [],
+        paid_to_date,
+        next_milestone: nextMilestone,
+        thumbnail_url: photoRes.data?.[0]?.url || null,
+        pm_profile: pmRes.data || null,
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e.message || String(e), data: null };
+  }
+}
+
 // ── Projects List (ROLE_DASHBOARDS_ARC) ─────────────────────────────────────
 // Loads all jobs for tenant with enriched fields for the Projects list view.
 // Returns { ok, error, data: Job[] } where each job has:
