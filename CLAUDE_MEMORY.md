@@ -482,6 +482,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 **Column drift fix slice (2026-05-28)**
 - `column-drift-fix-2026-05-28 · 2026-05-28` — Fixed all open read-drift findings from 2026-05-27 scan. (1) supabase.js: `assigned_pm_id` → `assigned_pm` at 3 sites in notification fan-out (comment + select projection + 2 recipient collectors). PM was silently excluded from all schedule item notifications. (2) field-opus-db-query/index.ts: fixed `recent_bug_reports` (dropped nonexistent `title`, `classification`; using real cols), fixed `recent_auto_fix_attempts` (replaced all 7 stale col names with real schema: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`; order by `created_at`), stubbed `failed_intents_last_24h` (table never existed — returns `{ rows: [], note }` instead of crashing). Open drift after this slice: 1 (quote_requests in disabled ai-pm-nightly — deferred).
 
+**[LOG — 2026-06-04] OWNER_HOME_REDESIGN (commit ae4af2d) — dark hero, thumbnails, clickable rows.**
+- Dark navy gradient hero section for greeting + 4 KPI tiles (frosted glass cards on dark, fShort numbers, gold left border, trend chip).
+- Active Projects: thumbnail (first photo from photos table or house-icon placeholder), address parsed street+city, compact value, status pill, progress bar, full row click → job detail.
+- "View all →" navigates to Projects list. AI Insights: dark card, amber/red alert chips. Company Health: larger numbers.
+- sbLoadOwnerDashboard: added parallel photos query, attaches thumbnail_url to activeJobs rows.
+- App.jsx: onNavigate={setPg} prop added to OwnerHomeScr.
+
 **[LOG — 2026-06-04] PROJECT_DETAIL_CLEANUP (commit 2062387) — clutter removed, single-scroll flow.**
 - "Request a Review" and "Completion Package" banners: were unconditional (showing on ALL tabs for complete jobs). Now gated to `tab === 'info'` — features preserved, off the main surface.
 - PhaseAdvanceCard: moved from TOP of InfoTab (was first thing visible) to BOTTOM (above Delete button). Feature preserved, out of the way of the clean header flow.
