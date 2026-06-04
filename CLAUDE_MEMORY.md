@@ -1147,3 +1147,44 @@ ARCHITECTURE NOTE: sbSyncWalkthroughFireAt only updates status='scheduled' rows.
 - Source of truth: scheduled_actions walkthrough_prep rows (canonical, includes un-started). job_walkthrough_items used only for progress state (lazily seeded on first open).
 - Verified on 7b44611a: 9 walkthroughs in list — 7 not_started, 2 in_progress. Plumbing shows 3 pass/7 pending with pressure-test photo still linked to item afbd39b3. Sub-tab order: Daily Logs | Walkthroughs | Photos | Notes.
 - Commit: f68fa1d. Pushed.
+
+[LOG - 2026-06-04] ROLE_DASHBOARDS_ARC_P1 — Owner Home dashboard (guinea pig)
+
+- Action: Built Owner Home dashboard as the first role config. Data audit first, then sbLoadOwnerDashboard rollup, then OwnerHomeScr UI, then App.jsx wiring + Aven AI center button.
+- Files: avenstone-vite/src/lib/supabase.js (sbLoadOwnerDashboard), avenstone-vite/src/components/owner/OwnerHomeScr.jsx (new), avenstone-vite/src/App.jsx (owner conditional + Aven AI button)
+- Commits: 7931f06 (B1 rollup), d007ff7 (B2 UI), 5ae3736 (B3 wiring). All pushed.
+
+DATA SOURCES CONFIRMED (live, Avenstone tenant):
+- Pipeline Value: $183,002 — SUM(contract_value) WHERE status IN (contract, in_progress, final_touches)
+- Open Receivables: $10,000 — invoices not paid/void (1 partially_paid invoice)
+- Collected MTD: $71,207.50 — job_transactions direction=in, status=paid, >= month_start
+- Gross Profit MTD: $7,289.18 — collected_mtd - SUM(direction=out, MTD)
+- Collected Trend: +2,840% 30d vs prior 30d (test data artifact; formula is real)
+- Revenue Chart: 3 months of data (Apr/May/Jun 2026) — SVG area chart, no external lib
+- Active Projects: 5 jobs (includes test/sandbox jobs in dev environment)
+- Company Health: activeProjects=5, newLeads=3, jobsBehind=3 (overdue schedule items)
+- AI Insights: walkthroughsPending=8 (engine todos), jobsBehind=3
+
+OMITTED TILES (no real source):
+- "Estimates awaiting follow-up" — no response-tracking signal
+- "Division performance" — no division model
+- Overdue invoices — 0 count, not shown when zero (zero is fine, not shown)
+
+DESIGN SYSTEM (owner aesthetic):
+- White cards on #F7F5F0 cream background, navy text (#0A1F44), gold accent (#C9A84C)
+- DM Serif Display for KPI hero numbers and card titles
+- KPI strip: gold left border, 28px serif hero numbers, trend badge on Collected MTD
+- SVG area chart: navy line + gradient fill area, month labels, summary chips
+- Active projects: progress bars, status pills (gold/green/blue)
+- Responsive at 900px (wide vs mobile layout)
+
+AVEN AI CENTER BUTTON:
+- Gold ✦ circle on navy background, centered in bottom nav, owner-only
+- Fires setPendingAction({ kind: 'master_agent_tool_call' }) → opens MasterAgent
+- Design: 44px circle, 2px gold border, -16px marginTop to rise above nav bar
+
+ARCHITECTURE NOTES:
+- OwnerHomeScr renders inside .main div (same slot as HomeScr). Non-destructive — HomeScr intact for all non-owner roles.
+- sbLoadOwnerDashboard: role-parameterized by tenantId today. Other role configs will filter differently but call the same function structure.
+- Shared shell = App.jsx NAV array (parameterized by role flags). No DashShell.jsx extraction needed for Phase 1 — that's a follow-on when 2+ roles exist.
+- First-pass: screenshot and refine via Vercel. Test tenant has sandbox/test jobs in active list (expected in dev).
