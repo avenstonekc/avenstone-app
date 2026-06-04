@@ -1074,6 +1074,38 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Verified: 3 triggers remain (on_notification_insert conditional, on_notification_insert_sms, trg_notification_push_fanout). Test INSERT confirmed exactly 1 push trigger active.
 - Migration: 20260604200000_drop_dead_push_trigger.sql. Commit: 9e6173b.
 
+[LOG - 2026-06-03] ANTI_SURPRISE_ENGINE_ARC_P2_1 — Phase 2.1: Schedule-lock walkthroughs
+
+- Action: Walkthroughs now fire at the day before their trade's sub_start scheduled date, not +1 day after job-sold. fire_at is reactive: updates when a sub_start is created, edited, or cascade-moved.
+- Files: avenstone-vite/src/lib/tradeUtils.js (new), avenstone-vite/src/lib/supabase.js, supabase/functions/ai-master-agent/index.ts, supabase/functions/anti-surprise-generator/index.ts, supabase/migrations/20260604300000_normalize_schedule_items_trade.sql, avenstone-vite/src/components/dashboard/CalScr.jsx
+- Commits: d2bc677 (P+B1+B2 JS), cf323a1 (migration), 3a9529e (master-agent), 433ff49 (B3). All pushed.
+
+PREREQUISITE P — trade normalization:
+- Problem: schedule_items.trade had inconsistent values: "Plumbing-Rough-in" (hyphenated) vs "Plumbing - Rough-in" (canonical). Source: Master Agent's create_schedule_item wrote String(input.trade) verbatim; old test scripts inserted directly.
+- BEFORE: Drywall-Hang(2), Electrical-Rough-in(1), HVAC-Install(1), Paint-Interior(1), Plumbing-Rough-in(1), Tile-Floor(1) — 6 rows with wrong format.
+- AFTER (migration + code fix): 0 hyphenated rows. All canonical: "Drywall - Hang", "Electrical - Rough-in", etc.
+- canonicalizeTrade() in avenstone-vite/src/lib/tradeUtils.js — single shared rule: /-([A-Z])/g → ' - $1'. Applied at write time in sbCreateScheduleItem, sbUpdateScheduleItem (supabase.js), and inlined in ai-master-agent index.ts. CalScr placeholder updated to show canonical example.
+
+B1 — fire_at hook:
+- sbSyncWalkthroughFireAt(jobId, trade, scheduledDate) added to supabase.js. Finds matching scheduled_actions row (kind=walkthrough_prep, rule_key=walkthrough_prep::<canonTrade>, status=scheduled). Updates fire_at = scheduledDate - 1 day (midnight UTC). Owner/PM RLS allows this update.
+- Called fire-and-forget in sbCreateScheduleItem (when sub_start has trade+date) and sbUpdateScheduleItem (when scheduled_date changes on sub_start). Failures logged to console, never block caller.
+
+B2 — cascade-aware:
+- sbCascadeScheduleChange downstream select now includes type + trade.
+- After updating a cascaded sub_start item, sbSyncWalkthroughFireAt fires with the new date. Ensures that when the cascade engine pushes a sub_start date, the walkthrough's fire_at moves with it.
+
+B3 — generation alignment:
+- anti-surprise-generator now uses .eq('trade', workType) instead of .ilike fuzzy match when looking up existing sub_start items to compute initial fire_at. Correct because workType (from tenant_playbook_items) and schedule_items.trade are now both canonical.
+
+Verified end-to-end on 7b44611a (Plumbing - Rough-in):
+- Before normalization: trade='Plumbing-Rough-in'. After migration: trade='Plumbing - Rough-in'. ✓
+- Test row inserted (fire_at=2030-01-01). Sub_start date=2026-06-16. After B1 sync: fire_at=2026-06-15 ✓
+- Sub_start date moved to 2026-08-15. After B1 re-sync: fire_at=2026-08-14 ✓
+- Test row cleaned up. Sub_start date restored. ✓
+- audit:schema: write drift 0, no new issues. ✓
+
+ARCHITECTURE NOTE: sbSyncWalkthroughFireAt only updates status='scheduled' rows. If the walkthrough_prep row has already fired (todo+notification created), fire_at is irrelevant — don't touch it. For a future "walkthrough reminder delay" feature (P3: reminders re-fire off schedule points), the same hook will need to handle re-scheduling the reminder.
+
 [LOG - 2026-06-03] ANTI_SURPRISE_ENGINE_ARC_P1_6 — Phase 1.6: Field tab Walkthroughs sub-tab
 - Action: Added Walkthroughs sub-tab to JobDet's Field tab as the durable home base. sbLoadJobWalkthroughs helper (SA canonical list LEFT JOIN JWI progress state → covers un-started walkthroughs). WalkthroughsTab.jsx: per-walkthrough card showing status (not_started/in_progress/complete), progress bar, must-doc pending badge, tap to open PlaybookChecklist. FieldTab tab bar now scrollable (overflowX:auto) for 4 tabs on mobile.
 - Prop chain threaded: App.jsx → JobsScr → JobDet → FieldTab → WalkthroughsTab (onOpenWalkthrough). Same walkthroughProps/PlaybookChecklist overlay reused — home-screen todo still works unchanged.
