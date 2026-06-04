@@ -114,3 +114,26 @@ Scope-driven: which selections a job needs is driven by job scope (a deck build 
 Open questions (resolve at build): procurement buffer size beyond lead time; does the CLIENT get pinged or only the PM; exact job_selections schema; which trades require a selection step.
 
 Dependencies: needs the trade_dependencies table (keystone Slice 1) AND the lead-time layer (Phase 2.3) first. This is ~Phase 2.4. Captured here so the back-calculation machinery is built knowing this consumes it.
+
+---
+
+## Future arc — Visual Selection System (layout-library version)
+
+The interface half of the Selection/Decision Deadline slice (already captured). When a selection is due (tile layout, paint, vanity, etc.), the client or PM picks from a CURATED LIBRARY OF OPTIONS with example images, and the choice is logged against the job. This kills the #1 hidden schedule-killer: slow/wrong client selections — by making the decision easy, visual, and recorded.
+
+SCOPE (v1 — deliberately simple, confirmed with Kalin):
+- NOT photo-realistic rendering of the client's actual space. NOT AI image generation per selection. That's explicitly OUT — too much work, not the goal.
+- IS: a curated library of layout/option patterns, each with a name, short descriptor, and ONE clean example image (e.g. for tile: Stacked, Vertical Stacked, Horizontal Stacked, Brick Offset 1/3, Brick Offset 1/2, Herringbone, Vertical Herringbone, Chevron — 8 static example images, rendered/curated once).
+- Selection screen: pick a pattern + tile size + where it applies (shower walls / floor / etc.).
+- "Your Selection" summary logs the choice.
+- Save Selection + Request Design Help (escalate to human design team).
+
+DATA MODEL:
+- job_selections table — per-job logged selections (selection_type e.g. tile_layout, chosen option, size, applied_to, date_decided, decided_by, optional notes).
+- A selection-options / catalog model — the available patterns per selection type (name, descriptor, example_image_url), tenant-customizable (white-label: each tenant curates their own option library).
+
+NEW NAV SURFACES (from the rendering): under PROJECT — "Selections"; under TOOLS — "Catalog" (the option library) and "Templates." Confirm against existing nav at build.
+
+TIES TO: the Selection/Decision Deadline slice (Phase 2.4) — that slice back-calculates WHEN a selection is due (install date − lead time − buffer) and chases it; THIS arc is the interface where the selection actually gets made and logged. Two halves of one system: deadline chases the decision, this screen IS the decision. Also ties to the Client Portal (client makes selections there) and the "Things We Need From You" client to-dos (the render of the client To-Dos shows "Approve color selection / Sign change order" — same family).
+
+BUILD WHEN: after the page-reskin line is complete. Own arc, own blueprint — it has a real data model (job_selections + catalog), not just a reskin. Small now that shower-rendering is OUT of scope.
