@@ -419,7 +419,7 @@ export default function App() {
 
           <ErrorBoundary>
           <div className="pg-wrap">
-            {pg === 'home' && profile?.role === 'owner' && <OwnerHomeScr profile={profile} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } }} />}
+            {pg === 'home' && profile?.role === 'owner' && <OwnerHomeScr profile={profile} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} onNavigate={setPg} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } }} />}
             {pg === 'projects' && profile?.role === 'owner' && <ProjectsListScr profile={profile} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} onNewProject={() => { setPg('jobs'); setPendingNew(true); }} />}
             {pg === 'home' && profile?.role !== 'owner' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} onOpenWalkthrough={(jobId, workType, todoId) => setWalkthroughProps({ jobId, workType, todoId })} />}
             {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}

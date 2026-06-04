@@ -1,168 +1,132 @@
 import { useState, useEffect } from 'react';
 import { sbLoadOwnerDashboard } from '../../lib/supabase.js';
-import { f$, isMob, Ic } from '../../lib/utils.jsx';
-import logo from '../../assets/logo.png';
+import { isMob } from '../../lib/utils.jsx';
 
-const NAVY = '#0A1F44';
-const GOLD = '#C9A84C';
+const NAVY  = '#0A1F44';
+const GOLD  = '#C9A84C';
 const CREAM = '#F7F5F0';
 const WHITE = '#FFFFFF';
 const BORDER = '#E8E4DC';
 
-const card = {
-  background: WHITE,
-  borderRadius: 12,
-  padding: '16px 20px',
-  boxShadow: '0 1px 6px rgba(10,31,68,0.07)',
-  border: `1px solid ${BORDER}`,
-};
-
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-function parseMonth(str) {
-  const [, m] = str.split('-');
-  return MONTHS[parseInt(m, 10) - 1] || str;
-}
+function parseMonth(s) { const [,m] = s.split('-'); return MONTHS[parseInt(m,10)-1] || s; }
 
 function fShort(n) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1000) return `$${(n / 1000).toFixed(0)}k`;
-  return `$${n}`;
+  const v = Number(n || 0);
+  if (v >= 1_000_000) return `$${(v/1_000_000).toFixed(1)}M`;
+  if (v >= 1_000)     return `$${(v/1_000).toFixed(0)}k`;
+  return `$${v.toFixed(0)}`;
+}
+function f$(n) {
+  return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:0,maximumFractionDigits:0}).format(n||0);
 }
 
 function getGreeting() {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
-
 function formatToday() {
   const d = new Date();
-  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}`;
+  return `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
+// ── Status pill ───────────────────────────────────────────────────────────────
+const STATUS_CFG = {
+  in_progress:   { label: 'In Progress',   bg: '#D1FAE5', color: '#065F46' },
+  contract:      { label: 'Contract',      bg: '#FEF3C7', color: '#92400E' },
+  final_touches: { label: 'Final Touches', bg: '#DBEAFE', color: '#1E40AF' },
+  complete:      { label: 'Complete',      bg: NAVY,       color: WHITE },
+  lead:          { label: 'Lead',          bg: '#F3F4F6', color: '#6B7280' },
+  proposal:      { label: 'Proposal',      bg: '#EFF6FF', color: '#1D4ED8' },
+};
 function StatusPill({ status }) {
-  const map = {
-    contract: { bg: '#FEF3C7', color: '#92400E', label: 'CONTRACT' },
-    in_progress: { bg: '#D1FAE5', color: '#065F46', label: 'IN PROGRESS' },
-    final_touches: { bg: '#DBEAFE', color: '#1E40AF', label: 'FINAL TOUCHES' },
-    lead: { bg: '#F3F4F6', color: '#374151', label: 'LEAD' },
-  };
-  const s = map[status] || { bg: '#F3F4F6', color: '#374151', label: (status || '').toUpperCase() };
+  const s = STATUS_CFG[status] || { label: (status||'').replace(/_/g,' '), bg: '#F3F4F6', color: '#6B7280' };
   return (
-    <span style={{
-      background: s.bg,
-      color: s.color,
-      fontSize: 10,
-      fontWeight: 700,
-      fontFamily: 'DM Sans, sans-serif',
-      padding: '2px 7px',
-      borderRadius: 20,
-      letterSpacing: '0.04em',
-      textTransform: 'uppercase',
-    }}>{s.label}</span>
+    <span style={{ background: s.bg, color: s.color, fontSize: 10, fontWeight: 700,
+      padding: '3px 8px', borderRadius: 20, letterSpacing: '0.05em', textTransform: 'uppercase',
+      whiteSpace: 'nowrap', fontFamily: 'DM Sans, sans-serif' }}>{s.label}</span>
   );
 }
 
-function KpiCard({ label, value, trend, wide }) {
+// ── Job thumbnail ─────────────────────────────────────────────────────────────
+function JobThumb({ url, size = 44 }) {
+  const [err, setErr] = useState(false);
+  if (url && !err) return (
+    <img src={url} onError={() => setErr(true)} alt=""
+      style={{ width: size, height: size, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+  );
   return (
-    <div style={{
-      ...card,
-      borderLeft: `3px solid ${GOLD}`,
-      flex: wide ? '1 0 150px' : '1 1 calc(50% - 6px)',
-      minWidth: 0,
-    }}>
-      <div style={{ fontSize: 11, color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: wide ? 28 : 18, fontFamily: 'DM Serif Display, serif', color: NAVY, fontWeight: 400, lineHeight: 1.1 }}>{value}</div>
-      {trend !== undefined && trend !== null && (
-        <div style={{
-          marginTop: 6,
-          fontSize: 12,
-          fontFamily: 'DM Sans, sans-serif',
-          fontWeight: 600,
-          color: trend >= 0 ? '#059669' : '#DC2626',
-        }}>
-          {trend >= 0 ? '↑' : '↓'} {Math.abs(trend)}% vs prior 30d
-        </div>
-      )}
+    <div style={{ width: size, height: size, borderRadius: 8, background: 'rgba(255,255,255,0.06)',
+      border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', flexShrink: 0 }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1v-9.5z"
+          stroke={GOLD} strokeWidth="1.5" fill="none"/>
+        <path d="M9 21V12h6v9" stroke={GOLD} strokeWidth="1.5"/>
+      </svg>
     </div>
   );
 }
 
+// ── Revenue chart ─────────────────────────────────────────────────────────────
 function RevenueChart({ data }) {
-  if (!data || data.length === 0) {
-    return (
-      <div style={{ height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif', fontSize: 13 }}>
-        No revenue data yet
-      </div>
-    );
-  }
-
+  if (!data?.length) return (
+    <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#9CA3AF', fontSize: 13, fontFamily: 'DM Sans, sans-serif' }}>No revenue data yet</div>
+  );
   const maxRev = Math.max(...data.map(d => d.revenue), 1);
   const N = data.length;
-
-  const pts = data.map((d, i) => {
-    const x = N === 1 ? 250 : (i / (N - 1)) * 490 + 5;
-    const y = 95 - (d.revenue / maxRev) * 85;
-    return { x, y, revenue: d.revenue };
-  });
-
-  const areaPath = `M${pts[0].x},95 L${pts[0].x},${pts[0].y} ${pts.slice(1).map(p => `L${p.x},${p.y}`).join(' ')} L${pts[pts.length - 1].x},95 Z`;
-  const linePath = `M${pts[0].x},${pts[0].y} ${pts.slice(1).map(p => `L${p.x},${p.y}`).join(' ')}`;
-
-  const yLabels = [0, Math.round(maxRev / 2), maxRev];
-
-  const last = data[data.length - 1];
-  const net = (last.revenue || 0) - (last.costs || 0);
-  const lastLabel = parseMonth(last.month);
-
+  const pts = data.map((d, i) => ({
+    x: N === 1 ? 250 : (i / (N - 1)) * 490 + 5,
+    y: 85 - (d.revenue / maxRev) * 75,
+    revenue: d.revenue,
+  }));
+  const area = `M${pts[0].x},90 L${pts[0].x},${pts[0].y} ${pts.slice(1).map(p=>`L${p.x},${p.y}`).join(' ')} L${pts[pts.length-1].x},90 Z`;
+  const line = `M${pts[0].x},${pts[0].y} ${pts.slice(1).map(p=>`L${p.x},${p.y}`).join(' ')}`;
+  const last = data[data.length-1];
+  const net = (last.revenue||0)-(last.costs||0);
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-        <div style={{ fontSize: 11, color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif', width: 36 }}>{fShort(maxRev)}</div>
-        <div style={{ flex: 1 }} />
-      </div>
       <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', width: 36, paddingRight: 4 }}>
-          {[maxRev, Math.round(maxRev / 2), 0].map((v, i) => (
-            <div key={i} style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif', textAlign: 'right' }}>{fShort(v)}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+          width: 36, paddingRight: 4, paddingTop: 2, paddingBottom: 2 }}>
+          {[maxRev, Math.round(maxRev/2), 0].map((v,i) => (
+            <div key={i} style={{ fontSize: 10, color: '#9CA3AF', textAlign: 'right',
+              fontFamily: 'DM Sans, sans-serif' }}>{fShort(v)}</div>
           ))}
         </div>
-        <div style={{ position: 'relative', flex: 1, height: 100 }}>
-          <svg viewBox="0 0 500 100" preserveAspectRatio="none" style={{ width: '100%', height: 100 }}>
+        <div style={{ flex: 1, height: 90 }}>
+          <svg viewBox="0 0 500 90" preserveAspectRatio="none" style={{ width: '100%', height: 90 }}>
             <defs>
-              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={NAVY} stopOpacity="0.18" />
+              <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={NAVY} stopOpacity="0.2" />
                 <stop offset="100%" stopColor={NAVY} stopOpacity="0.02" />
               </linearGradient>
             </defs>
-            <path d={areaPath} fill="url(#areaGrad)" />
-            <path d={linePath} fill="none" stroke={NAVY} strokeWidth="2" />
-            {pts.map((p, i) => (
+            <path d={area} fill="url(#rg)" />
+            <path d={line} fill="none" stroke={NAVY} strokeWidth="2.5" />
+            {pts.map((p,i) => (
               <circle key={i} cx={p.x} cy={p.y} r="4" fill={WHITE} stroke={NAVY} strokeWidth="2" />
             ))}
           </svg>
         </div>
       </div>
-      <div style={{ display: 'flex', marginLeft: 40 }}>
-        {data.map((d, i) => (
-          <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 11, color: '#6B7280', fontFamily: 'DM Sans, sans-serif' }}>
-            {parseMonth(d.month)}
-          </div>
+      <div style={{ display: 'flex', marginLeft: 36, marginTop: 4 }}>
+        {data.map((d,i) => (
+          <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 11,
+            color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif' }}>{parseMonth(d.month)}</div>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         {[
-          { label: `Revenue ${lastLabel}`, val: f$(last.revenue), color: NAVY },
-          { label: `Costs ${lastLabel}`, val: f$(last.costs), color: '#6B7280' },
-          { label: `Net ${lastLabel}`, val: f$(net), color: net >= 0 ? '#059669' : '#DC2626' },
-        ].map((chip, i) => (
-          <div key={i} style={{ background: CREAM, borderRadius: 8, padding: '5px 10px', fontSize: 12, fontFamily: 'DM Sans, sans-serif' }}>
-            <span style={{ color: '#9CA3AF' }}>{chip.label}: </span>
-            <span style={{ color: chip.color, fontWeight: 600 }}>{chip.val}</span>
+          { label: `Rev ${parseMonth(last.month)}`, val: f$(last.revenue), color: NAVY },
+          { label: `Costs`,                          val: f$(last.costs),   color: '#6B7280' },
+          { label: `Net`,                            val: f$(net),           color: net >= 0 ? '#059669' : '#DC2626' },
+        ].map((c,i) => (
+          <div key={i} style={{ background: CREAM, borderRadius: 6, padding: '4px 10px',
+            fontSize: 12, fontFamily: 'DM Sans, sans-serif', border: `1px solid ${BORDER}` }}>
+            <span style={{ color: '#9CA3AF' }}>{c.label}: </span>
+            <span style={{ color: c.color, fontWeight: 600 }}>{c.val}</span>
           </div>
         ))}
       </div>
@@ -170,11 +134,12 @@ function RevenueChart({ data }) {
   );
 }
 
-export default function OwnerHomeScr({ profile, onOpenJob, setPendingAction }) {
+// ── Main screen ───────────────────────────────────────────────────────────────
+export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, setPendingAction }) {
+  const mob = isMob();
   const [dash, setDash] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
-  const wide = window.innerWidth >= 900;
 
   const firstName = profile?.full_name?.split(' ')[0] || 'there';
 
@@ -186,135 +151,246 @@ export default function OwnerHomeScr({ profile, onOpenJob, setPendingAction }) {
   }, [profile?.tenant_id]);
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: '#9CA3AF', fontSize: 13, fontFamily: 'DM Sans, sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: NAVY, display: 'flex', alignItems: 'center',
+      justifyContent: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 13,
+      fontFamily: 'DM Sans, sans-serif' }}>
       Loading dashboard…
     </div>
   );
   if (err) return (
-    <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px 16px', borderRadius: 8, fontSize: 13, margin: 16 }}>{err}</div>
+    <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px 16px',
+      borderRadius: 8, fontSize: 13, margin: 16 }}>{err}</div>
   );
 
-  const kpis = dash?.kpis || {};
-  const monthlyRevenue = dash?.monthlyRevenue || [];
+  const kpis       = dash?.kpis || {};
+  const revenue    = dash?.monthlyRevenue || [];
   const activeJobs = dash?.activeJobs || [];
-  const health = dash?.health || {};
-  const ai = dash?.aiInsights || {};
+  const health     = dash?.health || {};
+  const ai         = dash?.aiInsights || {};
+  const displayed  = activeJobs.slice(0, 6);
 
-  const displayedJobs = activeJobs.slice(0, 6);
-  const hasMore = activeJobs.length > 6;
+  const KPI_TILES = [
+    { label: 'PIPELINE VALUE',    value: fShort(kpis.pipelineValue),    sub: null },
+    { label: 'OPEN RECEIVABLES',  value: fShort(kpis.openReceivables),  sub: null },
+    { label: 'GROSS PROFIT MTD',  value: fShort(kpis.grossProfitMtd),   sub: null },
+    { label: 'COLLECTED MTD',     value: fShort(kpis.collectedMtd),
+      sub: kpis.collectedTrend != null
+        ? { text: `${kpis.collectedTrend >= 0 ? '↑' : '↓'} ${Math.abs(kpis.collectedTrend)}% vs prior 30d`,
+            color: kpis.collectedTrend >= 0 ? '#4ADE80' : '#F87171' }
+        : null },
+  ];
 
   return (
-    <div style={{ background: CREAM, minHeight: '100vh', padding: wide ? '24px 32px' : '16px', fontFamily: 'DM Sans, sans-serif' }}>
+    <div style={{ background: CREAM, minHeight: '100vh', fontFamily: 'DM Sans, sans-serif' }}>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 22, color: NAVY }}>{getGreeting()}, {firstName}</span>
-          <span style={{ background: GOLD, color: WHITE, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, letterSpacing: '0.05em' }}>OWNER</span>
+      {/* ── DARK HERO SECTION ─────────────────────────────────────────── */}
+      <div style={{
+        background: `linear-gradient(160deg, #0d2458 0%, ${NAVY} 60%, #071630 100%)`,
+        padding: mob ? '20px 16px 24px' : '28px 32px 32px',
+      }}>
+        {/* Greeting row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: mob ? 20 : 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontFamily: 'DM Serif Display, serif',
+              fontSize: mob ? 22 : 28, color: WHITE, fontWeight: 400 }}>
+              {getGreeting()}, {firstName}
+            </span>
+            <span style={{ background: GOLD, color: NAVY, fontSize: 9, fontWeight: 800,
+              padding: '3px 8px', borderRadius: 20, letterSpacing: '0.08em' }}>OWNER</span>
+          </div>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)',
+            fontFamily: 'DM Sans, sans-serif' }}>{formatToday()}</span>
         </div>
-        <span style={{ fontSize: 13, color: '#6B7280' }}>{formatToday()}</span>
-      </div>
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
-        {(() => {
-          const kv = (n) => wide ? f$(n ?? 0) : fShort(n ?? 0);
-          return (<>
-            <KpiCard label="PIPELINE VALUE" value={kv(kpis.pipelineValue)} wide={wide} />
-            <KpiCard label="OPEN RECEIVABLES" value={kv(kpis.openReceivables)} wide={wide} />
-            <KpiCard label="GROSS PROFIT MTD" value={kv(kpis.grossProfitMtd)} wide={wide} />
-            <KpiCard label="COLLECTED MTD" value={kv(kpis.collectedMtd)} trend={kpis.collectedTrend ?? undefined} wide={wide} />
-          </>);
-        })()}
-      </div>
-
-      <div style={{ display: 'flex', gap: 16, flexDirection: wide ? 'row' : 'column', marginBottom: 20 }}>
-        <div style={{ ...card, flex: wide ? '0 0 60%' : '1 1 auto' }}>
-          <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16, color: NAVY, marginBottom: 16 }}>Revenue (last 6 months)</div>
-          <RevenueChart data={monthlyRevenue} />
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 16, flexDirection: wide ? 'row' : 'column' }}>
-
-        <div style={{ ...card, flex: wide ? '0 0 55%' : '1 1 auto' }}>
-          <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 15, color: NAVY, marginBottom: 14 }}>Active Projects</div>
-          {displayedJobs.length === 0 ? (
-            <div style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>No active projects</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {displayedJobs.map(job => (
-                <div
-                  key={job.id}
-                  onClick={() => onOpenJob && onOpenJob(job.id)}
-                  style={{ cursor: 'pointer', padding: '10px 12px', background: CREAM, borderRadius: 8, border: `1px solid ${BORDER}` }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: NAVY, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {(job.address || '').substring(0, 30)}{(job.address || '').length > 30 ? '…' : ''}
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {job.contract_value > 0 && (
-                        <span style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>{f$(job.contract_value)}</span>
-                      )}
-                      <StatusPill status={job.status} />
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, height: 4, background: '#E5E7EB', borderRadius: 2, overflow: 'hidden' }}>
-                      <div style={{ width: `${job.phase_pct_complete || 0}%`, height: '100%', background: NAVY, borderRadius: 2 }} />
-                    </div>
-                    <span style={{ fontSize: 11, color: '#9CA3AF', whiteSpace: 'nowrap' }}>{job.phase_pct_complete || 0}% complete</span>
-                  </div>
-                </div>
-              ))}
-              {hasMore && (
-                <div style={{ textAlign: 'right', fontSize: 12, color: GOLD, fontWeight: 600, cursor: 'pointer', marginTop: 4 }}>View all →</div>
+        {/* KPI tiles on dark */}
+        <div style={{ display: 'flex', gap: 10, flexWrap: mob ? 'wrap' : 'nowrap' }}>
+          {KPI_TILES.map((k, i) => (
+            <div key={i} style={{
+              flex: mob ? '1 1 calc(50% - 5px)' : '1 1 0',
+              minWidth: 0,
+              background: 'rgba(255,255,255,0.07)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              borderLeft: `3px solid ${GOLD}`,
+              borderRadius: 12,
+              padding: mob ? '12px 14px' : '16px 18px',
+            }}>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)',
+                fontWeight: 600, letterSpacing: '0.08em', marginBottom: 8,
+                fontFamily: 'DM Sans, sans-serif' }}>{k.label}</div>
+              <div style={{ fontSize: mob ? 20 : 26, fontFamily: 'DM Serif Display, serif',
+                color: WHITE, fontWeight: 400, lineHeight: 1 }}>{k.value}</div>
+              {k.sub && (
+                <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600,
+                  color: k.sub.color, fontFamily: 'DM Sans, sans-serif' }}>{k.sub.text}</div>
               )}
             </div>
-          )}
+          ))}
         </div>
+      </div>
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* ── CONTENT SECTION ───────────────────────────────────────────── */}
+      <div style={{ padding: mob ? '16px' : '24px 32px' }}>
+        <div style={{ display: 'flex', gap: 16, flexDirection: mob ? 'column' : 'row' }}>
 
-          <div style={{ ...card }}>
-            <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 15, color: NAVY, marginBottom: 12 }}>
-              <span style={{ color: GOLD, marginRight: 6 }}>✦</span>Aven AI Insights
+          {/* ── Active Projects ──────────────────────────────────────── */}
+          <div style={{ flex: mob ? '1 1 auto' : '0 0 58%',
+            background: WHITE, borderRadius: 14, border: `1px solid ${BORDER}`,
+            boxShadow: '0 2px 12px rgba(10,31,68,0.06)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16, color: NAVY }}>
+                Active Projects
+              </span>
+              <span
+                onClick={() => onNavigate?.('projects')}
+                style={{ fontSize: 12, color: GOLD, fontWeight: 600, cursor: 'pointer' }}>
+                View all →
+              </span>
             </div>
-            {(ai.walkthroughsPending > 0 || ai.jobsBehind > 0) ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {ai.walkthroughsPending > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#D97706', fontSize: 13, fontWeight: 500 }}>
-                    <span>⚠</span>
-                    <span>{ai.walkthroughsPending} walkthrough{ai.walkthroughsPending !== 1 ? 's' : ''} need completion</span>
-                  </div>
-                )}
-                {ai.jobsBehind > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#DC2626', fontSize: 13, fontWeight: 500 }}>
-                    <span>⚠</span>
-                    <span>{ai.jobsBehind} project{ai.jobsBehind !== 1 ? 's' : ''} behind schedule</span>
-                  </div>
-                )}
-              </div>
+            {displayed.length === 0 ? (
+              <div style={{ padding: '32px 20px', textAlign: 'center',
+                color: '#9CA3AF', fontSize: 13 }}>No active projects</div>
             ) : (
-              <div style={{ color: '#059669', fontSize: 13, fontWeight: 500 }}>✓ All clear — no alerts today</div>
+              <div>
+                {displayed.map((job, i) => {
+                  const addr = job.address || '';
+                  const comma = addr.indexOf(',');
+                  const street = comma >= 0 ? addr.substring(0, comma) : addr;
+                  const city   = comma >= 0 ? addr.substring(comma + 1).trim() : '';
+                  return (
+                    <div
+                      key={job.id}
+                      onClick={() => onOpenJob?.(job.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '12px 20px',
+                        borderBottom: i < displayed.length - 1 ? `1px solid ${BORDER}` : 'none',
+                        cursor: 'pointer', transition: 'background 0.12s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = CREAM}
+                      onMouseLeave={e => e.currentTarget.style.background = WHITE}
+                    >
+                      {/* Thumbnail */}
+                      <JobThumb url={job.thumbnail_url} size={44} />
+
+                      {/* Address + progress */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                          justifyContent: 'space-between', marginBottom: 4 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: NAVY,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {street}
+                            </div>
+                            {city && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>{city}</div>}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            {job.contract_value > 0 && (
+                              <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                                {fShort(job.contract_value)}
+                              </span>
+                            )}
+                            <StatusPill status={job.status} />
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ flex: 1, height: 3, background: '#E5E7EB',
+                            borderRadius: 2, overflow: 'hidden' }}>
+                            <div style={{ width: `${job.phase_pct_complete || 0}%`,
+                              height: '100%', background: NAVY, borderRadius: 2 }} />
+                          </div>
+                          <span style={{ fontSize: 11, color: '#9CA3AF',
+                            whiteSpace: 'nowrap' }}>{job.phase_pct_complete || 0}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
-          <div style={{ ...card }}>
-            <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 15, color: NAVY, marginBottom: 14 }}>Company Health</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-              {[
-                { label: 'Active Projects', val: health.activeProjects ?? 0, danger: false },
-                { label: 'New Leads', val: health.newLeads ?? 0, danger: false },
-                { label: 'Jobs Behind', val: health.jobsBehind ?? 0, danger: (health.jobsBehind || 0) > 0 },
-              ].map((chip, i) => (
-                <div key={i} style={{ background: CREAM, borderRadius: 8, padding: '10px 8px', textAlign: 'center', border: `1px solid ${BORDER}` }}>
-                  <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 24, color: chip.danger ? '#DC2626' : NAVY, lineHeight: 1.1 }}>{chip.val}</div>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>{chip.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* ── Right column ─────────────────────────────────────────── */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
+            {/* AI Insights */}
+            <div style={{
+              background: `linear-gradient(135deg, #0d2458 0%, ${NAVY} 100%)`,
+              borderRadius: 14, padding: '16px 18px',
+              boxShadow: '0 2px 16px rgba(10,31,68,0.18)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                <span style={{ fontSize: 16, color: GOLD }}>✦</span>
+                <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 15,
+                  color: WHITE, fontWeight: 400 }}>Aven AI Insights</span>
+              </div>
+              {(ai.walkthroughsPending > 0 || ai.jobsBehind > 0) ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {ai.walkthroughsPending > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                      background: 'rgba(217,119,6,0.15)', borderRadius: 8, padding: '8px 12px',
+                      border: '1px solid rgba(217,119,6,0.3)' }}>
+                      <span style={{ fontSize: 14 }}>⚠</span>
+                      <span style={{ fontSize: 13, color: '#FCD34D', fontWeight: 500 }}>
+                        {ai.walkthroughsPending} walkthrough{ai.walkthroughsPending !== 1 ? 's' : ''} need completion
+                      </span>
+                    </div>
+                  )}
+                  {ai.jobsBehind > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                      background: 'rgba(239,68,68,0.15)', borderRadius: 8, padding: '8px 12px',
+                      border: '1px solid rgba(239,68,68,0.25)' }}>
+                      <span style={{ fontSize: 14 }}>⚠</span>
+                      <span style={{ fontSize: 13, color: '#FCA5A5', fontWeight: 500 }}>
+                        {ai.jobsBehind} project{ai.jobsBehind !== 1 ? 's' : ''} behind schedule
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'rgba(34,197,94,0.12)', borderRadius: 8, padding: '10px 12px' }}>
+                  <span style={{ fontSize: 14 }}>✓</span>
+                  <span style={{ fontSize: 13, color: '#86EFAC', fontWeight: 500 }}>
+                    All clear — no alerts today
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Company Health */}
+            <div style={{ background: WHITE, borderRadius: 14, padding: '16px 18px',
+              border: `1px solid ${BORDER}`, boxShadow: '0 2px 8px rgba(10,31,68,0.05)' }}>
+              <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 15,
+                color: NAVY, marginBottom: 14 }}>Company Health</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {[
+                  { label: 'Active',    val: health.activeProjects ?? 0, danger: false },
+                  { label: 'New Leads', val: health.newLeads ?? 0,       danger: false },
+                  { label: 'Behind',    val: health.jobsBehind ?? 0,     danger: (health.jobsBehind||0) > 0 },
+                ].map((c, i) => (
+                  <div key={i} style={{ background: CREAM, borderRadius: 10, padding: '12px 8px',
+                    textAlign: 'center', border: `1px solid ${BORDER}` }}>
+                    <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 28,
+                      color: c.danger ? '#EF4444' : NAVY, lineHeight: 1 }}>{c.val}</div>
+                    <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 5,
+                      fontFamily: 'DM Sans, sans-serif' }}>{c.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── Revenue chart ─────────────────────────────────────────── */}
+        <div style={{ background: WHITE, borderRadius: 14, padding: '16px 20px',
+          border: `1px solid ${BORDER}`, boxShadow: '0 2px 8px rgba(10,31,68,0.05)',
+          marginTop: 16 }}>
+          <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16,
+            color: NAVY, marginBottom: 14 }}>Revenue (last 6 months)</div>
+          <RevenueChart data={revenue} />
         </div>
       </div>
     </div>

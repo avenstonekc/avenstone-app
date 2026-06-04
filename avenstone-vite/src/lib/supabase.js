@@ -6344,13 +6344,33 @@ export async function sbLoadOwnerDashboard(tenantId) {
   const engineTodos     = engineTodosRes.data || [];
   const walkthroughsPending = engineTodos.filter(t => t.type === 'walkthrough_prep').length;
 
+  // ── Thumbnails for active jobs (first photo per job) ─────────────────────
+  const jobIds = (activeJobsRes.data || []).map(j => j.id);
+  let photoMap = {};
+  if (jobIds.length > 0) {
+    const { data: photos } = await sb
+      .from('photos')
+      .select('job_id, url')
+      .eq('tenant_id', tenantId)
+      .in('job_id', jobIds)
+      .order('created_at', { ascending: true });
+    (photos || []).forEach(p => {
+      if (!photoMap[p.job_id] && p.url) photoMap[p.job_id] = p.url;
+    });
+  }
+
+  const activeJobsWithThumbs = (activeJobsRes.data || []).map(j => ({
+    ...j,
+    thumbnail_url: photoMap[j.id] || null,
+  }));
+
   return {
     ok: true,
     error: null,
     data: {
       kpis: { pipelineValue, openReceivables, collectedMtd, grossProfitMtd, collectedTrend },
       monthlyRevenue,
-      activeJobs: activeJobsRes.data || [],
+      activeJobs: activeJobsWithThumbs,
       health: { activeProjects, newLeads, estimates, jobsBehind },
       aiInsights: { walkthroughsPending, jobsBehind },
     },
