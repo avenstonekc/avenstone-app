@@ -76,13 +76,28 @@ function RevenueChart({ data }) {
   );
   const maxRev = Math.max(...data.map(d => d.revenue), 1);
   const N = data.length;
+  const W = 1000; const H = 120;
   const pts = data.map((d, i) => ({
-    x: N === 1 ? 250 : (i / (N - 1)) * 490 + 5,
-    y: 85 - (d.revenue / maxRev) * 75,
+    x: N === 1 ? W / 2 : (i / (N - 1)) * (W - 10) + 5,
+    y: H - 10 - (d.revenue / maxRev) * (H - 20),
     revenue: d.revenue,
   }));
-  const area = `M${pts[0].x},90 L${pts[0].x},${pts[0].y} ${pts.slice(1).map(p=>`L${p.x},${p.y}`).join(' ')} L${pts[pts.length-1].x},90 Z`;
-  const line = `M${pts[0].x},${pts[0].y} ${pts.slice(1).map(p=>`L${p.x},${p.y}`).join(' ')}`;
+
+  // Smooth bezier curve through points
+  function smoothLine(p) {
+    if (p.length < 2) return `M${p[0].x},${p[0].y}`;
+    let d = `M${p[0].x},${p[0].y}`;
+    for (let i = 0; i < p.length - 1; i++) {
+      const tension = 0.35;
+      const cp1x = p[i].x + (p[i+1].x - p[i].x) * tension;
+      const cp2x = p[i+1].x - (p[i+1].x - p[i].x) * tension;
+      d += ` C${cp1x},${p[i].y} ${cp2x},${p[i+1].y} ${p[i+1].x},${p[i+1].y}`;
+    }
+    return d;
+  }
+
+  const line = smoothLine(pts);
+  const area = `${line} L${pts[pts.length-1].x},${H} L${pts[0].x},${H} Z`;
   const last = data[data.length-1];
   const net = (last.revenue||0)-(last.costs||0);
   return (
@@ -95,18 +110,21 @@ function RevenueChart({ data }) {
               fontFamily: 'DM Sans, sans-serif' }}>{fShort(v)}</div>
           ))}
         </div>
-        <div style={{ flex: 1, height: 90 }}>
-          <svg viewBox="0 0 500 90" preserveAspectRatio="none" style={{ width: '100%', height: 90 }}>
+        <div style={{ flex: 1, height: 120 }}>
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+            style={{ width: '100%', height: 120, display: 'block' }}>
             <defs>
               <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={NAVY} stopOpacity="0.2" />
-                <stop offset="100%" stopColor={NAVY} stopOpacity="0.02" />
+                <stop offset="0%" stopColor={NAVY} stopOpacity="0.15" />
+                <stop offset="100%" stopColor={NAVY} stopOpacity="0.01" />
               </linearGradient>
             </defs>
             <path d={area} fill="url(#rg)" />
-            <path d={line} fill="none" stroke={NAVY} strokeWidth="2.5" />
+            <path d={line} fill="none" stroke={NAVY} strokeWidth="3"
+              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             {pts.map((p,i) => (
-              <circle key={i} cx={p.x} cy={p.y} r="4" fill={WHITE} stroke={NAVY} strokeWidth="2" />
+              <circle key={i} cx={p.x} cy={p.y} r="6" fill={WHITE} stroke={NAVY}
+                strokeWidth="3" vectorEffect="non-scaling-stroke" />
             ))}
           </svg>
         </div>
@@ -325,38 +343,72 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, setPendin
                 <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 15,
                   color: WHITE, fontWeight: 400 }}>Aven AI Insights</span>
               </div>
-              {(ai.walkthroughsPending > 0 || ai.jobsBehind > 0) ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {ai.walkthroughsPending > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10,
-                      background: 'rgba(217,119,6,0.15)', borderRadius: 8, padding: '8px 12px',
-                      border: '1px solid rgba(217,119,6,0.3)' }}>
-                      <span style={{ fontSize: 14 }}>⚠</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Walkthroughs — navigates to To-dos */}
+                {ai.walkthroughsPending > 0 && (
+                  <div onClick={() => onNavigate?.('todos')} style={{ display: 'flex',
+                    alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                    background: 'rgba(217,119,6,0.15)', borderRadius: 8, padding: '9px 12px',
+                    border: '1px solid rgba(217,119,6,0.3)', cursor: 'pointer',
+                    transition: 'background 0.12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(217,119,6,0.25)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(217,119,6,0.15)'}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13 }}>⚠</span>
                       <span style={{ fontSize: 13, color: '#FCD34D', fontWeight: 500 }}>
                         {ai.walkthroughsPending} walkthrough{ai.walkthroughsPending !== 1 ? 's' : ''} need completion
                       </span>
                     </div>
-                  )}
-                  {ai.jobsBehind > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10,
-                      background: 'rgba(239,68,68,0.15)', borderRadius: 8, padding: '8px 12px',
-                      border: '1px solid rgba(239,68,68,0.25)' }}>
-                      <span style={{ fontSize: 14 }}>⚠</span>
+                    <span style={{ color: '#FCD34D', fontSize: 12, opacity: 0.7 }}>→</span>
+                  </div>
+                )}
+                {/* Projects behind — navigates to Projects */}
+                {ai.jobsBehind > 0 && (
+                  <div onClick={() => onNavigate?.('projects')} style={{ display: 'flex',
+                    alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                    background: 'rgba(239,68,68,0.15)', borderRadius: 8, padding: '9px 12px',
+                    border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer',
+                    transition: 'background 0.12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.15)'}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13 }}>⚠</span>
                       <span style={{ fontSize: 13, color: '#FCA5A5', fontWeight: 500 }}>
                         {ai.jobsBehind} project{ai.jobsBehind !== 1 ? 's' : ''} behind schedule
                       </span>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8,
-                  background: 'rgba(34,197,94,0.12)', borderRadius: 8, padding: '10px 12px' }}>
-                  <span style={{ fontSize: 14 }}>✓</span>
-                  <span style={{ fontSize: 13, color: '#86EFAC', fontWeight: 500 }}>
-                    All clear — no alerts today
-                  </span>
-                </div>
-              )}
+                    <span style={{ color: '#FCA5A5', fontSize: 12, opacity: 0.7 }}>→</span>
+                  </div>
+                )}
+                {/* Open to-dos — always shown, navigates to To-dos */}
+                {ai.openTodos > 0 && (
+                  <div onClick={() => onNavigate?.('todos')} style={{ display: 'flex',
+                    alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                    background: 'rgba(201,168,76,0.12)', borderRadius: 8, padding: '9px 12px',
+                    border: '1px solid rgba(201,168,76,0.25)', cursor: 'pointer',
+                    transition: 'background 0.12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(201,168,76,0.22)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(201,168,76,0.12)'}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13 }}>✓</span>
+                      <span style={{ fontSize: 13, color: GOLD, fontWeight: 500 }}>
+                        {ai.openTodos} open to-do{ai.openTodos !== 1 ? 's' : ''} pending
+                      </span>
+                    </div>
+                    <span style={{ color: GOLD, fontSize: 12, opacity: 0.7 }}>→</span>
+                  </div>
+                )}
+                {/* All-clear when nothing */}
+                {!ai.walkthroughsPending && !ai.jobsBehind && !ai.openTodos && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                    background: 'rgba(34,197,94,0.12)', borderRadius: 8, padding: '10px 12px' }}>
+                    <span style={{ fontSize: 14 }}>✓</span>
+                    <span style={{ fontSize: 13, color: '#86EFAC', fontWeight: 500 }}>
+                      All clear — no alerts today
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Company Health */}

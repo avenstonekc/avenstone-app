@@ -6261,6 +6261,7 @@ export async function sbLoadOwnerDashboard(tenantId) {
     behindItemsRes,
     engineTodosRes,
     trendTxnRes,
+    openTodosRes,
   ] = await Promise.all([
     sb.from('jobs').select('id, address, status, contract_value, cost_plus, phase_pct_complete')
       .eq('tenant_id', tenantId).in('status', ['contract', 'in_progress', 'final_touches']),
@@ -6288,6 +6289,9 @@ export async function sbLoadOwnerDashboard(tenantId) {
 
     sb.from('job_transactions').select('direction, amount, status, created_at')
       .eq('tenant_id', tenantId).gte('created_at', sixtyAgo),
+
+    sb.from('todos').select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId).eq('status', 'open'),
   ]);
 
   const errs = [pipelineRes, receivablesRes, mtdTxnRes, revSeriesRes, activeJobsRes,
@@ -6372,7 +6376,7 @@ export async function sbLoadOwnerDashboard(tenantId) {
       monthlyRevenue,
       activeJobs: activeJobsWithThumbs,
       health: { activeProjects, newLeads, estimates, jobsBehind },
-      aiInsights: { walkthroughsPending, jobsBehind },
+      aiInsights: { walkthroughsPending, jobsBehind, openTodos: openTodosRes.count ?? 0 },
     },
   };
 }
