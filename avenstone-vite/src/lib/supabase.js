@@ -6357,6 +6357,72 @@ export async function sbLoadOwnerDashboard(tenantId) {
   };
 }
 
+// ── Projects List (ROLE_DASHBOARDS_ARC) ─────────────────────────────────────
+// Loads all jobs for tenant with enriched fields for the Projects list view.
+// Returns { ok, error, data: Job[] } where each job has:
+//   open_todos (count), thumbnail_url (first photo or null), pm_name (string or null)
+export async function sbLoadProjectsList(tenantId) {
+  if (!tenantId) return { ok: false, error: 'tenantId required', data: null };
+  try {
+    const [jobsRes, todosRes] = await Promise.all([
+      sb.from('jobs')
+        .select('id, address, status, contract_value, phase_pct_complete, created_at, assigned_pm, assigned_rep, cost_plus, co_total')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false }),
+      sb.from('todos')
+        .select('job_id')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'open')
+        .not('job_id', 'is', null),
+    ]);
+    if (jobsRes.error) return { ok: false, error: jobsRes.error.message, data: null };
+
+    const jobs = jobsRes.data || [];
+    const jobIds = jobs.map(j => j.id);
+
+    // Open todo counts per job
+    const todoMap = {};
+    (todosRes.data || []).forEach(t => {
+      todoMap[t.job_id] = (todoMap[t.job_id] || 0) + 1;
+    });
+
+    // First photo per job (job-photos bucket is public — url is already full URL)
+    let photoMap = {};
+    if (jobIds.length > 0) {
+      const { data: photos } = await sb
+        .from('photos')
+        .select('job_id, url')
+        .eq('tenant_id', tenantId)
+        .in('job_id', jobIds)
+        .order('created_at', { ascending: true });
+      (photos || []).forEach(p => {
+        if (!photoMap[p.job_id] && p.url) photoMap[p.job_id] = p.url;
+      });
+    }
+
+    // PM names from profiles
+    const pmIds = [...new Set(jobs.map(j => j.assigned_pm).filter(Boolean))];
+    let pmMap = {};
+    if (pmIds.length > 0) {
+      const { data: pms } = await sb.from('profiles').select('id, full_name').in('id', pmIds);
+      (pms || []).forEach(pm => { pmMap[pm.id] = pm.full_name; });
+    }
+
+    return {
+      ok: true,
+      error: null,
+      data: jobs.map(j => ({
+        ...j,
+        open_todos: todoMap[j.id] || 0,
+        thumbnail_url: photoMap[j.id] || null,
+        pm_name: j.assigned_pm ? (pmMap[j.assigned_pm] || null) : null,
+      })),
+    };
+  } catch (e) {
+    return { ok: false, error: e.message || String(e), data: null };
+  }
+}
+
 // Returns job_files rows attached to the given walkthrough item IDs.
 export async function sbLoadWalkthroughItemPhotos(itemIds) {
   if (!itemIds?.length) return { ok: true, error: null, data: [] };

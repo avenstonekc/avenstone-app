@@ -38,6 +38,7 @@ import CompanyFilesScr from './components/company-files/CompanyFilesScr';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import PlaybookChecklist from './components/jobs/PlaybookChecklist';
 import OwnerHomeScr from './components/owner/OwnerHomeScr';
+import ProjectsListScr from './components/jobs/ProjectsListScr';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -49,7 +50,7 @@ const COMPLETION_JOB = _params.get('completion');
 const INVITE_TYPE   = new URLSearchParams(window.location.hash.replace('#', '')).get('type');
 
 const VALID_PG = new Set([
-  'home', 'jobs', 'todos', 'calendar', 'leads', 'pipeline', 'reports', 'stats',
+  'home', 'jobs', 'projects', 'todos', 'calendar', 'leads', 'pipeline', 'reports', 'stats',
   'field-agent', 'subs', 'team', 'company-files', 'ai-knowledge', 'ai-pm',
   'sequences', 'owner-portal', 'admin-bugs',
 ]);
@@ -316,7 +317,7 @@ export default function App() {
 
   const NAV = [
     { id: 'home', lb: 'Home', ic: 'grid', sec: 'Main' },
-    { id: 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
+    { id: profile?.role === 'owner' ? 'projects' : 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
     ...(isStaff ? [{ id: 'todos', lb: 'To-dos', ic: 'check', sec: 'Main' }] : []),
     { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
     ...(isOwnerOrRep ? [{ id: 'leads', lb: 'Leads', ic: 'doc', sec: 'Sales' }, { id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }, { id: 'stats', lb: 'Stats', ic: 'box', sec: 'Sales' }] : []),
@@ -419,6 +420,7 @@ export default function App() {
           <ErrorBoundary>
           <div className="pg-wrap">
             {pg === 'home' && profile?.role === 'owner' && <OwnerHomeScr profile={profile} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } }} />}
+            {pg === 'projects' && profile?.role === 'owner' && <ProjectsListScr profile={profile} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} onNewProject={() => { setPg('jobs'); setPendingNew(true); }} />}
             {pg === 'home' && profile?.role !== 'owner' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} onOpenWalkthrough={(jobId, workType, todoId) => setWalkthroughProps({ jobId, workType, todoId })} />}
             {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
@@ -458,7 +460,7 @@ export default function App() {
           <div className="bot-nav">
             {[
               { id: 'home', ic: 'grid', lb: 'Home' },
-              { id: 'jobs', ic: 'home', lb: 'Projects' },
+              { id: profile?.role === 'owner' ? 'projects' : 'jobs', ic: 'home', lb: 'Projects' },
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
                 <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: pg === t.id ? '#C9A84C' : '#9CA3AF' }}>{Ic[t.ic] || Ic.grid}</span>
