@@ -33,7 +33,7 @@ function ErrorBoundary({ back, children }) {
 }
 
 export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPendingJobId, profile, openNew, clearOpenNew, clearSel, pendingAction, clearPendingAction, onJobOpen, onJobClose, pendingTab, clearPendingTab, onTabChange, onAgentDrawPoke, onOpenWalkthrough }) {
-  const [sel, setSel] = useState(null);
+  const [sel, setSel] = useState(() => pendingJobId || null);
   const [showNew, setShowNew] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
   const [newA, setNewA] = useState('');
@@ -73,7 +73,10 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
     sbLoad(repFilter).then(d => { if (d) { setJobs(d); ls('av_j', d); } setLoading(false); });
   }, []);
 
-  useEffect(() => { if (pendingJobId && !loading) { setSel(pendingJobId); clearPendingJobId(); } }, [pendingJobId, loading]);
+  // Clear pendingJobId we consumed in the useState initializer
+  useEffect(() => { if (pendingJobId) clearPendingJobId?.(); }, []);
+  // Handle pendingJobId arriving after mount (e.g. navigating to a different job)
+  useEffect(() => { if (pendingJobId && pendingJobId !== sel) { setSel(pendingJobId); clearPendingJobId?.(); } }, [pendingJobId]);
   useEffect(() => { if (sel) { onJobOpen?.(sel); } else { onJobClose?.(); } }, [sel]);
   useEffect(() => { return () => onJobClose?.(); }, []);
   useEffect(() => { if (openNew) { setShowNew(true); clearOpenNew && clearOpenNew(); } }, [openNew]);
@@ -113,6 +116,26 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   const del = async id => { if (!window.confirm('Delete this job?')) return; const u = jobs.filter(j => j.id !== id); setJobs(u); ls('av_j', u); setSel(null); const r = await sbDel(id); if (!r.ok) { setJobs(jobs); ls('av_j', jobs); alert('Delete failed: ' + (r.error || 'Unknown error')); } };
 
   const selJ = jobs.find(j => j.id === sel);
+  // sel is set but job not in array yet (jobs still loading from DB) — show skeleton
+  // in the detail zone so the old jobs list never flashes during navigation
+  if (sel && !selJ) return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F7F5F0' }}>
+      <div style={{ background: '#0A1F44', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => setSel(null)}>
+          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>← Projects</span>
+        </button>
+      </div>
+      <div style={{ background: 'linear-gradient(160deg,#0d2458,#0A1F44,#071630)', padding: '28px 32px' }}>
+        {[180, 120, 120, 120].map((w, i) => (
+          <div key={i} style={{ height: i === 0 ? 32 : 70, background: 'rgba(255,255,255,0.07)',
+            borderRadius: 12, marginBottom: 10, width: i === 0 ? w : '100%', opacity: 0.6 }} />
+        ))}
+      </div>
+      <div style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: 13 }}>
+        Loading project…
+      </div>
+    </div>
+  );
   if (selJ) return (
     <ErrorBoundary back={() => setSel(null)}>
       <JobDet job={selJ} upd={ch => upd(selJ.id, ch)} del={() => del(selJ.id)} back={() => setSel(null)} profile={profile} pendingAction={pendingAction} clearPendingAction={clearPendingAction} pendingTab={pendingTab} clearPendingTab={clearPendingTab} onTabChange={onTabChange} onAgentDrawPoke={onAgentDrawPoke} onOpenWalkthrough={onOpenWalkthrough} />
