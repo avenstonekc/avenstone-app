@@ -500,6 +500,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Phase strip recommendation honored: uses real `job_phases` rows, NOT a new phase model. 10 phases: Lead/Proposal/Contract/Demo/Rough-ins/Inspections/Drywall/Finishes/Final touches/Complete. Status colors: complete=green, in_progress=gold, delayed=red, not_started=gray.
 - Design note: paid_to_date = SUM job_transactions WHERE direction='in' AND status='paid' (NOT invoiced — only what client actually remitted). Remaining = contract_value - paid_to_date.
 
+**[LOG — 2026-06-04] ROLE_DASHBOARDS_ARC — Leads page redesign (commit f3fd4ac).**
+- Data source corrected: was contacts table (sub directory, no address/value). Now: `jobs WHERE status IN ('lead','proposal')` — client_name, address, lead_status, lead_source, contract_value, scope.
+- `sbLoadLeads(tenantId)` helper added.
+- Desktop table + mobile cards. Status pills: New(blue)/Contacted(amber)/Qualified(green)/Proposal(purple)/Won(indigo)/Lost(red). Filters: status + source (conditional). "All Types" omitted (scope is free text). Avatar: initials placeholder.
+- Click row → opens job detail. "+ New Lead" → new job flow.
+
 **[LOG — 2026-06-04] ROLE_DASHBOARDS_ARC — Projects list page (commit 7536e96).**
 - `ProjectsListScr.jsx` — owner-only, `pg='projects'`. Desktop: sortable table (thumbnail, address/city, status pill, progress bar, contract value, tasks-due badge, PM). Mobile: stacked cards + load-more. Search + status filter + PM filter (only shown when PMs exist) + sort.
 - `sbLoadProjectsList(tenantId)` — 3 parallel queries: jobs, todos (open count per job_id), photos (first per job). PM names joined from profiles. Returns enriched array.
