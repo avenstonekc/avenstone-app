@@ -429,7 +429,7 @@ export default function App() {
             {pg === 'team' && profile?.role === 'owner' && <UserMgmt />}
             {pg === 'reports' && isOwnerOrRep && <Reports jobs={jobs} profile={profile} />}
             {pg === 'calendar' && isStaff && <CalScr jobs={jobs} profile={profile} onSelectJob={id => { setPendingJobId(id); setPg('jobs'); }} />}
-            {pg === 'leads' && isOwnerOrRep && <LeadsScr profile={profile} onConvertToJob={c => { setPg('jobs'); setPendingNew(true); }} />}
+            {pg === 'leads' && isOwnerOrRep && <LeadsScr profile={profile} onConvertToJob={c => { setPg('jobs'); setPendingNew(true); }} onOpenLead={id => { setPendingJobId(id); setPg('jobs'); }} onNewLead={() => { setPg('jobs'); setPendingNew(true); }} />}
             {pg === 'field-agent' && isStaff && <AiFieldAgent profile={profile} currentJob={jobs.find(j => j.id === pendingJobId) || null} />}
             {pg === 'company-files' && isStaff && <CompanyFilesScr profile={profile} />}
             {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}

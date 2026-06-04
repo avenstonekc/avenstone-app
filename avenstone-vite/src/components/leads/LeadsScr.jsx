@@ -1,308 +1,365 @@
-import { useState, useEffect } from 'react';
-import { sbLoadContacts, sbUpdContact, sbDelContact, sbSaveContact, AV_TENANT } from '../../lib/supabase';
+import { useState, useEffect, useMemo } from 'react';
+import { sbLoadLeads } from '../../lib/supabase.js';
+import { isMob } from '../../lib/utils.jsx';
 
-const STATUS_META = {
-  new:       { bg: '#FEF3C7', color: '#92400E', lb: 'New' },
-  contacted: { bg: '#DBEAFE', color: '#1E40AF', lb: 'Contacted' },
-  qualified: { bg: '#D1FAE5', color: '#065F46', lb: 'Qualified' },
-  customer:  { bg: '#E0E7FF', color: '#3730A3', lb: 'Won' },
-  lost:      { bg: '#F3F4F6', color: '#6B7280', lb: 'Lost' },
+const NAVY  = '#0A1F44';
+const GOLD  = '#C9A84C';
+const CREAM = '#F7F5F0';
+const WHITE = '#FFFFFF';
+const BORDER = '#E8E4DC';
+const PAGE_SIZE = 10;
+
+// lead_status → display config
+const STATUS_CFG = {
+  new:       { label: 'New',       bg: '#DBEAFE', color: '#1E40AF' },
+  contacted: { label: 'Contacted', bg: '#FEF3C7', color: '#92400E' },
+  qualified: { label: 'Qualified', bg: '#D1FAE5', color: '#065F46' },
+  customer:  { label: 'Won',       bg: '#E0E7FF', color: '#3730A3' },
+  lost:      { label: 'Lost',      bg: '#FEE2E2', color: '#991B1B' },
+  proposal:  { label: 'Proposal',  bg: '#F3E8FF', color: '#7C3AED' },
 };
 
-export default function LeadsScr({ profile, onConvertToJob }) {
-  const [contacts, setContacts] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [filter, setFilter]     = useState('all');
-  const [selected, setSelected] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [copied, setCopied]     = useState(false);
+const SOURCE_LABELS = {
+  website: 'Website', referral: 'Referral', facebook: 'Facebook',
+  instagram: 'Instagram', google: 'Google Ads', ghl: 'GHL',
+  manual: 'Manual', other: 'Other',
+};
 
-  useEffect(() => { load(); }, []);
+function fShort(n) {
+  const v = Number(n || 0);
+  if (!v) return null;
+  if (v >= 1_000_000) return `$${(v/1_000_000).toFixed(1)}M`;
+  if (v >= 1_000)     return `$${(v/1_000).toFixed(0)}k`;
+  return `$${v}`;
+}
 
-  const load = async () => {
-    setLoading(true);
-    const data = await sbLoadContacts();
-    setContacts(data);
-    setLoading(false);
-  };
+function fDate(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
-  const updateStatus = async (id, status) => {
-    const r = await sbUpdContact(id, { status });
-    if (r.ok) setContacts(p => p.map(c => c.id === id ? { ...c, status } : c));
-  };
+function parseAddr(addr) {
+  if (!addr) return { street: '(No address)', city: '' };
+  const i = addr.indexOf(',');
+  return i >= 0
+    ? { street: addr.substring(0, i).trim(), city: addr.substring(i + 1).trim() }
+    : { street: addr, city: '' };
+}
 
-  const remove = async id => {
-    if (!confirm('Delete this lead?')) return;
-    const r = await sbDelContact(id);
-    if (r.ok) setContacts(p => p.filter(c => c.id !== id));
-  };
+function getInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  return parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : name.substring(0, 2).toUpperCase();
+}
 
-  const profileUrl = `${window.location.origin}?pro=${AV_TENANT}`;
+const AVATAR_COLORS = ['#0A1F44','#1D4ED8','#065F46','#7C3AED','#92400E','#991B1B'];
+function avatarColor(name) { return AVATAR_COLORS[(name?.charCodeAt(0) || 0) % AVATAR_COLORS.length]; }
 
-  const networkCount = contacts.filter(c => c.source === 'network_profile').length;
-  const newCount     = contacts.filter(c => c.status === 'new').length;
-
-  const filtered = contacts.filter(c => {
-    if (filter === 'network') return c.source === 'network_profile';
-    if (filter === 'new')     return c.status === 'new';
-    return true;
-  });
-
-  const displayName = c =>
-    c.first_name && c.last_name ? `${c.first_name} ${c.last_name}` :
-    c.first_name || c.name || 'Unknown';
-
+function StatusPill({ status }) {
+  const s = STATUS_CFG[status] || { label: (status || 'New').replace(/_/g,' '), bg: '#F3F4F6', color: '#6B7280' };
   return (
-    <div style={{ padding: '16px 20px', maxWidth: 920 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44' }}>Leads</div>
-          <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 2 }}>
-            {contacts.length} total · {newCount} new · {networkCount} from network
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => { navigator.clipboard.writeText(profileUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            style={{ fontSize: 12, fontWeight: 600, background: copied ? '#D1FAE5' : '#F7F5F0', color: copied ? '#065F46' : '#6B7280', border: '1px solid #E8E4DC', borderRadius: 6, padding: '8px 14px', cursor: 'pointer' }}>
-            {copied ? '✓ Copied!' : '🔗 Share Profile'}
-          </button>
-          <button className="btn btn-navy" onClick={() => { setSelected(null); setShowModal(true); }}>+ Add Lead</button>
-        </div>
-      </div>
+    <span style={{ background: s.bg, color: s.color, fontSize: 11, fontWeight: 700,
+      padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap',
+      fontFamily: 'DM Sans, sans-serif', letterSpacing: '0.03em' }}>{s.label}</span>
+  );
+}
 
-      {/* Network lead CTA (when no network leads yet) */}
-      {networkCount === 0 && (
-        <div style={{ background: 'linear-gradient(135deg, #0A1F44, #1a3a6e)', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#C9A84C', marginBottom: 4 }}>Start getting network leads</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 }}>
-              Share your public profile link and homeowners who request an estimate appear here automatically.
-            </div>
-          </div>
-          <button
-            onClick={() => { navigator.clipboard.writeText(profileUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            style={{ background: '#C9A84C', color: '#0A1F44', border: 'none', borderRadius: 6, padding: '10px 18px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            {copied ? '✓ Copied!' : 'Copy Profile Link'}
-          </button>
-        </div>
-      )}
-
-      {/* Filter pills */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {[
-          ['all',     `All (${contacts.length})`],
-          ['network', `Network (${networkCount})`],
-          ['new',     `New (${newCount})`],
-        ].map(([v, lb]) => (
-          <button key={v} onClick={() => setFilter(v)} style={{
-            padding: '6px 14px', borderRadius: 20, border: '1px solid',
-            fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background:   filter === v ? '#0A1F44' : 'transparent',
-            color:        filter === v ? '#C9A84C' : '#6B7280',
-            borderColor:  filter === v ? '#0A1F44' : '#E8E4DC',
-          }}>{lb}</button>
-        ))}
-      </div>
-
-      {/* List */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#9CA3AF' }}>Loading…</div>
-      ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60 }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>{filter === 'network' ? '🌐' : '📋'}</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#0A1F44', marginBottom: 6 }}>
-            {filter === 'network' ? 'No network leads yet' : 'No leads'}
-          </div>
-          <div style={{ fontSize: 13, color: '#9CA3AF', maxWidth: 300, margin: '0 auto' }}>
-            {filter === 'network'
-              ? 'Share your profile link and homeowners who request an estimate will appear here.'
-              : 'Add a lead manually or share your public profile link.'}
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {filtered.map(c => {
-            const st        = STATUS_META[c.status] || STATUS_META.new;
-            const isNetwork = c.source === 'network_profile';
-            return (
-              <div key={c.id} style={{
-                background: '#fff',
-                border: `1px solid ${isNetwork ? '#FDE68A' : '#E8E4DC'}`,
-                borderRadius: 8,
-                padding: '14px 16px',
-                position: 'relative',
-                overflow: 'hidden',
-              }}>
-                {isNetwork && (
-                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,#C9A84C,#F59E0B)' }} />
-                )}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                  {/* Avatar */}
-                  <div style={{
-                    width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
-                    background: isNetwork ? '#FEF3C7' : '#F7F5F0',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 17, fontWeight: 700,
-                    color: isNetwork ? '#92400E' : '#0A1F44',
-                  }}>
-                    {displayName(c)[0].toUpperCase()}
-                  </div>
-
-                  {/* Body */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                      <span style={{ fontWeight: 600, color: '#0A1F44', fontSize: 14 }}>{displayName(c)}</span>
-                      {isNetwork && (
-                        <span style={{ fontSize: 10, fontWeight: 700, background: '#FEF3C7', color: '#92400E', padding: '2px 8px', borderRadius: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                          Network Lead
-                        </span>
-                      )}
-                      <span style={{ fontSize: 11, fontWeight: 600, background: st.bg, color: st.color, padding: '2px 8px', borderRadius: 10 }}>
-                        {st.lb}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 12, color: '#6B7280', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                      {c.email && <span>✉ {c.email}</span>}
-                      {c.phone && <span>📞 {c.phone}</span>}
-                    </div>
-                    {c.notes && (
-                      <div style={{ fontSize: 12, color: '#374151', marginTop: 4, fontStyle: 'italic' }}>
-                        "{c.notes.length > 100 ? c.notes.slice(0, 100) + '…' : c.notes}"
-                      </div>
-                    )}
-                    <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
-                      {new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      {c.source && c.source !== 'manual' && ` · via ${c.source.replace(/_/g, ' ')}`}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
-                    <select
-                      value={c.status || 'new'}
-                      onChange={e => updateStatus(c.id, e.target.value)}
-                      style={{ fontSize: 11, border: '1px solid #E8E4DC', borderRadius: 4, padding: '3px 6px', background: '#fff', cursor: 'pointer', color: '#374151' }}>
-                      {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.lb}</option>)}
-                    </select>
-                    <div style={{ display: 'flex', gap: 5 }}>
-                      {onConvertToJob && c.status !== 'lost' && (
-                        <button
-                          onClick={() => onConvertToJob(c)}
-                          title="Convert to project"
-                          style={{ fontSize: 10, fontWeight: 700, background: '#0A1F44', color: '#C9A84C', border: 'none', borderRadius: 4, padding: '4px 8px', cursor: 'pointer' }}>
-                          → Project
-                        </button>
-                      )}
-                      <button
-                        onClick={() => { setSelected(c); setShowModal(true); }}
-                        style={{ fontSize: 10, fontWeight: 600, background: 'transparent', color: '#6B7280', border: '1px solid #E8E4DC', borderRadius: 4, padding: '4px 8px', cursor: 'pointer' }}>
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => remove(c.id)}
-                        style={{ fontSize: 10, fontWeight: 600, background: 'transparent', color: '#EF4444', border: '1px solid #FECACA', borderRadius: 4, padding: '4px 8px', cursor: 'pointer' }}>
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {showModal && (
-        <LeadModal
-          contact={selected}
-          onClose={() => { setShowModal(false); setSelected(null); }}
-          onSaved={load}
-        />
-      )}
+function Avatar({ name, size = 36 }) {
+  const initials = getInitials(name);
+  const bg = avatarColor(name);
+  return (
+    <div style={{ width: size, height: size, borderRadius: '50%', background: bg,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexShrink: 0, color: WHITE, fontSize: size * 0.33,
+      fontWeight: 700, fontFamily: 'DM Sans, sans-serif' }}>
+      {initials}
     </div>
   );
 }
 
-function LeadModal({ contact, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    first_name: contact?.first_name || contact?.name || '',
-    last_name:  contact?.last_name  || '',
-    email:      contact?.email      || '',
-    phone:      contact?.phone      || '',
-    notes:      contact?.notes      || '',
-    status:     contact?.status     || 'new',
-    source:     contact?.source     || 'manual',
-  });
-  const [saving, setSaving] = useState(false);
-  const [saveErr, setSaveErr] = useState('');
-
-  const save = async () => {
-    if (!form.first_name.trim()) return;
-    setSaving(true); setSaveErr('');
-    const r = contact?.id ? await sbUpdContact(contact.id, form) : await sbSaveContact(form);
-    setSaving(false);
-    if (r.ok) { onSaved(); onClose(); }
-    else setSaveErr(r.error || 'Save failed');
-  };
-
+// ── SelectFilter helper ────────────────────────────────────────────────────────
+function SelectFilter({ value, onChange, children }) {
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 17, color: '#0A1F44' }}>
-            {contact ? 'Edit Lead' : 'New Lead'}
-          </div>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18 }}>✕</button>
-        </div>
+    <select value={value} onChange={e => onChange(e.target.value)} style={{
+      fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: NAVY,
+      background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 8,
+      padding: '7px 28px 7px 10px', cursor: 'pointer', outline: 'none',
+      appearance: 'none', WebkitAppearance: 'none',
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236B7280' strokeWidth='1.5' fill='none' strokeLinecap='round'/%3E%3C/svg%3E")`,
+      backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center',
+    }}>{children}</select>
+  );
+}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <div className="fg">
-            <label className="flbl">First Name *</label>
-            <input className="finp" value={form.first_name} onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))} />
-          </div>
-          <div className="fg">
-            <label className="flbl">Last Name</label>
-            <input className="finp" value={form.last_name} onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))} />
-          </div>
-        </div>
-        <div className="fg">
-          <label className="flbl">Email</label>
-          <input className="finp" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
-        </div>
-        <div className="fg">
-          <label className="flbl">Phone</label>
-          <input className="finp" type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="(816) 555-0000" />
-        </div>
-        <div className="fg">
-          <label className="flbl">Notes / Project Interest</label>
-          <textarea className="finp" rows={3} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="What are they looking to build or remodel?" />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <div className="fg">
-            <label className="flbl">Status</label>
-            <select className="finp" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-              {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.lb}</option>)}
-            </select>
-          </div>
-          <div className="fg">
-            <label className="flbl">Source</label>
-            <select className="finp" value={form.source} onChange={e => setForm(p => ({ ...p, source: e.target.value }))}>
-              {['manual','website','referral','facebook','instagram','google','network_profile','ghl','other'].map(s => (
-                <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-              ))}
-            </select>
+// ── Desktop table row ──────────────────────────────────────────────────────────
+function TableRow({ lead, onClick }) {
+  const { street, city } = parseAddr(lead.address);
+  const name = lead.client_name || '(No name)';
+  const effectiveStatus = lead.status === 'proposal' ? 'proposal' : (lead.lead_status || 'new');
+  return (
+    <tr onClick={onClick} style={{ cursor: 'pointer', borderBottom: `1px solid ${BORDER}` }}
+      onMouseEnter={e => e.currentTarget.style.background = CREAM}
+      onMouseLeave={e => e.currentTarget.style.background = WHITE}>
+      <td style={{ padding: '11px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Avatar name={name} size={36} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: NAVY,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{name}</div>
+            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{street}</div>
+            {city && <div style={{ fontSize: 10, color: '#D1D5DB' }}>{city}</div>}
           </div>
         </div>
-        {saveErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 8 }}>{saveErr}</div>}
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button className="btn btn-navy" style={{ flex: 1 }} onClick={save} disabled={saving || !form.first_name.trim()}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+      </td>
+      <td style={{ padding: '11px 14px', fontSize: 13, color: '#374151', maxWidth: 140 }}>
+        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {lead.scope || <span style={{ color: '#D1D5DB' }}>—</span>}
+        </div>
+      </td>
+      <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+        <StatusPill status={effectiveStatus} />
+      </td>
+      <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: NAVY, whiteSpace: 'nowrap' }}>
+        {fShort(lead.contract_value) || <span style={{ color: '#D1D5DB', fontWeight: 400 }}>—</span>}
+      </td>
+      <td style={{ padding: '11px 14px', fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>
+        {lead.lead_source ? (SOURCE_LABELS[lead.lead_source] || lead.lead_source) : <span style={{ color: '#D1D5DB' }}>—</span>}
+      </td>
+      <td style={{ padding: '11px 14px', fontSize: 12, color: '#9CA3AF', whiteSpace: 'nowrap' }}>
+        {fDate(lead.created_at)}
+      </td>
+    </tr>
+  );
+}
+
+// ── Mobile card ───────────────────────────────────────────────────────────────
+function LeadCard({ lead, onClick }) {
+  const { street, city } = parseAddr(lead.address);
+  const name = lead.client_name || '(No name)';
+  const effectiveStatus = lead.status === 'proposal' ? 'proposal' : (lead.lead_status || 'new');
+  return (
+    <div onClick={onClick} style={{
+      background: WHITE, borderRadius: 12, border: `1px solid ${BORDER}`,
+      boxShadow: '0 1px 4px rgba(10,31,68,0.05)', padding: '12px 14px',
+      display: 'flex', gap: 12, cursor: 'pointer', marginBottom: 10,
+    }}>
+      <Avatar name={name} size={40} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: NAVY,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>{street}</div>
+            {city && <div style={{ fontSize: 10, color: '#D1D5DB' }}>{city}</div>}
+          </div>
+          <StatusPill status={effectiveStatus} />
+        </div>
+        {lead.scope && (
+          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>{lead.scope}</div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+          <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+            {lead.lead_source ? (SOURCE_LABELS[lead.lead_source] || lead.lead_source) : '—'} · {fDate(lead.created_at)}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>
+            {fShort(lead.contract_value) || <span style={{ color: '#D1D5DB', fontWeight: 400, fontSize: 11 }}>No value</span>}
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+export default function LeadsScr({ profile, onConvertToJob, onOpenLead, onNewLead }) {
+  const mob = isMob();
+  const [leads, setLeads]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [err, setErr]           = useState(null);
+  const [search, setSearch]     = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterSource, setFilterSource] = useState('all');
+  const [sort, setSort]         = useState('newest');
+  const [page, setPage]         = useState(1);
+  const [mobileShown, setMobileShown] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    if (!profile?.tenant_id) return;
+    sbLoadLeads(profile.tenant_id).then(r => {
+      if (r.ok) setLeads(r.data || []);
+      else setErr(r.error);
+      setLoading(false);
+    });
+  }, [profile?.tenant_id]);
+
+  // Unique sources for filter
+  const sourceOptions = useMemo(() =>
+    [...new Set(leads.map(l => l.lead_source).filter(Boolean))].sort(),
+    [leads]
+  );
+
+  // Filter + sort
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    let out = leads.filter(l => {
+      if (q && !(l.client_name || '').toLowerCase().includes(q) && !(l.address || '').toLowerCase().includes(q)) return false;
+      if (filterStatus !== 'all') {
+        const eff = l.status === 'proposal' ? 'proposal' : (l.lead_status || 'new');
+        if (eff !== filterStatus) return false;
+      }
+      if (filterSource !== 'all' && l.lead_source !== filterSource) return false;
+      return true;
+    });
+    if (sort === 'oldest') out = [...out].sort((a, b) => a.created_at?.localeCompare(b.created_at));
+    else if (sort === 'value') out = [...out].sort((a, b) => (b.contract_value || 0) - (a.contract_value || 0));
+    return out;
+  }, [leads, search, filterStatus, filterSource, sort]);
+
+  useEffect(() => { setPage(1); setMobileShown(PAGE_SIZE); }, [search, filterStatus, filterSource, sort]);
+
+  const totalPages  = Math.ceil(filtered.length / PAGE_SIZE);
+  const desktopRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const mobileCards = filtered.slice(0, mobileShown);
+
+  const handleOpen = id => { onOpenLead?.(id); };
+
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+      minHeight: 200, color: '#9CA3AF', fontSize: 13, fontFamily: 'DM Sans, sans-serif' }}>
+      Loading leads…
+    </div>
+  );
+  if (err) return (
+    <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px 16px',
+      borderRadius: 8, fontSize: 13, margin: 16 }}>{err}</div>
+  );
+
+  return (
+    <div style={{ background: CREAM, minHeight: '100vh', padding: mob ? '16px' : '24px 32px',
+      fontFamily: 'DM Sans, sans-serif' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: mob ? 'flex-start' : 'center',
+        justifyContent: 'space-between', marginBottom: 20, gap: 12,
+        flexDirection: mob ? 'column' : 'row' }}>
+        <div>
+          <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: mob ? 22 : 26, color: NAVY }}>
+            Leads
+          </div>
+          <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 3 }}>
+            {filtered.length} of {leads.length} lead{leads.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <button className="btn btn-navy" onClick={onNewLead || onConvertToJob}
+          style={{ alignSelf: mob ? 'stretch' : 'auto' }}>
+          + New Lead
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <input type="text" placeholder="Search leads…" value={search}
+          onChange={e => setSearch(e.target.value)} className="finp"
+          style={{ flex: '1 1 160px', minWidth: 130, fontSize: 13, padding: '7px 12px' }} />
+        <SelectFilter value={filterStatus} onChange={setFilterStatus}>
+          <option value="all">All Statuses</option>
+          <option value="new">New</option>
+          <option value="contacted">Contacted</option>
+          <option value="qualified">Qualified</option>
+          <option value="proposal">Proposal</option>
+          <option value="customer">Won</option>
+          <option value="lost">Lost</option>
+        </SelectFilter>
+        {sourceOptions.length > 0 && (
+          <SelectFilter value={filterSource} onChange={setFilterSource}>
+            <option value="all">All Sources</option>
+            {sourceOptions.map(s => <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>)}
+          </SelectFilter>
+        )}
+        <SelectFilter value={sort} onChange={setSort}>
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="value">Highest Value</option>
+        </SelectFilter>
+      </div>
+
+      {filtered.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '48px 16px', color: '#9CA3AF', fontSize: 14 }}>
+          {leads.length === 0 ? 'No leads yet — tap "+ New Lead" to add one.' : 'No leads match your filters.'}
+        </div>
+      )}
+
+      {/* ── Mobile cards ── */}
+      {mob && filtered.length > 0 && (
+        <>
+          {mobileCards.map(lead => (
+            <LeadCard key={lead.id} lead={lead} onClick={() => handleOpen(lead.id)} />
+          ))}
+          {mobileShown < filtered.length && (
+            <button onClick={() => setMobileShown(n => n + PAGE_SIZE)} style={{
+              width: '100%', padding: 12, background: WHITE, border: `1px solid ${BORDER}`,
+              borderRadius: 10, fontSize: 13, color: NAVY, fontWeight: 600, cursor: 'pointer', marginTop: 4,
+            }}>Load more ({filtered.length - mobileShown} remaining)</button>
+          )}
+        </>
+      )}
+
+      {/* ── Desktop table ── */}
+      {!mob && filtered.length > 0 && (
+        <>
+          <div style={{ background: WHITE, borderRadius: 14, border: `1px solid ${BORDER}`,
+            boxShadow: '0 2px 12px rgba(10,31,68,0.06)', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: CREAM, borderBottom: `2px solid ${BORDER}` }}>
+                  {['Lead', 'Project Type', 'Status', 'Est. Value', 'Source', 'Date'].map((h, i) => (
+                    <th key={i} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11,
+                      fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.08em',
+                      fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {desktopRows.map(lead => (
+                  <TableRow key={lead.id} lead={lead} onClick={() => handleOpen(lead.id)} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
+              <span style={{ fontSize: 13, color: '#9CA3AF' }}>
+                Showing {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE, filtered.length)} of {filtered.length} leads
+              </span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button disabled={page===1} onClick={() => setPage(p=>p-1)} style={{
+                  padding: '6px 12px', background: WHITE, border: `1px solid ${BORDER}`,
+                  borderRadius: 6, fontSize: 13, cursor: page===1 ? 'not-allowed' : 'pointer',
+                  color: page===1 ? '#D1D5DB' : NAVY }}>← Prev</button>
+                {Array.from({length: totalPages}, (_,i) => i+1).slice(
+                  Math.max(0, page-3), Math.min(totalPages, page+2)
+                ).map(p => (
+                  <button key={p} onClick={() => setPage(p)} style={{
+                    width: 32, height: 32, background: p===page ? NAVY : WHITE,
+                    border: `1px solid ${p===page ? NAVY : BORDER}`, borderRadius: 6,
+                    fontSize: 13, cursor: 'pointer',
+                    color: p===page ? WHITE : NAVY, fontWeight: p===page ? 700 : 400 }}>{p}</button>
+                ))}
+                <button disabled={page===totalPages} onClick={() => setPage(p=>p+1)} style={{
+                  padding: '6px 12px', background: WHITE, border: `1px solid ${BORDER}`,
+                  borderRadius: 6, fontSize: 13,
+                  cursor: page===totalPages ? 'not-allowed' : 'pointer',
+                  color: page===totalPages ? '#D1D5DB' : NAVY }}>Next →</button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

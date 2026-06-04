@@ -1752,6 +1752,19 @@ export const sbSaveCommission = async (id, pct, dollar) => {
 export const CONTACT_STATUSES = ['new','contacted','qualified','customer','lost'];
 export const CONTACT_SOURCES = ['manual','website','referral','facebook','instagram','google','ghl','other'];
 
+// ── Leads list — queries jobs with status lead/proposal (ROLE_DASHBOARDS_ARC) ─
+export async function sbLoadLeads(tenantId) {
+  if (!tenantId) return { ok: false, error: 'tenantId required', data: null };
+  const { data, error } = await sb
+    .from('jobs')
+    .select('id, address, client_name, status, lead_status, lead_source, contract_value, scope, created_at')
+    .eq('tenant_id', tenantId)
+    .in('status', ['lead', 'proposal'])
+    .order('created_at', { ascending: false });
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || [] };
+}
+
 export const sbLoadContacts = async () => {
   const { data } = await sb.from('contacts').select('*').eq('tenant_id', AV_TENANT).order('created_at', { ascending: false });
   return data || [];
