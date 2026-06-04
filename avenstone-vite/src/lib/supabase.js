@@ -8,6 +8,7 @@ import { getTemplateItems } from './siteVisitTemplates.js';
 import { captureTradeActualsForJob } from './tradeActuals.js';
 import { normalizeFloorPlan } from './floorPlan/normalize.js';
 import { markupRateForCategory, normalizeCategoryKey, DEFAULT_CATEGORY_CONFIG } from './markupConfig.js';
+import { canonicalizeTrade } from './tradeUtils.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -2538,7 +2539,7 @@ export const sbCreateScheduleItem = async (payload) => {
       scheduled_time:      payload.scheduled_time      || null,
       scheduled_end_date:  payload.scheduled_end_date  || null,
       assigned_sub_id:     payload.assigned_sub_id     || null,
-      trade:               payload.trade               || null,
+      trade:               payload.trade ? canonicalizeTrade(payload.trade) : null,
     };
     const { data, error } = await sb
       .from('schedule_items')
@@ -2548,6 +2549,11 @@ export const sbCreateScheduleItem = async (payload) => {
     if (error) throw error;
     if (payload.type === 'sub_start') {
       await derivePhaseStatus(payload.job_id, AV_TENANT).catch(() => {});
+      // B1: sync walkthrough fire_at now that this sub_start has a date
+      if (data?.trade && data?.scheduled_date) {
+        sbSyncWalkthroughFireAt(data.job_id, data.trade, data.scheduled_date)
+          .catch(err => console.warn('[walkthrough] create fire_at sync failed:', err?.message));
+      }
     }
     return { ok: true, error: null, data };
   } catch (e) {
@@ -2579,7 +2585,7 @@ export const sbUpdateScheduleItem = async (id, patch) => {
       scheduled_time:     patch.scheduled_time     !== undefined ? (patch.scheduled_time     || null) : undefined,
       scheduled_end_date: patch.scheduled_end_date !== undefined ? (patch.scheduled_end_date || null) : undefined,
       assigned_sub_id:    patch.assigned_sub_id    !== undefined ? (patch.assigned_sub_id    || null) : undefined,
-      trade:              patch.trade              !== undefined ? (patch.trade              || null) : undefined,
+      trade:              patch.trade              !== undefined ? (patch.trade ? canonicalizeTrade(patch.trade) : null) : undefined,
       phase_id:           patch.phase_id           !== undefined ? (patch.phase_id           || null) : undefined,
     };
     // strip undefined keys so we don't accidentally null un-patched columns
@@ -2618,6 +2624,12 @@ export const sbUpdateScheduleItem = async (id, patch) => {
       sbCascadeScheduleChange(id, 'rescheduled').catch(err =>
         console.warn('[cascade] sbUpdateScheduleItem cascade failed:', err?.message)
       );
+    }
+    // B1: sync walkthrough fire_at when a sub_start's scheduled_date is set or changed
+    if (type === 'sub_start' && data?.trade && data?.scheduled_date &&
+        patch.scheduled_date !== undefined && patch.scheduled_date !== prevRow?.scheduled_date) {
+      sbSyncWalkthroughFireAt(jobId, data.trade, data.scheduled_date)
+        .catch(err => console.warn('[walkthrough] update fire_at sync failed:', err?.message));
     }
     return { ok: true, error: null, data, prevRow: prevRow || null };
   } catch (e) {
@@ -2799,6 +2811,34 @@ export async function sbMarkScheduleItemFinished(id, finishDate = null) {
   }
 }
 
+// ─── Schedule-lock walkthrough sync (ANTI_SURPRISE_ENGINE_ARC Phase 2.1) ─────
+
+/**
+ * Syncs a walkthrough_prep scheduled_action's fire_at to scheduledDate - 1 day.
+ * Called when a sub_start schedule item's date is set or changed.
+ * Only updates status='scheduled' rows (not-yet-fired). No-op if no row matches.
+ * Failures are logged but never block the caller — always call fire-and-forget.
+ */
+export async function sbSyncWalkthroughFireAt(jobId, trade, scheduledDate) {
+  if (!jobId || !trade || !scheduledDate) return { ok: false, error: 'jobId, trade, scheduledDate required' };
+  const canonTrade = canonicalizeTrade(trade);
+  const ruleKey = `walkthrough_prep::${canonTrade}`;
+  // Compute fire_at the same way as the generator: midnight UTC one day before start
+  const d = new Date(scheduledDate + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  const fireAt = d.toISOString();
+  const { data, error } = await sb
+    .from('scheduled_actions')
+    .update({ fire_at: fireAt })
+    .eq('related_job_id', jobId)
+    .eq('kind', 'walkthrough_prep')
+    .eq('rule_key', ruleKey)
+    .eq('status', 'scheduled')
+    .select('id, fire_at');
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, error: null, data: data || [] };
+}
+
 // ─── Cascade Engine — SCHEDULING_ARC slice 6 ─────────────────────────────────
 
 // ISO date helpers (module-private)
@@ -2882,7 +2922,7 @@ export async function sbCascadeScheduleChange(sourceItemId, reason = 'predecesso
         // Find items with currentId in their predecessor_ids
         const { data: downstream, error: dsErr } = await sb
           .from('schedule_items')
-          .select('id, job_id, title, scheduled_date, scheduled_end_date, predecessor_ids, lag_days, duration_days, assigned_sub_id, actual_finish_date, status')
+          .select('id, job_id, title, type, trade, scheduled_date, scheduled_end_date, predecessor_ids, lag_days, duration_days, assigned_sub_id, actual_finish_date, status')
           .contains('predecessor_ids', [currentId])
           .neq('status', 'cancelled');
         if (dsErr) return { ok: false, error: `query downstream of ${currentId}: ${dsErr.message}` };
@@ -2970,6 +3010,12 @@ export async function sbCascadeScheduleChange(sourceItemId, reason = 'predecesso
           } catch (_notifErr) { /* best effort */ }
 
           affected.push({ id: item.id, title: item.title, old_date: oldDate, new_date: newDate, days_shifted: daysShifted, notified });
+
+          // B2: sync walkthrough fire_at if cascaded item is a sub_start with a trade
+          if (item.type === 'sub_start' && item.trade && newDate) {
+            sbSyncWalkthroughFireAt(item.job_id, item.trade, newDate)
+              .catch(err => console.warn('[walkthrough] cascade fire_at sync failed:', err?.message));
+          }
 
           // Recurse: this item is now a new source for its own descendants
           const itemFinish = newEnd || newDate;

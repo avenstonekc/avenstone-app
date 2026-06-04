@@ -433,7 +433,7 @@ function EventModal({ item, jobs, onClose, onSaved }) {
 
         <div className="fg">
           <label className="flbl">Trade (optional — enables lead-time check)</label>
-          <input className="finp" value={form.trade} onChange={e => setField('trade', e.target.value)} placeholder="e.g. Tile-Floor" />
+          <input className="finp" value={form.trade} onChange={e => setField('trade', e.target.value)} placeholder="e.g. Tile - Floor" />
         </div>
 
         {!isNew && (
