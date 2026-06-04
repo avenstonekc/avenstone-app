@@ -12,10 +12,15 @@ const CORS = {
 };
 
 // ── Trade string normalization — mirrors src/lib/tradeUtils.js ───────────────
-// Edge fn can't import frontend code; inline the same regex so the canonical
-// form is enforced on any trade string the agent writes to schedule_items.
+// Edge fn can't import frontend code; inline the same two-pass logic so the
+// canonical form is enforced on any trade string the agent writes to schedule_items.
+// KEEP IN SYNC with TRADE_ALIASES in src/lib/tradeUtils.js.
+const _TRADE_ALIASES: Record<string, string> = {
+  "Garage doors": "Garage door",
+};
 function canonicalizeTrade(trade: string): string {
-  return trade.replace(/-([A-Z])/g, " - $1").replace(/\s{2,}/g, " ").trim();
+  const normalized = trade.replace(/-([A-Z])/g, " - $1").replace(/\s{2,}/g, " ").trim();
+  return _TRADE_ALIASES[normalized] ?? normalized;
 }
 
 // ── Canonical phase model — mirrored from src/lib/phaseGates.js ──────────────
