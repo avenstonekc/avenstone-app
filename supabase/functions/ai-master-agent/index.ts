@@ -11,6 +11,13 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
+// ── Trade string normalization — mirrors src/lib/tradeUtils.js ───────────────
+// Edge fn can't import frontend code; inline the same regex so the canonical
+// form is enforced on any trade string the agent writes to schedule_items.
+function canonicalizeTrade(trade: string): string {
+  return trade.replace(/-([A-Z])/g, " - $1").replace(/\s{2,}/g, " ").trim();
+}
+
 // ── Canonical phase model — mirrored from src/lib/phaseGates.js ──────────────
 // IMPORTANT: this gate logic is a port of avenstone-vite/src/lib/phaseGates.js.
 // Both copies must stay in sync. Same comment in ai-field-agent/index.ts.
@@ -1367,7 +1374,7 @@ async function executeTool(
         if (input.scheduled_end_date) insertPayload.scheduled_end_date = String(input.scheduled_end_date);
         if (input.scheduled_time) insertPayload.scheduled_time = String(input.scheduled_time);
         if (typeof input.duration_days === "number") insertPayload.duration_days = input.duration_days;
-        if (input.trade) insertPayload.trade = String(input.trade);
+        if (input.trade) insertPayload.trade = canonicalizeTrade(String(input.trade));
         if (phaseId) insertPayload.phase_id = phaseId;
         if (input.notes) insertPayload.notes = String(input.notes);
         if (assignedSubId) insertPayload.assigned_sub_id = assignedSubId;
