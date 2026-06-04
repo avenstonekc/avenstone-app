@@ -117,9 +117,6 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
   return (
     <div>
       {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && (
-        <PhaseAdvanceCard jobId={job.id} jobStatus={job.status} />
-      )}
-      {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && (
         <JobTodosBlock job={job} profile={profile} />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -277,6 +274,11 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         ); })}
       </div>
 
+      {['owner', 'sales_rep', 'project_manager'].includes(profile?.role) && (
+        <div style={{ marginTop: 16 }}>
+          <PhaseAdvanceCard jobId={job.id} jobStatus={job.status} />
+        </div>
+      )}
       <button className="btn btn-danger" style={{ width: '100%', marginTop: 8, padding: 11 }} onClick={del}>Delete Job</button>
       {showContract && <ContractModal job={job} onClose={() => setShowContract(false)} onSent={(email, name) => { upd({ client_email: email, client_name: name }); setShowContract(false); setContractSentBanner(email); setTimeout(() => setContractSentBanner(''), 4000); }} proposalDoc={proposalDoc} />}
       {showCompletion && <CompletionSignoffModal job={job} onClose={() => setShowCompletion(false)} onSigned={() => setShowCompletion(false)} />}

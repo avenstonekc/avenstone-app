@@ -283,7 +283,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         {/* Phase 5 — expired company doc banner (staff only, client-visible files) */}
         <CompanyFileExpirationBanner profile={profile} />
-        {job.status === 'complete' && canRunAi && (
+        {tab === 'info' && job.status === 'complete' && canRunAi && (
           <div style={{ background: 'linear-gradient(135deg,#0A1F44,#1a3a6e)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#C9A84C', marginBottom: 2 }}>🌟 Request a Review</div>
@@ -298,8 +298,8 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             </button>
           </div>
         )}
-        {/* Completion Package banner */}
-        {job.status === 'complete' && canRunAi && (() => {
+        {/* Completion Package banner — Info tab only */}
+        {tab === 'info' && job.status === 'complete' && canRunAi && (() => {
           const beforePhoto = (job.photos || []).find(p => p.label === 'before');
           const afterPhoto  = (job.photos || []).find(p => p.label === 'after');
           const hasPackage  = beforePhoto && afterPhoto;
