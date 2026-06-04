@@ -377,7 +377,7 @@ export default function App() {
             <img src={logo} alt="Avenstone" style={{ width: 44, height: 44, objectFit: 'contain', cursor: 'pointer' }} onClick={() => setPg('home')} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 8, color: '#C9A84C', letterSpacing: 4, textTransform: 'uppercase' }}>Avenstone Group</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', letterSpacing: 0.5 }}>Field Estimator</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', letterSpacing: 0.5 }}>{NAV.find(n => n.id === pg)?.lb || 'Home'}</div>
             </div>
             <button onClick={() => setShowNotif(true)} style={{ position: 'relative', background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', padding: 4, display: 'flex', alignItems: 'center' }}>
               <span style={{ width: 20, height: 20, display: 'flex' }}>{Ic.bell}</span>

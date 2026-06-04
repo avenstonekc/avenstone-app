@@ -1170,8 +1170,8 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         }
       `}</style>
 
-      {/* Floating Trigger Button */}
-      <div
+      {/* Floating Trigger Button — desktop only; mobile uses Aven AI FAB in bot-nav */}
+      {!isMob && <div
         style={{
           position: 'fixed',
           bottom: 90,
@@ -1222,7 +1222,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         >
           ✦
         </button>
-      </div>
+      </div>}
 
       {/* Overlay backdrop on mobile */}
       {isMob && open && (

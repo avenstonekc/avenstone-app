@@ -67,16 +67,16 @@ function StatusPill({ status }) {
   );
 }
 
-function KpiCard({ label, value, trend }) {
+function KpiCard({ label, value, trend, wide }) {
   return (
     <div style={{
       ...card,
       borderLeft: `3px solid ${GOLD}`,
-      minWidth: 150,
-      flex: '1 0 150px',
+      flex: wide ? '1 0 150px' : '1 1 calc(50% - 6px)',
+      minWidth: 0,
     }}>
       <div style={{ fontSize: 11, color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 28, fontFamily: 'DM Serif Display, serif', color: NAVY, fontWeight: 400, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: wide ? 28 : 18, fontFamily: 'DM Serif Display, serif', color: NAVY, fontWeight: 400, lineHeight: 1.1 }}>{value}</div>
       {trend !== undefined && trend !== null && (
         <div style={{
           marginTop: 6,
@@ -214,11 +214,16 @@ export default function OwnerHomeScr({ profile, onOpenJob, setPendingAction }) {
         <span style={{ fontSize: 13, color: '#6B7280' }}>{formatToday()}</span>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, overflowX: wide ? 'visible' : 'auto', flexWrap: wide ? 'wrap' : 'nowrap', marginBottom: 20, paddingBottom: wide ? 0 : 4 }}>
-        <KpiCard label="PIPELINE VALUE" value={f$(kpis.pipelineValue)} />
-        <KpiCard label="OPEN RECEIVABLES" value={f$(kpis.openReceivables)} />
-        <KpiCard label="GROSS PROFIT MTD" value={f$(kpis.grossProfitMtd)} />
-        <KpiCard label="COLLECTED MTD" value={f$(kpis.collectedMtd)} trend={kpis.collectedTrend ?? undefined} />
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        {(() => {
+          const kv = (n) => wide ? f$(n ?? 0) : fShort(n ?? 0);
+          return (<>
+            <KpiCard label="PIPELINE VALUE" value={kv(kpis.pipelineValue)} wide={wide} />
+            <KpiCard label="OPEN RECEIVABLES" value={kv(kpis.openReceivables)} wide={wide} />
+            <KpiCard label="GROSS PROFIT MTD" value={kv(kpis.grossProfitMtd)} wide={wide} />
+            <KpiCard label="COLLECTED MTD" value={kv(kpis.collectedMtd)} trend={kpis.collectedTrend ?? undefined} wide={wide} />
+          </>);
+        })()}
       </div>
 
       <div style={{ display: 'flex', gap: 16, flexDirection: wide ? 'row' : 'column', marginBottom: 20 }}>
