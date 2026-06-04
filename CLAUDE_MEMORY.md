@@ -482,6 +482,21 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 **Column drift fix slice (2026-05-28)**
 - `column-drift-fix-2026-05-28 · 2026-05-28` — Fixed all open read-drift findings from 2026-05-27 scan. (1) supabase.js: `assigned_pm_id` → `assigned_pm` at 3 sites in notification fan-out (comment + select projection + 2 recipient collectors). PM was silently excluded from all schedule item notifications. (2) field-opus-db-query/index.ts: fixed `recent_bug_reports` (dropped nonexistent `title`, `classification`; using real cols), fixed `recent_auto_fix_attempts` (replaced all 7 stale col names with real schema: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`; order by `created_at`), stubbed `failed_intents_last_24h` (table never existed — returns `{ rows: [], note }` instead of crashing). Open drift after this slice: 1 (quote_requests in disabled ai-pm-nightly — deferred).
 
+**[LOG — 2026-06-04] ANTI_SURPRISE_ENGINE_ARC Phase 2.2 Slice 1 — trade_dependencies table + seed + cascade fix (commits 53bedaf, fe0b1cc, 9929b11).**
+- **B1 — table shipped:** `trade_dependencies` (id UUID PK, tenant_id UUID nullable, predecessor_trade TEXT, successor_trade TEXT, lag_days INT DEFAULT 0, notes TEXT, created_at). UNIQUE NULLS NOT DISTINCT (tenant_id, predecessor_trade, successor_trade). 4 policies (select: platform+tenant, insert/update/delete: own-tenant owner/PM only). 3 indexes (successor lookup, predecessor lookup, tenant). Verified via apply_migration.js: all 8 objects PASS.
+- **B2 — seed shipped (PLATFORM DEFAULTS, tenant_id=NULL):** 20 generic GC rules. Decision: platform defaults — Demo→Framing / Framing→roughs(3) / roughs→Insulation(3) / Insulation→Drywall+Tile(3) / Drywall-Hang→Tape+Patch(2) / Tape+Patch→Paint+LVP+Cabinets(5) / Tile→Plumbing-Finish(2) / Paint→Electrical-Finish are universal residential GC order, not Avenstone-specific.
+- **B3 — cascade bug fixed:** `sbCascadeScheduleChange` downstream BFS query was missing `.eq('job_id', src.job_id)`. UUID collision is negligible today but cross-job contamination was a latent data-integrity bug. Fixed at supabase.js:2924.
+- **B4 — no auto-wire hook:** sbCreateScheduleItem unchanged. Hook is Slice 2.
+- **Validation Pass (read-only, 20 seed rules vs 17 live items on 7b44611a):** 3 MATCH, 1 PARTIAL, 7 DIVERGE, 6 SKIP (NULL trade).
+  - MATCH (3): Electrical-Rough-in, Plumbing-Rough-in, HVAC-Install — Framing→{roughs} rules fire correctly.
+  - PARTIAL (1): Framing — computed returns all 3 Demo items (Demo→Framing); hand-wired has only the LAST Demo item (last-of-trade problem; hook must pick last-scheduled item of predecessor trade).
+  - DIVERGE root causes (NOT seed bugs — all explained by test-job data gaps):
+    1. Insulation item (13) has trade=NULL → Insulation→Drywall-Hang and Insulation→Tile-Floor rules can't resolve (no 'Insulation' trade items on job).
+    2. "Drywall tape and mud" (item 14) has trade='Drywall - Hang' instead of canonical 'Drywall - Tape / mud / texture' → Drywall-Tape→Paint rule can't fire.
+    3. "LVP flooring install" (item 16) has trade='Tile - Floor' instead of 'Flooring - LVP' → Tile-Floor resolves to Insulation (not LVP chain).
+    4. Intra-Demo sequencing (items 4,5) and milestone→trade deps (Permit→Demo) are not modeled by trade_deps by design.
+  - **VERDICT: Seed rules are CORRECT. Divergences are test-job trade-string data gaps. Hook (Slice 2) is safe to build. Known hook requirement: pick last-scheduled predecessor-trade item, not all.**
+
 ---
 
 ## Symptom index addition
