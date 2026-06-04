@@ -6233,6 +6233,130 @@ export async function sbLoadJobWalkthroughs(jobId) {
   return { ok: true, error: null, data: walkthroughs };
 }
 
+// ── Owner Home Dashboard rollup (ROLE_DASHBOARDS_ARC Phase 1) ────────────────
+//
+// Single call returning the full Owner Home payload — all KPI tiles, monthly
+// revenue series, active jobs, company health counts, and AI insights.
+// Role-parameterized design: tenantId + role scope enforced here; other role
+// variants will add to this function rather than creating parallel helpers.
+// Returns { ok, error, data: { kpis, monthlyRevenue, activeJobs, health, aiInsights } }
+//
+export async function sbLoadOwnerDashboard(tenantId) {
+  if (!tenantId) return { ok: false, error: 'tenantId required', data: null };
+
+  const now     = new Date();
+  const monthStart   = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const thirtyAgo    = new Date(now - 30 * 86400000).toISOString();
+  const sixtyAgo     = new Date(now - 60 * 86400000).toISOString();
+  const sixMonthsAgo = new Date(now - 183 * 86400000).toISOString();
+  const today        = now.toISOString().slice(0, 10);
+
+  const [
+    pipelineRes,
+    receivablesRes,
+    mtdTxnRes,
+    revSeriesRes,
+    activeJobsRes,
+    allJobsRes,
+    behindItemsRes,
+    engineTodosRes,
+    trendTxnRes,
+  ] = await Promise.all([
+    sb.from('jobs').select('id, address, status, contract_value, cost_plus, phase_pct_complete')
+      .eq('tenant_id', tenantId).in('status', ['contract', 'in_progress', 'final_touches']),
+
+    sb.from('invoices').select('total_amount, amount_paid, status, due_date')
+      .eq('tenant_id', tenantId).not('status', 'in', '("paid","void")'),
+
+    sb.from('job_transactions').select('direction, amount, status, type')
+      .eq('tenant_id', tenantId).gte('created_at', monthStart),
+
+    sb.from('job_transactions').select('direction, amount, status, created_at')
+      .eq('tenant_id', tenantId).gte('created_at', sixMonthsAgo),
+
+    sb.from('jobs').select('id, address, status, phase_pct_complete, contract_value, cost_plus, updated_at')
+      .eq('tenant_id', tenantId).in('status', ['contract', 'in_progress', 'final_touches'])
+      .order('updated_at', { ascending: false }).limit(10),
+
+    sb.from('jobs').select('id, status').eq('tenant_id', tenantId),
+
+    sb.from('schedule_items').select('job_id').eq('tenant_id', tenantId)
+      .eq('status', 'scheduled').lt('scheduled_date', today),
+
+    sb.from('todos').select('type').eq('tenant_id', tenantId)
+      .eq('status', 'open').eq('source', 'engine'),
+
+    sb.from('job_transactions').select('direction, amount, status, created_at')
+      .eq('tenant_id', tenantId).gte('created_at', sixtyAgo),
+  ]);
+
+  const errs = [pipelineRes, receivablesRes, mtdTxnRes, revSeriesRes, activeJobsRes,
+    allJobsRes, behindItemsRes, engineTodosRes, trendTxnRes]
+    .map(r => r.error?.message).filter(Boolean);
+  if (errs.length) return { ok: false, error: errs[0], data: null };
+
+  // ── KPIs ─────────────────────────────────────────────────────────────────
+  const pipelineJobs  = pipelineRes.data || [];
+  const pipelineValue = pipelineJobs.reduce((s, j) => s + Number(j.contract_value || 0), 0);
+
+  const invoices      = receivablesRes.data || [];
+  const openReceivables = invoices.reduce((s, inv) =>
+    s + Math.max(0, Number(inv.total_amount || 0) - Number(inv.amount_paid || 0)), 0);
+
+  const mtdTxns      = mtdTxnRes.data || [];
+  const collectedMtd = mtdTxns.filter(t => t.direction === 'in' && t.status === 'paid')
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const costsMtd     = mtdTxns.filter(t => t.direction === 'out')
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const grossProfitMtd = collectedMtd - costsMtd;
+
+  // ── Monthly revenue series ────────────────────────────────────────────────
+  const revMap = {};
+  for (const t of (revSeriesRes.data || [])) {
+    const d   = new Date(t.created_at);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (!revMap[key]) revMap[key] = { month: key, revenue: 0, costs: 0 };
+    if (t.direction === 'in' && t.status === 'paid') revMap[key].revenue += Number(t.amount);
+    if (t.direction === 'out') revMap[key].costs += Number(t.amount);
+  }
+  const monthlyRevenue = Object.values(revMap).sort((a, b) => a.month.localeCompare(b.month));
+
+  // ── 30-day trend (collected only — point-in-time KPIs don't have trend) ──
+  const trendTxns   = trendTxnRes.data || [];
+  const thirtyAgoMs = new Date(now - 30 * 86400000).getTime();
+  const last30 = trendTxns.filter(t => t.direction === 'in' && t.status === 'paid' && new Date(t.created_at) >= thirtyAgoMs)
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const prior30 = trendTxns.filter(t => t.direction === 'in' && t.status === 'paid' && new Date(t.created_at) < thirtyAgoMs)
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const collectedTrend = prior30 > 0 ? Math.round(((last30 - prior30) / prior30) * 100) : null;
+
+  // ── Company health ────────────────────────────────────────────────────────
+  const allJobs      = allJobsRes.data || [];
+  const activeProjects = allJobs.filter(j => ['contract', 'in_progress', 'final_touches'].includes(j.status)).length;
+  const newLeads     = allJobs.filter(j => j.status === 'lead').length;
+  const estimates    = allJobs.filter(j => j.status === 'proposal').length;
+
+  const activeJobIds = new Set(pipelineJobs.map(j => j.id));
+  const behindJobIds = new Set((behindItemsRes.data || []).filter(i => activeJobIds.has(i.job_id)).map(i => i.job_id));
+  const jobsBehind   = behindJobIds.size;
+
+  // ── AI insights ───────────────────────────────────────────────────────────
+  const engineTodos     = engineTodosRes.data || [];
+  const walkthroughsPending = engineTodos.filter(t => t.type === 'walkthrough_prep').length;
+
+  return {
+    ok: true,
+    error: null,
+    data: {
+      kpis: { pipelineValue, openReceivables, collectedMtd, grossProfitMtd, collectedTrend },
+      monthlyRevenue,
+      activeJobs: activeJobsRes.data || [],
+      health: { activeProjects, newLeads, estimates, jobsBehind },
+      aiInsights: { walkthroughsPending, jobsBehind },
+    },
+  };
+}
+
 // Returns job_files rows attached to the given walkthrough item IDs.
 export async function sbLoadWalkthroughItemPhotos(itemIds) {
   if (!itemIds?.length) return { ok: true, error: null, data: [] };
