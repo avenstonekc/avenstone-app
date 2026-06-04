@@ -482,6 +482,12 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 **Column drift fix slice (2026-05-28)**
 - `column-drift-fix-2026-05-28 · 2026-05-28` — Fixed all open read-drift findings from 2026-05-27 scan. (1) supabase.js: `assigned_pm_id` → `assigned_pm` at 3 sites in notification fan-out (comment + select projection + 2 recipient collectors). PM was silently excluded from all schedule item notifications. (2) field-opus-db-query/index.ts: fixed `recent_bug_reports` (dropped nonexistent `title`, `classification`; using real cols), fixed `recent_auto_fix_attempts` (replaced all 7 stale col names with real schema: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`; order by `created_at`), stubbed `failed_intents_last_24h` (table never existed — returns `{ rows: [], note }` instead of crashing). Open drift after this slice: 1 (quote_requests in disabled ai-pm-nightly — deferred).
 
+**[LOG — 2026-06-04] ROLE_DASHBOARDS_ARC — Projects list page (commit 7536e96).**
+- `ProjectsListScr.jsx` — owner-only, `pg='projects'`. Desktop: sortable table (thumbnail, address/city, status pill, progress bar, contract value, tasks-due badge, PM). Mobile: stacked cards + load-more. Search + status filter + PM filter (only shown when PMs exist) + sort.
+- `sbLoadProjectsList(tenantId)` — 3 parallel queries: jobs, todos (open count per job_id), photos (first per job). PM names joined from profiles. Returns enriched array.
+- App.jsx: VALID_PG += 'projects'; owners get `pg='projects'` for Projects nav/bot-nav; `pg='jobs'` stays for detail + non-owner staff; onOpenJob → setPendingJobId + setPg('jobs').
+- Data audit: address (real, parsed at comma), status (real enum), contract_value (real), phase_pct_complete (real column on jobs — direct), open_todos (real COUNT via todos.job_id), thumbnail (real public URL from job-photos bucket, placeholder house for jobs without photos), PM filter (real — shown only when PMs exist), Type filter OMITTED (no backing field).
+
 **[LOG — 2026-06-04] OWNER_HOME_MOBILE_FIX — 3 mobile fixes on OwnerHomeScr (commit 701c056).**
 - KPI cards: `flexWrap: 'wrap'` always (was 'nowrap' on mobile), `flex: '1 1 calc(50% - 6px)'` on mobile → 2-per-row. Hero font 28px→18px on mobile. Values use `fShort` on mobile ($183k) vs full `f$()` on desktop. Numbers never clip. Desktop 4-across unchanged.
 - Mobile header: hardcoded "Field Estimator" → `{NAV.find(n => n.id === pg)?.lb || 'Home'}`. Owner Home now shows "Home".
