@@ -37,6 +37,7 @@ import BugReportsScr from './components/admin/BugReportsScr';
 import CompanyFilesScr from './components/company-files/CompanyFilesScr';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import PlaybookChecklist from './components/jobs/PlaybookChecklist';
+import OwnerHomeScr from './components/owner/OwnerHomeScr';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -417,7 +418,8 @@ export default function App() {
 
           <ErrorBoundary>
           <div className="pg-wrap">
-            {pg === 'home' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} onOpenWalkthrough={(jobId, workType, todoId) => setWalkthroughProps({ jobId, workType, todoId })} />}
+            {pg === 'home' && profile?.role === 'owner' && <OwnerHomeScr profile={profile} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } }} />}
+            {pg === 'home' && profile?.role !== 'owner' && <HomeScr profile={profile} jobs={jobs} setPendingAction={action => { setPendingAction(action); if (action?.kind === 'job_create') setPg('jobs'); else if (action?.jobId) { setPendingJobId(action.jobId); setPg('jobs'); } else if (action?.kind === 'master_agent_tool_call') { } }} onOpenJob={id => { setPendingJobId(id); setPg('jobs'); }} onOpenWalkthrough={(jobId, workType, todoId) => setWalkthroughProps({ jobId, workType, todoId })} />}
             {pg === 'todos' && isStaff && <MyTodosScreen profile={profile} jobs={jobs} />}
             {pg === 'stats' && <DashScr nav={setPg} jobs={jobs} profile={profile} />}
             {pg === 'jobs' && <JobsScr jobs={jobs} setJobs={setJobs} onBack={() => setPg('home')} pendingJobId={pendingJobId} clearPendingJobId={() => setPendingJobId(null)} profile={profile} openNew={pendingNew} clearOpenNew={() => setPendingNew(false)} clearSel={jobsSelClear} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} onJobOpen={(id) => { if (jobs.some(j => j.id === id)) setViewportJobId(id); }} onJobClose={() => setViewportJobId(null)} pendingTab={pendingTab} clearPendingTab={() => setPendingTab(null)} onTabChange={(t) => setViewportTab(t)} onAgentDrawPoke={(data) => setPendingAction({ kind: 'agent_draw_poke', ...data })} onOpenWalkthrough={(jobId, workType, todoId) => setWalkthroughProps({ jobId, workType, todoId })} />}
@@ -457,8 +459,27 @@ export default function App() {
             {[
               { id: 'home', ic: 'grid', lb: 'Home' },
               { id: 'jobs', ic: 'home', lb: 'Projects' },
+            ].map(t => (
+              <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
+                <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: pg === t.id ? '#C9A84C' : '#9CA3AF' }}>{Ic[t.ic] || Ic.grid}</span>
+                <span className="bn-lbl" style={{ color: pg === t.id ? '#C9A84C' : '#9CA3AF' }}>{t.lb}</span>
+              </button>
+            ))}
+            {/* Aven AI center button — opens master agent */}
+            {profile?.role === 'owner' && (
+              <button
+                className="bn-item"
+                onClick={() => setPendingAction({ kind: 'master_agent_tool_call', payload: { user_message: '' } })}
+                style={{ position: 'relative' }}
+              >
+                <span style={{ width: 44, height: 44, borderRadius: '50%', background: '#0A1F44', border: '2px solid #C9A84C', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: -16, boxShadow: '0 2px 12px rgba(10,31,68,0.35)', flexShrink: 0 }}>
+                  <span style={{ fontSize: 18, color: '#C9A84C' }}>✦</span>
+                </span>
+                <span className="bn-lbl" style={{ color: '#C9A84C', fontWeight: 700, fontSize: 9 }}>Aven AI</span>
+              </button>
+            )}
+            {[
               ...(isStaff ? [{ id: 'todos', ic: 'check', lb: 'To-dos' }] : []),
-              ...(isStaff ? [{ id: 'calendar', ic: 'cal', lb: 'Calendar' }] : []),
               ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
