@@ -167,14 +167,16 @@ Deno.serve(async (req) => {
 
           if (existing) continue;
 
-          // ── Determine fire_at ──────────────────────────────────────────
-          // Look for a sub_start or site_visit schedule item for this trade.
-          // If found: fire 1 day before. If not: fire in 1 day (near-term surfacing).
+          // ── Determine fire_at (B3 schedule-lock) ──────────────────────
+          // workType is canonical (from tenant_playbook_items); after trade
+          // normalization, schedule_items.trade values are also canonical.
+          // Use exact match so the walkthrough always points at the real work date.
+          // Falls back to +1 day when no sub_start exists yet (B1 corrects later).
           const { data: schedItem } = await sb
             .from("schedule_items")
             .select("scheduled_date")
             .eq("job_id", job.id)
-            .ilike("trade", `%${workType.split(/[\s\/\-]/)[0]}%`)
+            .eq("trade", workType)
             .in("type", ["sub_start", "site_visit"])
             .neq("status", "cancelled")
             .order("scheduled_date")
