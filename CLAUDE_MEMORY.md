@@ -482,6 +482,11 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 **Column drift fix slice (2026-05-28)**
 - `column-drift-fix-2026-05-28 · 2026-05-28` — Fixed all open read-drift findings from 2026-05-27 scan. (1) supabase.js: `assigned_pm_id` → `assigned_pm` at 3 sites in notification fan-out (comment + select projection + 2 recipient collectors). PM was silently excluded from all schedule item notifications. (2) field-opus-db-query/index.ts: fixed `recent_bug_reports` (dropped nonexistent `title`, `classification`; using real cols), fixed `recent_auto_fix_attempts` (replaced all 7 stale col names with real schema: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`; order by `created_at`), stubbed `failed_intents_last_24h` (table never existed — returns `{ rows: [], note }` instead of crashing). Open drift after this slice: 1 (quote_requests in disabled ai-pm-nightly — deferred).
 
+**[LOG — 2026-06-04] PROJECT_DETAIL_CLEANUP (commit 2062387) — clutter removed, single-scroll flow.**
+- "Request a Review" and "Completion Package" banners: were unconditional (showing on ALL tabs for complete jobs). Now gated to `tab === 'info'` — features preserved, off the main surface.
+- PhaseAdvanceCard: moved from TOP of InfoTab (was first thing visible) to BOTTOM (above Delete button). Feature preserved, out of the way of the clean header flow.
+- Flow is now: navy header → progress % hero → KPI tiles → phase strip → tab bar → clean tab content.
+
 **[LOG — 2026-06-04] ROLE_DASHBOARDS_ARC — PM project detail header (commit 939ace7).**
 - `ProjectDetailHeader.jsx` — inserted between existing dark JobDet header and tab bar for owner/pm/sales_rep roles. Sections: (1) progress % hero (from `jobs.phase_pct_complete`) + bar; (2) 4 KPI tiles (Contract Value, Paid to Date + pct, Remaining Balance, Next Milestone); (3) phase strip (real `job_phases` rows as chips, status-colored); (4) PM contact bar (profiles.phone/email, conditional on assignment). All tabs (InfoTab etc.) UNCHANGED.
 - `sbLoadProjectDetail(jobId, assignedPmId)` — parallel loads: job_phases, job_transactions (paid sum), schedule_items (next milestone), photos (first), PM profile. Returns `{ phases, paid_to_date, next_milestone, thumbnail_url, pm_profile }`.
