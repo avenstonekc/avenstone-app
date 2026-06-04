@@ -1051,6 +1051,26 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - Commits: 9ace569 (migration 1), 2474f29 (migration 2), aa85090 (JS wiring). All pushed.
 - Open: PhaseAdvanceCard override button visual fix (styling only, separate commit 8867825, already shipped). UI for composing a retainage-release draw (isRetainageRelease checkbox) not yet wired — sbComposeDraw accepts it, no UI surface yet.
 
+[LOG - 2026-06-03] ANTI_SURPRISE_ENGINE_ARC_P2_0 — Phase 2.0: Trade vocabulary cleanup (keystone foundation)
+
+- Action: Audited and cleaned trade vocabulary in schedule_items. Extended canonicalizeTrade with TRADE_ALIASES map. Fixed "Garage doors" → "Garage door" (1 row). Zero semantic dupes remain.
+- Files: avenstone-vite/src/lib/tradeUtils.js, supabase/functions/ai-master-agent/index.ts, supabase/migrations/20260604310000_normalize_trade_semantic_dupes.sql
+- Commit: 2fcefaf. Pushed.
+
+AUDIT FINDINGS:
+- Semantic dupes found: exactly 1 — "Garage doors" vs "Garage door". That was the complete set.
+- canonicalizeTrade(P2.1) only handled /-([A-Z])/g expansion. "Garage doors" passed through unchanged (it's a trailing plural, not a hyphen pattern).
+- Non-phase-map trades that are valid: Roofing, Garage door, Tile - Backsplash. These are in trade_taxonomy but have no phase or playbook entry. PMs can schedule sub_starts for them; they just don't participate in derivePhaseStatus or walkthrough matching.
+
+VOCABULARY ARCHITECTURE (locked):
+- trade_taxonomy = controlled vocabulary for ALL valid full-path trade strings (platform-wide, tenant_id=NULL). Full-path = "parent_trade - sub_trade" or bare "parent_trade" for leaf parents.
+- trade_phase_map = controlled vocabulary for PHASE DERIVATION and WALKTHROUGH matching (17 Avenstone rows, 10 primary). schedule_items.trade must match trade_phase_map.trade for engine logic to fire. Does NOT restrict what trades can be scheduled.
+- canonicalizeTrade (tradeUtils.js) = single normalizer. Two-pass: (1) /-([A-Z])/g regex expansion, (2) TRADE_ALIASES lookup. All schedule_items.trade write paths go through it.
+- To add new semantic aliases: TRADE_ALIASES in tradeUtils.js + inline alias in ai-master-agent/index.ts _TRADE_ALIASES (KEEP IN SYNC comment).
+
+BEFORE: Demo(5), Drywall - Hang(4), Electrical - Rough-in(2), Framing(3), Garage door(1), Garage doors(1), HVAC - Install(2), Paint - Interior(1), Plumbing - Rough-in(2), Roofing(1), Tile - Backsplash(1), Tile - Floor(1) — 12 distinct values.
+AFTER:  Demo(5), Drywall - Hang(4), Electrical - Rough-in(2), Framing(3), Garage door(2), HVAC - Install(2), Paint - Interior(1), Plumbing - Rough-in(2), Roofing(1), Tile - Backsplash(1), Tile - Floor(1) — 11 distinct values, 0 dupes.
+
 [LOG - 2026-06-03] ANTI_SURPRISE_ENGINE_ARC_P1 — Phase 1: Knowledge layer + generation + dispatch
 - Action: Shipped the first vertical slice of the Anti-Surprise Engine. tenant_playbook_items (10 Avenstone trade checklists, 89 items with photo_required/must_document flags), anti-surprise-generator edge fn (nightly 3am UTC, resolves trades from estimate_line_items, fuzzy word-prefix match to playbook, writes scheduled_actions walkthrough_prep rows), anti-surprise-dispatcher edge fn (every 15min, fires ripe rows, creates todo+notification for PM), 3 client helpers.
 - Constraint fixes found at build time: scheduled_actions.kind and .source needed walkthrough_prep/anti_surprise_engine added; notifications_type_check was stale — DROPPED (open type system). todos.source uses 'engine'.
