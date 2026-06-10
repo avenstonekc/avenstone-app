@@ -221,48 +221,6 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             )}
           </div>
         )}
-        {(rev > 0 || job.cost_plus) && tab === 'financials' && (job.cost_plus ? (
-          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.08)', marginTop: 10 }}>
-            {/* Quick Actions */}
-            <div style={{ flex: 1, padding: '10px 14px', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
-              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 600, marginBottom: 7 }}>Quick actions</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button onClick={() => { setTab('financials'); setFinancialsAction({ kind: 'compose_draw' }); }} style={{ padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: 'var(--gold-500)', color: 'var(--navy-900)', border: 'none', fontFamily: 'inherit' }}>
-                  Compose Draw
-                </button>
-                <button onClick={() => { setTab('financials'); setFinancialsAction({ kind: 'add_receipt' }); }} style={{ padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: 500, cursor: 'pointer', background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)', fontFamily: 'inherit' }}>
-                  Add Receipt
-                </button>
-                <button onClick={() => { setTab('financials'); setFinancialsAction({ kind: 'log_sub_invoice' }); }} style={{ padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: 500, cursor: 'pointer', background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)', fontFamily: 'inherit' }}>
-                  Log Sub Invoice
-                </button>
-              </div>
-            </div>
-            {/* Activity Pulse */}
-            <div style={{ flex: 1, padding: '10px 14px' }}>
-              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 600, marginBottom: 7 }}>Activity pulse</div>
-              {[
-                { label: 'Last expense',         date: cpPulse?.last_expense_at },
-                { label: 'Last payment',          date: cpPulse?.last_payment_at },
-                { label: 'Last schedule update',  date: cpPulse?.last_schedule_activity_at },
-              ].map(({ label, date }) => {
-                const { text, color } = pulseTone(cpPulse ? date : undefined);
-                return (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, lineHeight: 1.6 }}>
-                    <span style={{ color: 'rgba(255,255,255,0.55)' }}>{label}</span>
-                    <span style={{ fontWeight: 500, color }}>{cpPulse ? text : '—'}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="cbar">
-            <div className="cc"><div className="cc-l">Contract</div><div className="cc-v" style={{ color: '#fff' }}>{f$(cv)}</div></div>
-            {coT > 0 && <div className="cc"><div className="cc-l">COs</div><div className="cc-v" style={{ color: '#f59e0b' }}>+{f$(coT)}</div></div>}
-            {coT > 0 && <div className="cc"><div className="cc-l">Revised</div><div className="cc-v" style={{ color: 'var(--gold-500)' }}>{f$(rev)}</div></div>}
-          </div>
-        ))}
       </div>
 
       {/* Project detail header — KPI strip + phase strip + PM contact (PM/owner roles) */}
