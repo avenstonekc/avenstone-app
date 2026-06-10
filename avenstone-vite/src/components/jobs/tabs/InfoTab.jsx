@@ -26,13 +26,13 @@ function ClientLoginButton({ job }) {
   };
 
   return (
-    <div style={{ gridColumn: '1/-1', background: '#F7F5F0', border: '1px solid #E8E4DC', padding: '12px 14px', marginTop: 4 }}>
+    <div style={{ gridColumn: '1/-1', background: 'var(--bg)', border: '1px solid #E8E4DC', padding: '12px 14px', marginTop: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>Client Portal Access</div>
-          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--navy-900)' }}>Client Portal Access</div>
+          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>
             {done
-              ? <span>Login active — <strong style={{ color: '#0A1F44' }}>{job.client_email}</strong> can sign in now</span>
+              ? <span>Login active — <strong style={{ color: 'var(--navy-900)' }}>{job.client_email}</strong> can sign in now</span>
               : `Set a password so ${job.client_name || job.client_email} can log into their portal`}
           </div>
         </div>
@@ -58,12 +58,12 @@ function ClientLoginButton({ job }) {
         </div>
       )}
       {done && !open && (
-        <div style={{ fontSize: 11, color: '#22c55e', marginTop: 6, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 11, color: 'var(--green-dot)', marginTop: 6, lineHeight: 1.5 }}>
           ✓ Login active. Give {job.client_name || 'the client'} their credentials:<br />
           <strong>Email:</strong> {job.client_email} · <strong>Password:</strong> the one you just set
         </div>
       )}
-      {err && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{err}</div>}
+      {err && <div style={{ fontSize: 11, color: 'var(--red-text)', marginTop: 6 }}>{err}</div>}
     </div>
   );
 }
@@ -75,11 +75,11 @@ function StatusLinkButton({ token }) {
     navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); }).catch(() => {});
   };
   return (
-    <div style={{ gridColumn: '1/-1', background: '#F7F5F0', border: '1px solid #E8E4DC', padding: '12px 14px', marginTop: 4 }}>
+    <div style={{ gridColumn: '1/-1', background: 'var(--bg)', border: '1px solid #E8E4DC', padding: '12px 14px', marginTop: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>Realtor Status Link</div>
-          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--navy-900)' }}>Realtor Status Link</div>
+          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</div>
         </div>
         <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px', flexShrink: 0, whiteSpace: 'nowrap' }} onClick={copy}>
           {copied ? '✓ Copied!' : 'Copy Link'}
@@ -120,7 +120,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         <JobTodosBlock job={job} profile={profile} />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Job Details</div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Job Details</div>
         <button className="btn btn-ghost" style={{ padding: '6px 14px', fontSize: 11 }} onClick={() => setEditInf(!editInf)}>{editInf ? 'Cancel' : 'Edit'}</button>
       </div>
       {editInf ? (
@@ -143,7 +143,7 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
           {[['Client', job.client_name], ['Phone', job.client_phone], ['Email', job.client_email], ['Spouse', job.spouse_name], ['Spouse Ph', job.spouse_phone], ['Spouse Em', job.spouse_email], ['Rep', job.assigned_rep], ['Subs', job.assigned_subs], ['Sqft', job.sqft], ['Target', job.target_completion], ['Created', fD(job.created)], ['Notify', { portal: 'Portal Only', email: 'Email', sms: 'SMS', all: 'Email + SMS' }[job.client_notify || 'portal']], ['Realtor', job.referring_realtor_name], ['Realtor Ph', job.referring_realtor_phone], ['Realtor Em', job.referring_realtor_email]].filter(([, v]) => v).map(([lb, v]) => (
             <div className="ii" key={lb}><div className="ii-l">{lb}</div><div className="ii-v">{v}</div></div>
           ))}
-          {!job.client_name && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '20px', color: '#9CA3AF', fontSize: 13, background: '#fff', border: '1px solid #E8E4DC' }}>Tap Edit to add client and job details</div>}
+          {!job.client_name && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '20px', color: 'var(--text-subtle)', fontSize: 13, background: '#fff', border: '1px solid #E8E4DC' }}>Tap Edit to add client and job details</div>}
         </div>
       )}
 
@@ -151,11 +151,11 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginTop: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Contract</div>
-              {job.contract_signed && <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600, marginTop: 3 }}>✓ Signed by client</div>}
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Contract</div>
+              {job.contract_signed && <div style={{ fontSize: 12, color: 'var(--green-dot)', fontWeight: 600, marginTop: 3 }}>✓ Signed by client</div>}
               {!job.contract_signed && job.client_email && <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 3 }}>{proposalDoc ? `Using: ${proposalDoc.name}` : 'Awaiting signature'}</div>}
-              {!job.client_email && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 3 }}>Add client email to send contract</div>}
-              {contractSentBanner && <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600, marginTop: 3 }}>✓ Contract sent to {contractSentBanner}</div>}
+              {!job.client_email && <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 3 }}>Add client email to send contract</div>}
+              {contractSentBanner && <div style={{ fontSize: 12, color: 'var(--green-dot)', fontWeight: 600, marginTop: 3 }}>✓ Contract sent to {contractSentBanner}</div>}
             </div>
             {job.client_email && !job.contract_signed && (
               <button className="btn btn-navy" style={{ fontSize: 12, padding: '7px 16px' }} onClick={() => setShowContract(true)}>Send Contract</button>
@@ -178,8 +178,8 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginTop: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Completion Sign-off</div>
-              <div style={{ fontSize: 12, color: '#6B7280', marginTop: 3 }}>Have the client sign off that work is complete</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Completion Sign-off</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>Have the client sign off that work is complete</div>
             </div>
             {job.client_email && <button className="btn btn-gold" style={{ fontSize: 12, padding: '7px 16px' }} onClick={() => setShowCompletion(true)}>Send Sign-off</button>}
           </div>
@@ -192,14 +192,14 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1 }}>
               <input type="checkbox" checked={inf.cost_plus || false} onChange={e => { const v = e.target.checked; setInf(p => ({ ...p, cost_plus: v })); upd({ cost_plus: v }); }} style={{ width: 16, height: 16 }} />
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>Cost-plus job</div>
-                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>Client sees financials in their portal</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)' }}>Cost-plus job</div>
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 1 }}>Client sees financials in their portal</div>
               </div>
             </label>
             {inf.cost_plus && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Labor markup %</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Labor markup %</div>
                   <input
                     type="number"
                     step="0.1"
@@ -208,10 +208,10 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
                     onChange={e => { const v = Number(e.target.value || 0); setInf(p => ({ ...p, labor_markup_pct: v })); upd({ labor_markup_pct: v }); }}
                     style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
                   />
-                  <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>%</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Material markup %</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Material markup %</div>
                   <input
                     type="number"
                     step="0.1"
@@ -220,10 +220,10 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
                     onChange={e => { const v = Number(e.target.value || 0); setInf(p => ({ ...p, material_markup_pct: v })); upd({ material_markup_pct: v }); }}
                     style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
                   />
-                  <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>%</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Legacy markup % (deprecated — use labor + material above)</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Legacy markup % (deprecated — use labor + material above)</div>
                   <input
                     type="number"
                     min="0"
@@ -232,10 +232,10 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
                     onChange={e => { const v = Number(e.target.value || 0); setInf(p => ({ ...p, default_markup_pct: v })); upd({ default_markup_pct: v }); }}
                     style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
                   />
-                  <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>%</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>PM Fee ($)</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>PM Fee ($)</div>
                   <input type="number" step="100" min="0"
                     value={inf.pm_fee ?? 0}
                     onChange={e => { const v = Number(e.target.value || 0); setInf(p => ({ ...p, pm_fee: v })); upd({ pm_fee: v }); }}
@@ -243,13 +243,13 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
                   />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Retainage (%)</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Retainage (%)</div>
                   <input type="number" step="0.5" min="0" max="50"
                     value={inf.retainage_pct ?? 0}
                     onChange={e => { const v = Math.min(50, Math.max(0, Number(e.target.value || 0))); setInf(p => ({ ...p, retainage_pct: v })); upd({ retainage_pct: v }); }}
                     style={{ width: 64, border: '1px solid #E8E4DC', padding: '5px 8px', fontSize: 13, fontFamily: 'inherit', textAlign: 'center' }}
                   />
-                  <div style={{ fontSize: 12, color: '#6B7280' }}>%</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>%</div>
                 </div>
               </div>
             )}
@@ -259,16 +259,16 @@ export default function InfoTab({ job, upd, del, profile, inf, setInf, editInf, 
 
       <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Assigned Subs</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Assigned Subs</div>
           <button className="btn btn-ghost" style={{ padding: '5px 12px', fontSize: 11 }} onClick={() => setTab && setTab('subs')}>Manage in Subs tab →</button>
         </div>
-        {!jobSubs.length && <div style={{ textAlign: 'center', padding: '16px 0', color: '#9CA3AF', fontSize: 13 }}>No subs assigned yet</div>}
+        {!jobSubs.length && <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-subtle)', fontSize: 13 }}>No subs assigned yet</div>}
         {jobSubs.map(js => { const p = js.sub || {}; return (
           <div key={js.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #F3F0E8' }}>
-            <div style={{ width: 32, height: 32, background: '#0A1F4422', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#0A1F44', flexShrink: 0 }}>{(p.full_name || '?')[0].toUpperCase()}</div>
+            <div style={{ width: 32, height: 32, background: '#0A1F4422', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--navy-900)', flexShrink: 0 }}>{(p.full_name || '?')[0].toUpperCase()}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{p.full_name || p.email}</div>
-              {js.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{js.trade}</div>}
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)' }}>{p.full_name || p.email}</div>
+              {js.trade && <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{js.trade}</div>}
             </div>
           </div>
         ); })}

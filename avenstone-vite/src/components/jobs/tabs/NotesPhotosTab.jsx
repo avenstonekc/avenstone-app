@@ -23,7 +23,7 @@ export function NotesTab({ job, upd, profile }) {
   return (
     <div>
       <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 16 }}>
-        <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 10 }}>Posting as <strong style={{ color: '#0A1F44' }}>{na}</strong></div>
+        <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 10 }}>Posting as <strong style={{ color: 'var(--navy-900)' }}>{na}</strong></div>
         <textarea className="finp fta" value={nt} onChange={e => setNt(e.target.value)} placeholder="Site conditions, phase updates, sub notes..." rows={3} style={{ marginBottom: 10 }} />
         <button className={`btn ${nt.trim() ? 'btn-navy' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={addNote} disabled={saving || !nt.trim()}>{saving ? 'Saving...' : 'Add Note'}</button>
       </div>
@@ -31,10 +31,10 @@ export function NotesTab({ job, upd, profile }) {
       {(job.activity || []).map((n, i) => (
         <div key={n.id || i} className="note-item">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#0A1F44', textTransform: 'uppercase', letterSpacing: 1 }}>{n.author}</span>
-            <span style={{ fontSize: 11, color: '#9CA3AF' }}>{fDT(n.created_at)}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--navy-900)', textTransform: 'uppercase', letterSpacing: 1 }}>{n.author}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{fDT(n.created_at)}</span>
           </div>
-          <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7 }}>{n.content}</div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>{n.content}</div>
         </div>
       ))}
     </div>
@@ -121,7 +121,7 @@ export function PhotosTab({ job, upd }) {
       {!(job.photos || []).length && !upl && <div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Tap Add Photos to get started</div></div>}
       {/* Before/After hint */}
       {(job.photos || []).length > 0 && (
-        <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ background: 'rgba(0,0,0,0.08)', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>B</span>
           <span style={{ background: '#C9A84C22', color: '#C9A84C', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>A</span>
           <span>Tap B/A on a photo to label it for the completion package</span>
@@ -139,7 +139,7 @@ export function PhotosTab({ job, upd }) {
               <div style={{ position: 'absolute', top: 6, left: 6, background: 'rgba(0,0,0,0.75)', color: '#fff', fontSize: 9, fontWeight: 800, letterSpacing: 1.5, padding: '3px 8px', borderRadius: 20, textTransform: 'uppercase', pointerEvents: 'none' }}>Before</div>
             )}
             {p.label === 'after' && (
-              <div style={{ position: 'absolute', top: 6, left: 6, background: '#C9A84C', color: '#0A1F44', fontSize: 9, fontWeight: 800, letterSpacing: 1.5, padding: '3px 8px', borderRadius: 20, textTransform: 'uppercase', pointerEvents: 'none' }}>After</div>
+              <div style={{ position: 'absolute', top: 6, left: 6, background: '#C9A84C', color: 'var(--navy-900)', fontSize: 9, fontWeight: 800, letterSpacing: 1.5, padding: '3px 8px', borderRadius: 20, textTransform: 'uppercase', pointerEvents: 'none' }}>After</div>
             )}
             {/* Label buttons */}
             {p.type !== 'video' && (
@@ -151,7 +151,7 @@ export function PhotosTab({ job, upd }) {
                 </button>
                 <button
                   onClick={() => labelPhoto(p.id, p.label === 'after' ? null : 'after')}
-                  style={{ background: p.label === 'after' ? '#C9A84C' : 'rgba(0,0,0,0.5)', border: p.label === 'after' ? '1.5px solid #C9A84C' : '1px solid rgba(255,255,255,0.35)', color: p.label === 'after' ? '#0A1F44' : '#fff', fontSize: 9, fontWeight: 800, padding: '3px 7px', borderRadius: 4, cursor: 'pointer', letterSpacing: 0.5 }}>
+                  style={{ background: p.label === 'after' ? '#C9A84C' : 'rgba(0,0,0,0.5)', border: p.label === 'after' ? '1.5px solid #C9A84C' : '1px solid rgba(255,255,255,0.35)', color: p.label === 'after' ? 'var(--navy-900)' : '#fff', fontSize: 9, fontWeight: 800, padding: '3px 7px', borderRadius: 4, cursor: 'pointer', letterSpacing: 0.5 }}>
                   A
                 </button>
               </div>

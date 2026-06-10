@@ -8,11 +8,11 @@ import EngagementActionModal from '../../modals/EngagementActionModal';
 const ENG_STATUS_META = {
   invited:       { label: 'Invited',    color: '#c084fc', bg: '#3b0764' },
   bid_submitted: { label: 'Bid In',     color: '#60a5fa', bg: '#1e3a5f' },
-  active:        { label: 'Active',     color: '#22c55e', bg: '#052e16' },
-  completed:     { label: 'Completed',  color: '#9ca3af', bg: '#1f2937' },
-  declined:      { label: 'Declined',   color: '#ef4444', bg: '#450a0a' },
-  withdrawn:     { label: 'Withdrawn',  color: '#ef4444', bg: '#450a0a' },
-  removed:       { label: 'Removed',    color: '#ef4444', bg: '#450a0a' },
+  active:        { label: 'Active',     color: 'var(--green-dot)', bg: '#052e16' },
+  completed:     { label: 'Completed',  color: 'var(--text-subtle)', bg: '#1f2937' },
+  declined:      { label: 'Declined',   color: 'var(--red-text)', bg: '#450a0a' },
+  withdrawn:     { label: 'Withdrawn',  color: 'var(--red-text)', bg: '#450a0a' },
+  removed:       { label: 'Removed',    color: 'var(--red-text)', bg: '#450a0a' },
 };
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ export default function SubsTab({ job, profile, setTab }) {
   return (
     <div style={{ padding: '0 0 80px', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-      {toast && <div style={{ background: '#D1FAE5', color: '#065F46', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{toast}</div>}
+      {toast && <div style={{ background: 'var(--green-bg)', color: '#065F46', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{toast}</div>}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={() => setEngModalOpen(true)} style={{ background: '#1f2937', border: '1px solid #374151', color: '#f9fafb', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 12, height: 12 }}>{Ic.plus}</span>Add Sub
@@ -45,7 +45,7 @@ export default function SubsTab({ job, profile, setTab }) {
       <section>
         <h3 style={{ color: '#f9fafb', fontSize: 15, fontWeight: 700, margin: '0 0 12px' }}>Engagements</h3>
         {engagements.length === 0 ? (
-          <p style={{ color: '#6b7280', fontSize: 13 }}>No engagements yet. Click 'Add Sub' to create one.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No engagements yet. Click 'Add Sub' to create one.</p>
         ) : (() => {
           const awaiting  = engagements.filter(e => ['invited', 'bid_submitted'].includes(e.status));
           const active    = engagements.filter(e => e.status === 'active');
@@ -54,9 +54,9 @@ export default function SubsTab({ job, profile, setTab }) {
 
           const rowStyle = { background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '12px 16px', marginBottom: 8 };
           const groupLbl = (label, count) => (
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
               {label}
-              <span style={{ background: '#1f2937', color: '#9ca3af', borderRadius: 10, padding: '1px 7px', fontSize: 10 }}>{count}</span>
+              <span style={{ background: '#1f2937', color: 'var(--text-subtle)', borderRadius: 10, padding: '1px 7px', fontSize: 10 }}>{count}</span>
             </div>
           );
 
@@ -67,7 +67,7 @@ export default function SubsTab({ job, profile, setTab }) {
             const btnStyle = (variant) => ({
               background: variant === 'primary' ? '#1e3a5f' : 'transparent',
               border: `1px solid ${variant === 'primary' ? '#3b82f6' : '#374151'}`,
-              color: variant === 'primary' ? '#60a5fa' : '#9ca3af',
+              color: variant === 'primary' ? '#60a5fa' : 'var(--text-subtle)',
               borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
             });
 
@@ -81,7 +81,7 @@ export default function SubsTab({ job, profile, setTab }) {
                       <span style={{ fontSize: 14, fontWeight: 600, color: '#f9fafb' }}>{eng.sub?.full_name || '—'}</span>
                       <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: meta.bg, color: meta.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{meta.label}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       {eng.trade && <span>{eng.trade}</span>}
                       {eng.status === 'bid_submitted' && eng.current_bid?.total_amount != null && (
                         <span style={{ color: '#60a5fa', fontWeight: 600 }}>{f$(eng.current_bid.total_amount)}</span>
@@ -105,7 +105,7 @@ export default function SubsTab({ job, profile, setTab }) {
                   </div>
                 </div>
                 {eng.current_bid?.earliest_start_date && (
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #1f2937', fontSize: 11, color: '#9ca3af' }}>
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #1f2937', fontSize: 11, color: 'var(--text-subtle)' }}>
                     <span>Available: </span>
                     <span style={{ color: '#d1d5db', fontWeight: 600 }}>{fD(eng.current_bid.earliest_start_date)}</span>
                     {eng.current_bid.availability_notes && (
@@ -116,7 +116,7 @@ export default function SubsTab({ job, profile, setTab }) {
                 {Array.isArray(eng.current_bid?.line_items) && eng.current_bid.line_items.length > 0 && (
                   <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #1f2937' }}>
                     {eng.current_bid.line_items.map((li, idx) => (
-                      <div key={idx} style={{ display: 'flex', gap: 8, fontSize: 11, color: '#9ca3af', padding: '2px 0' }}>
+                      <div key={idx} style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--text-subtle)', padding: '2px 0' }}>
                         <span style={{ flex: 1, color: '#d1d5db' }}>{li.description}</span>
                         <span style={{ flexShrink: 0 }}>{li.quantity}{li.unit ? ' ' + li.unit : ''} @ {f$(li.unit_price)}</span>
                         <span style={{ flexShrink: 0, color: '#60a5fa', fontWeight: 600, minWidth: 60, textAlign: 'right' }}>{f$(li.line_total)}</span>
@@ -135,7 +135,7 @@ export default function SubsTab({ job, profile, setTab }) {
               {completed.length > 0 && <div style={{ marginBottom: 16 }}>{groupLbl('Completed', completed.length)}{completed.map(renderRow)}</div>}
               {offJob.length > 0 && (
                 <div>
-                  <button onClick={() => setShowOffJob(v => !v)} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 8 }}>
+                  <button onClick={() => setShowOffJob(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 8 }}>
                     {showOffJob ? '▾' : '▸'} Show {offJob.length} off-job
                   </button>
                   {showOffJob && offJob.map(renderRow)}

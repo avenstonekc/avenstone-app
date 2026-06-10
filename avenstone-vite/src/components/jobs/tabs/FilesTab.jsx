@@ -148,8 +148,8 @@ export default function FilesTab({ job, profile }) {
       onClick={() => setView(id)}
       style={{
         display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px',
-        background: view === id ? '#0A1F44' : 'transparent',
-        color: view === id ? '#fff' : '#6B7280',
+        background: view === id ? 'var(--navy-900)' : 'transparent',
+        color: view === id ? '#fff' : 'var(--text-muted)',
         border: 'none', borderRadius: 6, cursor: 'pointer',
         fontSize: 12, fontWeight: 600, transition: 'all 0.12s',
       }}
@@ -176,7 +176,7 @@ export default function FilesTab({ job, profile }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           pointerEvents: 'none',
         }}>
-          <div style={{ fontSize: 16, color: '#C9A84C', fontWeight: 700, background: 'rgba(255,255,255,0.85)', padding: '10px 20px', borderRadius: 8 }}>
+          <div style={{ fontSize: 16, color: 'var(--gold-500)', fontWeight: 700, background: 'rgba(255,255,255,0.85)', padding: '10px 20px', borderRadius: 8 }}>
             Drop files to upload
           </div>
         </div>
@@ -186,7 +186,7 @@ export default function FilesTab({ job, profile }) {
         <span style={{
           position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
           width: 15, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#9CA3AF', pointerEvents: 'none',
+          color: 'var(--text-subtle)', pointerEvents: 'none',
         }}>
           {Ic.doc}
         </span>
@@ -199,11 +199,11 @@ export default function FilesTab({ job, profile }) {
             width: '100%', boxSizing: 'border-box',
             padding: '9px 36px 9px 32px',
             border: '1px solid #E8E4DC', borderRadius: 8,
-            background: '#F7F5F0', fontSize: 13, color: '#0A1F44',
+            background: 'var(--bg)', fontSize: 13, color: 'var(--navy-900)',
             outline: 'none', transition: 'border-color 0.12s',
           }}
-          onFocus={e => { e.target.style.borderColor = '#C9A84C'; e.target.style.background = '#fff'; }}
-          onBlur={e => { e.target.style.borderColor = '#E8E4DC'; e.target.style.background = '#F7F5F0'; }}
+          onFocus={e => { e.target.style.borderColor = 'var(--gold-500)'; e.target.style.background = '#fff'; }}
+          onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.background = 'var(--bg)'; }}
         />
         {searchQuery && (
           <button
@@ -211,7 +211,7 @@ export default function FilesTab({ job, profile }) {
             style={{
               position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
               background: 'none', border: 'none', cursor: 'pointer',
-              color: '#9CA3AF', fontSize: 16, lineHeight: 1, padding: '2px 4px',
+              color: 'var(--text-subtle)', fontSize: 16, lineHeight: 1, padding: '2px 4px',
             }}
           >×</button>
         )}
@@ -223,7 +223,7 @@ export default function FilesTab({ job, profile }) {
         flexWrap: 'wrap',
       }}>
         {/* View switcher */}
-        <div style={{ display: 'flex', gap: 2, background: '#F7F5F0', borderRadius: 8, padding: 2, border: '1px solid #E8E4DC' }}>
+        <div style={{ display: 'flex', gap: 2, background: 'var(--bg)', borderRadius: 8, padding: 2, border: '1px solid #E8E4DC' }}>
           <ViewToggle id="recent" icon={Ic.note} label="Recent" />
           <ViewToggle id="tree" icon={Ic.folder} label="Tree" />
           <ViewToggle id="grid" icon={Ic.cam} label="Grid" />
@@ -235,9 +235,9 @@ export default function FilesTab({ job, profile }) {
         <button
           onClick={() => { setBulkTagMode(v => !v); setSelectedFileIds([]); }}
           style={{
-            padding: '6px 10px', background: bulkTagMode ? '#C9A84C' : 'transparent',
-            color: bulkTagMode ? '#0A1F44' : '#6B7280',
-            border: `1px solid ${bulkTagMode ? '#C9A84C' : '#E8E4DC'}`,
+            padding: '6px 10px', background: bulkTagMode ? 'var(--gold-500)' : 'transparent',
+            color: bulkTagMode ? 'var(--navy-900)' : 'var(--text-muted)',
+            border: `1px solid ${bulkTagMode ? 'var(--gold-500)' : 'var(--border)'}`,
             borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'all 0.12s',
           }}
         >
@@ -259,7 +259,7 @@ export default function FilesTab({ job, profile }) {
               onClick={() => cameraRef.current?.click()}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-                background: '#F7F5F0', color: '#0A1F44',
+                background: 'var(--bg)', color: 'var(--navy-900)',
                 border: '1px solid #E8E4DC', borderRadius: 6,
                 cursor: 'pointer', fontSize: 12, fontWeight: 600,
               }}
@@ -291,7 +291,7 @@ export default function FilesTab({ job, profile }) {
 
       {/* Loading */}
       {loading && (
-        <div style={{ textAlign: 'center', padding: '48px 20px', color: '#9CA3AF' }}>
+        <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-subtle)' }}>
           <div style={{ width: 24, height: 24, border: '2px solid #C9A84C', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 12px' }} />
           Loading files…
         </div>
@@ -299,21 +299,21 @@ export default function FilesTab({ job, profile }) {
 
       {/* Searching indicator */}
       {searching && (
-        <div style={{ textAlign: 'center', padding: '12px 20px', color: '#9CA3AF', fontSize: 12 }}>
+        <div style={{ textAlign: 'center', padding: '12px 20px', color: 'var(--text-subtle)', fontSize: 12 }}>
           Searching…
         </div>
       )}
 
       {/* Empty search state */}
       {!loading && !searching && searchQuery.trim() && filteredFiles.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px 20px', color: '#9CA3AF' }}>
+        <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-subtle)' }}>
           <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
-          <div style={{ fontSize: 14, fontWeight: 500, color: '#6B7280' }}>No files match "{searchQuery}"</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)' }}>No files match "{searchQuery}"</div>
           <div style={{ fontSize: 12, marginTop: 4, marginBottom: 16 }}>Try a different search or browse all files</div>
           <button
             onClick={() => setSearchQuery('')}
             style={{
-              padding: '7px 16px', background: '#0A1F44', color: '#fff',
+              padding: '7px 16px', background: 'var(--navy-900)', color: '#fff',
               border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
             }}
           >

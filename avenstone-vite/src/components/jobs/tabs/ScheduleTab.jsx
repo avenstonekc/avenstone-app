@@ -11,9 +11,9 @@ const PHASE_ORDER = ['Lead', 'Proposal', 'Contract', 'Demo', 'Rough-ins', 'Inspe
 const PILL_STYLE = {
   not_started: { bg: '#EBE6D2', border: '#C4BC9E', color: '#6B5F3F' },
   pending:     { bg: '#EBE6D2', border: '#C4BC9E', color: '#6B5F3F' },
-  in_progress: { bg: '#FAEEDA', border: '#C9A84C', color: '#6B4E14' },
+  in_progress: { bg: '#FAEEDA', border: 'var(--gold-500)', color: '#6B4E14' },
   complete:    { bg: '#DCE5D8', border: '#8FAF86', color: '#2E4528' },
-  blocked:     { bg: '#FEE2E2', border: '#FCA5A5', color: '#991B1B' },
+  blocked:     { bg: 'var(--red-bg)', border: 'var(--red-border)', color: '#991B1B' },
 };
 
 // Schedule item config
@@ -22,22 +22,22 @@ const TYPE_ICON = { material_delivery: 'box', sub_start: 'check', site_visit: 'e
 
 // Brand-palette day chips (WeekStrip)
 const TYPE_CHIP_COLORS = {
-  sub_start:         { bg: '#0A1F44', color: '#fff',    border: 'none' },
-  material_delivery: { bg: '#C9A84C', color: '#0A1F44', border: 'none' },
-  inspection:        { bg: '#DCE5D8', color: '#2E4528', border: 'none' },
-  milestone:         { bg: 'transparent', color: '#0A1F44', border: '1px solid #0A1F44' },
-  site_visit:        { bg: '#EBE6D2', color: '#6B5F3F', border: 'none' },
-  delay:             { bg: '#FEE2E2', color: '#991B1B', border: 'none' },
+  sub_start:         { bg: 'var(--navy-900)', color: '#fff',              border: 'none' },
+  material_delivery: { bg: 'var(--gold-500)', color: 'var(--navy-900)',   border: 'none' },
+  inspection:        { bg: '#DCE5D8',          color: '#2E4528',           border: 'none' },
+  milestone:         { bg: 'transparent',      color: 'var(--navy-900)',   border: '1px solid var(--navy-900)' },
+  site_visit:        { bg: '#EBE6D2',          color: '#6B5F3F',           border: 'none' },
+  delay:             { bg: 'var(--red-bg)',     color: '#991B1B',           border: 'none' },
 };
 
 // Brand-palette avatar circles (ItemCard)
 const TYPE_AVATAR = {
-  sub_start:         { bg: '#0A1F44', color: '#fff',    outline: 'none' },
-  material_delivery: { bg: '#C9A84C', color: '#0A1F44', outline: 'none' },
-  inspection:        { bg: '#DCE5D8', color: '#2E4528', outline: 'none' },
-  milestone:         { bg: '#0A1F44', color: '#fff',    outline: '2px solid #C9A84C' },
-  site_visit:        { bg: '#EBE6D2', color: '#6B5F3F', outline: 'none' },
-  delay:             { bg: '#FEE2E2', color: '#991B1B', outline: 'none' },
+  sub_start:         { bg: 'var(--navy-900)', color: '#fff',              outline: 'none' },
+  material_delivery: { bg: 'var(--gold-500)', color: 'var(--navy-900)',   outline: 'none' },
+  inspection:        { bg: '#DCE5D8',          color: '#2E4528',           outline: 'none' },
+  milestone:         { bg: 'var(--navy-900)', color: '#fff',              outline: '2px solid var(--gold-500)' },
+  site_visit:        { bg: '#EBE6D2',          color: '#6B5F3F',           outline: 'none' },
+  delay:             { bg: 'var(--red-bg)',     color: '#991B1B',           outline: 'none' },
 };
 
 const STATUS_BADGE = {
@@ -107,7 +107,7 @@ function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate,
   const lastDay  = days[days.length - 1];
   const headerLabel = `${fmtMonthDay(firstDay)} – ${fmtMonthDay(lastDay)}`;
 
-  const navBtn = { background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4, padding: '3px 10px', fontSize: 13, color: '#0A1F44', cursor: 'pointer', fontFamily: 'inherit' };
+  const navBtn = { background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4, padding: '3px 10px', fontSize: 13, color: 'var(--navy-900)', cursor: 'pointer', fontFamily: 'inherit' };
   const maxChips = isMonth ? 2 : 3;
   const chipFontSize = isMonth ? 8 : 9;
   const chipTrunc  = isMonth ? 7 : 10;
@@ -127,15 +127,15 @@ function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate,
                 onClick={() => onCalViewChange(v)}
                 style={{
                   fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 4,
-                  background: calView === v ? '#0A1F44' : 'transparent',
-                  color: calView === v ? '#C9A84C' : 'rgba(10,31,68,0.5)',
+                  background: calView === v ? 'var(--navy-900)' : 'transparent',
+                  color: calView === v ? 'var(--gold-500)' : 'rgba(10,31,68,0.5)',
                   border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                   transition: 'background 0.12s, color 0.12s',
                 }}
               >{label}</button>
             ))}
           </div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>{headerLabel}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--navy-900)' }}>{headerLabel}</div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           <button style={navBtn} onClick={() => onWeekOffsetChange(weekOffset - navStep)}>‹</button>
@@ -169,10 +169,10 @@ function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
                 fontFamily: 'inherit', transition: 'border-color 0.12s',
               }}>
-              <div style={{ fontSize: isMonth ? 9 : 10, fontWeight: isToday ? 700 : 600, color: isToday ? '#C9A84C' : '#0A1F44', letterSpacing: 0.3 }}>
+              <div style={{ fontSize: isMonth ? 9 : 10, fontWeight: isToday ? 700 : 600, color: isToday ? 'var(--gold-500)' : 'var(--navy-900)', letterSpacing: 0.3 }}>
                 {isMonth ? day.getDate() : `${fmtWeekDay(day)} ${day.getDate()}`}
               </div>
-              {isToday && !isMonth && <div style={{ fontSize: 9, fontWeight: 700, color: '#0A1F44', lineHeight: 1 }}>TODAY</div>}
+              {isToday && !isMonth && <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--navy-900)', lineHeight: 1 }}>TODAY</div>}
               {dayItems.slice(0, maxChips).map(item => {
                 const chip = TYPE_CHIP_COLORS[item.type] || { bg: '#EBE6D2', color: '#6B5F3F', border: 'none' };
                 return (
@@ -184,7 +184,7 @@ function WeekStrip({ items, today, weekOffset, onWeekOffsetChange, selectedDate,
                   </div>
                 );
               })}
-              {dayItems.length > maxChips && <div style={{ fontSize: chipFontSize, color: '#9CA3AF' }}>+{dayItems.length - maxChips}</div>}
+              {dayItems.length > maxChips && <div style={{ fontSize: chipFontSize, color: 'var(--text-subtle)' }}>+{dayItems.length - maxChips}</div>}
             </button>
           );
         })}
@@ -320,7 +320,7 @@ export default function ScheduleTab({ job }) {
     return map;
   }, [phases, items]);
 
-  if (!loaded) return <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading schedule...</div>;
+  if (!loaded) return <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>Loading schedule...</div>;
 
   // ── Derived data ──────────────────────────────────────────────────────────
   const phaseNameMap = Object.fromEntries(phases.map(p => [p.id, p.phase_name]));
@@ -340,7 +340,7 @@ export default function ScheduleTab({ job }) {
     <div>
       {/* ── Error banner ── */}
       {err && (
-        <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', fontSize: 13, marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ background: 'var(--red-bg)', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', fontSize: 13, marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
           {err}
           <button onClick={() => setErr(null)} style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
         </div>
@@ -348,7 +348,7 @@ export default function ScheduleTab({ job }) {
 
       {/* ── Success pill ── */}
       {successMsg && (
-        <div style={{ background: '#D1FAE5', border: '1px solid #A7F3D0', color: '#065F46', padding: '8px 14px', fontSize: 13, marginBottom: 12, borderRadius: 4 }}>{successMsg}</div>
+        <div style={{ background: 'var(--green-bg)', border: '1px solid #A7F3D0', color: '#065F46', padding: '8px 14px', fontSize: 13, marginBottom: 12, borderRadius: 4 }}>{successMsg}</div>
       )}
 
       {/* ── Phase pills (clickable filter) ── */}
@@ -357,7 +357,7 @@ export default function ScheduleTab({ job }) {
         return (
           <div style={{ background: '#fff', border: '1px solid #EBE6D2', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#0A1F44', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase Progress</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--navy-900)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phase Progress</div>
               <div style={{ fontSize: 11, color: 'rgba(10,31,68,0.55)' }}>
                 {doneCount} of {orderedPhases.length} phases complete
               </div>
@@ -369,7 +369,7 @@ export default function ScheduleTab({ job }) {
                 return (
                   <button key={ph.id} onClick={() => setPhaseFilter(isActive ? null : ph.id)}
                     aria-pressed={isActive}
-                    style={{ background: ps.bg, border: `${isActive ? '2px' : '1px'} solid ${isActive ? '#C9A84C' : ps.border}`,
+                    style={{ background: ps.bg, border: `${isActive ? '2px' : '1px'} solid ${isActive ? 'var(--gold-500)' : ps.border}`,
                       borderRadius: 20, padding: '4px 11px', fontSize: 11, fontWeight: 600, color: ps.color, whiteSpace: 'nowrap',
                       cursor: 'pointer', opacity: hasFilter && !isActive ? 0.55 : 1,
                       transition: 'opacity 0.12s, border-color 0.12s', fontFamily: 'inherit', lineHeight: 1.4 }}>
@@ -403,13 +403,13 @@ export default function ScheduleTab({ job }) {
       {/* ── Schedule items section ── */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy-900)' }}>
             {selectedDate ? `${fmtWeekDay(selectedDate)}, ${fmtMonthDay(selectedDate)}` : 'Schedule Items'}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {selectedDate && (
               <button onClick={() => setSelectedDate(null)}
-                style={{ fontSize: 11, color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', fontFamily: 'inherit' }}>
+                style={{ fontSize: 11, color: 'var(--text-subtle)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', fontFamily: 'inherit' }}>
                 × All
               </button>
             )}
@@ -426,7 +426,7 @@ export default function ScheduleTab({ job }) {
 
         {items.filter(i => i.status !== 'cancelled').length === 0 ? (
           <div style={{ textAlign: 'center', padding: '36px 24px', background: '#F5F2E8', border: '1px dashed #C9A84C', borderRadius: 8 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#0A1F44', marginBottom: 6 }}>Get the schedule rolling</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy-900)', marginBottom: 6 }}>Get the schedule rolling</div>
             <div style={{ fontSize: 13, color: 'rgba(10,31,68,0.6)', marginBottom: 20, lineHeight: 1.5 }}>
               Add your first delivery, inspection, or sub start to start tracking progress.
             </div>
@@ -436,7 +436,7 @@ export default function ScheduleTab({ job }) {
           </div>
         ) : dayFiltered ? (
           dayFiltered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 20px', color: '#9CA3AF', fontSize: 13 }}>No items on this day.</div>
+            <div style={{ textAlign: 'center', padding: '24px 20px', color: 'var(--text-subtle)', fontSize: 13 }}>No items on this day.</div>
           ) : (
             <ItemGroup label="" items={dayFiltered} phaseNameMap={phaseNameMap} onEdit={openEdit} onCancel={requestCancel} />
           )
@@ -458,10 +458,10 @@ export default function ScheduleTab({ job }) {
                 <button
                   onClick={() => setPastExpanded(v => !v)}
                   style={{ background: '#F5F2E8', border: '1px solid #EBE6D2', borderRadius: 20, cursor: 'pointer',
-                    fontSize: 11, color: '#0A1F44', display: 'flex', alignItems: 'center', gap: 4,
+                    fontSize: 11, color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: 4,
                     padding: '4px 12px', marginBottom: 6, fontFamily: 'inherit', fontWeight: 500 }}
                 >
-                  <span style={{ display: 'inline-block', transform: pastExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', color: '#C9A84C', fontSize: 14, lineHeight: 1 }}>›</span>
+                  <span style={{ display: 'inline-block', transform: pastExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', color: 'var(--gold-500)', fontSize: 14, lineHeight: 1 }}>›</span>
                   Past ({groups.past.length} item{groups.past.length !== 1 ? 's' : ''})
                 </button>
                 {pastExpanded && (
@@ -489,8 +489,8 @@ export default function ScheduleTab({ job }) {
       {cancelConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
           <div style={{ background: '#fff', borderRadius: 8, padding: 24, maxWidth: 380, margin: 16 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#0A1F44', marginBottom: 10 }}>Phase already complete</div>
-            <div style={{ fontSize: 13, color: '#374151', marginBottom: 20, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy-900)', marginBottom: 10 }}>Phase already complete</div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
               This phase is already marked complete. Cancelling this schedule item won't revert the phase status. Continue?
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -531,7 +531,7 @@ function ItemCard({ item, phaseName, onEdit, onCancel }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ fontWeight: 600, fontSize: 13, color: '#0A1F44' }}>{item.title}</div>
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy-900)' }}>{item.title}</div>
           {badge && (
             <span style={{ background: badge.bg, color: badge.color, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
               {badge.label}
@@ -539,7 +539,7 @@ function ItemCard({ item, phaseName, onEdit, onCancel }) {
           )}
         </div>
         <div style={{ fontSize: 11, color: 'rgba(10,31,68,0.55)', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ color: '#0A1F44', fontWeight: 500, opacity: 0.7 }}>{TYPE_LABELS[item.type]}</span>
+          <span style={{ color: 'var(--navy-900)', fontWeight: 500, opacity: 0.7 }}>{TYPE_LABELS[item.type]}</span>
           {item.scheduled_date && <span>{fD(item.scheduled_date)}{item.scheduled_time ? ` ${item.scheduled_time.slice(0, 5)}` : ''}{item.scheduled_end_date ? ` → ${fD(item.scheduled_end_date)}` : ''}</span>}
           {item.trade && <span style={{ background: '#F5F2E8', padding: '1px 6px', borderRadius: 10, color: '#6B5F3F' }}>{item.trade}</span>}
           {item.assigned_sub?.full_name && <span>→ {item.assigned_sub.full_name}</span>}
@@ -553,7 +553,7 @@ function ItemCard({ item, phaseName, onEdit, onCancel }) {
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: 2 }}>
         <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12, minHeight: 36 }} onClick={() => onEdit(item)}>Edit</button>
-        <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12, minHeight: 36, color: '#6B7280' }} onClick={() => onCancel(item)}>Cancel</button>
+        <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12, minHeight: 36, color: 'var(--text-muted)' }} onClick={() => onCancel(item)}>Cancel</button>
       </div>
     </div>
   );
@@ -744,11 +744,11 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
     <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#0A1F44' }}>{isNew ? 'Add Schedule Item' : 'Edit Schedule Item'}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy-900)' }}>{isNew ? 'Add Schedule Item' : 'Edit Schedule Item'}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
-        {err && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>{err}</div>}
+        {err && <div style={{ background: 'var(--red-bg)', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>{err}</div>}
 
         {conflictWarning && (
           <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', padding: '10px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>
@@ -792,7 +792,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
         {!showEndDate ? (
           <button
             type="button"
-            style={{ background: 'none', border: 'none', color: '#0A1F44', fontSize: 12, cursor: 'pointer', padding: '0 0 12px', textDecoration: 'underline' }}
+            style={{ background: 'none', border: 'none', color: 'var(--navy-900)', fontSize: 12, cursor: 'pointer', padding: '0 0 12px', textDecoration: 'underline' }}
             onClick={() => setShowEndDate(true)}
           >+ Multi-day (add end date)</button>
         ) : (
@@ -856,10 +856,10 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
             {hasChecklist ? (
               <SiteVisitChecklist key={checklistKey} scheduleItemId={item.id} />
             ) : (
-              <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6, padding: '10px 12px' }}>
-                <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 8 }}>No checklist attached to this site visit.</div>
+              <div style={{ background: 'var(--bg)', border: '1px solid #E8E4DC', borderRadius: 6, padding: '10px 12px' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 8 }}>No checklist attached to this site visit.</div>
                 {!addingChecklist ? (
-                  <button type="button" onClick={() => setAddingChecklist(true)} style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 5, border: '1px solid #0A1F44', background: '#0A1F44', color: '#fff', cursor: 'pointer' }}>
+                  <button type="button" onClick={() => setAddingChecklist(true)} style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 5, border: '1px solid #0A1F44', background: 'var(--navy-900)', color: '#fff', cursor: 'pointer' }}>
                     + Add Checklist
                   </button>
                 ) : (
@@ -881,11 +881,11 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
                           setErr(e.message);
                         }
                       }}
-                      style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 5, border: `1px solid ${checklistTemplate ? '#0A1F44' : '#D1D5DB'}`, background: checklistTemplate ? '#0A1F44' : '#F9FAFB', color: checklistTemplate ? '#fff' : '#9CA3AF', cursor: checklistTemplate ? 'pointer' : 'not-allowed' }}
+                      style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 5, border: `1px solid ${checklistTemplate ? 'var(--navy-900)' : '#D1D5DB'}`, background: checklistTemplate ? 'var(--navy-900)' : '#F9FAFB', color: checklistTemplate ? '#fff' : 'var(--text-subtle)', cursor: checklistTemplate ? 'pointer' : 'not-allowed' }}
                     >
                       Create
                     </button>
-                    <button type="button" onClick={() => setAddingChecklist(false)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #D1D5DB', background: 'transparent', color: '#6B7280', cursor: 'pointer' }}>
+                    <button type="button" onClick={() => setAddingChecklist(false)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid #D1D5DB', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
                       Cancel
                     </button>
                   </div>
@@ -907,10 +907,10 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
 
         {/* Photo gate — required when marking gateable types complete */}
         {!isNew && PHOTO_GATE_TYPES.includes(form.type) && (
-          <div style={{ background: form.status === 'complete' && entityPhotoCount === 0 ? '#FEF3C7' : '#F7F5F0', border: `1px solid ${form.status === 'complete' && entityPhotoCount === 0 ? '#FCD34D' : '#E8E4DC'}`, borderRadius: 6, padding: '10px 12px', marginBottom: 14 }}>
+          <div style={{ background: form.status === 'complete' && entityPhotoCount === 0 ? '#FEF3C7' : 'var(--bg)', border: `1px solid ${form.status === 'complete' && entityPhotoCount === 0 ? '#FCD34D' : 'var(--border)'}`, borderRadius: 6, padding: '10px 12px', marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 2 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>
                   {entityPhotoCount > 0 ? `${entityPhotoCount} photo${entityPhotoCount !== 1 ? 's' : ''} attached` : 'No photos attached'}
                 </div>
                 {form.status === 'complete' && entityPhotoCount === 0 && (
@@ -921,7 +921,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
                 type="button"
                 onClick={() => photoRef.current?.click()}
                 disabled={uploading}
-                style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 5, border: '1px solid #0A1F44', background: '#0A1F44', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 5, border: '1px solid #0A1F44', background: 'var(--navy-900)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}
               >
                 {uploading ? 'Uploading…' : '📷 Add Photo'}
               </button>
@@ -940,15 +940,15 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
         )}
 
         {/* Audience */}
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Notify</div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Notify</div>
         <div style={{ display: 'flex', gap: 20, marginBottom: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" id="notifyClient" checked={form.notify_client} onChange={e => setField('notify_client', e.target.checked)} />
-            <label htmlFor="notifyClient" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Client</label>
+            <label htmlFor="notifyClient" style={{ fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}>Client</label>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" id="notifySub" checked={form.notify_sub} onChange={e => setField('notify_sub', e.target.checked)} />
-            <label htmlFor="notifySub" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Sub</label>
+            <label htmlFor="notifySub" style={{ fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}>Sub</label>
           </div>
         </div>
 
@@ -956,7 +956,7 @@ function ScheduleItemModal({ item, job, onClose, onSaved }) {
         {!isNew && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <input type="checkbox" id="notifyOnSave" checked={notifyOnSave} onChange={e => setNotifyOnSave(e.target.checked)} />
-            <label htmlFor="notifyOnSave" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Notify on save</label>
+            <label htmlFor="notifyOnSave" style={{ fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}>Notify on save</label>
           </div>
         )}
 
