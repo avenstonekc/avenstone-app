@@ -55,13 +55,13 @@ export default function PhaseAdvanceCard({ jobId, onAdvanced = () => {} }) {
   };
 
   const card = { background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 16 };
-  const lbl = { fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 };
+  const lbl = { fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 };
 
   if (loading) {
     return (
       <div style={card}>
         <div style={lbl}>Lifecycle Phase</div>
-        <div style={{ fontSize: 13, color: '#9CA3AF' }}>Loading…</div>
+        <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>Loading…</div>
       </div>
     );
   }
@@ -76,7 +76,7 @@ export default function PhaseAdvanceCard({ jobId, onAdvanced = () => {} }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <PhasePill value={gs.currentPhase} label={gs.currentPhaseLabel} />
         </div>
-        <div style={{ fontSize: 13, color: '#6B7280' }}>Job is at terminal phase. No further advancement.</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Job is at terminal phase. No further advancement.</div>
         {gs.lastOverride && <OverrideAudit lastOverride={gs.lastOverride} expanded={auditExpanded} onToggle={() => setAuditExpanded(p => !p)} />}
       </div>
     );
@@ -92,7 +92,7 @@ export default function PhaseAdvanceCard({ jobId, onAdvanced = () => {} }) {
         {/* Current → Next */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
           <PhasePill value={gs.currentPhase} label={gs.currentPhaseLabel} />
-          <span style={{ fontSize: 13, color: '#9CA3AF' }}>→</span>
+          <span style={{ fontSize: 13, color: 'var(--text-subtle)' }}>→</span>
           <PhasePill value={gs.nextPhase} label={gs.nextPhaseLabel} dim />
         </div>
 
@@ -101,17 +101,17 @@ export default function PhaseAdvanceCard({ jobId, onAdvanced = () => {} }) {
           <div style={{ marginBottom: 14 }}>
             {gs.gates.map(g => (
               <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                <span style={{ fontSize: 14, color: g.passed ? '#22c55e' : '#ef4444', flexShrink: 0, lineHeight: 1 }}>
+                <span style={{ fontSize: 14, color: g.passed ? 'var(--green-dot)' : 'var(--red-text)', flexShrink: 0, lineHeight: 1 }}>
                   {g.passed ? '✓' : '✗'}
                 </span>
-                <span style={{ fontSize: 13, color: g.passed ? '#374151' : '#6B7280' }}>{g.label}</span>
+                <span style={{ fontSize: 13, color: g.passed ? '#374151' : 'var(--text-muted)' }}>{g.label}</span>
               </div>
             ))}
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginBottom: 14 }}>
-            <span style={{ fontSize: 13, color: '#9CA3AF', flexShrink: 0 }}>ⓘ</span>
-            <span style={{ fontSize: 13, color: '#9CA3AF', fontStyle: 'italic' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-subtle)', flexShrink: 0 }}>ⓘ</span>
+            <span style={{ fontSize: 13, color: 'var(--text-subtle)', fontStyle: 'italic' }}>
               This transition requires manual override — no automatic gates defined.
             </span>
           </div>
@@ -156,7 +156,7 @@ function PhasePill({ value, label, dim }) {
     <span style={{
       fontSize: 12,
       fontWeight: 700,
-      color: dim ? '#9CA3AF' : color,
+      color: dim ? 'var(--text-subtle)' : color,
       background: dim ? '#F7F5F0' : color + '18',
       border: `1px solid ${dim ? '#E8E4DC' : color + '44'}`,
       padding: '3px 10px',
@@ -179,10 +179,10 @@ function OverrideAudit({ lastOverride, expanded, onToggle }) {
         style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
       >
         <span style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>⚠ Override used{date ? ` · ${date}` : ''}</span>
-        <span style={{ fontSize: 11, color: '#9CA3AF' }}>{expanded ? '▲' : '▼'}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{expanded ? '▲' : '▼'}</span>
       </button>
       {expanded && lastOverride.reason && (
-        <div style={{ fontSize: 12, color: '#6B7280', marginTop: 6, paddingLeft: 2 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, paddingLeft: 2 }}>
           {lastOverride.reason}
         </div>
       )}

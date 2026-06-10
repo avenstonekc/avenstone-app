@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { isMob } from '../../../lib/utils';
 
-const NAV = '#0A1F44';
-const GOLD = '#C9A84C';
-const BORDER = '#E8E4DC';
+const NAV = 'var(--navy-900)';
+const GOLD = 'var(--gold-500)';
+const BORDER = 'var(--border)';
 
 const SEV_COLORS = {
   blocker:      { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5', label: 'BLOCKER' },

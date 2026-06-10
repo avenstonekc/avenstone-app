@@ -7,8 +7,8 @@ import {
   sbPhoto,
 } from '../../lib/supabase.js';
 
-const STATUS_COLOR = { pass: '#16a34a', fail: '#dc2626', skip: '#9CA3AF', pending: '#D1D5DB' };
-const STATUS_BG    = { pass: '#F0FDF4', fail: '#FEF2F2', skip: '#F9FAFB', pending: '#F7F5F0' };
+const STATUS_COLOR = { pass: 'var(--green-text)', fail: 'var(--red-text)', skip: 'var(--text-subtle)', pending: '#D1D5DB' };
+const STATUS_BG    = { pass: 'var(--green-bg)', fail: 'var(--red-bg)', skip: 'var(--neutral-bg)', pending: 'var(--bg)' };
 
 export default function PlaybookChecklist({ jobId, workType, todoId, onClose }) {
   const [items,      setItems]      = useState([]);
@@ -99,11 +99,11 @@ export default function PlaybookChecklist({ jobId, workType, todoId, onClose }) 
     <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 900, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
 
       {/* Header */}
-      <div style={{ position: 'sticky', top: 0, background: '#0A1F44', color: '#fff', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 10 }}>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#C9A84C', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>←</button>
+      <div style={{ position: 'sticky', top: 0, background: 'var(--navy-900)', color: '#fff', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 10 }}>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--gold-500)', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>←</button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{workType} Walkthrough</div>
-          <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 1 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 1 }}>
             {resolvedCount}/{items.length} resolved
             {mustDocPending > 0 && <span style={{ color: '#FCD34D', marginLeft: 8 }}>· {mustDocPending} must-doc pending</span>}
           </div>
@@ -131,7 +131,7 @@ export default function PlaybookChecklist({ jobId, workType, todoId, onClose }) 
                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: statusC, marginTop: 4, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 6 }}>
-                    <span style={{ fontSize: 14, fontWeight: isDone ? 500 : 600, color: isDone ? '#6B7280' : '#0A1F44', flex: 1, lineHeight: 1.4 }}>{item.label}</span>
+                    <span style={{ fontSize: 14, fontWeight: isDone ? 500 : 600, color: isDone ? '#6B7280' : 'var(--navy-900)', flex: 1, lineHeight: 1.4 }}>{item.label}</span>
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                       {item.must_document && <span style={{ fontSize: 10, fontWeight: 700, color: '#d97706', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 3, padding: '1px 5px' }}>MUST-DOC</span>}
                       {item.photo_required && <span style={{ fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#EDE9FE', border: '1px solid #DDD6FE', borderRadius: 3, padding: '1px 5px' }}>📷 REQ</span>}
@@ -153,7 +153,7 @@ export default function PlaybookChecklist({ jobId, workType, todoId, onClose }) 
                   {inFail && (
                     <div style={{ marginBottom: 6 }}>
                       <textarea
-                        style={{ width: '100%', minHeight: 64, padding: '8px 10px', fontSize: 16, border: '1px solid #FECACA', borderRadius: 6, resize: 'vertical', background: '#FEF2F2', color: '#0A1F44', boxSizing: 'border-box' }}
+                        style={{ width: '100%', minHeight: 64, padding: '8px 10px', fontSize: 16, border: '1px solid #FECACA', borderRadius: 6, resize: 'vertical', background: '#FEF2F2', color: 'var(--navy-900)', boxSizing: 'border-box' }}
                         placeholder="Describe what failed and what needs correcting…"
                         value={failNotes[item.id] || ''}
                         onChange={e => setFailNotes(n => ({ ...n, [item.id]: e.target.value }))}
@@ -204,7 +204,7 @@ export default function PlaybookChecklist({ jobId, workType, todoId, onClose }) 
         <button
           onClick={handleComplete}
           disabled={!canComplete || completing}
-          style={{ width: '100%', padding: '12px 16px', borderRadius: 8, border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 15, fontWeight: 700, cursor: canComplete && !completing ? 'pointer' : 'not-allowed', background: canComplete ? '#0A1F44' : '#E5E7EB', color: canComplete ? '#C9A84C' : '#9CA3AF', transition: 'all 0.15s' }}
+          style={{ width: '100%', padding: '12px 16px', borderRadius: 8, border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 15, fontWeight: 700, cursor: canComplete && !completing ? 'pointer' : 'not-allowed', background: canComplete ? 'var(--navy-900)' : '#E5E7EB', color: canComplete ? 'var(--gold-500)' : 'var(--text-subtle)', transition: 'all 0.15s' }}
         >
           {completing ? 'Completing…' : 'Complete Walkthrough'}
         </button>

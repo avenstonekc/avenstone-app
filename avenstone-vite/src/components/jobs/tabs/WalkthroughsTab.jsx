@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { sbLoadJobWalkthroughs } from '../../../lib/supabase.js';
 
 const STATUS_CONFIG = {
-  not_started: { label: 'Not started', color: '#9CA3AF', bg: '#F9FAFB', border: '#E5E7EB' },
-  in_progress: { label: 'In progress', color: '#92400e', bg: '#FEF3C7', border: '#FCD34D' },
-  complete:    { label: 'Complete',    color: '#166534', bg: '#F0FDF4', border: '#BBF7D0' },
+  not_started: { label: 'Not started', color: 'var(--text-subtle)',      bg: 'var(--surface)',    border: 'var(--border)' },
+  in_progress: { label: 'In progress', color: 'var(--amber-text-strong)', bg: 'var(--amber-bg)',  border: 'var(--amber-border)' },
+  complete:    { label: 'Complete',    color: 'var(--green-text-strong)', bg: 'var(--green-bg)',  border: '#BBF7D0' },
 };
 
 export default function WalkthroughsTab({ job, onOpenWalkthrough }) {
@@ -83,7 +83,7 @@ export default function WalkthroughsTab({ job, onOpenWalkthrough }) {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44', flex: 1, lineHeight: 1.3 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy-900)', flex: 1, lineHeight: 1.3 }}>
                   {w.work_type}
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: cfg.color, whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -102,7 +102,7 @@ export default function WalkthroughsTab({ job, onOpenWalkthrough }) {
                 {/* Progress bar (only when started) */}
                 {w.status !== 'not_started' && w.total > 0 && (
                   <div style={{ flex: 1, minWidth: 60, maxWidth: 100, height: 4, background: '#E5E7EB', borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${progressPct}%`, background: w.status === 'complete' ? '#16a34a' : '#C9A84C', borderRadius: 2, transition: 'width 0.3s' }} />
+                    <div style={{ height: '100%', width: `${progressPct}%`, background: w.status === 'complete' ? '#16a34a' : 'var(--gold-500)', borderRadius: 2, transition: 'width 0.3s' }} />
                   </div>
                 )}
 

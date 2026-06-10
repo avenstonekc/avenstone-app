@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { ANON_KEY, PROCESS_TRANSCRIPT_URL } from '../../../lib/supabase';
 import { isMob } from '../../../lib/utils';
 
-const NAV = '#0A1F44';
-const BORDER = '#E8E4DC';
+const NAV = 'var(--navy-900)';
+const BORDER = 'var(--border)';
 
 function PulseRecording() {
   return (

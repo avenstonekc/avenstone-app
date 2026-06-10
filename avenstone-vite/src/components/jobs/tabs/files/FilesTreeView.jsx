@@ -59,7 +59,7 @@ function SubSection({ label, category, files, onSelectFile, bulkTagMode, selecte
           <span style={{ opacity: isUncat ? 0.6 : 1, fontStyle: isUncat ? 'italic' : 'normal' }}>
             {displayLabel}
           </span>
-          <span style={{ marginLeft: 'auto', background: '#E8E4DC', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 700, color: '#6B7280' }}>
+          <span style={{ marginLeft: 'auto', background: 'var(--border)', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 700, color: '#6B7280' }}>
             {files.length}
           </span>
         </button>
@@ -107,7 +107,7 @@ function CatSection({ category, subs, onSelectFile, bulkTagMode, selectedFileIds
           style={{
             flex: 1, background: 'none', border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 8, padding: '10px 8px 10px 12px',
-            fontSize: 13, color: '#0A1F44', fontWeight: 700, textAlign: 'left',
+            fontSize: 13, color: 'var(--navy-900)', fontWeight: 700, textAlign: 'left',
           }}
         >
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
@@ -115,7 +115,7 @@ function CatSection({ category, subs, onSelectFile, bulkTagMode, selectedFileIds
           <span style={{ marginLeft: 'auto', background: color + '22', color, borderRadius: 10, padding: '1px 8px', fontSize: 10, fontWeight: 700 }}>
             {total}
           </span>
-          <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', color: '#9CA3AF' }}>
+          <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', color: 'var(--text-subtle)' }}>
             {Ic.chev}
           </span>
         </button>
@@ -159,7 +159,7 @@ export default function FilesTreeView({ files, onSelectFile, bulkTagMode, select
 
   if (!files.length) {
     return (
-      <div style={{ textAlign: 'center', padding: '48px 20px', color: '#9CA3AF' }}>
+      <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-subtle)' }}>
         <span style={{ width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, opacity: 0.4 }}>{Ic.folder}</span>
         <div style={{ fontSize: 14, fontWeight: 500 }}>No files yet</div>
       </div>

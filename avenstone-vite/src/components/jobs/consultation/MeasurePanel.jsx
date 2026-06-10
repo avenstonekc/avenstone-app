@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { ANON_KEY, PROCESS_TRANSCRIPT_URL } from '../../../lib/supabase';
 import { isMob } from '../../../lib/utils';
 
-const NAV = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
-const BORDER = '#E8E4DC';
+const NAV = 'var(--navy-900)';
+const GOLD = 'var(--gold-500)';
+const CREAM = 'var(--bg)';
+const BORDER = 'var(--border)';
 
 export default function MeasurePanel({
   jobId,

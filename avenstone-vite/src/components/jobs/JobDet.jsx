@@ -156,7 +156,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
     <>
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F7F5F0' }}>
       {/* Header */}
-      <div style={{ background: '#0A1F44', padding: '16px 20px', flexShrink: 0 }}>
+      <div style={{ background: 'var(--navy-900)', padding: '16px 20px', flexShrink: 0 }}>
         {mob ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
@@ -173,21 +173,21 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
                   title="Run AI Analysis"
                   disabled={analyzing}
                   onClick={() => setShowAiPmConfirm(true)}
-                  style={{ width: 36, height: 36, borderRadius: 8, background: analyzing ? '#0d2a5e' : '#0A1F44', border: '1px solid #C9A84C55', cursor: analyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: analyzing ? 0.7 : 1 }}
+                  style={{ width: 36, height: 36, borderRadius: 8, background: analyzing ? '#0d2a5e' : 'var(--navy-900)', border: '1px solid #C9A84C55', cursor: analyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: analyzing ? 0.7 : 1 }}
                 >
                   {analyzing
                     ? <span style={{ width: 16, height: 16, border: '2px solid #C9A84C', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'aiSpin 0.7s linear infinite' }} />
-                    : <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9A84C' }}>{Ic.grid}</span>
+                    : <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gold-500)' }}>{Ic.grid}</span>
                   }
                 </button>
               )}
             </div>
             <div style={{ marginBottom: rev > 0 ? 10 : 0 }}>
               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
-                Project{job.po_number && <span style={{ marginLeft: 8, color: '#C9A84C', letterSpacing: 1.2 }}>· PO {job.po_number}</span>}
+                Project{job.po_number && <span style={{ marginLeft: 8, color: 'var(--gold-500)', letterSpacing: 1.2 }}>· PO {job.po_number}</span>}
               </div>
               <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>{job.address}</div>
-              {job.client_name && <div style={{ fontSize: 12, color: '#C9A84C', marginTop: 2, fontWeight: 500 }}>{job.client_name}</div>}
+              {job.client_name && <div style={{ fontSize: 12, color: 'var(--gold-500)', marginTop: 2, fontWeight: 500 }}>{job.client_name}</div>}
             </div>
           </>
         ) : (
@@ -198,10 +198,10 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             </button>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
-                Project{job.po_number && <span style={{ marginLeft: 8, color: '#C9A84C', letterSpacing: 1.2 }}>· PO {job.po_number}</span>}
+                Project{job.po_number && <span style={{ marginLeft: 8, color: 'var(--gold-500)', letterSpacing: 1.2 }}>· PO {job.po_number}</span>}
               </div>
               <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', lineHeight: 1.3 }}>{job.address}</div>
-              {job.client_name && <div style={{ fontSize: 12, color: '#C9A84C', marginTop: 2, fontWeight: 500 }}>{job.client_name}</div>}
+              {job.client_name && <div style={{ fontSize: 12, color: 'var(--gold-500)', marginTop: 2, fontWeight: 500 }}>{job.client_name}</div>}
             </div>
             <button onClick={() => setShowSt(true)} style={{ background: sc(job.status) + '22', border: `1px solid ${sc(job.status)}55`, color: sc(job.status), padding: '6px 12px', fontFamily: "'DM Sans',sans-serif", fontSize: 11, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
               {sl(job.status)}<span style={{ width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.7 }}>{Ic.chev}</span>
@@ -211,11 +211,11 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
                 title="Run AI Analysis"
                 disabled={analyzing}
                 onClick={() => setShowAiPmConfirm(true)}
-                style={{ width: 36, height: 36, borderRadius: 8, background: analyzing ? '#0d2a5e' : '#0A1F44', border: '1px solid #C9A84C55', cursor: analyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: analyzing ? 0.7 : 1 }}
+                style={{ width: 36, height: 36, borderRadius: 8, background: analyzing ? '#0d2a5e' : 'var(--navy-900)', border: '1px solid #C9A84C55', cursor: analyzing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: analyzing ? 0.7 : 1 }}
               >
                 {analyzing
                   ? <span style={{ width: 16, height: 16, border: '2px solid #C9A84C', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'aiSpin 0.7s linear infinite' }} />
-                  : <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9A84C' }}>{Ic.grid}</span>
+                  : <span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gold-500)' }}>{Ic.grid}</span>
                 }
               </button>
             )}
@@ -227,7 +227,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             <div style={{ flex: 1, padding: '10px 14px', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 600, marginBottom: 7 }}>Quick actions</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button onClick={() => { setTab('financials'); setFinancialsAction({ kind: 'compose_draw' }); }} style={{ padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#C9A84C', color: '#0A1F44', border: 'none', fontFamily: 'inherit' }}>
+                <button onClick={() => { setTab('financials'); setFinancialsAction({ kind: 'compose_draw' }); }} style={{ padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: 'var(--gold-500)', color: 'var(--navy-900)', border: 'none', fontFamily: 'inherit' }}>
                   Compose Draw
                 </button>
                 <button onClick={() => { setTab('financials'); setFinancialsAction({ kind: 'add_receipt' }); }} style={{ padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: 500, cursor: 'pointer', background: 'transparent', color: '#fff', border: '0.5px solid rgba(255,255,255,0.3)', fontFamily: 'inherit' }}>
@@ -260,7 +260,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
           <div className="cbar">
             <div className="cc"><div className="cc-l">Contract</div><div className="cc-v" style={{ color: '#fff' }}>{f$(cv)}</div></div>
             {coT > 0 && <div className="cc"><div className="cc-l">COs</div><div className="cc-v" style={{ color: '#f59e0b' }}>+{f$(coT)}</div></div>}
-            {coT > 0 && <div className="cc"><div className="cc-l">Revised</div><div className="cc-v" style={{ color: '#C9A84C' }}>{f$(rev)}</div></div>}
+            {coT > 0 && <div className="cc"><div className="cc-l">Revised</div><div className="cc-v" style={{ color: 'var(--gold-500)' }}>{f$(rev)}</div></div>}
           </div>
         ))}
       </div>
@@ -286,14 +286,14 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
         {tab === 'info' && job.status === 'complete' && canRunAi && (
           <div style={{ background: 'linear-gradient(135deg,#0A1F44,#1a3a6e)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#C9A84C', marginBottom: 2 }}>🌟 Request a Review</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-500)', marginBottom: 2 }}>🌟 Request a Review</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
                 Send {job.client_name || 'your client'} this link — their review goes straight to your public profile.
               </div>
             </div>
             <button
               onClick={copyReviewLink}
-              style={{ background: reviewCopied ? '#22C55E' : '#C9A84C', color: '#0A1F44', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
+              style={{ background: reviewCopied ? '#22C55E' : 'var(--gold-500)', color: 'var(--navy-900)', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
               {reviewCopied ? '✓ Copied!' : 'Copy Review Link'}
             </button>
           </div>
@@ -306,7 +306,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
           return (
             <div style={{ background: hasPackage ? 'linear-gradient(135deg,#0d2a1a,#1a4a2e)' : 'linear-gradient(135deg,#1a1a0d,#2a2a14)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', border: `1px solid ${hasPackage ? '#22C55E33' : '#C9A84C33'}` }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: hasPackage ? '#4ADE80' : '#C9A84C', marginBottom: 2 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: hasPackage ? '#4ADE80' : 'var(--gold-500)', marginBottom: 2 }}>
                   {hasPackage ? '📦 Completion Package Ready' : '📸 Create Completion Package'}
                 </div>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
@@ -325,7 +325,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
               {!hasPackage && (
                 <button
                   onClick={() => setTab('field')}
-                  style={{ background: 'transparent', color: '#C9A84C', border: '1px solid #C9A84C55', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  style={{ background: 'transparent', color: 'var(--gold-500)', border: '1px solid #C9A84C55', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   Go to Photos →
                 </button>
               )}
@@ -365,7 +365,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             }
           }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: s.c, flexShrink: 0 }} />{s.lb}
-            {job.status === s.id && <span style={{ marginLeft: 'auto', color: '#C9A84C', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Ic.check}</span>}
+            {job.status === s.id && <span style={{ marginLeft: 'auto', color: 'var(--gold-500)', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Ic.check}</span>}
           </button>
         ))}
       </div></div>}

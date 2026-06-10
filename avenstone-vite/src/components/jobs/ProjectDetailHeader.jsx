@@ -2,17 +2,17 @@ import { useState, useEffect } from 'react';
 import { sbLoadProjectDetail } from '../../lib/supabase.js';
 import { f$, isMob } from '../../lib/utils.jsx';
 
-const NAVY  = '#0A1F44';
-const GOLD  = '#C9A84C';
-const CREAM = '#F7F5F0';
+const NAVY  = 'var(--navy-900)';
+const GOLD  = 'var(--gold-500)';
+const CREAM = 'var(--bg)';
 const WHITE = '#FFFFFF';
-const BORDER = '#E8E4DC';
+const BORDER = 'var(--border)';
 
 const PHASE_STYLE = {
-  complete:    { bg: '#D1FAE5', color: '#065F46', dot: '#22C55E' },
-  in_progress: { bg: '#FEF3C7', color: '#92400E', dot: GOLD },
-  delayed:     { bg: '#FEE2E2', color: '#991B1B', dot: '#EF4444' },
-  not_started: { bg: '#F3F4F6', color: '#9CA3AF', dot: '#D1D5DB' },
+  complete:    { bg: 'var(--green-bg)', color: 'var(--green-text-strong)', dot: 'var(--green-dot)' },
+  in_progress: { bg: 'var(--amber-bg)', color: 'var(--amber-text-strong)', dot: GOLD },
+  delayed:     { bg: 'var(--red-bg)',   color: 'var(--red-text-strong)',   dot: 'var(--red-text)' },
+  not_started: { bg: 'var(--neutral-bg)', color: 'var(--text-subtle)',     dot: '#D1D5DB' },
 };
 
 function fShort(n) {
@@ -42,7 +42,7 @@ function KpiTile({ label, value, sub, mob }) {
       borderLeft: `3px solid ${GOLD}`,
     }}>
       <div style={{
-        fontSize: 10, color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif',
+        fontSize: 10, color: 'var(--text-subtle)', fontFamily: 'DM Sans, sans-serif',
         fontWeight: 600, letterSpacing: '0.08em', marginBottom: 5,
       }}>{label}</div>
       <div style={{
@@ -50,7 +50,7 @@ function KpiTile({ label, value, sub, mob }) {
         color: NAVY, fontWeight: 400, lineHeight: 1.1,
       }}>{value}</div>
       {sub && (
-        <div style={{ fontSize: 11, color: '#6B7280', marginTop: 3, fontFamily: 'DM Sans, sans-serif' }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3, fontFamily: 'DM Sans, sans-serif' }}>
           {sub}
         </div>
       )}
@@ -109,7 +109,7 @@ export default function ProjectDetailHeader({ job }) {
               fontFamily: 'DM Serif Display, serif', fontSize: mob ? 28 : 36,
               color: NAVY, fontWeight: 400, lineHeight: 1,
             }}>{pct}%</span>
-            <span style={{ fontSize: 12, color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-subtle)', fontFamily: 'DM Sans, sans-serif' }}>
               overall progress
             </span>
           </div>
@@ -123,7 +123,7 @@ export default function ProjectDetailHeader({ job }) {
         {/* PM contact (right side of progress row on desktop) */}
         {!mob && pmP && (pmP.phone || pmP.email) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <span style={{ fontSize: 12, color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif' }}>PM</span>
+            <span style={{ fontSize: 12, color: 'var(--text-subtle)', fontFamily: 'DM Sans, sans-serif' }}>PM</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{pmP.full_name}</span>
             {pmP.phone && (
               <a href={`tel:${pmP.phone}`} style={{
@@ -204,7 +204,7 @@ export default function ProjectDetailHeader({ job }) {
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '8px 14px 10px', borderTop: `1px solid ${BORDER}`,
         }}>
-          <span style={{ fontSize: 11, color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif' }}>PM:</span>
+          <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontFamily: 'DM Sans, sans-serif' }}>PM:</span>
           <span style={{ fontSize: 13, fontWeight: 600, color: NAVY, flex: 1 }}>{pmP.full_name}</span>
           {pmP.phone && (
             <a href={`tel:${pmP.phone}`} style={{

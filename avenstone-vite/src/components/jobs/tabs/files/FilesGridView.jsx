@@ -53,7 +53,7 @@ function PhotoThumbnail({ file, onSelect, checked, onToggle, bulkTagMode }) {
       )}
       {url && <img src={url} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
       {!url && !loading && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)' }}>
           {Ic.cam}
         </div>
       )}
@@ -84,7 +84,7 @@ export default function FilesGridView({ files, onSelectFile, bulkTagMode, select
 
   if (!files.length) {
     return (
-      <div style={{ textAlign: 'center', padding: '48px 20px', color: '#9CA3AF' }}>
+      <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-subtle)' }}>
         <span style={{ width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, opacity: 0.4 }}>{Ic.cam}</span>
         <div style={{ fontSize: 14, fontWeight: 500 }}>No files yet</div>
       </div>
@@ -96,7 +96,7 @@ export default function FilesGridView({ files, onSelectFile, bulkTagMode, select
       {photos.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Photos ({photos.length})
             </div>
             {onShareFolder && (
@@ -128,7 +128,7 @@ export default function FilesGridView({ files, onSelectFile, bulkTagMode, select
       )}
       {others.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, overflow: 'hidden' }}>
-          <div style={{ padding: '8px 12px', background: '#F7F5F0', borderBottom: '1px solid #E8E4DC', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div style={{ padding: '8px 12px', background: '#F7F5F0', borderBottom: '1px solid #E8E4DC', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Documents &amp; Other ({others.length})
           </div>
           {others.map(f => (

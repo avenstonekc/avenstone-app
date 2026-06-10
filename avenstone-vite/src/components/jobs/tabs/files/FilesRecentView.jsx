@@ -19,7 +19,7 @@ function fileIcon(mime) {
 }
 
 function FileRow({ file, onSelect, checked, onToggle, bulkTagMode }) {
-  const color = CAT_COLORS[file.category] || '#6B7280';
+  const color = CAT_COLORS[file.category] || 'var(--text-muted)';
   const meta = file._receipt_meta; // enriched by sbSearchJobFiles for receipt files
   // Display vendor + amount for receipts when search has enriched the row
   const displayName = meta?.payer_or_payee_name
@@ -44,24 +44,24 @@ function FileRow({ file, onSelect, checked, onToggle, bulkTagMode }) {
         {fileIcon(file.mime_type)}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#0A1F44', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--navy-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {displayName}
         </div>
-        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 1, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ background: color + '22', color, borderRadius: 4, padding: '1px 6px', fontWeight: 600, fontSize: 10 }}>
             {file.category}
           </span>
           {file.subcategory && (
-            <span style={{ color: '#6B7280' }}>{file.subcategory}</span>
+            <span style={{ color: 'var(--text-muted)' }}>{file.subcategory}</span>
           )}
           {meta?.description && (
-            <span style={{ color: '#9CA3AF', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{meta.description}</span>
+            <span style={{ color: 'var(--text-subtle)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{meta.description}</span>
           )}
         </div>
       </div>
-      <div style={{ fontSize: 11, color: '#9CA3AF', flexShrink: 0 }}>{fD(file.created_at)}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-subtle)', flexShrink: 0 }}>{fD(file.created_at)}</div>
       {!bulkTagMode && (
-        <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', flexShrink: 0 }}>
+        <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)', flexShrink: 0 }}>
           {Ic.chev}
         </span>
       )}
@@ -83,7 +83,7 @@ export default function FilesRecentView({ files, onSelectFile, bulkTagMode, sele
 
   if (!sorted.length) {
     return (
-      <div style={{ textAlign: 'center', padding: '48px 20px', color: '#9CA3AF' }}>
+      <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-subtle)' }}>
         <span style={{ width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, opacity: 0.4 }}>{Ic.folder}</span>
         <div style={{ fontSize: 14, fontWeight: 500 }}>No files yet</div>
         <div style={{ fontSize: 12, marginTop: 4 }}>Upload a file to get started</div>
@@ -93,7 +93,7 @@ export default function FilesRecentView({ files, onSelectFile, bulkTagMode, sele
 
   return (
     <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{ padding: '8px 12px', background: '#F7F5F0', borderBottom: '1px solid #E8E4DC', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <div style={{ padding: '8px 12px', background: '#F7F5F0', borderBottom: '1px solid #E8E4DC', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         Recent ({sorted.length})
       </div>
       {recent.map(f => (
@@ -110,7 +110,7 @@ export default function FilesRecentView({ files, onSelectFile, bulkTagMode, sele
           <button
             onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
             style={{
-              fontSize: 12, color: '#0A1F44', background: 'none',
+              fontSize: 12, color: 'var(--navy-900)', background: 'none',
               border: '1px solid #E8E4DC', borderRadius: 6,
               padding: '6px 16px', cursor: 'pointer', fontWeight: 600,
             }}

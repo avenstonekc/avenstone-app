@@ -66,17 +66,17 @@ export default function ShareFolderModal({ folderLabel, files, job, onClose, onS
         }}
         onClick={e => e.stopPropagation()}
       >
-        <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#0A1F44' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: 'var(--navy-900)' }}>
           Share folder
         </h3>
-        <p style={{ margin: '0 0 18px', fontSize: 12, color: '#9CA3AF' }}>
+        <p style={{ margin: '0 0 18px', fontSize: 12, color: 'var(--text-subtle)' }}>
           {folderLabel} · {fileCount} file{fileCount !== 1 ? 's' : ''} · 7-day signed links
         </p>
 
         {/* Quick pick */}
         {quickPicks.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
               Quick pick
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -88,7 +88,7 @@ export default function ShareFolderModal({ folderLabel, files, job, onClose, onS
                     padding: '4px 10px', fontSize: 12, borderRadius: 20, cursor: 'pointer',
                     border: recipientEmail === q.email ? '1.5px solid #C9A84C' : '1px solid #E8E4DC',
                     background: recipientEmail === q.email ? '#FFFBEB' : '#F7F5F0',
-                    color: '#0A1F44', fontWeight: 500, transition: 'all 0.12s',
+                    color: 'var(--navy-900)', fontWeight: 500, transition: 'all 0.12s',
                   }}
                 >
                   {q.label}
@@ -100,7 +100,7 @@ export default function ShareFolderModal({ folderLabel, files, job, onClose, onS
 
         {/* Email */}
         <div style={{ marginBottom: 10 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
             Email *
           </label>
           <input
@@ -112,16 +112,16 @@ export default function ShareFolderModal({ folderLabel, files, job, onClose, onS
               width: '100%', boxSizing: 'border-box',
               padding: '8px 10px', fontSize: 14,
               border: '1px solid #E8E4DC', borderRadius: 6,
-              outline: 'none', color: '#0A1F44', background: '#fff',
+              outline: 'none', color: 'var(--navy-900)', background: '#fff',
             }}
             onFocus={e => { e.target.style.borderColor = '#C9A84C'; }}
-            onBlur={e => { e.target.style.borderColor = '#E8E4DC'; }}
+            onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
           />
         </div>
 
         {/* Name */}
         <div style={{ marginBottom: 10 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
             Name (optional)
           </label>
           <input
@@ -133,16 +133,16 @@ export default function ShareFolderModal({ folderLabel, files, job, onClose, onS
               width: '100%', boxSizing: 'border-box',
               padding: '8px 10px', fontSize: 14,
               border: '1px solid #E8E4DC', borderRadius: 6,
-              outline: 'none', color: '#0A1F44', background: '#fff',
+              outline: 'none', color: 'var(--navy-900)', background: '#fff',
             }}
             onFocus={e => { e.target.style.borderColor = '#C9A84C'; }}
-            onBlur={e => { e.target.style.borderColor = '#E8E4DC'; }}
+            onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
           />
         </div>
 
         {/* Message */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
             Message (optional)
           </label>
           <textarea
@@ -155,10 +155,10 @@ export default function ShareFolderModal({ folderLabel, files, job, onClose, onS
               padding: '8px 10px', fontSize: 14,
               border: '1px solid #E8E4DC', borderRadius: 6,
               outline: 'none', resize: 'vertical',
-              color: '#0A1F44', fontFamily: 'inherit', background: '#fff',
+              color: 'var(--navy-900)', fontFamily: 'inherit', background: '#fff',
             }}
             onFocus={e => { e.target.style.borderColor = '#C9A84C'; }}
-            onBlur={e => { e.target.style.borderColor = '#E8E4DC'; }}
+            onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
           />
         </div>
 
@@ -180,7 +180,7 @@ export default function ShareFolderModal({ folderLabel, files, job, onClose, onS
             style={{
               padding: '8px 16px', fontSize: 13, borderRadius: 6,
               border: '1px solid #E8E4DC', background: '#fff',
-              color: '#6B7280', cursor: 'pointer', fontWeight: 500,
+              color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 500,
             }}
           >
             Cancel
@@ -191,8 +191,8 @@ export default function ShareFolderModal({ folderLabel, files, job, onClose, onS
             style={{
               padding: '8px 16px', fontSize: 13, borderRadius: 6,
               border: 'none',
-              background: canSend ? '#0A1F44' : '#E8E4DC',
-              color: canSend ? '#C9A84C' : '#9CA3AF',
+              background: canSend ? 'var(--navy-900)' : 'var(--border)',
+              color: canSend ? '#C9A84C' : 'var(--text-subtle)',
               cursor: canSend ? 'pointer' : 'default',
               fontWeight: 600, transition: 'all 0.12s',
             }}

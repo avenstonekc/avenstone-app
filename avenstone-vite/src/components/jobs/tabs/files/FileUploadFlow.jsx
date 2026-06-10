@@ -8,7 +8,7 @@ const ACCEPT = 'image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt';
 
 function ConfidenceBadge({ confidence, source }) {
   const pct = Math.round((confidence || 0) * 100);
-  const color = pct >= 80 ? '#22C55E' : pct >= 60 ? '#F59E0B' : '#9CA3AF';
+  const color = pct >= 80 ? '#22C55E' : pct >= 60 ? '#F59E0B' : 'var(--text-subtle)';
   if (source === 'rule') return (
     <span style={{ fontSize: 10, background: '#D1FAE5', color: '#065F46', borderRadius: 4, padding: '2px 6px', fontWeight: 700 }}>Rule-matched</span>
   );
@@ -170,7 +170,7 @@ export default function FileUploadFlow({ jobId, onClose, onUploaded, preloadedFi
                 ? 'Uploading…'
                 : `Review ${fileItems.length} file${fileItems.length !== 1 ? 's' : ''}`}
           </span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18, lineHeight: 1, padding: 4 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 18, lineHeight: 1, padding: 4 }}>×</button>
         </div>
 
         {/* ── Stage: pick ───────────────────────────────────────────────── */}
@@ -181,17 +181,17 @@ export default function FileUploadFlow({ jobId, onClose, onUploaded, preloadedFi
             onDrop={handleDrop}
             onClick={() => inputRef.current?.click()}
             style={{
-              border: `2px dashed ${dragging ? '#0A1F44' : '#E8E4DC'}`,
+              border: `2px dashed ${dragging ? 'var(--navy-900)' : 'var(--border)'}`,
               borderRadius: 8, padding: '36px 20px', textAlign: 'center',
               cursor: 'pointer', background: dragging ? '#F0F4FF' : '#F7F5F0',
               transition: 'all 0.15s', margin: '4px 0 12px',
             }}
           >
-            <span style={{ width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, color: '#0A1F44', opacity: 0.5 }}>
+            <span style={{ width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, color: 'var(--navy-900)', opacity: 0.5 }}>
               {Ic.folder}
             </span>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#0A1F44', marginBottom: 4 }}>Drop files here</div>
-            <div style={{ fontSize: 12, color: '#9CA3AF' }}>or click to browse — photos, PDFs, docs</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy-900)', marginBottom: 4 }}>Drop files here</div>
+            <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>or click to browse — photos, PDFs, docs</div>
             <input
               ref={inputRef}
               type="file"
@@ -219,22 +219,22 @@ export default function FileUploadFlow({ jobId, onClose, onUploaded, preloadedFi
                   {/* File header row */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                     <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', wordBreak: 'break-all' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)', wordBreak: 'break-all' }}>
                         {item.file.name}
                       </div>
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>
                         {item.file.type || 'unknown type'}
                         {item.file.size ? ` · ${(item.file.size / 1024).toFixed(0)} KB` : ''}
                       </div>
                       {!item.inferred && (
-                        <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 4, fontStyle: 'italic' }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-subtle)', marginTop: 4, fontStyle: 'italic' }}>
                           Categorizing…
                         </div>
                       )}
                       {item.inferred && (
                         <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 10, color: '#6B7280' }}>AI suggests:</span>
-                          <strong style={{ fontSize: 10, color: '#0A1F44' }}>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>AI suggests:</span>
+                          <strong style={{ fontSize: 10, color: 'var(--navy-900)' }}>
                             {item.inferred.category}{item.inferred.subcategory ? ` / ${item.inferred.subcategory}` : ''}
                           </strong>
                           <ConfidenceBadge confidence={item.inferred.confidence} source={item.inferred.source} />
@@ -244,7 +244,7 @@ export default function FileUploadFlow({ jobId, onClose, onUploaded, preloadedFi
                     {fileItems.length > 1 && (
                       <button
                         onClick={() => removeItem(item.id)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18, lineHeight: 1, padding: '0 0 0 4px', flexShrink: 0 }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 18, lineHeight: 1, padding: '0 0 0 4px', flexShrink: 0 }}
                       >
                         ×
                       </button>
@@ -292,18 +292,18 @@ export default function FileUploadFlow({ jobId, onClose, onUploaded, preloadedFi
         {/* ── Stage: uploading ──────────────────────────────────────────── */}
         {stage === 'uploading' && (
           <div style={{ padding: '24px 0 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)', marginBottom: 12 }}>
               {uploadProgress.done < uploadProgress.total
                 ? `Uploading ${uploadProgress.done + 1} of ${uploadProgress.total}…`
                 : 'Finishing up…'}
             </div>
-            <div style={{ background: '#E8E4DC', borderRadius: 6, height: 8, overflow: 'hidden', marginBottom: 6 }}>
+            <div style={{ background: 'var(--border)', borderRadius: 6, height: 8, overflow: 'hidden', marginBottom: 6 }}>
               <div style={{
-                height: '100%', background: '#0A1F44', borderRadius: 6,
+                height: '100%', background: 'var(--navy-900)', borderRadius: 6,
                 width: `${pct}%`, transition: 'width 0.3s',
               }} />
             </div>
-            <div style={{ fontSize: 11, color: '#9CA3AF' }}>{uploadProgress.done} / {uploadProgress.total}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{uploadProgress.done} / {uploadProgress.total}</div>
           </div>
         )}
       </div>

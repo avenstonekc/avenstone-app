@@ -2,20 +2,20 @@ import { useState, useEffect, useMemo } from 'react';
 import { sbLoadProjectsList } from '../../lib/supabase.js';
 import { f$, isMob } from '../../lib/utils.jsx';
 
-const NAVY  = '#0A1F44';
-const GOLD  = '#C9A84C';
-const CREAM = '#F7F5F0';
+const NAVY  = 'var(--navy-900)';
+const GOLD  = 'var(--gold-500)';
+const CREAM = 'var(--bg)';
 const WHITE = '#FFFFFF';
-const BORDER = '#E8E4DC';
+const BORDER = 'var(--border)';
 
 const STATUS_MAP = {
-  lead:          { label: 'Lead',          bg: '#F3F4F6', color: '#374151' },
-  proposal:      { label: 'Proposal',      bg: '#EFF6FF', color: '#1D4ED8' },
-  contract:      { label: 'Contract',      bg: '#FEF3C7', color: '#92400E' },
-  in_progress:   { label: 'In Progress',   bg: '#D1FAE5', color: '#065F46' },
-  final_touches: { label: 'Final Touches', bg: '#DBEAFE', color: '#1E40AF' },
-  complete:      { label: 'Complete',      bg: NAVY,       color: WHITE     },
-  on_hold:       { label: 'On Hold',       bg: '#FEF3C7', color: '#78350F' },
+  lead:          { label: 'Lead',          bg: 'var(--neutral-bg)', color: 'var(--text-secondary)' },
+  proposal:      { label: 'Proposal',      bg: 'var(--blue-bg)',    color: 'var(--blue-text)' },
+  contract:      { label: 'Contract',      bg: 'var(--amber-bg)',   color: 'var(--amber-text-strong)' },
+  in_progress:   { label: 'In Progress',   bg: 'var(--green-bg)',   color: 'var(--green-text-strong)' },
+  final_touches: { label: 'Final Touches', bg: 'var(--blue-bg)',    color: 'var(--blue-text)' },
+  complete:      { label: 'Complete',      bg: NAVY,                color: WHITE },
+  on_hold:       { label: 'On Hold',       bg: 'var(--amber-bg)',   color: 'var(--amber-text-strong)' },
 };
 
 const PAGE_SIZE = 8;
@@ -46,7 +46,7 @@ function ProgressBar({ pct }) {
       <div style={{ flex: 1, height: 4, background: '#E5E7EB', borderRadius: 2, overflow: 'hidden' }}>
         <div style={{ width: `${p}%`, height: '100%', background: NAVY, borderRadius: 2 }} />
       </div>
-      <span style={{ fontSize: 11, color: '#9CA3AF', whiteSpace: 'nowrap', fontFamily: 'DM Sans, sans-serif' }}>{p}%</span>
+      <span style={{ fontSize: 11, color: 'var(--text-subtle)', whiteSpace: 'nowrap', fontFamily: 'DM Sans, sans-serif' }}>{p}%</span>
     </div>
   );
 }
@@ -112,7 +112,7 @@ function TableRow({ job, onClick }) {
       </td>
       <td style={{ padding: '10px 12px', maxWidth: 240 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{street}</div>
-        {city && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 1 }}>{city}</div>}
+        {city && <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 1 }}>{city}</div>}
       </td>
       <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
         <StatusPill status={job.status} />
@@ -132,7 +132,7 @@ function TableRow({ job, onClick }) {
           }}>{job.open_todos > 9 ? '9+' : job.open_todos}</span>
         ) : null}
       </td>
-      <td style={{ padding: '10px 12px', fontSize: 12, color: '#9CA3AF' }}>
+      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-subtle)' }}>
         {job.pm_name || <span style={{ color: '#D1D5DB' }}>—</span>}
       </td>
     </tr>
@@ -158,7 +158,7 @@ function ProjectCard({ job, onClick }) {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{street}</div>
-            {city && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>{city}</div>}
+            {city && <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 1 }}>{city}</div>}
           </div>
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
             {job.open_todos > 0 && (
@@ -176,7 +176,7 @@ function ProjectCard({ job, onClick }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>
             {job.contract_value > 0 ? f$(job.contract_value) : <span style={{ color: '#D1D5DB', fontSize: 12 }}>No contract value</span>}
           </span>
-          {job.pm_name && <span style={{ fontSize: 11, color: '#9CA3AF' }}>{job.pm_name}</span>}
+          {job.pm_name && <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{job.pm_name}</span>}
         </div>
       </div>
     </div>
@@ -234,7 +234,7 @@ export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
   const mobileCards = filtered.slice(0, mobileShown);
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: '#9CA3AF', fontSize: 13 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, color: 'var(--text-subtle)', fontSize: 13 }}>
       Loading projects…
     </div>
   );
@@ -249,7 +249,7 @@ export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
       <div style={{ display: 'flex', alignItems: mob ? 'flex-start' : 'center', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexDirection: mob ? 'column' : 'row' }}>
         <div>
           <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: mob ? 22 : 26, color: NAVY, lineHeight: 1.1 }}>Projects</div>
-          <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 3 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginTop: 3 }}>
             {filtered.length} of {projects.length} project{projects.length !== 1 ? 's' : ''}
           </div>
         </div>
@@ -293,7 +293,7 @@ export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
       </div>
 
       {filtered.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px 16px', color: '#9CA3AF', fontSize: 14 }}>
+        <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-subtle)', fontSize: 14 }}>
           No projects match your filters.
         </div>
       )}
@@ -329,7 +329,7 @@ export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
                     <th key={i} style={{
                       padding: i === 0 ? '10px 12px' : '10px 12px',
                       textAlign: 'left', fontSize: 11, fontWeight: 700,
-                      color: '#9CA3AF', letterSpacing: '0.08em',
+                      color: 'var(--text-subtle)', letterSpacing: '0.08em',
                       fontFamily: 'DM Sans, sans-serif', whiteSpace: 'nowrap',
                     }}>{h}</th>
                   ))}
@@ -346,7 +346,7 @@ export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
           {/* Pagination */}
           {totalPages > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
-              <span style={{ fontSize: 13, color: '#9CA3AF' }}>
+              <span style={{ fontSize: 13, color: 'var(--text-subtle)' }}>
                 Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} projects
               </span>
               <div style={{ display: 'flex', gap: 4 }}>

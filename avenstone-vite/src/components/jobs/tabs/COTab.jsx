@@ -183,13 +183,13 @@ export default function COTab({ job, upd, profile }) {
     }
   };
 
-  const coStatusColor = s => s === 'approved' ? '#22c55e' : s === 'complete' ? '#15803d' : s === 'rejected' ? '#ef4444' : '#f59e0b';
+  const coStatusColor = s => s === 'approved' ? 'var(--green-dot)' : s === 'complete' ? '#15803d' : s === 'rejected' ? 'var(--red-text)' : '#f59e0b';
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Change Orders</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Change Orders</div>
           {approvedClientTotal > 0 && <div style={{ fontSize: 13, color: '#f59e0b', fontWeight: 600, marginTop: 2 }}>Approved: {f$(approvedClientTotal)}{job.cost_plus ? ' (client price)' : ''}</div>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -210,7 +210,7 @@ export default function COTab({ job, upd, profile }) {
         <div key={co.id || i} className="co-item" style={{ borderLeftColor: coStatusColor(co.status) }}>
           <div className="co-num">{co.co_number}</div>
           {co.submitted_by_role && (
-            <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 600, color: '#0A1F44', background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 20, padding: '2px 8px', marginBottom: 4 }}>
+            <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 600, color: 'var(--navy-900)', background: 'var(--bg)', border: '1px solid #E8E4DC', borderRadius: 20, padding: '2px 8px', marginBottom: 4 }}>
               Submitted by {co.submitted_by_role.toUpperCase().replace(/_/g, ' ')}
             </span>
           )}
@@ -253,24 +253,24 @@ export default function COTab({ job, upd, profile }) {
                 <div className="co-desc">{co.description}</div>
                 {co.reason && <div className="co-reason">{co.reason}</div>}
                 {job.cost_plus && co.status === 'pending' && (
-                  <div style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
                     Markup: {co.markup_pct != null ? co.markup_pct : (job.default_markup_pct || 0)}% → Client price: {f$(Math.round(Number(co.amount || 0) * (1 + Number(co.markup_pct ?? job.default_markup_pct ?? 0) / 100) * 100) / 100)}
                   </div>
                 )}
               </div>
               <div style={{ textAlign: 'right', marginLeft: 16 }}>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: '#22c55e' }}>{f$(co.amount)}</div>
+                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: 'var(--green-dot)' }}>{f$(co.amount)}</div>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: coStatusColor(co.status) }}>{co.status}</div>
               </div>
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-            <span style={{ fontSize: 11, color: '#9CA3AF' }}>{fD(co.created_at)}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{fD(co.created_at)}</span>
             {co.status === 'pending' && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn" style={{ background: '#fff', border: '1px solid #0A1F44', color: '#0A1F44', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={() => { setEditingCOId(co.id); setEditForm({ description: co.description || '', amount: co.amount ?? '', markup_pct: co.markup_pct ?? '' }); }}>Edit</button>
+                <button className="btn" style={{ background: '#fff', border: '1px solid #0A1F44', color: 'var(--navy-900)', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={() => { setEditingCOId(co.id); setEditForm({ description: co.description || '', amount: co.amount ?? '', markup_pct: co.markup_pct ?? '' }); }}>Edit</button>
                 {['owner', 'project_manager'].includes(profile?.role) && job.client_email && (
-                  <button className="btn" style={{ background: '#0A1F44', border: '1px solid #0A1F44', color: '#C9A84C', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={async () => {
+                  <button className="btn" style={{ background: 'var(--navy-900)', border: '1px solid #0A1F44', color: 'var(--gold-500)', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={async () => {
                     const coText = `CHANGE ORDER: ${co.co_number || ''}\n\nProject: ${job.address}\nClient: ${job.client_name || ''}\n\nDescription:\n${co.description || ''}\n\nReason: ${co.reason || ''}\n\nAmount: ${f$(co.amount || 0)}\n\nThis Change Order must be approved by the client before work proceeds.`;
                     const doc = buildGenericPDF({ docType: 'CHANGE ORDER', job, bodyText: coText, signaturePng: null });
                     const blob = doc.output('blob');
@@ -281,13 +281,13 @@ export default function COTab({ job, upd, profile }) {
                 {['owner', 'project_manager'].includes(profile?.role) && (
                   <>
                     <button className="btn" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#16a34a', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={() => apCO(co.id)}>✓ Approve</button>
-                    <button className="btn" style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#ef4444', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={() => rjCO(co.id)}>✕ Reject</button>
+                    <button className="btn" style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: 'var(--red-text)', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={() => rjCO(co.id)}>✕ Reject</button>
                   </>
                 )}
               </div>
             )}
             {co.status === 'approved' && ['owner', 'project_manager'].includes(profile?.role) && (
-              <button className="btn" style={{ background: '#0A1F44', border: '1px solid #0A1F44', color: '#fff', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={() => compCO(co.id)}>✓ Mark Complete</button>
+              <button className="btn" style={{ background: 'var(--navy-900)', border: '1px solid #0A1F44', color: '#fff', padding: '5px 12px', fontSize: 11, fontWeight: 600 }} onClick={() => compCO(co.id)}>✓ Mark Complete</button>
             )}
           </div>
         </div>
@@ -321,11 +321,11 @@ export default function COTab({ job, upd, profile }) {
             <div className="fg">
               <label className="flbl">
                 Condition photos
-                <span style={{ color: '#9CA3AF', fontWeight: 400, marginLeft: 4 }}>— why this CO is needed</span>
+                <span style={{ color: 'var(--text-subtle)', fontWeight: 400, marginLeft: 4 }}>— why this CO is needed</span>
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6, padding: '8px 12px', fontSize: 13, minHeight: 44 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: 'var(--bg)', border: '1px solid #E8E4DC', borderRadius: 6, padding: '8px 12px', fontSize: 13, minHeight: 44 }}>
                 <span style={{ width: 16, height: 16, flexShrink: 0 }}>{Ic.cam}</span>
-                <span style={{ color: '#6B7280' }}>
+                <span style={{ color: 'var(--text-muted)' }}>
                   {coPhotos.length > 0 ? `${coPhotos.length} photo${coPhotos.length !== 1 ? 's' : ''} selected` : 'Add photos'}
                 </span>
                 <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => {
@@ -341,14 +341,14 @@ export default function COTab({ job, upd, profile }) {
                       <img src={URL.createObjectURL(f)} alt={f.name} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 4 }} />
                       <button
                         onClick={() => setCoPhotos(p => p.filter((_, j) => j !== idx))}
-                        style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', border: 'none', borderRadius: '50%', width: 16, height: 16, cursor: 'pointer', color: '#fff', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>✕</button>
+                        style={{ position: 'absolute', top: -4, right: -4, background: 'var(--red-text)', border: 'none', borderRadius: '50%', width: 16, height: 16, cursor: 'pointer', color: '#fff', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>✕</button>
                     </div>
                   ))}
                 </div>
               )}
               {canBypass && (
                 <button
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 11, marginTop: 6, textDecoration: 'underline', padding: 0, display: 'block' }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 11, marginTop: 6, textDecoration: 'underline', padding: 0, display: 'block' }}
                   onClick={() => setShowBypass(b => !b)}>
                   {showBypass ? 'Hide bypass' : 'No visible condition? Add a bypass reason'}
                 </button>
@@ -381,18 +381,18 @@ export default function COTab({ job, upd, profile }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">Complete CO — Fix Photo Required</div>
             {fixGate.co && (
-              <div style={{ fontSize: 13, color: '#374151', marginBottom: 8, fontWeight: 600 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8, fontWeight: 600 }}>
                 {fixGate.co.co_number}: {fixGate.co.description}
               </div>
             )}
-            <p style={{ fontSize: 12, color: '#6B7280', marginBottom: 12, margin: '0 0 12px' }}>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, margin: '0 0 12px' }}>
               Attach at least 1 photo showing the completed work, or add a bypass reason.
             </p>
 
             <div className="fg">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6, padding: '8px 12px', fontSize: 13, minHeight: 44 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', background: 'var(--bg)', border: '1px solid #E8E4DC', borderRadius: 6, padding: '8px 12px', fontSize: 13, minHeight: 44 }}>
                 <span style={{ width: 16, height: 16, flexShrink: 0 }}>{Ic.cam}</span>
-                <span style={{ color: '#6B7280' }}>
+                <span style={{ color: 'var(--text-muted)' }}>
                   {fixPhotos.length > 0 ? `${fixPhotos.length} fix photo${fixPhotos.length !== 1 ? 's' : ''} selected` : 'Add fix photos'}
                 </span>
                 <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => {
@@ -408,13 +408,13 @@ export default function COTab({ job, upd, profile }) {
                       <img src={URL.createObjectURL(f)} alt={f.name} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 4 }} />
                       <button
                         onClick={() => setFixPhotos(p => p.filter((_, j) => j !== idx))}
-                        style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', border: 'none', borderRadius: '50%', width: 16, height: 16, cursor: 'pointer', color: '#fff', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>✕</button>
+                        style={{ position: 'absolute', top: -4, right: -4, background: 'var(--red-text)', border: 'none', borderRadius: '50%', width: 16, height: 16, cursor: 'pointer', color: '#fff', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>✕</button>
                     </div>
                   ))}
                 </div>
               )}
               <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 11, marginTop: 6, textDecoration: 'underline', padding: 0, display: 'block' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 11, marginTop: 6, textDecoration: 'underline', padding: 0, display: 'block' }}
                 onClick={() => setShowFixBypass(b => !b)}>
                 {showFixBypass ? 'Hide bypass' : 'Complete without fix photo'}
               </button>
@@ -446,18 +446,18 @@ export default function COTab({ job, upd, profile }) {
           <div className="modal" style={{ maxWidth: 540 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44' }}>Invoice Summary</div>
-                <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{job.address}</div>
+                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: 'var(--navy-900)' }}>Invoice Summary</div>
+                <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 2 }}>{job.address}</div>
               </div>
-              <button onClick={() => window.print()} style={{ background: '#0A1F44', color: '#C9A84C', border: 'none', padding: '8px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', borderRadius: 3 }}>Print / Save PDF</button>
+              <button onClick={() => window.print()} style={{ background: 'var(--navy-900)', color: 'var(--gold-500)', border: 'none', padding: '8px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', borderRadius: 3 }}>Print / Save PDF</button>
             </div>
             <div style={{ borderTop: '2px solid #0A1F44', borderBottom: '1px solid #E8E4DC', padding: '12px 0', marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
                 <span>Item</span><span>Amount</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F3F0E8', fontSize: 14 }}>
-                <span style={{ color: '#374151' }}>Base Contract — {job.scope || 'General Construction'}</span>
-                <span style={{ fontWeight: 700, color: '#0A1F44' }}>{f$(cv)}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>Base Contract — {job.scope || 'General Construction'}</span>
+                <span style={{ fontWeight: 700, color: 'var(--navy-900)' }}>{f$(cv)}</span>
               </div>
               {apCOs.map(co => {
                 const m = Number(co.markup_pct ?? job.default_markup_pct ?? 0);
@@ -467,9 +467,9 @@ export default function COTab({ job, upd, profile }) {
                 return (
                   <div key={co.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F3F0E8', fontSize: 13 }}>
                     <div>
-                      <div style={{ color: '#374151' }}>{co.co_number} — {co.description}</div>
-                      {co.reason && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{co.reason}</div>}
-                      {job.cost_plus && <div style={{ fontSize: 10, color: '#9CA3AF' }}>{m}% markup on {f$(co.amount)} cost</div>}
+                      <div style={{ color: 'var(--text-secondary)' }}>{co.co_number} — {co.description}</div>
+                      {co.reason && <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{co.reason}</div>}
+                      {job.cost_plus && <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{m}% markup on {f$(co.amount)} cost</div>}
                     </div>
                     <span style={{ fontWeight: 600, color: '#f59e0b', flexShrink: 0, marginLeft: 16 }}>{f$(displayAmt)}</span>
                   </div>
@@ -477,10 +477,10 @@ export default function COTab({ job, upd, profile }) {
               })}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#0A1F44', textTransform: 'uppercase', letterSpacing: 1 }}>Total</div>
-              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#0A1F44' }}>{f$(rev)}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy-900)', textTransform: 'uppercase', letterSpacing: 1 }}>Total</div>
+              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: 'var(--navy-900)' }}>{f$(rev)}</div>
             </div>
-            {job.client_name && <div style={{ marginTop: 8, fontSize: 12, color: '#9CA3AF' }}>Client: {job.client_name}{job.client_email ? ` · ${job.client_email}` : ''}</div>}
+            {job.client_name && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-subtle)' }}>Client: {job.client_name}{job.client_email ? ` · ${job.client_email}` : ''}</div>}
             <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setShowInvoice(false)}>Close</button>
             </div>

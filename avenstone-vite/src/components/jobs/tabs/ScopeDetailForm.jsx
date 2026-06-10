@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { runCompute } from '../../../lib/computeFns';
 
-const NAV    = '#0A1F44';
-const GOLD   = '#C9A84C';
-const BORDER = '#E8E4DC';
-const CREAM  = '#F7F5F0';
+const NAV    = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const BORDER = 'var(--border)';
+const CREAM  = 'var(--bg)';
 
 // Groups fields into visual sections by conceptual category
 const SECTION_KEYS = {

@@ -11,15 +11,15 @@ class JobDetBoundary extends Error {}
 function ErrorBoundary({ back, children }) {
   const [err, setErr] = useState(null);
   if (err) return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#F7F5F0' }}>
-      <div style={{ background: '#0A1F44', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+      <div style={{ background: 'var(--navy-900)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', width: 24, height: 24, display: 'flex', alignItems: 'center' }} onClick={back}>←</button>
         <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>Project</div>
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
         <div style={{ fontSize: 32 }}>⚠️</div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: '#0A1F44', textAlign: 'center' }}>Something went wrong loading this project</div>
-        <div style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', maxWidth: 300 }}>{err?.message || 'Unknown error'}</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--navy-900)', textAlign: 'center' }}>Something went wrong loading this project</div>
+        <div style={{ fontSize: 13, color: 'var(--text-subtle)', textAlign: 'center', maxWidth: 300 }}>{err?.message || 'Unknown error'}</div>
         <button className="btn btn-navy" style={{ marginTop: 8 }} onClick={back}>← Back to Projects</button>
       </div>
     </div>
@@ -119,8 +119,8 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   // sel is set but job not in array yet (jobs still loading from DB) — show skeleton
   // in the detail zone so the old jobs list never flashes during navigation
   if (sel && !selJ) return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F7F5F0' }}>
-      <div style={{ background: '#0A1F44', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
+      <div style={{ background: 'var(--navy-900)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => setSel(null)}>
           <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>← Projects</span>
         </button>
@@ -131,7 +131,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
             borderRadius: 12, marginBottom: 10, width: i === 0 ? w : '100%', opacity: 0.6 }} />
         ))}
       </div>
-      <div style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: 13 }}>
+      <div style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>
         Loading project…
       </div>
     </div>
@@ -147,24 +147,24 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   const mob = isMob();
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F7F5F0' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
       <div style={{ background: '#fff', borderBottom: '1px solid #E8E4DC', flexShrink: 0 }}>
         <div style={{ padding: mob ? '12px 16px' : '16px 24px', display: 'flex', alignItems: 'center', gap: mob ? 8 : 12 }}>
-          <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9CA3AF', width: 24, height: 24, display: 'flex', alignItems: 'center', flexShrink: 0 }} onClick={onBack}>{Ic.back}</button>
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: mob ? 18 : 20, color: '#0A1F44', flex: 1 }}>Projects</div>
+          <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', width: 24, height: 24, display: 'flex', alignItems: 'center', flexShrink: 0 }} onClick={onBack}>{Ic.back}</button>
+          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: mob ? 18 : 20, color: 'var(--navy-900)', flex: 1 }}>Projects</div>
           {!mob && <div style={{ position: 'relative', flex: '0 1 220px' }}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects..." style={{ width: '100%', border: '1px solid #E8E4DC', borderRadius: 4, padding: '6px 10px 6px 28px', fontSize: 12, color: '#374151', outline: 'none', boxSizing: 'border-box', background: '#F7F5F0' }} />
-            <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', fontSize: 13, pointerEvents: 'none' }}>⌕</span>
-            {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>✕</button>}
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects..." style={{ width: '100%', border: '1px solid #E8E4DC', borderRadius: 4, padding: '6px 10px 6px 28px', fontSize: 12, color: '#374151', outline: 'none', boxSizing: 'border-box', background: 'var(--bg)' }} />
+            <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)', fontSize: 13, pointerEvents: 'none' }}>⌕</span>
+            {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>✕</button>}
           </div>}
-          {!mob && <span style={{ fontSize: 12, color: '#9CA3AF', marginRight: 8 }}>{filtered.length}{search || fil !== 'all' ? ` / ${jobs.length}` : ''} jobs</span>}
+          {!mob && <span style={{ fontSize: 12, color: 'var(--text-subtle)', marginRight: 8 }}>{filtered.length}{search || fil !== 'all' ? ` / ${jobs.length}` : ''} jobs</span>}
           <button className="btn btn-gold" style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, fontSize: 12 }} onClick={() => setShowIntake(true)}>✦ AI Intake</button>
           <button className="btn btn-navy" style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} onClick={() => setShowNew(true)}><span style={{ width: 14, height: 14 }}>{Ic.plus}</span>New</button>
         </div>
         {mob && <div style={{ padding: '0 16px 12px', position: 'relative' }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects..." style={{ width: '100%', border: '1px solid #E8E4DC', borderRadius: 4, padding: '8px 32px 8px 32px', fontSize: 13, color: '#374151', outline: 'none', boxSizing: 'border-box', background: '#F7F5F0' }} />
-          <span style={{ position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', fontSize: 14, pointerEvents: 'none' }}>⌕</span>
-          {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>✕</button>}
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects..." style={{ width: '100%', border: '1px solid #E8E4DC', borderRadius: 4, padding: '8px 32px 8px 32px', fontSize: 13, color: '#374151', outline: 'none', boxSizing: 'border-box', background: 'var(--bg)' }} />
+          <span style={{ position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)', fontSize: 14, pointerEvents: 'none' }}>⌕</span>
+          {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>✕</button>}
         </div>}
       </div>
       <div style={{ background: '#fff', borderBottom: '1px solid #E8E4DC', padding: '10px 24px', flexShrink: 0 }}>
@@ -174,10 +174,10 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
         </div>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: mob ? '12px' : '24px' }}>
-        {loading && <div style={{ textAlign: 'center', padding: '48px', color: '#9CA3AF', fontSize: 14 }}>Loading projects...</div>}
+        {loading && <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-subtle)', fontSize: 14 }}>Loading projects...</div>}
         {!loading && !filtered.length && <div className="empty">{Ic.home}<div className="empty-t">{search ? 'No matches' : 'No projects yet'}</div><div>{search ? `No projects match "${search}"` : 'Tap New to add your first project'}</div></div>}
-        {!loading && filtered.length > 0 && !mob && <div className="card"><table className="tbl"><thead><tr><th>Property</th><th>Status</th><th>Contract</th><th>Rep</th><th>Target</th></tr></thead><tbody>{filtered.map(j => { const rev = Number(j.contract_value || 0) + Number(j.co_total || 0); return <tr key={j.id} onClick={() => setSel(j.id)}><td><div className="cell-a">{j.address}</div>{j.client_name && <div className="cell-b">{j.client_name}{j.client_phone ? ' · ' + j.client_phone : ''}</div>}</td><td><span className="badge" style={{ background: sc(j.status) + '15', color: sc(j.status) }}><span className="bdot" style={{ background: sc(j.status) }} />{sl(j.status)}</span></td><td>{rev > 0 ? <span style={{ fontWeight: 700, color: '#0A1F44' }}>{f$(rev)}</span> : <span style={{ color: '#9CA3AF', fontSize: 12 }}>—</span>}</td><td>{j.assigned_rep ? <span className="tag">{j.assigned_rep}</span> : <span style={{ color: '#9CA3AF', fontSize: 12 }}>—</span>}</td><td style={{ color: '#9CA3AF', fontSize: 12 }}>{j.target_completion || '—'}</td></tr>; })}</tbody></table></div>}
-        {!loading && filtered.length > 0 && mob && filtered.map(j => { const rev = Number(j.contract_value || 0) + Number(j.co_total || 0); return <div key={j.id} className="jcard" style={{ borderLeftColor: sc(j.status) }} onClick={() => setSel(j.id)}><div style={{ fontWeight: 600, fontSize: 15, color: '#0A1F44', marginBottom: 3 }}>{j.address}</div>{j.client_name && <div style={{ fontSize: 12, color: '#C9A84C', fontWeight: 500, marginBottom: 10 }}>{j.client_name}</div>}<div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}><span className="badge" style={{ background: sc(j.status) + '15', color: sc(j.status) }}><span className="bdot" style={{ background: sc(j.status) }} />{sl(j.status)}</span>{rev > 0 && <span style={{ fontWeight: 700, fontSize: 14, color: '#0A1F44' }}>{f$(rev)}</span>}{j.photos?.length > 0 && <span style={{ fontSize: 11, color: '#9CA3AF' }}>{j.photos.length} photos</span>}{j.assigned_rep && <span className="tag">{j.assigned_rep}</span>}</div></div>; })}
+        {!loading && filtered.length > 0 && !mob && <div className="card"><table className="tbl"><thead><tr><th>Property</th><th>Status</th><th>Contract</th><th>Rep</th><th>Target</th></tr></thead><tbody>{filtered.map(j => { const rev = Number(j.contract_value || 0) + Number(j.co_total || 0); return <tr key={j.id} onClick={() => setSel(j.id)}><td><div className="cell-a">{j.address}</div>{j.client_name && <div className="cell-b">{j.client_name}{j.client_phone ? ' · ' + j.client_phone : ''}</div>}</td><td><span className="badge" style={{ background: sc(j.status) + '15', color: sc(j.status) }}><span className="bdot" style={{ background: sc(j.status) }} />{sl(j.status)}</span></td><td>{rev > 0 ? <span style={{ fontWeight: 700, color: 'var(--navy-900)' }}>{f$(rev)}</span> : <span style={{ color: 'var(--text-subtle)', fontSize: 12 }}>—</span>}</td><td>{j.assigned_rep ? <span className="tag">{j.assigned_rep}</span> : <span style={{ color: 'var(--text-subtle)', fontSize: 12 }}>—</span>}</td><td style={{ color: 'var(--text-subtle)', fontSize: 12 }}>{j.target_completion || '—'}</td></tr>; })}</tbody></table></div>}
+        {!loading && filtered.length > 0 && mob && filtered.map(j => { const rev = Number(j.contract_value || 0) + Number(j.co_total || 0); return <div key={j.id} className="jcard" style={{ borderLeftColor: sc(j.status) }} onClick={() => setSel(j.id)}><div style={{ fontWeight: 600, fontSize: 15, color: 'var(--navy-900)', marginBottom: 3 }}>{j.address}</div>{j.client_name && <div style={{ fontSize: 12, color: 'var(--gold-500)', fontWeight: 500, marginBottom: 10 }}>{j.client_name}</div>}<div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}><span className="badge" style={{ background: sc(j.status) + '15', color: sc(j.status) }}><span className="bdot" style={{ background: sc(j.status) }} />{sl(j.status)}</span>{rev > 0 && <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy-900)' }}>{f$(rev)}</span>}{j.photos?.length > 0 && <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{j.photos.length} photos</span>}{j.assigned_rep && <span className="tag">{j.assigned_rep}</span>}</div></div>; })}
       </div>
       {showIntake && <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: 'rgba(10,31,68,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, color: '#fff' }}>Loading…</div>}><AiIntakeWizard profile={profile} onClose={() => setShowIntake(false)} onJobCreated={newJob => { setJobs(prev => [newJob, ...prev]); setShowIntake(false); }} /></Suspense>}
       {showNew && <div className="overlay" onClick={() => { setShowNew(false); setAddrSuggestions([]); }}>
@@ -187,13 +187,13 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
             <label className="flbl">Property Address</label>
             <div style={{ position: 'relative' }}>
               <input className="finp" value={newA} onChange={e => onAddrChange(e.target.value)} placeholder="123 Main St, Kansas City MO" onKeyDown={e => e.key === 'Enter' && add()} autoFocus autoComplete="off" />
-              {addrLoading && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#9CA3AF' }}>...</span>}
+              {addrLoading && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-subtle)' }}>...</span>}
               {addrSuggestions.length > 0 && <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #E8E4DC', borderRadius: 4, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 100, marginTop: 2 }}>
                 {addrSuggestions.map((s, i) => (
                   <div key={i} onClick={() => pickAddr(s.description)} style={{ padding: '10px 14px', fontSize: 13, color: '#374151', cursor: 'pointer', borderBottom: i < addrSuggestions.length - 1 ? '1px solid #F3F0EB' : 'none' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#F7F5F0'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
                     onMouseLeave={e => e.currentTarget.style.background = '#fff'}
-                    onTouchStart={e => e.currentTarget.style.background = '#F7F5F0'}
+                    onTouchStart={e => e.currentTarget.style.background = 'var(--bg)'}
                     onTouchEnd={e => e.currentTarget.style.background = '#fff'}
                     onTouchCancel={e => e.currentTarget.style.background = '#fff'}>
                     {s.description}

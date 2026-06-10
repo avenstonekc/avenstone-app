@@ -4,10 +4,10 @@ import { acceptTakeoffDraft } from '../../../lib/takeoff';
 import { f$ } from '../../../lib/utils';
 import AddCustomLineModal from './takeoff/AddCustomLineModal';
 
-const NAV = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
-const BORDER = '#E8E4DC';
+const NAV = 'var(--navy-900)';
+const GOLD = 'var(--gold-500)';
+const CREAM = 'var(--bg)';
+const BORDER = 'var(--border)';
 const WARN_BG = '#FFFBEB';
 const WARN_BORDER = '#FCD34D';
 
@@ -153,7 +153,7 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
               padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 600,
               border: `1.5px solid ${selectedType === rt.id ? NAV : BORDER}`,
               background: selectedType === rt.id ? NAV : '#fff',
-              color: selectedType === rt.id ? '#fff' : '#374151',
+              color: selectedType === rt.id ? '#fff' : 'var(--text-secondary)',
               cursor: loading ? 'default' : 'pointer', transition: 'all 0.15s',
             }}
           >
@@ -164,14 +164,14 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
 
       {/* Idle */}
       {!selectedType && (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9CA3AF', fontSize: 14 }}>
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-subtle)', fontSize: 14 }}>
           Select a room type above to generate a takeoff.
         </div>
       )}
 
       {/* Loading */}
       {loading && (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#9CA3AF', fontSize: 13 }}>
+        <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-subtle)', fontSize: 13 }}>
           Building takeoff draft…
         </div>
       )}
@@ -185,7 +185,7 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
 
       {/* No matching rooms */}
       {!loading && !error && draft && draft.rooms.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9CA3AF', fontSize: 14 }}>
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-subtle)', fontSize: 14 }}>
           No {ROOM_TYPES.find(r => r.id === selectedType)?.lb.toLowerCase()} rooms found in this job's scans.
         </div>
       )}
@@ -223,9 +223,9 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
                 <div style={{ background: CREAM, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <span style={{ fontSize: 13, fontWeight: 700, color: NAV }}>{room.roomLabel}</span>
-                    <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 10 }}>{room.floorLabel}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-subtle)', marginLeft: 10 }}>{room.floorLabel}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: '#6B7280', display: 'flex', gap: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 12 }}>
                     {room.areaSf > 0      && <span>{room.areaSf.toFixed(0)} sf floor</span>}
                     {room.wallAreaSf > 0  && <span>{room.wallAreaSf.toFixed(0)} sf walls</span>}
                     {room.perimeterLf > 0 && <span>{room.perimeterLf.toFixed(0)} lf</span>}
@@ -236,11 +236,11 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '24px 2fr 60px 80px 80px 80px', padding: '5px 14px', gap: 8, background: '#F8F7F5', borderBottom: `1px solid ${BORDER}`, alignItems: 'center' }}>
                   <div />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Labor</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Labor</span>
                     <span style={{ fontSize: 10, fontWeight: 700, color: NAV }}>{f$(roomLaborCost)}</span>
                   </div>
                   {['Unit', 'Qty', '$/unit', 'Total'].map(h => (
-                    <div key={h} style={{ fontSize: 10, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
+                    <div key={h} style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
                   ))}
                 </div>
 
@@ -262,13 +262,13 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
                           {line.materialName ? `${line.trade} — ${line.materialName}` : line.trade}
                           {line.isCustom && <CustomBadge />}
                           {line.isCustom && (
-                            <button onClick={() => removeCustomLine(line)} title="Remove line" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 13, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}>×</button>
+                            <button onClick={() => removeCustomLine(line)} title="Remove line" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 13, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}>×</button>
                           )}
                         </div>
-                        {line.optional && <span style={{ fontSize: 10, color: '#9CA3AF', fontStyle: 'italic' }}>optional</span>}
+                        {line.optional && <span style={{ fontSize: 10, color: 'var(--text-subtle)', fontStyle: 'italic' }}>optional</span>}
                         {needsRate && !line.isExcluded && <span style={{ fontSize: 10, fontWeight: 700, color: '#D97706', display: 'block', marginTop: 1 }}>REP MUST ENTER RATE</span>}
                       </div>
-                      <div style={{ fontSize: 12, color: '#6B7280' }}>{line.unit}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{line.unit}</div>
                       <input
                         type="number"
                         value={line.quantity ?? ''}
@@ -285,7 +285,7 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
                         style={{ fontSize: 12, border: `1.5px solid ${needsRate && !line.isExcluded ? WARN_BORDER : BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: needsRate ? '#D97706' : NAV, background: needsRate && !line.isExcluded ? WARN_BG : '#fff', fontWeight: needsRate ? 700 : 400 }}
                         placeholder="Enter"
                       />
-                      <div style={{ fontSize: 12, fontWeight: 700, color: line.lineCost != null ? NAV : '#9CA3AF' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: line.lineCost != null ? NAV : 'var(--text-subtle)' }}>
                         {!line.isExcluded && line.lineCost != null ? f$(line.lineCost) : '—'}
                       </div>
                     </div>
@@ -301,12 +301,12 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
                       style={{ padding: '7px 14px', background: '#EDE9E2', borderTop: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Materials</span>
-                        <span style={{ fontSize: 10, color: '#9CA3AF' }}>({roomMatLines.length} item{roomMatLines.length !== 1 ? 's' : ''})</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Materials</span>
+                        <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>({roomMatLines.length} item{roomMatLines.length !== 1 ? 's' : ''})</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: NAV }}>{f$(roomMatCost)}</span>
-                        <span style={{ fontSize: 10, color: '#9CA3AF' }}>{matsCollapsed ? '▶' : '▼'}</span>
+                        <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{matsCollapsed ? '▶' : '▼'}</span>
                       </div>
                     </div>
 
@@ -328,18 +328,18 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
                               {line.materialName || line.description}
                               {line.isCustom && <CustomBadge />}
                               {line.isCustom && (
-                                <button onClick={() => removeCustomLine(line)} title="Remove line" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 13, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}>×</button>
+                                <button onClick={() => removeCustomLine(line)} title="Remove line" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 13, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}>×</button>
                               )}
                             </div>
-                            <div style={{ fontSize: 10, color: '#9CA3AF' }}>{line.trade}</div>
+                            <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{line.trade}</div>
                             {needsRate && !line.isExcluded && <span style={{ fontSize: 10, fontWeight: 700, color: '#D97706', display: 'block', marginTop: 1 }}>REP MUST ENTER RATE</span>}
                             {!line.isCustom && line.wastePct > 0 && (
-                              <span style={{ fontSize: 9, background: '#E5E7EB', color: '#6B7280', borderRadius: 4, padding: '1px 5px', display: 'inline-block', marginTop: 2 }}>
+                              <span style={{ fontSize: 9, background: '#E5E7EB', color: 'var(--text-muted)', borderRadius: 4, padding: '1px 5px', display: 'inline-block', marginTop: 2 }}>
                                 +{line.wastePct}% waste
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: 12, color: '#6B7280' }}>{line.unit}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{line.unit}</div>
                           <input
                             type="number"
                             value={line.quantity ?? ''}
@@ -356,7 +356,7 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
                             style={{ fontSize: 12, border: `1.5px solid ${needsRate && !line.isExcluded ? WARN_BORDER : BORDER}`, borderRadius: 4, padding: '3px 6px', width: '100%', color: needsRate ? '#D97706' : NAV, background: needsRate && !line.isExcluded ? WARN_BG : '#fff', fontWeight: needsRate ? 700 : 400 }}
                             placeholder="—"
                           />
-                          <div style={{ fontSize: 12, fontWeight: 700, color: line.lineCost != null ? NAV : '#9CA3AF' }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: line.lineCost != null ? NAV : 'var(--text-subtle)' }}>
                             {!line.isExcluded && line.lineCost != null ? f$(line.lineCost) : '—'}
                           </div>
                         </div>
@@ -380,7 +380,7 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
 
           {/* Save result banner */}
           {saveResult && (
-            <div style={{ background: '#D1FAE5', border: '1px solid #6EE7B7', color: '#065F46', padding: '10px 14px', borderRadius: 6, marginBottom: 8, fontSize: 13 }}>
+            <div style={{ background: 'var(--green-bg)', border: '1px solid #6EE7B7', color: '#065F46', padding: '10px 14px', borderRadius: 6, marginBottom: 8, fontSize: 13 }}>
               ✓ Saved {saveResult.lineItemCount} line items
               {saveResult.overrideCount > 0 && ` · ${saveResult.overrideCount} rate${saveResult.overrideCount !== 1 ? 's' : ''} saved as your defaults`}
               {saveResult.errors.length > 0 && (
@@ -399,7 +399,7 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
 
           {/* Footer */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `2px solid ${BORDER}`, marginTop: 4 }}>
-            <div style={{ fontSize: 13, color: '#6B7280' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
               Labor <strong style={{ color: NAV }}>{f$(laborSubtotal)}</strong>
               <span style={{ margin: '0 6px', color: BORDER }}>|</span>
               Materials <strong style={{ color: NAV }}>{f$(materialSubtotal)}</strong>

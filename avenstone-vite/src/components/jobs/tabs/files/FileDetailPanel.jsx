@@ -112,11 +112,11 @@ export default function FileDetailPanel({ fileId, onClose, onUpdated, onDeleted,
           <span style={{ fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85%' }}>
             {loading ? 'Loading…' : (file?.name || 'File')}
           </span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 18, lineHeight: 1, padding: 4, flexShrink: 0 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 18, lineHeight: 1, padding: 4, flexShrink: 0 }}>×</button>
         </div>
 
         {loading && (
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9CA3AF' }}>
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-subtle)' }}>
             <div style={{ width: 24, height: 24, border: '2px solid #C9A84C', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 12px' }} />
             Loading file…
           </div>
@@ -133,17 +133,17 @@ export default function FileDetailPanel({ fileId, onClose, onUpdated, onDeleted,
               {isImage && signedUrl ? (
                 <img src={signedUrl} alt={file.name} style={{ maxWidth: '100%', maxHeight: 280, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
               ) : isImage && !signedUrl ? (
-                <div style={{ padding: '40px 0', color: '#9CA3AF', textAlign: 'center' }}>
+                <div style={{ padding: '40px 0', color: 'var(--text-subtle)', textAlign: 'center' }}>
                   <div style={{ width: 20, height: 20, border: '2px solid #C9A84C', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 8px' }} />
                   <div style={{ fontSize: 12 }}>Loading preview…</div>
                 </div>
               ) : (
-                <div style={{ padding: '32px 0', textAlign: 'center', color: '#9CA3AF' }}>
+                <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-subtle)' }}>
                   <span style={{ width: 36, height: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, opacity: 0.5 }}>{Ic.doc}</span>
                   <div style={{ fontSize: 12 }}>{file.mime_type || 'File'}</div>
                   {signedUrl && (
                     <a href={signedUrl} target="_blank" rel="noopener noreferrer"
-                      style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: '#0A1F44', textDecoration: 'underline' }}>
+                      style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: 'var(--navy-900)', textDecoration: 'underline' }}>
                       Open file ↗
                     </a>
                   )}
@@ -154,25 +154,25 @@ export default function FileDetailPanel({ fileId, onClose, onUpdated, onDeleted,
             {/* Metadata */}
             <div style={{ background: '#F7F5F0', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#374151' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
-                <div><span style={{ color: '#9CA3AF' }}>Category</span><br /><strong>{file.category}{file.subcategory ? ` / ${file.subcategory}` : ''}</strong></div>
-                {file.size_bytes && <div><span style={{ color: '#9CA3AF' }}>Size</span><br /><strong>{formatBytes(file.size_bytes)}</strong></div>}
-                <div><span style={{ color: '#9CA3AF' }}>Uploaded</span><br /><strong>{fDT(file.created_at)}</strong></div>
-                {file.ai_confidence && <div><span style={{ color: '#9CA3AF' }}>AI confidence</span><br /><strong>{Math.round(file.ai_confidence * 100)}%</strong></div>}
+                <div><span style={{ color: 'var(--text-subtle)' }}>Category</span><br /><strong>{file.category}{file.subcategory ? ` / ${file.subcategory}` : ''}</strong></div>
+                {file.size_bytes && <div><span style={{ color: 'var(--text-subtle)' }}>Size</span><br /><strong>{formatBytes(file.size_bytes)}</strong></div>}
+                <div><span style={{ color: 'var(--text-subtle)' }}>Uploaded</span><br /><strong>{fDT(file.created_at)}</strong></div>
+                {file.ai_confidence && <div><span style={{ color: 'var(--text-subtle)' }}>AI confidence</span><br /><strong>{Math.round(file.ai_confidence * 100)}%</strong></div>}
               </div>
             </div>
 
             {/* Client visible toggle */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, marginBottom: 10 }}>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>Client visible</div>
-                <div style={{ fontSize: 11, color: '#9CA3AF' }}>Show this file in the client portal</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)' }}>Client visible</div>
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>Show this file in the client portal</div>
               </div>
               <button
                 onClick={handleToggleVisible}
                 disabled={toggling}
                 style={{
                   width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
-                  background: file.client_visible ? '#0A1F44' : '#E8E4DC',
+                  background: file.client_visible ? 'var(--navy-900)' : 'var(--border)',
                   position: 'relative', transition: 'background 0.2s', flexShrink: 0,
                   opacity: toggling ? 0.6 : 1,
                 }}
@@ -189,10 +189,10 @@ export default function FileDetailPanel({ fileId, onClose, onUpdated, onDeleted,
             <div style={{ border: '1px solid #E8E4DC', borderRadius: 8, marginBottom: 10, overflow: 'hidden' }}>
               <button
                 onClick={() => setRecatOpen(v => !v)}
-                style={{ width: '100%', background: '#F7F5F0', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', fontSize: 13, fontWeight: 600, color: '#0A1F44' }}
+                style={{ width: '100%', background: '#F7F5F0', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', fontSize: 13, fontWeight: 600, color: 'var(--navy-900)' }}
               >
                 Re-categorize
-                <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', color: '#9CA3AF', transform: recatOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>{Ic.chev}</span>
+                <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', color: 'var(--text-subtle)', transform: recatOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>{Ic.chev}</span>
               </button>
               {recatOpen && (
                 <div style={{ padding: '12px 14px', borderTop: '1px solid #E8E4DC' }}>
