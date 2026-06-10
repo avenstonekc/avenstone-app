@@ -38,7 +38,7 @@ export default function CompanyFileExpirationBanner({ profile, onNavigate }) {
 
   return (
     <div style={{
-      background: '#FEE2E2',
+      background: 'var(--red-bg)',
       border: '1px solid #FECACA',
       borderLeft: '4px solid #EF4444',
       borderRadius: 8,
@@ -50,25 +50,25 @@ export default function CompanyFileExpirationBanner({ profile, onNavigate }) {
     }}>
       <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#991B1B', marginBottom: 2 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--red-text-strong)', marginBottom: 2 }}>
           {expired.length === 1
             ? `${expired[0].type} expired`
             : `${expired.length} company documents expired`
           }
         </div>
-        <div style={{ fontSize: 11, color: '#B91C1C', lineHeight: 1.4 }}>
+        <div style={{ fontSize: 11, color: 'var(--red-text-strong)', lineHeight: 1.4 }}>
           {expired.map(f => (
             <span key={f.id} style={{ marginRight: 12 }}>
               {f.type} — expired {fD(f.expiration_date)}
             </span>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: '#991B1B', marginTop: 4, fontWeight: 600 }}>
+        <div style={{ fontSize: 11, color: 'var(--red-text-strong)', marginTop: 4, fontWeight: 600 }}>
           Renew via{' '}
           {onNavigate ? (
             <button
               onClick={() => onNavigate('company-files')}
-              style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', fontWeight: 700, padding: 0, textDecoration: 'underline', fontSize: 11 }}
+              style={{ background: 'none', border: 'none', color: 'var(--red-text-strong)', cursor: 'pointer', fontWeight: 700, padding: 0, textDecoration: 'underline', fontSize: 11 }}
             >
               Settings → Company Files
             </button>

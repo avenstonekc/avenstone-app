@@ -16,7 +16,7 @@ function PhotoThumb({ file, selected, onToggle }) {
   return (
     <div onClick={onToggle} style={{
       width: 80, height: 80, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', flexShrink: 0,
-      border: `2px solid ${selected ? '#C9A84C' : '#E8E4DC'}`,
+      border: `2px solid ${selected ? 'var(--gold-500)' : 'var(--border)'}`,
       boxShadow: selected ? '0 0 0 1px #C9A84C' : 'none',
       position: 'relative', background: '#F5F2E8',
     }}>
@@ -25,10 +25,10 @@ function PhotoThumb({ file, selected, onToggle }) {
         : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🖼️</div>
       }
       {selected && (
-        <div style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: '50%', background: '#C9A84C', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#fff', fontWeight: 700, lineHeight: 1 }}>✓</div>
+        <div style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: '50%', background: 'var(--gold-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--card-bg)', fontWeight: 700, lineHeight: 1 }}>✓</div>
       )}
       {file.subcategory && (
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(10,31,68,0.65)', fontSize: 9, color: '#fff', textAlign: 'center', padding: '2px 4px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.subcategory}</div>
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(10,31,68,0.65)', fontSize: 9, color: 'var(--card-bg)', textAlign: 'center', padding: '2px 4px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.subcategory}</div>
       )}
     </div>
   );
@@ -198,20 +198,20 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
 
         {/* Header */}
         <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid #E8E4DC', flexShrink: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#0A1F44' }}>Draw Package — Draw #{draw.draw_number}</div>
-          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{draw.title || job.address}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy-900)' }}>Draw Package — Draw #{draw.draw_number}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{draw.title || job.address}</div>
         </div>
 
         {/* Action Panel — only when package is saved */}
         {hasSaved && (
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid #E8E4DC', flexShrink: 0, background: '#F0FDF4' }}>
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid #E8E4DC', flexShrink: 0, background: 'var(--green-bg-soft)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#065f46' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green-text-strong)' }}>
                   {sentInfo ? `✓ Sent to ${sentInfo.label}` : '✓ Saved'}
                 </div>
                 {existingPkg?.sent_at && !sentInfo && (
-                  <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
                     Previously sent to {existingPkg.recipient_label || existingPkg.recipient_email}
                   </div>
                 )}
@@ -221,7 +221,7 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
                   {previewing ? '…' : 'Preview'}
                 </button>
                 <button onClick={handleDownload} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Download</button>
-                <button onClick={handleCopyLink} disabled={copying} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: copied ? '#065f46' : undefined }}>
+                <button onClick={handleCopyLink} disabled={copying} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: copied ? 'var(--green-text-strong)' : undefined }}>
                   {copied ? 'Copied!' : copying ? '…' : 'Copy Link'}
                 </button>
                 <button onClick={() => { setSendOpen(s => !s); setSendError(null); }} className="btn btn-navy" style={{ fontSize: 11, padding: '4px 12px' }}>
@@ -233,22 +233,22 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
             {/* Inline send form */}
             {sendOpen && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #BBF7D0' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44', marginBottom: 10 }}>Send draw package to</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--navy-900)', marginBottom: 10 }}>Send draw package to</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 3 }}>Recipient email *</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Recipient email *</div>
                     <input className="finp" type="email" placeholder="bank@example.com" value={recipEmail} onChange={e => setRecipEmail(e.target.value)} style={{ width: '100%', fontSize: 12 }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 3 }}>Recipient label</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Recipient label</div>
                     <input className="finp" type="text" placeholder="First National Bank" value={recipLabel} onChange={e => setRecipLabel(e.target.value)} style={{ width: '100%', fontSize: 12 }} />
                   </div>
                 </div>
                 <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 3 }}>Message (optional)</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Message (optional)</div>
                   <textarea className="finp" placeholder="Please find our draw package attached for your review." value={message} onChange={e => setMessage(e.target.value)} rows={2} style={{ width: '100%', fontSize: 12, resize: 'vertical' }} />
                 </div>
-                {sendError && <div style={{ fontSize: 12, color: '#991b1b', marginBottom: 8 }}>{sendError}</div>}
+                {sendError && <div style={{ fontSize: 12, color: 'var(--red-text-strong)', marginBottom: 8 }}>{sendError}</div>}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                   <button onClick={() => setSendOpen(false)} className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px' }}>Cancel</button>
                   <button onClick={handleSend} disabled={sending} className="btn btn-gold" style={{ fontSize: 12, padding: '6px 16px', opacity: sending ? 0.6 : 1 }}>
@@ -263,14 +263,14 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
         {/* File Picker Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading files...</div>
+            <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>Loading files...</div>
           ) : (
             <>
               {/* Job Files */}
               <div style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Job Files</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Job Files</div>
                 {jobFiles.length === 0 ? (
-                  <div style={{ fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' }}>No files on this job.</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-subtle)', fontStyle: 'italic' }}>No files on this job.</div>
                 ) : (
                   jobCats.map(cat => {
                     const files = jobGroups[cat];
@@ -278,9 +278,9 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
                     return (
                       <div key={cat} style={{ marginBottom: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer' }} onClick={() => toggleAll(files, 'job_file')}>
-                          <input type="checkbox" readOnly checked={files.every(f => isSelected('job_file', f.id))} style={{ cursor: 'pointer', accentColor: '#C9A84C' }} />
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{cat}</span>
-                          <span style={{ fontSize: 11, color: '#9CA3AF' }}>({files.length})</span>
+                          <input type="checkbox" readOnly checked={files.every(f => isSelected('job_file', f.id))} style={{ cursor: 'pointer', accentColor: 'var(--gold-500)' }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{cat}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>({files.length})</span>
                         </div>
                         {isPhotoGroup ? (
                           <div style={{ paddingLeft: 20, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -291,9 +291,9 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
                         ) : (
                           <div style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 3 }}>
                             {files.map(f => (
-                              <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 6, background: isSelected('job_file', f.id) ? '#FEF9EE' : '#fff', border: `1px solid ${isSelected('job_file', f.id) ? '#C9A84C' : '#E8E4DC'}` }}>
-                                <input type="checkbox" checked={isSelected('job_file', f.id)} onChange={() => toggleFile('job_file', f.id)} style={{ cursor: 'pointer', accentColor: '#C9A84C' }} />
-                                <span style={{ fontSize: 12, color: '#0A1F44', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || '(unnamed)'}</span>
+                              <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 6, background: isSelected('job_file', f.id) ? 'var(--cream-banner)' : 'var(--card-bg)', border: `1px solid ${isSelected('job_file', f.id) ? 'var(--gold-500)' : 'var(--border)'}` }}>
+                                <input type="checkbox" checked={isSelected('job_file', f.id)} onChange={() => toggleFile('job_file', f.id)} style={{ cursor: 'pointer', accentColor: 'var(--gold-500)' }} />
+                                <span style={{ fontSize: 12, color: 'var(--navy-900)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || '(unnamed)'}</span>
                               </label>
                             ))}
                           </div>
@@ -306,15 +306,15 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
 
               {/* Compliance Docs */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Compliance Documents</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Compliance Documents</div>
                 {compFiles.length === 0 ? (
-                  <div style={{ fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' }}>No Insurance, License, or Compliance documents on file.</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-subtle)', fontStyle: 'italic' }}>No Insurance, License, or Compliance documents on file.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {compFiles.map(f => (
-                      <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 6, background: isSelected('company_file', f.id) ? '#FEF9EE' : '#fff', border: `1px solid ${isSelected('company_file', f.id) ? '#C9A84C' : '#E8E4DC'}` }}>
-                        <input type="checkbox" checked={isSelected('company_file', f.id)} onChange={() => toggleFile('company_file', f.id)} style={{ cursor: 'pointer', accentColor: '#C9A84C' }} />
-                        <span style={{ fontSize: 12, color: '#0A1F44', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || '(unnamed)'}</span>
+                      <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 6, background: isSelected('company_file', f.id) ? 'var(--cream-banner)' : 'var(--card-bg)', border: `1px solid ${isSelected('company_file', f.id) ? 'var(--gold-500)' : 'var(--border)'}` }}>
+                        <input type="checkbox" checked={isSelected('company_file', f.id)} onChange={() => toggleFile('company_file', f.id)} style={{ cursor: 'pointer', accentColor: 'var(--gold-500)' }} />
+                        <span style={{ fontSize: 12, color: 'var(--navy-900)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || '(unnamed)'}</span>
                       </label>
                     ))}
                   </div>
@@ -325,12 +325,12 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid #E8E4DC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: '#F7F5F0', gap: 8 }}>
-          <div style={{ fontSize: 12, color: '#6B7280', flexShrink: 0 }}>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid #E8E4DC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: 'var(--bg)', gap: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
             {selected.size === 0 ? 'Cover sheet only' : `${selected.size} file${selected.size > 1 ? 's' : ''} selected`}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {saveError && <span style={{ fontSize: 11, color: '#ef4444' }}>{saveError}</span>}
+            {saveError && <span style={{ fontSize: 11, color: 'var(--red-text)' }}>{saveError}</span>}
             <button onClick={onClose} className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 14px' }}>Close</button>
             <button onClick={handleSave} disabled={saving} className="btn btn-gold" style={{ fontSize: 12, padding: '6px 16px', opacity: saving ? 0.6 : 1 }}>
               {saving ? 'Saving...' : savedThisSession ? 'Resave' : 'Save Package'}

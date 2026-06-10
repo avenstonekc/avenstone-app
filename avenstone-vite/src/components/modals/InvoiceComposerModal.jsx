@@ -18,13 +18,13 @@ const todayPlus30 = () => {
 };
 
 const INVOICE_STATUS = {
-  draft:          { label: 'Draft',          bg: '#F3F4F6', color: '#6B7280' },
-  sent:           { label: 'Sent',           bg: '#DBEAFE', color: '#1e40af' },
-  viewed:         { label: 'Viewed',         bg: '#EDE9FE', color: '#5b21b6' },
-  partially_paid: { label: 'Partial',        bg: '#FEF3C7', color: '#92400e' },
-  paid:           { label: 'Paid',           bg: '#D1FAE5', color: '#065f46' },
-  overdue:        { label: 'Overdue',        bg: '#FEE2E2', color: '#991b1b' },
-  void:           { label: 'Void',           bg: '#F3F4F6', color: '#9CA3AF' },
+  draft:          { label: 'Draft',          bg: 'var(--neutral-bg)', color: 'var(--text-muted)' },
+  sent:           { label: 'Sent',           bg: 'var(--blue-bg-new)', color: 'var(--blue-text-link-strong)' },
+  viewed:         { label: 'Viewed',         bg: 'var(--purple-bg)', color: 'var(--purple-text)' },
+  partially_paid: { label: 'Partial',        bg: 'var(--amber-bg)', color: 'var(--amber-text-strong)' },
+  paid:           { label: 'Paid',           bg: 'var(--green-bg)', color: 'var(--green-text-strong)' },
+  overdue:        { label: 'Overdue',        bg: 'var(--red-bg)', color: 'var(--red-text-strong)' },
+  void:           { label: 'Void',           bg: 'var(--neutral-bg)', color: 'var(--text-subtle)' },
 };
 
 let tempIdCounter = 0;
@@ -242,8 +242,8 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
     }
   };
 
-  const inp  = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 16, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' };
-  const lbl  = { fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
+  const inp  = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 16, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: 'var(--card-bg)', boxSizing: 'border-box' };
+  const lbl  = { fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
   const fg   = { marginBottom: 14 };
   const ninp = { ...inp, width: 'auto' };
 
@@ -254,13 +254,13 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div className="modal-title" style={{ margin: 0 }}>{isEdit ? 'Edit Invoice' : 'New Invoice'}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
-        {loading && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
+        {loading && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)' }}>Loading...</div>}
 
         {nonDraftError && (
-          <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 6, padding: '12px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>
+          <div style={{ background: 'var(--amber-bg)', border: '1px solid #FCD34D', borderRadius: 6, padding: '12px 14px', fontSize: 13, color: 'var(--amber-text-strong)', marginBottom: 16 }}>
             {nonDraftError}
           </div>
         )}
@@ -324,12 +324,12 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
 
             {/* Line items */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#0A1F44', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Line Items</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy-900)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Line Items</div>
 
               {!isMob() && lineItems.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 60px 60px 90px 90px 80px 1fr 24px', gap: 6, marginBottom: 4, padding: '0 4px' }}>
                   {['Description','Qty','Unit','Unit Price','Total','Phase','',''].map((h, i) => (
-                    <div key={i} style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
+                    <div key={i} style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
                   ))}
                 </div>
               )}
@@ -339,29 +339,29 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
                   <div key={li.tempId} style={{ border: '1px solid #E8E4DC', borderRadius: 6, padding: '10px 10px 8px' }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
                       <input style={{ ...ninp, flex: 1 }} placeholder="Description" value={li.description} onChange={e => updateLine(li.tempId, 'description', e.target.value)} />
-                      <button onClick={() => removeLine(li.tempId)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 18, cursor: 'pointer', padding: '0 4px', lineHeight: 1, flexShrink: 0 }}>×</button>
+                      <button onClick={() => removeLine(li.tempId)} style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', fontSize: 18, cursor: 'pointer', padding: '0 4px', lineHeight: 1, flexShrink: 0 }}>×</button>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 6 }}>
                       <div>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Qty</div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: 2 }}>Qty</div>
                         <input style={ninp} type="number" min="0" step="any" value={li.quantity} onChange={e => updateLine(li.tempId, 'quantity', e.target.value)} />
                       </div>
                       <div>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Unit</div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: 2 }}>Unit</div>
                         <input style={ninp} placeholder="ea" value={li.unit} onChange={e => updateLine(li.tempId, 'unit', e.target.value)} />
                       </div>
                       <div>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Unit Price</div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: 2 }}>Unit Price</div>
                         <input style={ninp} type="number" min="0" step="0.01" placeholder="0.00" value={li.unit_price} onChange={e => updateLine(li.tempId, 'unit_price', e.target.value)} />
                       </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                       <div>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Total</div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: 2 }}>Total</div>
                         <input style={ninp} type="number" min="0" step="0.01" value={li.line_total} onChange={e => updateLine(li.tempId, 'line_total', e.target.value)} />
                       </div>
                       <div>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 2 }}>Phase</div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: 2 }}>Phase</div>
                         <input style={ninp} placeholder="Framing" value={li.phase} onChange={e => updateLine(li.tempId, 'phase', e.target.value)} />
                       </div>
                     </div>
@@ -375,22 +375,22 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
                     <input style={ninp} type="number" min="0" step="0.01" value={li.line_total} onChange={e => updateLine(li.tempId, 'line_total', e.target.value)} />
                     <input style={ninp} placeholder="Framing" value={li.phase} onChange={e => updateLine(li.tempId, 'phase', e.target.value)} />
                     <div />
-                    <button onClick={() => removeLine(li.tempId)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 16, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
+                    <button onClick={() => removeLine(li.tempId)} style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', fontSize: 16, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
                   </div>
                 ))}
               </div>
 
               <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <button onClick={addLine} className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 12px' }}>+ Manual Line</button>
-                <span style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>Adding lines from the estimate or change orders comes in the next slice.</span>
+                <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>Adding lines from the estimate or change orders comes in the next slice.</span>
               </div>
             </div>
 
             {/* Totals */}
-            <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 6, padding: '12px 14px', marginBottom: 16 }}>
+            <div style={{ background: 'var(--bg)', border: '1px solid #E8E4DC', borderRadius: 6, padding: '12px 14px', marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13, color: '#6B7280' }}>Subtotal: <strong style={{ color: '#0A1F44' }}>{f$(subtotal)}</strong></span>
-                <span style={{ fontSize: 13, color: '#6B7280', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Subtotal: <strong style={{ color: 'var(--navy-900)' }}>{f$(subtotal)}</strong></span>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
                   Tax: <strong>$</strong>
                   <input
                     type="number" min="0" step="0.01" placeholder="0.00"
@@ -399,12 +399,12 @@ export default function InvoiceComposerModal({ job, draws, invoice, prefillDrawI
                     style={{ border: '1px solid #E8E4DC', padding: '4px 6px', fontSize: 13, borderRadius: 4, width: 80, fontFamily: 'inherit', textAlign: 'right' }}
                   />
                 </span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: '#0A1F44' }}>Total: {f$(total_amount)}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy-900)' }}>Total: {f$(total_amount)}</span>
               </div>
             </div>
 
             {error && (
-              <div style={{ background: '#FEE2E2', color: '#991b1b', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{error}</div>
+              <div style={{ background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{error}</div>
             )}
 
             <div style={{ display: 'flex', gap: 10 }}>

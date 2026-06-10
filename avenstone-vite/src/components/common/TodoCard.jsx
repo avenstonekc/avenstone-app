@@ -62,7 +62,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
 
   const isFailedIntent    = todo.type === 'failed_intent';
   const isWalkthroughPrep = todo.type === 'walkthrough_prep';
-  const accentColor = isFailedIntent ? AMBER : (SEV_COLOR[todo.priority] || '#C9A84C');
+  const accentColor = isFailedIntent ? AMBER : (SEV_COLOR[todo.priority] || 'var(--gold-500)');
 
   const handleResume = () => {
     if (!setPendingAction || !todo.payload) return;
@@ -92,7 +92,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
         <>
           <div style={{ fontSize: 12, color: 'var(--green-text)', fontWeight: 600 }}>✓ AI fixed it</div>
           <button
-            style={{ ...btnBase, background: 'var(--green-text)', border: '1px solid var(--green-text)', color: '#fff', fontWeight: 700 }}
+            style={{ ...btnBase, background: 'var(--green-text)', border: '1px solid var(--green-text)', color: 'var(--card-bg)', fontWeight: 700 }}
             onClick={handleResume}
           >
             ↩ Try again
@@ -106,7 +106,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
         <>
           <div style={{ fontSize: 12, color: AMBER, fontWeight: 600 }}>Fix failed — reported</div>
           {todo.payload?.resumable !== false && (
-            <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
+            <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: 'var(--navy-900)', fontWeight: 700 }} onClick={handleResume}>
               ↩ Resume
             </button>
           )}
@@ -119,7 +119,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
         <>
           <div style={{ fontSize: 12, color: AMBER, fontWeight: 600 }}>Fix status unknown</div>
           {todo.payload?.resumable !== false && (
-            <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
+            <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: 'var(--navy-900)', fontWeight: 700 }} onClick={handleResume}>
               ↩ Resume
             </button>
           )}
@@ -132,7 +132,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
         <>
           <div style={{ fontSize: 12, color: AMBER, fontWeight: 600 }}>Reported to team</div>
           {todo.payload?.resumable !== false && (
-            <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
+            <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: 'var(--navy-900)', fontWeight: 700 }} onClick={handleResume}>
               ↩ Resume
             </button>
           )}
@@ -143,7 +143,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
     // Default: no bug linked or open/in_progress
     if (todo.payload?.resumable !== false) {
       return (
-        <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: '#0A1F44', fontWeight: 700 }} onClick={handleResume}>
+        <button style={{ ...btnBase, background: AMBER, border: `1px solid ${AMBER}`, color: 'var(--navy-900)', fontWeight: 700 }} onClick={handleResume}>
           ↩ Resume
         </button>
       );
@@ -169,7 +169,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
       <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         {isWalkthroughPrep && onOpenWalkthrough && todo.payload?.work_type && (
           <button
-            style={{ ...btnBase, background: '#0A1F44', border: '1px solid #0A1F44', color: '#C9A84C', fontWeight: 700 }}
+            style={{ ...btnBase, background: 'var(--navy-900)', border: '1px solid #0A1F44', color: 'var(--gold-500)', fontWeight: 700 }}
             onClick={() => onOpenWalkthrough(todo.job_id, todo.payload.work_type, todo.id)}
           >
             📋 Start Walkthrough

@@ -43,8 +43,8 @@ export default function MarkPaidModal({ invoice, onClose, onSaved, onSubmit }) {
     }
   };
 
-  const inp = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 13, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' };
-  const lbl = { fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
+  const inp = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 13, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: 'var(--card-bg)', boxSizing: 'border-box' };
+  const lbl = { fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
   const fg  = { marginBottom: 14 };
 
   return (
@@ -53,10 +53,10 @@ export default function MarkPaidModal({ invoice, onClose, onSaved, onSubmit }) {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <div className="modal-title" style={{ margin: 0 }}>Mark Paid — {invoice.invoice_number}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 20 }}>
-          Outstanding balance: <strong style={{ color: '#0A1F44' }}>{f$(outstanding)}</strong>
+        <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginBottom: 20 }}>
+          Outstanding balance: <strong style={{ color: 'var(--navy-900)' }}>{f$(outstanding)}</strong>
         </div>
 
         <div style={fg}>
@@ -97,7 +97,7 @@ export default function MarkPaidModal({ invoice, onClose, onSaved, onSubmit }) {
         </div>
 
         {error && (
-          <div style={{ background: '#FEE2E2', color: '#991b1b', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{error}</div>
+          <div style={{ background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{error}</div>
         )}
 
         <div style={{ display: 'flex', gap: 10 }}>

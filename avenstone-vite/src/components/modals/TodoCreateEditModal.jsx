@@ -60,7 +60,7 @@ export default function TodoCreateEditModal({ todo, defaultJobId, tenantJobs, on
       <div className="modal" style={{ maxWidth: 480, width: '100%' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div className="modal-title" style={{ margin: 0 }}>{todo ? 'Edit To-do' : 'New To-do'}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
         <div className="fg">
@@ -113,7 +113,7 @@ export default function TodoCreateEditModal({ todo, defaultJobId, tenantJobs, on
         </div>
 
         {error && (
-          <div style={{ background: '#FEE2E2', color: '#991b1b', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 14 }}>{error}</div>
+          <div style={{ background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 14 }}>{error}</div>
         )}
 
         <div style={{ display: 'flex', gap: 10 }}>

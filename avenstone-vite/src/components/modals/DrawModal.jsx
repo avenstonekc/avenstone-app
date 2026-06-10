@@ -103,9 +103,9 @@ export default function DrawModal({ job, existingDraws, draw, onClose, onSaved }
     }
   };
 
-  const inp = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 16, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' };
+  const inp = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 16, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: 'var(--card-bg)', boxSizing: 'border-box' };
   const sel = { ...inp, appearance: 'none' };
-  const lbl = { fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
+  const lbl = { fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
   const fg = { marginBottom: 14 };
 
   return (
@@ -113,7 +113,7 @@ export default function DrawModal({ job, existingDraws, draw, onClose, onSaved }
       <div className="modal" style={{ maxWidth: 440, width: '100%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div className="modal-title" style={{ margin: 0 }}>{isEdit ? 'Edit Draw' : 'Add Draw'}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
@@ -165,8 +165,8 @@ export default function DrawModal({ job, existingDraws, draw, onClose, onSaved }
 
         {/* Auto-invoice trigger */}
         <div style={{ borderTop: '1px solid #F3F0E8', paddingTop: 14, marginBottom: 14 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Auto-invoice trigger (optional)</div>
-          <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 10 }}>Auto-draft an invoice when a milestone is hit. PM still reviews and sends.</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Auto-invoice trigger (optional)</div>
+          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 10 }}>Auto-draft an invoice when a milestone is hit. PM still reviews and sends.</div>
           <div style={fg}>
             <label style={lbl}>Trigger</label>
             <select style={sel} value={triggerType} onChange={e => { setTriggerType(e.target.value); setTriggerTrade(''); setTriggerPhase(''); }}>
@@ -193,7 +193,7 @@ export default function DrawModal({ job, existingDraws, draw, onClose, onSaved }
           )}
         </div>
 
-        {err && <div style={{ background: '#FEE2E2', color: '#991b1b', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{err}</div>}
+        {err && <div style={{ background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
         <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
           <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>

@@ -41,7 +41,7 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
         {step === 'review' && <>
           <div className="modal-title">Review Contract</div>
           <div style={{ overflowY: 'auto', flex: 1, marginBottom: 12 }}>
-            <pre style={{ fontSize: 11, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#374151', fontFamily: 'sans-serif' }}>{contractText}</pre>
+            <pre style={{ fontSize: 11, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text-secondary)', fontFamily: 'sans-serif' }}>{contractText}</pre>
           </div>
           <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
             <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
@@ -50,15 +50,15 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
         </>}
         {step === 'sign' && <>
           <div className="modal-title">Sign Contract</div>
-          <div style={{ marginBottom: 12, fontSize: 13, color: '#6B7280' }}>By signing below, you agree to the contract terms for <strong>{job.address}</strong>.</div>
+          <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-muted)' }}>By signing below, you agree to the contract terms for <strong>{job.address}</strong>.</div>
           <SignaturePad onSave={submit} onCancel={() => setStep('review')} label="Draw your signature" />
-          {saving && <div style={{ textAlign: 'center', fontSize: 13, color: '#9CA3AF', marginTop: 12 }}>Saving signed contract...</div>}
+          {saving && <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-subtle)', marginTop: 12 }}>Saving signed contract...</div>}
         </>}
         {step === 'done' && <>
           <div style={{ padding: '24px 0', textAlign: 'center' }}>
-            <div style={{ width: 48, height: 48, background: '#22c55e', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', color: '#fff', fontSize: 20 }}>✓</div>
-            <div style={{ fontWeight: 600, color: '#0A1F44', marginBottom: 4 }}>Contract Signed!</div>
-            <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 16 }}>Your signed contract has been saved.</div>
+            <div style={{ width: 48, height: 48, background: 'var(--green-dot)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', color: 'var(--card-bg)', fontSize: 20 }}>✓</div>
+            <div style={{ fontWeight: 600, color: 'var(--navy-900)', marginBottom: 4 }}>Contract Signed!</div>
+            <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginBottom: 16 }}>Your signed contract has been saved.</div>
             <button className="btn btn-ghost" style={{ width: '100%' }} onClick={onClose}>Close</button>
           </div>
         </>}

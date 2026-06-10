@@ -35,7 +35,7 @@ export default function ContractModal({ job, onClose, onSent, proposalDoc }) {
         <div className="modal-title" style={{ flexShrink: 0 }}>Send Contract</div>
         <div style={{ overflowY: 'auto', flex: 1 }}>
             {proposalDoc && (
-              <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#065F46', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ background: 'var(--green-bg-soft)', border: '1px solid #BBF7D0', padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--green-text-strong)', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 16 }}>✓</span>
                 <span><strong>Proposal PDF found</strong> — "{proposalDoc.name}" will be sent as the contract.</span>
               </div>
@@ -47,7 +47,7 @@ export default function ContractModal({ job, onClose, onSent, proposalDoc }) {
             {!proposalDoc && (
               <div className="fg"><label className="flbl">Contract Text</label><textarea className="finp fta" rows={14} value={contractText} onChange={e => setContractText(e.target.value)} style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 11, lineHeight: 1.5 }} /></div>
             )}
-            {err && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>{err}</div>}
+            {err && <div style={{ fontSize: 12, color: 'var(--red-text)', marginBottom: 8 }}>{err}</div>}
             <div style={{ display: 'flex', gap: 10, marginTop: 8, flexShrink: 0 }}>
               <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
               <button className={`btn ${clientEmail ? 'btn-navy' : 'btn-ghost'}`} style={{ flex: 2 }} onClick={send} disabled={sending || !clientEmail}>{sending ? 'Sending...' : 'Send Contract to Client'}</button>

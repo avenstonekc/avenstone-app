@@ -6,9 +6,9 @@ const GOLD = 'var(--gold-500)';
 const BORDER = 'var(--border)';
 
 const SEV_COLORS = {
-  blocker:      { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5', label: 'BLOCKER' },
-  strong:       { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D', label: 'STRONG' },
-  nice_to_have: { bg: '#F3F4F6', text: '#374151', border: '#D1D5DB', label: 'NICE TO HAVE' },
+  blocker:      { bg: 'var(--red-bg)',     text: 'var(--red-text-strong)', border: '#FCA5A5',      label: 'BLOCKER' },
+  strong:       { bg: 'var(--amber-bg)',   text: 'var(--amber-text-strong)', border: 'var(--amber-border)', label: 'STRONG' },
+  nice_to_have: { bg: 'var(--neutral-bg)', text: 'var(--text-secondary)',  border: '#D1D5DB',      label: 'NICE TO HAVE' },
 };
 
 export default function GapResolutionModal({ open, gaps, busy, onClose, onGenerate }) {
@@ -45,7 +45,7 @@ export default function GapResolutionModal({ open, gaps, busy, onClose, onGenera
           <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: mob ? 18 : 20, color: NAV }}>
             Review Consultation Gaps
           </div>
-          <div style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             {gaps.length} item{gaps.length !== 1 ? 's' : ''} flagged — resolve blockers before generating the estimate.
           </div>
         </div>
@@ -58,10 +58,10 @@ export default function GapResolutionModal({ open, gaps, busy, onClose, onGenera
             const noteOpen = gapNotesOpen[i];
             return (
               <div key={i} style={{
-                border: `1px solid ${res ? '#D1FAE5' : BORDER}`,
+                border: `1px solid ${res ? 'var(--green-bg)' : BORDER}`,
                 borderRadius: 10,
                 padding: mob ? '12px 14px' : '14px 18px',
-                background: res === 'resolved' ? '#F0FDF4' : res === 'skip' ? '#F9FAFB' : '#fff',
+                background: res === 'resolved' ? 'var(--green-bg-soft)' : res === 'skip' ? 'var(--surface)' : '#fff',
                 opacity: res === 'skip' ? 0.7 : 1,
                 transition: 'all 0.15s',
               }}>
@@ -77,11 +77,11 @@ export default function GapResolutionModal({ open, gaps, busy, onClose, onGenera
                     {g.title}
                   </span>
                 </div>
-                <div style={{ fontSize: 13, color: '#4B5563', lineHeight: 1.5, marginBottom: 6 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 6 }}>
                   {g.description}
                 </div>
                 {g.suggested_action && (
-                  <div style={{ fontSize: 12, color: '#6B7280', fontStyle: 'italic', marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 10 }}>
                     <span style={{ fontWeight: 600, fontStyle: 'normal', color: NAV }}>Ask: </span>
                     {g.suggested_action}
                   </div>
@@ -102,9 +102,9 @@ export default function GapResolutionModal({ open, gaps, busy, onClose, onGenera
                   <button
                     onClick={() => setGapResolutions(prev => ({ ...prev, [i]: 'resolved' }))}
                     style={{
-                      padding: '4px 12px', borderRadius: 6, border: `1px solid ${res === 'resolved' ? '#22c55e' : BORDER}`,
-                      background: res === 'resolved' ? '#D1FAE5' : '#fff',
-                      color: res === 'resolved' ? '#065F46' : '#374151',
+                      padding: '4px 12px', borderRadius: 6, border: `1px solid ${res === 'resolved' ? 'var(--green-dot)' : BORDER}`,
+                      background: res === 'resolved' ? 'var(--green-bg)' : '#fff',
+                      color: res === 'resolved' ? 'var(--green-text-strong)' : '#374151',
                       fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     }}
                   >
@@ -113,9 +113,9 @@ export default function GapResolutionModal({ open, gaps, busy, onClose, onGenera
                   <button
                     onClick={() => setGapResolutions(prev => ({ ...prev, [i]: 'skip' }))}
                     style={{
-                      padding: '4px 12px', borderRadius: 6, border: `1px solid ${res === 'skip' ? '#9CA3AF' : BORDER}`,
+                      padding: '4px 12px', borderRadius: 6, border: `1px solid ${res === 'skip' ? 'var(--text-subtle)' : BORDER}`,
                       background: res === 'skip' ? '#F3F4F6' : '#fff',
-                      color: '#6B7280', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     }}
                   >
                     Skip
@@ -127,8 +127,8 @@ export default function GapResolutionModal({ open, gaps, busy, onClose, onGenera
                     }}
                     style={{
                       padding: '4px 12px', borderRadius: 6, border: `1px solid ${res === 'noted' ? GOLD : BORDER}`,
-                      background: res === 'noted' ? '#FFFBEB' : '#fff',
-                      color: res === 'noted' ? '#92400E' : '#6B7280',
+                      background: res === 'noted' ? 'var(--amber-bg-soft)' : '#fff',
+                      color: res === 'noted' ? '#92400E' : 'var(--text-muted)',
                       fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     }}
                   >
@@ -143,7 +143,7 @@ export default function GapResolutionModal({ open, gaps, busy, onClose, onGenera
         {/* Footer */}
         <div style={{ padding: mob ? '12px 16px' : '14px 24px', borderTop: `1px solid ${BORDER}`, display: 'flex', gap: 10, flexDirection: mob ? 'column' : 'row' }}>
           {hasBlockerPending && (
-            <div style={{ fontSize: 12, color: '#991B1B', alignSelf: 'center', flex: 1 }}>
+            <div style={{ fontSize: 12, color: 'var(--red-text-strong)', alignSelf: 'center', flex: 1 }}>
               Resolve all blockers before generating.
             </div>
           )}

@@ -78,7 +78,7 @@ export default function EngagementActionModal({ engagement, action, onClose, onC
   };
 
   const redBtnStyle = {
-    flex: 2, backgroundColor: '#dc2626', borderColor: '#b91c1c', color: '#fff',
+    flex: 2, backgroundColor: '#dc2626', borderColor: '#b91c1c', color: 'var(--card-bg)',
     opacity: submitting ? 0.6 : 1, cursor: submitting ? 'not-allowed' : 'pointer',
   };
 
@@ -88,10 +88,10 @@ export default function EngagementActionModal({ engagement, action, onClose, onC
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div className="modal-title" style={{ margin: 0 }}>{cfg.title}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
-        <p style={{ fontSize: 14, color: '#374151', lineHeight: 1.6, marginBottom: cfg.hasReason ? 20 : 24, marginTop: 0 }}>
+        <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: cfg.hasReason ? 20 : 24, marginTop: 0 }}>
           {cfg.message(engagement)}
         </p>
 

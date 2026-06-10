@@ -147,8 +147,8 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
 
   const types      = form.direction === 'in' ? TX_TYPES_IN : TX_TYPES_OUT;
   const lienMissing = tx.lien_waiver_required && !lienUrl;
-  const inp = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 16, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' };
-  const lbl = { fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
+  const inp = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 16, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: 'var(--card-bg)', boxSizing: 'border-box' };
+  const lbl = { fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
   const fg  = { marginBottom: 14 };
 
   return (
@@ -161,13 +161,13 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
             {isView ? (TYPE_LABELS[tx.type] || tx.type) : isNew ? 'New Transaction' : 'Edit Transaction'}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {isView && <button onClick={() => setMode('edit')} style={{ fontSize: 12, color: '#C9A84C', border: '1px solid #E8E4DC', borderRadius: 6, padding: '4px 10px', background: '#fff', cursor: 'pointer' }}>Edit</button>}
-            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            {isView && <button onClick={() => setMode('edit')} style={{ fontSize: 12, color: 'var(--gold-500)', border: '1px solid #E8E4DC', borderRadius: 6, padding: '4px 10px', background: 'var(--card-bg)', cursor: 'pointer' }}>Edit</button>}
+            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
           </div>
         </div>
 
         {lienMissing && (
-          <div style={{ background: '#FEE2E2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#991b1b', fontWeight: 600 }}>
+          <div style={{ background: 'var(--red-bg)', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: 'var(--red-text-strong)', fontWeight: 600 }}>
             ⚠ Lien waiver required for this transaction
           </div>
         )}
@@ -188,18 +188,18 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
               ['Notes',        tx.notes || '—'],
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F3F0EB', fontSize: 13 }}>
-                <span style={{ color: '#9CA3AF', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{k}</span>
-                <span style={{ color: '#0A1F44', fontWeight: 500, textAlign: 'right', maxWidth: '60%' }}>{v}</span>
+                <span style={{ color: 'var(--text-subtle)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{k}</span>
+                <span style={{ color: 'var(--navy-900)', fontWeight: 500, textAlign: 'right', maxWidth: '60%' }}>{v}</span>
               </div>
             ))}
             {receiptUrl && (
               receiptSignedUrl
-                ? <a href={receiptSignedUrl} target="_blank" rel="noopener noreferrer" style={{ marginTop: 12, fontSize: 12, color: '#3B82F6', display: 'block', textDecoration: 'underline' }}>📎 View receipt</a>
-                : <span style={{ marginTop: 12, fontSize: 12, color: '#9CA3AF', display: 'block' }}>📎 Receipt attached (loading…)</span>
+                ? <a href={receiptSignedUrl} target="_blank" rel="noopener noreferrer" style={{ marginTop: 12, fontSize: 12, color: 'var(--blue-link)', display: 'block', textDecoration: 'underline' }}>📎 View receipt</a>
+                : <span style={{ marginTop: 12, fontSize: 12, color: 'var(--text-subtle)', display: 'block' }}>📎 Receipt attached (loading…)</span>
             )}
-            {lienUrl    && <div style={{ marginTop:  6, fontSize: 12, color: '#3B82F6' }}>📎 Lien waiver attached</div>}
+            {lienUrl    && <div style={{ marginTop:  6, fontSize: 12, color: 'var(--blue-link)' }}>📎 Lien waiver attached</div>}
             {tx.status !== 'void' && (
-              <button onClick={voidTx} style={{ marginTop: 20, width: '100%', padding: 10, background: '#FEE2E2', color: '#991b1b', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Void Transaction</button>
+              <button onClick={voidTx} style={{ marginTop: 20, width: '100%', padding: 10, background: 'var(--red-bg)', color: 'var(--red-text-strong)', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>Void Transaction</button>
             )}
           </div>
 
@@ -209,13 +209,13 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
 
             {/* Quick-status segmented toggle (paid/pending/draft) */}
             {useToggle && (
-              <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: '#F7F5F0', borderRadius: 8, padding: 3 }}>
+              <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: 'var(--bg)', borderRadius: 8, padding: 3 }}>
                 {SIMPLE_STATUSES.map(s => (
                   <button key={s} onClick={() => handleQS(s)} style={{
                     flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
                     borderRadius: 6, transition: 'all 0.15s',
-                    background: quickStatus === s ? '#0A1F44' : 'transparent',
-                    color:      quickStatus === s ? '#C9A84C' : '#6B7280',
+                    background: quickStatus === s ? 'var(--navy-900)' : 'transparent',
+                    color:      quickStatus === s ? 'var(--gold-500)' : 'var(--text-muted)',
                   }}>
                     {s.charAt(0).toUpperCase() + s.slice(1)}
                   </button>
@@ -317,29 +317,29 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
             {/* File uploads */}
             <div style={{ ...fg, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ border: '1px solid #E8E4DC', borderRadius: 6, padding: '10px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 6 }}>Receipt</div>
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 6 }}>Receipt</div>
                 {uploading
-                  ? <span style={{ fontSize: 12, color: '#9CA3AF' }}>Uploading…</span>
+                  ? <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Uploading…</span>
                   : receiptUrl
                     ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                        <span style={{ fontSize: 12, color: '#22c55e' }}>✓ Attached</span>
-                        {receiptSignedUrl && <a href={receiptSignedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#3B82F6', textDecoration: 'underline' }}>View</a>}
+                        <span style={{ fontSize: 12, color: 'var(--green-dot)' }}>✓ Attached</span>
+                        {receiptSignedUrl && <a href={receiptSignedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--blue-link)', textDecoration: 'underline' }}>View</a>}
                       </div>
-                    : <label style={{ fontSize: 12, color: '#C9A84C', cursor: 'pointer' }}>
+                    : <label style={{ fontSize: 12, color: 'var(--gold-500)', cursor: 'pointer' }}>
                         Upload<input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={e => e.target.files[0] && uploadReceipt(e.target.files[0])} />
                       </label>}
               </div>
-              <div style={{ border: `1px solid ${lienMissing ? '#fca5a5' : '#E8E4DC'}`, borderRadius: 6, padding: '10px 12px', textAlign: 'center', background: lienMissing ? '#FEF2F2' : '#fff' }}>
-                <div style={{ fontSize: 11, color: lienMissing ? '#991b1b' : '#9CA3AF', marginBottom: 6 }}>Lien Waiver{lienMissing ? ' ⚠' : ''}</div>
+              <div style={{ border: `1px solid ${lienMissing ? '#fca5a5' : 'var(--border)'}`, borderRadius: 6, padding: '10px 12px', textAlign: 'center', background: lienMissing ? 'var(--red-bg)' : 'var(--card-bg)' }}>
+                <div style={{ fontSize: 11, color: lienMissing ? 'var(--red-text-strong)' : 'var(--text-subtle)', marginBottom: 6 }}>Lien Waiver{lienMissing ? ' ⚠' : ''}</div>
                 {lienUrl
-                  ? <span style={{ fontSize: 12, color: '#22c55e' }}>✓ Attached</span>
-                  : <label style={{ fontSize: 12, color: lienMissing ? '#ef4444' : '#C9A84C', cursor: uploading ? 'not-allowed' : 'pointer', fontWeight: lienMissing ? 700 : 400 }}>
+                  ? <span style={{ fontSize: 12, color: 'var(--green-dot)' }}>✓ Attached</span>
+                  : <label style={{ fontSize: 12, color: lienMissing ? 'var(--red-text)' : 'var(--gold-500)', cursor: uploading ? 'not-allowed' : 'pointer', fontWeight: lienMissing ? 700 : 400 }}>
                       Upload<input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={e => e.target.files[0] && uploadLien(e.target.files[0])} disabled={uploading} />
                     </label>}
               </div>
             </div>
 
-            {err && <div style={{ background: '#FEE2E2', color: '#991b1b', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{err}</div>}
+            {err && <div style={{ background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
               <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>

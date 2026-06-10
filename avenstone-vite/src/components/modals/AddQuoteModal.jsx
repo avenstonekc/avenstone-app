@@ -98,7 +98,7 @@ export default function AddQuoteModal({ isOpen, onClose, onSuccess, jobId, initi
         </div>
 
         {error && (
-          <div style={{ background: '#450a0a', color: '#ef4444', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12 }}>{error}</div>
+          <div style={{ background: '#450a0a', color: 'var(--red-text)', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12 }}>{error}</div>
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

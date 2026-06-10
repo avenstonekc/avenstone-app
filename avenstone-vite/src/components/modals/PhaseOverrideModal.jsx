@@ -19,8 +19,8 @@ export default function PhaseOverrideModal({ currentPhase, nextPhase, failingGat
     }
   };
 
-  const inp = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 13, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' };
-  const lbl = { fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
+  const inp = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 13, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: 'var(--card-bg)', boxSizing: 'border-box' };
+  const lbl = { fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -28,24 +28,24 @@ export default function PhaseOverrideModal({ currentPhase, nextPhase, failingGat
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <div className="modal-title" style={{ margin: 0 }}>Override gates — advance to {nextPhase}?</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ marginBottom: 18 }}>
           {failingGates.length > 0 ? (
             <>
-              <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 8 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
                 The following gates are not satisfied:
               </div>
               {failingGates.map(g => (
                 <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 0' }}>
-                  <span style={{ fontSize: 14, color: '#ef4444', lineHeight: 1 }}>✗</span>
-                  <span style={{ fontSize: 13, color: '#374151' }}>{g.label}</span>
+                  <span style={{ fontSize: 14, color: 'var(--red-text)', lineHeight: 1 }}>✗</span>
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{g.label}</span>
                 </div>
               ))}
             </>
           ) : (
-            <div style={{ fontSize: 13, color: '#6B7280' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
               This transition requires manual override — no automatic gates are defined for{' '}
               <strong>{currentPhase} → {nextPhase}</strong>.
             </div>
@@ -61,13 +61,13 @@ export default function PhaseOverrideModal({ currentPhase, nextPhase, failingGat
             value={reason}
             onChange={e => { setReason(e.target.value); setError(null); }}
           />
-          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>
             This reason is logged on the job and visible to other PMs. Min 10 characters.
           </div>
         </div>
 
         {error && (
-          <div style={{ background: '#FEE2E2', color: '#991b1b', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 14 }}>
+          <div style={{ background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 14 }}>
             {error}
           </div>
         )}

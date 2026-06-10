@@ -94,20 +94,20 @@ export default function AddSubToJobModal({ isOpen, onClose, onSuccess, initialSu
       <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div className="modal-title" style={{ margin: 0 }}>{title}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
         {error && (
-          <div style={{ background: '#FEE2E2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#991b1b' }}>
+          <div style={{ background: 'var(--red-bg)', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--red-text-strong)' }}>
             {error}
           </div>
         )}
 
         {/* Sub */}
         <div className="fg">
-          <label className="flbl"><span style={{ color: '#ef4444' }}>* </span>Sub</label>
+          <label className="flbl"><span style={{ color: 'var(--red-text)' }}>* </span>Sub</label>
           {initialSubId ? (
-            <div style={{ fontSize: 14, color: '#0A1F44' }}>
+            <div style={{ fontSize: 14, color: 'var(--navy-900)' }}>
               {selectedSub ? `${selectedSub.full_name} — ${selectedSub.email}` : initialSubId}
             </div>
           ) : (
@@ -120,9 +120,9 @@ export default function AddSubToJobModal({ isOpen, onClose, onSuccess, initialSu
 
         {/* Job */}
         <div className="fg">
-          <label className="flbl"><span style={{ color: '#ef4444' }}>* </span>Job</label>
+          <label className="flbl"><span style={{ color: 'var(--red-text)' }}>* </span>Job</label>
           {initialJobId ? (
-            <div style={{ fontSize: 14, color: '#0A1F44' }}>
+            <div style={{ fontSize: 14, color: 'var(--navy-900)' }}>
               {selectedJob ? selectedJob.address : initialJobId}
             </div>
           ) : (
@@ -135,9 +135,9 @@ export default function AddSubToJobModal({ isOpen, onClose, onSuccess, initialSu
 
         {/* Trade */}
         <div className="fg">
-          <label className="flbl"><span style={{ color: '#ef4444' }}>* </span>Trade</label>
+          <label className="flbl"><span style={{ color: 'var(--red-text)' }}>* </span>Trade</label>
           {noTrades ? (
-            <div style={{ fontSize: 13, color: '#9CA3AF' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>
               This sub has no approved trades. Add pricing in the Subs Directory first.
             </div>
           ) : (
@@ -150,13 +150,13 @@ export default function AddSubToJobModal({ isOpen, onClose, onSuccess, initialSu
 
         {/* Bid origination */}
         <div className="fg">
-          <label className="flbl"><span style={{ color: '#ef4444' }}>* </span>Bid Origination</label>
+          <label className="flbl"><span style={{ color: 'var(--red-text)' }}>* </span>Bid Origination</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#0A1F44', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--navy-900)', cursor: 'pointer' }}>
               <input type="radio" name="bidType" value="sub_drafted" checked={bidType === 'sub_drafted'} onChange={() => setBidType('sub_drafted')} />
               Sub drafts the bid
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#0A1F44', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--navy-900)', cursor: 'pointer' }}>
               <input type="radio" name="bidType" value="gc_drafted" checked={bidType === 'gc_drafted'} onChange={() => setBidType('gc_drafted')} />
               We draft from their rates
             </label>
