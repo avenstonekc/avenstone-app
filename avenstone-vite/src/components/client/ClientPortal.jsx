@@ -7,6 +7,11 @@ import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
 import ClientInvoicesTab from './ClientInvoicesTab';
 
+const NAV    = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const CREAM  = 'var(--bg)';
+const BORDER = 'var(--border)';
+
 async function sbSubmitRating(subId, stars, comment, jobId) {
   const { data, error } = await sb.from('sub_ratings').upsert({ tenant_id: AV_TENANT, sub_id: subId, rater_id: AV_USER_ID, job_id: jobId || null, stars, comment: comment || null }, { onConflict: 'tenant_id,sub_id,rater_id,job_id' }).select().single();
   return { data, error };
@@ -21,6 +26,7 @@ async function sbLoadJobReview(jobId) {
   return data || null;
 }
 
+// MS_STATUS_COLOR uses raw hex — values are concatenated with '18' for badge backgrounds
 const MS_STATUS_COLOR = { completed: '#22c55e', in_progress: '#22c55e', upcoming: '#0A1F44', delayed: '#EF4444', unscheduled: '#9CA3AF' };
 const MS_STATUS_LABEL = { completed: '✓ Done', in_progress: 'In Progress', upcoming: 'Upcoming', delayed: 'Delayed', unscheduled: 'Unscheduled' };
 
@@ -54,7 +60,7 @@ function ClientScheduleView({ jobId }) {
     return () => sb.removeChannel(ch);
   }, [jobId]);
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading schedule...</div>;
+  if (loading) return <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>Loading schedule...</div>;
   if (!milestones.length) return <div className="empty">{Ic.sched}<div className="empty-t">No milestones set</div><div>Your contractor will add project milestones here</div></div>;
 
   const total = milestones.length;
@@ -64,15 +70,15 @@ function ClientScheduleView({ jobId }) {
 
   return (
     <div>
-      <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 16 }}>
+      <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 }}>Overall Progress</div>
-          <div style={{ fontSize: 12, color: '#0A1F44', fontWeight: 700 }}>{pct}% complete</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Overall Progress</div>
+          <div style={{ fontSize: 12, color: NAV, fontWeight: 700 }}>{pct}% complete</div>
         </div>
-        <div style={{ background: '#E8E4DC', height: 8, borderRadius: 4 }}>
-          <div style={{ background: '#22c55e', height: 8, borderRadius: 4, width: `${pct}%`, transition: 'width 0.4s' }} />
+        <div style={{ background: BORDER, height: 8, borderRadius: 4 }}>
+          <div style={{ background: 'var(--green-dot)', height: 8, borderRadius: 4, width: `${pct}%`, transition: 'width 0.4s' }} />
         </div>
-        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6 }}>{done} of {total} milestones complete</div>
+        <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6 }}>{done} of {total} milestones complete</div>
       </div>
       {milestones.map(m => {
         const cfs = clientFacingStatus(m);
@@ -85,20 +91,20 @@ function ClientScheduleView({ jobId }) {
           ? Math.floor((new Date(today) - new Date(m.scheduled_date)) / (1000 * 60 * 60 * 24))
           : null;
         return (
-          <div key={m.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `3px solid ${color}`, marginBottom: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div key={m.id} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderLeft: `3px solid ${color}`, marginBottom: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 2 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: NAV, marginBottom: 2 }}>
                 {m.title}
-                {m.trade && <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 400, marginLeft: 6 }}>{m.trade}</span>}
+                {m.trade && <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontWeight: 400, marginLeft: 6 }}>{m.trade}</span>}
               </div>
-              <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
                 {cfs === 'completed' && m.actual_finish_date && <span>Completed {fD(m.actual_finish_date)}</span>}
                 {cfs === 'in_progress' && m.scheduled_date && <span>Scheduled {fD(m.scheduled_date)} · On track</span>}
                 {cfs === 'upcoming' && m.scheduled_date && (
                   <span>{fD(m.scheduled_date)}{daysRemaining != null ? ` · ${daysRemaining}d away` : ''}</span>
                 )}
                 {cfs === 'delayed' && m.scheduled_date && (
-                  <span style={{ color: '#EF4444' }}>Was {fD(m.scheduled_date)}{daysLate != null ? ` · ${daysLate}d late` : ''}</span>
+                  <span style={{ color: 'var(--red-text)' }}>Was {fD(m.scheduled_date)}{daysLate != null ? ` · ${daysLate}d late` : ''}</span>
                 )}
                 {cfs === 'unscheduled' && <span>Date TBD</span>}
               </div>
@@ -123,7 +129,7 @@ const JOB_STAGES = [
 function ProgressStepper({ status }) {
   const curIdx = JOB_STAGES.findIndex(s => s.statuses.includes(status));
   return (
-    <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '16px 20px', marginBottom: 16, overflowX: 'auto' }}>
+    <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: '16px 20px', marginBottom: 16, overflowX: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', minWidth: 320 }}>
         {JOB_STAGES.map((s, i) => {
           const done = i < curIdx;
@@ -133,19 +139,19 @@ function ProgressStepper({ status }) {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                 <div style={{
                   width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                  background: done ? '#22c55e' : active ? '#0A1F44' : '#F3F0EB',
-                  border: active ? '2.5px solid #C9A84C' : 'none',
-                  color: done || active ? '#fff' : '#9CA3AF',
+                  background: done ? 'var(--green-dot)' : active ? NAV : 'var(--bg-alt)',
+                  border: active ? `2.5px solid ${GOLD}` : 'none',
+                  color: done || active ? '#fff' : 'var(--text-subtle)',
                   fontSize: done ? 12 : 11, fontWeight: 700,
                   boxShadow: active ? '0 0 0 4px rgba(201,168,76,0.18)' : 'none',
                   transition: 'all 0.3s ease',
                 }}>
                   {done ? '✓' : i + 1}
                 </div>
-                <div style={{ fontSize: 9, fontWeight: active ? 700 : 500, color: active ? '#0A1F44' : done ? '#22c55e' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap', textAlign: 'center' }}>{s.label}</div>
+                <div style={{ fontSize: 9, fontWeight: active ? 700 : 500, color: active ? NAV : done ? 'var(--green-dot)' : 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap', textAlign: 'center' }}>{s.label}</div>
               </div>
               {i < JOB_STAGES.length - 1 && (
-                <div style={{ flex: 1, height: 2, background: done ? '#22c55e' : '#E8E4DC', marginTop: 13, transition: 'background 0.4s ease' }} />
+                <div style={{ flex: 1, height: 2, background: done ? 'var(--green-dot)' : BORDER, marginTop: 13, transition: 'background 0.4s ease' }} />
               )}
             </div>
           );
@@ -156,11 +162,11 @@ function ProgressStepper({ status }) {
 }
 
 const DRAW_STATUS_STYLE = {
-  paid:           { text: 'Paid ✓',       color: '#22c55e', bg: '#F0FDF4' },
-  partially_paid: { text: 'Partially Paid', color: '#b45309', bg: '#FEF3C7' },
-  sent:           { text: 'Invoice Sent',  color: '#b45309', bg: '#FEF3C7' },
-  viewed:         { text: 'Invoice Sent',  color: '#b45309', bg: '#FEF3C7' },
-  overdue:        { text: 'Overdue',       color: '#991b1b', bg: '#FEE2E2' },
+  paid:           { text: 'Paid ✓',        color: 'var(--green-dot)',      bg: '#F0FDF4' },
+  partially_paid: { text: 'Partially Paid', color: '#b45309',               bg: 'var(--amber-bg)' },
+  sent:           { text: 'Invoice Sent',   color: '#b45309',               bg: 'var(--amber-bg)' },
+  viewed:         { text: 'Invoice Sent',   color: '#b45309',               bg: 'var(--amber-bg)' },
+  overdue:        { text: 'Overdue',        color: 'var(--red-text-strong)', bg: 'var(--red-bg)' },
 };
 
 function DrawCard({ draw, lineItems, invoice }) {
@@ -170,79 +176,77 @@ function DrawCard({ draw, lineItems, invoice }) {
   const drawTotal  = baseSum + markupSum;
   const invoiced   = Number(invoice?.total_amount || 0);
   const creditApplied = drawTotal - invoiced;
-  const style = DRAW_STATUS_STYLE[invoice?.status] || { text: invoice?.status || '—', color: '#9CA3AF', bg: '#F7F5F0' };
+  const style = DRAW_STATUS_STYLE[invoice?.status] || { text: invoice?.status || '—', color: 'var(--text-subtle)', bg: CREAM };
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #E8E4DC', marginBottom: 16 }}>
+    <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, marginBottom: 16 }}>
       <div
         onClick={() => setExpanded(e => !e)}
-        style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: expanded ? '1px solid #E8E4DC' : 'none' }}
+        style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: expanded ? `1px solid ${BORDER}` : 'none' }}
       >
         <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44', marginBottom: 3 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: NAV, marginBottom: 3 }}>
             {draw.title || `Draw ${draw.draw_number}`}
           </div>
-          <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
             {lineItems.length} line item{lineItems.length !== 1 ? 's' : ''} · Draw total {f$(drawTotal)}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <span style={{ fontSize: 10, background: style.bg, color: style.color, padding: '3px 10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{style.text}</span>
-          <span style={{ fontSize: 11, color: '#9CA3AF' }}>{expanded ? '▲' : '▼'}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
 
       {expanded && (
         <div style={{ padding: '0 16px 16px' }}>
-          {/* Line items table */}
           <div style={{ marginTop: 14, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #F3F0EB' }}>
-                  <th style={{ textAlign: 'left', padding: '6px 8px 6px 0', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Description</th>
-                  <th style={{ textAlign: 'right', padding: '6px 0', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>Cost</th>
-                  <th style={{ textAlign: 'right', padding: '6px 0', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Markup</th>
-                  <th style={{ textAlign: 'right', padding: '6px 0 6px 8px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total</th>
+                <tr style={{ borderBottom: `1px solid var(--bg-alt)` }}>
+                  <th style={{ textAlign: 'left', padding: '6px 8px 6px 0', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Description</th>
+                  <th style={{ textAlign: 'right', padding: '6px 0', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>Cost</th>
+                  <th style={{ textAlign: 'right', padding: '6px 0', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Markup</th>
+                  <th style={{ textAlign: 'right', padding: '6px 0 6px 8px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total</th>
                 </tr>
               </thead>
               <tbody>
                 {lineItems.map(li => (
-                  <tr key={li.id} style={{ borderBottom: '1px solid #F7F5F0' }}>
-                    <td style={{ padding: '8px 8px 8px 0', color: '#374151', lineHeight: 1.4 }}>
+                  <tr key={li.id} style={{ borderBottom: `1px solid ${CREAM}` }}>
+                    <td style={{ padding: '8px 8px 8px 0', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                       {li.description}
-                      {li.is_forward_looking && <span style={{ marginLeft: 6, fontSize: 10, color: '#6B7280', fontStyle: 'italic' }}>(pre-bill)</span>}
+                      {li.is_forward_looking && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic' }}>(pre-bill)</span>}
                     </td>
-                    <td style={{ padding: '8px 0', textAlign: 'right', color: '#6B7280', whiteSpace: 'nowrap' }}>{f$(Number(li.base_amount))}</td>
-                    <td style={{ padding: '8px 0', textAlign: 'right', color: '#6B7280', whiteSpace: 'nowrap' }}>{Number(li.markup_pct).toFixed(0)}%</td>
-                    <td style={{ padding: '8px 0 8px 8px', textAlign: 'right', color: '#0A1F44', fontWeight: 600, whiteSpace: 'nowrap' }}>{f$(Number(li.total_with_markup))}</td>
+                    <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{f$(Number(li.base_amount))}</td>
+                    <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{Number(li.markup_pct).toFixed(0)}%</td>
+                    <td style={{ padding: '8px 0 8px 8px', textAlign: 'right', color: NAV, fontWeight: 600, whiteSpace: 'nowrap' }}>{f$(Number(li.total_with_markup))}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {/* Summary */}
-          <div style={{ borderTop: '2px solid #E8E4DC', marginTop: 10, paddingTop: 12 }}>
+          <div style={{ borderTop: `2px solid ${BORDER}`, marginTop: 10, paddingTop: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
                 <span>Subtotal (costs)</span><span>{f$(baseSum)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
                 <span>Markup</span><span>{f$(markupSum)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#0A1F44', borderTop: '1px solid #F3F0EB', paddingTop: 6, marginTop: 3 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: NAV, borderTop: `1px solid var(--bg-alt)`, paddingTop: 6, marginTop: 3 }}>
                 <span>Draw Total</span><span style={{ fontFamily: "'DM Serif Display',serif" }}>{f$(drawTotal)}</span>
               </div>
               {creditApplied > 0.01 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#059669' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--green-text)' }}>
                   <span>Credit Applied (deposit)</span><span>−{f$(creditApplied)}</span>
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#0A1F44', borderTop: '1px solid #F3F0EB', paddingTop: 6, marginTop: 3 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: NAV, borderTop: `1px solid var(--bg-alt)`, paddingTop: 6, marginTop: 3 }}>
                 <span>Amount Invoiced</span><span style={{ fontFamily: "'DM Serif Display',serif" }}>{f$(invoiced)}</span>
               </div>
               {invoice?.paid_at && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--green-dot)', fontWeight: 600 }}>
                   <span>Paid</span><span>{fD(invoice.paid_at.slice(0, 10))}</span>
                 </div>
               )}
@@ -446,14 +450,14 @@ export default function ClientPortal({ profile, signOut }) {
     setRatingSaving(false);
   };
 
-  if (loading) return <div style={{ minHeight: '100dvh', background: '#0A1F44', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: 3, textTransform: 'uppercase' }}>Loading</div></div>;
-  if (!jobs.length) return <div style={{ minHeight: '100dvh', background: '#F7F5F0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 24, textAlign: 'center' }}><div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44' }}>No projects found</div><div style={{ fontSize: 14, color: '#9CA3AF', maxWidth: 320, lineHeight: 1.7 }}>Your contractor hasn't linked your account to a project yet.</div><button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={signOut}>Sign Out</button></div>;
+  if (loading) return <div style={{ minHeight: '100dvh', background: NAV, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: 3, textTransform: 'uppercase' }}>Loading</div></div>;
+  if (!jobs.length) return <div style={{ minHeight: '100dvh', background: CREAM, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 24, textAlign: 'center' }}><div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: NAV }}>No projects found</div><div style={{ fontSize: 14, color: 'var(--text-subtle)', maxWidth: 320, lineHeight: 1.7 }}>Your contractor hasn't linked your account to a project yet.</div><button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={signOut}>Sign Out</button></div>;
 
   return (
-    <div style={{ minHeight: '100dvh', background: '#F7F5F0' }}>
-      <div style={{ background: '#0A1F44', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ minHeight: '100dvh', background: CREAM }}>
+      <div style={{ background: NAV, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 9, color: '#C9A84C', letterSpacing: 4, textTransform: 'uppercase', marginBottom: 2 }}>Avenstone Group</div>
+          <div style={{ fontSize: 9, color: GOLD, letterSpacing: 4, textTransform: 'uppercase', marginBottom: 2 }}>Avenstone Group</div>
           {!job ? (
             <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>My Projects</div>
           ) : (
@@ -467,12 +471,12 @@ export default function ClientPortal({ profile, signOut }) {
       </div>
 
       {!job && jobs.filter(j => !j.contract_signed).map(j => (
-        <div key={j.id} style={{ background: '#0A1F44', padding: '14px 20px', display: 'flex', flexDirection: isMob() ? 'column' : 'row', alignItems: isMob() ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid rgba(201,168,76,0.25)' }}>
+        <div key={j.id} style={{ background: NAV, padding: '14px 20px', display: 'flex', flexDirection: isMob() ? 'column' : 'row', alignItems: isMob() ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 12, borderBottom: `1px solid var(--gold-200)` }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', marginBottom: 3 }}>Your contract is ready to sign</div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.address}</div>
           </div>
-          <button style={{ background: '#C9A84C', color: '#0A1F44', border: 'none', padding: '10px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0, borderRadius: 4, letterSpacing: 0.3 }} onClick={() => setBannerSignJob(j)}>
+          <button style={{ background: GOLD, color: NAV, border: 'none', padding: '10px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0, borderRadius: 4, letterSpacing: 0.3 }} onClick={() => setBannerSignJob(j)}>
             Review &amp; Sign
           </button>
         </div>
@@ -480,20 +484,20 @@ export default function ClientPortal({ profile, signOut }) {
 
       {!job && <div style={{ padding: 16 }}>
         {jobs.map(j => (
-          <div key={j.id} onClick={() => openJob(j.id)} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `4px solid ${sc(j.status)}`, padding: 16, marginBottom: 10, cursor: 'pointer' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#0A1F44', marginBottom: 6 }}>{j.address}</div>
+          <div key={j.id} onClick={() => openJob(j.id)} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderLeft: `4px solid ${sc(j.status)}`, padding: 16, marginBottom: 10, cursor: 'pointer' }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: NAV, marginBottom: 6 }}>{j.address}</div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 10, background: sc(j.status) + '18', color: sc(j.status), padding: '3px 10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>{sl(j.status)}</span>
-              {j.target_completion && <span style={{ fontSize: 12, color: '#9CA3AF' }}>Target: {j.target_completion}</span>}
-              {Number(j.contract_value || 0) > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>{f$(Number(j.contract_value || 0))}</span>}
+              {j.target_completion && <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Target: {j.target_completion}</span>}
+              {Number(j.contract_value || 0) > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: NAV }}>{f$(Number(j.contract_value || 0))}</span>}
             </div>
           </div>
         ))}
       </div>}
 
       {job && <>
-        {!job.contract_signed && <div style={{ background: '#FEF9EC', borderBottom: '2px solid #C9A84C', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <div style={{ fontSize: 13, color: '#92400e', fontWeight: 600 }}>Your contract is ready to sign</div>
+        {!job.contract_signed && <div style={{ background: '#FEF9EC', borderBottom: `2px solid ${GOLD}`, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ fontSize: 13, color: 'var(--amber-text-strong)', fontWeight: 600 }}>Your contract is ready to sign</div>
           <button className="btn btn-gold" style={{ fontSize: 12, padding: '7px 16px', flexShrink: 0 }} onClick={() => setShowSignContract(true)}>Sign Now</button>
         </div>}
         {job.contract_signed && <div style={{ background: '#F0FDF4', borderBottom: '1px solid #BBF7D0', padding: '8px 16px', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ Contract signed{job.contract_signed_at ? ` ${fD(job.contract_signed_at.slice(0, 10))}` : ''}</div>}
@@ -510,8 +514,8 @@ export default function ClientPortal({ profile, signOut }) {
               const total = loaded.phases ? phases.length : 0;
               const pct = total > 0 ? Math.round((done / total) * 100) : 0;
               return (
-                <div style={{ background: '#0A1F44', padding: '24px 20px', marginBottom: 16, borderRadius: 2 }}>
-                  <div style={{ fontSize: 9, color: '#C9A84C', letterSpacing: 4, textTransform: 'uppercase', marginBottom: 8 }}>Project Status</div>
+                <div style={{ background: NAV, padding: '24px 20px', marginBottom: 16, borderRadius: 2 }}>
+                  <div style={{ fontSize: 9, color: GOLD, letterSpacing: 4, textTransform: 'uppercase', marginBottom: 8 }}>Project Status</div>
                   <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: '#fff', lineHeight: 1.2, marginBottom: 6 }}>{CLIENT_STATUS(job.status)}</div>
                   {job.address && <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginBottom: 2 }}>{job.address}</div>}
                   {job.client_name && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 20 }}>{job.client_name}</div>}
@@ -519,10 +523,10 @@ export default function ClientPortal({ profile, signOut }) {
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>
                         <span>{done} of {total} phases complete</span>
-                        <span style={{ fontWeight: 700, color: pct === 100 ? '#22c55e' : '#C9A84C' }}>{pct}%</span>
+                        <span style={{ fontWeight: 700, color: pct === 100 ? 'var(--green-dot)' : GOLD }}>{pct}%</span>
                       </div>
                       <div style={{ background: 'rgba(255,255,255,0.12)', height: 8, borderRadius: 4, overflow: 'hidden' }}>
-                        <div style={{ background: pct === 100 ? '#22c55e' : '#C9A84C', height: 8, borderRadius: 4, width: `${pct}%`, transition: 'width 0.6s ease' }} />
+                        <div style={{ background: pct === 100 ? 'var(--green-dot)' : GOLD, height: 8, borderRadius: 4, width: `${pct}%`, transition: 'width 0.6s ease' }} />
                       </div>
                     </div>
                   )}
@@ -539,31 +543,31 @@ export default function ClientPortal({ profile, signOut }) {
               const next = inProgress || phases.find(p => p.status === 'pending');
               const allDone = phases.every(p => p.status === 'complete');
               return (
-                <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: '4px solid #C9A84C', padding: 20, marginBottom: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>What's Happening Next</div>
+                <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderLeft: `4px solid ${GOLD}`, padding: 20, marginBottom: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: GOLD, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>What's Happening Next</div>
                   {allDone ? (
                     <div style={{ textAlign: 'center', padding: '12px 0' }}>
                       <div style={{ fontSize: 28, marginBottom: 8 }}>🎉</div>
-                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44', marginBottom: 4 }}>Your project is complete!</div>
-                      <div style={{ fontSize: 13, color: '#6B7280' }}>All phases have been finished. Thank you for choosing us.</div>
+                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: NAV, marginBottom: 4 }}>Your project is complete!</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>All phases have been finished. Thank you for choosing us.</div>
                     </div>
                   ) : next ? (
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                        {inProgress && <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', display: 'inline-block', flexShrink: 0, animation: 'pulse 1.8s ease-in-out infinite', boxShadow: '0 0 0 0 rgba(34,197,94,0.4)' }} />}
-                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44' }}>{next.phase_name}</div>
-                        {inProgress && <span style={{ fontSize: 10, background: '#D1FAE5', color: '#065F46', padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0 }}>In Progress</span>}
+                        {inProgress && <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--green-dot)', display: 'inline-block', flexShrink: 0, animation: 'pulse 1.8s ease-in-out infinite', boxShadow: '0 0 0 0 rgba(34,197,94,0.4)' }} />}
+                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: NAV }}>{next.phase_name}</div>
+                        {inProgress && <span style={{ fontSize: 10, background: 'var(--green-bg)', color: 'var(--green-text-strong)', padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0 }}>In Progress</span>}
                       </div>
                       {(next.start_date || next.end_date) && (
-                        <div style={{ fontSize: 12, color: '#9CA3AF' }}>
-                          {next.start_date && <span>Starts: <strong style={{ color: '#374151' }}>{fD(next.start_date)}</strong></span>}
-                          {next.start_date && next.end_date && <span style={{ margin: '0 8px', color: '#E8E4DC' }}>·</span>}
-                          {next.end_date && <span>Est. end: <strong style={{ color: '#374151' }}>{fD(next.end_date)}</strong></span>}
+                        <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>
+                          {next.start_date && <span>Starts: <strong style={{ color: 'var(--text-secondary)' }}>{fD(next.start_date)}</strong></span>}
+                          {next.start_date && next.end_date && <span style={{ margin: '0 8px', color: BORDER }}>·</span>}
+                          {next.end_date && <span>Est. end: <strong style={{ color: 'var(--text-secondary)' }}>{fD(next.end_date)}</strong></span>}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div style={{ fontSize: 13, color: '#6B7280' }}>Schedule not set yet — your contractor will update this soon.</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Schedule not set yet — your contractor will update this soon.</div>
                   )}
                 </div>
               );
@@ -583,14 +587,14 @@ export default function ClientPortal({ profile, signOut }) {
               const balance = Number(next.total_amount) - Number(next.amount_paid);
               const isOverdue = deriveInvoiceStatus(next) === 'overdue';
               return (
-                <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Your Next Payment</div>
+                <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: 20, marginBottom: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Your Next Payment</div>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
                     <div style={{ flex: 1, minWidth: 140 }}>
-                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#0A1F44', marginBottom: 4 }}>{f$(balance)}</div>
-                      <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>{next.invoice_number}</div>
+                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: NAV, marginBottom: 4 }}>{f$(balance)}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>{next.invoice_number}</div>
                       {next.due_date && (
-                        <div style={{ fontSize: 12, color: isOverdue ? '#991b1b' : '#9CA3AF', fontWeight: isOverdue ? 700 : 400 }}>
+                        <div style={{ fontSize: 12, color: isOverdue ? 'var(--red-text-strong)' : 'var(--text-subtle)', fontWeight: isOverdue ? 700 : 400 }}>
                           {isOverdue ? '⚠ Overdue — ' : 'Due: '}<strong>{fD(next.due_date)}</strong>
                         </div>
                       )}
@@ -612,13 +616,13 @@ export default function ClientPortal({ profile, signOut }) {
                             setPayingNext(false);
                           }
                         }}
-                        style={{ background: '#0A1F44', color: '#C9A84C', padding: '10px 18px', fontWeight: 700, fontSize: 13, border: 'none', cursor: payingNext ? 'default' : 'pointer', flexShrink: 0, opacity: payingNext ? 0.7 : 1 }}
+                        style={{ background: NAV, color: GOLD, padding: '10px 18px', fontWeight: 700, fontSize: 13, border: 'none', cursor: payingNext ? 'default' : 'pointer', flexShrink: 0, opacity: payingNext ? 0.7 : 1 }}
                       >
                         {payingNext ? 'Loading...' : 'Pay Now →'}
                       </button>
                     </div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', borderTop: '1px solid #F3F0EB', paddingTop: 10 }}>Contact your contractor with payment questions.</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', borderTop: `1px solid var(--bg-alt)`, paddingTop: 10 }}>Contact your contractor with payment questions.</div>
                 </div>
               );
             })()}
@@ -630,15 +634,15 @@ export default function ClientPortal({ profile, signOut }) {
                 const contractLabel = s.original_signed_contract != null ? 'Original Contract' : 'Authorized Contract';
                 const contractVal = s.original_signed_contract != null ? s.original_signed_contract : s.authorized_contract;
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: '#E8E4DC', marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: BORDER, marginBottom: 16 }}>
                     {[
                       { lb: contractLabel, val: f$(contractVal) },
                       { lb: 'Paid to Date', val: f$(s.paid_to_date), green: s.paid_to_date > 0 },
                       { lb: 'Remaining Balance', val: f$(Math.max(0, s.remaining_balance)) },
                     ].map(({ lb, val, green }) => (
-                      <div key={lb} style={{ background: '#fff', padding: '14px 12px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
-                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: green ? '#22c55e' : '#0A1F44', fontWeight: 700 }}>{val}</div>
+                      <div key={lb} style={{ background: 'var(--card-bg)', padding: '14px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
+                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: green ? 'var(--green-dot)' : NAV, fontWeight: 700 }}>{val}</div>
                       </div>
                     ))}
                   </div>
@@ -649,15 +653,15 @@ export default function ClientPortal({ profile, signOut }) {
               const paid = loaded.payments ? totalPaid : 0;
               const remaining = contractTotal - paid;
               return (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: '#E8E4DC', marginBottom: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: BORDER, marginBottom: 16 }}>
                   {[
                     { lb: 'Contract Value', val: f$(contractTotal) },
                     { lb: 'Paid to Date', val: f$(paid), green: paid > 0 },
                     { lb: 'Remaining', val: f$(Math.max(0, remaining)) },
                   ].map(({ lb, val, green }) => (
-                    <div key={lb} style={{ background: '#fff', padding: '14px 12px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
-                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: green ? '#22c55e' : '#0A1F44', fontWeight: 700 }}>{val}</div>
+                    <div key={lb} style={{ background: 'var(--card-bg)', padding: '14px 12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
+                      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: green ? 'var(--green-dot)' : NAV, fontWeight: 700 }}>{val}</div>
                     </div>
                   ))}
                 </div>
@@ -687,16 +691,16 @@ export default function ClientPortal({ profile, signOut }) {
                 .filter(p => p.desc);
               if (!upcoming.length) return null;
               return (
-                <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 16 }}>What to Expect</div>
+                <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: 20, marginBottom: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 16 }}>What to Expect</div>
                   {upcoming.map((ph, i) => (
-                    <div key={ph.id} style={{ display: 'flex', gap: 14, marginBottom: i < upcoming.length - 1 ? 18 : 0, paddingBottom: i < upcoming.length - 1 ? 18 : 0, borderBottom: i < upcoming.length - 1 ? '1px solid #F3F0EB' : 'none' }}>
-                      <div style={{ width: 32, height: 32, background: ph.status === 'in_progress' ? '#D1FAE5' : '#F3F0EB', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, color: ph.status === 'in_progress' ? '#065F46' : '#9CA3AF', fontWeight: 700, marginTop: 2 }}>{i + 1}</div>
+                    <div key={ph.id} style={{ display: 'flex', gap: 14, marginBottom: i < upcoming.length - 1 ? 18 : 0, paddingBottom: i < upcoming.length - 1 ? 18 : 0, borderBottom: i < upcoming.length - 1 ? `1px solid var(--bg-alt)` : 'none' }}>
+                      <div style={{ width: 32, height: 32, background: ph.status === 'in_progress' ? 'var(--green-bg)' : 'var(--bg-alt)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, color: ph.status === 'in_progress' ? 'var(--green-text-strong)' : 'var(--text-subtle)', fontWeight: 700, marginTop: 2 }}>{i + 1}</div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44', marginBottom: 4 }}>{ph.phase_name}</div>
-                        <div style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.6, marginBottom: ph.start_date || ph.end_date ? 6 : 0 }}>{ph.desc}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: NAV, marginBottom: 4 }}>{ph.phase_name}</div>
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: ph.start_date || ph.end_date ? 6 : 0 }}>{ph.desc}</div>
                         {(ph.start_date || ph.end_date) && (
-                          <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
                             {ph.start_date && <span>{fD(ph.start_date)}</span>}
                             {ph.start_date && ph.end_date && <span> → </span>}
                             {ph.end_date && <span>{fD(ph.end_date)}</span>}
@@ -712,43 +716,43 @@ export default function ClientPortal({ profile, signOut }) {
             {['complete', 'final_touches'].includes(job.status) && jobReview !== null && (jobReview ?
               <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: 20, marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <div style={{ width: 36, height: 36, background: '#22c55e', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, flexShrink: 0 }}>✓</div>
-                  <div><div style={{ fontSize: 14, fontWeight: 700, color: '#065F46' }}>Thanks for your review!</div><div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>Your feedback helps us improve.</div></div>
+                  <div style={{ width: 36, height: 36, background: 'var(--green-dot)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, flexShrink: 0 }}>✓</div>
+                  <div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--green-text-strong)' }}>Thanks for your review!</div><div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Your feedback helps us improve.</div></div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
                   {[['Quality', jobReview.rating_quality], ['Communication', jobReview.rating_communication], ['Timeliness', jobReview.rating_timeliness]].map(([lb, v]) => (
                     <div key={lb} style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>{lb}</div>
-                      <div style={{ fontSize: 16 }}>{[1, 2, 3, 4, 5].map(s => <span key={s} style={{ color: v >= s ? '#C9A84C' : '#E8E4DC' }}>★</span>)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 3 }}>{lb}</div>
+                      <div style={{ fontSize: 16 }}>{[1, 2, 3, 4, 5].map(s => <span key={s} style={{ color: v >= s ? GOLD : BORDER }}>★</span>)}</div>
                     </div>
                   ))}
                 </div>
-                {jobReview.review_text && <div style={{ marginTop: 12, fontSize: 13, color: '#374151', fontStyle: 'italic', borderTop: '1px solid #BBF7D0', paddingTop: 12 }}>"{jobReview.review_text}"</div>}
+                {jobReview.review_text && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-secondary)', fontStyle: 'italic', borderTop: '1px solid #BBF7D0', paddingTop: 12 }}>"{jobReview.review_text}"</div>}
               </div>
               : (reviewDone ?
                 <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: 20, marginBottom: 16, textAlign: 'center' }}>
                   <div style={{ fontSize: 22, marginBottom: 8 }}>🙏</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#065F46', marginBottom: 4 }}>Thank you!</div>
-                  <div style={{ fontSize: 13, color: '#6B7280' }}>Your review means a lot to our team.</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--green-text-strong)', marginBottom: 4 }}>Thank you!</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Your review means a lot to our team.</div>
                 </div>
-                : <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>How Did We Do?</div>
-                  <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 18, lineHeight: 1.6 }}>Your project is complete — we'd love your honest feedback.</div>
+                : <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: 20, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>How Did We Do?</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 18, lineHeight: 1.6 }}>Your project is complete — we'd love your honest feedback.</div>
                   {[['quality', 'Quality of Work'], ['communication', 'Communication'], ['timeliness', 'On Time']].map(([key, lb]) => (
                     <div key={key} style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>{lb}</div>
-                      <div style={{ display: 'flex', gap: 4 }}>{[1, 2, 3, 4, 5].map(s => <button key={s} onClick={() => setReviewForm(p => ({ ...p, [key]: s }))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 30, color: reviewForm[key] >= s ? '#C9A84C' : '#E8E4DC', padding: 0, lineHeight: 1 }}>★</button>)}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>{lb}</div>
+                      <div style={{ display: 'flex', gap: 4 }}>{[1, 2, 3, 4, 5].map(s => <button key={s} onClick={() => setReviewForm(p => ({ ...p, [key]: s }))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 30, color: reviewForm[key] >= s ? GOLD : BORDER, padding: 0, lineHeight: 1 }}>★</button>)}</div>
                     </div>
                   ))}
                   <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Would you recommend us?</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Would you recommend us?</div>
                     <div style={{ display: 'flex', gap: 10 }}>
                       <button onClick={() => setReviewForm(p => ({ ...p, would_recommend: true }))} className={`btn ${reviewForm.would_recommend === true ? 'btn-navy' : 'btn-ghost'}`} style={{ flex: 1, fontSize: 13 }}>👍 Yes</button>
                       <button onClick={() => setReviewForm(p => ({ ...p, would_recommend: false }))} className={`btn ${reviewForm.would_recommend === false ? 'btn-navy' : 'btn-ghost'}`} style={{ flex: 1, fontSize: 13 }}>👎 No</button>
                     </div>
                   </div>
                   <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Anything else? <span style={{ fontWeight: 400, color: '#9CA3AF' }}>(optional)</span></div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Anything else? <span style={{ fontWeight: 400, color: 'var(--text-subtle)' }}>(optional)</span></div>
                     <textarea className="finp fta" rows={3} value={reviewForm.text} onChange={e => setReviewForm(p => ({ ...p, text: e.target.value }))} placeholder="Tell us about your experience..." />
                   </div>
                   <button className={`btn ${reviewForm.quality && reviewForm.communication && reviewForm.timeliness && reviewForm.would_recommend !== null ? 'btn-gold' : 'btn-ghost'}`} style={{ width: '100%' }} disabled={reviewSaving || !reviewForm.quality || !reviewForm.communication || !reviewForm.timeliness || reviewForm.would_recommend === null} onClick={async () => { setReviewSaving(true); await sbSubmitJobReview(job.id, job.tenant_id, { ...reviewForm, client_name: job.client_name, client_email: job.client_email }); setReviewDone(true); setReviewSaving(false); }}>{reviewSaving ? 'Submitting...' : 'Submit Review'}</button>
@@ -756,22 +760,22 @@ export default function ClientPortal({ profile, signOut }) {
               )
             )}
 
-            {['complete', 'final_touches'].includes(job.status) && loaded.subs && jobSubs.length > 0 && <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 20, marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Rate Our Team</div>
-              <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16, lineHeight: 1.6 }}>Your feedback helps us keep standards high and rewards our best crew.</div>
+            {['complete', 'final_touches'].includes(job.status) && loaded.subs && jobSubs.length > 0 && <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Rate Our Team</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.6 }}>Your feedback helps us keep standards high and rewards our best crew.</div>
               {jobSubs.map(js => {
                 const sub = js.sub || {};
                 const r = ratings[sub.id] || { stars: 0, comment: '' };
                 const done = ratingDone[sub.id];
                 return (
-                  <div key={js.id} style={{ borderTop: '1px solid #F3F0EB', paddingTop: 14, marginTop: 14 }}>
+                  <div key={js.id} style={{ borderTop: `1px solid var(--bg-alt)`, paddingTop: 14, marginTop: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                      <div style={{ width: 36, height: 36, background: '#0A1F4418', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#0A1F44', flexShrink: 0 }}>{(sub.full_name || '?')[0].toUpperCase()}</div>
-                      <div><div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{sub.full_name || sub.email}</div>{js.trade && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{js.trade}</div>}</div>
+                      <div style={{ width: 36, height: 36, background: 'var(--navy-100)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: NAV, flexShrink: 0 }}>{(sub.full_name || '?')[0].toUpperCase()}</div>
+                      <div><div style={{ fontSize: 13, fontWeight: 600, color: NAV }}>{sub.full_name || sub.email}</div>{js.trade && <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{js.trade}</div>}</div>
                     </div>
-                    {done ? <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600 }}>✓ Review submitted — thank you!</div> : (
+                    {done ? <div style={{ fontSize: 12, color: 'var(--green-dot)', fontWeight: 600 }}>✓ Review submitted — thank you!</div> : (
                       <>
-                        <div style={{ display: 'flex', gap: 2, marginBottom: 10 }}>{[1, 2, 3, 4, 5].map(s => <button key={s} onClick={() => setRatings(p => ({ ...p, [sub.id]: { ...r, stars: s } }))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 26, color: r.stars >= s ? '#C9A84C' : '#E8E4DC', padding: 0, lineHeight: 1 }}>★</button>)}</div>
+                        <div style={{ display: 'flex', gap: 2, marginBottom: 10 }}>{[1, 2, 3, 4, 5].map(s => <button key={s} onClick={() => setRatings(p => ({ ...p, [sub.id]: { ...r, stars: s } }))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 26, color: r.stars >= s ? GOLD : BORDER, padding: 0, lineHeight: 1 }}>★</button>)}</div>
                         <textarea className="finp fta" rows={2} value={r.comment || ''} onChange={e => setRatings(p => ({ ...p, [sub.id]: { ...r, comment: e.target.value } }))} placeholder="Optional comment..." />
                         <button className={`btn ${r.stars ? 'btn-gold' : 'btn-ghost'}`} style={{ marginTop: 8, width: '100%' }} disabled={!r.stars || ratingSaving} onClick={() => submitRating(sub)}>{ratingSaving ? 'Saving...' : 'Submit Review'}</button>
                       </>
@@ -787,11 +791,11 @@ export default function ClientPortal({ profile, signOut }) {
           {tab === 'schedule' && <ClientScheduleView jobId={job.id} />}
 
           {tab === 'updates' && <div>
-            {!loaded.updates && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
+            {!loaded.updates && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)' }}>Loading...</div>}
             {loaded.updates && !updates.length && <div className="empty">{Ic.bell}<div className="empty-t">No updates yet</div><div>Your contractor will send project updates here</div></div>}
             {loaded.updates && updates.map(u => (
-              <div key={u.id} style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, padding: 16, marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>{fD(u.log_date)}</div>
+              <div key={u.id} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>{fD(u.log_date)}</div>
                 <div style={{ fontSize: 14, color: '#1F2937', lineHeight: 1.7, marginBottom: u.photos.length ? 12 : 0 }}>{u.client_message}</div>
                 {u.photos.length > 0 && (
                   <div className="pgrid">
@@ -810,14 +814,13 @@ export default function ClientPortal({ profile, signOut }) {
           </div>}
 
           {tab === 'photos' && <div>
-            {!loaded.photos && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
+            {!loaded.photos && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)' }}>Loading...</div>}
             {loaded.photos && !photos.length && <div className="empty">{Ic.cam}<div className="empty-t">No photos yet</div><div>Project photos will appear here as updates are sent</div></div>}
             {loaded.photos && photos.length > 0 && (() => {
-              // Group photos by week starting Monday
               const getWeekKey = dateStr => {
                 const d = new Date(dateStr);
-                const day = d.getDay(); // 0=Sun
-                const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
                 const mon = new Date(d.setDate(diff));
                 return mon.toISOString().slice(0, 10);
               };
@@ -838,7 +841,7 @@ export default function ClientPortal({ profile, signOut }) {
                 <div>
                   {sortedKeys.map(key => (
                     <div key={key} style={{ marginBottom: 24 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid #E8E4DC' }}>{fmt(key)}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10, paddingBottom: 6, borderBottom: `1px solid ${BORDER}` }}>{fmt(key)}</div>
                       <div className="pgrid">
                         {groups[key].map(p => (
                           <div key={p.id} className="pcell" onClick={() => setClbIdx(p._i)} style={{ cursor: 'pointer' }}>
@@ -856,9 +859,8 @@ export default function ClientPortal({ profile, signOut }) {
             {clbIdx !== null && <PhotoLightbox photos={photos} startIdx={clbIdx} onClose={() => setClbIdx(null)} />}
           </div>}
 
-
           {tab === 'msgs' && <div style={{ display: 'flex', flexDirection: 'column', minHeight: 400 }}>
-            {!loaded.msgs && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
+            {!loaded.msgs && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)' }}>Loading...</div>}
             {loaded.msgs && <>
               <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
                 {!msgs.length && <div className="empty">{Ic.note}<div className="empty-t">No messages yet</div><div>Send your contractor a message below</div></div>}
@@ -868,16 +870,16 @@ export default function ClientPortal({ profile, signOut }) {
                   return (
                     <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600 }}>{mine ? 'You' : nm}</span>
-                        <span style={{ fontSize: 10, color: '#D1C9B8' }}>{fDT(m.created_at)}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontWeight: 600 }}>{mine ? 'You' : nm}</span>
+                        <span style={{ fontSize: 10, color: 'var(--border-strong)' }}>{fDT(m.created_at)}</span>
                       </div>
-                      <div style={{ maxWidth: '80%', background: mine ? '#0A1F44' : '#fff', color: mine ? '#fff' : '#374151', padding: '10px 14px', borderRadius: mine ? '12px 12px 2px 12px' : '12px 12px 12px 2px', fontSize: 13, lineHeight: 1.55, border: mine ? 'none' : '1px solid #E8E4DC' }}>{m.content}</div>
+                      <div style={{ maxWidth: '80%', background: mine ? NAV : 'var(--card-bg)', color: mine ? '#fff' : 'var(--text-secondary)', padding: '10px 14px', borderRadius: mine ? '12px 12px 2px 12px' : '12px 12px 12px 2px', fontSize: 13, lineHeight: 1.55, border: mine ? 'none' : `1px solid ${BORDER}` }}>{m.content}</div>
                     </div>
                   );
                 })}
                 <div ref={msgsEndRef} />
               </div>
-              <div style={{ borderTop: '1px solid #E8E4DC', paddingTop: 12, paddingBottom: 'calc(8px + env(safe-area-inset-bottom))' }}>
+              <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 12, paddingBottom: 'calc(8px + env(safe-area-inset-bottom))' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                   <textarea className="finp fta" value={msgTxt} onChange={e => setMsgTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } }} placeholder="Message your contractor… (Enter to send)" rows={2} style={{ flex: 1, marginBottom: 0, resize: 'none' }} />
                   <button className={`btn ${msgTxt.trim() ? 'btn-navy' : 'btn-ghost'}`} style={{ padding: '10px 16px', flexShrink: 0 }} onClick={sendMsg} disabled={sendingMsg || !msgTxt.trim()}>{sendingMsg ? '...' : 'Send'}</button>
@@ -887,19 +889,19 @@ export default function ClientPortal({ profile, signOut }) {
           </div>}
 
           {tab === 'notes' && <div>
-            {!loaded.notes && <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>}
+            {!loaded.notes && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)' }}>Loading...</div>}
             {loaded.notes && <>
               {!notes.length && <div className="empty">{Ic.note}<div className="empty-t">No notes yet</div><div>Notes from your contractor will appear here</div></div>}
               {notes.map(n => (
-                <div key={n.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '12px 14px', marginBottom: 8 }}>
+                <div key={n.id} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: '12px 14px', marginBottom: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44' }}>{n.author || 'Contractor'}</span>
-                    <span style={{ fontSize: 11, color: '#9CA3AF' }}>{n.created_at ? fD(n.created_at.slice(0, 10)) : ''}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: NAV }}>{n.author || 'Contractor'}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{n.created_at ? fD(n.created_at.slice(0, 10)) : ''}</span>
                   </div>
-                  <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{n.content}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{n.content}</div>
                 </div>
               ))}
-              <div style={{ marginTop: 16, borderTop: '1px solid #E8E4DC', paddingTop: 16 }}>
+              <div style={{ marginTop: 16, borderTop: `1px solid ${BORDER}`, paddingTop: 16 }}>
                 <textarea className="finp fta" rows={3} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a note..." style={{ width: '100%', marginBottom: 8, resize: 'none', boxSizing: 'border-box' }} />
                 <button className="btn btn-navy" style={{ width: '100%' }} disabled={savingNote || !noteText.trim()} onClick={async () => {
                   if (!noteText.trim() || !job) return;
@@ -915,7 +917,7 @@ export default function ClientPortal({ profile, signOut }) {
           {tab === 'financials' && job?.cost_plus && <div>
             {/* ── Actual-spend ledger (cost-plus) ── */}
             {actualSpendLoading && (
-              <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading financials...</div>
+              <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>Loading financials...</div>
             )}
             {!actualSpendLoading && actualSpend && (() => {
               const s = actualSpend;
@@ -934,10 +936,6 @@ export default function ClientPortal({ profile, signOut }) {
                 permit: 'Permit',
                 other: 'Other',
               };
-              // Headline cards:
-              // - "Original Contract" only when job_estimates has the signed contract total
-              // - "Authorized Contract" = contract_value (includes approved CO marked-up prices)
-              // - No "Authorized Budget" card — contract_value already contains COs; adding co_total would double-count
               const hasOriginal = s.original_signed_contract !== null;
               const headlineCards = [
                 ...(hasOriginal ? [{ lb: 'Original Contract', val: f$(s.original_signed_contract) }] : []),
@@ -947,72 +945,67 @@ export default function ClientPortal({ profile, signOut }) {
               ];
               return (
                 <div style={{ marginBottom: 24 }}>
-                  {/* Headline cards */}
-                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${headlineCards.length},1fr)`, gap: 1, background: '#E8E4DC', marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${headlineCards.length},1fr)`, gap: 1, background: BORDER, marginBottom: 16 }}>
                     {headlineCards.map(({ lb, val, gold, caption }) => (
-                      <div key={lb} style={{ background: '#fff', padding: '14px 12px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
-                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 15, color: gold ? '#C9A84C' : '#0A1F44', fontWeight: 700 }}>{val}</div>
-                        {caption && <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 3 }}>{caption}</div>}
+                      <div key={lb} style={{ background: 'var(--card-bg)', padding: '14px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
+                        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 15, color: gold ? GOLD : NAV, fontWeight: 700 }}>{val}</div>
+                        {caption && <div style={{ fontSize: 9, color: 'var(--text-subtle)', marginTop: 3 }}>{caption}</div>}
                       </div>
                     ))}
                   </div>
 
-                  {/* Potential additional work disclosure */}
                   {s.potential_additional > 0 && (
                     <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 12 }}>
-                      <div style={{ fontWeight: 700, color: '#92400E', marginBottom: 4 }}>Potential Additional Work</div>
+                      <div style={{ fontWeight: 700, color: 'var(--amber-text-strong)', marginBottom: 4 }}>Potential Additional Work</div>
                       <div style={{ color: '#78350F', lineHeight: 1.5 }}>
                         {f$(s.potential_additional)} in submitted invoices is pending approval and not yet included in the projected total above. This amount may be added once reviewed.
                       </div>
                     </div>
                   )}
 
-                  {/* Remaining balance line */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#F7F5F0', borderRadius: 8, marginBottom: 20, fontSize: 13 }}>
-                    <span style={{ color: '#6B7280' }}>Remaining Balance</span>
-                    <span style={{ fontWeight: 700, color: '#0A1F44', fontFamily: "'DM Serif Display',serif" }}>{f$(Math.max(0, s.remaining_balance))}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: CREAM, borderRadius: 8, marginBottom: 20, fontSize: 13 }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Remaining Balance</span>
+                    <span style={{ fontWeight: 700, color: NAV, fontFamily: "'DM Serif Display',serif" }}>{f$(Math.max(0, s.remaining_balance))}</span>
                   </div>
 
-                  {/* Transaction ledger */}
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>What We've Spent</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>What We've Spent</div>
                   {!s.transactions.length && (
                     <div className="empty">{Ic.doc}<div className="empty-t">No expenses recorded yet</div><div>Paid expenses will appear here as work progresses</div></div>
                   )}
                   {s.transactions.length > 0 && (
-                    <div style={{ background: '#fff', border: '1px solid #E8E4DC', marginBottom: 16 }}>
+                    <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, marginBottom: 16 }}>
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                           <thead>
-                            <tr style={{ borderBottom: '1px solid #F3F0EB' }}>
-                              <th style={{ textAlign: 'left', padding: '10px 12px 10px 16px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>Date</th>
-                              <th style={{ textAlign: 'left', padding: '10px 12px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Payee</th>
-                              <th style={{ textAlign: 'left', padding: '10px 12px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</th>
-                              <th style={{ textAlign: 'right', padding: '10px 16px 10px 12px', color: '#9CA3AF', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Amount</th>
+                            <tr style={{ borderBottom: `1px solid var(--bg-alt)` }}>
+                              <th style={{ textAlign: 'left', padding: '10px 12px 10px 16px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>Date</th>
+                              <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Payee</th>
+                              <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</th>
+                              <th style={{ textAlign: 'right', padding: '10px 16px 10px 12px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Amount</th>
                             </tr>
                           </thead>
                           <tbody>
                             {s.transactions.map((t, i) => (
-                              <tr key={i} style={{ borderBottom: '1px solid #F7F5F0' }}>
-                                <td style={{ padding: '9px 12px 9px 16px', color: '#6B7280', whiteSpace: 'nowrap' }}>{t.date ? fD(t.date) : '—'}</td>
-                                <td style={{ padding: '9px 12px', color: '#374151', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.payee}</td>
-                                <td style={{ padding: '9px 12px', color: '#6B7280', whiteSpace: 'nowrap' }}>{TYPE_LABEL[t.category] || t.category || '—'}</td>
-                                <td style={{ padding: '9px 16px 9px 12px', textAlign: 'right', color: '#0A1F44', fontWeight: 600, whiteSpace: 'nowrap' }}>{f$(t.amount)}</td>
+                              <tr key={i} style={{ borderBottom: `1px solid ${CREAM}` }}>
+                                <td style={{ padding: '9px 12px 9px 16px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{t.date ? fD(t.date) : '—'}</td>
+                                <td style={{ padding: '9px 12px', color: 'var(--text-secondary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.payee}</td>
+                                <td style={{ padding: '9px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{TYPE_LABEL[t.category] || t.category || '—'}</td>
+                                <td style={{ padding: '9px 16px 9px 12px', textAlign: 'right', color: NAV, fontWeight: 600, whiteSpace: 'nowrap' }}>{f$(t.amount)}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
 
-                      {/* Footer */}
-                      <div style={{ borderTop: '2px solid #E8E4DC', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
+                      <div style={{ borderTop: `2px solid ${BORDER}`, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
                           <span>Subtotal (cost)</span><span>{f$(s.cost_subtotal)}</span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6B7280' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
                           <span>Markup ({markupLabel})</span><span>+{f$(s.markup_amount)}</span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: '#0A1F44', borderTop: '1px solid #F3F0EB', paddingTop: 8, marginTop: 2 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: NAV, borderTop: `1px solid var(--bg-alt)`, paddingTop: 8, marginTop: 2 }}>
                           <span>Total</span><span style={{ fontFamily: "'DM Serif Display',serif" }}>{f$(s.marked_up_total)}</span>
                         </div>
                       </div>
@@ -1023,12 +1016,12 @@ export default function ClientPortal({ profile, signOut }) {
             })()}
             {/* ── New draw breakdown (Phase 6) ── */}
             {drawBreakdownLoading && (
-              <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>Loading draws...</div>
+              <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>Loading draws...</div>
             )}
 
             {!drawBreakdownLoading && drawBreakdown && drawBreakdown.length > 0 && (
               <>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Draw History</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Draw History</div>
                 {drawBreakdown.map(({ draw, lineItems: dli, invoice }) => (
                   <DrawCard key={draw.id} draw={draw} lineItems={dli} invoice={invoice} />
                 ))}
@@ -1038,7 +1031,7 @@ export default function ClientPortal({ profile, signOut }) {
             {/* ── Legacy fallback (jobs with no draws — predates the arc) ── */}
             {!drawBreakdownLoading && drawBreakdown !== null && drawBreakdown.length === 0 && (
               <>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Costs</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Costs</div>
                 {!costItems.filter(i => i.client_visible).length && <div className="empty">{Ic.doc}<div className="empty-t">No cost items yet</div><div>Your contractor will add cost details here</div></div>}
                 {costItems.filter(i => i.client_visible).map(item => {
                   const factor = 1 + Number(item.markup_pct || 0) / 100;
@@ -1047,30 +1040,30 @@ export default function ClientPortal({ profile, signOut }) {
                   const itemInvs = costInvoices.filter(i => i.cost_item_id === item.id && i.paid);
                   const paidToDate = itemInvs.reduce((a, i) => a + Number(i.amount || 0), 0) * factor;
                   return (
-                    <div key={item.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: 16, marginBottom: 12 }}>
+                    <div key={item.id} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: 16, marginBottom: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                         <div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: '#0A1F44' }}>{item.trade}</div>
-                          {item.vendor && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{item.vendor}</div>}
+                          <div style={{ fontSize: 14, fontWeight: 700, color: NAV }}>{item.trade}</div>
+                          {item.vendor && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{item.vendor}</div>}
                           {item.proposal_signed_url && (
                             <a href={item.proposal_signed_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: '#3B82F6', textDecoration: 'none', fontWeight: 600 }}>📄 View Proposal</a>
                           )}
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 4 }}>Estimate</div>
-                          <div style={{ fontSize: 13, color: '#6B7280' }}>{f$(estimate)}</div>
-                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6, marginBottom: 2 }}>Markup</div>
-                          <div style={{ fontSize: 13, color: '#6B7280' }}>{item.markup_pct || 0}%</div>
-                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6, marginBottom: 2 }}>Your Price</div>
-                          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44', fontWeight: 700 }}>{f$(clientPrice)}</div>
-                          {paidToDate > 0 && <div style={{ fontSize: 12, color: '#22c55e', marginTop: 4 }}>Paid {f$(paidToDate)}</div>}
+                          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 4 }}>Estimate</div>
+                          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{f$(estimate)}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6, marginBottom: 2 }}>Markup</div>
+                          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{item.markup_pct || 0}%</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6, marginBottom: 2 }}>Your Price</div>
+                          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: NAV, fontWeight: 700 }}>{f$(clientPrice)}</div>
+                          {paidToDate > 0 && <div style={{ fontSize: 12, color: 'var(--green-dot)', marginTop: 4 }}>Paid {f$(paidToDate)}</div>}
                         </div>
                       </div>
                       {itemInvs.length > 0 && (
                         <div style={{ borderTop: '1px solid #F0ECE6', paddingTop: 10 }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Paid Invoices</div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Paid Invoices</div>
                           {itemInvs.map(inv => (
-                            <div key={inv.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#374151' }}>
+                            <div key={inv.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: 'var(--text-secondary)' }}>
                               <span>{inv.date || '—'}</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <span style={{ fontWeight: 600 }}>{f$(Number(inv.amount || 0) * factor)}</span>
