@@ -78,6 +78,7 @@ function PhotoThumbnail({ file, onSelect, checked, onToggle, bulkTagMode }) {
   );
 }
 
+export { PhotoThumbnail };
 export default function FilesGridView({ files, onSelectFile, bulkTagMode, selectedFileIds, onToggleSelect, onShareFolder }) {
   const photos = files.filter(f => f.category === 'Photos');
   const others = files.filter(f => f.category !== 'Photos');

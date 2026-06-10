@@ -143,21 +143,11 @@ export default function FilesTab({ job, profile }) {
     onShareFolder: ({ folderLabel, files }) => setShareModal({ folderLabel, files }),
   };
 
-  const ViewToggle = ({ id, icon, label }) => (
-    <button
-      onClick={() => setView(id)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px',
-        background: view === id ? 'var(--navy-900)' : 'transparent',
-        color: view === id ? '#fff' : 'var(--text-muted)',
-        border: 'none', borderRadius: 6, cursor: 'pointer',
-        fontSize: 12, fontWeight: 600, transition: 'all 0.12s',
-      }}
-    >
-      <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
-      {!mob && <span>{label}</span>}
-    </button>
-  );
+  const VIEW_SEGMENTS = [
+    { id: 'recent', icon: Ic.note,   label: 'Recent'  },
+    { id: 'tree',   icon: Ic.folder, label: 'Folders' },
+    { id: 'grid',   icon: Ic.cam,    label: 'Grid'    },
+  ];
 
   return (
     <div
@@ -198,7 +188,7 @@ export default function FilesTab({ job, profile }) {
           style={{
             width: '100%', boxSizing: 'border-box',
             padding: '9px 36px 9px 32px',
-            border: '1px solid #E8E4DC', borderRadius: 8,
+            border: '1px solid var(--border)', borderRadius: 8,
             background: 'var(--bg)', fontSize: 13, color: 'var(--navy-900)',
             outline: 'none', transition: 'border-color 0.12s',
           }}
@@ -222,11 +212,27 @@ export default function FilesTab({ job, profile }) {
         display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
         flexWrap: 'wrap',
       }}>
-        {/* View switcher */}
-        <div style={{ display: 'flex', gap: 2, background: 'var(--bg)', borderRadius: 8, padding: 2, border: '1px solid #E8E4DC' }}>
-          <ViewToggle id="recent" icon={Ic.note} label="Recent" />
-          <ViewToggle id="tree" icon={Ic.folder} label="Tree" />
-          <ViewToggle id="grid" icon={Ic.cam} label="Grid" />
+        {/* View switcher — segmented control */}
+        <div style={{ display: 'flex', background: 'var(--card-bg)', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+          {VIEW_SEGMENTS.map((seg, i) => (
+            <button
+              key={seg.id}
+              onClick={() => setView(seg.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: mob ? '7px 10px' : '7px 12px',
+                background: view === seg.id ? 'var(--navy-900)' : 'transparent',
+                color: view === seg.id ? '#fff' : 'var(--text-muted)',
+                border: 'none',
+                borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
+                cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'all 0.12s',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{seg.icon}</span>
+              {!mob && <span>{seg.label}</span>}
+            </button>
+          ))}
         </div>
 
         <div style={{ flex: 1 }} />
@@ -260,7 +266,7 @@ export default function FilesTab({ job, profile }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
                 background: 'var(--bg)', color: 'var(--navy-900)',
-                border: '1px solid #E8E4DC', borderRadius: 6,
+                border: '1px solid var(--border)', borderRadius: 6,
                 cursor: 'pointer', fontSize: 12, fontWeight: 600,
               }}
             >
