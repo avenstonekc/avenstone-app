@@ -13,8 +13,8 @@ const round2 = (n) => Math.round(n * 100) / 100;
 const STATUS_PILL = {
   pending:  { bg: '#F3F4F6',             color: 'var(--text-muted)' },
   invoiced: { bg: 'var(--blue-bg)',      color: 'var(--blue-text)' },
-  paid:     { bg: 'var(--green-bg)',     color: '#065F46' },
-  released: { bg: '#EDE9FE',             color: '#5B21B6' },
+  paid:     { bg: 'var(--green-bg)',     color: 'var(--green-text-strong)' },
+  released: { bg: 'var(--purple-bg)',             color: 'var(--purple-text)' },
 };
 
 const mapMilestone = (m, total) => ({
@@ -199,7 +199,7 @@ export default function PaymentScheduleTab({ job, profile }) {
         </div>
       )}
       {genSuccess && (
-        <div style={{ background: 'var(--green-bg)', color: '#065F46', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
+        <div style={{ background: 'var(--green-bg)', color: 'var(--green-text-strong)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
           Draft invoice generated for "{genSuccess}" — review and send when ready.
         </div>
       )}
@@ -273,7 +273,7 @@ export default function PaymentScheduleTab({ job, profile }) {
                       onChange={(e) => canEdit && updateMilestone(m.id, 'is_retainage', e.target.checked)}
                       disabled={!canEdit}
                     />
-                    {m.is_retainage && <span style={{ fontSize: 11, color: '#5B21B6' }}>Yes</span>}
+                    {m.is_retainage && <span style={{ fontSize: 11, color: 'var(--purple-text)' }}>Yes</span>}
                   </div>
                   {/* Status + Action */}
                   <div style={{ width: 140, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
@@ -294,7 +294,7 @@ export default function PaymentScheduleTab({ job, profile }) {
                       </button>
                     )}
                     {m.invoice_id && (
-                      <span style={{ fontSize: 11, color: '#1E40AF' }}>Invoice created ↗</span>
+                      <span style={{ fontSize: 11, color: 'var(--blue-text)' }}>Invoice created ↗</span>
                     )}
                     {canRelease && (
                       <button
@@ -325,10 +325,10 @@ export default function PaymentScheduleTab({ job, profile }) {
           {milestones.length > 0 && (
             <div style={{ background: 'var(--bg)', border: '1px solid #E8E4DC', borderRadius: 8, padding: '10px 16px', marginTop: 16, display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)' }}>
               <span>Contract: <strong style={{ color: 'var(--navy-900)' }}>{f$(contractTotal)}</strong></span>
-              <span>Invoiced: <strong style={{ color: totalInvoiced > 0 ? '#1E40AF' : 'var(--text-muted)' }}>{f$(totalInvoiced)}</strong></span>
-              <span>Paid: <strong style={{ color: totalPaidAmt > 0 ? '#065F46' : 'var(--text-muted)' }}>{f$(totalPaidAmt)}</strong></span>
+              <span>Invoiced: <strong style={{ color: totalInvoiced > 0 ? 'var(--blue-text)' : 'var(--text-muted)' }}>{f$(totalInvoiced)}</strong></span>
+              <span>Paid: <strong style={{ color: totalPaidAmt > 0 ? 'var(--green-text-strong)' : 'var(--text-muted)' }}>{f$(totalPaidAmt)}</strong></span>
               {totalRetainageHeld > 0 && (
-                <span>Retainage held: <strong style={{ color: '#5B21B6' }}>{f$(totalRetainageHeld)}</strong></span>
+                <span>Retainage held: <strong style={{ color: 'var(--purple-text)' }}>{f$(totalRetainageHeld)}</strong></span>
               )}
               <span>Remaining: <strong style={{ color: totalRemaining > 0 ? 'var(--navy-900)' : 'var(--text-subtle)' }}>{f$(totalRemaining)}</strong></span>
             </div>
@@ -364,7 +364,7 @@ const btnGenerate = {
   whiteSpace: 'nowrap',
 };
 const btnRelease = {
-  background: '#5B21B6', color: '#fff', border: 'none', borderRadius: 'var(--r-xs)',
+  background: 'var(--purple-text)', color: '#fff', border: 'none', borderRadius: 'var(--r-xs)',
   padding: '4px 10px', fontWeight: 600, fontSize: 12, cursor: 'pointer',
   whiteSpace: 'nowrap',
 };

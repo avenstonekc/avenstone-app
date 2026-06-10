@@ -47,9 +47,24 @@
   --amber-text:   #f59e0b;
 
   /* Red */
-  --red-bg:       #FEE2E2;
-  --red-text:     #EF4444;
-  --red-border:   #FECACA;
+  --red-bg:          #FEE2E2;
+  --red-text:        #EF4444;
+  --red-text-strong: #991b1b;   /* dark red on red-bg */
+  --red-border:      #FECACA;
+
+  /* Green */
+  --green-text-strong: #065f46; /* dark green on green-bg */
+
+  /* Amber strong */
+  --amber-text-strong: #92400e; /* dark amber on amber-bg */
+
+  /* Purple (viewed invoice, retainage) */
+  --purple-bg:   #EDE9FE;
+  --purple-text: #5B21B6;
+
+  /* Neutral (draft/cancelled status) */
+  --neutral-bg:   #F3F4F6;
+  --neutral-text: #6B7280;   /* reuses --text-muted hex */
 
   /* Blue */
   --blue-bg:      #EFF6FF;

@@ -8,20 +8,20 @@ import MarkPaidModal from '../../modals/MarkPaidModal';
 import ComposeDrawScr from './ComposeDrawScr';
 
 const DRAW_STATUS = {
-  planned:     { label: 'Planned',     bg: '#F3F4F6',             color: 'var(--text-muted)' },
+  planned:     { label: 'Planned',     bg: 'var(--neutral-bg)',             color: 'var(--text-muted)' },
   in_progress: { label: 'In Progress', bg: 'var(--blue-bg)',      color: 'var(--blue-text)' },
-  paid:        { label: 'Paid',        bg: 'var(--green-bg)',     color: '#065f46' },
-  cancelled:   { label: 'Cancelled',   bg: 'var(--red-bg)',       color: '#991b1b' },
+  paid:        { label: 'Paid',        bg: 'var(--green-bg)',     color: 'var(--green-text-strong)' },
+  cancelled:   { label: 'Cancelled',   bg: 'var(--red-bg)',       color: 'var(--red-text-strong)' },
 };
 
 const INVOICE_STATUS = {
-  draft:          { label: 'Draft',    bg: '#F3F4F6',             color: 'var(--text-muted)' },
+  draft:          { label: 'Draft',    bg: 'var(--neutral-bg)',             color: 'var(--text-muted)' },
   sent:           { label: 'Sent',     bg: 'var(--blue-bg)',      color: 'var(--blue-text)' },
-  viewed:         { label: 'Viewed',   bg: '#EDE9FE',             color: '#5b21b6' },
-  partially_paid: { label: 'Partial',  bg: 'var(--amber-bg)',     color: '#92400e' },
-  paid:           { label: 'Paid',     bg: 'var(--green-bg)',     color: '#065f46' },
-  overdue:        { label: 'Overdue',  bg: 'var(--red-bg)',       color: '#991b1b' },
-  void:           { label: 'Void',     bg: '#F3F4F6',             color: 'var(--text-subtle)' },
+  viewed:         { label: 'Viewed',   bg: 'var(--purple-bg)',             color: 'var(--purple-text)' },
+  partially_paid: { label: 'Partial',  bg: 'var(--amber-bg)',     color: 'var(--amber-text-strong)' },
+  paid:           { label: 'Paid',     bg: 'var(--green-bg)',     color: 'var(--green-text-strong)' },
+  overdue:        { label: 'Overdue',  bg: 'var(--red-bg)',       color: 'var(--red-text-strong)' },
+  void:           { label: 'Void',     bg: 'var(--neutral-bg)',             color: 'var(--text-subtle)' },
 };
 
 const isStaff = profile => ['owner', 'project_manager', 'sales_rep'].includes(profile?.role);
@@ -224,7 +224,7 @@ export default function InvoicesSubTab({ job, profile }) {
                             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)' }}>{draw.title}</span>
                             <span style={{ fontSize: 10, background: st.bg, color: st.color, padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>{st.label}</span>
                             {pkg?.status === 'sent' && (
-                              <span style={{ fontSize: 10, background: '#D1FAE5', color: '#065f46', padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>
+                              <span style={{ fontSize: 10, background: '#D1FAE5', color: 'var(--green-text-strong)', padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>
                                 Sent to {pkg.recipient_label || pkg.recipient_email}
                               </span>
                             )}
@@ -255,7 +255,7 @@ export default function InvoicesSubTab({ job, profile }) {
                               <button
                                 onClick={() => setMarkPaidDraw(draw)}
                                 className="btn btn-ghost"
-                                style={{ fontSize: 11, padding: '4px 10px', color: '#065f46', borderColor: '#6EE7B7' }}
+                                style={{ fontSize: 11, padding: '4px 10px', color: 'var(--green-text-strong)', borderColor: '#6EE7B7' }}
                               >
                                 Mark Paid
                               </button>
@@ -297,7 +297,7 @@ export default function InvoicesSubTab({ job, profile }) {
                             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Message (optional)</div>
                             <textarea className="finp" rows={2} placeholder="Please find our draw package attached." value={sendMsg} onChange={e => setSendMsg(e.target.value)} style={{ width: '100%', fontSize: 12, resize: 'vertical' }} />
                           </div>
-                          {sendError && <div style={{ fontSize: 11, color: '#991b1b', marginBottom: 6 }}>{sendError}</div>}
+                          {sendError && <div style={{ fontSize: 11, color: 'var(--red-text-strong)', marginBottom: 6 }}>{sendError}</div>}
                           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                             <button onClick={() => setSendDrawId(null)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}>Cancel</button>
                             <button onClick={() => handleInlineSend(pkg.id)} disabled={sending} className="btn btn-gold" style={{ fontSize: 11, padding: '4px 12px', opacity: sending ? 0.6 : 1 }}>
@@ -368,7 +368,7 @@ export default function InvoicesSubTab({ job, profile }) {
                             </>
                           )}
                           {['sent', 'viewed', 'partially_paid', 'overdue'].includes(inv.status) && (
-                            <button onClick={() => setMarkPaidInvoice(inv)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: '#065f46', borderColor: '#6EE7B7' }}>Mark Paid</button>
+                            <button onClick={() => setMarkPaidInvoice(inv)} className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: 'var(--green-text-strong)', borderColor: '#6EE7B7' }}>Mark Paid</button>
                           )}
                           {['sent', 'viewed', 'partially_paid', 'overdue'].includes(inv.status) && (
                             <button

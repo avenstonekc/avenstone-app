@@ -12,17 +12,17 @@ const CREAM = 'var(--bg)';
 const BORDER = 'var(--border)';
 
 const LIKELIHOOD_COLORS = {
-  low:    { bg: 'var(--green-bg)',  text: '#065F46',  border: '#6EE7B7' },
-  medium: { bg: 'var(--amber-bg)', text: '#92400E',   border: 'var(--amber-border)' },
-  high:   { bg: 'var(--red-bg)',   text: '#991B1B',   border: 'var(--red-border)' },
+  low:    { bg: 'var(--green-bg)',  text: 'var(--green-text-strong)',  border: '#6EE7B7' },
+  medium: { bg: 'var(--amber-bg)', text: 'var(--amber-text-strong)',   border: 'var(--amber-border)' },
+  high:   { bg: 'var(--red-bg)',   text: 'var(--red-text-strong)',   border: 'var(--red-border)' },
 };
 
 function StatusBadge({ status }) {
   const map = {
     idle:     { bg: '#E5E7EB',             text: 'var(--text-secondary)', label: 'Idle' },
     ambient:  { bg: 'var(--blue-bg)',      text: 'var(--blue-text)',      label: 'Ambient' },
-    measure:  { bg: 'var(--amber-bg)',     text: '#92400E',               label: 'Measuring' },
-    complete: { bg: 'var(--green-bg)',     text: '#065F46',               label: 'Complete' },
+    measure:  { bg: 'var(--amber-bg)',     text: 'var(--amber-text-strong)',               label: 'Measuring' },
+    complete: { bg: 'var(--green-bg)',     text: 'var(--green-text-strong)',               label: 'Complete' },
   };
   const s = map[status] || map.idle;
   return (
@@ -366,9 +366,9 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const ExtractionPills = ({ ext }) => {
     if (!ext) return null;
     const categories = [
-      { key: 'client_concerns', label: 'Concern', color: 'var(--red-bg)', textColor: '#991B1B' },
-      { key: 'risk_flags', label: 'Risk', color: '#FEF3C7', textColor: '#92400E' },
-      { key: 'budget_signals', label: 'Budget', color: 'var(--green-bg)', textColor: '#065F46' },
+      { key: 'client_concerns', label: 'Concern', color: 'var(--red-bg)', textColor: 'var(--red-text-strong)' },
+      { key: 'risk_flags', label: 'Risk', color: '#FEF3C7', textColor: 'var(--amber-text-strong)' },
+      { key: 'budget_signals', label: 'Budget', color: 'var(--green-bg)', textColor: 'var(--green-text-strong)' },
       { key: 'priorities', label: 'Priority', color: '#DBEAFE', textColor: '#1E40AF' },
       { key: 'notes', label: 'Note', color: '#EDE9FE', textColor: '#5B21B6' },
     ];
@@ -453,7 +453,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {s.measurements.map((m, i) => (
-                            <span key={i} style={{ padding: '2px 10px', background: 'var(--green-bg)', color: '#065F46', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
+                            <span key={i} style={{ padding: '2px 10px', background: 'var(--green-bg)', color: 'var(--green-text-strong)', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
                               ✓ {m.trade}
                             </span>
                           ))}
@@ -808,7 +808,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {gapAnalysis && (
-              <span style={{ padding: '2px 10px', borderRadius: 20, background: 'var(--green-bg)', color: '#065F46', fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>
+              <span style={{ padding: '2px 10px', borderRadius: 20, background: 'var(--green-bg)', color: 'var(--green-text-strong)', fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>
                 Gaps reviewed
               </span>
             )}
@@ -830,10 +830,10 @@ export default function ConsultationTab({ job, profile, setTab }) {
               alignItems: 'center',
             }}
           >
-            <span style={{ color: '#991B1B', fontSize: 13 }}>{err}</span>
+            <span style={{ color: 'var(--red-text-strong)', fontSize: 13 }}>{err}</span>
             <button
               onClick={() => setErr('')}
-              style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}
+              style={{ background: 'none', border: 'none', color: 'var(--red-text-strong)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}
             >
               ×
             </button>

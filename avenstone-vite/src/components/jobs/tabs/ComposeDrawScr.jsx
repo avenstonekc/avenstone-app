@@ -509,7 +509,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                 )}
 
                 {retainagePerDraw > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#b45309' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--amber-text-strong)' }}>
                     <span>Hold {retainagePct}% retainage</span>
                     <span style={{ fontWeight: 700 }}>−{f$(retainagePerDraw)}</span>
                   </div>

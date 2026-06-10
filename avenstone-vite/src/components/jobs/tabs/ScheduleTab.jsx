@@ -11,9 +11,9 @@ const PHASE_ORDER = ['Lead', 'Proposal', 'Contract', 'Demo', 'Rough-ins', 'Inspe
 const PILL_STYLE = {
   not_started: { bg: '#EBE6D2', border: '#C4BC9E', color: '#6B5F3F' },
   pending:     { bg: '#EBE6D2', border: '#C4BC9E', color: '#6B5F3F' },
-  in_progress: { bg: '#FAEEDA', border: 'var(--gold-500)', color: '#6B4E14' },
+  in_progress: { bg: 'var(--amber-bg)', border: 'var(--gold-500)', color: '#6B4E14' },
   complete:    { bg: '#DCE5D8', border: '#8FAF86', color: '#2E4528' },
-  blocked:     { bg: 'var(--red-bg)', border: 'var(--red-border)', color: '#991B1B' },
+  blocked:     { bg: 'var(--red-bg)', border: 'var(--red-border)', color: 'var(--red-text-strong)' },
 };
 
 // Schedule item config
@@ -27,7 +27,7 @@ const TYPE_CHIP_COLORS = {
   inspection:        { bg: '#DCE5D8',          color: '#2E4528',           border: 'none' },
   milestone:         { bg: 'transparent',      color: 'var(--navy-900)',   border: '1px solid var(--navy-900)' },
   site_visit:        { bg: '#EBE6D2',          color: '#6B5F3F',           border: 'none' },
-  delay:             { bg: 'var(--red-bg)',     color: '#991B1B',           border: 'none' },
+  delay:             { bg: 'var(--red-bg)',     color: 'var(--red-text-strong)',           border: 'none' },
 };
 
 // Brand-palette avatar circles (ItemCard)
@@ -37,11 +37,11 @@ const TYPE_AVATAR = {
   inspection:        { bg: '#DCE5D8',          color: '#2E4528',           outline: 'none' },
   milestone:         { bg: 'var(--navy-900)', color: '#fff',              outline: '2px solid var(--gold-500)' },
   site_visit:        { bg: '#EBE6D2',          color: '#6B5F3F',           outline: 'none' },
-  delay:             { bg: 'var(--red-bg)',     color: '#991B1B',           outline: 'none' },
+  delay:             { bg: 'var(--red-bg)',     color: 'var(--red-text-strong)',           outline: 'none' },
 };
 
 const STATUS_BADGE = {
-  in_progress: { label: 'IN PROGRESS', bg: '#FAEEDA', color: '#6B4E14' },
+  in_progress: { label: 'IN PROGRESS', bg: 'var(--amber-bg)', color: '#6B4E14' },
   complete:    { label: 'COMPLETE',    bg: '#DCE5D8', color: '#2E4528' },
   cancelled:   { label: 'CANCELLED',  bg: '#EBE6D2', color: '#6B5F3F' },
 };

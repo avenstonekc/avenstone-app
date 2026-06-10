@@ -256,7 +256,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             const statusPill = (budget, actual) => {
               if (!budget) return null;
               const pct = actual / budget;
-              if (pct > 1.10) return { label: 'Over', bg: 'var(--red-bg)', color: '#991b1b' };
+              if (pct > 1.10) return { label: 'Over', bg: 'var(--red-bg)', color: 'var(--red-text-strong)' };
               if (pct >= 0.90) return { label: 'On Track', bg: 'var(--green-bg)', color: '#065f46' };
               return { label: 'Under', bg: '#DBEAFE', color: '#1e40af' };
             };
@@ -366,8 +366,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                   : undefined },
               { lb: 'Received',          v: f$(summary.received ?? summary.total_in), c: (summary.received ?? summary.total_in) > 0 ? 'var(--green-dot)' : 'var(--text-subtle)' },
               { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? 'var(--red-text)' : 'var(--text-subtle)' },
-              ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: '#b45309', note: 'approved sub invoices unpaid' }] : []),
-              ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: '#b45309', note: 'released at final draw' }] : []),
+              ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
+              ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
               { lb: 'Projected Profit',  v: f$(summary.projected_profit), c: summary.projected_profit > 0 ? 'var(--green-dot)' : 'var(--text-subtle)', note: `${summary.margin_pct ?? 0}% margin · +${f$(summary.pm_fee ?? 0)} PM` },
               ...(cpBucketBalance >= 0
                 ? [{ lb: 'Bucket Credit', v: f$(cpBucketBalance), c: 'var(--green-dot)', note: 'client prepaid balance' }]
@@ -380,7 +380,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                   { lb: 'Contract',    v: f$(summary.contract_total),                                     c: 'var(--navy-900)',  bold: true },
                   { lb: 'Received',    v: f$(summary.total_in),                                           c: summary.total_in > 0 ? 'var(--green-dot)' : 'var(--text-subtle)' },
                   { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),        c: owes < 0 ? 'var(--green-dot)' : owes > 0 ? 'var(--gold-500)' : 'var(--text-subtle)' },
-                  { lb: 'Pending Out', v: f$(summary.pending_out),                                        c: summary.pending_out > 0 ? '#b45309' : 'var(--text-subtle)' },
+                  { lb: 'Pending Out', v: f$(summary.pending_out),                                        c: summary.pending_out > 0 ? 'var(--amber-text-strong)' : 'var(--text-subtle)' },
                   { lb: 'Paid Out',    v: f$(summary.total_out),                                          c: summary.total_out > 0 ? 'var(--red-text)' : 'var(--text-subtle)' },
                 ];
             return (
@@ -405,19 +405,19 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             return (
               <div style={{ background: 'var(--amber-bg)', border: '1px solid #FCD34D', borderLeft: '4px solid #F59E0B', borderRadius: 8, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>Consider composing a draw</div>
-                  <div style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--amber-text-strong)' }}>Consider composing a draw</div>
+                  <div style={{ fontSize: 11, color: 'var(--amber-text-strong)', marginTop: 2 }}>
                     Carrying {f$(unreimb)} unreimbursed — {pct}% of contract. PM&rsquo;s call.
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button
                     onClick={() => setDismissedDrawNudge(true)}
-                    style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #FCD34D', borderRadius: 6, background: 'transparent', color: '#92400e', cursor: 'pointer' }}
+                    style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #FCD34D', borderRadius: 6, background: 'transparent', color: 'var(--amber-text-strong)', cursor: 'pointer' }}
                   >Dismiss</button>
                   <button
                     onClick={() => setShowComposeDraw(true)}
-                    style={{ fontSize: 11, padding: '4px 12px', border: 'none', borderRadius: 6, background: '#92400e', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+                    style={{ fontSize: 11, padding: '4px 12px', border: 'none', borderRadius: 6, background: 'var(--amber-text-strong)', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
                   >Compose Draw →</button>
                 </div>
               </div>
@@ -436,11 +436,11 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
               { id: 'paid', lb: 'Paid' },
               { id: 'lien_due', lb: `Lien Due${lienCount ? ` (${lienCount})` : ''}` },
             ].map(f => (
-              <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: filterStatus === f.id ? 'var(--gold-500)' : 'var(--border)', background: filterStatus === f.id ? '#C9A84C22' : '#fff', color: filterStatus === f.id ? '#92400e' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 500 }}>{f.lb}</button>
+              <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: filterStatus === f.id ? 'var(--gold-500)' : 'var(--border)', background: filterStatus === f.id ? '#C9A84C22' : '#fff', color: filterStatus === f.id ? 'var(--amber-text-strong)' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 500 }}>{f.lb}</button>
             ))}
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-              <button onClick={() => setShowSynced(s => !s)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: !showSynced ? 'var(--gold-500)' : 'var(--border)', background: !showSynced ? '#C9A84C22' : '#fff', color: !showSynced ? '#92400e' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 500 }}>{showSynced ? 'Hide Synced' : 'Show Synced'}</button>
-              <button onClick={openQbModal} style={{ fontSize: 11, padding: '5px 10px', borderRadius: 6, border: '1px solid #C9A84C', background: '#C9A84C15', color: '#92400e', cursor: 'pointer', fontWeight: 600 }}>QB Export</button>
+              <button onClick={() => setShowSynced(s => !s)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: !showSynced ? 'var(--gold-500)' : 'var(--border)', background: !showSynced ? '#C9A84C22' : '#fff', color: !showSynced ? 'var(--amber-text-strong)' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 500 }}>{showSynced ? 'Hide Synced' : 'Show Synced'}</button>
+              <button onClick={openQbModal} style={{ fontSize: 11, padding: '5px 10px', borderRadius: 6, border: '1px solid #C9A84C', background: '#C9A84C15', color: 'var(--amber-text-strong)', cursor: 'pointer', fontWeight: 600 }}>QB Export</button>
               <button onClick={() => setModal({ mode: 'create', tx: {} })} style={{ fontSize: 12, padding: '6px 14px', background: 'var(--navy-900)', color: 'var(--gold-500)', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>+ Add</button>
             </div>
           </div>
@@ -462,12 +462,12 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                 {/* Floating bulk action bar */}
                 {selectedIds.size > 0 && isManager && (
                   <div style={{ position: 'sticky', top: 0, background: '#fef3c7', border: '1px solid #fcd34d', padding: '8px 12px', borderRadius: 4, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10, flexWrap: 'wrap', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: '#92400e', fontWeight: 500 }}>
+                    <span style={{ fontSize: 12, color: 'var(--amber-text-strong)', fontWeight: 500 }}>
                       {selectedIds.size} pending expense{selectedIds.size === 1 ? '' : 's'} selected — total: {f$(selectedTotal)}
                     </span>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => setSelectedIds(new Set())} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #E8E4DC', background: '#fff', color: 'var(--text-muted)', cursor: 'pointer' }}>Clear</button>
-                      <button onClick={handleMarkPaid} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#059669', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+                      <button onClick={handleMarkPaid} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--green-text)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
                         Mark {selectedIds.size} as Paid
                       </button>
                     </div>
@@ -519,7 +519,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             {TYPE_LABELS[tx.type] || tx.type}
-                            {lienMissing && <span style={{ fontSize: 10, background: 'var(--red-bg)', color: '#991b1b', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>Lien Missing</span>}
+                            {lienMissing && <span style={{ fontSize: 10, background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>Lien Missing</span>}
                             {tx.receipt_url && <span style={{ fontSize: 11, color: '#3B82F6' }}>📎</span>}
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>
