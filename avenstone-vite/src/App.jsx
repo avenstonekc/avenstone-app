@@ -439,7 +439,7 @@ export default function App() {
             {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
             {pg === 'sequences' && profile?.role === 'owner' && <SequencesScr profile={profile} />}
             {pg === 'admin-bugs' && profile?.is_platform_owner && <BugReportsScr profile={profile} />}
-            {pg === 'brandpreview' && import.meta.env.DEV && <BrandPreview />}
+            {pg === 'brandpreview' && profile?.role === 'owner' && <BrandPreview />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ marginBottom: 16 }}>
