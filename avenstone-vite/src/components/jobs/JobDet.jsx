@@ -241,50 +241,57 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
         {/* Phase 5 — expired company doc banner (staff only, client-visible files) */}
         <CompanyFileExpirationBanner profile={profile} />
-        {tab === 'info' && job.status === 'complete' && canRunAi && (
-          <div style={{ background: 'linear-gradient(135deg,#0A1F44,#1a3a6e)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-500)', marginBottom: 2 }}>🌟 Request a Review</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
-                Send {job.client_name || 'your client'} this link{'—'}their review goes straight to your public profile.
+        {/* ── Request a Review — TOP (final_touches / complete) ── */}
+        {tab === 'info' && ['final_touches', 'complete'].includes(job.status) && canRunAi && (
+          <div style={{ background: 'linear-gradient(135deg, var(--navy-900), #1a3a6e)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+              <span style={{ width: 18, height: 18, color: 'var(--gold-500)', flexShrink: 0, display: 'flex' }}>{Ic.star}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-500)', marginBottom: 2 }}>Request a Review</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+                  Send {job.client_name || 'your client'} this link{'—'}their review goes straight to your public profile.
+                </div>
               </div>
             </div>
             <button
               onClick={copyReviewLink}
-              style={{ background: reviewCopied ? '#22C55E' : 'var(--gold-500)', color: 'var(--navy-900)', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
-              {reviewCopied ? `✓ Copied!` : 'Copy Review Link'}
+              style={{ background: reviewCopied ? 'var(--green-dot)' : 'var(--gold-500)', color: 'var(--navy-900)', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s', display: 'flex', alignItems: 'center', gap: 5 }}>
+              {reviewCopied ? <><span style={{ width: 13, height: 13, display: 'flex' }}>{Ic.check}</span>Copied!</> : 'Copy Review Link'}
             </button>
           </div>
         )}
-        {/* Completion Package banner — Info tab only */}
-        {tab === 'info' && job.status === 'complete' && canRunAi && (() => {
+        {/* ── Completion Package — TOP (final_touches / complete) ── */}
+        {tab === 'info' && ['final_touches', 'complete'].includes(job.status) && canRunAi && (() => {
           const beforePhoto = (job.photos || []).find(p => p.label === 'before');
           const afterPhoto  = (job.photos || []).find(p => p.label === 'after');
           const hasPackage  = beforePhoto && afterPhoto;
           return (
-            <div style={{ background: hasPackage ? 'linear-gradient(135deg,#0d2a1a,#1a4a2e)' : 'linear-gradient(135deg,#1a1a0d,#2a2a14)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', border: `1px solid ${hasPackage ? '#22C55E33' : '#C9A84C33'}` }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: hasPackage ? '#4ADE80' : 'var(--gold-500)', marginBottom: 2 }}>
-                  {hasPackage ? '📦 Completion Package Ready' : '📸 Create Completion Package'}
-                </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
-                  {hasPackage
-                    ? `Before & after labeled ${'—'} share this branded page with ${job.client_name || 'your client'} and use it for marketing.`
-                    : 'Go to Photos tab and tap B/A on photos to label your before & after for this project.'}
+            <div style={{ background: hasPackage ? 'linear-gradient(135deg,#0d2a1a,#1a4a2e)' : 'linear-gradient(135deg,#1a1a0d,#2a2a14)', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', border: `1px solid ${hasPackage ? '#22C55E33' : 'var(--gold-200)'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                <span style={{ width: 18, height: 18, color: hasPackage ? '#4ADE80' : 'var(--gold-500)', flexShrink: 0, display: 'flex' }}>{hasPackage ? Ic.box : Ic.cam}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: hasPackage ? '#4ADE80' : 'var(--gold-500)', marginBottom: 2 }}>
+                    {hasPackage ? 'Completion Package Ready' : 'Create Completion Package'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                    {hasPackage
+                      ? `Before & after labeled — share this branded page with ${job.client_name || 'your client'} and use it for marketing.`
+                      : 'Go to Photos tab and tap B/A on photos to label your before & after for this project.'}
+                  </div>
                 </div>
               </div>
               {hasPackage && (
                 <button
                   onClick={copyCompletionLink}
-                  style={{ background: completionCopied ? '#22C55E' : '#4ADE80', color: '#0A2010', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
-                  {completionCopied ? `✓ Copied!` : `📤 Copy Package Link`}
+                  style={{ background: completionCopied ? 'var(--green-dot)' : '#4ADE80', color: '#0A2010', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {completionCopied ? <><span style={{ width: 13, height: 13, display: 'flex' }}>{Ic.check}</span>Copied!</> : <><span style={{ width: 13, height: 13, display: 'flex' }}>{Ic.share}</span>Copy Package Link</>}
                 </button>
               )}
               {!hasPackage && (
                 <button
                   onClick={() => setTab('field')}
-                  style={{ background: 'transparent', color: 'var(--gold-500)', border: '1px solid #C9A84C55', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  Go to Photos →
+                  style={{ background: 'transparent', color: 'var(--gold-500)', border: '1px solid var(--gold-200)', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  Go to Photos {'→'}
                 </button>
               )}
             </div>
@@ -296,6 +303,39 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
           </div>
         )}
         {tab === 'info' && <InfoTab job={job} upd={upd} del={del} profile={profile} inf={inf} setInf={setInf} editInf={editInf} setEditInf={setEditInf} setTab={setTab} />}
+        {/* ── Review + Completion banners — BOTTOM quiet style for earlier phases ── */}
+        {tab === 'info' && !['final_touches', 'complete'].includes(job.status) && canRunAi && job.client_email && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' }}>
+              <span style={{ width: 14, height: 14, color: 'var(--text-subtle)', flexShrink: 0, display: 'flex' }}>{Ic.star}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', flex: 1 }}>Request a Review when the job is done</span>
+              <button onClick={copyReviewLink} style={{ fontSize: 11, color: reviewCopied ? 'var(--green-text)' : 'var(--blue-link)', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', padding: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {reviewCopied ? <><span style={{ width: 12, height: 12, display: 'flex' }}>{Ic.check}</span>Copied</> : 'Copy link'}
+              </button>
+            </div>
+            {(() => {
+              const beforePhoto = (job.photos || []).find(p => p.label === 'before');
+              const afterPhoto  = (job.photos || []).find(p => p.label === 'after');
+              const hasPackage  = beforePhoto && afterPhoto;
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' }}>
+                  <span style={{ width: 14, height: 14, color: 'var(--text-subtle)', flexShrink: 0, display: 'flex' }}>{hasPackage ? Ic.box : Ic.cam}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)', flex: 1 }}>
+                    {hasPackage ? 'Completion Package ready to share' : 'Label before & after photos to create a Completion Package'}
+                  </span>
+                  {hasPackage && (
+                    <button onClick={copyCompletionLink} style={{ fontSize: 11, color: completionCopied ? 'var(--green-text)' : 'var(--blue-link)', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', padding: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {completionCopied ? <><span style={{ width: 12, height: 12, display: 'flex' }}>{Ic.check}</span>Copied</> : 'Copy link'}
+                    </button>
+                  )}
+                  {!hasPackage && (
+                    <button onClick={() => setTab('field')} style={{ fontSize: 11, color: 'var(--text-subtle)', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', padding: 0, fontWeight: 600 }}>Go to Photos</button>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
         {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} profile={profile} />}
         {tab === 'subs' && <SubsTab job={job} profile={profile} setTab={setTab} />}
         {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} financialsAction={financialsAction} clearFinancialsAction={() => setFinancialsAction(null)} onAgentDrawPoke={onAgentDrawPoke} />}
