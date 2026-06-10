@@ -8,7 +8,17 @@ import {
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const SC = { lead:'var(--text-subtle)', proposal:'#f59e0b', contract:'#22c55e', in_progress:'var(--gold-500)', final_touches:'#3B82F6', complete:'#10B981', on_hold:'#F97316' };
+// SC uses hex only — values are concatenated with alpha suffixes (+'22', +'33') for pill backgrounds.
+const SC = { lead:'#8B5CF6', proposal:'#F59E0B', contract:'#22C55E', in_progress:'#C9A84C', final_touches:'#EF4444', complete:'#10B981', on_hold:'#F97316' };
+
+// Legend items map directly to pill colours; swatches and pills must agree.
+const LEGEND = [
+  { label: 'Phase',      bg: '#DBEAFE', border: '#93C5FD' },
+  { label: 'Event',      bg: '#FEF3C7', border: '#FDE68A' },
+  { label: 'Lead',       bg: '#EDE9FE', border: '#8B5CF6' },
+  { label: 'Punch List', bg: '#FEE2E2', border: '#EF4444' },
+  { label: 'Complete',   bg: '#D1FAE5', border: '#10B981' },
+];
 
 const TYPE_OPTIONS = [
   { value: 'material_delivery', label: 'Material Delivery' },
@@ -215,10 +225,11 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
       )}
 
       <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: '#DBEAFE', border: '1px solid #93C5FD', borderRadius: 2, marginRight: 4 }}></span>Phase</div>
-        <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--amber-bg)', border: '1px solid #FDE68A', borderRadius: 2, marginRight: 4 }}></span>Event</div>
-        {Object.entries({ lead: 'Lead', active: 'Active', punch: 'Punch List', complete: 'Complete' }).map(([s, lb]) => (
-          <div key={s} style={{ fontSize: 11, color: 'var(--text-subtle)' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: SC[s] + '33', border: '1px solid ' + SC[s], borderRadius: 2, marginRight: 4 }}></span>{lb}</div>
+        {LEGEND.map(({ label, bg, border }) => (
+          <div key={label} style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, background: bg, border: `1px solid ${border}`, borderRadius: 2, marginRight: 4 }} />
+            {label}
+          </div>
         ))}
       </div>
 
