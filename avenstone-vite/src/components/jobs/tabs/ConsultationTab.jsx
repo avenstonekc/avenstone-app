@@ -6,23 +6,23 @@ import GapResolutionModal from '../consultation/GapResolutionModal';
 import MeasurePanel from '../consultation/MeasurePanel';
 import AmbientPanel from '../consultation/AmbientPanel';
 
-const NAV = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
-const BORDER = '#E8E4DC';
+const NAV = 'var(--navy-900)';
+const GOLD = 'var(--gold-500)';
+const CREAM = 'var(--bg)';
+const BORDER = 'var(--border)';
 
 const LIKELIHOOD_COLORS = {
-  low: { bg: '#D1FAE5', text: '#065F46', border: '#6EE7B7' },
-  medium: { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D' },
-  high: { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5' },
+  low:    { bg: 'var(--green-bg)',  text: '#065F46',  border: '#6EE7B7' },
+  medium: { bg: 'var(--amber-bg)', text: '#92400E',   border: 'var(--amber-border)' },
+  high:   { bg: 'var(--red-bg)',   text: '#991B1B',   border: 'var(--red-border)' },
 };
 
 function StatusBadge({ status }) {
   const map = {
-    idle: { bg: '#E5E7EB', text: '#374151', label: 'Idle' },
-    ambient: { bg: '#DBEAFE', text: '#1E40AF', label: 'Ambient' },
-    measure: { bg: '#FEF3C7', text: '#92400E', label: 'Measuring' },
-    complete: { bg: '#D1FAE5', text: '#065F46', label: 'Complete' },
+    idle:     { bg: '#E5E7EB',             text: 'var(--text-secondary)', label: 'Idle' },
+    ambient:  { bg: 'var(--blue-bg)',      text: 'var(--blue-text)',      label: 'Ambient' },
+    measure:  { bg: 'var(--amber-bg)',     text: '#92400E',               label: 'Measuring' },
+    complete: { bg: 'var(--green-bg)',     text: '#065F46',               label: 'Complete' },
   };
   const s = map[status] || map.idle;
   return (
@@ -366,9 +366,9 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const ExtractionPills = ({ ext }) => {
     if (!ext) return null;
     const categories = [
-      { key: 'client_concerns', label: 'Concern', color: '#FEE2E2', textColor: '#991B1B' },
+      { key: 'client_concerns', label: 'Concern', color: 'var(--red-bg)', textColor: '#991B1B' },
       { key: 'risk_flags', label: 'Risk', color: '#FEF3C7', textColor: '#92400E' },
-      { key: 'budget_signals', label: 'Budget', color: '#D1FAE5', textColor: '#065F46' },
+      { key: 'budget_signals', label: 'Budget', color: 'var(--green-bg)', textColor: '#065F46' },
       { key: 'priorities', label: 'Priority', color: '#DBEAFE', textColor: '#1E40AF' },
       { key: 'notes', label: 'Note', color: '#EDE9FE', textColor: '#5B21B6' },
     ];
@@ -440,7 +440,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
                   <div style={{ marginTop: 12 }}>
                     {s.extractions?.[0] && (
                       <>
-                        <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Insights
                         </div>
                         <ExtractionPills ext={s.extractions[0]} />
@@ -448,12 +448,12 @@ export default function ConsultationTab({ job, profile, setTab }) {
                     )}
                     {s.measurements?.length > 0 && (
                       <div style={{ marginTop: 10 }}>
-                        <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Trades Measured
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {s.measurements.map((m, i) => (
-                            <span key={i} style={{ padding: '2px 10px', background: '#D1FAE5', color: '#065F46', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
+                            <span key={i} style={{ padding: '2px 10px', background: 'var(--green-bg)', color: '#065F46', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
                               ✓ {m.trade}
                             </span>
                           ))}
@@ -483,7 +483,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
           <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 22, color: NAV, marginBottom: 12 }}>
             Analyzing Consultation Gaps…
           </div>
-          <div style={{ color: '#6B7280', fontSize: 14 }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
             Reviewing what was asked and flagging anything that could cause a change order.
           </div>
           <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
@@ -504,7 +504,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
           <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 22, color: NAV, marginBottom: 12 }}>
             Generating Estimate…
           </div>
-          <div style={{ color: '#6B7280', fontSize: 14 }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
             AI is analyzing session data, measuring takeoffs, and flagging risks.
           </div>
           <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
@@ -522,7 +522,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
     if (!result) {
       return (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <div style={{ color: '#6B7280', marginBottom: 16 }}>No result yet.</div>
+          <div style={{ color: 'var(--text-muted)', marginBottom: 16 }}>No result yet.</div>
           <button className="btn btn-navy" onClick={generateEstimate}>Retry Generate</button>
         </div>
       );
@@ -542,7 +542,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
           </div>
           <div style={{ padding: 0 }}>
             {trades.length === 0 && (
-              <div style={{ padding: '20px', color: '#6B7280', fontSize: 14 }}>No trade breakdown available.</div>
+              <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: 14 }}>No trade breakdown available.</div>
             )}
             {trades.map((trade, i) => (
               <div
@@ -561,18 +561,18 @@ export default function ConsultationTab({ job, profile, setTab }) {
                     {trade.trade || trade.name || trade.category}
                   </div>
                   {trade.description && (
-                    <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{trade.description}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{trade.description}</div>
                   )}
                   {/* Line item details */}
                   {(trade.line_items || []).length > 0 && (
                     <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {(trade.line_items || []).map((li, j) => (
                         <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                          <div style={{ fontSize: 11, color: '#6B7280', lineHeight: 1.4, flex: 1 }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4, flex: 1 }}>
                             {li.description || li.name}
-                            {li.qty && li.unit ? <span style={{ color: '#9CA3AF' }}> · {li.qty} {li.unit}</span> : null}
+                            {li.qty && li.unit ? <span style={{ color: 'var(--text-subtle)' }}> · {li.qty} {li.unit}</span> : null}
                           </div>
-                          <div style={{ fontSize: 11, color: '#374151', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
                             {f$(li.total || li.amount || (li.qty && li.unit_cost ? li.qty * li.unit_cost : 0) || 0)}
                           </div>
                         </div>
@@ -580,7 +580,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
                     </div>
                   )}
                   {trade.confidence !== undefined && (
-                    <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>
                       Confidence: {Math.round((trade.confidence || 0) * 100)}%
                     </div>
                   )}
@@ -647,13 +647,13 @@ export default function ConsultationTab({ job, profile, setTab }) {
                           </div>
                         )}
                         {m.how_to_present && (
-                          <div style={{ fontSize: 12, color: '#6B7280', fontStyle: 'italic', marginBottom: 6 }}>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 6 }}>
                             <span style={{ fontWeight: 600, fontStyle: 'normal', color: NAV }}>How to present: </span>
                             {m.how_to_present}
                           </div>
                         )}
                         {(m.estimated_cost_low || m.estimated_cost_high || m.cost_low || m.cost_high || m.cost_range) && (
-                          <div style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>
                             Potential cost:{' '}
                             {m.cost_range
                               ? m.cost_range
@@ -672,19 +672,19 @@ export default function ConsultationTab({ job, profile, setTab }) {
                           }}
                           style={{ width: 16, height: 16, accentColor: GOLD, cursor: 'pointer' }}
                         />
-                        <span style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }}>Include in proposal</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Include in proposal</span>
                       </label>
                     </div>
                     {/* CO conversion row — owner/PM only, requires a persisted DB row */}
                     {dbRow?.id && ['owner', 'project_manager'].includes(profile?.role) && (
                       <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #F3F4F6', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                         {dbRow.converted_to_co_id ? (
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#15803d', background: '#D1FAE5', borderRadius: 6, padding: '3px 10px' }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#15803d', background: 'var(--green-bg)', borderRadius: 6, padding: '3px 10px' }}>
                             → CO created
                           </span>
                         ) : convertingMomentId === dbRow.id ? (
                           <>
-                            <span style={{ fontSize: 12, color: '#374151' }}>Amount: $</span>
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Amount: $</span>
                             <input
                               type="number"
                               min="0"
@@ -802,13 +802,13 @@ export default function ConsultationTab({ job, profile, setTab }) {
             >
               AI Consultation
             </h2>
-            <div style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
               {job?.name || job?.title || 'Job'} — Ambient · Measure · Generate
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {gapAnalysis && (
-              <span style={{ padding: '2px 10px', borderRadius: 20, background: '#D1FAE5', color: '#065F46', fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>
+              <span style={{ padding: '2px 10px', borderRadius: 20, background: 'var(--green-bg)', color: '#065F46', fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>
                 Gaps reviewed
               </span>
             )}
@@ -820,7 +820,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
         {err && (
           <div
             style={{
-              background: '#FEE2E2',
+              background: 'var(--red-bg)',
               border: '1px solid #FCA5A5',
               borderRadius: 8,
               padding: '10px 14px',

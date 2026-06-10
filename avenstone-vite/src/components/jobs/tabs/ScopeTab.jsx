@@ -6,11 +6,11 @@ import {
 } from '../../../lib/supabase';
 import ScopeDetailForm from './ScopeDetailForm';
 
-const NAV    = '#0A1F44';
-const GOLD   = '#C9A84C';
-const CREAM  = '#F7F5F0';
-const BORDER = '#E8E4DC';
-const AMBER  = '#f59e0b';
+const NAV    = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const CREAM  = 'var(--bg)';
+const BORDER = 'var(--border)';
+const AMBER  = 'var(--amber-text)';
 
 const ROOM_TYPES = [
   { id: 'bathroom', lb: 'Bathroom' },
@@ -197,7 +197,7 @@ export default function ScopeTab({ job, setSub }) {
           </button>
         </div>
         {saveMsg && (
-          <div style={{ marginTop: 8, fontSize: 13, color: '#22c55e', fontWeight: 600 }}>
+          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--green-dot)', fontWeight: 600 }}>
             ✓ {saveMsg}
           </div>
         )}
@@ -206,7 +206,7 @@ export default function ScopeTab({ job, setSub }) {
       {/* Orphan banner */}
       {orphanRows.length > 0 && (
         <div style={{
-          margin: '12px 20px', padding: '10px 14px', background: '#FEF3C7',
+          margin: '12px 20px', padding: '10px 14px', background: 'var(--amber-bg)',
           border: `1px solid ${AMBER}`, borderRadius: 8, display: 'flex',
           alignItems: 'center', justifyContent: 'space-between', gap: 8,
         }}>
@@ -274,7 +274,7 @@ export default function ScopeTab({ job, setSub }) {
                       padding: '12px 14px',
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       cursor: isSet ? 'pointer' : 'default',
-                      background: isSet ? CREAM : '#FFFBEB',
+                      background: isSet ? CREAM : 'var(--amber-bg)',
                     }}
                   >
                     <div>
@@ -292,7 +292,7 @@ export default function ScopeTab({ job, setSub }) {
                       {!isSet && (
                         <span style={{
                           fontSize: 11, fontWeight: 700, color: AMBER,
-                          background: '#FEF3C7', borderRadius: 10, padding: '2px 8px',
+                          background: 'var(--amber-bg)', borderRadius: 10, padding: '2px 8px',
                         }}>
                           Not set
                         </span>

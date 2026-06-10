@@ -8,10 +8,10 @@ import ScopeTab from './ScopeTab';
 
 const TakeoffWizard = lazy(() => import('./TakeoffWizard'));
 
-const NAV = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
-const BORDER = '#E8E4DC';
+const NAV = 'var(--navy-900)';
+const GOLD = 'var(--gold-500)';
+const CREAM = 'var(--bg)';
+const BORDER = 'var(--border)';
 
 const SUB_TABS = [
   { id: 'build',    lb: 'Build' },
@@ -319,12 +319,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
           <div className="fg"><label className="flbl">Square Footage</label><input className="finp" type="number" value={estForm.sqft} onChange={e => setEstForm(p => ({ ...p, sqft: e.target.value }))} placeholder="e.g. 1200" /></div>
           <div className="fg"><label className="flbl">Special Notes</label><textarea className="finp fta" rows={2} value={estForm.special} onChange={e => setEstForm(p => ({ ...p, special: e.target.value }))} placeholder="High-end finishes, specific products, client requests, existing conditions…" /></div>
           <div className="fg">
-            <label className="flbl">Floor Plan / Photos <span style={{ color: '#9CA3AF', fontWeight: 400 }}>(optional — PDF or image)</span></label>
+            <label className="flbl">Floor Plan / Photos <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>(optional — PDF or image)</span></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: CREAM, border: `1px dashed ${GOLD}`, borderRadius: 4, padding: '10px 14px', cursor: 'pointer' }}>
               <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEstFile(f); setEstFileName(f.name); } }} />
               <span style={{ width: 16, height: 16, color: GOLD }}>{Ic.plus}</span>
-              <span style={{ fontSize: 13, color: estFileName ? NAV : '#9CA3AF' }}>{estFileName || 'Attach floor plan or photo'}</span>
-              {estFileName && <button onClick={e => { e.preventDefault(); setEstFile(null); setEstFileName(''); }} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 16 }}>×</button>}
+              <span style={{ fontSize: 13, color: estFileName ? NAV : 'var(--text-subtle)' }}>{estFileName || 'Attach floor plan or photo'}</span>
+              {estFileName && <button onClick={e => { e.preventDefault(); setEstFile(null); setEstFileName(''); }} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 16 }}>×</button>}
             </label>
           </div>
           <button className={`btn ${estForm.scope.trim() ? 'btn-navy' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={startEstimate} disabled={!estForm.scope.trim() || estLoading}>
@@ -335,7 +335,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
       {estStarted && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            {estSaveMsg && <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>{estSaveMsg}</span>}
+            {estSaveMsg && <span style={{ fontSize: 11, color: 'var(--green-dot)', fontWeight: 600 }}>{estSaveMsg}</span>}
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
@@ -345,7 +345,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
             {estMessages.map((m, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
                 {m.role === 'assistant' && <div style={{ width: 28, height: 28, background: NAV, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: GOLD, flexShrink: 0, marginRight: 8, marginTop: 2 }}>AI</div>}
-                <div style={{ maxWidth: '85%', background: m.role === 'user' ? NAV : '#fff', color: m.role === 'user' ? '#fff' : '#374151', padding: '10px 14px', borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', fontSize: 13, lineHeight: 1.7, border: m.role === 'assistant' ? `1px solid ${BORDER}` : 'none', whiteSpace: 'pre-wrap' }}>
+                <div style={{ maxWidth: '85%', background: m.role === 'user' ? NAV : '#fff', color: m.role === 'user' ? '#fff' : 'var(--text-secondary)', padding: '10px 14px', borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', fontSize: 13, lineHeight: 1.7, border: m.role === 'assistant' ? `1px solid ${BORDER}` : 'none', whiteSpace: 'pre-wrap' }}>
                   {m._hasFile && <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>📎 {m._fileName}</div>}
                   {typeof m.content === 'string' ? m.content : m.content}
                 </div>
@@ -354,20 +354,20 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
             {estLoading && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ width: 28, height: 28, background: NAV, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: GOLD, flexShrink: 0 }}>AI</div>
-                <div style={{ background: '#fff', border: `1px solid ${BORDER}`, padding: '10px 14px', borderRadius: '12px 12px 12px 2px', fontSize: 13, color: '#9CA3AF' }}>Generating estimate…</div>
+                <div style={{ background: '#fff', border: `1px solid ${BORDER}`, padding: '10px 14px', borderRadius: '12px 12px 12px 2px', fontSize: 13, color: 'var(--text-subtle)' }}>Generating estimate…</div>
               </div>
             )}
           </div>
           {estFileName && (
             <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '6px 10px', fontSize: 12, color: NAV, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: GOLD }}>{Ic.folder}</span>{estFileName}
-              <button onClick={() => { setEstFile(null); setEstFileName(''); }} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+              <button onClick={() => { setEstFile(null); setEstFileName(''); }} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
             </div>
           )}
           <div style={{ display: 'flex', gap: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
               <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEstFile(f); setEstFileName(f.name); } }} />
-              <span style={{ width: 16, height: 16, color: '#9CA3AF' }}>{Ic.plus}</span>
+              <span style={{ width: 16, height: 16, color: 'var(--text-subtle)' }}>{Ic.plus}</span>
             </label>
             <input className="finp" style={{ flex: 1, margin: 0 }} value={estInput} onChange={e => setEstInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendEstimatorMessage()} placeholder="Ask a follow-up — adjust scope, change materials, add a trade…" disabled={estLoading} />
             <button className="btn btn-navy" onClick={() => sendEstimatorMessage()} disabled={estLoading || (!estInput.trim() && !estFile)}>Send</button>
@@ -390,7 +390,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <span style={{ fontSize: 13, color: '#6B7280' }}>{lineItems.length} line item{lineItems.length !== 1 ? 's' : ''}</span>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{lineItems.length} line item{lineItems.length !== 1 ? 's' : ''}</span>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {['owner', 'project_manager'].includes(profile?.role) && lineItems.length > 0 && (
               <button
@@ -406,12 +406,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
           </div>
         </div>
         {acceptMsg && (
-          <div style={{ padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 10, background: acceptMsg.startsWith('Error') ? '#FEE2E2' : '#D1FAE5', color: acceptMsg.startsWith('Error') ? '#991b1b' : '#065f46' }}>
+          <div style={{ padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 10, background: acceptMsg.startsWith('Error') ? 'var(--red-bg)' : 'var(--green-bg)', color: acceptMsg.startsWith('Error') ? '#991b1b' : '#065f46' }}>
             {acceptMsg}
           </div>
         )}
         {lineItems.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', color: '#9CA3AF', fontSize: 14 }}>
+          <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-subtle)', fontSize: 14 }}>
             No line items yet — run the AI Estimator in Build, or add manually.
           </div>
         ) : (
@@ -426,10 +426,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
               return (
                 <div key={li.id || i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 80px 32px', padding: '8px 12px', gap: 8, borderTop: `1px solid ${BORDER}`, alignItems: 'center', background: i % 2 === 0 ? '#fff' : CREAM }}>
                   <div style={{ fontSize: 13, color: NAV }}>{li.description}</div>
-                  <div style={{ fontSize: 12, color: '#6B7280' }}>{li.trade || '—'}</div>
-                  <div style={{ fontSize: 12, color: '#6B7280', textTransform: 'capitalize' }}>{li.category || '—'}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{li.trade || '—'}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{li.category || '—'}</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: NAV }}>{f$(lineTotal)}</div>
-                  <button onClick={() => { setEditingItem(li); setShowLineItemModal(true); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: 14, padding: 0, display: 'flex' }}>{Ic.edit}</button>
+                  <button onClick={() => { setEditingItem(li); setShowLineItemModal(true); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 14, padding: 0, display: 'flex' }}>{Ic.edit}</button>
                 </div>
               );
             })}
@@ -458,15 +458,15 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
     <div>
       {propErr && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', padding: '10px 14px', borderRadius: 4, fontSize: 13, marginBottom: 16 }}>{propErr}</div>}
       {propLoading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF', fontSize: 13 }}>Loading proposal data…</div>
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-subtle)', fontSize: 13 }}>Loading proposal data…</div>
       ) : lineItems.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <div style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>No line items yet — generate an estimate in Build or add items in Line Items.</div>
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>No line items yet — generate an estimate in Build or add items in Line Items.</div>
           <button className="btn btn-navy" onClick={() => setSub('build')}>Go to Build →</button>
         </div>
       ) : !propReady ? (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <div style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>{lineItems.length} line items ready.</div>
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>{lineItems.length} line items ready.</div>
           <button className="btn btn-navy" onClick={openProposal}>Build Proposal →</button>
         </div>
       ) : (
@@ -491,7 +491,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
               <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 6, padding: 16, marginBottom: 20, display: 'flex' }}>
                 {[['Hard Cost', '$' + Math.round(hardCost).toLocaleString()], ['Markup', '$' + Math.round(markup).toLocaleString()], ['PM Fee', '$' + pm.toLocaleString()], ['GRAND TOTAL', '$' + Math.round(grand).toLocaleString()]].map(([lbl, val], i) => (
                   <div key={i} style={{ flex: 1, textAlign: 'center', borderRight: i < 3 ? `1px solid ${BORDER}` : 'none', padding: '0 8px' }}>
-                    <div style={{ fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{lbl}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{lbl}</div>
                     <div style={{ fontSize: i === 3 ? 18 : 14, fontWeight: 700, color: i === 3 ? GOLD : NAV }}>{val}</div>
                   </div>
                 ))}
@@ -511,8 +511,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
                     <Fragment key={i}>
                       {isFirst && <div style={{ background: '#F3F0EB', padding: '4px 10px', fontSize: 10, fontWeight: 700, color: NAV, borderTop: `1px solid ${BORDER}` }}>{li.trade}</div>}
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 80px 90px 28px', padding: '4px 10px', gap: 8, borderTop: '1px solid #F3F0EB', alignItems: 'center', background: i % 2 === 0 ? '#fff' : '#FAFAF8' }}>
-                        <input value={li.description || ''} onChange={e => { const u = [...propLineItems]; u[i] = { ...u[i], description: e.target.value }; setPropLineItems(u); }} style={{ fontSize: 11, border: 'none', background: 'transparent', color: '#374151', outline: 'none', width: '100%' }} />
-                        <input value={li.qty_label || ''} onChange={e => { const u = [...propLineItems]; u[i] = { ...u[i], qty_label: e.target.value }; setPropLineItems(u); }} style={{ fontSize: 11, border: 'none', background: 'transparent', color: '#6B7280', outline: 'none' }} />
+                        <input value={li.description || ''} onChange={e => { const u = [...propLineItems]; u[i] = { ...u[i], description: e.target.value }; setPropLineItems(u); }} style={{ fontSize: 11, border: 'none', background: 'transparent', color: 'var(--text-secondary)', outline: 'none', width: '100%' }} />
+                        <input value={li.qty_label || ''} onChange={e => { const u = [...propLineItems]; u[i] = { ...u[i], qty_label: e.target.value }; setPropLineItems(u); }} style={{ fontSize: 11, border: 'none', background: 'transparent', color: 'var(--text-muted)', outline: 'none' }} />
                         <input type="number" value={li.amount || ''} onChange={e => { const u = [...propLineItems]; u[i] = { ...u[i], amount: e.target.value }; setPropLineItems(u); }} style={{ fontSize: 11, border: 'none', background: 'transparent', color: NAV, fontWeight: 600, outline: 'none', textAlign: 'right' }} />
                         <button onClick={() => setPropLineItems(propLineItems.filter((_, j) => j !== i))} style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 14, padding: 0 }}>×</button>
                       </div>
@@ -527,7 +527,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
             <div style={{ marginBottom: 20, border: `1px solid ${BORDER}`, borderRadius: 6, overflow: 'hidden' }}>
               <button onClick={() => setPropOhShitExpanded(x => !x)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: CREAM, border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: NAV, textTransform: 'uppercase', letterSpacing: 1 }}>Disclosed unknowns ({propOhShit.filter(m => m.included_in_proposal).length} of {propOhShit.length} included)</span>
-                <span style={{ fontSize: 12, color: '#6B7280' }}>{propOhShitExpanded ? '▲' : '▼'}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{propOhShitExpanded ? '▲' : '▼'}</span>
               </button>
               {propOhShitExpanded && (
                 <div>
@@ -536,11 +536,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: NAV, marginBottom: 2 }}>{m.condition}</div>
-                          <div style={{ fontSize: 11, color: '#6B7280' }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                             {m.likelihood && <span style={{ marginRight: 8, fontWeight: 600, color: m.likelihood === 'high' ? '#B91C1C' : m.likelihood === 'low' ? '#15803D' : '#92400E' }}>{m.likelihood.charAt(0).toUpperCase() + m.likelihood.slice(1)} likelihood</span>}
                             {(m.estimated_cost_low || m.estimated_cost_high) && <span>${Number(m.estimated_cost_low || 0).toLocaleString()} – ${Number(m.estimated_cost_high || 0).toLocaleString()}</span>}
                           </div>
-                          {m.how_to_present && <div style={{ fontSize: 11, color: '#6B7280', fontStyle: 'italic', marginTop: 2 }}>{m.how_to_present}</div>}
+                          {m.how_to_present && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 2 }}>{m.how_to_present}</div>}
                         </div>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flexShrink: 0 }}>
                           <input type="checkbox" checked={!!m.included_in_proposal} onChange={async () => {
@@ -548,7 +548,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
                             setPropOhShit(prev => prev.map(x => x.id === m.id ? { ...x, included_in_proposal: next } : x));
                             await sbToggleOhShitProposal(m.id, next);
                           }} style={{ width: 14, height: 14, accentColor: GOLD, cursor: 'pointer' }} />
-                          <span style={{ fontSize: 11, color: '#6B7280', whiteSpace: 'nowrap' }}>Include in proposal</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Include in proposal</span>
                         </label>
                       </div>
                     </div>
@@ -586,7 +586,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
           <button key={t.id} onClick={() => setSub(t.id)} style={{
             padding: '8px 16px', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
             background: 'none', borderBottom: `2px solid ${sub === t.id ? GOLD : 'transparent'}`,
-            marginBottom: -2, color: sub === t.id ? NAV : '#9CA3AF', transition: 'color 0.15s',
+            marginBottom: -2, color: sub === t.id ? NAV : 'var(--text-subtle)', transition: 'color 0.15s',
           }}>
             {t.lb}
           </button>
