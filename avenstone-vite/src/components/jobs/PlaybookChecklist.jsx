@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Ic } from '../../lib/utils.jsx';
 import {
   sbLoadOrCreateWalkthroughItems,
   sbUpdateWalkthroughItem,
@@ -190,7 +191,7 @@ export default function PlaybookChecklist({ jobId, workType, todoId, onClose }) 
                         <span className="av-badge av-badge--amber" style={{ fontSize: 9, padding: '2px 7px' }}>MUST-DOC</span>
                       )}
                       {item.photo_required && (
-                        <span className="av-badge av-badge--blue" style={{ fontSize: 9, padding: '2px 7px' }}>📷 REQ</span>
+                        <span className="av-badge av-badge--blue" style={{ fontSize: 9, padding: '2px 7px', display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 10, height: 10, display: 'flex' }}>{Ic.cam}</span>REQ</span>
                       )}
                     </div>
 
@@ -277,7 +278,7 @@ export default function PlaybookChecklist({ jobId, workType, todoId, onClose }) 
                           cursor: isUp ? 'default' : 'pointer', opacity: isUp ? 0.6 : 1, transition: 'all 0.12s',
                         }}
                       >
-                        <span style={{ fontSize: 13 }}>{isUp ? '…' : '📷'}</span>
+                        <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{isUp ? '…' : Ic.cam}</span>
                         {photos > 0 ? `${photos} photo${photos > 1 ? 's' : ''}` : 'Add photo'}
                       </button>
                     </div>
