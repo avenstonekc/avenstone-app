@@ -1275,6 +1275,30 @@ REMAINING SWEEP BATCHES (next slices):
 - Slice 6 (admin + public + ai/): BugReportsScr, CompanyFilesScr, SequencesScr, LeadsScr, FloorPlanEditorScr, all ai/ components
 Remaining hex literals in jobs/ after Slice 3: 385 across 43 files (down from 763).
 
+[LOG - 2026-06-10] FINTAB_DEDUPE — Quick Actions removal + ledger stat row dedupe
+- Action: Two targeted fixes on the job detail surface. 2 commits pushed.
+- Commits: f046b03 (Quick Actions removal), 78c25d1 (ledger stat row dedupe)
+- Files: avenstone-vite/src/components/jobs/JobDet.jsx, avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx
+
+REGRESSION TRIAGE:
+- Quick Actions was NEVER removed. First and only time it appears is commit b687dbd (2026-05-27 "FinancialsTab — swap cbar contents on cost-plus; restore Contract card") which added it. No subsequent commit removed it. Not a regression — simply unfinished.
+- Quick Actions block lived in JobDet.jsx (NOT ProjectDetailHeader). Conditionally shown only on `tab === 'financials'` for cost-plus jobs.
+
+ENTRY-POINT CHECK (all three actions confirmed reachable after removal):
+- Compose Draw: InvoicesSubTab.jsx Draws sub-tab header "Compose Draw" btn + FinancialsTab draw-nudge banner "Compose Draw →"
+- Add Receipt: FinancialsTab Ledger "+ Add" button (same TransactionModal as quick action)
+- Log Sub Invoice: SubInvoicesSection "+ Add Invoice" button (same AddInvoiceModal flow; openAddInvoiceOnMount trigger also remains usable via setFinancialsAction hook)
+- All three also exist as MasterAgent CONFIRM_TOOLS verbs
+
+REMOVED BLOCKS:
+- Cost-plus: Quick Actions (3 buttons) + Activity Pulse (last expense/payment/schedule) — the entire flex bar
+- Fixed-price: `.cbar` (Contract/COs/Revised summary) — also removed, redundant with ProjectDetailHeader KPI strip
+
+LEDGER STAT ROW DEDUPE:
+- Cost-plus cpStats: removed 'Contract (signed)' (= CONTRACT VALUE in header) and 'Received' (= PAID TO DATE in header). Projection sub-line moved to Projected Profit note. Remaining: Paid Out, Outstanding (cond), Retainage (cond), Projected Profit (with projection detail), Bucket Credit/Client Owes.
+- Fixed-price stats: removed 'Contract' and 'Received'. Remaining: Client Owes, Pending Out, Paid Out (3 cards auto-fill row via flex:1).
+- '% collected': confirmed present in ProjectDetailHeader PAID TO DATE tile sub-line. Not duplicated, not lost.
+
 [LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 2 — token sweep of jobs/tabs
 - Action: Mechanical color token sweep of 14 jobs/tabs files. 3 commits. All pushed.
 - Commits: 21fedeb (financial tabs), 4a58363 (estimate/scope), 9bb442a (remainder)
