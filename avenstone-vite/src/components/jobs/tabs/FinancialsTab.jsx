@@ -356,29 +356,30 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             const owes = summary.client_owes;
             const isCostPlus = job?.cost_plus === true && summary.received !== undefined;
             const cpBucketBalance = summary.bucket_balance ?? 0;
+            // Cost-plus stat cards: Contract (signed) + Received removed — already in
+            // ProjectDetailHeader KPI strip (CONTRACT VALUE, PAID TO DATE). Projection
+            // sub-line moves to Projected Profit.
+            const projNote = summary.projected_final_bill != null
+              ? `${f$(summary.projected_final_bill)} projected · ${f$(Math.abs(summary.contract_variance ?? 0))} ${(summary.contract_variance ?? 0) >= 0 ? 'under' : 'over'} · ${summary.margin_pct ?? 0}% margin`
+              : `${summary.margin_pct ?? 0}% margin · +${f$(summary.pm_fee ?? 0)} PM`;
+            const projNoteColor = summary.projected_final_bill != null
+              ? ((summary.contract_variance ?? 0) >= 0 ? 'var(--green-dot)' : 'var(--red-text)')
+              : undefined;
             const cpStats = [
-              { lb: 'Contract (signed)', v: f$(job.contract_value || 0), c: 'var(--navy-900)', bold: true,
-                note: summary.projected_final_bill != null
-                  ? `${f$(summary.projected_final_bill)} projected · ${f$(Math.abs(summary.contract_variance ?? 0))} ${(summary.contract_variance ?? 0) >= 0 ? 'under' : 'over'}`
-                  : `actuals + ${job.labor_markup_pct ?? 25}% markup determine final billing`,
-                noteColor: summary.projected_final_bill != null
-                  ? ((summary.contract_variance ?? 0) >= 0 ? 'var(--green-dot)' : 'var(--red-text)')
-                  : undefined },
-              { lb: 'Received',          v: f$(summary.received ?? summary.total_in), c: (summary.received ?? summary.total_in) > 0 ? 'var(--green-dot)' : 'var(--text-subtle)' },
               { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? 'var(--red-text)' : 'var(--text-subtle)' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
               ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
-              { lb: 'Projected Profit',  v: f$(summary.projected_profit), c: summary.projected_profit > 0 ? 'var(--green-dot)' : 'var(--text-subtle)', note: `${summary.margin_pct ?? 0}% margin · +${f$(summary.pm_fee ?? 0)} PM` },
+              { lb: 'Projected Profit',  v: f$(summary.projected_profit), c: summary.projected_profit > 0 ? 'var(--green-dot)' : 'var(--text-subtle)', note: projNote, noteColor: projNoteColor },
               ...(cpBucketBalance >= 0
                 ? [{ lb: 'Bucket Credit', v: f$(cpBucketBalance), c: 'var(--green-dot)', note: 'client prepaid balance' }]
                 : [{ lb: 'Client Owes',   v: f$(Math.abs(cpBucketBalance)), c: 'var(--red-text)', note: 'request a draw' }]
               ),
             ];
+            // Fixed-price stat cards: Contract + Received removed — in header KPI strip.
+            // "% collected" is the header's PAID TO DATE sub-line — confirmed present, not duplicated.
             const stats = isCostPlus
               ? cpStats
               : [
-                  { lb: 'Contract',    v: f$(summary.contract_total),                                     c: 'var(--navy-900)',  bold: true },
-                  { lb: 'Received',    v: f$(summary.total_in),                                           c: summary.total_in > 0 ? 'var(--green-dot)' : 'var(--text-subtle)' },
                   { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),        c: owes < 0 ? 'var(--green-dot)' : owes > 0 ? 'var(--gold-500)' : 'var(--text-subtle)' },
                   { lb: 'Pending Out', v: f$(summary.pending_out),                                        c: summary.pending_out > 0 ? 'var(--amber-text-strong)' : 'var(--text-subtle)' },
                   { lb: 'Paid Out',    v: f$(summary.total_out),                                          c: summary.total_out > 0 ? 'var(--red-text)' : 'var(--text-subtle)' },
