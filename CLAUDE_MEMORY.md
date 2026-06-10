@@ -1412,6 +1412,24 @@ PLAYBOOKCHECKLIST:
 - Footer: max-width 760px, amber pending text, .av-btn-primary styled (navy/gold enabled, neutral disabled).
 - All 5 gates confirmed unchanged: (1) fail requires note, (2) must_document blocks complete, (3) skip hidden on must_document, (4) photo informational only, (5) sbCompleteTodo only when todoId.
 
+[LOG - 2026-06-10] INFOTAB_POLISH — separator sweep, banner polish, to-dos row upgrade
+- Action: 3 commits, build green all, audit:hex 1334 ≤ 1343 baseline.
+- Commits: aec455f (sweep), 9dbef36 (banners), ed58108 (to-dos rows). Pushed.
+
+1. SEPARATOR SWEEP (aec455f):
+- Binary scan of all 847 JSX/TS files in src/ AND 60 TS files in supabase/functions/: 0 EF BF BD bytes found. Source clean.
+- Dispatcher bodyParts.join(" · ") correctly encoded as C2 B7 UTF-8.
+- Files touched: JobDet.jsx only — inline em dash in banner JSX text changed to {'—'} expression; ✓ strings to template literals. Defensive, not structural.
+
+2. BANNER PLACEMENT + ICONS (9dbef36):
+- utils.jsx: Ic.star (review star) + Ic.share (copy-link network) added.
+- JobDet.jsx: 🌟/📦/📸/📤 emoji → Ic.star/Ic.box/Ic.cam/Ic.share; ✓ text → Ic.check.
+- Condition changed from `job.status === 'complete'` to `['final_touches','complete'].includes(job.status)` — both banners show at TOP for these two phases.
+- All earlier phases: quiet single-line bottom hint (icon + label + link-style copy action, no gradient, no full-width card). Shown when client_email present. Zero logic changes.
+
+3. JOB TO-DOS ROWS (ed58108):
+- JobTodosBlock.jsx rebuilt to Slice 7 pattern: KebabMenu (Edit/Cancel demoted), visible Resolve ✓ button inline, SOURCE_CHIP for engine/vigilance, title full-width (no maxWidth truncation), metadata line wraps below (notes + due date on second line using {'·'} JSX expression separator). sbUpdateTodo added for cancel. HTML entities for ✓/⋮/…
+
 [LOG - 2026-06-10] AGENT_READS Slice 1 — 4 read tools added to ai-master-agent
 - Action: Added get_job_financials, get_schedule, get_open_todos, get_alerts. Agent can now answer financial/schedule/todo/alert questions directly instead of saying "check the app."
 - Commits: 95ea89f (edge fn + system prompt), TBD (MasterAgent tile + docs). Pushed.
