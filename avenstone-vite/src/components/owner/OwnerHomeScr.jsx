@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { sbLoadOwnerDashboard } from '../../lib/supabase.js';
 import { isMob } from '../../lib/utils.jsx';
 
-const NAVY  = '#0A1F44';
-const GOLD  = '#C9A84C';
-const CREAM = '#F7F5F0';
-const WHITE = '#FFFFFF';
-const BORDER = '#E8E4DC';
+const NAVY  = 'var(--navy-900)';
+const GOLD  = 'var(--gold-500)';
+const CREAM = 'var(--bg)';
+const WHITE = 'var(--card-bg)';
+const BORDER = 'var(--border)';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function parseMonth(s) { const [,m] = s.split('-'); return MONTHS[parseInt(m,10)-1] || s; }
@@ -30,17 +30,17 @@ function formatToday() {
   return `${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
-// ── Status pill ───────────────────────────────────────────────────────────────
+// Status pill — keep semantic bg/color pairs exact
 const STATUS_CFG = {
-  in_progress:   { label: 'In Progress',   bg: '#D1FAE5', color: '#065F46' },
-  contract:      { label: 'Contract',      bg: '#FEF3C7', color: '#92400E' },
-  final_touches: { label: 'Final Touches', bg: '#DBEAFE', color: '#1E40AF' },
-  complete:      { label: 'Complete',      bg: NAVY,       color: WHITE },
-  lead:          { label: 'Lead',          bg: '#F3F4F6', color: '#6B7280' },
-  proposal:      { label: 'Proposal',      bg: '#EFF6FF', color: '#1D4ED8' },
+  in_progress:   { label: 'In Progress',   bg: 'var(--green-bg)',    color: 'var(--green-text-strong)' },
+  contract:      { label: 'Contract',      bg: 'var(--amber-bg)',    color: 'var(--amber-text-strong)' },
+  final_touches: { label: 'Final Touches', bg: '#DBEAFE',            color: '#1E40AF' },
+  complete:      { label: 'Complete',      bg: NAVY,                 color: WHITE },
+  lead:          { label: 'Lead',          bg: 'var(--neutral-bg)',  color: 'var(--neutral-text)' },
+  proposal:      { label: 'Proposal',      bg: 'var(--blue-bg)',     color: '#1D4ED8' },
 };
 function StatusPill({ status }) {
-  const s = STATUS_CFG[status] || { label: (status||'').replace(/_/g,' '), bg: '#F3F4F6', color: '#6B7280' };
+  const s = STATUS_CFG[status] || { label: (status||'').replace(/_/g,' '), bg: 'var(--neutral-bg)', color: 'var(--neutral-text)' };
   return (
     <span style={{ background: s.bg, color: s.color, fontSize: 10, fontWeight: 700,
       padding: '3px 8px', borderRadius: 20, letterSpacing: '0.05em', textTransform: 'uppercase',
@@ -48,7 +48,6 @@ function StatusPill({ status }) {
   );
 }
 
-// ── Job thumbnail ─────────────────────────────────────────────────────────────
 function JobThumb({ url, size = 44 }) {
   const [err, setErr] = useState(false);
   if (url && !err) return (
@@ -68,23 +67,21 @@ function JobThumb({ url, size = 44 }) {
   );
 }
 
-// ── Revenue chart ─────────────────────────────────────────────────────────────
 function RevenueChart({ data, mob }) {
   if (!data?.length) return (
     <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#9CA3AF', fontSize: 13, fontFamily: 'DM Sans, sans-serif' }}>No revenue data yet</div>
+      color: 'var(--text-subtle)', fontSize: 13, fontFamily: 'DM Sans, sans-serif' }}>No revenue data yet</div>
   );
   const maxRev = Math.max(...data.map(d => d.revenue), 1);
   const N = data.length;
   const W = 1000; const H = mob ? 90 : 120;
-  const PAD = 20; // padding so edge dots never clip
+  const PAD = 20;
   const pts = data.map((d, i) => ({
     x: N === 1 ? W / 2 : PAD + (i / (N - 1)) * (W - PAD * 2),
     y: H - 10 - (d.revenue / maxRev) * (H - 20),
     revenue: d.revenue,
   }));
 
-  // Smooth bezier curve through points
   function smoothLine(p) {
     if (p.length < 2) return `M${p[0].x},${p[0].y}`;
     let d = `M${p[0].x},${p[0].y}`;
@@ -107,7 +104,7 @@ function RevenueChart({ data, mob }) {
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
           width: 36, paddingRight: 4, paddingTop: 2, paddingBottom: 2 }}>
           {[maxRev, Math.round(maxRev/2), 0].map((v,i) => (
-            <div key={i} style={{ fontSize: 10, color: '#9CA3AF', textAlign: 'right',
+            <div key={i} style={{ fontSize: 10, color: 'var(--text-subtle)', textAlign: 'right',
               fontFamily: 'DM Sans, sans-serif' }}>{fShort(v)}</div>
           ))}
         </div>
@@ -116,15 +113,15 @@ function RevenueChart({ data, mob }) {
             style={{ width: '100%', height: H, display: 'block', overflow: 'visible' }}>
             <defs>
               <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={NAVY} stopOpacity="0.15" />
-                <stop offset="100%" stopColor={NAVY} stopOpacity="0.01" />
+                <stop offset="0%" stopColor="#0A1F44" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="#0A1F44" stopOpacity="0.01" />
               </linearGradient>
             </defs>
             <path d={area} fill="url(#rg)" />
-            <path d={line} fill="none" stroke={NAVY} strokeWidth="3"
+            <path d={line} fill="none" stroke="#0A1F44" strokeWidth="3"
               strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             {pts.map((p,i) => (
-              <circle key={i} cx={p.x} cy={p.y} r="6" fill={WHITE} stroke={NAVY}
+              <circle key={i} cx={p.x} cy={p.y} r="6" fill="#ffffff" stroke="#0A1F44"
                 strokeWidth="3" vectorEffect="non-scaling-stroke" />
             ))}
           </svg>
@@ -133,18 +130,18 @@ function RevenueChart({ data, mob }) {
       <div style={{ display: 'flex', marginLeft: 36, marginTop: 4 }}>
         {data.map((d,i) => (
           <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 11,
-            color: '#9CA3AF', fontFamily: 'DM Sans, sans-serif' }}>{parseMonth(d.month)}</div>
+            color: 'var(--text-subtle)', fontFamily: 'DM Sans, sans-serif' }}>{parseMonth(d.month)}</div>
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         {[
           { label: `Rev ${parseMonth(last.month)}`, val: f$(last.revenue), color: NAVY },
-          { label: `Costs`,                          val: f$(last.costs),   color: '#6B7280' },
-          { label: `Net`,                            val: f$(net),           color: net >= 0 ? '#059669' : '#DC2626' },
+          { label: `Costs`,                          val: f$(last.costs),   color: 'var(--text-muted)' },
+          { label: `Net`,                            val: f$(net),           color: net >= 0 ? 'var(--green-text)' : '#DC2626' },
         ].map((c,i) => (
           <div key={i} style={{ background: CREAM, borderRadius: 6, padding: '4px 10px',
             fontSize: 12, fontFamily: 'DM Sans, sans-serif', border: `1px solid ${BORDER}` }}>
-            <span style={{ color: '#9CA3AF' }}>{c.label}: </span>
+            <span style={{ color: 'var(--text-subtle)' }}>{c.label}: </span>
             <span style={{ color: c.color, fontWeight: 600 }}>{c.val}</span>
           </div>
         ))}
@@ -153,7 +150,6 @@ function RevenueChart({ data, mob }) {
   );
 }
 
-// ── Main screen ───────────────────────────────────────────────────────────────
 export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWalkthrough, setPendingAction }) {
   const mob = isMob();
   const [dash, setDash] = useState(null);
@@ -178,7 +174,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
     </div>
   );
   if (err) return (
-    <div style={{ background: '#FEE2E2', color: '#991B1B', padding: '10px 16px',
+    <div style={{ background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '10px 16px',
       borderRadius: 8, fontSize: 13, margin: 16 }}>{err}</div>
   );
 
@@ -205,15 +201,14 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
 
       {/* ── DARK HERO SECTION ─────────────────────────────────────────── */}
       <div style={{
-        background: `linear-gradient(160deg, #0d2458 0%, ${NAVY} 60%, #071630 100%)`,
+        background: `linear-gradient(160deg, #0d2458 0%, #0A1F44 60%, #071630 100%)`,
         padding: mob ? '20px 16px 24px' : '28px 32px 32px',
       }}>
-        {/* Greeting row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           marginBottom: mob ? 20 : 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontFamily: 'DM Serif Display, serif',
-              fontSize: mob ? 22 : 28, color: WHITE, fontWeight: 400 }}>
+              fontSize: mob ? 22 : 28, color: '#fff', fontWeight: 400 }}>
               {getGreeting()}, {firstName}
             </span>
             <span style={{ background: GOLD, color: NAVY, fontSize: 9, fontWeight: 800,
@@ -223,7 +218,6 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
             fontFamily: 'DM Sans, sans-serif' }}>{formatToday()}</span>
         </div>
 
-        {/* KPI tiles on dark */}
         <div style={{ display: 'flex', gap: 10, flexWrap: mob ? 'wrap' : 'nowrap' }}>
           {KPI_TILES.map((k, i) => (
             <div key={i} style={{
@@ -239,7 +233,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
                 fontWeight: 600, letterSpacing: '0.08em', marginBottom: 8,
                 fontFamily: 'DM Sans, sans-serif' }}>{k.label}</div>
               <div style={{ fontSize: mob ? 20 : 26, fontFamily: 'DM Serif Display, serif',
-                color: WHITE, fontWeight: 400, lineHeight: 1 }}>{k.value}</div>
+                color: '#fff', fontWeight: 400, lineHeight: 1 }}>{k.value}</div>
               {k.sub && (
                 <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600,
                   color: k.sub.color, fontFamily: 'DM Sans, sans-serif' }}>{k.sub.text}</div>
@@ -256,7 +250,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
           {/* ── Active Projects ──────────────────────────────────────── */}
           <div style={{ flex: mob ? '1 1 auto' : '0 0 58%',
             background: WHITE, borderRadius: 14, border: `1px solid ${BORDER}`,
-            boxShadow: '0 2px 12px rgba(10,31,68,0.06)', overflow: 'hidden' }}>
+            boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16, color: NAVY }}>
@@ -270,7 +264,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
             </div>
             {displayed.length === 0 ? (
               <div style={{ padding: '32px 20px', textAlign: 'center',
-                color: '#9CA3AF', fontSize: 13 }}>No active projects</div>
+                color: 'var(--text-subtle)', fontSize: 13 }}>No active projects</div>
             ) : (
               <div>
                 {displayed.map((job, i) => {
@@ -291,10 +285,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
                       onMouseEnter={e => e.currentTarget.style.background = CREAM}
                       onMouseLeave={e => e.currentTarget.style.background = WHITE}
                     >
-                      {/* Thumbnail */}
                       <JobThumb url={job.thumbnail_url} size={44} />
-
-                      {/* Address + progress */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8,
                           justifyContent: 'space-between', marginBottom: 4 }}>
@@ -303,11 +294,11 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
                               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {street}
                             </div>
-                            {city && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>{city}</div>}
+                            {city && <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 1 }}>{city}</div>}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                             {job.contract_value > 0 && (
-                              <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
                                 {fShort(job.contract_value)}
                               </span>
                             )}
@@ -315,12 +306,12 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ flex: 1, height: 3, background: '#E5E7EB',
+                          <div style={{ flex: 1, height: 3, background: 'var(--neutral-bg)',
                             borderRadius: 2, overflow: 'hidden' }}>
                             <div style={{ width: `${job.phase_pct_complete || 0}%`,
                               height: '100%', background: NAVY, borderRadius: 2 }} />
                           </div>
-                          <span style={{ fontSize: 11, color: '#9CA3AF',
+                          <span style={{ fontSize: 11, color: 'var(--text-subtle)',
                             whiteSpace: 'nowrap' }}>{job.phase_pct_complete || 0}%</span>
                         </div>
                       </div>
@@ -336,14 +327,14 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
 
             {/* AI Insights */}
             <div style={{
-              background: `linear-gradient(135deg, #0d2458 0%, ${NAVY} 100%)`,
+              background: `linear-gradient(135deg, #0d2458 0%, #0A1F44 100%)`,
               borderRadius: 14, padding: '16px 18px',
-              boxShadow: '0 2px 16px rgba(10,31,68,0.18)',
+              boxShadow: 'var(--shadow-md)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
                 <span style={{ fontSize: 16, color: GOLD }}>✦</span>
                 <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 15,
-                  color: WHITE, fontWeight: 400 }}>Aven AI Insights</span>
+                  color: '#fff', fontWeight: 400 }}>Aven AI Insights</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
 
@@ -407,7 +398,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
                   );
                 })()}
 
-                {/* Projects behind — navigates to Projects */}
+                {/* Projects behind */}
                 {ai.jobsBehind > 0 && (
                   <div onClick={() => onNavigate?.('projects')} style={{ display: 'flex',
                     alignItems: 'center', justifyContent: 'space-between', gap: 10,
@@ -425,14 +416,14 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
                   </div>
                 )}
 
-                {/* Open to-dos — navigates to To-dos page */}
+                {/* Open to-dos */}
                 {ai.openTodos > 0 && (
                   <div onClick={() => onNavigate?.('todos')} style={{ display: 'flex',
                     alignItems: 'center', justifyContent: 'space-between', gap: 10,
-                    background: 'rgba(201,168,76,0.12)', borderRadius: 8, padding: '9px 12px',
-                    border: '1px solid rgba(201,168,76,0.25)', cursor: 'pointer', transition: 'background 0.12s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(201,168,76,0.22)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(201,168,76,0.12)'}>
+                    background: 'var(--gold-100)', borderRadius: 8, padding: '9px 12px',
+                    border: '1px solid var(--gold-200)', cursor: 'pointer', transition: 'background 0.12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--gold-200)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'var(--gold-100)'}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 13 }}>✓</span>
                       <span style={{ fontSize: 13, color: GOLD, fontWeight: 500 }}>
@@ -458,7 +449,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
 
             {/* Company Health */}
             <div style={{ background: WHITE, borderRadius: 14, padding: '16px 18px',
-              border: `1px solid ${BORDER}`, boxShadow: '0 2px 8px rgba(10,31,68,0.05)' }}>
+              border: `1px solid ${BORDER}`, boxShadow: 'var(--shadow-xs)' }}>
               <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 15,
                 color: NAVY, marginBottom: 14 }}>Company Health</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
@@ -470,8 +461,8 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
                   <div key={i} style={{ background: CREAM, borderRadius: 10, padding: '12px 8px',
                     textAlign: 'center', border: `1px solid ${BORDER}` }}>
                     <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 28,
-                      color: c.danger ? '#EF4444' : NAVY, lineHeight: 1 }}>{c.val}</div>
-                    <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 5,
+                      color: c.danger ? 'var(--red-text)' : NAVY, lineHeight: 1 }}>{c.val}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 5,
                       fontFamily: 'DM Sans, sans-serif' }}>{c.label}</div>
                   </div>
                 ))}
@@ -483,7 +474,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
 
         {/* ── Revenue chart ─────────────────────────────────────────── */}
         <div style={{ background: WHITE, borderRadius: 14, padding: '16px 20px',
-          border: `1px solid ${BORDER}`, boxShadow: '0 2px 8px rgba(10,31,68,0.05)',
+          border: `1px solid ${BORDER}`, boxShadow: 'var(--shadow-xs)',
           marginTop: 16 }}>
           <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16,
             color: NAVY, marginBottom: 14 }}>Revenue (last 6 months)</div>
