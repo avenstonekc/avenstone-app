@@ -9,7 +9,7 @@ function Stars({ rating, size = 16 }) {
   return (
     <span style={{ display: 'inline-flex', gap: 1 }}>
       {[1, 2, 3, 4, 5].map(i => (
-        <span key={i} style={{ fontSize: size, color: i <= full ? '#C9A84C' : '#E5E7EB', lineHeight: 1 }}>★</span>
+        <span key={i} style={{ fontSize: size, color: i <= full ? 'var(--gold-500)' : 'var(--border)', lineHeight: 1 }}>★</span>
       ))}
     </span>
   );
@@ -34,7 +34,7 @@ function getInitials(name) {
 
 function Spinner() {
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F7F5F0' }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
       <div style={{
         width: 48, height: 48, borderRadius: '50%',
         border: '4px solid #E8E4DC',
@@ -100,13 +100,13 @@ export default function PublicProfile({ tenantId }) {
   );
 
   if (error || !data) return (
-    <div style={{ minHeight: '100dvh', background: '#F7F5F0', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: '100dvh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap');`}</style>
       <div style={{ textAlign: 'center', maxWidth: 480 }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-        <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24, color: '#0A1F44', marginBottom: 12 }}>Profile Not Found</h2>
-        <p style={{ color: '#6B7280', fontSize: 15, lineHeight: 1.6 }}>This contractor profile wasn't found. They may not have set up their public profile yet.</p>
-        <a href="https://avenstone-app.vercel.app" style={{ display: 'inline-block', marginTop: 24, padding: '12px 28px', background: '#0A1F44', color: '#fff', borderRadius: 6, textDecoration: 'none', fontSize: 14, fontWeight: 600 }}>Visit Avenstone Network</a>
+        <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 24, color: 'var(--navy-900)', marginBottom: 12 }}>Profile Not Found</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: 15, lineHeight: 1.6 }}>This contractor profile wasn't found. They may not have set up their public profile yet.</p>
+        <a href="https://avenstone-app.vercel.app" style={{ display: 'inline-block', marginTop: 24, padding: '12px 28px', background: 'var(--navy-900)', color: '#fff', borderRadius: 6, textDecoration: 'none', fontSize: 14, fontWeight: 600 }}>Visit Avenstone Network</a>
       </div>
     </div>
   );

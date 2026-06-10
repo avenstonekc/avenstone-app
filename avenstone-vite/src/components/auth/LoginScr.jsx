@@ -43,8 +43,8 @@ export default function LoginScr() {
         <div className="auth-logo"><img src={logo} alt="Avenstone" /></div>
         <div className="auth-card" style={{ textAlign: 'center' }}>
           <div className="auth-card-body">
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44', marginBottom: 12 }}>Check your email</div>
-            <div style={{ fontSize: 14, color: '#6B7280', lineHeight: 1.7, marginBottom: 20 }}>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: 'var(--navy-900)', marginBottom: 12 }}>Check your email</div>
+            <div style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 20 }}>
               {resetSent ? 'We sent a password reset link to ' : 'We sent a sign-in link to '}
               <strong>{email}</strong>.
               {resetSent ? ' Click it to set a new password.' : ' Click it to access your project portal.'}
@@ -62,8 +62,8 @@ export default function LoginScr() {
         <div className="auth-logo"><img src={logo} alt="Avenstone" /></div>
         <div className="auth-card">
           <div className="auth-card-body">
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44', marginBottom: 4, textAlign: 'center' }}>Reset Password</div>
-            <div style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', marginBottom: 28 }}>Enter your email and we'll send a reset link</div>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: 'var(--navy-900)', marginBottom: 4, textAlign: 'center' }}>Reset Password</div>
+            <div style={{ fontSize: 13, color: 'var(--text-subtle)', textAlign: 'center', marginBottom: 28 }}>Enter your email and we'll send a reset link</div>
             {err && <div className="auth-err">{err}</div>}
             <div className="fg">
               <label className="flbl">Email</label>
@@ -85,8 +85,8 @@ export default function LoginScr() {
         <div className="auth-logo"><img src={logo} alt="Avenstone" /></div>
         <div className="auth-card">
           <div className="auth-card-body">
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44', marginBottom: 4, textAlign: 'center' }}>Sign in</div>
-            <div style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', marginBottom: 28 }}>Avenstone Group</div>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: 'var(--navy-900)', marginBottom: 4, textAlign: 'center' }}>Sign in</div>
+            <div style={{ fontSize: 13, color: 'var(--text-subtle)', textAlign: 'center', marginBottom: 28 }}>Avenstone Group</div>
             {err && <div className="auth-err">{err}</div>}
             <div className="fg">
               <label className="flbl">Email</label>

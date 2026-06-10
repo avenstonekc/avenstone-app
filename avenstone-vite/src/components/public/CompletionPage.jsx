@@ -51,13 +51,13 @@ export default function CompletionPage({ jobId }) {
   }, [jobId]);
 
   if (step === 'loading') return (
-    <div style={{ minHeight: '100dvh', background: '#0A1F44', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 36, height: 36, border: '3px solid rgba(201,168,76,0.3)', borderTopColor: '#C9A84C', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+    <div style={{ minHeight: '100dvh', background: 'var(--navy-900)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 36, height: 36, border: '3px solid rgba(201,168,76,0.3)', borderTopColor: 'var(--gold-500)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   );
 
   if (step === 'error') return (
-    <div style={{ minHeight: '100dvh', background: '#0A1F44', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 24 }}>
+    <div style={{ minHeight: '100dvh', background: 'var(--navy-900)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 24 }}>
       <div style={{ fontSize: 48 }}>🏗️</div>
       <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#fff' }}>Not Found</div>
       <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>This completion package isn't available yet.</div>
@@ -94,11 +94,11 @@ export default function CompletionPage({ jobId }) {
         }
       `}</style>
 
-      <div style={{ minHeight: '100dvh', background: '#0A1F44', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ minHeight: '100dvh', background: 'var(--navy-900)', display: 'flex', flexDirection: 'column' }}>
 
         {/* Header */}
         <div style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 14, borderBottom: '1px solid rgba(201,168,76,0.15)', flexShrink: 0 }}>
-          <div style={{ width: 48, height: 48, background: 'rgba(201,168,76,0.15)', border: '2px solid #C9A84C', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#C9A84C', flexShrink: 0 }}>
+          <div style={{ width: 48, height: 48, background: 'rgba(201,168,76,0.15)', border: '2px solid #C9A84C', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: 'var(--gold-500)', flexShrink: 0 }}>
             {initials}
           </div>
           <div>
@@ -106,14 +106,14 @@ export default function CompletionPage({ jobId }) {
             {company?.city && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{company.city}{company.state ? `, ${company.state}` : ''}</div>}
           </div>
           <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#C9A84C', letterSpacing: 2, textTransform: 'uppercase' }}>Project Complete</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gold-500)', letterSpacing: 2, textTransform: 'uppercase' }}>Project Complete</div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
           </div>
         </div>
 
         {/* Title */}
         <div style={{ padding: '24px 24px 16px', textAlign: 'center' }} className="fade">
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#C9A84C', letterSpacing: 3, textTransform: 'uppercase', marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gold-500)', letterSpacing: 3, textTransform: 'uppercase', marginBottom: 8 }}>
             The Transformation
           </div>
           <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: '#fff', lineHeight: 1.2, marginBottom: 6 }}>
@@ -132,7 +132,7 @@ export default function CompletionPage({ jobId }) {
           </div>
           <div className="photo-half" style={{ flex: 1, minHeight: 300 }}>
             <img src={after.url} alt="After" />
-            <div className="photo-label" style={{ background: '#C9A84C', color: '#0A1F44' }}>After</div>
+            <div className="photo-label" style={{ background: 'var(--gold-500)', color: 'var(--navy-900)' }}>After</div>
           </div>
         </div>
 
@@ -149,7 +149,7 @@ export default function CompletionPage({ jobId }) {
               }
             }}
             style={{
-              background: '#C9A84C', color: '#0A1F44', border: 'none', borderRadius: 10,
+              background: 'var(--gold-500)', color: 'var(--navy-900)', border: 'none', borderRadius: 10,
               padding: '13px 36px', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 8,
             }}>

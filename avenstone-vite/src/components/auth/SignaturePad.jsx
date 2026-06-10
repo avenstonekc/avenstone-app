@@ -25,7 +25,7 @@ export default function SignaturePad({ onSave, onCancel, label = 'Draw your sign
     e.preventDefault();
     const c = cvs.current;
     const ctx = c.getContext('2d');
-    ctx.strokeStyle = '#0A1F44'; ctx.lineWidth = 2;
+    ctx.strokeStyle = '#0A1F44'; ctx.lineWidth = 2; // canvas ctx cannot resolve CSS vars
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     const [x, y] = getXY(e, c);
     ctx.lineTo(x, y); ctx.stroke();
@@ -45,11 +45,11 @@ export default function SignaturePad({ onSave, onCancel, label = 'Draw your sign
   };
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 6, padding: 16 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#0A1F44', marginBottom: 8 }}>{label}</div>
+    <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 6, padding: 16 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--navy-900)', marginBottom: 8 }}>{label}</div>
       <canvas
         ref={cvs} width={460} height={140}
-        style={{ display: 'block', border: '2px solid #C9A84C', borderRadius: 4, cursor: 'crosshair', touchAction: 'none', maxWidth: '100%', background: '#FAFAF8' }}
+        style={{ display: 'block', border: '2px solid var(--gold-500)', borderRadius: 4, cursor: 'crosshair', touchAction: 'none', maxWidth: '100%', background: 'var(--surface)' }}
         onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={up}
         onTouchStart={down} onTouchMove={move} onTouchEnd={up}
       />

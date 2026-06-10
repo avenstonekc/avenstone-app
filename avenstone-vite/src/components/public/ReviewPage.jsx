@@ -77,8 +77,8 @@ export default function ReviewPage({ jobId, tenantId }) {
 
   // ── Loading ──────────────────────────────────────────────────────────────────
   if (step === 'loading') return (
-    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F7F5F0' }}>
-      <div style={{ width: 32, height: 32, border: '3px solid #E8E4DC', borderTopColor: '#0A1F44', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+      <div style={{ width: 32, height: 32, border: '3px solid var(--border)', borderTopColor: 'var(--navy-900)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   );
 
@@ -96,17 +96,17 @@ export default function ReviewPage({ jobId, tenantId }) {
         .finp:focus { border-color: #0A1F44; }
       `}</style>
 
-      <div style={{ minHeight: '100dvh', background: '#F7F5F0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ minHeight: '100dvh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
         <div style={{ width: '100%', maxWidth: 480 }}>
 
           {/* Brand header */}
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ width: 60, height: 60, background: '#0A1F44', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 20, fontWeight: 700, color: '#C9A84C' }}>
+            <div style={{ width: 60, height: 60, background: 'var(--navy-900)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 20, fontWeight: 700, color: 'var(--gold-500)' }}>
               {initials}
             </div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44' }}>{coName}</div>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: 'var(--navy-900)' }}>{coName}</div>
             {company?.city && (
-              <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 2 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginTop: 2 }}>
                 {company.city}{company.state ? `, ${company.state}` : ''}
               </div>
             )}
@@ -119,8 +119,8 @@ export default function ReviewPage({ jobId, tenantId }) {
             {step === 'already' && (
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
                 <div style={{ fontSize: 44, marginBottom: 14 }}>✅</div>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: '#0A1F44', marginBottom: 8 }}>Already Submitted</div>
-                <div style={{ fontSize: 13, color: '#9CA3AF', lineHeight: 1.7 }}>Your review has been recorded. Thank you!</div>
+                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: 'var(--navy-900)', marginBottom: 8 }}>Already Submitted</div>
+                <div style={{ fontSize: 13, color: 'var(--text-subtle)', lineHeight: 1.7 }}>Your review has been recorded. Thank you!</div>
               </div>
             )}
 
@@ -128,8 +128,8 @@ export default function ReviewPage({ jobId, tenantId }) {
             {step === 'done' && (
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
                 <div style={{ fontSize: 44, marginBottom: 14 }}>🌟</div>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44', marginBottom: 8 }}>Thank You!</div>
-                <div style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.7, maxWidth: 320, margin: '0 auto' }}>
+                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: 'var(--navy-900)', marginBottom: 8 }}>Thank You!</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.7, maxWidth: 320, margin: '0 auto' }}>
                   Your review helps {coName} earn more trusted clients. We genuinely appreciate you taking the time.
                 </div>
               </div>
@@ -139,16 +139,16 @@ export default function ReviewPage({ jobId, tenantId }) {
             {step === 'error' && (
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
                 <div style={{ fontSize: 44, marginBottom: 14 }}>⚠️</div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#0A1F44', marginBottom: 6 }}>Invalid Review Link</div>
-                <div style={{ fontSize: 13, color: '#9CA3AF' }}>This link appears to be incomplete. Please ask your contractor to resend it.</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--navy-900)', marginBottom: 6 }}>Invalid Review Link</div>
+                <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>This link appears to be incomplete. Please ask your contractor to resend it.</div>
               </div>
             )}
 
             {/* ── Form ── */}
             {step === 'form' && (
               <>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#0A1F44', marginBottom: 4 }}>How was your experience?</div>
-                <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 24, lineHeight: 1.6 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy-900)', marginBottom: 4 }}>How was your experience?</div>
+                <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginBottom: 24, lineHeight: 1.6 }}>
                   Your honest feedback helps future homeowners make confident decisions.
                 </div>
 
@@ -179,9 +179,9 @@ export default function ReviewPage({ jobId, tenantId }) {
                         onClick={() => setForm(p => ({ ...p, recommend: val }))}
                         style={{
                           flex: 1, padding: '12px 8px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600,
-                          border: `2px solid ${form.recommend === val ? active : '#E8E4DC'}`,
+                          border: `2px solid ${form.recommend === val ? active : 'var(--border)'}`,
                           background: form.recommend === val ? bg : '#fff',
-                          color: form.recommend === val ? text : '#6B7280',
+                          color: form.recommend === val ? text : 'var(--text-muted)',
                           transition: 'all 0.15s',
                         }}>
                         {label}
@@ -192,7 +192,7 @@ export default function ReviewPage({ jobId, tenantId }) {
 
                 {/* Name */}
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
                     Your Name <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
                   </label>
                   <input
@@ -205,7 +205,7 @@ export default function ReviewPage({ jobId, tenantId }) {
 
                 {/* Review text */}
                 <div style={{ marginBottom: 24 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
                     Tell us more <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
                   </label>
                   <textarea
@@ -223,16 +223,16 @@ export default function ReviewPage({ jobId, tenantId }) {
                   disabled={submitting || !canSubmit}
                   style={{
                     width: '100%', padding: '14px', borderRadius: 8, border: 'none', cursor: canSubmit ? 'pointer' : 'not-allowed',
-                    background: canSubmit ? '#0A1F44' : '#E8E4DC',
-                    color: canSubmit ? '#C9A84C' : '#9CA3AF',
+                    background: canSubmit ? 'var(--navy-900)' : 'var(--border)',
+                    color: canSubmit ? 'var(--gold-500)' : 'var(--text-subtle)',
                     fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 15,
                     transition: 'all 0.2s',
                   }}>
                   {submitting ? 'Submitting…' : 'Submit Review'}
                 </button>
 
-                <div style={{ fontSize: 11, color: '#9CA3AF', textAlign: 'center', marginTop: 14 }}>
-                  Powered by <span style={{ color: '#C9A84C', fontWeight: 600 }}>Avenstone Network</span>
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)', textAlign: 'center', marginTop: 14 }}>
+                  Powered by <span style={{ color: 'var(--gold-500)', fontWeight: 600 }}>Avenstone Network</span>
                 </div>
               </>
             )}
