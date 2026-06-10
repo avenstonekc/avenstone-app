@@ -8,11 +8,12 @@ const CREAM = 'var(--bg)';
 const WHITE = '#FFFFFF';
 const BORDER = 'var(--border)';
 
+// Phase chip grammar: complete=muted+check, active=gold pill navy text, future=ghost outline
 const PHASE_STYLE = {
-  complete:    { bg: 'var(--green-bg)', color: 'var(--green-text-strong)', dot: 'var(--green-dot)' },
-  in_progress: { bg: 'var(--amber-bg)', color: 'var(--amber-text-strong)', dot: GOLD },
-  delayed:     { bg: 'var(--red-bg)',   color: 'var(--red-text-strong)',   dot: 'var(--red-text)' },
-  not_started: { bg: 'var(--neutral-bg)', color: 'var(--text-subtle)',     dot: '#D1D5DB' },
+  complete:    { bg: 'transparent',     color: 'var(--text-subtle)',         border: 'transparent',        check: true  },
+  in_progress: { bg: GOLD,              color: NAVY,                         border: GOLD,                 check: false },
+  delayed:     { bg: 'var(--red-bg)',   color: 'var(--red-text-strong)',     border: 'var(--red-text)',    check: false },
+  not_started: { bg: 'transparent',     color: 'var(--text-subtle)',         border: 'var(--border)',      check: false },
 };
 
 function fShort(n) {
@@ -169,22 +170,23 @@ export default function ProjectDetailHeader({ job }) {
               {phases.map((ph, i) => {
                 const s = PHASE_STYLE[ph.status] || PHASE_STYLE.not_started;
                 const isActive = ph.status === 'in_progress' || ph.status === 'delayed';
-                const isDone   = ph.status === 'complete';
                 return (
                   <div key={ph.id} style={{ display: 'flex', alignItems: 'center' }}>
                     <div style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
+                      display: 'flex', alignItems: 'center', gap: 4,
                       background: s.bg, color: s.color,
                       borderRadius: 20, padding: '3px 10px',
                       fontSize: 11, fontFamily: 'DM Sans, sans-serif',
-                      fontWeight: isActive ? 700 : 500,
-                      border: isActive ? `1.5px solid ${s.color}` : '1.5px solid transparent',
+                      fontWeight: isActive ? 700 : 400,
+                      border: `1.5px solid ${s.border}`,
                       whiteSpace: 'nowrap', flexShrink: 0,
                     }}>
-                      <span style={{
-                        width: 6, height: 6, borderRadius: '50%',
-                        background: s.dot, display: 'inline-block', flexShrink: 0,
-                      }} />
+                      {s.check
+                        ? <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--green-dot)', flexShrink: 0 }}>&#x2713;</span>
+                        : ph.status !== 'not_started' && (
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor', display: 'inline-block', flexShrink: 0, opacity: 0.7 }} />
+                        )
+                      }
                       {ph.phase_name}
                     </div>
                     {i < phases.length - 1 && (
