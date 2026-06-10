@@ -53,7 +53,8 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 **Schema drift notes (audit 2026-06-10):**
 - `job_lidar_scans.scanner_version` is selected in `normalize-scan/index.ts:345` but the column does not exist in DB — pre-existing read drift, inert on the current code path. Fix when next touching normalize-scan.
-- **pg_cron active jobs (verified 2026-06-10):** `anti-surprise-dispatcher` (*/15 min), `anti-surprise-generator` (03:00 daily), `sequence-runner` (*/15 min), `vigilance-runner` (11:00 daily). `ai-pm-nightly` has NO cron schedule.
+- **pg_cron active jobs (verified 2026-06-10):** `anti-surprise-dispatcher` (*/15 min), `anti-surprise-generator` (03:00 daily), `sequence-runner` (*/15 min), `vigilance-runner` (11:00 daily).
+- **`todos.source_check`** (migration 20260610000001): allows `'manual'`, `'engine'`, `'vigilance'`.
 
 - **Phase 3 DROPs (2026-05-06):** `invitations_to_bid` view, `itb_invitees`, `quote_requests`, `bid_responses` (legacy), `bids`, `sub_pricing_changes`, `job_subs` — all dropped. `engagement_bids` and `job_sub_engagements` are the canonical engagement schema. RLS policies on `job_messages` and `schedule_items` updated to reference `job_sub_engagements` in the same migration.
 - **`jobs.client_user_id` (uuid) EXISTS and is actively used** — `supabase.js` (job load + `sbNotifyUser`), `ClientPortal.jsx` (job query + Realtime subscription filter), `MessagesTab.jsx` (email-on-new-message). Do not NULL it carelessly.
@@ -109,8 +110,6 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - `VOICE_AGENT_ARC.md` — voice as first-class interface for in-field PM workflows. Reads EXECUTION_ARC data (checklists, todos, schedule items, phase context). See existing VOICE_AGENT.md.
 - `SALES_PIPELINE_ARC.md` — leads → qualified → consultations scheduled → proposals → contracts. Currently jobs start at `lead` phase; lead-handling is outside the platform. Open question whether platform should own this.
 - `CODE_JURISDICTION_ARC.md` — jurisdiction-aware inspection checklists (KC vs Overland Park, 2018 vs 2021 IRC). Hardcoded starter set is v1; AI-seeded jurisdiction-aware templates are the real moat play.
-
-**AI_PM_LEGACY_RULES** — 3 rules in ai-pm-nightly (bid_award_no_contract, itb_no_responses_due_soon, itb_award_pending) query `quote_requests`/ITB data via the `quoteRequests` parallel load (index.ts:76). The `quote_requests` table never exists in DB (migration `20260429_quote_requests_rename.sql` deleted from repo 2026-06-10 — it referenced dead legacy schema from the Phase 3 ITB drop on 2026-05-06). These 3 rules always receive an empty array and silently fire no alerts. The function has no pg_cron schedule so this is dormant. Before any reactivation: port these 3 rules to `job_sub_engagements` / `engagement_bids` (the live schema for sub bid tracking). Do NOT restore or recreate the deleted migration.
 - `FIELD_OPUS_ARC.md` — Opus-in-the-app dev console for Kalin. Hard-gated to Kalin's auth ID. Conversation interface inside the app, dispatches Sonnet prompts to the AUTO_FIX_ARC VM. 6 phases scoped; blueprint shipped 2026-05-23. Target build: 2026-05-24 morning.
 - `AUTO_FIX_ARC.md` — Dev-loop accelerator for the 2-user phase (Kalin + Blake). Gets ripped out before public launch — strictly internal tool, not a product feature.
 
@@ -1268,11 +1267,12 @@ WHAT SHIPPED:
 - App.jsx bot-nav: .bn-icon className replaces per-item inline color.
 
 REMAINING SWEEP BATCHES (next slices):
-- Slice 2 (jobs tabs): ✅ DONE — EstimateTab, FinancialsTab, InfoTab, ConsultationTab, ComposeDrawScr, SubsTab, FilesTab, LogsTab, ScheduleTab, PaymentScheduleTab, InvoicesSubTab, ScopeTab, MaterialsTab, NotesPhotosTab
-- Slice 3 (job screens): JobsScr, JobDet, ProjectsListScr, ProjectDetailHeader, PhaseAdvanceCard, PlaybookChecklist
+- Slice 2 (jobs tabs): ✅ DONE
+- Slice 3 (job screens): ✅ DONE
 - Slice 4 (portals): ClientPortal, SubPortal, SubJobView, SubOnboardingWizard, OwnerHomeScr, OwnerPortal
 - Slice 5 (AI + dashboard + modals): MasterAgent, AiFieldAgent, DashScr, Reports, CalScr, HomeScr, all modals/
 - Slice 6 (admin + public + ai/): BugReportsScr, CompanyFilesScr, SequencesScr, LeadsScr, FloorPlanEditorScr, all ai/ components
+Remaining hex literals in jobs/ after Slice 3: 385 across 43 files (down from 763).
 
 [LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 2 — token sweep of jobs/tabs
 - Action: Mechanical color token sweep of 14 jobs/tabs files. 3 commits. All pushed.
@@ -1305,7 +1305,19 @@ COLORS WITH NO CLOSE TOKEN MATCH (left as literals, noted for future token addit
 - #F3F4F6 (cool neutral gray for "draft/cancelled" status bg) — no warm-bg analog
 - #EBE6D2 / #DCE5D8 (custom phase palette warm cream/sage) — intentional design system extension
 - #6B5F3F / #2E4528 (phase palette text) — intentional
-INTENTIONAL DARK THEMES (not converted): MaterialsTab STATUS_META, SubsTab ENG_STATUS_META (both #111827/#1f2937 dark card backgrounds — would require design pass, not mechanical token swap)
+INTENTIONAL DARK THEMES (not converted in Slice 2 — CONVERTED in Slice 3 below): MaterialsTab + SubsTab fully light-converted.
+
+[LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 3 — token extension + job screens + dark theme conversion
+- Action: Part A token extension + Slice 2 residue, Part B 24-file job screen sweep, Part C MaterialsTab+SubsTab light conversion. 4 commits pushed.
+- Commits: b67e7f6 (tokens+residue), d36fb8a (Part B sweep), 91d95b8 (Part C light)
+
+PART A: New tokens — --red-text-strong, --green-text-strong, --amber-text-strong, --purple-bg/text, --neutral-bg/text. Slice 2 residue files (ConsultationTab, FinancialsTab, InvoicesSubTab, PaymentScheduleTab, ScheduleTab) fully swept — DRAW_STATUS/INVOICE_STATUS/STATUS_PILL all token-mapped.
+
+PART B (24 files): ProjectDetailHeader PHASE_STYLE, ProjectsListScr STATUS_MAP (7 statuses), TakeoffWizard, AddCustomLineModal, ScopeDetailForm, consultation/*, SubInvoicesSection STATUS_CFG, WalkthroughsTab, PlaybookChecklist, JobsScr, JobDet, PhaseAdvanceCard, COTab, all files/ subdirectory (7). jobs/ hex literals: 763 → 385 (50% reduction).
+
+PART C: MaterialsTab — STATUS_META dark-on-dark → light tints; #111827 cards → card-bg+shadow; delivery photo gate → blue-bg info panel; action buttons → standard btn classes. SubsTab — ENG_STATUS_META dark → purple/blue/green/neutral/red tints; row cards → card-bg+shadow; "Add Sub" → btn-navy; btnStyle → navy-100/ghost. Both: all dark-mode colors removed, layout/logic/props preserved.
+
+Still in jobs/ (385 hex literals): ScheduleTab custom phase palette (#EBE6D2/#DCE5D8 intentional), FilesRecentView CAT_COLORS (per-category hues intentional), GapResolutionModal SEV_COLORS, TransactionModal (Slice 5 modals batch).
 
 [LOG - 2026-06-10] AI_PM_FOLDIN Slice 2 — vigilance-runner edge function
 - Action: New edge function carrying all 11 PORT rules from the 2026-06-10 disposition audit. Replaces ai-pm-nightly's detection logic. ai-pm-nightly untouched (Slice 3 kills it).
