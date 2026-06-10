@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { AI_FIELD_AGENT_URL, ANON_KEY, AV_TENANT } from '../../lib/supabase';
 import { isMob } from '../../lib/utils';
 
-const NAV   = '#0A1F44';
-const GREEN = '#22C55E';
-const GOLD  = '#C9A84C';
+const NAV   = 'var(--navy-900)';
+const GREEN = 'var(--green-dot)';
+const GOLD  = 'var(--gold-500)';
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const IcLightning = () => (
@@ -33,10 +33,10 @@ const IcX = () => (
 // ── Orb ───────────────────────────────────────────────────────────────────────
 function Orb({ state, interim }) {
   const cfg = {
-    idle:        { color: '#334155', glow: 'rgba(51,65,85,0.3)',    label: 'Tap to speak' },
-    listening:   { color: '#EF4444', glow: 'rgba(239,68,68,0.3)',   label: interim || 'Listening…' },
+    idle:        { color: '#334155', glow: 'rgba(51,65,85,0.3)',    label: 'Tap to speak' }, // slate-700, no token
+    listening:   { color: 'var(--red-text)', glow: 'rgba(239,68,68,0.3)',   label: interim || 'Listening…' },
     thinking:    { color: GOLD,      glow: 'rgba(201,168,76,0.3)',   label: 'Thinking…' },
-    speaking:    { color: '#3B82F6', glow: 'rgba(59,130,246,0.3)',  label: 'Speaking…' },
+    speaking:    { color: 'var(--blue-link)', glow: 'rgba(59,130,246,0.3)',  label: 'Speaking…' },
     confirming:  { color: GREEN,     glow: 'rgba(34,197,94,0.3)',   label: 'Confirm?' },
   }[state] || { color: '#334155', glow: 'transparent', label: '' };
 

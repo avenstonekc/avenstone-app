@@ -123,7 +123,7 @@ function TypingDots() {
     width: 7,
     height: 7,
     borderRadius: '50%',
-    background: '#C9A84C',
+    background: 'var(--gold-500)',
     display: 'inline-block',
     margin: '0 2px',
     animation: 'masterAgentBounce 1.2s infinite',
@@ -192,7 +192,7 @@ function ActionsPanel({ actions }) {
                   {isError ? '✗' : '✓'}
                 </span>
                 <span>
-                  <span style={{ color: '#C9A84C', fontWeight: 600 }}>
+                  <span style={{ color: 'var(--gold-500)', fontWeight: 600 }}>
                     {formatToolName(action.tool)}
                   </span>
                   {' — '}
@@ -255,7 +255,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
           fontSize: 11,
           fontWeight: 700,
           letterSpacing: 1.2,
-          color: '#C9A84C',
+          color: 'var(--gold-500)',
           textTransform: 'uppercase',
         }}
       >
@@ -265,7 +265,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
         style={{
           fontFamily: 'DM Sans, sans-serif',
           fontSize: 14,
-          color: '#F7F5F0',
+          color: 'var(--bg)',
           lineHeight: 1.5,
         }}
       >
@@ -297,8 +297,8 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
                         padding: '6px 13px',
                         borderRadius: 20,
                         border: sel ? '1px solid #C9A84C' : '1px solid rgba(247,245,240,0.2)',
-                        background: sel ? '#C9A84C' : 'transparent',
-                        color: sel ? '#0A1F44' : 'rgba(247,245,240,0.8)',
+                        background: sel ? 'var(--gold-500)' : 'transparent',
+                        color: sel ? 'var(--navy-900)' : 'rgba(247,245,240,0.8)',
                         fontFamily: 'DM Sans, sans-serif',
                         fontSize: 13,
                         fontWeight: sel ? 700 : 400,
@@ -325,7 +325,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
                   borderRadius: 8,
                   border: '1px solid rgba(247,245,240,0.2)',
                   background: 'rgba(247,245,240,0.06)',
-                  color: '#F7F5F0',
+                  color: 'var(--bg)',
                   fontFamily: 'DM Sans, sans-serif',
                   fontSize: 16,
                   outline: 'none',
@@ -382,7 +382,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
                         >
                           <td
                             style={{
-                              color: '#F7F5F0',
+                              color: 'var(--bg)',
                               padding: '7px 6px',
                               verticalAlign: 'middle',
                             }}
@@ -410,7 +410,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
                                     border: sel
                                       ? '2px solid #C9A84C'
                                       : '2px solid rgba(247,245,240,0.25)',
-                                    background: sel ? '#C9A84C' : 'transparent',
+                                    background: sel ? 'var(--gold-500)' : 'transparent',
                                     cursor: 'pointer',
                                     padding: 0,
                                     display: 'inline-block',
@@ -438,8 +438,8 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
             flex: 1,
             padding: '8px 12px',
             borderRadius: 8,
-            background: isComplete && !loading ? '#C9A84C' : 'rgba(201,168,76,0.3)',
-            color: '#0A1F44',
+            background: isComplete && !loading ? 'var(--gold-500)' : 'rgba(201,168,76,0.3)',
+            color: 'var(--navy-900)',
             border: 'none',
             fontFamily: 'DM Sans, sans-serif',
             fontSize: 13,
@@ -1147,7 +1147,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         position: 'fixed',
         inset: 0,
         zIndex: 9999,
-        background: '#0A1F44',
+        background: 'var(--navy-900)',
         display: 'flex',
         flexDirection: 'column',
         opacity: panelVisible ? 1 : 0,
@@ -1161,7 +1161,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
         width: 420,
         height: 'calc(100vh - 60px)',
         zIndex: 9999,
-        background: '#0A1F44',
+        background: 'var(--navy-900)',
         display: 'flex',
         flexDirection: 'column',
         boxShadow: '-8px 0 40px rgba(10,31,68,0.6)',
@@ -1271,7 +1271,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               style={{
                 fontFamily: 'DM Serif Display, serif',
                 fontSize: 24,
-                color: '#F7F5F0',
+                color: 'var(--bg)',
                 lineHeight: 1.2,
                 marginBottom: 0,
               }}
@@ -1315,7 +1315,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 borderRadius: 6,
                 transition: 'color 0.15s',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#F7F5F0')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--bg)')}
               onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(247,245,240,0.6)')}
               aria-label="Close"
             >
@@ -1363,11 +1363,11 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                       gap: 6,
                       transition: 'background 0.13s, border-color 0.13s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#F7F5F0'; e.currentTarget.style.borderColor = '#C9A84C'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#E8E4DC'; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.borderColor = 'var(--gold-500)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = 'var(--border)'; }}
                   >
-                    <span style={{ width: 20, height: 20, display: 'flex', color: '#0A1F44' }}>{Ic[tile.ic]}</span>
-                    <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, fontWeight: 500, color: '#0A1F44', lineHeight: 1.3 }}>{tile.label}</span>
+                    <span style={{ width: 20, height: 20, display: 'flex', color: 'var(--navy-900)' }}>{Ic[tile.ic]}</span>
+                    <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, fontWeight: 500, color: 'var(--navy-900)', lineHeight: 1.3 }}>{tile.label}</span>
                   </button>
                 ))}
               </div>
@@ -1396,8 +1396,8 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                     maxWidth: '82%',
                     padding: '10px 14px',
                     borderRadius: msg.type === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                    background: msg.type === 'user' ? '#C9A84C' : '#0F2A5C',
-                    color: msg.type === 'user' ? '#0A1F44' : '#F7F5F0',
+                    background: msg.type === 'user' ? 'var(--gold-500)' : '#0F2A5C',
+                    color: msg.type === 'user' ? 'var(--navy-900)' : 'var(--bg)',
                     fontFamily: 'DM Sans, sans-serif',
                     fontSize: 14,
                     lineHeight: 1.55,
@@ -1452,7 +1452,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   fontSize: 11,
                   fontWeight: 700,
                   letterSpacing: 1.2,
-                  color: '#C9A84C',
+                  color: 'var(--gold-500)',
                   textTransform: 'uppercase',
                 }}
               >
@@ -1462,7 +1462,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 style={{
                   fontFamily: 'DM Sans, sans-serif',
                   fontSize: 14,
-                  color: '#F7F5F0',
+                  color: 'var(--bg)',
                   lineHeight: 1.5,
                 }}
               >
@@ -1472,7 +1472,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{
                     width: 6, height: 6, borderRadius: '50%',
-                    background: '#C9A84C',
+                    background: 'var(--gold-500)',
                     animation: 'masterAgentBounce 1.2s infinite',
                   }} />
                   <span style={{
@@ -1493,8 +1493,8 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                     flex: 1,
                     padding: '8px 12px',
                     borderRadius: 8,
-                    background: '#C9A84C',
-                    color: '#0A1F44',
+                    background: 'var(--gold-500)',
+                    color: 'var(--navy-900)',
                     border: 'none',
                     fontFamily: 'DM Sans, sans-serif',
                     fontSize: 13,
@@ -1538,14 +1538,14 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
 
         {/* Generic toast (bug submitted, etc.) */}
         {toast && (
-          <div style={{ margin: '0 16px 8px', padding: '10px 14px', background: '#D1FAE5', border: '1px solid #22c55e', borderRadius: 8, fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: '#166534' }}>
+          <div style={{ margin: '0 16px 8px', padding: '10px 14px', background: 'var(--green-bg)', border: '1px solid #22c55e', borderRadius: 8, fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: 'var(--green-text-deep)' }}>
             {toast}
           </div>
         )}
 
         {/* Helper hint — shown when no messages */}
         {!hasMessages && !loading && (
-          <div style={{ padding: '0 16px 8px', fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: '#6b7280' }}>
+          <div style={{ padding: '0 16px 8px', fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'var(--text-muted)' }}>
             Tap an option above, or type below.
           </div>
         )}
@@ -1573,7 +1573,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   <button
                     onClick={removeAttachment}
                     aria-label="Remove attachment"
-                    style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#0A1F44', border: '1px solid #C9A84C', color: '#F7F5F0', fontSize: 11, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                    style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: 'var(--navy-900)', border: '1px solid #C9A84C', color: 'var(--bg)', fontSize: 11, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
                   >×</button>
                 </div>
               )}
@@ -1583,7 +1583,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   <button
                     onClick={() => removeLibraryAttachment(i)}
                     aria-label={`Remove image ${i + 1}`}
-                    style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: '#0A1F44', border: '1px solid #C9A84C', color: '#F7F5F0', fontSize: 11, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                    style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: 'var(--navy-900)', border: '1px solid #C9A84C', color: 'var(--bg)', fontSize: 11, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
                   >×</button>
                 </div>
               ))}
@@ -1630,7 +1630,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
               border: '1px solid rgba(201,168,76,0.2)',
               borderRadius: 12,
               padding: '10px 12px',
-              color: '#F7F5F0',
+              color: 'var(--bg)',
               fontFamily: 'DM Sans, sans-serif',
               fontSize: 16,
               lineHeight: 1.5,
@@ -1771,7 +1771,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 width: 42,
                 height: 42,
                 borderRadius: '50%',
-                background: loading || (!input.trim() && !attachment && !libraryAttachments.length) ? 'rgba(201,168,76,0.3)' : '#C9A84C',
+                background: loading || (!input.trim() && !attachment && !libraryAttachments.length) ? 'rgba(201,168,76,0.3)' : 'var(--gold-500)',
                 border: 'none',
                 cursor: loading || (!input.trim() && !attachment && !libraryAttachments.length) ? 'default' : 'pointer',
                 display: 'flex',
@@ -1793,7 +1793,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                 height="18"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke={loading || (!input.trim() && !attachment && !libraryAttachments.length) ? 'rgba(10,31,68,0.5)' : '#0A1F44'}
+                stroke={loading || (!input.trim() && !attachment && !libraryAttachments.length) ? 'rgba(10,31,68,0.5)' : 'var(--navy-900)'}
                 strokeWidth="2.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
