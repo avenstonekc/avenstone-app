@@ -25,19 +25,19 @@ export default function DashScr({ nav, jobs, profile }) {
       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(10,31,68,0.1)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
     >
-      {badge > 0 && <div style={{ position: 'absolute', top: 16, right: 16, background: '#C9A84C', color: '#0A1F44', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{badge}</div>}
-      <div style={{ width: 36, height: 36, background: '#F7F5F0', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12, color: '#0A1F44' }}>{Ic[ic] || Ic.grid}</div>
-      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: '#0A1F44', marginBottom: 4 }}>{title}</div>
-      <div style={{ fontSize: 12, color: '#9CA3AF' }}>{sub}</div>
+      {badge > 0 && <div style={{ position: 'absolute', top: 16, right: 16, background: 'var(--gold-500)', color: 'var(--navy-900)', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{badge}</div>}
+      <div style={{ width: 36, height: 36, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12, color: 'var(--navy-900)' }}>{Ic[ic] || Ic.grid}</div>
+      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: 'var(--navy-900)', marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>{sub}</div>
     </div>
   );
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', background: '#F7F5F0' }}>
+    <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
       <div style={{ padding: mob ? '16px' : '32px' }}>
         <div style={{ marginBottom: 28 }}>
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: '#0A1F44', marginBottom: 4 }}>Good {greet}, {profile?.full_name?.split(' ')[0] || 'there'}.</div>
-          <div style={{ fontSize: 13, color: '#9CA3AF' }}>{today}</div>
+          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: 'var(--navy-900)', marginBottom: 4 }}>Good {greet}, {profile?.full_name?.split(' ')[0] || 'there'}.</div>
+          <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>{today}</div>
         </div>
 
         <div className="stat-grid">
@@ -85,8 +85,8 @@ export default function DashScr({ nav, jobs, profile }) {
                         </td>
                         <td>
                           {rev > 0
-                            ? <span style={{ fontWeight: 700, color: '#0A1F44' }}>{f$(rev)}</span>
-                            : <span style={{ color: '#9CA3AF', fontSize: 12 }}>—</span>}
+                            ? <span style={{ fontWeight: 700, color: 'var(--navy-900)' }}>{f$(rev)}</span>
+                            : <span style={{ color: 'var(--text-subtle)', fontSize: 12 }}>—</span>}
                         </td>
                       </tr>
                     );
@@ -99,19 +99,19 @@ export default function DashScr({ nav, jobs, profile }) {
 
         {reviews.length > 0 && (
           <div style={{ marginTop: 28 }}>
-            <div className="sec-hd"><h2>Client Reviews <span style={{ fontSize: 13, fontWeight: 400, color: '#9CA3AF' }}>({reviews.length} total)</span></h2></div>
+            <div className="sec-hd"><h2>Client Reviews <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-subtle)' }}>({reviews.length} total)</span></h2></div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 12, marginBottom: 20 }}>
               {[['Quality', avgScore('rating_quality')], ['Communication', avgScore('rating_communication')], ['Timeliness', avgScore('rating_timeliness')]].map(([lb, v]) => (
                 <div key={lb} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '16px 14px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{lb}</div>
-                  <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#0A1F44', marginBottom: 4 }}>{v ?? '-'}</div>
-                  <div style={{ fontSize: 18, color: '#C9A84C' }}>{v ? [1, 2, 3, 4, 5].map(s => <span key={s} style={{ opacity: v >= s ? 1 : 0.25 }}>★</span>) : '-'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{lb}</div>
+                  <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: 'var(--navy-900)', marginBottom: 4 }}>{v ?? '-'}</div>
+                  <div style={{ fontSize: 18, color: 'var(--gold-500)' }}>{v ? [1, 2, 3, 4, 5].map(s => <span key={s} style={{ opacity: v >= s ? 1 : 0.25 }}>★</span>) : '-'}</div>
                 </div>
               ))}
               <div style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '16px 14px', textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Recommend</div>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: recRate >= 80 ? '#22c55e' : '#0A1F44', marginBottom: 4 }}>{recRate !== null ? `${recRate}%` : '-'}</div>
-                <div style={{ fontSize: 12, color: '#9CA3AF' }}>{reviews.filter(r => r.would_recommend).length} of {reviews.length}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Recommend</div>
+                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: recRate >= 80 ? 'var(--green-dot)' : 'var(--navy-900)', marginBottom: 4 }}>{recRate !== null ? `${recRate}%` : '-'}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>{reviews.filter(r => r.would_recommend).length} of {reviews.length}</div>
               </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -119,15 +119,15 @@ export default function DashScr({ nav, jobs, profile }) {
                 <div key={r.id} style={{ background: '#fff', border: '1px solid #E8E4DC', padding: '14px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: r.review_text ? 8 : 0 }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{r.client_name || r.client_email || 'Client'}</div>
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{r.created_at?.slice(0, 10)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)' }}>{r.client_name || r.client_email || 'Client'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>{r.created_at?.slice(0, 10)}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                      <span style={{ fontSize: 12, color: '#C9A84C' }}>{'★'.repeat(Math.round((r.rating_quality + r.rating_communication + r.rating_timeliness) / 3))}</span>
-                      {r.would_recommend && <span style={{ fontSize: 11, background: '#D1FAE5', color: '#065F46', padding: '2px 8px', fontWeight: 600 }}>Recommends</span>}
+                      <span style={{ fontSize: 12, color: 'var(--gold-500)' }}>{'★'.repeat(Math.round((r.rating_quality + r.rating_communication + r.rating_timeliness) / 3))}</span>
+                      {r.would_recommend && <span style={{ fontSize: 11, background: 'var(--green-bg)', color: 'var(--green-text-strong)', padding: '2px 8px', fontWeight: 600 }}>Recommends</span>}
                     </div>
                   </div>
-                  {r.review_text && <div style={{ fontSize: 13, color: '#374151', fontStyle: 'italic', borderTop: '1px solid #F3F0EB', paddingTop: 8 }}>"{r.review_text}"</div>}
+                  {r.review_text && <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontStyle: 'italic', borderTop: '1px solid #F3F0EB', paddingTop: 8 }}>"{r.review_text}"</div>}
                 </div>
               ))}
             </div>

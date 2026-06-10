@@ -8,7 +8,7 @@ import {
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const SC = { lead:'#9CA3AF', proposal:'#f59e0b', contract:'#22c55e', in_progress:'#C9A84C', final_touches:'#3B82F6', complete:'#10B981', on_hold:'#F97316' };
+const SC = { lead:'var(--text-subtle)', proposal:'#f59e0b', contract:'#22c55e', in_progress:'var(--gold-500)', final_touches:'#3B82F6', complete:'#10B981', on_hold:'#F97316' };
 
 const TYPE_OPTIONS = [
   { value: 'material_delivery', label: 'Material Delivery' },
@@ -28,7 +28,7 @@ const TYPE_SUGGESTIONS = {
 };
 
 function inviteStatusColor(status) {
-  return { invited:'#888', accepted:'#22c55e', declined:'#EF4444', tentative:'#C9A84C' }[status] || '#888';
+  return { invited:'#888', accepted:'#22c55e', declined:'#EF4444', tentative:'var(--gold-500)' }[status] || '#888';
 }
 
 export default function CalScr({ jobs, profile, onSelectJob }) {
@@ -109,14 +109,14 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
     <div style={{ padding: '0 0 40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={prevMonth} style={{ background: 'transparent', border: '1px solid #E8E4DC', borderRadius: 4, width: 32, height: 32, cursor: 'pointer', fontSize: 18, color: '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44', minWidth: 200, textAlign: 'center' }}>{MONTHS[month]} {year}</div>
-          <button onClick={nextMonth} style={{ background: 'transparent', border: '1px solid #E8E4DC', borderRadius: 4, width: 32, height: 32, cursor: 'pointer', fontSize: 18, color: '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
-          <button onClick={() => setCur(() => { const d = new Date(); d.setDate(1); return d; })} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #E8E4DC', borderRadius: 4, background: 'transparent', color: '#9CA3AF', cursor: 'pointer' }}>Today</button>
+          <button onClick={prevMonth} style={{ background: 'transparent', border: '1px solid #E8E4DC', borderRadius: 4, width: 32, height: 32, cursor: 'pointer', fontSize: 18, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: 'var(--navy-900)', minWidth: 200, textAlign: 'center' }}>{MONTHS[month]} {year}</div>
+          <button onClick={nextMonth} style={{ background: 'transparent', border: '1px solid #E8E4DC', borderRadius: 4, width: 32, height: 32, cursor: 'pointer', fontSize: 18, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+          <button onClick={() => setCur(() => { const d = new Date(); d.setDate(1); return d; })} style={{ fontSize: 11, padding: '4px 10px', border: '1px solid #E8E4DC', borderRadius: 4, background: 'transparent', color: 'var(--text-subtle)', cursor: 'pointer' }}>Today</button>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button onClick={() => setEditingItem({ create: true })} className="btn btn-navy" style={{ fontSize: 12, height: 32, padding: '0 14px' }}>+ Event</button>
-          <select value={filter} onChange={e => setFilter(e.target.value)} style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #E8E4DC', borderRadius: 4, background: '#fff', color: '#374151' }}>
+          <select value={filter} onChange={e => setFilter(e.target.value)} style={{ fontSize: 12, padding: '6px 10px', border: '1px solid #E8E4DC', borderRadius: 4, background: 'var(--card-bg)', color: 'var(--text-secondary)' }}>
             <option value="all">All Projects</option>
             <option value="lead">Lead</option>
             <option value="in_progress">In Progress</option>
@@ -125,16 +125,16 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
           </select>
           <div style={{ display: 'flex', border: '1px solid #E8E4DC', borderRadius: 4, overflow: 'hidden' }}>
             {[['month', 'Month'], ['list', 'List']].map(([v, lb]) => (
-              <button key={v} onClick={() => setView(v)} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', background: v === view ? '#0A1F44' : 'transparent', color: v === view ? '#C9A84C' : '#9CA3AF' }}>{lb}</button>
+              <button key={v} onClick={() => setView(v)} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', background: v === view ? 'var(--navy-900)' : 'transparent', color: v === view ? 'var(--gold-500)' : 'var(--text-subtle)' }}>{lb}</button>
             ))}
           </div>
         </div>
       </div>
 
-      {loading ? <div style={{ textAlign: 'center', padding: 60, color: '#9CA3AF' }}>Loading...</div> : view === 'month' ? (
-        <div style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, overflow: 'hidden' }}>
+      {loading ? <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-subtle)' }}>Loading...</div> : view === 'month' ? (
+        <div style={{ background: 'var(--card-bg)', border: '1px solid #E8E4DC', borderRadius: 8, overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', borderBottom: '1px solid #E8E4DC' }}>
-            {DAYS.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 11, fontWeight: 600, color: '#9CA3AF', letterSpacing: 1 }}>{d}</div>)}
+            {DAYS.map(d => <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', letterSpacing: 1 }}>{d}</div>)}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
             {days.map((day, i) => {
@@ -145,8 +145,8 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
               const dsi = schedItemsForDay(day.date);
               const total = dj.length + dp.length + dsi.length;
               return (
-                <div key={i} style={{ minHeight: 80, padding: '5px 3px', borderRight: i % 7 !== 6 ? '1px solid #F3F0EB' : 'none', borderBottom: i < 35 ? '1px solid #F3F0EB' : 'none', background: !day.in ? '#FAFAF8' : isToday ? '#FFFBF0' : '#fff' }}>
-                  <div style={{ fontSize: 11, fontWeight: isToday ? 700 : 400, color: isToday ? '#C9A84C' : day.in ? '#6B7280' : '#D1D5DB', textAlign: 'right', marginBottom: 3 }}>{day.date.getDate()}</div>
+                <div key={i} style={{ minHeight: 80, padding: '5px 3px', borderRight: i % 7 !== 6 ? '1px solid #F3F0EB' : 'none', borderBottom: i < 35 ? '1px solid #F3F0EB' : 'none', background: !day.in ? '#FAFAF8' : isToday ? '#FFFBF0' : 'var(--card-bg)' }}>
+                  <div style={{ fontSize: 11, fontWeight: isToday ? 700 : 400, color: isToday ? 'var(--gold-500)' : day.in ? 'var(--text-muted)' : '#D1D5DB', textAlign: 'right', marginBottom: 3 }}>{day.date.getDate()}</div>
                   {dp.slice(0, 2).map(ph => {
                     const job = jobs.find(j => j.id === ph.job_id);
                     const isStart = ph.start_date === ds;
@@ -159,7 +159,7 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
                   })}
                   {dsi.slice(0, Math.max(0, 3 - dp.length)).map(si => (
                     <div key={si.id} onClick={() => setEditingItem(si)} title={si.title + (si.job?.address ? ' — ' + si.job.address : '')}
-                      style={{ fontSize: 10, padding: '2px 4px', marginBottom: 2, cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', borderRadius: 3, fontWeight: 500 }}>
+                      style={{ fontSize: 10, padding: '2px 4px', marginBottom: 2, cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', background: 'var(--amber-bg)', color: '#D97706', border: '1px solid #FDE68A', borderRadius: 3, fontWeight: 500 }}>
                       {si.title}
                     </div>
                   ))}
@@ -169,7 +169,7 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
                       ⚑ {j.address.split(',')[0]}
                     </div>
                   ))}
-                  {total > 3 && <div style={{ fontSize: 10, color: '#9CA3AF', paddingLeft: 3 }}>+{total - 3} more</div>}
+                  {total > 3 && <div style={{ fontSize: 10, color: 'var(--text-subtle)', paddingLeft: 3 }}>+{total - 3} more</div>}
                 </div>
               );
             })}
@@ -178,7 +178,7 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
       ) : (
         <div>
           {upcoming().length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60, color: '#9CA3AF', fontSize: 14 }}>No upcoming events in the next 90 days.</div>
+            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-subtle)', fontSize: 14 }}>No upcoming events in the next 90 days.</div>
           ) : upcoming().map((ev, i) => {
             const ds = ev.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
             const isSchedItem = ev.type === 'schedule_item';
@@ -192,21 +192,21 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
             return (
               <div key={i}
                 onClick={() => isSchedItem ? setEditingItem(ev.si) : onSelectJob(ev.job.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: '#fff', border: '1px solid #E8E4DC', borderRadius: 6, marginBottom: 8, cursor: 'pointer', transition: 'border-color 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = '#C9A84C'}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: 'var(--card-bg)', border: '1px solid #E8E4DC', borderRadius: 6, marginBottom: 8, cursor: 'pointer', transition: 'border-color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--gold-500)'}
                 onMouseLeave={e => e.currentTarget.style.borderColor = '#E8E4DC'}>
-                <div style={{ minWidth: 80, fontSize: 12, color: '#9CA3AF', fontWeight: 500 }}>{ds}</div>
+                <div style={{ minWidth: 80, fontSize: 12, color: 'var(--text-subtle)', fontWeight: 500 }}>{ds}</div>
                 <div style={{ fontSize: 14, color, width: 16, textAlign: 'center' }}>{icon}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{lbl}</div>
-                  {ev.ph && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{ev.job.assigned_rep || ''}</div>}
-                  {isSchedItem && ev.si.notes && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{ev.si.notes}</div>}
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)' }}>{lbl}</div>
+                  {ev.ph && <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>{ev.job.assigned_rep || ''}</div>}
+                  {isSchedItem && ev.si.notes && <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>{ev.si.notes}</div>}
                 </div>
                 {!isSchedItem && (
                   <div style={{ fontSize: 11, padding: '3px 8px', borderRadius: 10, background: SC[ev.job.status] + '22', color: SC[ev.job.status], fontWeight: 600 }}>{ev.job.status}</div>
                 )}
                 {isSchedItem && (
-                  <div style={{ fontSize: 11, padding: '3px 8px', borderRadius: 10, background: '#FEF3C7', color: '#D97706', fontWeight: 600 }}>{ev.si.type.replace(/_/g, ' ')}</div>
+                  <div style={{ fontSize: 11, padding: '3px 8px', borderRadius: 10, background: 'var(--amber-bg)', color: '#D97706', fontWeight: 600 }}>{ev.si.type.replace(/_/g, ' ')}</div>
                 )}
               </div>
             );
@@ -215,10 +215,10 @@ export default function CalScr({ jobs, profile, onSelectJob }) {
       )}
 
       <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 11, color: '#9CA3AF' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: '#DBEAFE', border: '1px solid #93C5FD', borderRadius: 2, marginRight: 4 }}></span>Phase</div>
-        <div style={{ fontSize: 11, color: '#9CA3AF' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 2, marginRight: 4 }}></span>Event</div>
+        <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: '#DBEAFE', border: '1px solid #93C5FD', borderRadius: 2, marginRight: 4 }}></span>Phase</div>
+        <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--amber-bg)', border: '1px solid #FDE68A', borderRadius: 2, marginRight: 4 }}></span>Event</div>
         {Object.entries({ lead: 'Lead', active: 'Active', punch: 'Punch List', complete: 'Complete' }).map(([s, lb]) => (
-          <div key={s} style={{ fontSize: 11, color: '#9CA3AF' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: SC[s] + '33', border: '1px solid ' + SC[s], borderRadius: 2, marginRight: 4 }}></span>{lb}</div>
+          <div key={s} style={{ fontSize: 11, color: 'var(--text-subtle)' }}><span style={{ display: 'inline-block', width: 10, height: 10, background: SC[s] + '33', border: '1px solid ' + SC[s], borderRadius: 2, marginRight: 4 }}></span>{lb}</div>
         ))}
       </div>
 
@@ -374,14 +374,14 @@ function EventModal({ item, jobs, onClose, onSaved }) {
     <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 460 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#0A1F44' }}>{isNew ? 'Add Event' : 'Edit Event'}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy-900)' }}>{isNew ? 'Add Event' : 'Edit Event'}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
-        {err && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626', padding: '8px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>{err}</div>}
+        {err && <div style={{ background: 'var(--red-bg)', border: '1px solid #FECACA', color: 'var(--red-strong)', padding: '8px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>{err}</div>}
 
         {conflictWarning && (
-          <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', padding: '10px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>
+          <div style={{ background: 'var(--amber-bg)', border: '1px solid #FCD34D', color: 'var(--amber-text-strong)', padding: '10px 12px', fontSize: 12, marginBottom: 12, borderRadius: 4 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Scheduling conflict detected</div>
             {conflictWarning.conflicts.map((c, i) => (
               <div key={i} style={{ marginBottom: 2 }}>
@@ -443,9 +443,9 @@ function EventModal({ item, jobs, onClose, onSaved }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                 {invitees.map(inv => (
                   <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(10,31,68,0.05)', borderRadius: 6 }}>
-                    <span style={{ flex: 1, fontSize: 13, color: '#374151' }}>
+                    <span style={{ flex: 1, fontSize: 13, color: 'var(--text-secondary)' }}>
                       {inv.profile?.full_name || inv.profile?.email || 'Unknown'}
-                      {inv.profile?.role && <span style={{ marginLeft: 6, fontSize: 10, color: '#9CA3AF', textTransform: 'capitalize' }}>({inv.profile.role.replace(/_/g, ' ')})</span>}
+                      {inv.profile?.role && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-subtle)', textTransform: 'capitalize' }}>({inv.profile.role.replace(/_/g, ' ')})</span>}
                     </span>
                     <span style={{ fontSize: 10, textTransform: 'uppercase', color: inviteStatusColor(inv.status), fontWeight: 700 }}>{inv.status}</span>
                     <button onClick={() => removeInvitee(inv.id)} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px' }} title="Remove">×</button>
@@ -468,9 +468,9 @@ function EventModal({ item, jobs, onClose, onSaved }) {
         )}
 
         {leadWarn && (
-          <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 6, padding: '10px 14px', marginTop: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>Material lead-time warning</div>
-            <div style={{ fontSize: 12, color: '#92400E', marginBottom: 10 }}>{leadWarn.message}</div>
+          <div style={{ background: 'var(--amber-bg)', border: '1px solid #FCD34D', borderRadius: 6, padding: '10px 14px', marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--amber-text-strong)', marginBottom: 4 }}>Material lead-time warning</div>
+            <div style={{ fontSize: 12, color: 'var(--amber-text-strong)', marginBottom: 10 }}>{leadWarn.message}</div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setLeadWarn(null)} className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}>Cancel</button>
               <button onClick={() => save(conflictOverride, true)} className="btn btn-navy" style={{ fontSize: 12, padding: '4px 10px' }}>Override — I'll handle it</button>
@@ -481,7 +481,7 @@ function EventModal({ item, jobs, onClose, onSaved }) {
         <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', marginTop: 16, alignItems: 'center' }}>
           <div>
             {!isNew && (
-              <button onClick={handleDelete} disabled={deleting} style={{ background: 'none', border: '1px solid #FECACA', color: '#DC2626', borderRadius: 4, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+              <button onClick={handleDelete} disabled={deleting} style={{ background: 'none', border: '1px solid #FECACA', color: 'var(--red-strong)', borderRadius: 4, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
                 {deleting ? 'Deleting…' : 'Delete event'}
               </button>
             )}

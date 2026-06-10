@@ -9,8 +9,11 @@ const STATUS_LABEL = {
   in_progress: 'In Progress', final_touches: 'Final Touches',
 };
 const STATUS_DOT = {
-  lead: '#9CA3AF', proposal: '#C9A84C', contract: '#22c55e',
-  in_progress: '#0A1F44', final_touches: '#f59e0b',
+  lead:         'var(--text-subtle)',
+  proposal:     'var(--gold-500)',
+  contract:     'var(--green-dot)',
+  in_progress:  'var(--navy-900)',
+  final_touches: 'var(--amber-text)',
 };
 const TYPE_LABEL = {
   material_delivery: 'Delivery', sub_start: 'Sub Start', site_visit: 'Site Visit',
@@ -20,16 +23,16 @@ const TYPE_LABEL = {
 function SectionHeader({ title, count }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 17, color: '#0A1F44' }}>{title}</div>
+      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 17, color: 'var(--navy-900)' }}>{title}</div>
       {count != null && count > 0 && (
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', background: '#F3F0EB', borderRadius: 10, padding: '1px 7px' }}>{count}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', background: '#F3F0EB', borderRadius: 10, padding: '1px 7px' }}>{count}</span>
       )}
     </div>
   );
 }
 
 function EmptyState({ text }) {
-  return <div style={{ fontSize: 13, color: '#9CA3AF', padding: '10px 0 6px' }}>{text}</div>;
+  return <div style={{ fontSize: 13, color: 'var(--text-subtle)', padding: '10px 0 6px' }}>{text}</div>;
 }
 
 function formatSchedDate(dateStr) {
@@ -84,8 +87,8 @@ export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob, on
   const removeTodo = (id) => setTodos(p => p.filter(t => t.id !== id));
 
   const cardStyle = {
-    background: '#fff',
-    border: '1px solid #E8E4DC',
+    background: 'var(--card-bg)',
+    border: '1px solid var(--border)',
     borderRadius: 8,
     padding: '12px 14px',
   };
@@ -93,10 +96,10 @@ export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob, on
   return (
     <div style={{ padding: '0 0 calc(40px + env(safe-area-inset-bottom))' }}>
       <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid #F3F0EB' }}>
-        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#0A1F44', marginBottom: 2 }}>
+        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: 'var(--navy-900)', marginBottom: 2 }}>
           {greeting}, {firstName}.
         </div>
-        <div style={{ fontSize: 13, color: '#9CA3AF' }}>
+        <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>
           {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </div>
       </div>
@@ -175,21 +178,21 @@ export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob, on
                 <button key={j.id}
                   onClick={() => onOpenJob?.(j.id)}
                   style={{ ...cardStyle, cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s', width: '100%' }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = '#C9A84C'}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--gold-500)'}
                   onMouseLeave={e => e.currentTarget.style.borderColor = '#E8E4DC'}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)', marginBottom: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {j.address || '(No address)'}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{
                       width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                      background: STATUS_DOT[j.status] || '#9CA3AF',
+                      background: STATUS_DOT[j.status] || 'var(--text-subtle)',
                     }} />
-                    <span style={{ fontSize: 12, color: '#6B7280' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                       {STATUS_LABEL[j.status] || j.status}
                     </span>
                     {j.client_name && (
-                      <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-subtle)', marginLeft: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         · {j.client_name}
                       </span>
                     )}
@@ -204,35 +207,35 @@ export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob, on
         <div style={{ marginBottom: 28 }}>
           <SectionHeader title="This Week" count={schedItems.length} />
           {loadingSched ? (
-            <div style={{ fontSize: 13, color: '#9CA3AF' }}>Loading...</div>
+            <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>Loading...</div>
           ) : schedDates.length === 0 ? (
             <EmptyState text="Nothing scheduled for the next 7 days." />
           ) : (
             <div>
               {schedDates.map(date => (
                 <div key={date} style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
                     {date === '__nodate' ? 'No date' : formatSchedDate(date)}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {schedByDate[date].map(item => (
                       <div key={item.id} style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
                         {item.scheduled_time && (
-                          <div style={{ fontSize: 11, fontWeight: 600, color: '#C9A84C', minWidth: 38, flexShrink: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gold-500)', minWidth: 38, flexShrink: 0 }}>
                             {item.scheduled_time.slice(0, 5)}
                           </div>
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: '#0A1F44', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--navy-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {item.title}
                           </div>
                           {item.job?.address && (
-                            <div style={{ fontSize: 11, color: '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 11, color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {item.job.address}
                             </div>
                           )}
                         </div>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: '#9CA3AF', background: '#F7F5F0', borderRadius: 4, padding: '2px 6px', flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-subtle)', background: '#F7F5F0', borderRadius: 4, padding: '2px 6px', flexShrink: 0, textTransform: 'uppercase', letterSpacing: 0.4 }}>
                           {TYPE_LABEL[item.type] || item.type}
                         </span>
                       </div>
@@ -248,7 +251,7 @@ export default function HomeScr({ profile, jobs, setPendingAction, onOpenJob, on
         <div style={{ marginBottom: 28 }}>
           <SectionHeader title="Open To-dos" count={activeTodos.length} />
           {loadingTodos ? (
-            <div style={{ fontSize: 13, color: '#9CA3AF' }}>Loading...</div>
+            <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>Loading...</div>
           ) : activeTodos.length === 0 ? (
             <EmptyState text="All clear. Nothing needs your attention." />
           ) : (
