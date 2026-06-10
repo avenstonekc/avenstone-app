@@ -1,0 +1,86 @@
+/* ======================================================
+   AVENSTONE DESIGN TOKENS — single source of truth.
+   All colors, type, radii, shadows, spacing defined here.
+   Screens consume via var(). No raw values in components.
+   ====================================================== */
+:root {
+  /* ── NAVY RAMP ── */
+  --navy-950: #071628;
+  --navy-900: #0A1F44;    /* primary brand navy */
+  --navy-700: #0f2d5e;    /* hover */
+  --navy-600: #143870;
+  --navy-100: rgba(10, 31, 68, 0.08);
+  --navy-050: rgba(10, 31, 68, 0.04);
+
+  /* ── GOLD ── */
+  --gold-500: #C9A84C;
+  --gold-400: #d4af5a;    /* hover */
+  --gold-200: rgba(201, 168, 76, 0.20);
+  --gold-100: rgba(201, 168, 76, 0.10);
+  --gold-050: rgba(201, 168, 76, 0.05);
+
+  /* ── SURFACE / CREAM ── */
+  --bg:        #F7F5F0;
+  --bg-alt:    #F3F0E8;
+  --surface:   #FAFAF7;
+  --card-bg:   #ffffff;
+
+  /* ── BORDER ── */
+  --border:        #E8E4DC;
+  --border-strong: #D1C9B8;
+
+  /* ── TEXT ── */
+  --text-primary:   #0A1F44;
+  --text-secondary: #374151;
+  --text-muted:     #6B7280;
+  --text-subtle:    #9CA3AF;
+
+  /* ── STATUS TINTS ── */
+  /* Green */
+  --green-bg:     #D1FAE5;
+  --green-text:   #059669;
+  --green-dot:    #22c55e;
+
+  /* Amber — LOCKED (failed_intent signal, do not change) */
+  --amber-bg:     #FEF3C7;
+  --amber-border: #FCD34D;
+  --amber-text:   #f59e0b;
+
+  /* Red */
+  --red-bg:       #FEE2E2;
+  --red-text:     #EF4444;
+  --red-border:   #FECACA;
+
+  /* Blue */
+  --blue-bg:      #EFF6FF;
+  --blue-text:    #2563EB;
+
+  /* ── TYPOGRAPHY ── */
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+
+  /* ── RADIUS ── */
+  --r-xs:   4px;
+  --r-sm:   8px;
+  --r-md:   12px;
+  --r-lg:   16px;
+  --r-xl:   20px;
+  --r-full: 9999px;
+
+  /* ── SHADOWS ── */
+  --shadow-xs: 0 1px 3px rgba(10, 31, 68, 0.05);
+  --shadow-sm: 0 2px 8px rgba(10, 31, 68, 0.07);
+  --shadow-md: 0 4px 16px rgba(10, 31, 68, 0.10);
+  --shadow-lg: 0 8px 32px rgba(10, 31, 68, 0.14);
+
+  /* ── SPACING ── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+}

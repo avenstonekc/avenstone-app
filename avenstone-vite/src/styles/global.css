@@ -1,0 +1,106 @@
+/* ======================================================
+   AVENSTONE GLOBAL UTILITY CLASSES
+   All built on tokens. Add className, never duplicate.
+   ====================================================== */
+
+/* ── CARDS ── */
+.av-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Gold left-edge accent (stat cards, featured items) */
+.av-card--accent {
+  border-left: 3px solid var(--gold-500);
+}
+
+/* ── STAT PRIMITIVES ── */
+.av-stat-label {
+  font-size: 10px;
+  font-family: var(--font-body);
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.av-stat-value {
+  font-family: var(--font-display);
+  font-size: 36px;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.av-stat-value--gold {
+  color: var(--gold-500);
+}
+
+/* ── BADGES (pill, tinted) ── */
+.av-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  border-radius: var(--r-full);
+}
+
+.av-badge--green { background: var(--green-bg);  color: var(--green-text); }
+.av-badge--amber { background: var(--amber-bg);  color: var(--amber-text); } /* failed_intent — LOCKED */
+.av-badge--red   { background: var(--red-bg);    color: var(--red-text);   }
+.av-badge--blue  { background: var(--blue-bg);   color: var(--blue-text);  }
+.av-badge--navy  { background: var(--navy-100);  color: var(--text-primary); }
+.av-badge--gold  { background: var(--gold-200);  color: var(--gold-500);   }
+
+/* ── BUTTONS ── */
+.av-btn-primary {
+  background: var(--navy-900);
+  color: #fff;
+  border: none;
+  padding: 10px 22px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.av-btn-primary:hover { background: var(--navy-700); }
+
+.av-btn-gold {
+  background: var(--gold-500);
+  color: var(--navy-900);
+  border: none;
+  padding: 10px 22px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.av-btn-gold:hover { background: var(--gold-400); }
+
+/* ── SECTION TITLE (serif, navy) ── */
+.av-section-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.av-section-title--sm {
+  font-size: 17px;
+}
