@@ -1247,4 +1247,29 @@ ARCHITECTURE NOTES:
   6. CLAUDE_MEMORY Schema reality: added drift note for job_lidar_scans.scanner_version + pg_cron active jobs list.
   7. CLAUDE.md API Cost Rules: replaced stale "fires Opus narrative — DISABLED" with accurate "pure SQL (14 rules, zero model calls), no pg_cron schedule."
   8. ai-pm-nightly/index.ts: deleted dead AI_PM_URL constant; added DEAD SCHEMA comment block above Rules 9/10/11.
-- Open: None.
+
+[LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 1 — token layer locked, shared primitives restyled
+- Action: Audited styling architecture. Created token layer. Updated global classes. Restyled App.jsx bot-nav + TodoCard to consume tokens.
+- Commits: 10de4d9 (tokens+global+index.css), 9798340 (shared component restyle). Both pushed.
+- Files: avenstone-vite/src/styles/tokens.css (NEW), avenstone-vite/src/styles/global.css (NEW), avenstone-vite/src/index.css, avenstone-vite/src/App.jsx, avenstone-vite/src/components/common/TodoCard.jsx
+
+AUDIT FINDINGS:
+- Single CSS file (index.css, 181 lines), no prior token layer, no styles/ directory — everything hardcoded.
+- Inline style bypass: 4,597 instances total (4,558 across 112 component files + 39 in App.jsx)
+- Top 5 worst files: ClientPortal.jsx (259), SubInvoicesSection.jsx (164), FloorPlanEditorScr.jsx (148), SubJobView.jsx (128), ScheduleTab.jsx (108)
+- Shared CSS classes that exist: .stat/.stat-lbl/.stat-val, .badge/.bdot, .btn/.btn-navy/.btn-gold, .card, .modal/.overlay, .sec-hd h2, .jcard, .tbl, .finp — but NO CSS vars and NO radius/shadow on any card class
+- Auto-update estimate: ~25-30% auto-update from token var changes. ~70-75% needs manual sweep per-screen.
+
+WHAT SHIPPED:
+- tokens.css: full CSS custom property system — navy ramp, gold, cream, border, text, 5 status tints (amber LOCKED at FEF3C7/FCD34D), font-display/font-body, radius scale, shadow scale, spacing scale
+- global.css: .av-card, .av-card--accent, .av-stat-label/value, .av-badge + 6 variants, .av-btn-primary/gold, .av-section-title
+- index.css: all existing classes consume CSS vars. Added radius+shadow to .card (r-lg), .stat (r-md), .jcard (r-md), .btn (r-sm), .modal (r-md), .badge (r-full).
+- TodoCard.jsx: inline hex values → CSS var() refs. Amber GUARDRAIL intact (FEF3C7/FCD34D unchanged, now via --amber-bg/--amber-border consts).
+- App.jsx bot-nav: .bn-icon className replaces per-item inline color.
+
+REMAINING SWEEP BATCHES (next slices):
+- Slice 2 (jobs tabs): EstimateTab, FinancialsTab, InfoTab, ConsultationTab, ComposeDrawScr, SubsTab, FilesTab, LogsTab, ScheduleTab, PaymentScheduleTab, InvoicesSubTab, ScopeTab, MaterialsTab, NotesPhotosTab
+- Slice 3 (job screens): JobsScr, JobDet, ProjectsListScr, ProjectDetailHeader, PhaseAdvanceCard, PlaybookChecklist
+- Slice 4 (portals): ClientPortal, SubPortal, SubJobView, SubOnboardingWizard, OwnerHomeScr, OwnerPortal
+- Slice 5 (AI + dashboard + modals): MasterAgent, AiFieldAgent, DashScr, Reports, CalScr, HomeScr, all modals/
+- Slice 6 (admin + public + ai/): BugReportsScr, CompanyFilesScr, SequencesScr, LeadsScr, FloorPlanEditorScr, all ai/ components
