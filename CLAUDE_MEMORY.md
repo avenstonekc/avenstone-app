@@ -102,7 +102,9 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 *Outstanding decisions or deferred work — do not assume resolved.*
 
-**TEST_DATA_NONUUID** — job `123 Test Flow Dr, Kansas City MO 64101` has `id='test-flow-001'` (non-UUID primary key). Any UUID-typed FK writer (todos, notifications, etc.) will fail with "invalid input syntax for type uuid". vigilance-runner handles it gracefully per-job, but it's a landmine for any future FK writer. Delete or re-key this test job in a cleanup slice before it causes a silent miss in a real detection path.
+~~**TEST_DATA_NONUUID**~~ — CLOSED 2026-06-10. Deleted via migration 20260610190000. See LOG.
+
+**SCHEMA_SMELL_JOBS_ID_TEXT** — `jobs.id` is typed as `text`, not `uuid`. The column accepted `test-flow-001` because text has no UUID format constraint. Any FK writer that casts `job_id::uuid` will fail on text-id rows. Low risk now (all remaining jobs have UUID strings). Evaluate migration to `uuid` type during Model B white-label work — not urgent, but should happen before a second tenant is onboarded.
 
 **Future arcs (named, sequenced — each needs a blueprint MD before building):**
 - `SUB_WORKFLOW_ARC.md` — daily logs, progress photos tied to phases, in-app payment requests + lien waivers, schedule conflict surfacing, sub availability calendar, multi-job dashboard. Sub portal is half-blind to field reality without subs engaged daily.
@@ -1470,5 +1472,30 @@ Total remaining hex literals across src/: 2233.
 - Files deleted: supabase/functions/ai-pm-nightly/index.ts, .github/workflows/nightly-pm.yml
 - Files modified: avenstone-vite/src/App.jsx (removed fetch call + import), avenstone-vite/src/lib/supabase.js (removed AI_PM_NIGHTLY_URL), CLAUDE.md (3 refs), CLAUDE_MEMORY.md (purged AI_PM_LEGACY_RULES open item, drift refs, slug index), ANTI_SURPRISE_ENGINE_ARC.md (retirement note + Phase 5 updated), TODO_NOTIFICATIONS_ARC.md, AGENT_AUDIT.md, AVENSTONE_VISION.md
 - Final grep (non-CLAUDE_ARCHIVE, non-retirement-notes): CLEAN — only historical LOG entries in CLAUDE_MEMORY.md and retirement context notes in ANTI_SURPRISE_ENGINE_ARC.md/AGENT_AUDIT.md/AVENSTONE_VISION.md remain.
-- Open: TEST_DATA_NONUUID open item added (job 'test-flow-001' non-UUID PK).
+- Open: TEST_DATA_NONUUID open item added (job 'test-flow-001' non-UUID PK). [CLOSED 2026-06-10 — see LOG below]
 - Open: AiPmDashboard.jsx still hard-filters to the 6 original PM_TYPES — will render vigilance-runner notifications correctly since vigilance-runner writes byte-identical type strings.
+
+[LOG - 2026-06-10] TEST_DATA_NONUUID — deleted test job test-flow-001 and all references
+- Action: Audited 52 tables, deleted across 24 of them, verified all zero, confirmed vigilance-runner FK error resolved.
+- Migration: 20260610190000_delete_test_flow_001.sql. Commit: 87b09e4. Pushed.
+
+AUDIT FINDINGS (pre-deletion counts):
+- jobs.id is TEXT not UUID (schema finding). Non-UUID value 'test-flow-001' was valid in the text column.
+- change_orders:4  consultation_sessions:16  consultation_extractions:1  consultation_measurements:2  consultation_gap_analyses:2
+- daily_logs:5  draw_schedules:2  estimate_line_items:5  floor_plans:2  invoice_line_items:2  invoices:2
+- job_ai_companions:2  job_files:59  job_lidar_scans:42  job_phases:10  job_sub_engagements:1  job_transactions:33
+- notifications:109  oh_shit_moments:10  photos:14  schedule_change_log:1  schedule_items:3
+- sub_invoice_payments:1  sub_invoices:1  todos:6
+
+DELETION: All children deleted in dependency order (grandchildren first, jobs row last). Single transaction, all 24 tables confirmed zero after apply.
+
+VIGILANCE RUNNER RESULT: 4 jobs processed (was 5), zero FK errors. test-flow-001 FK failure from smoke test is gone.
+
+ORPHANED STORAGE (job-documents and job-photos buckets — rows deleted, objects NOT touched):
+- 59 job_files rows with storage_path prefix 'test-flow-001/' (37 floor-plan PDFs, 14 photos, 8 receipts)
+- 2 floor_plans rows with storage_path under tenant UUID path (00000000-.../4b77bd71.../v2.pdf, .../86900098.../v1.pdf)
+- 2 job_files rows with corrupted path 'null/...' (not deleteable by path — would require manual bucket sweep)
+- 42 job_lidar_scans rows — no storage_path column on that table (binary data inline or not stored)
+- Storage objects are orphaned but harmless; can be swept via Supabase storage UI when needed.
+
+SCHEMA SMELL ADDED TO OPEN ITEMS: jobs.id is TEXT not UUID — evaluate migration to uuid during Model B.
