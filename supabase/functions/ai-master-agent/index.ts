@@ -916,9 +916,9 @@ async function executeTool(
         }
         if (!gjfJobId) return { error: "Provide job_id or job_name." };
 
-        // 2. Load job metadata
+        // 2. Load job metadata (pm_fee required for projected_profit parity with Financials tab)
         const { data: gjfJob } = await sb.from("jobs")
-          .select("address, cost_plus, contract_value, co_total, labor_markup_pct, material_markup_pct")
+          .select("address, cost_plus, contract_value, co_total, labor_markup_pct, material_markup_pct, pm_fee")
           .eq("id", gjfJobId).eq("tenant_id", tenantId).single();
         if (!gjfJob) return { error: "Job not found." };
 
@@ -926,8 +926,9 @@ async function executeTool(
         const gjfCostPlus = (gjfJob as any).cost_plus === true;
         const gjfCV  = Number((gjfJob as any).contract_value || 0);
         const gjfCO  = Number((gjfJob as any).co_total || 0);
-        const gjfLP  = Number((gjfJob as any).labor_markup_pct || 0);
-        const gjfMP  = Number((gjfJob as any).material_markup_pct || 0);
+        const gjfLP    = Number((gjfJob as any).labor_markup_pct || 0);
+        const gjfMP    = Number((gjfJob as any).material_markup_pct || 0);
+        const gjfPMFee = Number((gjfJob as any).pm_fee || 0);
 
         // 3. Load transactions (all non-void)
         const { data: gjfTxs } = await sb.from("job_transactions")
@@ -961,6 +962,8 @@ async function executeTool(
             const rate = GJF_LABOR_TYPES.has(t.type) ? gjfLP : gjfMP;
             return sum + Number(t.amount || 0) * rate / 100;
           }, 0));
+          // projected_profit = markup + PM fee — matches the Financials tab Projected Profit card exactly
+          const projected_profit = gjfR2(projected_markup + gjfPMFee);
           const { data: retainRows } = await sb.from("draw_schedules")
             .select("retainage_held").eq("job_id", gjfJobId).neq("status", "voided");
           const retainage_held = gjfR2((retainRows || []).reduce((s: number, d: any) => s + Number(d.retainage_held || 0), 0));
@@ -971,7 +974,9 @@ async function executeTool(
             paid_out: total_out,
             outstanding_pending,
             retainage_held,
-            projected_markup,
+            projected_profit,   // headline — matches the Financials tab card (markup + PM fee)
+            projected_markup,   // sub-field: cost markup earned
+            pm_fee: gjfPMFee,   // sub-field: PM fee component
             bucket_balance,
             ...(bucket_balance >= 0
               ? { bucket_credit: bucket_balance, note: "client has prepaid credit" }
@@ -2387,6 +2392,7 @@ async function runAgentLoop(
   maxIterations = 3,
   contextJobId = "",
   contextJobLabel = "",
+  contextScreen = "",   // lightweight screen context — injected as first message, not in cached prefix
 ): Promise<{
   response: string;
   actions: Array<{ tool: string; input: unknown; result: unknown }>;
@@ -2395,14 +2401,11 @@ async function runAgentLoop(
 }> {
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-  const contextLine = contextJobId
-    ? `\nContext job: ${contextJobLabel || contextJobId} (id: ${contextJobId})`
-    : "";
   const systemPrompt = `You are the Avenstone Master Agent — the AI that controls the entire Avenstone construction management platform. You have direct access to the database and take real actions, not suggestions.
 
 User: ${userName} (${userRole})
 Today: ${today}
-Tenant: ${tenantId}${contextLine}
+Tenant: ${tenantId}
 
 WHAT YOU CAN DO:
 - Read: jobs, team, job financials, schedule, open todos, alerts
@@ -2426,7 +2429,7 @@ HOW TO BEHAVE:
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: do NOT pass override_reason. Just call the tool with the job_id. If gates fail, the system surfaces a gate-resolution card automatically (redirect to Schedule / leave open / override-with-structured-reason). Do not ask in text whether to override — the card IS the prompt.
 - TODO vs NOTE: an action item ("call back X", "follow up", "remind me", "don't forget", "schedule Y", "todo") goes to add_todo. Passive context attached to a job ("FYI…", "the client said…", "noted that…", "for the record…") goes to add_note. When in doubt and the user said "todo", pick add_todo. After writing a todo, the success message should say "Todo added" — never "Note added."
-- If a context job is set (shown in the header above), treat it as the implicit default job for any tool that needs a job_id, unless the user explicitly names a different job. The system pre-fills job_id automatically — do not ask for it when context is set.
+- If a context job is set (shown in the opening [Context] message), treat it as the implicit default job for any tool that needs a job_id, unless the user explicitly names a different job. The system pre-fills job_id automatically — do not ask for it when context is set. When resolving "this job" / "here" / no job ref, always use the context job.
 - Never mention Claude or Anthropic.
 - You are the operating system of this business. Act like it.
 
@@ -2507,7 +2510,13 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
 6. Default to underconfidence. A finding labeled "I think this might be a duplicate" is more useful than a confident-sounding "duplicate detected" that turns out to be legitimate workflow.`;
 
   const actions: Array<{ tool: string; input: unknown; result: unknown }> = [];
-  let currentMessages = [...messages];
+
+  // Prepend screen context as first message — replaces system-prompt contextLine.
+  // Refreshed per request (not accumulated); does not touch the system+tools cache breakpoint.
+  const ctxLabel = contextScreen || (contextJobLabel ? `Viewing job: ${contextJobLabel}` : "");
+  let currentMessages: Array<{ role: string; content: unknown }> = ctxLabel
+    ? [{ role: "user", content: `[Context] ${ctxLabel}` }, ...messages]
+    : [...messages];
 
   for (let i = 0; i < maxIterations; i++) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -2549,15 +2558,25 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
       // Must happen before validateRequiredFields AND executeTool/confirmBlock so all
       // three paths (elicitation skip, confirm card, executor) see the same filled input.
       // add_todo has no job_id field spec → correctly skipped (job-less todos valid).
+      // Read tools (no REQUIRED_FIELDS entry) also get job_id pre-filled when context is set.
+      const READ_CTX_TOOLS = new Set(["get_job_financials", "get_schedule"]);
       if (contextJobId) {
         for (const block of blocks) {
           if (block.type === "tool_use" && block.name && block.id) {
+            // Write tools — REQUIRED_FIELDS-driven pre-fill
             const fieldSpec = REQUIRED_FIELDS[block.name];
             if (
               fieldSpec?.some((f) => f.field === "job_id" && f.dynamic_options === "active_jobs") &&
               isMissing((block.input || {} as any).job_id)
             ) {
               block.input = { ...(block.input || {}), job_id: contextJobId };
+            }
+            // Read tools — inject job_id when no job_id AND no job_name given
+            if (READ_CTX_TOOLS.has(block.name)) {
+              const inp = (block.input || {}) as any;
+              if (!inp.job_id && !inp.job_name) {
+                block.input = { ...inp, job_id: contextJobId };
+              }
             }
           }
         }
@@ -2793,7 +2812,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { user_id, tenant_id, role, full_name, message, conversation_history, pending_action, confirmed, card_response, context_job_id } = await req.json();
+    const { user_id, tenant_id, role, full_name, message, conversation_history, pending_action, confirmed, card_response, context_job_id, context_screen } = await req.json();
 
     if (!user_id || !tenant_id) {
       return new Response(JSON.stringify({ error: "Missing user_id or tenant_id" }), {
@@ -2909,9 +2928,10 @@ Deno.serve(async (req) => {
           { headers: { ...CORS, "Content-Type": "application/json" } });
       }
 
+      const ctxScreenStr = context_screen ? String(context_screen) : (ctxJobLabel ? `Viewing: ${ctxJobLabel}` : "");
       const history = (conversation_history || []).slice(-20);
       const { response, actions, pending_action: pa, pending_card: pc } = await runAgentLoop(
-        sb, tenant_id, user_id, role || "owner", full_name || "User", history, 3, ctxJobId, ctxJobLabel,
+        sb, tenant_id, user_id, role || "owner", full_name || "User", history, 3, ctxJobId, ctxJobLabel, ctxScreenStr,
       );
       return new Response(
         JSON.stringify({ response, actions, pending_action: pa, pending_card: pc }),
@@ -2937,8 +2957,9 @@ Deno.serve(async (req) => {
       { role: "user", content: message },
     ];
 
+    const ctxScreenFinal = context_screen ? String(context_screen) : (ctxJobLabel ? `Viewing: ${ctxJobLabel}` : "");
     const { response, actions, pending_action: pa, pending_card: pc } = await runAgentLoop(
-      sb, tenant_id, user_id, role || "owner", full_name || "User", messages, 3, ctxJobId, ctxJobLabel,
+      sb, tenant_id, user_id, role || "owner", full_name || "User", messages, 3, ctxJobId, ctxJobLabel, ctxScreenFinal,
     );
 
     return new Response(
