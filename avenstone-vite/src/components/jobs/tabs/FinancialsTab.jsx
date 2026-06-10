@@ -20,7 +20,7 @@ const TYPE_LABELS = {
   labor: 'Labor', other_expense: 'Other Expense', other_income: 'Other Income',
 };
 
-const STATUS_COLOR = { paid: '#22c55e', pending: '#f59e0b', overdue: '#ef4444', void: '#9CA3AF', draft: '#9CA3AF', refunded: '#8b5cf6' };
+const STATUS_COLOR = { paid: 'var(--green-dot)', pending: '#f59e0b', overdue: 'var(--red-text)', void: 'var(--text-subtle)', draft: 'var(--text-subtle)', refunded: '#8b5cf6' };
 
 // Fraction of contract value in unreimbursed costs that triggers a draw-request nudge (passive banner).
 // Overridable at the job level in the future; currently a module constant.
@@ -212,8 +212,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
         {SUB_TABS.map(t => (
           <button key={t.id} onClick={() => setSub(t.id)} style={{
             padding: '8px 14px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
-            background: 'none', borderBottom: `2px solid ${sub === t.id ? '#C9A84C' : 'transparent'}`,
-            marginBottom: -2, color: sub === t.id ? '#0A1F44' : '#9CA3AF', transition: 'color 0.15s',
+            background: 'none', borderBottom: `2px solid ${sub === t.id ? 'var(--gold-500)' : 'transparent'}`,
+            marginBottom: -2, color: sub === t.id ? 'var(--navy-900)' : 'var(--text-subtle)', transition: 'color 0.15s',
             whiteSpace: 'nowrap', flexShrink: 0,
           }}>
             {t.id === 'co' && mob ? 'COs' : t.lb}{t.id === 'ledger' && lienCount > 0 ? ` ⚠ ${lienCount}` : ''}
@@ -229,7 +229,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
         <div>
           <PaymentScheduleTab job={job} profile={profile} />
           <div style={{ borderTop: '2px solid #E8E4DC', margin: '28px 0 20px' }} />
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: '#0A1F44', marginBottom: 14 }}>Invoices</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--navy-900)', marginBottom: 14 }}>Invoices</div>
           <InvoicesSubTab job={job} profile={profile} />
         </div>
       )}
@@ -241,12 +241,12 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
       {sub === 'budget' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-            <button onClick={() => setLiModal({ mode: 'create', item: {} })} style={{ fontSize: 12, padding: '6px 14px', background: '#0A1F44', color: '#C9A84C', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>+ Add Line Item</button>
+            <button onClick={() => setLiModal({ mode: 'create', item: {} })} style={{ fontSize: 12, padding: '6px 14px', background: 'var(--navy-900)', color: 'var(--gold-500)', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>+ Add Line Item</button>
           </div>
           {budgetLoading ? (
-            <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>
+            <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)' }}>Loading...</div>
           ) : !lineItems.length ? (
-            <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>
+            <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>
               No budget line items yet — generate an estimate or tap + Add Line Item
             </div>
           ) : (() => {
@@ -256,15 +256,15 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             const statusPill = (budget, actual) => {
               if (!budget) return null;
               const pct = actual / budget;
-              if (pct > 1.10) return { label: 'Over', bg: '#FEE2E2', color: '#991b1b' };
-              if (pct >= 0.90) return { label: 'On Track', bg: '#D1FAE5', color: '#065f46' };
+              if (pct > 1.10) return { label: 'Over', bg: 'var(--red-bg)', color: '#991b1b' };
+              if (pct >= 0.90) return { label: 'On Track', bg: 'var(--green-bg)', color: '#065f46' };
               return { label: 'Under', bg: '#DBEAFE', color: '#1e40af' };
             };
             return (
               <>
                 {/* Desktop table */}
                 {!mob && <div className="budget-desktop">
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px 80px', gap: 8, padding: '6px 10px', background: '#0A1F44', borderRadius: '6px 6px 0 0', fontSize: 10, fontWeight: 700, color: '#C9A84C', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px 80px', gap: 8, padding: '6px 10px', background: 'var(--navy-900)', borderRadius: '6px 6px 0 0', fontSize: 10, fontWeight: 700, color: 'var(--gold-500)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     {['Line Item', 'Budget', 'Actual', 'Variance', '% Budg', 'Status'].map(h => <div key={h}>{h}</div>)}
                   </div>
                   {lineItems.map(li => {
@@ -276,22 +276,22 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                     return (
                       <div key={li.id} onClick={() => setLiModal({ mode: 'edit', item: li })} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px 80px', gap: 8, padding: '8px 10px', borderBottom: '1px solid #F3F0EB', fontSize: 13, cursor: 'pointer', alignItems: 'center' }}>
                         <div>
-                          <div style={{ fontWeight: 600, color: '#0A1F44' }}>{li.description}</div>
-                          {li.phase && <div style={{ fontSize: 10, color: '#9CA3AF' }}>{li.phase}{li.trade ? ` · ${li.trade}` : ''}</div>}
+                          <div style={{ fontWeight: 600, color: 'var(--navy-900)' }}>{li.description}</div>
+                          {li.phase && <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{li.phase}{li.trade ? ` · ${li.trade}` : ''}</div>}
                         </div>
-                        <div style={{ color: '#0A1F44', fontWeight: 500 }}>{f$(budget)}</div>
-                        <div style={{ color: actual > 0 ? '#ef4444' : '#9CA3AF', fontWeight: 500 }}>{actual > 0 ? f$(actual) : '—'}</div>
-                        <div style={{ color: variance < 0 ? '#ef4444' : '#22c55e', fontWeight: 600 }}>{actual > 0 ? (variance < 0 ? `-${f$(Math.abs(variance))}` : f$(variance)) : '—'}</div>
-                        <div style={{ color: '#6B7280' }}>{actual > 0 ? `${pctOfBudget}%` : '—'}</div>
+                        <div style={{ color: 'var(--navy-900)', fontWeight: 500 }}>{f$(budget)}</div>
+                        <div style={{ color: actual > 0 ? 'var(--red-text)' : 'var(--text-subtle)', fontWeight: 500 }}>{actual > 0 ? f$(actual) : '—'}</div>
+                        <div style={{ color: variance < 0 ? 'var(--red-text)' : 'var(--green-dot)', fontWeight: 600 }}>{actual > 0 ? (variance < 0 ? `-${f$(Math.abs(variance))}` : f$(variance)) : '—'}</div>
+                        <div style={{ color: 'var(--text-muted)' }}>{actual > 0 ? `${pctOfBudget}%` : '—'}</div>
                         <div>{pill && <span style={{ background: pill.bg, color: pill.color, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>{pill.label}</span>}</div>
                       </div>
                     );
                   })}
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px 80px', gap: 8, padding: '10px', background: '#F7F5F0', borderTop: '2px solid #E8E4DC', fontSize: 13, fontWeight: 700 }}>
-                    <div style={{ color: '#0A1F44' }}>Total</div>
-                    <div style={{ color: '#0A1F44' }}>{f$(totalBudget)}</div>
-                    <div style={{ color: totalActual > 0 ? '#ef4444' : '#9CA3AF' }}>{totalActual > 0 ? f$(totalActual) : '—'}</div>
-                    <div style={{ color: totalVariance < 0 ? '#ef4444' : '#22c55e' }}>{totalActual > 0 ? (totalVariance < 0 ? `-${f$(Math.abs(totalVariance))}` : f$(totalVariance)) : '—'}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px 80px', gap: 8, padding: '10px', background: 'var(--bg)', borderTop: '2px solid #E8E4DC', fontSize: 13, fontWeight: 700 }}>
+                    <div style={{ color: 'var(--navy-900)' }}>Total</div>
+                    <div style={{ color: 'var(--navy-900)' }}>{f$(totalBudget)}</div>
+                    <div style={{ color: totalActual > 0 ? 'var(--red-text)' : 'var(--text-subtle)' }}>{totalActual > 0 ? f$(totalActual) : '—'}</div>
+                    <div style={{ color: totalVariance < 0 ? 'var(--red-text)' : 'var(--green-dot)' }}>{totalActual > 0 ? (totalVariance < 0 ? `-${f$(Math.abs(totalVariance))}` : f$(totalVariance)) : '—'}</div>
                     <div /><div />
                   </div>
                 </div>}
@@ -306,15 +306,15 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                       <div key={li.id} onClick={() => setLiModal({ mode: 'edit', item: li })} style={{ background: '#fff', border: '1px solid #E8E4DC', borderRadius: 8, padding: '12px 14px', cursor: 'pointer' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                           <div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44' }}>{li.description}</div>
-                            {li.phase && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{li.phase}{li.trade ? ` · ${li.trade}` : ''}</div>}
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)' }}>{li.description}</div>
+                            {li.phase && <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>{li.phase}{li.trade ? ` · ${li.trade}` : ''}</div>}
                           </div>
                           {pill && <span style={{ background: pill.bg, color: pill.color, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{pill.label}</span>}
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 8 }}>
-                          {[['Budget', f$(budget), '#0A1F44'], ['Actual', actual > 0 ? f$(actual) : '—', '#ef4444'], ['Variance', actual > 0 ? (variance < 0 ? `-${f$(Math.abs(variance))}` : f$(variance)) : '—', variance < 0 ? '#ef4444' : '#22c55e']].map(([lb, val, c]) => (
+                          {[['Budget', f$(budget), 'var(--navy-900)'], ['Actual', actual > 0 ? f$(actual) : '—', 'var(--red-text)'], ['Variance', actual > 0 ? (variance < 0 ? `-${f$(Math.abs(variance))}` : f$(variance)) : '—', variance < 0 ? 'var(--red-text)' : 'var(--green-dot)']].map(([lb, val, c]) => (
                             <div key={lb} style={{ textAlign: 'center' }}>
-                              <div style={{ fontSize: 9, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{lb}</div>
+                              <div style={{ fontSize: 9, color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{lb}</div>
                               <div style={{ fontSize: 13, fontWeight: 700, color: c }}>{val}</div>
                             </div>
                           ))}
@@ -323,10 +323,10 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                     );
                   })}
                   {lineItems.length > 0 && (
-                    <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 8, padding: '10px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                      {[['Total Budget', f$(totalBudget), '#0A1F44'], ['Total Actual', totalActual > 0 ? f$(totalActual) : '—', '#ef4444'], ['Remaining', totalActual > 0 ? (totalVariance < 0 ? `-${f$(Math.abs(totalVariance))}` : f$(totalVariance)) : '—', totalVariance < 0 ? '#ef4444' : '#22c55e']].map(([lb, val, c]) => (
+                    <div style={{ background: 'var(--bg)', border: '1px solid #E8E4DC', borderRadius: 8, padding: '10px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                      {[['Total Budget', f$(totalBudget), 'var(--navy-900)'], ['Total Actual', totalActual > 0 ? f$(totalActual) : '—', 'var(--red-text)'], ['Remaining', totalActual > 0 ? (totalVariance < 0 ? `-${f$(Math.abs(totalVariance))}` : f$(totalVariance)) : '—', totalVariance < 0 ? 'var(--red-text)' : 'var(--green-dot)']].map(([lb, val, c]) => (
                         <div key={lb} style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: 9, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{lb}</div>
+                          <div style={{ fontSize: 9, color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{lb}</div>
                           <div style={{ fontSize: 13, fontWeight: 700, color: c }}>{val}</div>
                         </div>
                       ))}
@@ -357,39 +357,39 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             const isCostPlus = job?.cost_plus === true && summary.received !== undefined;
             const cpBucketBalance = summary.bucket_balance ?? 0;
             const cpStats = [
-              { lb: 'Contract (signed)', v: f$(job.contract_value || 0), c: '#0A1F44', bold: true,
+              { lb: 'Contract (signed)', v: f$(job.contract_value || 0), c: 'var(--navy-900)', bold: true,
                 note: summary.projected_final_bill != null
                   ? `${f$(summary.projected_final_bill)} projected · ${f$(Math.abs(summary.contract_variance ?? 0))} ${(summary.contract_variance ?? 0) >= 0 ? 'under' : 'over'}`
                   : `actuals + ${job.labor_markup_pct ?? 25}% markup determine final billing`,
                 noteColor: summary.projected_final_bill != null
-                  ? ((summary.contract_variance ?? 0) >= 0 ? '#22c55e' : '#ef4444')
+                  ? ((summary.contract_variance ?? 0) >= 0 ? 'var(--green-dot)' : 'var(--red-text)')
                   : undefined },
-              { lb: 'Received',          v: f$(summary.received ?? summary.total_in), c: (summary.received ?? summary.total_in) > 0 ? '#22c55e' : '#9CA3AF' },
-              { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? '#ef4444' : '#9CA3AF' },
+              { lb: 'Received',          v: f$(summary.received ?? summary.total_in), c: (summary.received ?? summary.total_in) > 0 ? 'var(--green-dot)' : 'var(--text-subtle)' },
+              { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? 'var(--red-text)' : 'var(--text-subtle)' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: '#b45309', note: 'approved sub invoices unpaid' }] : []),
               ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: '#b45309', note: 'released at final draw' }] : []),
-              { lb: 'Projected Profit',  v: f$(summary.projected_profit), c: summary.projected_profit > 0 ? '#22c55e' : '#9CA3AF', note: `${summary.margin_pct ?? 0}% margin · +${f$(summary.pm_fee ?? 0)} PM` },
+              { lb: 'Projected Profit',  v: f$(summary.projected_profit), c: summary.projected_profit > 0 ? 'var(--green-dot)' : 'var(--text-subtle)', note: `${summary.margin_pct ?? 0}% margin · +${f$(summary.pm_fee ?? 0)} PM` },
               ...(cpBucketBalance >= 0
-                ? [{ lb: 'Bucket Credit', v: f$(cpBucketBalance), c: '#22c55e', note: 'client prepaid balance' }]
-                : [{ lb: 'Client Owes',   v: f$(Math.abs(cpBucketBalance)), c: '#ef4444', note: 'request a draw' }]
+                ? [{ lb: 'Bucket Credit', v: f$(cpBucketBalance), c: 'var(--green-dot)', note: 'client prepaid balance' }]
+                : [{ lb: 'Client Owes',   v: f$(Math.abs(cpBucketBalance)), c: 'var(--red-text)', note: 'request a draw' }]
               ),
             ];
             const stats = isCostPlus
               ? cpStats
               : [
-                  { lb: 'Contract',    v: f$(summary.contract_total),                                     c: '#0A1F44',  bold: true },
-                  { lb: 'Received',    v: f$(summary.total_in),                                           c: summary.total_in > 0 ? '#22c55e' : '#9CA3AF' },
-                  { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),        c: owes < 0 ? '#22c55e' : owes > 0 ? '#C9A84C' : '#9CA3AF' },
-                  { lb: 'Pending Out', v: f$(summary.pending_out),                                        c: summary.pending_out > 0 ? '#b45309' : '#9CA3AF' },
-                  { lb: 'Paid Out',    v: f$(summary.total_out),                                          c: summary.total_out > 0 ? '#ef4444' : '#9CA3AF' },
+                  { lb: 'Contract',    v: f$(summary.contract_total),                                     c: 'var(--navy-900)',  bold: true },
+                  { lb: 'Received',    v: f$(summary.total_in),                                           c: summary.total_in > 0 ? 'var(--green-dot)' : 'var(--text-subtle)' },
+                  { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),        c: owes < 0 ? 'var(--green-dot)' : owes > 0 ? 'var(--gold-500)' : 'var(--text-subtle)' },
+                  { lb: 'Pending Out', v: f$(summary.pending_out),                                        c: summary.pending_out > 0 ? '#b45309' : 'var(--text-subtle)' },
+                  { lb: 'Paid Out',    v: f$(summary.total_out),                                          c: summary.total_out > 0 ? 'var(--red-text)' : 'var(--text-subtle)' },
                 ];
             return (
               <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
                 {stats.map(({ lb, v, c, bold, note, noteColor }) => (
                   <div key={lb} style={{ flex: 1, minWidth: 90, background: '#fff', border: '1px solid #E8E4DC', padding: '10px 14px', borderRadius: 6 }}>
-                    <div style={{ fontSize: 10, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{lb}</div>
-                    <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 16, color: c, fontWeight: bold ? 700 : 400 }}>{v}</div>
-                    {note && <div style={{ fontSize: 9, color: noteColor || '#9CA3AF', marginTop: 3, lineHeight: 1.3 }}>{note}</div>}
+                    <div style={{ fontSize: 10, color: 'var(--text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{lb}</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: c, fontWeight: bold ? 700 : 400 }}>{v}</div>
+                    {note && <div style={{ fontSize: 9, color: noteColor || 'var(--text-subtle)', marginTop: 3, lineHeight: 1.3 }}>{note}</div>}
                   </div>
                 ))}
               </div>
@@ -403,7 +403,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             if (unreimb < DRAW_NUDGE_THRESHOLD * cv) return null;
             const pct = cv > 0 ? Math.round(unreimb / cv * 100) : 0;
             return (
-              <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderLeft: '4px solid #F59E0B', borderRadius: 8, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ background: 'var(--amber-bg)', border: '1px solid #FCD34D', borderLeft: '4px solid #F59E0B', borderRadius: 8, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>Consider composing a draw</div>
                   <div style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>
@@ -427,29 +427,29 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
           {/* Filters + Add */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             {[{ id: 'all', lb: 'All' }, { id: 'in', lb: '↑ Income' }, { id: 'out', lb: '↓ Expense' }].map(f => (
-              <button key={f.id} onClick={() => setFilterDir(f.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: filterDir === f.id ? '#0A1F44' : '#E8E4DC', background: filterDir === f.id ? '#0A1F44' : '#fff', color: filterDir === f.id ? '#fff' : '#6B7280', cursor: 'pointer', fontWeight: 500 }}>{f.lb}</button>
+              <button key={f.id} onClick={() => setFilterDir(f.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: filterDir === f.id ? 'var(--navy-900)' : 'var(--border)', background: filterDir === f.id ? 'var(--navy-900)' : '#fff', color: filterDir === f.id ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 500 }}>{f.lb}</button>
             ))}
-            <div style={{ width: 1, height: 18, background: '#E8E4DC' }} />
+            <div style={{ width: 1, height: 18, background: 'var(--border)' }} />
             {[
               { id: 'all', lb: 'Any Status' },
               { id: 'pending', lb: 'Pending' },
               { id: 'paid', lb: 'Paid' },
               { id: 'lien_due', lb: `Lien Due${lienCount ? ` (${lienCount})` : ''}` },
             ].map(f => (
-              <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: filterStatus === f.id ? '#C9A84C' : '#E8E4DC', background: filterStatus === f.id ? '#C9A84C22' : '#fff', color: filterStatus === f.id ? '#92400e' : '#6B7280', cursor: 'pointer', fontWeight: 500 }}>{f.lb}</button>
+              <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: filterStatus === f.id ? 'var(--gold-500)' : 'var(--border)', background: filterStatus === f.id ? '#C9A84C22' : '#fff', color: filterStatus === f.id ? '#92400e' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 500 }}>{f.lb}</button>
             ))}
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-              <button onClick={() => setShowSynced(s => !s)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: !showSynced ? '#C9A84C' : '#E8E4DC', background: !showSynced ? '#C9A84C22' : '#fff', color: !showSynced ? '#92400e' : '#6B7280', cursor: 'pointer', fontWeight: 500 }}>{showSynced ? 'Hide Synced' : 'Show Synced'}</button>
+              <button onClick={() => setShowSynced(s => !s)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid', borderColor: !showSynced ? 'var(--gold-500)' : 'var(--border)', background: !showSynced ? '#C9A84C22' : '#fff', color: !showSynced ? '#92400e' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 500 }}>{showSynced ? 'Hide Synced' : 'Show Synced'}</button>
               <button onClick={openQbModal} style={{ fontSize: 11, padding: '5px 10px', borderRadius: 6, border: '1px solid #C9A84C', background: '#C9A84C15', color: '#92400e', cursor: 'pointer', fontWeight: 600 }}>QB Export</button>
-              <button onClick={() => setModal({ mode: 'create', tx: {} })} style={{ fontSize: 12, padding: '6px 14px', background: '#0A1F44', color: '#C9A84C', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>+ Add</button>
+              <button onClick={() => setModal({ mode: 'create', tx: {} })} style={{ fontSize: 12, padding: '6px 14px', background: 'var(--navy-900)', color: 'var(--gold-500)', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>+ Add</button>
             </div>
           </div>
 
           {/* Transaction list */}
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF' }}>Loading...</div>
+            <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)' }}>Loading...</div>
           ) : !filtered.length ? (
-            <div style={{ textAlign: 'center', padding: 32, color: '#9CA3AF', fontSize: 13 }}>
+            <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>
               {filterDir !== 'all' || filterStatus !== 'all' ? 'No transactions match this filter' : 'No transactions yet — tap + Add to record one'}
             </div>
           ) : (() => {
@@ -466,7 +466,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                       {selectedIds.size} pending expense{selectedIds.size === 1 ? '' : 's'} selected — total: {f$(selectedTotal)}
                     </span>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => setSelectedIds(new Set())} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #E8E4DC', background: '#fff', color: '#6B7280', cursor: 'pointer' }}>Clear</button>
+                      <button onClick={() => setSelectedIds(new Set())} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #E8E4DC', background: '#fff', color: 'var(--text-muted)', cursor: 'pointer' }}>Clear</button>
                       <button onClick={handleMarkPaid} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#059669', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
                         Mark {selectedIds.size} as Paid
                       </button>
@@ -488,7 +488,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                         }
                       }}
                     />
-                    <span style={{ fontSize: 11, color: '#6B7280' }}>Select all pending expenses ({pendingExpenseRows.length})</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Select all pending expenses ({pendingExpenseRows.length})</span>
                   </div>
                 )}
                 {/* Row list */}
@@ -498,7 +498,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                     const lienMissing = tx.lien_waiver_required && !tx.lien_waiver_url;
                     const isPendingExpense = tx.status === 'pending' && tx.direction === 'out';
                     return (
-                      <div key={tx.id} onClick={() => setModal({ mode: 'view', tx })} style={{ background: '#fff', border: `1px solid ${lienMissing ? '#fca5a5' : '#E8E4DC'}`, borderRadius: 8, padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <div key={tx.id} onClick={() => setModal({ mode: 'view', tx })} style={{ background: '#fff', border: `1px solid ${lienMissing ? 'var(--red-border)' : 'var(--border)'}`, borderRadius: 8, padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                         {isManager && (
                           <div style={{ width: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {isPendingExpense && (
@@ -515,22 +515,22 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                             )}
                           </div>
                         )}
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: isIn ? '#D1FAE5' : '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{isIn ? '↑' : '↓'}</div>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: isIn ? 'var(--green-bg)' : 'var(--red-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{isIn ? '↑' : '↓'}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             {TYPE_LABELS[tx.type] || tx.type}
-                            {lienMissing && <span style={{ fontSize: 10, background: '#FEE2E2', color: '#991b1b', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>Lien Missing</span>}
+                            {lienMissing && <span style={{ fontSize: 10, background: 'var(--red-bg)', color: '#991b1b', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>Lien Missing</span>}
                             {tx.receipt_url && <span style={{ fontSize: 11, color: '#3B82F6' }}>📎</span>}
                           </div>
-                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>
                             {tx.date_incurred}
                             {tx.payer_or_payee_name ? ` · ${tx.payer_or_payee_name}` : ''}
                             {tx.description ? ` · ${tx.description.slice(0, 40)}` : ''}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 700, color: isIn ? '#22c55e' : '#ef4444' }}>{isIn ? '+' : '-'}{f$(tx.amount)}</div>
-                          <div style={{ fontSize: 10, marginTop: 2, color: STATUS_COLOR[tx.status] || '#9CA3AF', fontWeight: 600, textTransform: 'uppercase' }}>{tx.status}</div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: isIn ? 'var(--green-dot)' : 'var(--red-text)' }}>{isIn ? '+' : '-'}{f$(tx.amount)}</div>
+                          <div style={{ fontSize: 10, marginTop: 2, color: STATUS_COLOR[tx.status] || 'var(--text-subtle)', fontWeight: 600, textTransform: 'uppercase' }}>{tx.status}</div>
                         </div>
                       </div>
                     );
@@ -546,14 +546,14 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
         <div className="overlay" onClick={() => setQbModal(false)}>
           <div className="modal" style={{ maxWidth: 380, width: '100%' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#0A1F44' }}>QuickBooks Export</div>
-              <button onClick={() => setQbModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1 }}>×</button>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--navy-900)' }}>QuickBooks Export</div>
+              <button onClick={() => setQbModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: 'var(--text-subtle)', cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>Date Range</label>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>Date Range</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 {[['this_month', 'This Month'], ['this_quarter', 'This Quarter'], ['ytd', 'YTD'], ['all', 'All Time'], ['custom', 'Custom']].map(([v, lb]) => (
-                  <button key={v} onClick={() => setQbRange(v)} style={{ padding: '8px 0', fontSize: 12, fontWeight: 600, border: '1px solid', borderColor: qbRange === v ? '#0A1F44' : '#E8E4DC', borderRadius: 6, background: qbRange === v ? '#0A1F44' : '#fff', color: qbRange === v ? '#C9A84C' : '#6B7280', cursor: 'pointer' }}>{lb}</button>
+                  <button key={v} onClick={() => setQbRange(v)} style={{ padding: '8px 0', fontSize: 12, fontWeight: 600, border: '1px solid', borderColor: qbRange === v ? 'var(--navy-900)' : 'var(--border)', borderRadius: 6, background: qbRange === v ? 'var(--navy-900)' : '#fff', color: qbRange === v ? 'var(--gold-500)' : 'var(--text-muted)', cursor: 'pointer' }}>{lb}</button>
                 ))}
               </div>
             </div>
@@ -561,7 +561,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
                 {[['From', qbDateFrom, setQbDateFrom], ['To', qbDateTo, setQbDateTo]].map(([lb, val, set]) => (
                   <div key={lb}>
-                    <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>{lb}</label>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>{lb}</label>
                     <input type="date" value={val} onChange={e => set(e.target.value)} style={{ border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 13, borderRadius: 6, width: '100%', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                   </div>
                 ))}

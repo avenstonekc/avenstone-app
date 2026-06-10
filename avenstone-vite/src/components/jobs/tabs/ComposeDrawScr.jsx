@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { sbLoadUnreimbursedExpenses, sbGetBucketBalance, sbComposeDraw, sbLoadJobDrawTotals, sbLoadPhases } from '../../../lib/supabase';
 import { f$, fD } from '../../../lib/utils';
 
-const NAVY   = '#0A1F44';
-const GOLD   = '#C9A84C';
-const CREAM  = '#F7F5F0';
-const BORDER = '#E8E4DC';
+const NAVY   = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const CREAM  = 'var(--bg)';
+const BORDER = 'var(--border)';
 
 const round2 = n => Math.round(Number(n) * 100) / 100;
 
@@ -208,14 +208,14 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
       }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: NAVY }}>Compose Draw</div>
-          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{job.name || job.id}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>{job.name || job.id}</div>
         </div>
         <button
           onClick={onClose}
           style={{
             background: 'none', border: `1px solid ${BORDER}`,
             borderRadius: 6, padding: '6px 14px',
-            fontSize: 12, color: '#6B7280', cursor: 'pointer', fontWeight: 600,
+            fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600,
           }}
         >✕ Close</button>
       </div>
@@ -224,11 +224,11 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
       <div style={{ flex: 1, padding: '20px', maxWidth: 760, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
 
         {loading && (
-          <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF', fontSize: 13 }}>Loading expenses…</div>
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-subtle)', fontSize: 13 }}>Loading expenses…</div>
         )}
 
         {error && (
-          <div style={{ background: '#FEE2E2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px', color: '#991b1b', fontSize: 13, marginBottom: 16 }}>
+          <div style={{ background: 'var(--red-bg)', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px', color: '#991b1b', fontSize: 13, marginBottom: 16 }}>
             {error}
           </div>
         )}
@@ -237,31 +237,31 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
           <>
             {/* ── Section 1: Bucket Balance ─────────────────────── */}
             <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Client Balance</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Client Balance</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                 {[
-                  ['Bucket (credit)',  f$(balance.bucket),        balance.bucket > 0       ? '#22c55e' : '#6B7280'],
-                  ['Unreimbursed',     f$(balance.unreimbursed),  balance.unreimbursed > 0 ? NAVY      : '#6B7280'],
+                  ['Bucket (credit)',  f$(balance.bucket),        balance.bucket > 0       ? 'var(--green-dot)' : 'var(--text-muted)'],
+                  ['Unreimbursed',     f$(balance.unreimbursed),  balance.unreimbursed > 0 ? NAVY      : 'var(--text-muted)'],
                   ['Float',            (balance.float > 0 ? '+' : '') + f$(balance.float),
-                    balance.float > 0 ? '#f59e0b' : balance.float < 0 ? '#22c55e' : '#6B7280'],
+                    balance.float > 0 ? 'var(--amber-text)' : balance.float < 0 ? 'var(--green-dot)' : 'var(--text-muted)'],
                 ].map(([lb, val, c]) => (
                   <div key={lb} style={{ textAlign: 'center', background: CREAM, borderRadius: 6, padding: '10px 8px' }}>
-                    <div style={{ fontSize: 9, color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{lb}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{lb}</div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: c }}>{val}</div>
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 10 }}>
                 Float = unreimbursed − bucket. Positive means client owes more than they've deposited.
               </div>
             </div>
 
             {/* ── Draw Details inputs ───────────────────────────── */}
             <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Draw Details</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Draw Details</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div>
-                  <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 600, display: 'block', marginBottom: 4 }}>Title *</label>
+                  <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Title *</label>
                   <input
                     className="finp"
                     style={{ width: '100%', fontSize: 14, padding: '8px 10px', boxSizing: 'border-box' }}
@@ -271,7 +271,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 11, color: '#6B7280', fontWeight: 600, display: 'block', marginBottom: 4 }}>Description (optional)</label>
+                  <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>Description (optional)</label>
                   <textarea
                     className="finp"
                     style={{ width: '100%', fontSize: 14, padding: '8px 10px', boxSizing: 'border-box', resize: 'vertical', minHeight: 60 }}
@@ -286,7 +286,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
             {/* ── Section 2: Expense list ───────────────────────── */}
             <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Unreimbursed Expenses ({expenses.length})
                 </div>
                 {expenses.length > 0 && (
@@ -299,7 +299,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                     )}
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
-                      fontSize: 11, color: '#6B7280', fontWeight: 600, padding: '2px 6px',
+                      fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, padding: '2px 6px',
                     }}
                   >
                     {selectedIds.size === expenses.length ? 'Deselect all' : 'Select all'}
@@ -309,7 +309,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
 
               {/* Transaction-linked rows */}
               {expenses.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '16px 0 8px', color: '#9CA3AF', fontSize: 13 }}>
+                <div style={{ textAlign: 'center', padding: '16px 0 8px', color: 'var(--text-subtle)', fontSize: 13 }}>
                   No unreimbursed expenses for this job.
                 </div>
               ) : (
@@ -322,7 +322,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                     borderBottom: `1px solid ${BORDER}`,
                   }}>
                     {['', 'Date', 'Description', 'Type', 'Cost', 'Markup %', 'Total'].map(h => (
-                      <div key={h} style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
+                      <div key={h} style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
                     ))}
                   </div>
 
@@ -354,11 +354,11 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                             })}
                             style={{ width: 14, height: 14, cursor: 'pointer', margin: 0 }}
                           />
-                          <div style={{ fontSize: 11, color: '#6B7280' }}>{fD(row.date_incurred)}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fD(row.date_incurred)}</div>
                           <div style={{ fontSize: 11, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.description || ''}>
                             {row.description || '—'}
                           </div>
-                          <div style={{ fontSize: 10, color: '#6B7280' }}>{TYPE_LABELS[row.type] || row.type}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{TYPE_LABELS[row.type] || row.type}</div>
                           <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>{f$(base)}</div>
                           <input
                             type="number"
@@ -389,8 +389,8 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                     paddingTop: expenses.length > 0 ? 10 : 4,
                     marginBottom: 6,
                   }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Forward-looking</span>
-                    <span style={{ fontSize: 10, background: '#DBEAFE', color: '#1e40af', padding: '1px 7px', borderRadius: 10, fontWeight: 700 }}>Pre-billing</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Forward-looking</span>
+                    <span style={{ fontSize: 10, background: 'var(--blue-bg)', color: 'var(--blue-text)', padding: '1px 7px', borderRadius: 10, fontWeight: 700 }}>Pre-billing</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
                     {Object.entries(forwardLines).map(([id, fwd]) => {
@@ -414,7 +414,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                             }}
                           />
                           <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                            <span style={{ fontSize: 10, color: '#9CA3AF' }}>$</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>$</span>
                             <input
                               type="number"
                               min="0"
@@ -442,7 +442,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                                 background: '#fff', textAlign: 'right',
                               }}
                             />
-                            <span style={{ fontSize: 10, color: '#9CA3AF' }}>%</span>
+                            <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>%</span>
                           </div>
                           <div style={{ width: 76, fontSize: 12, fontWeight: 700, color: fwdTotal > 0 ? GOLD : NAVY, textAlign: 'right', flexShrink: 0 }}>
                             {f$(fwdTotal)}
@@ -452,7 +452,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                             title="Remove line"
                             style={{
                               background: 'none', border: 'none', cursor: 'pointer',
-                              color: '#9CA3AF', fontSize: 14, lineHeight: 1,
+                              color: 'var(--text-subtle)', fontSize: 14, lineHeight: 1,
                               padding: '2px 4px', borderRadius: 4, flexShrink: 0,
                             }}
                           >✕</button>
@@ -470,7 +470,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                   width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   gap: 6, padding: '8px 0',
                   background: 'none', border: `1px dashed ${BORDER}`, borderRadius: 6,
-                  fontSize: 12, color: '#6B7280', cursor: 'pointer',
+                  fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer',
                   marginTop: 4,
                 }}
               >
@@ -480,22 +480,22 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
 
             {/* ── Section 3: Draw Summary ───────────────────────── */}
             <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 24 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Draw Summary</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Draw Summary</div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#6B7280' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)' }}>
                   <span>Expense subtotal (with markup)</span>
                   <span style={{ fontWeight: 700, color: NAVY }}>{f$(subtotal)}</span>
                 </div>
                 {Object.keys(forwardLines).length > 0 && (
-                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: -4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: -4 }}>
                     Includes {Object.keys(forwardLines).length} forward-looking line{Object.keys(forwardLines).length === 1 ? '' : 's'}
                   </div>
                 )}
 
                 {balance.bucket > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6B7280', cursor: 'pointer' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', cursor: 'pointer' }}>
                       <input
                         type="checkbox"
                         checked={applyBucket}
@@ -504,7 +504,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                       />
                       Apply client bucket credit ({f$(balance.bucket)})
                     </label>
-                    <span style={{ fontWeight: 700, color: '#22c55e' }}>−{f$(balance.bucket)}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--green-dot)' }}>−{f$(balance.bucket)}</span>
                   </div>
                 )}
 
@@ -515,14 +515,14 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                   </div>
                 )}
                 {releaseRetainage && heldRetainageTotal > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#22c55e' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--green-dot)' }}>
                     <span>Release held retainage</span>
                     <span style={{ fontWeight: 700 }}>+{f$(heldRetainageTotal)}</span>
                   </div>
                 )}
                 <div style={{ borderTop: `2px solid ${BORDER}`, paddingTop: 10, display: 'flex', justifyContent: 'space-between', fontSize: 15 }}>
                   <span style={{ fontWeight: 700, color: NAVY }}>Net draw amount</span>
-                  <span style={{ fontWeight: 700, color: finalDrawAmount >= 0 ? NAVY : '#22c55e', fontSize: 17 }}>{f$(finalDrawAmount)}</span>
+                  <span style={{ fontWeight: 700, color: finalDrawAmount >= 0 ? NAVY : 'var(--green-dot)', fontSize: 17 }}>{f$(finalDrawAmount)}</span>
                 </div>
               </div>
             </div>
@@ -530,7 +530,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
             {/* ── Retainage controls (cost-plus jobs with retainage_pct > 0) ── */}
             {jobRetainagePct > 0 && (
               <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 24 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Retainage</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Retainage</div>
 
                 {/* Phase-aware nudge */}
                 {showRetainageNudge && (
@@ -541,7 +541,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
 
                 {/* Hold retainage row */}
                 <div style={{ marginBottom: 10 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#374151', cursor: 'pointer', flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer', flexWrap: 'wrap' }}>
                     <input
                       type="checkbox"
                       checked={holdRetainage}
@@ -559,7 +559,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                     <span>% retainage from this draw</span>
                   </label>
                   {retainagePctOverride !== null && retainagePctOverride !== jobRetainagePct && (
-                    <div style={{ marginTop: 3, marginLeft: 22, fontSize: 10, color: '#9CA3AF' }}>
+                    <div style={{ marginTop: 3, marginLeft: 22, fontSize: 10, color: 'var(--text-subtle)' }}>
                       Job default: {jobRetainagePct}% — <button onClick={() => setRetainagePctOverride(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C9A84C', fontSize: 10, fontWeight: 600, padding: 0 }}>Reset</button>
                     </div>
                   )}
@@ -568,7 +568,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                 {/* Release retainage row */}
                 {holdRetainage && (
                   <div style={{ marginBottom: 4 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: canReleaseRetainage ? '#374151' : '#9CA3AF', cursor: canReleaseRetainage ? 'pointer' : 'not-allowed' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: canReleaseRetainage ? 'var(--text-secondary)' : 'var(--text-subtle)', cursor: canReleaseRetainage ? 'pointer' : 'not-allowed' }}>
                       <input
                         type="checkbox"
                         checked={releaseRetainage}
@@ -579,7 +579,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                       Release held retainage ({f$(heldRetainageTotal)}) — final draw
                     </label>
                     {!canReleaseRetainage && (
-                      <div style={{ marginTop: 4, marginLeft: 22, fontSize: 11, color: '#9CA3AF' }}>
+                      <div style={{ marginTop: 4, marginLeft: 22, fontSize: 11, color: 'var(--text-subtle)' }}>
                         {heldRetainageTotal === 0
                           ? 'No retainage held on prior draws.'
                           : 'Available when job reaches Final touches or Complete phase.'}
@@ -592,13 +592,13 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
 
             {/* ── Action bar ────────────────────────────────────── */}
             {contractWarning && (
-              <div style={{ background: overContract ? '#FEE2E2' : '#FEF3C7', border: `1px solid ${overContract ? '#fca5a5' : '#FCD34D'}`, borderRadius: 8, padding: '10px 14px', fontSize: 12, color: overContract ? '#991b1b' : '#92400e', marginBottom: 12 }}>
+              <div style={{ background: overContract ? 'var(--red-bg)' : '#FEF3C7', border: `1px solid ${overContract ? 'var(--red-border)' : '#FCD34D'}`, borderRadius: 8, padding: '10px 14px', fontSize: 12, color: overContract ? '#991b1b' : '#92400e', marginBottom: 12 }}>
                 {contractWarning}
               </div>
             )}
             {submitError && (
               <div style={{
-                background: '#FEE2E2', border: '1px solid #fca5a5', borderRadius: 8,
+                background: 'var(--red-bg)', border: '1px solid #fca5a5', borderRadius: 8,
                 padding: '10px 14px', color: '#991b1b', fontSize: 13, marginBottom: 12,
               }}>
                 {submitError}
@@ -612,7 +612,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                 style={{
                   background: 'none', border: `1px solid ${BORDER}`,
                   borderRadius: 6, padding: '8px 20px',
-                  fontSize: 13, color: '#6B7280',
+                  fontSize: 13, color: 'var(--text-muted)',
                   cursor: submitting ? 'not-allowed' : 'pointer',
                   opacity: submitting ? 0.5 : 1,
                 }}

@@ -11,10 +11,10 @@ import { f$ } from '../../../lib/utils';
 const round2 = (n) => Math.round(n * 100) / 100;
 
 const STATUS_PILL = {
-  pending:  { bg: '#F3F4F6', color: '#6B7280' },
-  invoiced: { bg: '#DBEAFE', color: '#1E40AF' },
-  paid:     { bg: '#D1FAE5', color: '#065F46' },
-  released: { bg: '#EDE9FE', color: '#5B21B6' },
+  pending:  { bg: '#F3F4F6',             color: 'var(--text-muted)' },
+  invoiced: { bg: 'var(--blue-bg)',      color: 'var(--blue-text)' },
+  paid:     { bg: 'var(--green-bg)',     color: '#065F46' },
+  released: { bg: '#EDE9FE',             color: '#5B21B6' },
 };
 
 const mapMilestone = (m, total) => ({
@@ -161,14 +161,14 @@ export default function PaymentScheduleTab({ job, profile }) {
   const allOthersPaid      = milestones.filter(m => !m.is_retainage).every(m => m.status === 'paid');
   const jobAtFinalPhase    = ['final_touches', 'complete'].includes(job?.status);
 
-  if (job?.cost_plus) return <p style={{ color: '#0A1F44' }}>Not available for cost-plus jobs.</p>;
-  if (loading) return <p style={{ color: '#0A1F44' }}>Loading payment schedule…</p>;
+  if (job?.cost_plus) return <p style={{ color: 'var(--navy-900)' }}>Not available for cost-plus jobs.</p>;
+  if (loading) return <p style={{ color: 'var(--navy-900)' }}>Loading payment schedule…</p>;
 
   return (
-    <div style={{ fontFamily: 'inherit', color: '#0A1F44' }}>
+    <div style={{ fontFamily: 'inherit', color: 'var(--navy-900)' }}>
       {/* Contract Total */}
-      <div style={{ background: '#F5F2E8', border: '1px solid #E8E4DC', borderRadius: 10, padding: '14px 18px', marginBottom: 20, display: 'inline-block', minWidth: 220 }}>
-        <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 4 }}>Contract Total ($)</div>
+      <div style={{ background: 'var(--bg)', border: '1px solid #E8E4DC', borderRadius: 10, padding: '14px 18px', marginBottom: 20, display: 'inline-block', minWidth: 220 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Contract Total ($)</div>
         {readOnly ? (
           <div style={{ fontSize: 20, fontWeight: 600 }}>{f$(contractTotal)}</div>
         ) : (
@@ -176,37 +176,37 @@ export default function PaymentScheduleTab({ job, profile }) {
             type="number"
             value={contractTotal}
             onChange={(e) => handleTotalChange(e.target.value)}
-            style={{ fontSize: 20, fontWeight: 600, border: 'none', background: 'transparent', color: '#0A1F44', width: 160, outline: 'none' }}
+            style={{ fontSize: 20, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--navy-900)', width: 160, outline: 'none' }}
           />
         )}
       </div>
 
       {/* Banners */}
       {pctWarning && (
-        <div style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
+        <div style={{ background: 'var(--amber-bg)', color: '#92400E', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
           Milestone percentages total {round2(totalPct)}% — must equal 100% before invoicing.
         </div>
       )}
       {saveError && (
-        <div style={{ background: '#FEE2E2', color: '#991B1B', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
+        <div style={{ background: 'var(--red-bg)', color: '#991B1B', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
           {saveError}
         </div>
       )}
       {genError && (
-        <div style={{ background: '#FEE2E2', color: '#991B1B', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
+        <div style={{ background: 'var(--red-bg)', color: '#991B1B', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
           {genError}
           <button onClick={() => setGenError(null)} style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 16 }}>×</button>
         </div>
       )}
       {genSuccess && (
-        <div style={{ background: '#D1FAE5', color: '#065F46', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
+        <div style={{ background: 'var(--green-bg)', color: '#065F46', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 14 }}>
           Draft invoice generated for "{genSuccess}" — review and send when ready.
         </div>
       )}
 
       {/* Empty state */}
       {milestones.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#6B7280' }}>
+        <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
           <div style={{ marginBottom: 16, fontSize: 15 }}>No payment schedule yet</div>
           {!readOnly && (
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
@@ -220,7 +220,7 @@ export default function PaymentScheduleTab({ job, profile }) {
           {/* Scrollable table wrapper for mobile */}
           <div style={{ overflowX: 'auto' }}>
             {/* Header row */}
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', fontSize: 12, color: '#6B7280', fontWeight: 600, minWidth: 680 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, minWidth: 680 }}>
               <span style={{ flex: 3 }}>Label</span>
               <span style={{ flex: 2 }}>Phase</span>
               <span style={{ width: 64, textAlign: 'right' }}>%</span>
@@ -244,13 +244,13 @@ export default function PaymentScheduleTab({ job, profile }) {
                     onChange={(e) => canEdit && updateMilestone(m.id, 'label', e.target.value)}
                     disabled={!canEdit}
                     placeholder="Label"
-                    style={{ flex: 3, border: '1px solid #E8E4DC', borderRadius: 6, padding: '5px 8px', background: canEdit ? '#fff' : '#F5F2E8', color: '#0A1F44', fontSize: 14 }}
+                    style={{ flex: 3, border: '1px solid #E8E4DC', borderRadius: 6, padding: '5px 8px', background: canEdit ? '#fff' : 'var(--bg)', color: 'var(--navy-900)', fontSize: 14 }}
                   />
                   <select
                     value={m.phase_id ?? ''}
                     onChange={(e) => canEdit && updateMilestone(m.id, 'phase_id', e.target.value || null)}
                     disabled={!canEdit}
-                    style={{ flex: 2, border: '1px solid #E8E4DC', borderRadius: 6, padding: '5px 8px', background: canEdit ? '#fff' : '#F5F2E8', color: '#0A1F44', fontSize: 14 }}
+                    style={{ flex: 2, border: '1px solid #E8E4DC', borderRadius: 6, padding: '5px 8px', background: canEdit ? '#fff' : 'var(--bg)', color: 'var(--navy-900)', fontSize: 14 }}
                   >
                     <option value="">No phase</option>
                     {phases.map((p) => <option key={p.id} value={p.id}>{p.phase_name}</option>)}
@@ -261,7 +261,7 @@ export default function PaymentScheduleTab({ job, profile }) {
                     value={m.pct}
                     onChange={(e) => canEdit && updateMilestone(m.id, 'pct', e.target.value)}
                     disabled={!canEdit}
-                    style={{ width: 64, border: '1px solid #E8E4DC', borderRadius: 6, padding: '5px 8px', background: canEdit ? '#fff' : '#F5F2E8', color: '#0A1F44', fontSize: 14, textAlign: 'right' }}
+                    style={{ width: 64, border: '1px solid #E8E4DC', borderRadius: 6, padding: '5px 8px', background: canEdit ? '#fff' : 'var(--bg)', color: 'var(--navy-900)', fontSize: 14, textAlign: 'right' }}
                   />
                   <div style={{ width: 80, textAlign: 'right', fontSize: 14, fontWeight: 500 }}>
                     {f$(m.amount)}
@@ -306,14 +306,14 @@ export default function PaymentScheduleTab({ job, profile }) {
                       </button>
                     )}
                     {m.is_retainage && isPending && !canRelease && !m.invoice_id && (
-                      <span style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>Held — released at completion</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>Held — released at completion</span>
                     )}
                   </div>
                   {!readOnly && (
                     <button
                       onClick={() => isPending && !m.invoice_id && removeMilestone(m.id)}
                       disabled={!isPending || !!m.invoice_id}
-                      style={{ width: 24, height: 24, border: 'none', background: 'transparent', cursor: isPending && !m.invoice_id ? 'pointer' : 'default', color: isPending && !m.invoice_id ? '#9CA3AF' : '#D1D5DB', fontSize: 16, lineHeight: 1 }}
+                      style={{ width: 24, height: 24, border: 'none', background: 'transparent', cursor: isPending && !m.invoice_id ? 'pointer' : 'default', color: isPending && !m.invoice_id ? 'var(--text-subtle)' : '#D1D5DB', fontSize: 16, lineHeight: 1 }}
                     >×</button>
                   )}
                 </div>
@@ -323,14 +323,14 @@ export default function PaymentScheduleTab({ job, profile }) {
 
           {/* Billing progress summary */}
           {milestones.length > 0 && (
-            <div style={{ background: '#F7F5F0', border: '1px solid #E8E4DC', borderRadius: 8, padding: '10px 16px', marginTop: 16, display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 12, color: '#6B7280' }}>
-              <span>Contract: <strong style={{ color: '#0A1F44' }}>{f$(contractTotal)}</strong></span>
-              <span>Invoiced: <strong style={{ color: totalInvoiced > 0 ? '#1E40AF' : '#6B7280' }}>{f$(totalInvoiced)}</strong></span>
-              <span>Paid: <strong style={{ color: totalPaidAmt > 0 ? '#065F46' : '#6B7280' }}>{f$(totalPaidAmt)}</strong></span>
+            <div style={{ background: 'var(--bg)', border: '1px solid #E8E4DC', borderRadius: 8, padding: '10px 16px', marginTop: 16, display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)' }}>
+              <span>Contract: <strong style={{ color: 'var(--navy-900)' }}>{f$(contractTotal)}</strong></span>
+              <span>Invoiced: <strong style={{ color: totalInvoiced > 0 ? '#1E40AF' : 'var(--text-muted)' }}>{f$(totalInvoiced)}</strong></span>
+              <span>Paid: <strong style={{ color: totalPaidAmt > 0 ? '#065F46' : 'var(--text-muted)' }}>{f$(totalPaidAmt)}</strong></span>
               {totalRetainageHeld > 0 && (
                 <span>Retainage held: <strong style={{ color: '#5B21B6' }}>{f$(totalRetainageHeld)}</strong></span>
               )}
-              <span>Remaining: <strong style={{ color: totalRemaining > 0 ? '#0A1F44' : '#9CA3AF' }}>{f$(totalRemaining)}</strong></span>
+              <span>Remaining: <strong style={{ color: totalRemaining > 0 ? 'var(--navy-900)' : 'var(--text-subtle)' }}>{f$(totalRemaining)}</strong></span>
             </div>
           )}
 
@@ -351,20 +351,20 @@ export default function PaymentScheduleTab({ job, profile }) {
 }
 
 const btnPrimary = {
-  background: '#C9A84C', color: '#0A1F44', border: 'none', borderRadius: 8,
+  background: 'var(--gold-500)', color: 'var(--navy-900)', border: 'none', borderRadius: 'var(--r-sm)',
   padding: '9px 18px', fontWeight: 600, fontSize: 14, cursor: 'pointer',
 };
 const btnSecondary = {
-  background: '#F5F2E8', color: '#0A1F44', border: '1px solid #E8E4DC', borderRadius: 8,
+  background: 'var(--bg)', color: 'var(--navy-900)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
   padding: '8px 14px', fontWeight: 500, fontSize: 14, cursor: 'pointer',
 };
 const btnGenerate = {
-  background: '#0A1F44', color: '#fff', border: 'none', borderRadius: 6,
+  background: 'var(--navy-900)', color: '#fff', border: 'none', borderRadius: 'var(--r-xs)',
   padding: '4px 10px', fontWeight: 500, fontSize: 12, cursor: 'pointer',
   whiteSpace: 'nowrap',
 };
 const btnRelease = {
-  background: '#5B21B6', color: '#fff', border: 'none', borderRadius: 6,
+  background: '#5B21B6', color: '#fff', border: 'none', borderRadius: 'var(--r-xs)',
   padding: '4px 10px', fontWeight: 600, fontSize: 12, cursor: 'pointer',
   whiteSpace: 'nowrap',
 };
