@@ -1409,6 +1409,35 @@ a. Context job + "what's outstanding here?" → get_job_financials resolved from
 b. No context + "what's outstanding on 999 Test Lane?" → fuzzy still works, same numbers ✓
 c. On job + "add a todo to order tile for this job" → confirm description: 'Add to-do: "Order tile" · medium priority · on 999 Test Lane, Testville, KS.' ✓
 
+[LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 6 — admin + ai/ + public/auth token sweep
+- Action: 19 files converted across 3 bisectable commits. Build green.
+- Commits: 6f392df (admin), 71b3853 (ai/), bd4123a (public/auth). Pushed.
+- Files: BugReportsScr, BugReportDetailModal, CompanyFilesScr, SequencesScr, LeadsScr, FloorPlanEditorScr, AiKnowledgeScr, AiSetupWizard, AiIntakeWizard, HeightCaptureStep, FloorPlanCanvas, FloorPlanEditor, LidarScanner, CompletionPage, PublicProfile, ReviewPage, LoginScr, SetPasswordScr, SignaturePad
+
+PER-FILE RESULTS (approx before → after hex literals):
+- BugReportsScr/BugReportDetailModal: ~25/29 → ~5/6 (STATUS_COLORS tokenized except #166534 which has no exact match; nav/gold/border consts)
+- CompanyFilesScr: ~70 → ~25 (ROLE_COLORS partially; ExpirationBadge green/amber/red; inline sweep; #DC2626/#FCE7F3/#DBEAFE left — no tokens)
+- SequencesScr: ~68 → ~35 (STATUS_C/EnrollStatusBadge raw hex kept for +'18' concat; bg/nav/gold/border sweep; #9CA3AF/#22c55e/#EF4444 left in dicts)
+- LeadsScr: ~47 → ~15 (NAVY/GOLD/CREAM/WHITE/BORDER → var(); STATUS_CFG partially; AVATAR_COLORS kept raw — intentional variety palette)
+- FloorPlanEditorScr: ~60 → ~5 (NAVY/GOLD/CREAM module consts → var(); cascades through all 1884 lines)
+- AiKnowledgeScr: ~41 → ~4 (all 4 consts + inline red/green sweep; CAT_COLORS left — no tokens for custom category hues)
+- AiSetupWizard/HeightCaptureStep/AiIntakeWizard/FloorPlanCanvas/FloorPlanEditor: all module consts → var(); inline sweeps
+- LidarScanner: 6 consts including GREEN (#2E7D32) left raw — no token
+- SignaturePad: SKIPPED ctx.strokeStyle intentionally (canvas API cannot resolve CSS custom properties); noted in code comment
+- ReviewPage: inline props tokenized; <style> CSS block left as-is
+- PublicProfile: Spinner/Stars inline props only; pp-* CSS class definitions in <style> left (standalone page, no token access)
+- CompletionPage: inline #0A1F44/#C9A84C only; <style> block left
+
+TOKEN GAPS FOUND (for Slice 5 extension list):
+- #166534 (darker green text for "fixed" status) — between --green-text-strong and --green-text, no token
+- #2E7D32 (forest green) — used in LidarScanner ResultPhase success circle — no token
+- #7AA7C7 (window line color in SVG) — architectural accent — no token
+- CAT_COLORS in AiKnowledgeScr (#EFF6FF/#1D4ED8, #F0FDF4/#15803D, #FFF7ED/#C2410C, etc.) — knowledge category hues, no tokens
+- #DC2626 (slightly different red from --red-text #EF4444) — used in compound error states
+- #DBEAFE/#1E40AF (leads new status, final_touches) — blue variants without tokens
+
+Total remaining hex literals across src/: 1944 (was 2233 after Slice 4).
+
 [LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 4 — portals token sweep
 - Action: 6 external-facing portal files converted. 3 bisectable commits, build green.
 - Commits: c5e4889 (ClientPortal), 057f1c3 (sub files), baef57d (owner files). Pushed.
