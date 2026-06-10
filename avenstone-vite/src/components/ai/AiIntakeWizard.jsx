@@ -5,10 +5,10 @@ import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan, sbUploadDoc, sbCrea
 import { stampGPS } from '../../lib/gps';
 import { buildFloorPlanPDF } from '../../lib/pdf';
 
-const NAVY = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
-const BORDER = '#E8E4DC';
+const NAVY   = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const CREAM  = 'var(--bg)';
+const BORDER = 'var(--border)';
 
 export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, job }) {
   const [rooms, setRooms] = useState([]);
@@ -161,12 +161,12 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
               </div>
             )}
             {saveError && (
-              <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#991B1B', fontFamily: '"DM Sans", sans-serif' }}>
+              <div style={{ background: 'var(--red-bg)', border: '1px solid #EF4444', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: 'var(--red-text-strong)', fontFamily: '"DM Sans", sans-serif' }}>
                 Save failed: {saveError}
               </div>
             )}
             {savedOk ? (
-              <div style={{ textAlign: 'center', padding: '32px 0', color: '#22c55e', fontFamily: '"DM Sans", sans-serif', fontSize: 16, fontWeight: 600 }}>
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--green-dot)', fontFamily: '"DM Sans", sans-serif', fontSize: 16, fontWeight: 600 }}>
                 ✓ Saved
               </div>
             ) : (
@@ -214,14 +214,14 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
               </div>
             )}
             {saveError && (
-              <div style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#991B1B', fontFamily: '"DM Sans", sans-serif' }}>
+              <div style={{ background: 'var(--red-bg)', border: '1px solid #EF4444', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: 'var(--red-text-strong)', fontFamily: '"DM Sans", sans-serif' }}>
                 Save failed: {saveError}
               </div>
             )}
             {savedOk ? (
               <div style={{
                 textAlign: 'center', padding: '32px 0',
-                color: '#22c55e', fontFamily: '"DM Sans", sans-serif', fontSize: 16, fontWeight: 600,
+                color: 'var(--green-dot)', fontFamily: '"DM Sans", sans-serif', fontSize: 16, fontWeight: 600,
               }}>
                 ✓ Saved to contact
               </div>
@@ -238,7 +238,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
                   style={{ width: '100%', boxSizing: 'border-box', marginBottom: 12 }}
                 />
                 {filtered.length === 0 ? (
-                  <div style={{ color: '#9CA3AF', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>
+                  <div style={{ color: 'var(--text-subtle)', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>
                     No contacts found.
                   </div>
                 ) : (
@@ -262,7 +262,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
                           <div style={{ fontWeight: 600, color: NAVY, fontSize: 14 }}>
                             {c.first_name} {c.last_name}
                           </div>
-                          <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>
+                          <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 2 }}>
                             {c.phone || c.email || '—'}
                           </div>
                         </div>
@@ -274,7 +274,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
                 <button
                   onClick={onClose}
                   style={{
-                    background: 'none', border: 'none', color: '#9CA3AF',
+                    background: 'none', border: 'none', color: 'var(--text-subtle)',
                     fontSize: 13, cursor: 'pointer', fontFamily: '"DM Sans", sans-serif',
                     padding: '8px 0', display: 'block', margin: '0 auto',
                   }}

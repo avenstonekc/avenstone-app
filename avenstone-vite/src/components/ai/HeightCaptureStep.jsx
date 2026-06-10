@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { validateHeight, feetToMeters, metersToFeet, HEIGHT_MIN_M, HEIGHT_MAX_M } from '../../lib/captureHeight';
 
-const NAVY = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
-const BORDER = '#E8E4DC';
+const NAVY   = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const CREAM  = 'var(--bg)';
+const BORDER = 'var(--border)';
 
 export default function HeightCaptureStep({ captureMode, autoHeightFt, onConfirm }) {
   const [overriding, setOverriding] = useState(!autoHeightFt);
@@ -109,7 +109,7 @@ export default function HeightCaptureStep({ captureMode, autoHeightFt, onConfirm
             autoFocus
           />
           {error && (
-            <div style={{ color: '#EF4444', fontSize: 12, marginTop: 4, fontFamily: '"DM Sans", sans-serif' }}>
+            <div style={{ color: 'var(--red-text)', fontSize: 12, marginTop: 4, fontFamily: '"DM Sans", sans-serif' }}>
               {error}
             </div>
           )}

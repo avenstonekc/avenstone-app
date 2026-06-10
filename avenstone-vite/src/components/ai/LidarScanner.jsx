@@ -3,12 +3,12 @@ import { scanRoom, isLidarSupported, scanMultipleRooms } from '../../lib/lidar';
 import { floorLabel, FLOOR_LABELS } from '../../lib/captureTypes.js';
 import FloorPlanCanvas from './FloorPlanCanvas';
 
-const NAVY = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
-const BORDER = '#E8E4DC';
-const WHITE = '#FFFFFF';
-const GREEN = '#2E7D32';
+const NAVY   = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const CREAM  = 'var(--bg)';
+const BORDER = 'var(--border)';
+const WHITE  = 'var(--card-bg)';
+const GREEN  = '#2E7D32';
 
 const COMMON_ROOMS = [
   'Living Room',
@@ -282,7 +282,7 @@ export default function LidarScanner({ rooms, onRoomsChange, onDone }) {
             marginBottom: 18,
             fontFamily: '"DM Sans", sans-serif',
             fontSize: 13,
-            color: '#7A6020',
+            color: 'var(--amber-text-strong)',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
@@ -638,7 +638,7 @@ function ScanningPhase({ roomName, scanProgress, headingStyle }) {
 
       <div
         style={{
-          background: '#E8E4DC',
+          background: 'var(--border)',
           borderRadius: 8,
           height: 12,
           width: '100%',

@@ -4,9 +4,9 @@
  * Rooms are packed left-to-right, wrapping to next row when needed.
  */
 
-const NAVY = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
+const NAVY  = 'var(--navy-900)';
+const GOLD  = 'var(--gold-500)';
+const CREAM = 'var(--bg)';
 
 const CANVAS_W = 560;
 const PAD = 10;

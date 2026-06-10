@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { applyEditOverrides } from '../../lib/pdf';
 
-const NAVY = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
-const BORDER = '#E8E4DC';
+const NAVY   = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const CREAM  = 'var(--bg)';
+const BORDER = 'var(--border)';
 const FILL = 'rgba(248, 245, 240, 0.7)';
 
 const ROOM_TYPES = [

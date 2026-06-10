@@ -3,10 +3,10 @@ import { sb, AV_TENANT } from '../../lib/supabase';
 import { Ic } from '../../lib/utils';
 import AiSetupWizard from './AiSetupWizard';
 
-const NAV   = '#0A1F44';
-const GOLD  = '#C9A84C';
-const BORDER = '#E8E4DC';
-const CREAM = '#F7F5F0';
+const NAV    = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const BORDER = 'var(--border)';
+const CREAM  = 'var(--bg)';
 
 const CATEGORIES = [
   { id: 'all',          lb: 'All' },
@@ -35,7 +35,7 @@ function Toggle({ value, onChange }) {
       onClick={() => onChange(!value)}
       style={{
         width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
-        background: value ? NAV : '#D1D5DB',
+        background: value ? NAV : 'var(--border-strong)',
         position: 'relative', flexShrink: 0, transition: 'background 0.2s',
         padding: 0,
       }}
@@ -138,9 +138,9 @@ export default function AiKnowledgeScr({ profile }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: NAV, lineHeight: 1.2 }}>AI Knowledge Base</div>
-          <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 4 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginTop: 4 }}>
             Teach the AI about your company — injected into every conversation.
-            <span style={{ marginLeft: 8, background: '#D1FAE5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
+            <span style={{ marginLeft: 8, background: 'var(--green-bg)', color: 'var(--green-text-strong)', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
               {activeCount} active {activeCount === 1 ? 'entry' : 'entries'}
             </span>
           </div>
@@ -181,7 +181,7 @@ export default function AiKnowledgeScr({ profile }) {
                 padding: '5px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 500, cursor: 'pointer',
                 border: `1px solid ${catFilter === c.id ? NAV : BORDER}`,
                 background: catFilter === c.id ? NAV : '#fff',
-                color: catFilter === c.id ? '#fff' : '#6B7280',
+                color: catFilter === c.id ? '#fff' : 'var(--text-muted)',
                 transition: 'all 0.15s',
               }}
             >
@@ -193,9 +193,9 @@ export default function AiKnowledgeScr({ profile }) {
 
       {/* List */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#9CA3AF', fontSize: 14 }}>Loading...</div>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-subtle)', fontSize: 14 }}>Loading...</div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#9CA3AF', fontSize: 14 }}>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-subtle)', fontSize: 14 }}>
           {catFilter === 'all' ? 'No knowledge entries yet. Add your first one.' : `No entries in this category.`}
         </div>
       ) : (
@@ -233,13 +233,13 @@ export default function AiKnowledgeScr({ profile }) {
                       {catLabel}
                     </span>
                     {!item.active && (
-                      <span style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>inactive — not injected into AI</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>inactive — not injected into AI</span>
                     )}
                   </div>
                   <div style={{ fontSize: 13.5, color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                     {item.content}
                   </div>
-                  <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6 }}>
                     Added {new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </div>
                 </div>
@@ -248,7 +248,7 @@ export default function AiKnowledgeScr({ profile }) {
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                   <button
                     onClick={() => openEdit(item)}
-                    style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, cursor: 'pointer', color: '#6B7280', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
+                    style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
                     title="Edit"
                   >
                     <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.edit}</span>
@@ -256,7 +256,7 @@ export default function AiKnowledgeScr({ profile }) {
                   <button
                     onClick={() => del(item.id)}
                     disabled={deleting === item.id}
-                    style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, cursor: 'pointer', color: '#EF4444', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
+                    style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, cursor: 'pointer', color: 'var(--red-text)', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
                     title="Delete"
                   >
                     <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.trash}</span>
@@ -296,8 +296,8 @@ export default function AiKnowledgeScr({ profile }) {
 
             <div className="fg" style={{ marginBottom: 14 }}>
               <label className="flbl">
-                Content <span style={{ color: '#EF4444' }}>*</span>
-                <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6 }}>— write in plain English, the AI reads this directly</span>
+                Content <span style={{ color: 'var(--red-text)' }}>*</span>
+                <span style={{ fontWeight: 400, color: 'var(--text-subtle)', marginLeft: 6 }}>— write in plain English, the AI reads this directly</span>
               </label>
               <textarea
                 className="finp"
@@ -318,7 +318,7 @@ export default function AiKnowledgeScr({ profile }) {
             </div>
 
             {err && (
-              <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '8px 12px', fontSize: 12.5, borderRadius: 4, marginBottom: 12, border: '1px solid #FECACA' }}>
+              <div style={{ background: '#FEF2F2', color: 'var(--red-text)', padding: '8px 12px', fontSize: 12.5, borderRadius: 4, marginBottom: 12, border: '1px solid #FECACA' }}>
                 {err}
               </div>
             )}

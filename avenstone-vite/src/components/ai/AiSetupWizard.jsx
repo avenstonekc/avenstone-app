@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { sb, AV_TENANT } from '../../lib/supabase';
 
-const NAV  = '#0A1F44';
-const GOLD = '#C9A84C';
+const NAV  = 'var(--navy-900)';
+const GOLD = 'var(--gold-500)';
 
 // Each step maps to a knowledge entry
 // `field` = form key, `category` = ai_knowledge category
@@ -175,7 +175,7 @@ export default function AiSetupWizard({ profile, onDone }) {
           <div style={{ fontSize: 17, fontWeight: 600, color: NAV, marginBottom: 8, lineHeight: 1.35 }}>
             {cur.question}
           </div>
-          <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20, lineHeight: 1.5 }}>
             {cur.hint}
           </div>
 
@@ -184,7 +184,7 @@ export default function AiSetupWizard({ profile, onDone }) {
             {cur.prefix && (
               <span style={{
                 padding: '9px 12px', background: '#F9FAFB', border: '1px solid #E5E7EB',
-                borderRight: 'none', borderRadius: '6px 0 0 6px', fontSize: 14, color: '#6B7280', flexShrink: 0,
+                borderRight: 'none', borderRadius: '6px 0 0 6px', fontSize: 14, color: 'var(--text-muted)', flexShrink: 0,
               }}>
                 {cur.prefix}
               </span>
@@ -205,7 +205,7 @@ export default function AiSetupWizard({ profile, onDone }) {
             {cur.suffix && (
               <span style={{
                 padding: '9px 12px', background: '#F9FAFB', border: '1px solid #E5E7EB',
-                borderLeft: 'none', borderRadius: '0 6px 6px 0', fontSize: 14, color: '#6B7280', flexShrink: 0,
+                borderLeft: 'none', borderRadius: '0 6px 6px 0', fontSize: 14, color: 'var(--text-muted)', flexShrink: 0,
               }}>
                 {cur.suffix}
               </span>
@@ -223,7 +223,7 @@ export default function AiSetupWizard({ profile, onDone }) {
           )}
 
           {err && (
-            <div style={{ fontSize: 12.5, color: '#DC2626', marginBottom: 8 }}>{err}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--red-text)', marginBottom: 8 }}>{err}</div>
           )}
         </div>
 
@@ -236,11 +236,11 @@ export default function AiSetupWizard({ profile, onDone }) {
             onClick={skip}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              color: '#9CA3AF', fontSize: 13, padding: '8px 0',
+              color: 'var(--text-subtle)', fontSize: 13, padding: '8px 0',
               transition: 'color 0.15s',
             }}
-            onMouseEnter={e => e.currentTarget.style.color = '#6B7280'}
-            onMouseLeave={e => e.currentTarget.style.color = '#9CA3AF'}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-muted)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-subtle)'}
           >
             Skip this question
           </button>
@@ -271,7 +271,7 @@ export default function AiSetupWizard({ profile, onDone }) {
           {STEPS.map((_, i) => (
             <span key={i} style={{
               width: i === step ? 20 : 7, height: 7, borderRadius: 4,
-              background: i < step ? GOLD : i === step ? NAV : '#E5E7EB',
+              background: i < step ? GOLD : i === step ? NAV : 'var(--border)',
               transition: 'all 0.3s', display: 'inline-block',
             }} />
           ))}
