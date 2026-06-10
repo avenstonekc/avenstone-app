@@ -474,7 +474,7 @@ function AgentCard({ card, onSubmit, onCancel, loading }) {
 
 const MAX_TEXTAREA_H = 140; // 5 lines × (16px × 1.5 line-height) + 20px vertical padding
 
-export default function MasterAgent({ profile, pendingAction, clearPendingAction, suggestedJobId, jobs, onAgentAction }) {
+export default function MasterAgent({ profile, pendingAction, clearPendingAction, suggestedJobId, jobs, onAgentAction, currentPage, activeTab }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -614,7 +614,22 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const callMaster = async (body, userMessageText, isConfirmedAction = false) => {
     setLoading(true);
     try {
-      const enrichedBody = contextJobId ? { ...body, context_job_id: contextJobId } : body;
+      // Build screen context: "Viewing: <job> / <tab>" or "Page: <page>"
+      const buildCtxScreen = () => {
+        if (contextJobId) {
+          const job = jobs?.find(j => j.id === contextJobId);
+          const jobName = job?.address || job?.client_name || 'current job';
+          return activeTab ? `Viewing: ${jobName} / ${activeTab}` : `Viewing: ${jobName}`;
+        }
+        if (currentPage && currentPage !== 'jobs') return `Page: ${currentPage}`;
+        return null;
+      };
+      const ctxScreen = buildCtxScreen();
+      const enrichedBody = {
+        ...body,
+        ...(contextJobId ? { context_job_id: contextJobId } : {}),
+        ...(ctxScreen ? { context_screen: ctxScreen } : {}),
+      };
       const res = await fetch(AI_MASTER_URL, {
         method: 'POST',
         headers: {

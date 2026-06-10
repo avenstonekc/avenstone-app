@@ -489,7 +489,7 @@ export default function App() {
 
       {showNotif && <NotifPanel notifs={notifs} onClose={() => setShowNotif(false)} onMarkAllRead={markAllNotifsRead} onClickNotif={onClickNotif} />}
       {showSettings && <SettingsModal profile={profile} setProfile={setProfile} onClose={() => setShowSettings(false)} />}
-      {profile?.role === 'owner' && <MasterAgent profile={profile} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} suggestedJobId={viewportJobId} jobs={jobs} onAgentAction={(action) => setPendingAction(action)} />}
+      {profile?.role === 'owner' && <MasterAgent profile={profile} pendingAction={pendingAction} clearPendingAction={() => setPendingAction(null)} suggestedJobId={viewportJobId} jobs={jobs} onAgentAction={(action) => setPendingAction(action)} currentPage={pg} activeTab={viewportTab} />}
       <FieldOpusPanel profile={profile} />
       {walkthroughProps && (
         <PlaybookChecklist
