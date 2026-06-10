@@ -6,9 +6,11 @@ import SubJobView from './SubJobView';
 import SubOnboardingWizard from './SubOnboardingWizard';
 import CompanyDocsSection from './CompanyDocsSection';
 import EngagementDetailModal from '../modals/EngagementDetailModal';
-const NAV = '#0A1F44';
-const GOLD = '#C9A84C';
-const BORDER = '#E8E4DC';
+
+const NAV    = 'var(--navy-900)';
+const GOLD   = 'var(--gold-500)';
+const BORDER = 'var(--border)';
+const CREAM  = 'var(--bg)';
 
 function StarRating({ value }) {
   return (
@@ -35,8 +37,7 @@ export default function SubPortal({ profile, signOut }) {
     localStorage.setItem('av_sub_lang', next);
   };
 
-  // Trade rate editing state
-  const [editingTrade, setEditingTrade] = useState(null); // trade string being edited
+  const [editingTrade, setEditingTrade] = useState(null);
   const [editForm, setEditForm] = useState({ pricing_mode: 'rate', unit: 'sf', rate: '', notes: '' });
   const [editSaving, setEditSaving] = useState(false);
   const [editErr, setEditErr] = useState('');
@@ -55,14 +56,8 @@ export default function SubPortal({ profile, signOut }) {
     if (res.ok) setEngagements(res.data);
   };
 
-  useEffect(() => {
-    sbLoadActiveTradeStrings().then(setAllTradeStrings);
-  }, []);
-
-  useEffect(() => {
-    loadEngagements();
-  }, [profile?.id]);
-
+  useEffect(() => { sbLoadActiveTradeStrings().then(setAllTradeStrings); }, []);
+  useEffect(() => { loadEngagements(); }, [profile?.id]);
   useEffect(() => {
     if (profile?.id) {
       sbLoadSubJobs(profile.id).then(d => { setJobs(d); setLoading(false); });
@@ -124,14 +119,13 @@ export default function SubPortal({ profile, signOut }) {
   ];
 
   return (
-    <div style={{ minHeight: '100dvh', background: '#F7F5F0' }}>
+    <div style={{ minHeight: '100dvh', background: CREAM }}>
       {/* Header */}
       <div style={{ background: NAV, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 9, color: GOLD, letterSpacing: 4, textTransform: 'uppercase' }}>Avenstone Group</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>{profile?.full_name}</div>
         </div>
-        {/* Rating display */}
         {rating && (
           <div style={{ textAlign: 'right', marginRight: 4 }}>
             <StarRating value={rating.average} />
@@ -147,9 +141,9 @@ export default function SubPortal({ profile, signOut }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ background: '#fff', borderBottom: `1px solid ${BORDER}`, display: 'flex', overflowX: 'auto' }}>
+      <div style={{ background: 'var(--card-bg)', borderBottom: `1px solid ${BORDER}`, display: 'flex', overflowX: 'auto' }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setView(t.id)} style={{ flex: '0 0 auto', padding: '12px 16px', background: 'transparent', border: 'none', borderBottom: `2px solid ${view === t.id ? GOLD : 'transparent'}`, color: view === t.id ? NAV : '#9CA3AF', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+          <button key={t.id} onClick={() => setView(t.id)} style={{ flex: '0 0 auto', padding: '12px 16px', background: 'transparent', border: 'none', borderBottom: `2px solid ${view === t.id ? GOLD : 'transparent'}`, color: view === t.id ? NAV : 'var(--text-subtle)', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
             <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic[t.ic] || Ic.home}</span>
             {t.lb}
             {t.badge > 0 && <span style={{ background: GOLD, color: NAV, width: 16, height: 16, borderRadius: '50%', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.badge}</span>}
@@ -167,30 +161,30 @@ export default function SubPortal({ profile, signOut }) {
           const past         = engagements.filter(e => ['completed', 'declined', 'withdrawn', 'removed'].includes(e.status));
 
           const statusMeta = {
-            invited:       { label: 'Invited',    color: GOLD,      bg: 'rgba(201,168,76,0.12)' },
-            bid_submitted: { label: 'Bid In',     color: '#3b82f6', bg: 'rgba(59,130,246,0.1)'  },
-            active:        { label: 'Active',     color: '#22c55e', bg: 'rgba(34,197,94,0.1)'   },
-            completed:     { label: 'Completed',  color: '#9CA3AF', bg: 'rgba(156,163,175,0.1)' },
-            declined:      { label: 'Declined',   color: '#ef4444', bg: 'rgba(239,68,68,0.1)'   },
-            withdrawn:     { label: 'Withdrawn',  color: '#ef4444', bg: 'rgba(239,68,68,0.1)'   },
-            removed:       { label: 'Removed',    color: '#ef4444', bg: 'rgba(239,68,68,0.1)'   },
+            invited:       { label: 'Invited',    color: GOLD,                bg: 'var(--gold-100)' },
+            bid_submitted: { label: 'Bid In',      color: '#3b82f6',           bg: 'rgba(59,130,246,0.1)' },
+            active:        { label: 'Active',      color: 'var(--green-dot)',  bg: 'rgba(34,197,94,0.1)' },
+            completed:     { label: 'Completed',   color: 'var(--text-subtle)', bg: 'rgba(156,163,175,0.1)' },
+            declined:      { label: 'Declined',    color: 'var(--red-text)',   bg: 'rgba(239,68,68,0.1)' },
+            withdrawn:     { label: 'Withdrawn',   color: 'var(--red-text)',   bg: 'rgba(239,68,68,0.1)' },
+            removed:       { label: 'Removed',     color: 'var(--red-text)',   bg: 'rgba(239,68,68,0.1)' },
           };
 
           const renderRow = eng => {
             const meta = statusMeta[eng.status] || statusMeta.invited;
             const lastTs = [eng.invited_at, eng.bid_submitted_at, eng.activated_at, eng.completed_at, eng.terminated_at].filter(Boolean).sort().pop();
             return (
-              <div key={eng.id} onClick={() => setDetailEngId(eng.id)} style={{ background: '#fff', border: `1px solid ${BORDER}`, borderLeft: `3px solid ${meta.color}`, borderRadius: 8, padding: '12px 14px', marginBottom: 8, cursor: 'pointer' }}>
+              <div key={eng.id} onClick={() => setDetailEngId(eng.id)} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderLeft: `3px solid ${meta.color}`, borderRadius: 8, padding: '12px 14px', marginBottom: 8, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: NAV, marginBottom: 2 }}>{eng.job?.address || '—'}</div>
-                    <div style={{ fontSize: 12, color: '#9CA3AF', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-subtle)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       {eng.trade && <span>{eng.trade}</span>}
                       {eng.current_bid?.total_amount != null && <span style={{ color: NAV, fontWeight: 600 }}>{f$(eng.current_bid.total_amount)}</span>}
                       {lastTs && <span>{fDT(lastTs)}</span>}
                     </div>
                     {eng.status === 'invited' && (
-                      <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 4, display: 'inline-block', background: eng.bid_type === 'gc_drafted' ? 'rgba(59,130,246,0.1)' : 'rgba(201,168,76,0.12)', color: eng.bid_type === 'gc_drafted' ? '#3b82f6' : GOLD }}>
+                      <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 4, display: 'inline-block', background: eng.bid_type === 'gc_drafted' ? 'rgba(59,130,246,0.1)' : 'var(--gold-100)', color: eng.bid_type === 'gc_drafted' ? '#3b82f6' : GOLD }}>
                         {eng.bid_type === 'gc_drafted' ? 'Pre-drafted bid ready for your review' : 'Submit your bid'}
                       </div>
                     )}
@@ -202,9 +196,9 @@ export default function SubPortal({ profile, signOut }) {
           };
 
           const groupHeader = (label, count) => (
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
               {label}
-              <span style={{ background: '#F7F5F0', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '1px 7px', fontSize: 10, color: '#9CA3AF' }}>{count}</span>
+              <span style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '1px 7px', fontSize: 10, color: 'var(--text-subtle)' }}>{count}</span>
             </div>
           );
 
@@ -212,11 +206,11 @@ export default function SubPortal({ profile, signOut }) {
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: NAV, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                 My Engagements
-                {engagements.length > 0 && <span style={{ fontSize: 12, background: '#F7F5F0', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '1px 9px', color: '#9CA3AF', fontWeight: 600 }}>{engagements.length}</span>}
+                {engagements.length > 0 && <span style={{ fontSize: 12, background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '1px 9px', color: 'var(--text-subtle)', fontWeight: 600 }}>{engagements.length}</span>}
               </div>
 
               {engagements.length === 0 ? (
-                <div style={{ fontSize: 13, color: '#9CA3AF', padding: '12px 0' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-subtle)', padding: '12px 0' }}>
                   No engagements yet. PMs will reach out when they want a bid from you.
                 </div>
               ) : (
@@ -226,7 +220,7 @@ export default function SubPortal({ profile, signOut }) {
                   {active.length > 0 && <div style={{ marginBottom: 14 }}>{groupHeader('Active', active.length)}{active.map(renderRow)}</div>}
                   {past.length > 0 && (
                     <div>
-                      <button onClick={() => setShowPast(v => !v)} style={{ background: 'none', border: 'none', color: '#9CA3AF', fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 8 }}>
+                      <button onClick={() => setShowPast(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 8 }}>
                         {showPast ? '▾' : '▸'} Show {past.length} past
                       </button>
                       {showPast && past.map(renderRow)}
@@ -240,13 +234,13 @@ export default function SubPortal({ profile, signOut }) {
 
         {/* Jobs tab */}
         {view === 'jobs' && <>
-          {loading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>{t('Loading your projects...', lang)}</div>}
+          {loading && <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-subtle)' }}>{t('Loading your projects...', lang)}</div>}
           {!loading && !jobs.length && <div className="empty" style={{ paddingTop: 60 }}>{Ic.home}<div className="empty-t">{t('No projects assigned yet', lang)}</div><div>{t('Your contractor will assign you to a project', lang)}</div></div>}
           {jobs.map(j => (
-            <div key={j.id} onClick={() => setSel(j)} style={{ background: '#fff', border: '1px solid #E8E4DC', borderLeft: `4px solid ${sc(j.status)}`, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', borderRadius: 8 }} onMouseEnter={e => e.currentTarget.style.borderColor = GOLD} onMouseLeave={e => e.currentTarget.style.borderColor = BORDER}>
+            <div key={j.id} onClick={() => setSel(j)} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderLeft: `4px solid ${sc(j.status)}`, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', borderRadius: 8 }} onMouseEnter={e => e.currentTarget.style.borderColor = GOLD} onMouseLeave={e => e.currentTarget.style.borderColor = BORDER}>
               <div style={{ fontSize: 14, fontWeight: 600, color: NAV, marginBottom: 4 }}>{j.address}</div>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                {j.client_name && <span style={{ fontSize: 12, color: '#9CA3AF' }}>{j.client_name}</span>}
+                {j.client_name && <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>{j.client_name}</span>}
                 <span style={{ fontSize: 10, background: sc(j.status) + '18', color: sc(j.status), padding: '2px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, borderRadius: 20 }}>{sl(j.status)}</span>
               </div>
             </div>
@@ -256,7 +250,7 @@ export default function SubPortal({ profile, signOut }) {
         {/* Company Docs tab */}
         {view === 'docs' && <CompanyDocsSection profile={profile} lang={lang} />}
 
-        {/* Pricing tab — Trade Rates */}
+        {/* Pricing tab */}
         {view === 'pricing' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -268,14 +262,14 @@ export default function SubPortal({ profile, signOut }) {
               <div className="empty">{Ic.box}<div className="empty-t">{t('No rates on file', lang)}</div><button className="btn btn-gold" style={{ marginTop: 12 }} onClick={() => setShowOnboarding(true)}>{t('Set Up My Pricing', lang)}</button></div>
             ) : (
               pricing.map(row => (
-                <div key={row.id} style={{ background: '#fff', border: `1px solid ${editingTrade === row.trade ? GOLD : BORDER}`, borderRadius: 10, marginBottom: 12, overflow: 'hidden' }}>
+                <div key={row.id} style={{ background: 'var(--card-bg)', border: `1px solid ${editingTrade === row.trade ? GOLD : BORDER}`, borderRadius: 10, marginBottom: 12, overflow: 'hidden' }}>
                   <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 700, color: NAV, textTransform: 'capitalize' }}>{row.trade}</div>
-                      <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 2 }}>
                         {row.pricing_mode === 'self_bid' ? t('Bidding each job myself', lang) : `${f$(row.rate)} / ${row.unit}`}
                       </div>
-                      {row.notes && <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>{row.notes}</div>}
+                      {row.notes && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{row.notes}</div>}
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => editingTrade === row.trade ? setEditingTrade(null) : openEdit(row)}>{editingTrade === row.trade ? t('Cancel', lang) : t('Edit', lang)}</button>
@@ -283,7 +277,7 @@ export default function SubPortal({ profile, signOut }) {
                   </div>
 
                   {editingTrade === row.trade && (
-                    <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 16px', background: '#FAFAF8' }}>
+                    <div style={{ borderTop: `1px solid ${BORDER}`, padding: '14px 16px', background: 'var(--surface)' }}>
                       <div className="fg" style={{ marginBottom: 10 }}>
                         <label className="flbl">{t('Pricing mode', lang)}</label>
                         <select className="finp" style={{ appearance: 'none' }} value={editForm.pricing_mode} onChange={e => setEditForm(p => ({ ...p, pricing_mode: e.target.value }))}>
@@ -310,7 +304,7 @@ export default function SubPortal({ profile, signOut }) {
                         <label className="flbl">{t('Notes', lang)}</label>
                         <textarea className="finp fta" rows={2} value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))} placeholder={t('Minimums, exclusions, complexity tiers...', lang)} />
                       </div>
-                      {editErr && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>{editErr}</div>}
+                      {editErr && <div style={{ fontSize: 12, color: 'var(--red-text)', marginBottom: 8 }}>{editErr}</div>}
                       <div style={{ display: 'flex', gap: 10 }}>
                         <button className="btn btn-danger" style={{ fontSize: 12, padding: '7px 14px' }} onClick={() => { if (window.confirm(`Remove ${row.trade}?`)) deleteTrade(row.trade); }}>{t('Remove', lang)}</button>
                         <button className="btn btn-gold" style={{ flex: 1 }} onClick={saveEdit} disabled={editSaving || (editForm.pricing_mode === 'rate' && !editForm.rate)}>{editSaving ? t('Saving...', lang) : t('Save', lang)}</button>
@@ -328,7 +322,6 @@ export default function SubPortal({ profile, signOut }) {
         )}
       </div>
 
-      {/* Add trade modal */}
       {showAddTrade && <div className="overlay" onClick={() => setShowAddTrade(false)}>
         <div className="modal" onClick={e => e.stopPropagation()}>
           <div className="modal-title">{t('Add a Trade', lang)}</div>
@@ -341,14 +334,13 @@ export default function SubPortal({ profile, signOut }) {
         </div>
       </div>}
 
-      {toast && <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: '#D1FAE5', color: '#065F46', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 2000, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{toast}</div>}
+      {toast && <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: 'var(--green-bg)', color: 'var(--green-text-strong)', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 2000, boxShadow: 'var(--shadow-md)' }}>{toast}</div>}
       <EngagementDetailModal
         isOpen={!!detailEngId}
         onClose={() => setDetailEngId(null)}
         engagementId={detailEngId}
         onSuccess={() => { showToast('Bid submitted — awaiting PM review'); loadEngagements(); }}
       />
-
     </div>
   );
 }
