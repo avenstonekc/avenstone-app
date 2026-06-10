@@ -83,17 +83,18 @@ const TILE_PREFIXES = {
   todo:         'Add a to-do: ',
   lead:         'New lead — ',
   change_order: 'Submit a change order on ',
+  attention:    'What needs my attention today?',
   // bug is the only special path: it does NOT go through ai-master-agent.
   // Tile click captures screenshot + bug context immediately, sets bugMode true,
   // and the next sendMessage routes the description to submit-bug-report.
 };
 
 const QUICK_TILES = [
-  { verb: 'receipt',      label: 'Add a receipt',         ic: 'note' },
-  { verb: 'todo',         label: 'Add to the to-do list', ic: 'check' },
-  { verb: 'lead',         label: 'Add a new lead',        ic: 'plus' },
-  { verb: 'change_order', label: 'Submit a change order', ic: 'warn' },
-  { verb: 'bug',          label: 'Submit a bug',          ic: 'info' },
+  { verb: 'receipt',   label: 'Add a receipt',              ic: 'note'  },
+  { verb: 'todo',      label: 'Add to the to-do list',      ic: 'check' },
+  { verb: 'lead',      label: 'Add a new lead',             ic: 'plus'  },
+  { verb: 'attention', label: "What needs my attention?",   ic: 'bell'  },
+  { verb: 'bug',       label: 'Submit a bug',               ic: 'info'  },
 ];
 
 function formatToolName(tool) {
