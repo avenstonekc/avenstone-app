@@ -2514,7 +2514,13 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
 
   // Prepend screen context as first message — replaces system-prompt contextLine.
   // Refreshed per request (not accumulated); does not touch the system+tools cache breakpoint.
-  const ctxLabel = contextScreen || (contextJobLabel ? `Viewing job: ${contextJobLabel}` : "");
+  // Include job_id in the label so the model can use it directly in tool calls without guessing.
+  const ctxJobPart = contextJobLabel
+    ? `${contextJobLabel} (job_id: ${contextJobId})`
+    : contextJobId || "";
+  const ctxLabel = contextScreen
+    ? (contextJobId && !contextScreen.includes(contextJobId) ? `${contextScreen} (job_id: ${contextJobId})` : contextScreen)
+    : (ctxJobPart ? `Viewing job: ${ctxJobPart}` : "");
   let currentMessages: Array<{ role: string; content: unknown }> = ctxLabel
     ? [{ role: "user", content: `[Context] ${ctxLabel}` }, ...messages]
     : [...messages];
@@ -2737,12 +2743,17 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
           const { data: ap } = await sb.from("profiles").select("full_name").eq("id", String(inputObj.assignee_id)).maybeSingle();
           if (ap) inputObj._assignee_name = (ap as any).full_name;
         }
-        // add_todo: inject context job_id when not provided so the todo is linked and
-        // the Confirm card shows which job it belongs to — catches wrong resolution early.
-        if (confirmBlock.name === "add_todo" && contextJobId && isMissing(inputObj.job_id)) {
-          inputObj.job_id = contextJobId;
-          const { data: atJob } = await sb.from("jobs").select("address").eq("id", contextJobId).maybeSingle();
-          if (atJob) inputObj._job_address = (atJob as any).address;
+        // add_todo: inject context job_id when absent or when the model passed a name string
+        // instead of a UUID (happens when context message only had the name, not the id).
+        // Shows the resolved job in the Confirm card so wrong resolution is caught before commit.
+        if (confirmBlock.name === "add_todo" && contextJobId) {
+          const atProvidedId = inputObj.job_id ? String(inputObj.job_id) : "";
+          const atIsUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(atProvidedId);
+          if (!atIsUuid) {
+            inputObj.job_id = contextJobId;
+            const { data: atJob } = await sb.from("jobs").select("address").eq("id", contextJobId).maybeSingle();
+            if (atJob) inputObj._job_address = (atJob as any).address;
+          }
         }
         // notify_team_member: resolve _resolved_target_id, _target_name, _job_address for Confirm card.
         if (confirmBlock.name === "notify_team_member") {
