@@ -53,7 +53,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 **Schema drift notes (audit 2026-06-10):**
 - `job_lidar_scans.scanner_version` is selected in `normalize-scan/index.ts:345` but the column does not exist in DB — pre-existing read drift, inert on the current code path. Fix when next touching normalize-scan.
-- **pg_cron active jobs (verified 2026-06-10):** `anti-surprise-dispatcher` (*/15 min), `anti-surprise-generator` (03:00 daily), `sequence-runner` (*/15 min). `ai-pm-nightly` has NO cron schedule.
+- **pg_cron active jobs (verified 2026-06-10):** `anti-surprise-dispatcher` (*/15 min), `anti-surprise-generator` (03:00 daily), `sequence-runner` (*/15 min), `vigilance-runner` (11:00 daily). `ai-pm-nightly` has NO cron schedule.
 
 - **Phase 3 DROPs (2026-05-06):** `invitations_to_bid` view, `itb_invitees`, `quote_requests`, `bid_responses` (legacy), `bids`, `sub_pricing_changes`, `job_subs` — all dropped. `engagement_bids` and `job_sub_engagements` are the canonical engagement schema. RLS policies on `job_messages` and `schedule_items` updated to reference `job_sub_engagements` in the same migration.
 - **`jobs.client_user_id` (uuid) EXISTS and is actively used** — `supabase.js` (job load + `sbNotifyUser`), `ClientPortal.jsx` (job query + Realtime subscription filter), `MessagesTab.jsx` (email-on-new-message). Do not NULL it carelessly.
@@ -1306,3 +1306,16 @@ COLORS WITH NO CLOSE TOKEN MATCH (left as literals, noted for future token addit
 - #EBE6D2 / #DCE5D8 (custom phase palette warm cream/sage) — intentional design system extension
 - #6B5F3F / #2E4528 (phase palette text) — intentional
 INTENTIONAL DARK THEMES (not converted): MaterialsTab STATUS_META, SubsTab ENG_STATUS_META (both #111827/#1f2937 dark card backgrounds — would require design pass, not mechanical token swap)
+
+[LOG - 2026-06-10] AI_PM_FOLDIN Slice 2 — vigilance-runner edge function
+- Action: New edge function carrying all 11 PORT rules from the 2026-06-10 disposition audit. Replaces ai-pm-nightly's detection logic. ai-pm-nightly untouched (Slice 3 kills it).
+- Commits: 49b1a60 (function + todos_source migration), a7e25b1 (pg_cron migration). Pushed.
+- Files: supabase/functions/vigilance-runner/index.ts (NEW), supabase/migrations/20260610000001_todos_source_add_vigilance.sql, supabase/migrations/20260610000002_vigilance_runner_cron.sql
+- Pre-check results: job_transactions.phase EXISTS (text, nullable) — all 11 rules ported including budget_overrun. notifications type CHECK already dropped (migration 20260603240000). todos_source_check expanded from ['manual','engine'] to include 'vigilance'.
+- Key differences vs ai-pm-nightly: (1) dedup via existing-open-todo check instead of 24h recentNotifs scan — no daily re-fire on persisting conditions; (2) email_sent gate on notification insert (high=false → email fires, medium/low=true → blocked); (3) Rule 14 source_table corrected to 'job_files' (was stale 'job_documents'); (4) source='vigilance' on todos.
+- Cron: daily 11:00 UTC (06:00 Central), same anon JWT pattern as existing cron jobs. Verified in cron.job immediately after migration.
+- Smoke test (first run): 5 jobs processed, 9 alerts fired — no_daily_log (4), lien_waiver_missing (3), consultation_stale (1), estimate_no_proposal_24h (1). email_sent gate confirmed correct (payment_overdue=false, all others=true). Second run: 0 fired, 9 dedup_skipped — dedup working.
+- AiPmDashboard PM_TYPES verified in notifications: co_pending_approval, no_daily_log, payment_overdue visible. Dashboard will render real data.
+- Open: one test job (123 Test Flow Dr) has non-UUID id='test-flow-001' — todos FK insert fails; error handled gracefully per-job. Not a function bug.
+- Open: AI_PM_LEGACY_RULES block (CLAUDE_MEMORY line ~113) stays until Slice 3 kills ai-pm-nightly.
+- Open: pg_cron entry for vigilance-runner verified active. Update CLAUDE_MEMORY pg_cron list entry.
