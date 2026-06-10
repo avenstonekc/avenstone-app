@@ -6,9 +6,9 @@ import { applyOverridesToScan } from '../../lib/floorPlan/applyOverrides';
 import { parseFootInches } from '../../lib/floorPlan/parseFootInches';
 import FloorPlanCanvas from './FloorPlanCanvas';
 
-const NAVY = '#0A1F44';
-const GOLD = '#C9A84C';
-const CREAM = '#F7F5F0';
+const NAVY  = 'var(--navy-900)';
+const GOLD  = 'var(--gold-500)';
+const CREAM = 'var(--bg)';
 const DESKTOP_MIN_WIDTH = 1024;
 const SEND_FLOOR_PLAN_EMAIL_URL = `${SUPABASE_URL}/functions/v1/send-floor-plan-email`;
 

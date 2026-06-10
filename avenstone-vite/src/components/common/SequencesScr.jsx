@@ -230,7 +230,7 @@ export default function SequencesScr({ profile }) {
   const mobile = isMob();
 
   return (
-    <div style={{ display: 'flex', height: '100%', fontFamily: "'DM Sans', sans-serif", background: '#F7F5F0' }}>
+    <div style={{ display: 'flex', height: '100%', fontFamily: "'DM Sans', sans-serif", background: 'var(--bg)' }}>
       {/* LEFT PANEL */}
       <div style={{
         width: 320, flexShrink: 0,
@@ -245,7 +245,7 @@ export default function SequencesScr({ profile }) {
           borderBottom: '1px solid #E8E4DC',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between'
         }}>
-          <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 18, color: '#0A1F44', fontWeight: 400 }}>
+          <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 18, color: 'var(--navy-900)', fontWeight: 400 }}>
             Sequences
           </span>
           <button
@@ -284,13 +284,13 @@ export default function SequencesScr({ profile }) {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600, color: '#0A1F44', fontSize: 14 }}>{seq.name}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--navy-900)', fontSize: 14 }}>{seq.name}</span>
                     <StatusBadge status={seq.status} />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{
-                      fontSize: 11, color: '#6B7280',
-                      background: '#F3F4F6', borderRadius: 4, padding: '2px 6px'
+                      fontSize: 11, color: 'var(--text-muted)',
+                      background: 'var(--neutral-bg)', borderRadius: 4, padding: '2px 6px'
                     }}>
                       {TRIGGERS[seq.trigger] || seq.trigger}
                     </span>
@@ -304,7 +304,7 @@ export default function SequencesScr({ profile }) {
       </div>
 
       {/* RIGHT PANEL */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#F7F5F0' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
         {!selected ? (
           <div style={{
             flex: 1, display: 'flex', flexDirection: 'column',
@@ -323,7 +323,7 @@ export default function SequencesScr({ profile }) {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: '#0A1F44', fontWeight: 400 }}>
+                <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: 'var(--navy-900)', fontWeight: 400 }}>
                   {selected.name}
                 </span>
                 <StatusBadge status={selected.status} />
@@ -366,7 +366,7 @@ export default function SequencesScr({ profile }) {
                 }}>
                   <div>
                     <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Trigger</div>
-                    <div style={{ fontSize: 14, color: '#0A1F44', fontWeight: 500 }}>{TRIGGERS[selected.trigger] || selected.trigger}</div>
+                    <div style={{ fontSize: 14, color: 'var(--navy-900)', fontWeight: 500 }}>{TRIGGERS[selected.trigger] || selected.trigger}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Status</div>
@@ -374,14 +374,14 @@ export default function SequencesScr({ profile }) {
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Steps</div>
-                    <div style={{ fontSize: 14, color: '#0A1F44', fontWeight: 500 }}>
+                    <div style={{ fontSize: 14, color: 'var(--navy-900)', fontWeight: 500 }}>
                       {Array.isArray(selected.steps) ? selected.steps.length : 0} step{Array.isArray(selected.steps) && selected.steps.length !== 1 ? 's' : ''}
                     </div>
                   </div>
                   {selected.description && (
                     <div style={{ gridColumn: '1 / -1' }}>
                       <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Description</div>
-                      <div style={{ fontSize: 14, color: '#374151' }}>{selected.description}</div>
+                      <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{selected.description}</div>
                     </div>
                   )}
                 </div>
@@ -389,16 +389,16 @@ export default function SequencesScr({ profile }) {
                 {/* Steps List */}
                 {Array.isArray(selected.steps) && selected.steps.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0A1F44', marginBottom: 2 }}>Steps</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)', marginBottom: 2 }}>Steps</div>
                     {selected.steps.map((step, idx) => (
                       <div key={idx} style={{
-                        background: '#F7F5F0', border: '1px solid #E8E4DC',
+                        background: 'var(--bg)', border: '1px solid #E8E4DC',
                         padding: 12, borderRadius: 8
                       }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#C9A84C', marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gold-500)', marginBottom: 6 }}>
                           {idx + 1}. {step.day !== undefined ? dayLabel(step.day) : `Step ${idx + 1}`}
                         </div>
-                        <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.5 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                           {step.message || step.body || step.content || JSON.stringify(step)}
                         </div>
                       </div>
@@ -411,9 +411,9 @@ export default function SequencesScr({ profile }) {
               <div className="card" style={{ padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontWeight: 600, color: '#0A1F44', fontSize: 15 }}>Enrolled</span>
+                    <span style={{ fontWeight: 600, color: 'var(--navy-900)', fontSize: 15 }}>Enrolled</span>
                     <span style={{
-                      background: '#0A1F4414', color: '#0A1F44', borderRadius: 20,
+                      background: '#0A1F4414', color: 'var(--navy-900)', borderRadius: 20,
                       padding: '2px 8px', fontSize: 12, fontWeight: 600
                     }}>
                       {enrollments.length}
@@ -441,24 +441,24 @@ export default function SequencesScr({ profile }) {
                       return (
                         <div key={enr.id} style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          padding: '10px 12px', background: '#F7F5F0', borderRadius: 8,
+                          padding: '10px 12px', background: 'var(--bg)', borderRadius: 8,
                           border: '1px solid #E8E4DC', flexWrap: 'wrap', gap: 8
                         }}>
                           <div style={{ minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontWeight: 600, fontSize: 14, color: '#0A1F44' }}>{name}</span>
+                              <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy-900)' }}>{name}</span>
                               {isSubRow && (
-                                <span style={{ fontSize: 10, fontWeight: 600, color: '#C9A84C', background: '#C9A84C18', padding: '1px 6px', borderRadius: 10 }}>SUB</span>
+                                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--gold-500)', background: '#C9A84C18', padding: '1px 6px', borderRadius: 10 }}>SUB</span>
                               )}
                             </div>
-                            {phone && <div style={{ fontSize: 12, color: '#6B7280' }}>{phone}</div>}
+                            {phone && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{phone}</div>}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <EnrollStatusBadge status={enr.status} />
-                            <span style={{ fontSize: 12, color: '#6B7280' }}>
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                               Step {(enr.current_step || 0) + 1} of {totalSteps}
                             </span>
-                            <span style={{ fontSize: 12, color: '#6B7280' }}>
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                               {isStopped ? 'Stopped' : isComplete ? 'Complete' : enr.next_send_at ? formatDate(enr.next_send_at) : '—'}
                             </span>
                             {enr.status === 'active' && (
@@ -503,7 +503,7 @@ export default function SequencesScr({ profile }) {
               /* PHASE 1 */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
                     Name <span style={{ color: '#EF4444' }}>*</span>
                   </label>
                   <input
@@ -516,7 +516,7 @@ export default function SequencesScr({ profile }) {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Trigger</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Trigger</label>
                   <select
                     className="finp"
                     value={createForm.trigger}
@@ -530,7 +530,7 @@ export default function SequencesScr({ profile }) {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Number of Steps</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Number of Steps</label>
                   <select
                     className="finp"
                     value={createForm.steps_count}
@@ -544,7 +544,7 @@ export default function SequencesScr({ profile }) {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
                     Goal <span style={{ color: '#EF4444' }}>*</span>
                   </label>
                   <textarea
@@ -558,7 +558,7 @@ export default function SequencesScr({ profile }) {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
                     Context <span style={{ color: '#9CA3AF', fontWeight: 400 }}>(optional)</span>
                   </label>
                   <textarea
@@ -572,7 +572,7 @@ export default function SequencesScr({ profile }) {
                 </div>
 
                 {genError && (
-                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', padding: '10px 14px', borderRadius: 6, fontSize: 13 }}>
+                  <div style={{ background: 'var(--red-bg)', border: '1px solid #FECACA', color: 'var(--red-text-strong)', padding: '10px 14px', borderRadius: 6, fontSize: 13 }}>
                     {genError}
                   </div>
                 )}
@@ -596,7 +596,7 @@ export default function SequencesScr({ profile }) {
             ) : (
               /* PHASE 2 */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#C9A84C' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gold-500)' }}>
                   AI Generated — Review your sequence
                 </div>
 
@@ -605,10 +605,10 @@ export default function SequencesScr({ profile }) {
                   const charCount = msg.length;
                   return (
                     <div key={idx} style={{
-                      background: '#F7F5F0', border: '1px solid #E8E4DC',
+                      background: 'var(--bg)', border: '1px solid #E8E4DC',
                       padding: 12, borderRadius: 8
                     }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#C9A84C', marginBottom: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gold-500)', marginBottom: 6 }}>
                         {step.day !== undefined ? dayLabel(step.day) : `Step ${idx + 1}`}
                       </div>
                       <textarea
@@ -668,8 +668,8 @@ export default function SequencesScr({ profile }) {
                   onClick={() => setEnrollType(t)}
                   style={{
                     flex: 1, padding: '8px 0', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-                    background: enrollType === t ? '#0A1F44' : '#fff',
-                    color: enrollType === t ? '#fff' : '#6B7280',
+                    background: enrollType === t ? 'var(--navy-900)' : '#fff',
+                    color: enrollType === t ? '#fff' : 'var(--text-muted)',
                     transition: 'background 0.15s'
                   }}
                 >
@@ -681,7 +681,7 @@ export default function SequencesScr({ profile }) {
             <div style={{ marginBottom: 16 }}>
               {enrollType === 'contact' ? (
                 <>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
                     Select Contact
                   </label>
                   <select
@@ -700,7 +700,7 @@ export default function SequencesScr({ profile }) {
                 </>
               ) : (
                 <>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
                     Select Sub-contractor
                   </label>
                   <select
