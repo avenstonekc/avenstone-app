@@ -246,13 +246,13 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold-500)', marginBottom: 2 }}>🌟 Request a Review</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
-                Send {job.client_name || 'your client'} this link — their review goes straight to your public profile.
+                Send {job.client_name || 'your client'} this link{'—'}their review goes straight to your public profile.
               </div>
             </div>
             <button
               onClick={copyReviewLink}
               style={{ background: reviewCopied ? '#22C55E' : 'var(--gold-500)', color: 'var(--navy-900)', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
-              {reviewCopied ? '✓ Copied!' : 'Copy Review Link'}
+              {reviewCopied ? `✓ Copied!` : 'Copy Review Link'}
             </button>
           </div>
         )}
@@ -269,7 +269,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
                 </div>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
                   {hasPackage
-                    ? `Before & after labeled — share this branded page with ${job.client_name || 'your client'} and use it for marketing.`
+                    ? `Before & after labeled ${'—'} share this branded page with ${job.client_name || 'your client'} and use it for marketing.`
                     : 'Go to Photos tab and tap B/A on photos to label your before & after for this project.'}
                 </div>
               </div>
@@ -277,7 +277,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
                 <button
                   onClick={copyCompletionLink}
                   style={{ background: completionCopied ? '#22C55E' : '#4ADE80', color: '#0A2010', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
-                  {completionCopied ? '✓ Copied!' : '📤 Copy Package Link'}
+                  {completionCopied ? `✓ Copied!` : `📤 Copy Package Link`}
                 </button>
               )}
               {!hasPackage && (
