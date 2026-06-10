@@ -2743,17 +2743,16 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
           const { data: ap } = await sb.from("profiles").select("full_name").eq("id", String(inputObj.assignee_id)).maybeSingle();
           if (ap) inputObj._assignee_name = (ap as any).full_name;
         }
-        // add_todo: inject context job_id when absent or when the model passed a name string
-        // instead of a UUID (happens when context message only had the name, not the id).
-        // Shows the resolved job in the Confirm card so wrong resolution is caught before commit.
+        // add_todo: show context job address in Confirm card so wrong resolution is visible
+        // before commit. If job_id isn't a valid UUID (model used name string), override
+        // with contextJobId. Always fetch address for the card description.
         if (confirmBlock.name === "add_todo" && contextJobId) {
           const atProvidedId = inputObj.job_id ? String(inputObj.job_id) : "";
           const atIsUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(atProvidedId);
-          if (!atIsUuid) {
-            inputObj.job_id = contextJobId;
-            const { data: atJob } = await sb.from("jobs").select("address").eq("id", contextJobId).maybeSingle();
-            if (atJob) inputObj._job_address = (atJob as any).address;
-          }
+          if (!atIsUuid) inputObj.job_id = contextJobId;
+          const atResolvedId = atIsUuid ? atProvidedId : contextJobId;
+          const { data: atJob } = await sb.from("jobs").select("address").eq("id", atResolvedId).maybeSingle();
+          if (atJob) inputObj._job_address = (atJob as any).address;
         }
         // notify_team_member: resolve _resolved_target_id, _target_name, _job_address for Confirm card.
         if (confirmBlock.name === "notify_team_member") {
