@@ -463,8 +463,8 @@ export default function App() {
               { id: profile?.role === 'owner' ? 'projects' : 'jobs', ic: 'home', lb: 'Projects' },
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
-                <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: pg === t.id ? '#C9A84C' : '#9CA3AF' }}>{Ic[t.ic] || Ic.grid}</span>
-                <span className="bn-lbl" style={{ color: pg === t.id ? '#C9A84C' : '#9CA3AF' }}>{t.lb}</span>
+                <span className="bn-icon">{Ic[t.ic] || Ic.grid}</span>
+                <span className="bn-lbl">{t.lb}</span>
               </button>
             ))}
             {/* Aven AI center button — opens master agent */}
@@ -485,8 +485,8 @@ export default function App() {
               ...(isOwnerOrRep ? [{ id: 'reports', ic: 'box', lb: 'Reports' }] : []),
             ].map(t => (
               <button key={t.id} className={`bn-item${pg === t.id ? ' on' : ''}`} onClick={() => setPg(t.id)}>
-                <span style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: pg === t.id ? '#C9A84C' : '#9CA3AF' }}>{Ic[t.ic] || Ic.grid}</span>
-                <span className="bn-lbl" style={{ color: pg === t.id ? '#C9A84C' : '#9CA3AF' }}>{t.lb}</span>
+                <span className="bn-icon">{Ic[t.ic] || Ic.grid}</span>
+                <span className="bn-lbl">{t.lb}</span>
               </button>
             ))}
           </div>

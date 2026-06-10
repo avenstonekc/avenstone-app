@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { sb, sbCompleteTodo, sbSnoozeTodo, sbDismissTodo } from '../../lib/supabase';
 
-const SEV_COLOR = { high: '#EF4444', medium: '#C9A84C', low: '#9CA3AF' };
-const AMBER = '#f59e0b';
-const AMBER_BG = '#FEF3C7';
+const SEV_COLOR = { high: 'var(--red-text)', medium: 'var(--gold-500)', low: 'var(--text-subtle)' };
+const AMBER = 'var(--amber-text)';
+const AMBER_BG = 'var(--amber-bg)';   /* #FEF3C7 — LOCKED */
+const AMBER_BORDER = 'var(--amber-border)'; /* #FCD34D — LOCKED */
 
 function timeAgo(iso) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -69,9 +70,9 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
   };
 
   const btnBase = {
-    border: '1px solid #E8E4DC', background: '#fff', cursor: 'pointer',
-    fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 5,
-    color: '#6B7280', transition: 'all 0.12s',
+    border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer',
+    fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 'var(--r-xs)',
+    color: 'var(--text-muted)', transition: 'all 0.12s',
   };
 
   const renderResumeArea = () => {
@@ -89,9 +90,9 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
     if (bugStatus === 'auto_fixed') {
       return (
         <>
-          <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ AI fixed it</div>
+          <div style={{ fontSize: 12, color: 'var(--green-text)', fontWeight: 600 }}>✓ AI fixed it</div>
           <button
-            style={{ ...btnBase, background: '#16a34a', border: '1px solid #16a34a', color: '#fff', fontWeight: 700 }}
+            style={{ ...btnBase, background: 'var(--green-text)', border: '1px solid var(--green-text)', color: '#fff', fontWeight: 700 }}
             onClick={handleResume}
           >
             ↩ Try again
@@ -152,13 +153,13 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
   };
 
   return (
-    <div style={{ background: isFailedIntent ? AMBER_BG : '#fff', border: `1px solid ${isFailedIntent ? '#FCD34D' : '#E8E4DC'}`, borderLeft: `3px solid ${accentColor}`, borderRadius: 8, padding: '14px 16px', marginBottom: 10, position: 'relative' }}>
+    <div style={{ background: isFailedIntent ? AMBER_BG : 'var(--card-bg)', border: `1px solid ${isFailedIntent ? AMBER_BORDER : 'var(--border)'}`, borderLeft: `3px solid ${accentColor}`, borderRadius: 'var(--r-sm)', padding: '14px 16px', marginBottom: 10, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ width: 8, height: 8, borderRadius: '50%', background: accentColor, marginTop: 5, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#0A1F44', marginBottom: 2 }}>{todo.title}</div>
-          {(todo.notes || todo.body) && <div style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.5, marginBottom: 4 }}>{todo.notes || todo.body}</div>}
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11, color: '#9CA3AF' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{todo.title}</div>
+          {(todo.notes || todo.body) && <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 4 }}>{todo.notes || todo.body}</div>}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-subtle)' }}>
             {todo.job?.address && <span>📍 {todo.job.address}</span>}
             <span>{timeAgo(todo.created_at)}</span>
           </div>
@@ -175,7 +176,7 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
           </button>
         )}
         {renderResumeArea()}
-        <button style={{ ...btnBase, background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#16a34a' }} onClick={handleDone}>
+        <button style={{ ...btnBase, background: 'var(--green-bg)', border: '1px solid #BBF7D0', color: 'var(--green-text)' }} onClick={handleDone}>
           ✓ Done
         </button>
 
@@ -184,10 +185,10 @@ export default function TodoCard({ todo, onRemove, setPendingAction, onOpenWalkt
             Snooze ▾
           </button>
           {showSnooze && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fff', border: '1px solid #E8E4DC', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 140 }}>
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', boxShadow: 'var(--shadow-md)', zIndex: 100, minWidth: 140 }}>
               {[['1 day', 24], ['3 days', 72], ['1 week', 168]].map(([label, hours]) => (
-                <button key={hours} onClick={() => handleSnooze(hours)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '9px 14px', fontSize: 13, color: '#374151', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#F7F5F0'}
+                <button key={hours} onClick={() => handleSnooze(hours)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '9px 14px', fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                   {label}
                 </button>
