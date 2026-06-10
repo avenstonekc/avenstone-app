@@ -1268,8 +1268,41 @@ WHAT SHIPPED:
 - App.jsx bot-nav: .bn-icon className replaces per-item inline color.
 
 REMAINING SWEEP BATCHES (next slices):
-- Slice 2 (jobs tabs): EstimateTab, FinancialsTab, InfoTab, ConsultationTab, ComposeDrawScr, SubsTab, FilesTab, LogsTab, ScheduleTab, PaymentScheduleTab, InvoicesSubTab, ScopeTab, MaterialsTab, NotesPhotosTab
+- Slice 2 (jobs tabs): ✅ DONE — EstimateTab, FinancialsTab, InfoTab, ConsultationTab, ComposeDrawScr, SubsTab, FilesTab, LogsTab, ScheduleTab, PaymentScheduleTab, InvoicesSubTab, ScopeTab, MaterialsTab, NotesPhotosTab
 - Slice 3 (job screens): JobsScr, JobDet, ProjectsListScr, ProjectDetailHeader, PhaseAdvanceCard, PlaybookChecklist
 - Slice 4 (portals): ClientPortal, SubPortal, SubJobView, SubOnboardingWizard, OwnerHomeScr, OwnerPortal
 - Slice 5 (AI + dashboard + modals): MasterAgent, AiFieldAgent, DashScr, Reports, CalScr, HomeScr, all modals/
 - Slice 6 (admin + public + ai/): BugReportsScr, CompanyFilesScr, SequencesScr, LeadsScr, FloorPlanEditorScr, all ai/ components
+
+[LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 2 — token sweep of jobs/tabs
+- Action: Mechanical color token sweep of 14 jobs/tabs files. 3 commits. All pushed.
+- Commits: 21fedeb (financial tabs), 4a58363 (estimate/scope), 9bb442a (remainder)
+- Files: FinancialsTab, ComposeDrawScr, InvoicesSubTab, PaymentScheduleTab, EstimateTab, ScopeTab, MaterialsTab, ConsultationTab, ScheduleTab, InfoTab, SubsTab, FilesTab, LogsTab, NotesPhotosTab
+
+PER-FILE RESULTS (before hex literals → after):
+- ComposeDrawScr: ~40 → 7 (NAVY/GOLD/CREAM/BORDER consts → vars, massive coverage)
+- ConsultationTab: ~50 → 22 (LIKELIHOOD_COLORS + StatusBadge map migrated)
+- EstimateTab: ~40 → 8 (module consts + inline sweep)
+- FinancialsTab: ~60 → 19 (STATUS_COLOR dict + inline sweep)
+- InfoTab: ~20 → 2 (nearly clean)
+- FilesTab: ~10 → 2 (nearly clean)
+- ScopeTab: ~15 → 2 (module consts + sweep)
+- LogsTab: ~15 → 7
+- NotesPhotosTab: ~12 → 5
+- ScheduleTab: ~50 → 31 (TYPE_CHIP_COLORS/TYPE_AVATAR brand colors → vars; custom phase palette #EBE6D2/#DCE5D8 left)
+- PaymentScheduleTab: ~30 → 14 (btnPrimary/btnSecondary/btnGenerate/btnRelease consts migrated)
+- InvoicesSubTab: ~25 → 17 (DRAW_STATUS/INVOICE_STATUS migrated)
+- MaterialsTab: ~30 → 25 (intentional dark theme — STATUS_META dark backgrounds kept)
+- SubsTab: ~25 → 20 (intentional dark theme — ENG_STATUS_META dark backgrounds kept)
+Total remaining hex literals in jobs/tabs dir: 564 across 33 files.
+
+COLORS WITH NO CLOSE TOKEN MATCH (left as literals, noted for future token additions):
+- #991b1b, #991B1B (dark red text on red bg) — needed: --red-text-dark
+- #92400e (dark amber/brown text) — needed: --amber-text-dark
+- #b45309 (dark amber - "outstanding") — same gap as above
+- #065f46, #065F46 (dark green text on green bg) — needed: --green-text-dark
+- #EDE9FE / #5B21B6 (purple — "viewed" invoices, retainage) — needed: --purple-bg/--purple-text
+- #F3F4F6 (cool neutral gray for "draft/cancelled" status bg) — no warm-bg analog
+- #EBE6D2 / #DCE5D8 (custom phase palette warm cream/sage) — intentional design system extension
+- #6B5F3F / #2E4528 (phase palette text) — intentional
+INTENTIONAL DARK THEMES (not converted): MaterialsTab STATUS_META, SubsTab ENG_STATUS_META (both #111827/#1f2937 dark card backgrounds — would require design pass, not mechanical token swap)
