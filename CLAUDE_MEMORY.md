@@ -1269,12 +1269,28 @@ WHAT SHIPPED:
 - TodoCard.jsx: inline hex values → CSS var() refs. Amber GUARDRAIL intact (FEF3C7/FCD34D unchanged, now via --amber-bg/--amber-border consts).
 - App.jsx bot-nav: .bn-icon className replaces per-item inline color.
 
-REMAINING SWEEP BATCHES (next slices):
-- Slice 2 (jobs tabs): ✅ DONE
-- Slice 3 (job screens): ✅ DONE
-- Slice 4 (portals): ClientPortal, SubPortal, SubJobView, SubOnboardingWizard, OwnerHomeScr, OwnerPortal
-- Slice 5 (AI + dashboard + modals): MasterAgent, AiFieldAgent, DashScr, Reports, CalScr, HomeScr, all modals/
-- Slice 6 (admin + public + ai/): BugReportsScr, CompanyFilesScr, SequencesScr, LeadsScr, FloorPlanEditorScr, all ai/ components
+REMAINING SWEEP BATCHES: Slices 4–6 deferred. Slice 7 (UX punch) COMPLETE.
+New hex literal growth is gated by tools/audit_hex.js (baseline 1343, npm run audit:hex).
+
+[LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 7 — UX punch, ARC COMPLETE
+- Action: 7 targeted UX improvements. 7 commits. All pushed.
+- Commits: 75a2d72 (sidebar), b5ebf33 (todos), 4f49eb1 (calendar), c2d0cb3 (comparison floor), fed61ee (phase chips), 44939dc (camera icon), d014a4e (hex gate)
+
+1. SIDEBAR IA (App.jsx): 8 sections → 4. Work (Home, Projects, To-dos, Calendar, Field Agent), Sales, People, Setup (Company Files, AI Knowledge, Sequences, PM Dashboard, Owner Portal, Bug Reports). Zero routes changed.
+
+2. MyTodosScreen: (a) broken separator → HTML entities, (b) todos grouped by job (collapsible headers, default expanded, engine/vigilance source chips preserved), (c) Resolve stays as inline ✓ circle; Edit+Cancel demoted to ⋮ kebab popover.
+
+3. CalScr calendar: SC map now hex-only (required for alpha concat). Lead → purple #8B5CF6, Punch List → red #EF4444, Complete → green #10B981. LEGEND array drives footer swatches — swatches and pills now agree. Fixed broken 'active'/'punch' keys.
+
+4. OwnerHomeScr comparison floor: sbLoadOwnerDashboard exposes collectedPrior (= prior30). KPI tile suppresses % comparison when prior30 < $5000, renders '—' with title tooltip. title attribute wired to KpiTile sub div.
+
+5. ProjectDetailHeader phase chips: PHASE_STYLE rebuilt. complete = transparent+muted+✓ check. in_progress = solid gold-500 + navy text (primary). not_started = transparent + ghost outline. Consistent grammar, no more amber/green mixing.
+
+6. PlaybookChecklist: 📷 emoji → Ic.cam SVG in both REQ badge and Add photo button. Import Ic from utils.jsx.
+
+7. Hex audit gate: tools/audit_hex.js counts raw hex literals in src/ style props vs tools/baseline.json. npm run audit:hex. Exits 1 when count grows. Baseline: 1343 (2026-06-10). CLAUDE.md: 'Run npm run audit:hex before closing any UI slice.'
+
+FINAL HEX COUNT: 1343 (baseline locked). DESIGN_SYSTEM_ARC is complete.
 Remaining hex literals in jobs/ after Slice 3: 385 across 43 files (down from 763).
 
 [LOG - 2026-06-10] FINTAB_DEDUPE — Quick Actions removal + ledger stat row dedupe
