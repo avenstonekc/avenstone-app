@@ -1544,3 +1544,22 @@ ORPHANED STORAGE (job-documents and job-photos buckets — rows deleted, objects
 - Storage objects are orphaned but harmless; can be swept via Supabase storage UI when needed.
 
 SCHEMA SMELL ADDED TO OPEN ITEMS: jobs.id is TEXT not UUID — evaluate migration to uuid during Model B.
+
+[LOG - 2026-06-10] BRAND_REFRESH Slice 1 — reconstructed vector assets + raster exports
+- Action: Rebuilt the Avenstone mark as clean SVG geometry from the reference render. 12 SVG variants + 6 raster exports. DEV preview page at ?pg=brandpreview. NOT integrated into the app yet — awaiting review.
+- Commit: 911026e. Pushed.
+- Files: tools/create_brand_svgs.js, tools/gen_brand_assets.js, src/assets/brand/ (12 SVGs + logo-pdf@2x.png), public/ (favicon.ico, apple-touch-icon.png, icon-192/512.png), assets-src/ios-icon-1024.png, src/components/brand/BrandPreview.jsx
+
+MARK GEOMETRY (judgment calls):
+- Three nested house/A outlines. Outer: M50,5 L95,41 L95,92 L5,92 L5,41 Z. Middle: M50,19 L82,47 L82,84 L18,84 L18,47 Z. Inner A: apex at (50,33), walls at x=29/71, notch at y=78 with 8px feet each side, crossbar at y=66.
+- Spacing: ~13-unit apex inset, ~11-13-unit wall inset per layer. NOT exact parallel-offset — visually balanced to match reference.
+- Stroke: outer=2.8px, inner elements=2.5px. miter join (sharp peak), round linecap on open paths.
+- Compact (2-nest): outer M50,8 L90,44 L90,90 L10,90 L10,44 Z, inner A slightly simplified, stroke=3.5px. Survives 16px render.
+- Roof slope: ~51° from horizontal (matches reference steep geometry).
+- Wordmark: font-family='DM Serif Display' text element (NOT outlined paths). Requires Inkscape/Figma font-to-paths before final swap-in. Raster exports via sharp render correctly from system font.
+
+RASTER EXPORTS: favicon.ico (32+16 ICO), apple-touch-icon.png (180), icon-192.png, icon-512.png — all from compact mark on navy bg. iOS 1024 = full-bleed navy, mark at 65% of canvas. logo-pdf@2x.png = lockup white-knockout on transparent, 600×310px.
+
+PREVIEW URL: ?pg=brandpreview (DEV only, import.meta.env.DEV guard). Shows all 12 variants × 3 sizes (128/48/16px) × 3 backgrounds (navy/cream/white).
+
+NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add favicon link in index.html; wire apple-touch-icon/manifest entries.
