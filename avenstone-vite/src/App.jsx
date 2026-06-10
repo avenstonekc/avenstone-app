@@ -310,20 +310,27 @@ export default function App() {
   const roleLabel = { owner: 'Owner', sales_rep: 'Sales Rep', project_manager: 'Project Manager', sub: 'Contractor' }[profile?.role] || 'User';
 
   const NAV = [
-    { id: 'home', lb: 'Home', ic: 'grid', sec: 'Main' },
-    { id: profile?.role === 'owner' ? 'projects' : 'jobs', lb: 'Projects', ic: 'home', sec: 'Main', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
-    ...(isStaff ? [{ id: 'todos', lb: 'To-dos', ic: 'check', sec: 'Main' }] : []),
-    { id: 'calendar', lb: 'Calendar', ic: 'clip', sec: 'Main' },
-    ...(isOwnerOrRep ? [{ id: 'leads', lb: 'Leads', ic: 'doc', sec: 'Sales' }, { id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' }, { id: 'reports', lb: 'Reports', ic: 'box', sec: 'Sales' }, { id: 'stats', lb: 'Stats', ic: 'box', sec: 'Sales' }] : []),
-    ...(isStaff ? [{ id: 'field-agent', lb: 'Field Agent', ic: 'grid', sec: 'AI' }] : []),
+    { id: 'home',    lb: 'Home',     ic: 'grid',  sec: 'Work' },
+    { id: profile?.role === 'owner' ? 'projects' : 'jobs', lb: 'Projects', ic: 'home', sec: 'Work', badge: jobs.filter(j => !['complete', 'on_hold'].includes(j.status)).length },
+    ...(isStaff ? [{ id: 'todos',        lb: 'To-dos',     ic: 'check', sec: 'Work' }] : []),
+    { id: 'calendar', lb: 'Calendar',  ic: 'clip',  sec: 'Work' },
+    ...(isStaff ? [{ id: 'field-agent', lb: 'Field Agent', ic: 'grid',  sec: 'Work' }] : []),
+    ...(isOwnerOrRep ? [
+      { id: 'leads',    lb: 'Leads',    ic: 'doc', sec: 'Sales' },
+      { id: 'pipeline', lb: 'Pipeline', ic: 'grid', sec: 'Sales' },
+      { id: 'reports',  lb: 'Reports',  ic: 'box',  sec: 'Sales' },
+      { id: 'stats',    lb: 'Stats',    ic: 'box',  sec: 'Sales' },
+    ] : []),
     ...(isStaff ? [{ id: 'subs', lb: 'Subs', ic: 'home', sec: 'People' }] : []),
     ...(profile?.role === 'owner' ? [{ id: 'team', lb: 'Team', ic: 'home', sec: 'People' }] : []),
-    ...(isStaff ? [{ id: 'company-files', lb: 'Company Files', ic: 'folder', sec: 'Settings' }] : []),
-    ...(profile?.role === 'owner' ? [{ id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc', sec: 'Settings' }] : []),
-    ...(profile?.role === 'owner' ? [{ id: 'ai-pm', lb: 'PM Dashboard', ic: 'bell', sec: 'Settings' }] : []),
-    ...(profile?.role === 'owner' ? [{ id: 'sequences', lb: 'Sequences', ic: 'bell', sec: 'Tools' }] : []),
-    ...(profile?.role === 'owner' ? [{ id: 'owner-portal', lb: 'Owner Portal', ic: 'box', sec: 'Settings' }] : []),
-    ...(profile?.is_platform_owner ? [{ id: 'admin-bugs', lb: 'Bug Reports', ic: 'warn', sec: 'Platform' }] : []),
+    ...(isStaff ? [{ id: 'company-files', lb: 'Company Files', ic: 'folder', sec: 'Setup' }] : []),
+    ...(profile?.role === 'owner' ? [
+      { id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc',  sec: 'Setup' },
+      { id: 'sequences',    lb: 'Sequences',    ic: 'bell', sec: 'Setup' },
+      { id: 'ai-pm',        lb: 'PM Dashboard', ic: 'bell', sec: 'Setup' },
+      { id: 'owner-portal', lb: 'Owner Portal', ic: 'box',  sec: 'Setup' },
+    ] : []),
+    ...(profile?.is_platform_owner ? [{ id: 'admin-bugs', lb: 'Bug Reports', ic: 'warn', sec: 'Setup' }] : []),
   ];
 
   return (
