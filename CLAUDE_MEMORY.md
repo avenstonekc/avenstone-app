@@ -1320,6 +1320,27 @@ PART C: MaterialsTab — STATUS_META dark-on-dark → light tints; #111827 cards
 
 Still in jobs/ (385 hex literals): ScheduleTab custom phase palette (#EBE6D2/#DCE5D8 intentional), FilesRecentView CAT_COLORS (per-category hues intentional), GapResolutionModal SEV_COLORS, TransactionModal (Slice 5 modals batch).
 
+[LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 3.5 — Files tab + PlaybookChecklist redesign
+- Action: Visual redesign of two screens. All data logic, gating, and state machines byte-identical.
+- Commits: 52aa2e7 (Files tab), 97dc517 (PlaybookChecklist). Pushed.
+- Files: FilesTab.jsx, FilesTreeView.jsx, FilesGridView.jsx (export add), PlaybookChecklist.jsx
+
+FILES TAB:
+- FilesTreeView: flat accordion → folder cards (.av-card). Each card: 40px category icon in tinted square, serif name, "N files · last Date" subtitle, colored count pill, gold share icon button. Photos collapsed: lazy-loaded 5-thumbnail preview strip via PhotoThumbnail (IntersectionObserver). Expanded: photo grid (PhotoThumbnail) or FileRow list. Sub-category labels as small uppercase dividers. Max-width 1100px.
+- FilesGridView: export PhotoThumbnail for reuse.
+- FilesTab: view toggle → segmented control (Recent | Folders | Grid), three connected pills with navy active state.
+- All view/search/drag-drop/bulk-tag/upload/share logic untouched.
+
+PLAYBOOKCHECKLIST:
+- Layout: max-width 760px centered column (desktop), full-width (mobile - unchanged).
+- Header: sticky navy, serif workType title, resolved/total subtitle, gold progress bar (height 3px), amber pill for mustDocPending count.
+- Items: .av-card with 3px colored left border (green/red/neutral/gray by status), status ring indicator (hollow→filled circle), item label + MUST-DOC/.av-badge--amber + REQ/.av-badge--blue inline.
+- Pass/Fail/Skip: segmented control per card (connected pills), active state fills status tint. Skip absent on must_document (gate preserved).
+- Fail note mode: textarea in card, Save/Cancel. Gate: notes.trim() required (preserved).
+- Photo: compact button, purple tint when photo_required.
+- Footer: max-width 760px, amber pending text, .av-btn-primary styled (navy/gold enabled, neutral disabled).
+- All 5 gates confirmed unchanged: (1) fail requires note, (2) must_document blocks complete, (3) skip hidden on must_document, (4) photo informational only, (5) sbCompleteTodo only when todoId.
+
 [LOG - 2026-06-10] AI_PM_FOLDIN Slice 2 — vigilance-runner edge function
 - Action: New edge function carrying all 11 PORT rules from the 2026-06-10 disposition audit. Successor to ai-pm-nightly (retired Slice 3).
 - Commits: 49b1a60 (function + todos_source migration), a7e25b1 (pg_cron migration). Pushed.
