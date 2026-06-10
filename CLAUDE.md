@@ -597,6 +597,8 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 
   **Optional:** a read-only Supabase MCP connector may be configured for ad-hoc DB inspection (e.g. checking a table schema mid-session without running a script). Read-only only — it does NOT replace `npm run migrate` for applies or `audit:schema` for drift detection. Revisit before onboarding a second tenant, as cross-tenant inspection access would need scoping.
 
+- `tools/audit_hex.js` — counts raw hex color literals in `src/` style props and compares against `tools/baseline.json`. Run via `npm run audit:hex` from `avenstone-vite/`. Exit 0 = count ≤ baseline, 1 = count grew (UI slice introduced new literals — fix before closing), 2 = error. Flags: `--set` (write current count as new baseline after intentional cleanup), `--report` (per-file breakdown, no gate). **Run `npm run audit:hex` before closing any UI slice.** Baseline set at the end of DESIGN_SYSTEM_ARC Slice 7 (2026-06-10): 1343 hex literals.
+
 - `scripts/credential-renewal-check.js` — reads `scripts/credential-expirations.json`, exits 0 if all credentials are healthy, exits 1 with a structured warning if any credential is < 14 days from expiry or already expired. Invoked daily by `.github/workflows/credential-check.yml` (14:00 UTC); GitHub emails Kalin on failure. To add a new credential: add an entry to `credential-expirations.json` with `name`, `expires_at` (YYYY-MM-DD), and `renewal_instructions`.
 
 ---

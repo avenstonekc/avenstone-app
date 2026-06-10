@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "audit:schema": "node ../tools/audit_schema_vs_code.js",
     "audit:master-agent": "node ../tools/audit_master_agent.js",
+    "audit:hex": "node ../tools/audit_hex.js",
     "migrate": "node ../tools/apply_migration.js",
     "gen:types": "node ../tools/gen_types.js"
   },
