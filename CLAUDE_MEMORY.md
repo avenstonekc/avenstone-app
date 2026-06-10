@@ -1385,6 +1385,23 @@ SMOKE TESTS (pending deploy — run after edge fn auto-deploys via GitHub Action
 2. "what needs my attention today?" → call get_alerts → vigilance todos from morning's run should appear
 3. "what's on the schedule next two weeks?" → call get_schedule → items should list with dates and job names
 
+[LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 4 — portals token sweep
+- Action: 6 external-facing portal files converted. 3 bisectable commits, build green.
+- Commits: c5e4889 (ClientPortal), 057f1c3 (sub files), baef57d (owner files). Pushed.
+- Files: ClientPortal.jsx, SubPortal.jsx, SubJobView.jsx, SubOnboardingWizard.jsx, OwnerHomeScr.jsx, OwnerPortal.jsx
+
+PER-FILE RESULTS (before → after hex literal estimate):
+- ClientPortal.jsx: ~259 → ~60 (NAV/GOLD/CREAM/BORDER consts; MS_STATUS_COLOR kept raw hex for +'18' concat; DRAW_STATUS_STYLE tokenized; legacy fallback untouched — zero data logic changes)
+- SubPortal.jsx: ~40 → ~15 (consts → var(); statusMeta tokens)
+- SubJobView.jsx: ~80 → ~25 (adds NAV/GOLD/BORDER/CREAM; payment/CO/schedule badges fully tokenized)
+- SubOnboardingWizard.jsx: ~50 → ~10 (shared style objects converted; #9B8E7A warm-taupe left — no token)
+- OwnerHomeScr.jsx: ~60 → ~20 (consts → var(); STATUS_CFG tokens; revenue net color; Behind counter)
+- OwnerPortal.jsx: ~40 → ~10 (consts → var(); scoreColor/scoreBg tokens; error/toast tokens)
+
+SKIPPED (no close token): #F0FDF4 (lighter green bg), #BBF7D0 (medium green border), #FEF9EC (contract banner bg), #b45309 (partial-payment amber), #FFFBEB/#FDE68A/#78350F (warning section), #3B82F6 (blue links), #1F2937 (update message text), #F0ECE6 (legacy section), #1D4ED8/#1E40AF (blue status variants), #DC2626 (negative net), #9B8E7A (wizard warm-taupe), rgba() patterns on dark backgrounds.
+
+Total remaining hex literals across src/: 2233.
+
 [LOG - 2026-06-10] AI_PM_FOLDIN Slice 2 — vigilance-runner edge function
 - Action: New edge function carrying all 11 PORT rules from the 2026-06-10 disposition audit. Successor to ai-pm-nightly (retired Slice 3).
 - Commits: 49b1a60 (function + todos_source migration), a7e25b1 (pg_cron migration). Pushed.
