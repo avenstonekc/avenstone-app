@@ -1346,6 +1346,35 @@ PART C: MaterialsTab — STATUS_META dark-on-dark → light tints; #111827 cards
 
 Still in jobs/ (385 hex literals): ScheduleTab custom phase palette (#EBE6D2/#DCE5D8 intentional), FilesRecentView CAT_COLORS (per-category hues intentional), GapResolutionModal SEV_COLORS, TransactionModal (Slice 5 modals batch).
 
+[LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 5 — AI + dashboard + modals + token extension #2
+- Action: Final mechanical slice. 4 bisectable commits, build green all. ~600 hex converted.
+- Commits: e6b6320 (tokens+back-sweep), 6bb6860 (AI), 5eefa9b (dashboard), 0a46425 (modals). Pushed.
+
+TOKEN EXTENSION #2 — 15 new tokens added to tokens.css:
+  green-bg-soft(#F0FDF4), green-border-soft(#BBF7D0), green-text-deep(#166534), green-success(#2E7D32),
+  amber-bg-soft(#FFFBEB), amber-border-soft(#FDE68A), amber-text-deep(#78350F), amber-partial(#b45309),
+  cream-banner(#FEF9EC), blue-link(#3B82F6), blue-bg-new(#DBEAFE), blue-text-deep(#1E40AF),
+  blue-text-link-strong(#1D4ED8), red-strong(#DC2626)
+
+BACK-SWEEPS across previously-converted files: ClientPortal(8 tokens), ReviewPage(#22C55E uppercase fix),
+  BugReports(green-text-deep), LidarScanner(green-success), LeadsScr(blue-bg-new/text-deep/link-strong),
+  SubJobView(blue-text-link-strong), AiKnowledgeScr/AiSetupWizard(DC2626→red-strong fix), CompanyFilesScr(red-strong)
+
+PER-FILE RESULTS (approx):
+- MasterAgent (1810 lines): ~51→15 — gold/navy/bg/border/green-dot/green-bg/green-text-deep/text-muted.
+  Context/tool/TTS/STT logic paths untouched — confirmed via grep: callMaster signature, context_job_id,
+  pending_action, confirmed=true all byte-identical. #0F2A5C/#060F22/#7BA7D4/#4CAF50/#EF5350 left raw.
+- AiFieldAgent: NAV/GREEN/GOLD consts→var(); orb red/blue tokens; #334155 slate-700 noted raw.
+- DashScr/Reports/CalScr/HomeScr/AiPmDashboard/MyTodosScreen: full sweeps. SC dict in CalScr kept raw
+  (color+22/+44 string concat pattern). STATUS_DOT in HomeScr→var(). ALERT_CONFIG in AiPmDashboard fully
+  tokenized.
+- GapResolutionModal: SEV_COLORS (blocker/strong/nice_to_have) fully tokenized per spec.
+- TransactionModal + all 13 components/modals/ + TodoCard + CompanyFileExpirationBanner: batch sweep.
+  #D97706 (schedule gold-orange), #10B981 (complete teal), #F97316 (on-hold orange), #334155 (slate),
+  #6366f1 (pipeline indigo) left raw — no tokens.
+
+Total hex remaining across src/: 1,346 (was 1,944 entering Slice 5).
+
 [LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 3.5 — Files tab + PlaybookChecklist redesign
 - Action: Visual redesign of two screens. All data logic, gating, and state machines byte-identical.
 - Commits: 52aa2e7 (Files tab), 97dc517 (PlaybookChecklist). Pushed.
