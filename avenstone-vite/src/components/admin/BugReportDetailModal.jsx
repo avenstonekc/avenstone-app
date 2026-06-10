@@ -17,7 +17,7 @@ function relativeTime(ts) {
 const STATUS_COLORS = {
   open:        { bg: 'var(--red-bg)',     color: 'var(--red-text-strong)' },
   in_progress: { bg: 'var(--amber-bg)',   color: 'var(--amber-text-strong)' },
-  fixed:       { bg: 'var(--green-bg)',   color: '#166534' },
+  fixed:       { bg: 'var(--green-bg)',   color: 'var(--green-text-deep)' },
   wontfix:     { bg: 'var(--neutral-bg)', color: 'var(--neutral-text)' },
 };
 
@@ -160,12 +160,12 @@ Do not touch unrelated files. Stay in scope. Do not opportunistically refactor.`
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={copyPrompt}
-            style={{ flex: 1, padding: '10px 16px', borderRadius: 8, background: copyDone ? 'var(--green-bg)' : NAV, color: copyDone ? '#166534' : GOLD, border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'background 0.2s' }}>
+            style={{ flex: 1, padding: '10px 16px', borderRadius: 8, background: copyDone ? 'var(--green-bg)' : NAV, color: copyDone ? 'var(--green-text-deep)' : GOLD, border: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'background 0.2s' }}>
             {copyDone ? '✓ Copied!' : 'Copy as Claude prompt'}
           </button>
           {bug.status !== 'fixed' && (
             <button onClick={markFixed} disabled={marking}
-              style={{ flex: 1, padding: '10px 16px', borderRadius: 8, background: 'var(--green-bg)', color: '#166534', border: `1px solid var(--green-dot)`, fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ flex: 1, padding: '10px 16px', borderRadius: 8, background: 'var(--green-bg)', color: 'var(--green-text-deep)', border: `1px solid var(--green-dot)`, fontFamily: 'DM Sans, sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               {marking ? 'Marking…' : 'Mark fixed'}
             </button>
           )}

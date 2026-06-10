@@ -296,7 +296,7 @@ export default function AiKnowledgeScr({ profile }) {
 
             <div className="fg" style={{ marginBottom: 14 }}>
               <label className="flbl">
-                Content <span style={{ color: 'var(--red-text)' }}>*</span>
+                Content <span style={{ color: 'var(--red-strong)' }}>*</span>
                 <span style={{ fontWeight: 400, color: 'var(--text-subtle)', marginLeft: 6 }}>— write in plain English, the AI reads this directly</span>
               </label>
               <textarea
@@ -318,7 +318,7 @@ export default function AiKnowledgeScr({ profile }) {
             </div>
 
             {err && (
-              <div style={{ background: '#FEF2F2', color: 'var(--red-text)', padding: '8px 12px', fontSize: 12.5, borderRadius: 4, marginBottom: 12, border: '1px solid #FECACA' }}>
+              <div style={{ background: '#FEF2F2', color: 'var(--red-strong)', padding: '8px 12px', fontSize: 12.5, borderRadius: 4, marginBottom: 12, border: '1px solid #FECACA' }}>
                 {err}
               </div>
             )}

@@ -310,7 +310,7 @@ export default function SubJobView({ job, back, profile, lang = 'en' }) {
             const isActive  = item.status === 'in_progress';
             const accentCol = isOverdue ? 'var(--red-text)' : isActive ? GOLD : BORDER;
             const badgeBg   = isOverdue ? 'var(--red-bg)' : isActive ? 'var(--amber-bg)' : 'var(--blue-bg)';
-            const badgeCol  = isOverdue ? 'var(--red-text-strong)' : isActive ? 'var(--amber-text-strong)' : '#1D4ED8';
+            const badgeCol  = isOverdue ? 'var(--red-text-strong)' : isActive ? 'var(--amber-text-strong)' : 'var(--blue-text-link-strong)';
             const badgeTxt  = isOverdue ? (lang === 'es' ? 'Vencido' : 'Overdue') : item.status?.replace(/_/g, ' ') || 'scheduled';
             const needsPhoto = PHOTO_GATE_TYPES.includes(item.type);
             const photoCount = completePhotoCounts[item.id] ?? 0;

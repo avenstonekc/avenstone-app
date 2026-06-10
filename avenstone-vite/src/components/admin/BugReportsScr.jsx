@@ -10,7 +10,7 @@ const STATUS_OPTIONS = ['open', 'in_progress', 'fixed', 'wontfix'];
 const STATUS_COLORS = {
   open:        { bg: 'var(--red-bg)',     color: 'var(--red-text-strong)' },
   in_progress: { bg: 'var(--amber-bg)',   color: 'var(--amber-text-strong)' },
-  fixed:       { bg: 'var(--green-bg)',   color: '#166534' },
+  fixed:       { bg: 'var(--green-bg)',   color: 'var(--green-text-deep)' },
   wontfix:     { bg: 'var(--neutral-bg)', color: 'var(--neutral-text)' },
 };
 

@@ -162,10 +162,10 @@ function ProgressStepper({ status }) {
 }
 
 const DRAW_STATUS_STYLE = {
-  paid:           { text: 'Paid ✓',        color: 'var(--green-dot)',      bg: '#F0FDF4' },
-  partially_paid: { text: 'Partially Paid', color: '#b45309',               bg: 'var(--amber-bg)' },
-  sent:           { text: 'Invoice Sent',   color: '#b45309',               bg: 'var(--amber-bg)' },
-  viewed:         { text: 'Invoice Sent',   color: '#b45309',               bg: 'var(--amber-bg)' },
+  paid:           { text: 'Paid ✓',        color: 'var(--green-dot)',      bg: 'var(--green-bg-soft)' },
+  partially_paid: { text: 'Partially Paid', color: 'var(--amber-partial)',               bg: 'var(--amber-bg)' },
+  sent:           { text: 'Invoice Sent',   color: 'var(--amber-partial)',               bg: 'var(--amber-bg)' },
+  viewed:         { text: 'Invoice Sent',   color: 'var(--amber-partial)',               bg: 'var(--amber-bg)' },
   overdue:        { text: 'Overdue',        color: 'var(--red-text-strong)', bg: 'var(--red-bg)' },
 };
 
@@ -496,11 +496,11 @@ export default function ClientPortal({ profile, signOut }) {
       </div>}
 
       {job && <>
-        {!job.contract_signed && <div style={{ background: '#FEF9EC', borderBottom: `2px solid ${GOLD}`, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        {!job.contract_signed && <div style={{ background: 'var(--cream-banner)', borderBottom: `2px solid ${GOLD}`, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ fontSize: 13, color: 'var(--amber-text-strong)', fontWeight: 600 }}>Your contract is ready to sign</div>
           <button className="btn btn-gold" style={{ fontSize: 12, padding: '7px 16px', flexShrink: 0 }} onClick={() => setShowSignContract(true)}>Sign Now</button>
         </div>}
-        {job.contract_signed && <div style={{ background: '#F0FDF4', borderBottom: '1px solid #BBF7D0', padding: '8px 16px', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ Contract signed{job.contract_signed_at ? ` ${fD(job.contract_signed_at.slice(0, 10))}` : ''}</div>}
+        {job.contract_signed && <div style={{ background: 'var(--green-bg-soft)', borderBottom: '1px solid #BBF7D0', padding: '8px 16px', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ Contract signed{job.contract_signed_at ? ` ${fD(job.contract_signed_at.slice(0, 10))}` : ''}</div>}
 
         <div className="tabbar" style={{ overflowX: 'auto', flexWrap: 'nowrap' }}>
           {getClientTabs(job).map(t => <button key={t.id} className={`tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)} style={{ whiteSpace: 'nowrap' }}><span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Ic[t.ic] || Ic.info}</span>{t.lb}</button>)}
@@ -714,7 +714,7 @@ export default function ClientPortal({ profile, signOut }) {
             })()}
 
             {['complete', 'final_touches'].includes(job.status) && jobReview !== null && (jobReview ?
-              <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: 20, marginBottom: 16 }}>
+              <div style={{ background: 'var(--green-bg-soft)', border: '1px solid #BBF7D0', padding: 20, marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                   <div style={{ width: 36, height: 36, background: 'var(--green-dot)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18, flexShrink: 0 }}>✓</div>
                   <div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--green-text-strong)' }}>Thanks for your review!</div><div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Your feedback helps us improve.</div></div>
@@ -730,7 +730,7 @@ export default function ClientPortal({ profile, signOut }) {
                 {jobReview.review_text && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-secondary)', fontStyle: 'italic', borderTop: '1px solid #BBF7D0', paddingTop: 12 }}>"{jobReview.review_text}"</div>}
               </div>
               : (reviewDone ?
-                <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: 20, marginBottom: 16, textAlign: 'center' }}>
+                <div style={{ background: 'var(--green-bg-soft)', border: '1px solid #BBF7D0', padding: 20, marginBottom: 16, textAlign: 'center' }}>
                   <div style={{ fontSize: 22, marginBottom: 8 }}>🙏</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--green-text-strong)', marginBottom: 4 }}>Thank you!</div>
                   <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Your review means a lot to our team.</div>
@@ -956,9 +956,9 @@ export default function ClientPortal({ profile, signOut }) {
                   </div>
 
                   {s.potential_additional > 0 && (
-                    <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 12 }}>
+                    <div style={{ background: 'var(--amber-bg-soft)', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 12 }}>
                       <div style={{ fontWeight: 700, color: 'var(--amber-text-strong)', marginBottom: 4 }}>Potential Additional Work</div>
-                      <div style={{ color: '#78350F', lineHeight: 1.5 }}>
+                      <div style={{ color: 'var(--amber-text-deep)', lineHeight: 1.5 }}>
                         {f$(s.potential_additional)} in submitted invoices is pending approval and not yet included in the projected total above. This amount may be added once reviewed.
                       </div>
                     </div>
@@ -1046,7 +1046,7 @@ export default function ClientPortal({ profile, signOut }) {
                           <div style={{ fontSize: 14, fontWeight: 700, color: NAV }}>{item.trade}</div>
                           {item.vendor && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{item.vendor}</div>}
                           {item.proposal_signed_url && (
-                            <a href={item.proposal_signed_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: '#3B82F6', textDecoration: 'none', fontWeight: 600 }}>📄 View Proposal</a>
+                            <a href={item.proposal_signed_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: 'var(--blue-link)', textDecoration: 'none', fontWeight: 600 }}>📄 View Proposal</a>
                           )}
                         </div>
                         <div style={{ textAlign: 'right' }}>
@@ -1067,7 +1067,7 @@ export default function ClientPortal({ profile, signOut }) {
                               <span>{inv.date || '—'}</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <span style={{ fontWeight: 600 }}>{f$(Number(inv.amount || 0) * factor)}</span>
-                                {inv.lien_waiver_signed_url && <a href={inv.lien_waiver_signed_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#3B82F6', textDecoration: 'none' }}>📎 Lien Waiver</a>}
+                                {inv.lien_waiver_signed_url && <a href={inv.lien_waiver_signed_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--blue-link)', textDecoration: 'none' }}>📎 Lien Waiver</a>}
                               </div>
                             </div>
                           ))}

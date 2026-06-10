@@ -171,7 +171,7 @@ export default function ReviewPage({ jobId, tenantId }) {
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     {[
-                      { val: true,  label: '👍 Yes',       active: '#22C55E', bg: '#F0FDF4', text: '#15803D' },
+                      { val: true,  label: '👍 Yes',       active: 'var(--green-dot)', bg: '#F0FDF4', text: '#15803D' },
                       { val: false, label: '👎 Not Really', active: '#EF4444', bg: '#FEF2F2', text: '#DC2626' },
                     ].map(({ val, label, active, bg, text }) => (
                       <button

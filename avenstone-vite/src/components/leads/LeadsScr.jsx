@@ -10,12 +10,12 @@ const BORDER = 'var(--border)';
 const PAGE_SIZE = 10;
 
 const STATUS_CFG = {
-  new:       { label: 'New',       bg: '#DBEAFE',           color: '#1E40AF' },
+  new:       { label: 'New',       bg: 'var(--blue-bg-new)', color: 'var(--blue-text-deep)' },
   contacted: { label: 'Contacted', bg: 'var(--amber-bg)',   color: 'var(--amber-text-strong)' },
   qualified: { label: 'Qualified', bg: 'var(--green-bg)',   color: 'var(--green-text-strong)' },
   customer:  { label: 'Won',       bg: '#E0E7FF',           color: '#3730A3' },
   lost:      { label: 'Lost',      bg: 'var(--red-bg)',     color: 'var(--red-text-strong)' },
-  proposal:  { label: 'Proposal',  bg: '#F3E8FF',           color: '#7C3AED' },
+  proposal:  { label: 'Proposal',  bg: '#F3E8FF',           color: 'var(--blue-text-link-strong)' },
 };
 
 const SOURCE_LABELS = {

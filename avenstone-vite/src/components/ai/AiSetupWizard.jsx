@@ -223,7 +223,7 @@ export default function AiSetupWizard({ profile, onDone }) {
           )}
 
           {err && (
-            <div style={{ fontSize: 12.5, color: 'var(--red-text)', marginBottom: 8 }}>{err}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--red-strong)', marginBottom: 8 }}>{err}</div>
           )}
         </div>
 

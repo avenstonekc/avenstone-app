@@ -8,7 +8,7 @@ const GOLD   = 'var(--gold-500)';
 const CREAM  = 'var(--bg)';
 const BORDER = 'var(--border)';
 const WHITE  = 'var(--card-bg)';
-const GREEN  = '#2E7D32';
+const GREEN  = 'var(--green-success)';
 
 const COMMON_ROOMS = [
   'Living Room',

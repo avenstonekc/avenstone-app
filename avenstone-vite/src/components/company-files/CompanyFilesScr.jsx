@@ -70,7 +70,7 @@ function ExpirationBadge({ date }) {
   const now = new Date();
   const daysOut = Math.floor((d - now) / 86400000);
   let color = 'var(--green-text)', bg = 'var(--green-bg)';
-  if (daysOut < 0)  { color = '#DC2626'; bg = 'var(--red-bg)'; }
+  if (daysOut < 0)  { color = 'var(--red-strong)'; bg = 'var(--red-bg)'; }
   else if (daysOut <= 30) { color = 'var(--amber-text-strong)'; bg = 'var(--amber-bg)'; }
   return (
     <span style={{ background: bg, color, fontSize: 10, fontWeight: 700, padding: '2px 7px',
@@ -146,12 +146,12 @@ export default function CompanyFilesScr({ profile }) {
 
       {/* Error banner */}
       {err && (
-        <div style={{ background: 'var(--red-bg)', border: '1px solid #FECACA', color: '#DC2626',
+        <div style={{ background: 'var(--red-bg)', border: '1px solid #FECACA', color: 'var(--red-strong)',
           padding: '8px 12px', fontSize: 12, marginBottom: 14, borderRadius: 4,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {err}
           <button onClick={() => setErr(null)} style={{ background: 'none', border: 'none',
-            color: '#DC2626', cursor: 'pointer', fontSize: 16 }}>×</button>
+            color: 'var(--red-strong)', cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
       )}
 
@@ -436,7 +436,7 @@ function DetailPanel({ file, canManage, onClose, onRefresh }) {
 
         {/* Error */}
         {(viewErr || actionErr) && (
-          <div style={{ background: 'var(--red-bg)', color: '#DC2626', padding: '6px 10px',
+          <div style={{ background: 'var(--red-bg)', color: 'var(--red-strong)', padding: '6px 10px',
             borderRadius: 4, fontSize: 12, marginBottom: 10 }}>
             {viewErr || actionErr}
           </div>
@@ -460,7 +460,7 @@ function DetailPanel({ file, canManage, onClose, onRefresh }) {
               </label>
 
               <button onClick={handleArchive} disabled={archiving} className="btn btn-ghost"
-                style={{ fontSize: 12, padding: '7px 14px', color: '#DC2626', marginLeft: 'auto' }}>
+                style={{ fontSize: 12, padding: '7px 14px', color: 'var(--red-strong)', marginLeft: 'auto' }}>
                 {archiving ? 'Archiving…' : 'Archive'}
               </button>
             </>
@@ -623,7 +623,7 @@ function UploadModal({ onClose, onSaved }) {
 
         {/* Error */}
         {err && (
-          <div style={{ background: 'var(--red-bg)', color: '#DC2626', padding: '6px 10px',
+          <div style={{ background: 'var(--red-bg)', color: 'var(--red-strong)', padding: '6px 10px',
             borderRadius: 4, fontSize: 12, marginBottom: 10 }}>
             {err}
           </div>

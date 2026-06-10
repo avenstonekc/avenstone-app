@@ -54,9 +54,23 @@
 
   /* Green */
   --green-text-strong: #065f46; /* dark green on green-bg */
+  --green-bg-soft:     #F0FDF4; /* signed/review card bg — lighter than green-bg */
+  --green-border-soft: #BBF7D0; /* signed/review card border */
+  --green-text-deep:   #166534; /* dark green on green-bg-soft — bug fixed status */
+  --green-success:     #2E7D32; /* LiDAR success circle */
 
   /* Amber strong */
   --amber-text-strong: #92400e; /* dark amber on amber-bg */
+  --amber-bg-soft:     #FFFBEB; /* warning section bg — lighter than amber-bg */
+  --amber-border-soft: #FDE68A; /* warning section border */
+  --amber-text-deep:   #78350F; /* warning section text */
+  --amber-partial:     #b45309; /* partially-paid/sent payment status */
+
+  /* Cream variants */
+  --cream-banner: #FEF9EC;      /* unsigned-contract top banner */
+
+  /* Extended reds */
+  --red-strong: #DC2626;        /* slightly darker red — form errors, DC2626 */
 
   /* Purple (viewed invoice, retainage) */
   --purple-bg:   #EDE9FE;
@@ -67,8 +81,12 @@
   --neutral-text: #6B7280;   /* reuses --text-muted hex */
 
   /* Blue */
-  --blue-bg:      #EFF6FF;
-  --blue-text:    #2563EB;
+  --blue-bg:             #EFF6FF;
+  --blue-text:           #2563EB;
+  --blue-link:           #3B82F6;   /* hyperlinks, receipt/lien-waiver links */
+  --blue-bg-new:         #DBEAFE;   /* "new" status bg, phase calendar chips */
+  --blue-text-deep:      #1E40AF;   /* "new" status text */
+  --blue-text-link-strong: #1D4ED8; /* "proposal" status, sub-default badge */
 
   /* ── TYPOGRAPHY ── */
   --font-display: 'DM Serif Display', Georgia, serif;
