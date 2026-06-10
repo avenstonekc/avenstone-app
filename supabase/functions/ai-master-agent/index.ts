@@ -476,6 +476,47 @@ const TOOLS = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "get_job_financials",
+    description: "Get the financial summary for a specific job: contract value, received/paid to date, paid out, outstanding approved sub invoices, retainage held, projected profit and margin, and bucket credit (cost-plus) or client owes (fixed-price). Also returns the 5 most recent transactions. Use when the user asks about money, what's owed, what's been paid, outstanding amounts, draw balance, or finances on a job. Numbers match the Financials tab exactly.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id:   { type: "string", description: "Job UUID. Use context job if available; prefer this over job_name." },
+        job_name: { type: "string", description: "Search by address or client name when job_id is unknown." },
+      },
+    },
+  },
+  {
+    name: "get_schedule",
+    description: "Get upcoming schedule items and job-phase events within a time window. Use when the user asks about upcoming work, what's scheduled, what's next week, calendar items, sub starts, deliveries, or milestones.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_name:     { type: "string", description: "Filter to a specific job by address or client name (optional). Omit to see schedule across all jobs." },
+        horizon_days: { type: "number", description: "Days ahead to look. Default 14. Max 90." },
+      },
+    },
+  },
+  {
+    name: "get_open_todos",
+    description: "Get open todos assigned to or created for the calling user, plus unassigned tenant todos. Use when the user asks what they need to do, what's on their list, their pending action items, or their todos.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_name: { type: "string", description: "Filter to todos on a specific job (optional)." },
+        priority: { type: "string", enum: ["low", "medium", "high"], description: "Filter by priority level (optional)." },
+      },
+    },
+  },
+  {
+    name: "get_alerts",
+    description: "Get what needs immediate attention: open vigilance/engine-sourced todos grouped by type, plus alert-type notifications from the last 7 days. Use when the user asks 'what needs my attention', 'what should I focus on today', 'what's urgent', 'what needs me', or 'what did the system flag'.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "create_job",
     description: "Create a new job record.",
     input_schema: {
@@ -853,6 +894,273 @@ async function executeTool(
           .eq("tenant_id", tenantId)
           .order("role").order("full_name");
         return { team: data || [] };
+      }
+
+      // ── READ TOOLS — no confirmation, no write paths ──────────────────────────
+
+      case "get_job_financials": {
+        // 1. Resolve job
+        let gjfJobId = input.job_id ? String(input.job_id) : null;
+        if (!gjfJobId && input.job_name) {
+          const term = String(input.job_name).trim().replace(/%/g, "\\%");
+          const { data: gjfSearch } = await sb.from("jobs")
+            .select("id, address, client_name")
+            .eq("tenant_id", tenantId)
+            .or(`address.ilike.%${term}%,client_name.ilike.%${term}%`)
+            .limit(5);
+          if (!gjfSearch?.length) return { error: `No job found matching "${input.job_name}".` };
+          if (gjfSearch.length > 1) {
+            return { error: `Multiple jobs match "${input.job_name}" — be more specific.`, matches: gjfSearch.map((j: any) => ({ id: j.id, address: j.address, client_name: j.client_name })) };
+          }
+          gjfJobId = (gjfSearch[0] as any).id;
+        }
+        if (!gjfJobId) return { error: "Provide job_id or job_name." };
+
+        // 2. Load job metadata
+        const { data: gjfJob } = await sb.from("jobs")
+          .select("address, cost_plus, contract_value, co_total, labor_markup_pct, material_markup_pct")
+          .eq("id", gjfJobId).eq("tenant_id", tenantId).single();
+        if (!gjfJob) return { error: "Job not found." };
+
+        const gjfR2 = (n: number) => Math.round(n * 100) / 100;
+        const gjfCostPlus = (gjfJob as any).cost_plus === true;
+        const gjfCV  = Number((gjfJob as any).contract_value || 0);
+        const gjfCO  = Number((gjfJob as any).co_total || 0);
+        const gjfLP  = Number((gjfJob as any).labor_markup_pct || 0);
+        const gjfMP  = Number((gjfJob as any).material_markup_pct || 0);
+
+        // 3. Load transactions (all non-void)
+        const { data: gjfTxs } = await sb.from("job_transactions")
+          .select("id, direction, amount, status, type, invoice_id, date_incurred, description, reimbursement_status, created_at")
+          .eq("job_id", gjfJobId).neq("status", "void")
+          .order("created_at", { ascending: false });
+        const txs = (gjfTxs || []) as any[];
+
+        // 4. Core aggregates — mirrors sbLoadJobFinancialSummary bucketing exactly
+        // Fixed-price PERMANENT RULE: contract_total = CV + CO (co_total for fixed-price only)
+        const contract_total = gjfR2(gjfCostPlus ? gjfCV : gjfCV + gjfCO);
+        const total_out = gjfR2(txs.filter(t => t.direction === "out" && t.status === "paid").reduce((s, t) => s + Number(t.amount || 0), 0));
+
+        // Inlined markup-type classification: sub_payout / labor / commission → labor rate; everything else → material rate
+        const GJF_LABOR_TYPES = new Set(["sub_payout", "labor", "commission"]);
+
+        let result: Record<string, unknown> = {
+          job: (gjfJob as any).address,
+          billing_model: gjfCostPlus ? "cost-plus" : "fixed-price",
+          contract_value: gjfR2(gjfCV),
+          co_adjustments: gjfR2(gjfCO),
+          contract_total,
+        };
+
+        if (gjfCostPlus) {
+          // bucket = inbound paid with no invoice link (client deposits)
+          const bucket = gjfR2(txs.filter(t => t.direction === "in" && t.invoice_id === null && t.status === "paid").reduce((s, t) => s + Number(t.amount || 0), 0));
+          const outstanding_pending = gjfR2(txs.filter(t => t.direction === "out" && t.status === "pending" && (t.type === "sub_payout" || t.type === "change_order")).reduce((s, t) => s + Number(t.amount || 0), 0));
+          const allCostTxs = txs.filter(t => t.direction === "out" && (t.status === "paid" || (t.status === "pending" && (t.type === "sub_payout" || t.type === "change_order"))));
+          const projected_markup = gjfR2(allCostTxs.reduce((sum: number, t: any) => {
+            const rate = GJF_LABOR_TYPES.has(t.type) ? gjfLP : gjfMP;
+            return sum + Number(t.amount || 0) * rate / 100;
+          }, 0));
+          const { data: retainRows } = await sb.from("draw_schedules")
+            .select("retainage_held").eq("job_id", gjfJobId).neq("status", "voided");
+          const retainage_held = gjfR2((retainRows || []).reduce((s: number, d: any) => s + Number(d.retainage_held || 0), 0));
+          const bucket_balance = gjfR2(bucket - (total_out + outstanding_pending));
+          result = {
+            ...result,
+            received_deposits: bucket,
+            paid_out: total_out,
+            outstanding_pending,
+            retainage_held,
+            projected_markup,
+            bucket_balance,
+            ...(bucket_balance >= 0
+              ? { bucket_credit: bucket_balance, note: "client has prepaid credit" }
+              : { client_owes: gjfR2(Math.abs(bucket_balance)), note: "request a draw" }),
+          };
+        } else {
+          const total_in    = gjfR2(txs.filter(t => t.direction === "in" && t.status === "paid").reduce((s, t) => s + Number(t.amount || 0), 0));
+          const pending_out = gjfR2(txs.filter(t => t.direction === "out" && t.status === "pending").reduce((s, t) => s + Number(t.amount || 0), 0));
+          const client_owes = gjfR2(contract_total - total_in);
+          result = {
+            ...result,
+            received: total_in,
+            paid_out: total_out,
+            pending_out,
+            client_owes,
+          };
+        }
+
+        // 5 most recent transactions (already sorted desc)
+        result.recent_transactions = txs.slice(0, 5).map((t: any) => ({
+          date: t.date_incurred || t.created_at?.slice(0, 10),
+          type: t.type,
+          direction: t.direction,
+          amount: gjfR2(Number(t.amount || 0)),
+          status: t.status,
+          description: t.description || null,
+        }));
+
+        return result;
+      }
+
+      case "get_schedule": {
+        const horizonDays = Math.min(Number(input.horizon_days) || 14, 90);
+        const today = new Date().toISOString().slice(0, 10);
+        const end = new Date(Date.now() + horizonDays * 86_400_000).toISOString().slice(0, 10);
+
+        // Optional job filter via fuzzy match
+        let gsJobId: string | null = null;
+        if (input.job_name) {
+          const term = String(input.job_name).trim().replace(/%/g, "\\%");
+          const { data: gsJobs } = await sb.from("jobs")
+            .select("id, address").eq("tenant_id", tenantId)
+            .or(`address.ilike.%${term}%,client_name.ilike.%${term}%`).limit(5);
+          if (!gsJobs?.length) return { error: `No job found matching "${input.job_name}".` };
+          if (gsJobs.length > 1) return { error: `Multiple jobs match — be more specific.`, matches: gsJobs.map((j: any) => ({ id: j.id, address: j.address })) };
+          gsJobId = (gsJobs[0] as any).id;
+        }
+
+        let q = sb.from("schedule_items")
+          .select("id, title, type, trade, scheduled_date, scheduled_end_date, status, job_id")
+          .eq("tenant_id", tenantId)
+          .neq("status", "cancelled")
+          .gte("scheduled_date", today)
+          .lte("scheduled_date", end)
+          .order("scheduled_date", { ascending: true })
+          .limit(20);
+        if (gsJobId) q = (q as any).eq("job_id", gsJobId);
+        const { data: gsItems } = await q;
+
+        // Resolve job labels
+        const gsJobIds = [...new Set(((gsItems || []) as any[]).map((i: any) => i.job_id).filter(Boolean))];
+        const gsJobMap: Record<string, string> = {};
+        if (gsJobIds.length) {
+          const { data: gsJobRows } = await sb.from("jobs").select("id, address, client_name").in("id", gsJobIds);
+          for (const j of (gsJobRows || []) as any[]) {
+            gsJobMap[j.id] = j.client_name ? `${j.address} — ${j.client_name}` : j.address;
+          }
+        }
+
+        return {
+          horizon_days: horizonDays,
+          from: today,
+          to: end,
+          count: (gsItems || []).length,
+          items: ((gsItems || []) as any[]).map((i: any) => ({
+            date:     i.scheduled_date,
+            end_date: i.scheduled_end_date || null,
+            title:    i.title,
+            type:     i.type,
+            trade:    i.trade || null,
+            status:   i.status,
+            job:      gsJobMap[i.job_id] || i.job_id,
+          })),
+        };
+      }
+
+      case "get_open_todos": {
+        // Optional job filter
+        let gotJobId: string | null = null;
+        if (input.job_name) {
+          const term = String(input.job_name).trim().replace(/%/g, "\\%");
+          const { data: gotJobs } = await sb.from("jobs")
+            .select("id, address").eq("tenant_id", tenantId)
+            .or(`address.ilike.%${term}%,client_name.ilike.%${term}%`).limit(5);
+          if (!gotJobs?.length) return { error: `No job found matching "${input.job_name}".` };
+          if (gotJobs.length > 1) return { error: `Multiple jobs match — be more specific.` };
+          gotJobId = (gotJobs[0] as any).id;
+        }
+
+        let q = sb.from("todos")
+          .select("id, title, priority, source, status, job_id, due_date, created_at, notes")
+          .eq("tenant_id", tenantId)
+          .eq("status", "open")
+          .or(`user_id.eq.${userId},user_id.is.null`)
+          .order("created_at", { ascending: true })
+          .limit(20);
+        if (gotJobId) q = (q as any).eq("job_id", gotJobId);
+        if (input.priority) q = (q as any).eq("priority", String(input.priority));
+        const { data: gotTodos } = await q;
+
+        // Resolve job labels
+        const gotJobIds = [...new Set(((gotTodos || []) as any[]).map((t: any) => t.job_id).filter(Boolean))];
+        const gotJobMap: Record<string, string> = {};
+        if (gotJobIds.length) {
+          const { data: gotJobRows } = await sb.from("jobs").select("id, address").in("id", gotJobIds);
+          for (const j of (gotJobRows || []) as any[]) gotJobMap[j.id] = j.address;
+        }
+
+        const gotNow = Date.now();
+        return {
+          count: (gotTodos || []).length,
+          todos: ((gotTodos || []) as any[]).map((t: any) => ({
+            id:       t.id,
+            title:    t.title,
+            priority: t.priority,
+            source:   t.source || "manual",
+            job:      t.job_id ? (gotJobMap[t.job_id] || t.job_id) : null,
+            due_date: t.due_date || null,
+            age_days: Math.floor((gotNow - new Date(t.created_at).getTime()) / 86_400_000),
+            notes:    t.notes || null,
+          })),
+        };
+      }
+
+      case "get_alerts": {
+        const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+
+        // Open vigilance / engine todos (tenant-wide, not user-scoped — alerts affect the whole org)
+        const { data: gaTodos } = await sb.from("todos")
+          .select("id, title, priority, source, job_id, created_at")
+          .eq("tenant_id", tenantId)
+          .eq("status", "open")
+          .in("source", ["vigilance", "engine"])
+          .order("priority", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        // Recent alert-type notifications (last 7 days)
+        const GA_ALERT_TYPES = [
+          "no_daily_log", "lien_waiver_missing", "budget_overrun", "consultation_stale",
+          "payment_overdue", "estimate_no_proposal_24h", "walkthrough_prep",
+        ];
+        const { data: gaNotifs } = await sb.from("notifications")
+          .select("id, type, title, body, job_id, created_at, read")
+          .eq("tenant_id", tenantId)
+          .in("type", GA_ALERT_TYPES)
+          .gte("created_at", sevenDaysAgo)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        // Resolve job labels
+        const gaJobIds = [...new Set([
+          ...((gaTodos || []) as any[]).map((t: any) => t.job_id),
+          ...((gaNotifs || []) as any[]).map((n: any) => n.job_id),
+        ].filter(Boolean))];
+        const gaJobMap: Record<string, string> = {};
+        if (gaJobIds.length) {
+          const { data: gaJobRows } = await sb.from("jobs").select("id, address").in("id", gaJobIds);
+          for (const j of (gaJobRows || []) as any[]) gaJobMap[j.id] = j.address;
+        }
+
+        const gaNow = Date.now();
+        return {
+          open_alerts: ((gaTodos || []) as any[]).map((t: any) => ({
+            title:    t.title,
+            priority: t.priority,
+            source:   t.source,
+            job:      t.job_id ? (gaJobMap[t.job_id] || t.job_id) : null,
+            age_days: Math.floor((gaNow - new Date(t.created_at).getTime()) / 86_400_000),
+          })),
+          recent_notifications: ((gaNotifs || []) as any[]).map((n: any) => ({
+            type:  n.type,
+            title: n.title,
+            body:  n.body,
+            job:   n.job_id ? (gaJobMap[n.job_id] || n.job_id) : null,
+            date:  n.created_at?.slice(0, 10),
+            read:  n.read,
+          })),
+        };
       }
 
       case "create_job": {
@@ -2097,8 +2405,15 @@ Today: ${today}
 Tenant: ${tenantId}${contextLine}
 
 WHAT YOU CAN DO:
-- Read: jobs, team
+- Read: jobs, team, job financials, schedule, open todos, alerts
 - Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, log sub invoices, log sub payments, approve sub invoices, send notifications, write to knowledge base, create schedule items, upload company files, record client deposits (cost-plus), compose cost-plus draws
+
+ANSWERING QUESTIONS WITH READ TOOLS:
+- When the user asks about money, finances, what's owed, what's been paid, outstanding amounts, draw balance, or bucket credit on a job → call get_job_financials. Numbers come directly from the database and match the Financials tab exactly. Do NOT say "check the Financials tab" when you can answer it directly.
+- When the user asks what's scheduled, what's next, what's coming up, upcoming subs or deliveries, or calendar items → call get_schedule.
+- When the user asks what they need to do, what's on their list, their todos, pending action items → call get_open_todos.
+- When the user asks "what needs my attention", "what should I focus on", "what's urgent", or "what did the system flag" → call get_alerts.
+- PREFER calling a read tool over saying you don't know. Saying "I can't see your schedule" or "you'll need to check the app" when you have tools to answer is wrong.
 
 HOW TO BEHAVE:
 - Act immediately. Don't ask "should I do X?" — just do it and tell them what you did.
