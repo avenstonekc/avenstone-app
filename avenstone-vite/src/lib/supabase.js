@@ -6385,7 +6385,7 @@ export async function sbLoadOwnerDashboard(tenantId) {
     ok: true,
     error: null,
     data: {
-      kpis: { pipelineValue, openReceivables, collectedMtd, grossProfitMtd, collectedTrend },
+      kpis: { pipelineValue, openReceivables, collectedMtd, grossProfitMtd, collectedTrend, collectedPrior: prior30 },
       monthlyRevenue,
       activeJobs: activeJobsWithThumbs,
       health: { activeProjects, newLeads, estimates, jobsBehind },

@@ -190,10 +190,17 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
     { label: 'OPEN RECEIVABLES',  value: fShort(kpis.openReceivables),  sub: null },
     { label: 'GROSS PROFIT MTD',  value: fShort(kpis.grossProfitMtd),   sub: null },
     { label: 'COLLECTED MTD',     value: fShort(kpis.collectedMtd),
-      sub: kpis.collectedTrend != null
-        ? { text: `${kpis.collectedTrend >= 0 ? '↑' : '↓'} ${Math.abs(kpis.collectedTrend)}% vs prior 30d`,
-            color: kpis.collectedTrend >= 0 ? '#4ADE80' : '#F87171' }
-        : null },
+      sub: (() => {
+        if (kpis.collectedTrend == null) return null;
+        // Suppress comparison when prior-period base < $5 000 — percentage would be misleading
+        if (kpis.collectedPrior != null && kpis.collectedPrior < 5000) {
+          return { text: '—', color: 'rgba(255,255,255,0.3)', title: 'prior period too small to compare' };
+        }
+        return {
+          text: `${kpis.collectedTrend >= 0 ? '↑' : '↓'} ${Math.abs(kpis.collectedTrend)}% vs prior 30d`,
+          color: kpis.collectedTrend >= 0 ? '#4ADE80' : '#F87171',
+        };
+      })() },
   ];
 
   return (
@@ -235,7 +242,7 @@ export default function OwnerHomeScr({ profile, onOpenJob, onNavigate, onOpenWal
               <div style={{ fontSize: mob ? 20 : 26, fontFamily: 'DM Serif Display, serif',
                 color: '#fff', fontWeight: 400, lineHeight: 1 }}>{k.value}</div>
               {k.sub && (
-                <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600,
+                <div title={k.sub.title || undefined} style={{ marginTop: 6, fontSize: 11, fontWeight: 600,
                   color: k.sub.color, fontFamily: 'DM Sans, sans-serif' }}>{k.sub.text}</div>
               )}
             </div>
