@@ -12,7 +12,7 @@ Read-only audit of the Avenstone agent layer. Every claim is traced to a verifie
 |-------|------|------|
 | `ai-master-agent` | `supabase/functions/ai-master-agent/index.ts` | Primary PM-facing chat agent. 24 tools, 3-iteration max loop. |
 | `ai-field-agent` | `supabase/functions/ai-field-agent/index.ts` | Voice-first field agent. 7 tools, 3 CONFIRM_TOOLS. Max 25 words per response. |
-| `ai-pm-nightly` | `supabase/functions/ai-pm-nightly/` | **DISABLED.** `CLAUDE.md` explicit: "THIS IS DISABLED. Do not re-enable without explicit approval." |
+| `vigilance-runner` | `supabase/functions/vigilance-runner/` | **ACTIVE.** Daily pg_cron 11:00 UTC. 11 pure-SQL detection rules, zero model calls. Successor to ai-pm-nightly (retired 2026-06-10). |
 | `company-files-watchdog` | `supabase/functions/company-files-watchdog/` | **NOT an agent.** Zero AI. Monitors company file expiry via `scheduled_actions` cron. |
 
 Other AI-class edge functions (no tool use, no agentic loops): `ai-companion`, `ai-intake`, `ai-home-companion`, `ai-project-manager`, `ai-estimator`, `ai-generate-sequence`, `ai-sub-onboard`, `ai-sub-pricing`, `ai-error-logger`, `process-transcript`, `measure-guide`, `generate-estimate-from-session`, `ai-auto-fix-dispatcher`.
@@ -136,13 +136,13 @@ All three mechanisms live in `ai-master-agent/index.ts`. They are not mutually e
 | Question | Answer | Evidence |
 |----------|--------|----------|
 | Does the agent fire without user input? | **No.** | `ai-master-agent` only runs on POST from `MasterAgent.jsx` (`callMaster`). |
-| Any scheduled or cron-triggered agent? | **No (disabled).** | `ai-pm-nightly` is the only proactive mechanism — explicitly disabled in `CLAUDE.md`. |
+| Any scheduled or cron-triggered agent? | **Yes (non-AI).** | `vigilance-runner` runs daily at 11:00 UTC — pure SQL detection, zero model calls. |
 | Do DB triggers fire the agent? | **No.** | No DB trigger → edge function → agent call chain observed anywhere in `supabase/functions/`. |
 | Does the notification system auto-fire? | **No.** | `sbNotify`/`sbNotifyUser` are helpers called only inside `executeTool` (on user-initiated `notify_team`/`notify_team_member` calls). |
 | Is the draw-request nudge proactive? | **No.** | `FinancialsTab.jsx` banner is a UI render condition. It does not call the agent or send a notification. |
 
-**What needs to change to add proactive capability:**
-- Re-enable `ai-pm-nightly` — Supabase scheduled cron, currently disabled. Cost: Opus per run. Requires explicit approval.
+**What needs to change to add proactive AI capability:**
+- Wire `vigilance-runner` findings to an AI narrative pass — currently pure-SQL, writes todos/notifications only. Adding any model call requires explicit approval and API cost review.
 - Add a DB webhook → edge function → agent call chain — currently absent. Would require rate-limit safeguards; DB events can cascade into thousands of calls (see CLAUDE.md API cost rules).
 
 ---
@@ -187,7 +187,7 @@ All three mechanisms live in `ai-master-agent/index.ts`. They are not mutually e
 
 ### Autonomous notification writer
 
-**None.** Notifications are only written when `notify_team` or `notify_team_member` tools execute, which requires a user-initiated chat message. No autonomous writer exists while `ai-pm-nightly` is disabled.
+**vigilance-runner.** `vigilance-runner` writes notifications and todos autonomously on its daily pg_cron schedule. No AI model involved. All other notifications are written only when `notify_team` or `notify_team_member` tools execute (user-initiated).
 
 ---
 

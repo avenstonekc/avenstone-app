@@ -193,8 +193,7 @@ construction surprises.** Not "AI for contractors." Not
 
 ## What's already shipped (anti-surprise features today)
 
-- ai-pm-nightly — six rule checks per active job, surfaces
-  issues to the right person on first login each day
+- vigilance-runner — 11 pure-SQL detection rules per active job, daily 11:00 UTC pg_cron, surfaces issues as todos and notifications (successor to ai-pm-nightly, retired 2026-06-10)
 - AI Companion — per-job per-person memory, knows job context
   on every call
 - Lien waiver red flags on sub_payout / vendor_payment rows

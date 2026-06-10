@@ -6,7 +6,7 @@ Goal: Todos assigned to a user by someone/something OTHER than themselves genera
 
 Notify on todos the user did NOT create themselves:
 - Human assigns a todo to you → notify.
-- Master agent (ai-pm-nightly, ai-master-agent, etc.) writes a todo for you → notify. THIS is the on-thesis case — proactive agent surfacing.
+- Vigilance runner (`vigilance-runner`, `ai-master-agent`, etc.) writes a todo for you → notify. THIS is the on-thesis case — proactive agent surfacing.
 - You create your own todo → NO notification (same logic as "don't tell me I assigned a sub — I did that").
 
 High-priority todos → route to push, not just in-app bell. Medium/low → in-app bell only (mirrors existing notification priority gate).

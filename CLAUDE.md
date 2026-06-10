@@ -38,11 +38,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Rules:**
 - **Never fire Opus automatically** — Opus is for on-demand owner actions only, never background jobs
 - **Never fire any AI on a DB webhook/trigger** — DB events can cascade into thousands of calls
-- **ai-pm-nightly is pure SQL** (14 rules, zero model calls) with no pg_cron schedule. Do not add a cron schedule without explicit approval. Three of its rules reference dropped legacy ITB schema — see AI_PM_LEGACY_RULES open item in CLAUDE_MEMORY.md.
+- **vigilance-runner** — daily pg_cron (11:00 UTC), 11 pure-SQL detection rules, zero model calls. Never add model calls to this function.
 - **Agentic loops** — cap at 3 iterations max on Haiku, 3 on Sonnet. Every loop iteration = full API cost
 - **Conversation history window** — 10 messages max on Haiku agents, 20 max on Sonnet
 - **max_tokens** — Haiku: 1024 for simple responses, 2048 only when tools are active. Sonnet: 2048 default, 4096 only for complex reasoning. Never set higher than needed.
-- **Background automatic functions** (ai-pm-nightly, any cron) — must use Haiku only, no agentic loops
+- **Background automatic functions** (vigilance-runner, any cron) — must use Haiku only, no agentic loops
 - **Always state the cost implication** when proposing a new AI feature — "this fires on every X which means Y calls per day"
 - **Prompt caching** — standing practice for agentic/chat AI functions whose system+tools prefix clears the model cache minimum (1024 Sonnet / 2048 Haiku). Breakpoint on the system+tools prefix only, never on the rolling conversation history. 5-minute TTL. This is an optimization, not a rate-limiting safeguard — it does not substitute for any rule above. Do NOT cache one-shot or background functions: the cache-write premium does not amortize.
 
@@ -160,7 +160,7 @@ Mobile (390px), tablet (768px), desktop (1280px). No exceptions.
 ### Edge Functions
 All URLs exported from `src/lib/supabase.js`. Function names are self-documenting.
 
-- **AI:** `ai-companion`, `ai-intake`, `ai-pm-nightly`, `ai-field-agent`, `ai-home-companion`, `ai-master-agent`, `ai-project-manager`, `ai-estimator`, `ai-generate-sequence`, `ai-sub-onboard`, `ai-sub-pricing`, `ai-error-logger`, `process-transcript`, `measure-guide`, `generate-estimate-from-session`
+- **AI:** `ai-companion`, `ai-intake`, `ai-field-agent`, `ai-home-companion`, `ai-master-agent`, `ai-project-manager`, `ai-estimator`, `ai-generate-sequence`, `ai-sub-onboard`, `ai-sub-pricing`, `ai-error-logger`, `process-transcript`, `measure-guide`, `generate-estimate-from-session`, `vigilance-runner`
 - **Email / SMS / Push:** `send-contract-email`, `send-invite`, `send-client-link`, `send-bid-invite`, `send-estimate-email`, `send-contact-sms`, `notify-email`, `notify-sms`, `notify-realtor`, `send-push`, `missed-call-textback`, `create-client-login`
 - **Integrations / Payments / Data:** `create-payment-link`, `stripe-webhook`, `ghl-webhook`, `twilio-inbound`, `address-autocomplete`, `get-contractor-profile`, `get-job-status`, `sequence-runner`
 

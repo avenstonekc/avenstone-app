@@ -102,6 +102,8 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 *Outstanding decisions or deferred work — do not assume resolved.*
 
+**TEST_DATA_NONUUID** — job `123 Test Flow Dr, Kansas City MO 64101` has `id='test-flow-001'` (non-UUID primary key). Any UUID-typed FK writer (todos, notifications, etc.) will fail with "invalid input syntax for type uuid". vigilance-runner handles it gracefully per-job, but it's a landmine for any future FK writer. Delete or re-key this test job in a cleanup slice before it causes a silent miss in a real detection path.
+
 **Future arcs (named, sequenced — each needs a blueprint MD before building):**
 - `SUB_WORKFLOW_ARC.md` — daily logs, progress photos tied to phases, in-app payment requests + lien waivers, schedule conflict surfacing, sub availability calendar, multi-job dashboard. Sub portal is half-blind to field reality without subs engaged daily.
 - `ANALYTICS_ARC.md` — gross margin by trade across jobs, avg days per phase, sub reliability scoring, supplier delivery performance, CO frequency, profit/loss reports. Data already in DB, just needs query layer + dashboards. Also home for EXECUTION_ARC Phase 9 (learning loop rate overrides).
@@ -207,14 +209,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - URL-based routing (`selJ` is React state — no deep-link, refresh loses position)
 - Todo push notification (personal, non-delegated) not yet wired. Delegated todo push (`type='todo_delegated'`) ships via fan-out trigger (PUSH_NOTIFICATIONS_ARC Phase 5, 2026-05-24) — send-push now has callers.
 - Dev auto-login removal before external testers
-- Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0 (audit:schema scans JS/TS src only — ai-pm-nightly TS edge fn drift was not scanner-visible; closed manually).** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Note: ai-pm-nightly todos insert was never writing rows because function is DISABLED — but the stale payload would have silently dropped rows on any re-enable. Detector Phase 2 shipped 2026-05-13 — skipped now 9 (was 34 at Phase 1 baseline, 15 after Phase 1). Remaining 8 skipped are function parameters (no call-site analysis), 1 is dynamic .from() (opaque). No new drift surfaced by Phase 2 extension. Missing-tables arc 2026-05-19: 4 findings → 1 STOP (see LOG). Scanner missing-tables now: 1 (quote_requests in ai-pm-nightly — DISABLED, deferred until re-enable). Write/read drift 0, write skipped 0. **Detector Phase 3 shipped 2026-05-27** (Bucket A: array-of-ObjectExpression batch-insert resolution; Bucket C: intentional-skips docs block). Write-skipped now 0, read-skipped 1 (field-opus-db-query dynamic table — intentional). **14 open drift findings surfaced** (real code vs. DB drift, not scanner bugs — see block below).
+- Drift detector (2026-05-10 first run; all 15 findings now cleared as of 2026-05-12). Final fix arc: contacts 3 cleared 2026-05-13 (full_name→name rename, drop project_type/description); job_notes 2 cleared (drop note_type, rename created_by→author); todos drift closed 2026-05-13 (see LOG below); job_estimates 6 cleared via Shape C migration + ConsultationTab upsert fix. **Drift count: 0.** Re-run `npm run audit:schema` from `avenstone-vite/` after any new table or column work. Detector Phase 2 shipped 2026-05-13 — skipped now 9 (was 34 at Phase 1 baseline, 15 after Phase 1). Remaining 8 skipped are function parameters (no call-site analysis), 1 is dynamic .from() (opaque). No new drift surfaced by Phase 2 extension. Missing-tables arc 2026-05-19: 4 findings → 1 STOP (see LOG). **Scanner missing-tables: 0** (quote_requests ref was in retired ai-pm-nightly — closed 2026-06-10). Write/read drift 0, write skipped 0. **Detector Phase 3 shipped 2026-05-27** (Bucket A: array-of-ObjectExpression batch-insert resolution; Bucket C: intentional-skips docs block). Write-skipped now 0, read-skipped 1 (field-opus-db-query dynamic table — intentional).
 
-- **Open drift findings (2026-05-27 scan — NOT fixed, queued for a dedicated slice):**
-  - **Write drift (0 — fully closed 2026-05-27):** `notifications.priority` both halves fixed: field-opus-result-webhook:106 (dd1a78b) + supabase.js:2406 (62c5d6f). No remaining write drift.
-  - **Missing tables (1, was 2 — failed_intents stubbed 2026-05-28):**
-    - `quote_requests` — read at `ai-pm-nightly/index.ts:76`. Function DISABLED. Deferred until re-enable.
-  - **Read drift — CLOSED 2026-05-28:** All field-opus-db-query stale refs fixed (auto_fix_attempts cols, bug_reports title+classification). `assigned_pm_id` → `assigned_pm` renamed in supabase.js notification fan-out. **Read drift count: 0.**
-  - **Priority:** All live-code drift now closed. Only remaining open item is the DISABLED ai-pm-nightly quote_requests ref.
+- **Open drift findings (2026-05-27 scan — all closed):**
+  - **Write drift: 0** — `notifications.priority` both halves fixed: field-opus-result-webhook:106 (dd1a78b) + supabase.js:2406 (62c5d6f).
+  - **Missing tables: 0** — failed_intents stubbed 2026-05-28; quote_requests ref closed 2026-06-10 (ai-pm-nightly retired).
+  - **Read drift: 0** — field-opus-db-query stale refs fixed; `assigned_pm_id` → `assigned_pm` renamed in supabase.js notification fan-out.
+  - **Priority: All drift closed.**
 
 - **Tool-payload drift detector refinement (Path B)** — Detector shipped 2026-05-21 in commit 94708e1. Initial run: 14 advertised-not-written findings, all expected false positives in 3 categories:
   1. WHERE-clause keys (e.g. update_job.job_id used in .eq() not .update payload)
@@ -426,7 +427,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - `takeoff-schema-foundation · 2026-04-28–29` — pricing_lookup; takeoff_templates (81→59 rows); takeoff_unit_costs; material formulas; bathroom seed
 - `trade-taxonomy · 2026-04-29` — trade_taxonomy + tenant_trade_visibility; 43 canonical rows; DB-driven UI; backfill verified
 - `takeoff-wizard-build · 2026-04-29–05-01` — Data layer → material lines → UI → Accept & Save → scope tags → detail forms → COMPUTE_FNS → custom lines
-- `todo-system · 2026-04-28` — todos table; TodayScr; TodoCard; ai-pm-nightly first writer; Resume flow
+- `todo-system · 2026-04-28` — todos table; TodayScr; TodoCard; vigilance-runner first writer (was ai-pm-nightly, retired 2026-06-10); Resume flow
 
 **Schedule / 2026-05-02 work**
 - `schema-claim-incidents · 2026-05-02` — Third schema-claim failure; job_phases audit columns applied live
@@ -485,7 +486,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - `gen-types-tooling · 2026-05-28` — Added Supabase generated DB types as compile-time drift backstop. Files: `avenstone-vite/src/types/database.types.ts` (86 tables, committed), `tools/gen_types.js` (CJS wrapper reads PAT from token file, sets SUPABASE_ACCESS_TOKEN, invokes CLI — same pattern as apply_migration.js), `npm run gen:types` script in package.json. CLAUDE.md documents the regen-after-migration discipline. Types NOT yet wired into createClient or helpers — adoption is a follow-up slice so each conversion is bisectable. Structural backstop for the recurring 42703 drift class. Supabase CLI 2.101.0. `npx supabase login` alone doesn't persist for CLI gen-types on Windows — must pass SUPABASE_ACCESS_TOKEN env var (handled by wrapper script).
 
 **Column drift fix slice (2026-05-28)**
-- `column-drift-fix-2026-05-28 · 2026-05-28` — Fixed all open read-drift findings from 2026-05-27 scan. (1) supabase.js: `assigned_pm_id` → `assigned_pm` at 3 sites in notification fan-out (comment + select projection + 2 recipient collectors). PM was silently excluded from all schedule item notifications. (2) field-opus-db-query/index.ts: fixed `recent_bug_reports` (dropped nonexistent `title`, `classification`; using real cols), fixed `recent_auto_fix_attempts` (replaced all 7 stale col names with real schema: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`; order by `created_at`), stubbed `failed_intents_last_24h` (table never existed — returns `{ rows: [], note }` instead of crashing). Open drift after this slice: 1 (quote_requests in disabled ai-pm-nightly — deferred).
+- `column-drift-fix-2026-05-28 · 2026-05-28` — Fixed all open read-drift findings from 2026-05-27 scan. (1) supabase.js: `assigned_pm_id` → `assigned_pm` at 3 sites in notification fan-out (comment + select projection + 2 recipient collectors). PM was silently excluded from all schedule item notifications. (2) field-opus-db-query/index.ts: fixed `recent_bug_reports` (dropped nonexistent `title`, `classification`; using real cols), fixed `recent_auto_fix_attempts` (replaced all 7 stale col names with real schema: `bug_id, classification, reasoning, fix_prompt, vm_dispatch_status, vm_response, created_at`; order by `created_at`), stubbed `failed_intents_last_24h` (table never existed — returns `{ rows: [], note }` instead of crashing). Drift: closed.
 
 **[LOG — 2026-06-04] OWNER_HOME_REDESIGN (commit ae4af2d) — dark hero, thumbnails, clickable rows.**
 - Dark navy gradient hero section for greeting + 4 KPI tiles (frosted glass cards on dark, fShort numbers, gold left border, trend chip).
@@ -609,7 +610,7 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 **[LOG — 2026-05-28] Full session summary.**
 - **Repo relocated** out of OneDrive to canonical `C:\Users\Kalin\GitHub\avenstone-app`. OneDrive clones deleted. Build verified clean at new location.
 - **gen:types tooling shipped** — `tools/gen_types.js` + `npm run gen:types` + `src/types/database.types.ts` (86 tables). Compile-time drift backstop. CLAUDE.md updated with regen discipline.
-- **Drift slice closed** — `assigned_pm_id` → `assigned_pm` in supabase.js notification fan-out (PM was silently excluded from schedule notifications). `field-opus-db-query` stale columns fixed (bug_reports, auto_fix_attempts, failed_intents stubbed). Read drift: 0. 1 remaining: quote_requests in disabled ai-pm-nightly (deferred).
+- **Drift slice closed** — `assigned_pm_id` → `assigned_pm` in supabase.js notification fan-out (PM was silently excluded from schedule notifications). `field-opus-db-query` stale columns fixed (bug_reports, auto_fix_attempts, failed_intents stubbed). Read drift: 0. Missing-tables drift: 0 (final quote_requests ref closed 2026-06-10 with ai-pm-nightly retirement).
 - **46% bundle cut** — `vite.config.js` manualChunks + lazy-loaded FloorPlanTab/AiIntakeWizard/TakeoffWizard. Main bundle 452 kB → 206 kB gzip.
 - **supabase.js split DEFERRED** — plan written to `avenstone-vite/SUPABASE_SPLIT_PLAN.md`, organic extraction only.
 - **S4 URL routing COMPLETE** — 4 phases, App.jsx only, no router library: P1 (pg↔URL + Back/Forward), P2 (job↔URL), P3 (tab↔URL + pendingTab prop through JobsScr→JobDet), P4 (notification type→tab mapping for bell + push deep-links).
@@ -1320,14 +1321,19 @@ PART C: MaterialsTab — STATUS_META dark-on-dark → light tints; #111827 cards
 Still in jobs/ (385 hex literals): ScheduleTab custom phase palette (#EBE6D2/#DCE5D8 intentional), FilesRecentView CAT_COLORS (per-category hues intentional), GapResolutionModal SEV_COLORS, TransactionModal (Slice 5 modals batch).
 
 [LOG - 2026-06-10] AI_PM_FOLDIN Slice 2 — vigilance-runner edge function
-- Action: New edge function carrying all 11 PORT rules from the 2026-06-10 disposition audit. Replaces ai-pm-nightly's detection logic. ai-pm-nightly untouched (Slice 3 kills it).
+- Action: New edge function carrying all 11 PORT rules from the 2026-06-10 disposition audit. Successor to ai-pm-nightly (retired Slice 3).
 - Commits: 49b1a60 (function + todos_source migration), a7e25b1 (pg_cron migration). Pushed.
 - Files: supabase/functions/vigilance-runner/index.ts (NEW), supabase/migrations/20260610000001_todos_source_add_vigilance.sql, supabase/migrations/20260610000002_vigilance_runner_cron.sql
 - Pre-check results: job_transactions.phase EXISTS (text, nullable) — all 11 rules ported including budget_overrun. notifications type CHECK already dropped (migration 20260603240000). todos_source_check expanded from ['manual','engine'] to include 'vigilance'.
 - Key differences vs ai-pm-nightly: (1) dedup via existing-open-todo check instead of 24h recentNotifs scan — no daily re-fire on persisting conditions; (2) email_sent gate on notification insert (high=false → email fires, medium/low=true → blocked); (3) Rule 14 source_table corrected to 'job_files' (was stale 'job_documents'); (4) source='vigilance' on todos.
 - Cron: daily 11:00 UTC (06:00 Central), same anon JWT pattern as existing cron jobs. Verified in cron.job immediately after migration.
 - Smoke test (first run): 5 jobs processed, 9 alerts fired — no_daily_log (4), lien_waiver_missing (3), consultation_stale (1), estimate_no_proposal_24h (1). email_sent gate confirmed correct (payment_overdue=false, all others=true). Second run: 0 fired, 9 dedup_skipped — dedup working.
-- AiPmDashboard PM_TYPES verified in notifications: co_pending_approval, no_daily_log, payment_overdue visible. Dashboard will render real data.
-- Open: one test job (123 Test Flow Dr) has non-UUID id='test-flow-001' — todos FK insert fails; error handled gracefully per-job. Not a function bug.
-- Open: AI_PM_LEGACY_RULES block (CLAUDE_MEMORY line ~113) stays until Slice 3 kills ai-pm-nightly.
-- Open: pg_cron entry for vigilance-runner verified active. Update CLAUDE_MEMORY pg_cron list entry.
+- AiPmDashboard PM_TYPES verified in notifications: co_pending_approval, no_daily_log, payment_overdue visible. Dashboard renders real data.
+
+[LOG - 2026-06-10] AI_PM_RETIRED — ai-pm-nightly retired, vigilance-runner live
+- Action: Deleted supabase/functions/ai-pm-nightly/, deleted .github/workflows/nightly-pm.yml, undeployed from Supabase (Management API DELETE verified — confirmed absent from deployed functions list). Removed AI_PM_NIGHTLY_URL export from supabase.js. Removed App.jsx first-login fetch call + av_pm_date localStorage check. Doc purge across CLAUDE.md, CLAUDE_MEMORY.md, ANTI_SURPRISE_ENGINE_ARC.md, TODO_NOTIFICATIONS_ARC.md, AGENT_AUDIT.md, AVENSTONE_VISION.md.
+- Files deleted: supabase/functions/ai-pm-nightly/index.ts, .github/workflows/nightly-pm.yml
+- Files modified: avenstone-vite/src/App.jsx (removed fetch call + import), avenstone-vite/src/lib/supabase.js (removed AI_PM_NIGHTLY_URL), CLAUDE.md (3 refs), CLAUDE_MEMORY.md (purged AI_PM_LEGACY_RULES open item, drift refs, slug index), ANTI_SURPRISE_ENGINE_ARC.md (retirement note + Phase 5 updated), TODO_NOTIFICATIONS_ARC.md, AGENT_AUDIT.md, AVENSTONE_VISION.md
+- Final grep (non-CLAUDE_ARCHIVE, non-retirement-notes): CLEAN — only historical LOG entries in CLAUDE_MEMORY.md and retirement context notes in ANTI_SURPRISE_ENGINE_ARC.md/AGENT_AUDIT.md/AVENSTONE_VISION.md remain.
+- Open: TEST_DATA_NONUUID open item added (job 'test-flow-001' non-UUID PK).
+- Open: AiPmDashboard.jsx still hard-filters to the 6 original PM_TYPES — will render vigilance-runner notifications correctly since vigilance-runner writes byte-identical type strings.

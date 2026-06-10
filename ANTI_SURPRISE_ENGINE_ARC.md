@@ -14,7 +14,7 @@ Three layers:
 ## Code-true starting state (audited 2026-06-03)
 
 - **scheduled_actions table EXISTS, sweeper-ready, 0 live rows.** 21 cols (kind, status, priority, fire_at, target_user_id, related_job_id, payload jsonb, rule_key, source, etc.). Partial ripe index on fire_at WHERE status='scheduled'. Dedup index (rule_key, related_job_id) WHERE status='scheduled' AND kind='watchdog'. ONLY company-files-watchdog reads it, scoped to kind='company_file_expiration'. NO general-purpose dispatcher exists — all other kinds are dead letters until one is built.
-- **ai-pm-nightly EXISTS, 14 pure-SQL detection rules, ZERO model calls** (Opus narrative already stripped — comment: "AI narrative disabled — too expensive for automatic firing"). NOT disabled by flag — it simply has no trigger (no pg_cron, no GH Action points at it). Rules write to notifications + todos.
+- **ai-pm-nightly RETIRED 2026-06-10** (AI_PM_FOLDIN Slice 3). 11 valid rules ported to `vigilance-runner` (daily 11:00 UTC pg_cron). 3 dead ITB rules (bid_award_no_contract, itb_no_responses_due_soon, itb_award_pending) dropped with the function — they queried the dropped `quote_requests` table and never fired.
 - **Cron infra:** pg_cron runs sequence-runner every 15min. 2 daily GH Actions (company-files-watchdog, credential-check). NO general agent scheduler. A new pg_cron entry → new dispatcher edge fn is the path.
 - **Dependency model: DOES NOT EXIST in any enforced form.** Schema foundation present but logic-empty: schedule_items.predecessor_ids UUID[] (never written by app code), lag_days INT, schedule_change_log table (0 rows), trade_material_lead_times (4 Avenstone rows + 7d fallback). trade_phase_map is FLAT trade→phase label, NO ordering column. stage7_schedule.js test-data sketches the intended DAG (Demo→Framing→[Plumbing-R,Electrical-R,HVAC-R]→Insulation→Inspection→[Drywall,Tile]→finishes) but is never wired. derivePhaseStatus advances a phase on ANY single matching sub_start completion with NO cross-phase prerequisite check. scheduleAutoCreate creates isolated items with empty predecessor_ids. NO cascade runner, NO topological sort, NO precedence enforcement anywhere.
 - **sbCheckResourceConflicts** (supabase.js ~3000): detects same-sub double-booking + invitee overlap. Soft amber warning, no block. **sbCheckLeadTime** (~629): checks material order_date+lead_days vs scheduled_date. Soft amber warning, no block, no auto-reschedule.
@@ -42,7 +42,7 @@ Three layers:
 | 2 — Dependency engine | tenant trade_dependencies table + seed from stage7 DAG; populate predecessor_ids on item create; cascade runner (reflow downstream dates when a predecessor moves); lead-time + prerequisite hard-readiness check ("drywall can't start, LVP not bid") | 5–10 | Planned |
 | 3 — Guideline schedule generation | job-sold generation extends to auto-populate a guideline schedule from the dependency engine + lead times | 2–4 | Planned |
 | 4 — Scheduling agent (scoped) | scoped master-agent context over the dependency engine: "what do I need locked before drywall?" reads the graph + lead-time + bid/order state, answers readiness, can dispatch (send ITB, order material) one-tap | 3–6 | Planned |
-| 5 — Vigilance dispatcher generalization + draw-poke | wire ai-pm-nightly's 14 SQL rules + draw-poke float rule into the general dispatcher on a daily pg_cron; surface-on-signon | 3–5 | Planned |
+| 5 — Vigilance runner + draw-poke | `vigilance-runner` SHIPPED (2026-06-10) — 11 rules live, daily 11:00 UTC. Draw-poke float rule (trigger when remaining client money drops to 10% of job cost) still outstanding. | 1–2 | Partially done |
 | 0 (prereq) — Push idempotency fix | dedupe the two unconditional push triggers / add push_sent guard | 1 | Planned |
 
 ## Phase 1 shipped (2026-06-03)
@@ -62,7 +62,7 @@ Three layers:
 - Cabinets/vanities missed by SQL LIKE (SQL approximation of JS word-prefix; "VANITY & FIXTURES" doesn't LIKE-match "Cabinets"). The deployed edge function handles this correctly via JS fuzzy match.
 
 **Open issues found:**
-- `notifications_type_check` was stale (hadn't tracked ai-pm-nightly types either) — dropped; all future types are free text.
+- `notifications_type_check` was stale — dropped; all future types are free text.
 - `todos.source_check` allows `'engine'` but not `'anti_surprise_engine'` — using `'engine'` in dispatcher.
 - Cabinets/vanities SQL LIKE gap is only in the verification SQL above; actual edge fn JS matcher handles it.
 
