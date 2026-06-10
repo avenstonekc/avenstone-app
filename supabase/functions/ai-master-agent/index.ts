@@ -2303,6 +2303,7 @@ function describeConfirmAction(tool: string, input: any): string {
       const prio = String(input.priority || "medium");
       const bits: string[] = [prefix, `${prio} priority`];
       if (input.due_date) bits.push(`due ${input.due_date}`);
+      if (input._job_address) bits.push(`on ${String(input._job_address)}`);
       return bits.join(" · ") + ".";
     }
     case "create_job": {
@@ -2735,6 +2736,13 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
         if (confirmBlock.name === "add_todo" && inputObj.assignee_id && String(inputObj.assignee_id) !== userId) {
           const { data: ap } = await sb.from("profiles").select("full_name").eq("id", String(inputObj.assignee_id)).maybeSingle();
           if (ap) inputObj._assignee_name = (ap as any).full_name;
+        }
+        // add_todo: inject context job_id when not provided so the todo is linked and
+        // the Confirm card shows which job it belongs to — catches wrong resolution early.
+        if (confirmBlock.name === "add_todo" && contextJobId && isMissing(inputObj.job_id)) {
+          inputObj.job_id = contextJobId;
+          const { data: atJob } = await sb.from("jobs").select("address").eq("id", contextJobId).maybeSingle();
+          if (atJob) inputObj._job_address = (atJob as any).address;
         }
         // notify_team_member: resolve _resolved_target_id, _target_name, _job_address for Confirm card.
         if (confirmBlock.name === "notify_team_member") {
