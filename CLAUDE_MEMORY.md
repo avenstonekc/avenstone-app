@@ -1380,10 +1380,34 @@ SYSTEM PROMPT: Added ANSWERING QUESTIONS WITH READ TOOLS section — agent must 
 MasterAgent: TILE_PREFIXES += attention='What needs my attention today?'. QUICK_TILES: replaced change_order tile with attention tile (ic='bell'). change_order still reachable via freeform input.
 CONFIRM_TOOLS: unchanged at 13. Read tools (get_*) are exempt from drift checker — no insert payloads.
 
-SMOKE TESTS (pending deploy — run after edge fn auto-deploys via GitHub Actions):
-1. "what's outstanding on 999 Test Lane?" → call get_job_financials → numbers must match Financials tab exactly
-2. "what needs my attention today?" → call get_alerts → vigilance todos from morning's run should appear
-3. "what's on the schedule next two weeks?" → call get_schedule → items should list with dates and job names
+SMOKE TESTS (completed 2026-06-10):
+1. "what's outstanding on 999 Test Lane?" → get_job_financials → numbers matched Financials tab ✓
+2. "what needs my attention today?" → get_alerts → vigilance items (lien waivers, daily logs, walkthroughs, stale consultations, overdue payment) appeared with job names ✓
+3. "what's on the schedule next two weeks?" → get_schedule → 7 items Jun 10-24 across 2 jobs ✓
+
+[LOG - 2026-06-10] AGENT_READS Slice 2 — projected profit parity + screen context
+- Action: Two targeted fixes on top of Slice 1. Multiple deploy iterations to fix context message UUID issue.
+- Commits: 888652b, 096f190, 8e5e286, c43e487, 6651863. All pushed.
+- Files: supabase/functions/ai-master-agent/index.ts, avenstone-vite/src/components/shared/MasterAgent.jsx, avenstone-vite/src/App.jsx
+
+PROJECTED PROFIT FIX:
+- Added pm_fee to get_job_financials jobs query. Compute projected_profit = projected_markup + pm_fee. Return projected_profit as headline (matches Financials tab Ledger card exactly). projected_markup and pm_fee kept as labeled sub-fields.
+- 999 Test Lane: $9,636 markup + $1,500 PM = $11,136 projected_profit ✓ (matches tab exactly)
+
+SCREEN CONTEXT:
+- contextLine removed from system prompt (was per-job, re-invalidated cache on every job nav).
+- runAgentLoop: new contextScreen param. Context injected as "[Context] <label>" user message prepended to currentMessages each request — refreshed, not accumulated. Context message includes job_id so model can use UUID directly.
+- Context message format: "Viewing: 999 Test Lane (job_id: 7b44611a-...) / financials"
+- Pre-fill extended: get_job_financials + get_schedule get job_id from contextJobId when no job_id AND no job_name.
+- add_todo confirm card: UUID guard (model used name→override with contextJobId), always fetch _job_address. describeConfirmAction("add_todo") appends "on <address>" so wrong job is visible before commit.
+- App.jsx: passes currentPage={pg} and activeTab={viewportTab} to MasterAgent.
+- MasterAgent: buildCtxScreen() produces "Viewing: <job> / <tab>" or "Page: <page>".
+- NOTE: contextScreen lives in conversation messages, NOT in system+tools cached prefix.
+
+SMOKE TESTS (all 3 passing):
+a. Context job + "what's outstanding here?" → get_job_financials resolved from context_job_id, projected profit $11,136 = Ledger tab ✓
+b. No context + "what's outstanding on 999 Test Lane?" → fuzzy still works, same numbers ✓
+c. On job + "add a todo to order tile for this job" → confirm description: 'Add to-do: "Order tile" · medium priority · on 999 Test Lane, Testville, KS.' ✓
 
 [LOG - 2026-06-10] DESIGN_SYSTEM_ARC Slice 4 — portals token sweep
 - Action: 6 external-facing portal files converted. 3 bisectable commits, build green.
