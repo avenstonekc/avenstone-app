@@ -4,12 +4,12 @@ import { f$, fD } from '../../../lib/utils';
 import AddQuoteModal from '../../modals/AddQuoteModal';
 
 const STATUS_META = {
-  planned:   { label: 'Planned',   color: 'var(--text-subtle)', bg: '#1f2937' },
-  quoted:    { label: 'Quoted',    color: '#60a5fa', bg: '#1e3a5f' },
-  ordered:   { label: 'Ordered',   color: '#c084fc', bg: '#3b0764' },
-  delivered: { label: 'Delivered', color: '#34d399', bg: '#064e3b' },
-  installed: { label: 'Installed', color: '#22c55e', bg: '#052e16' },
-  cancelled: { label: 'Cancelled', color: 'var(--red-text)', bg: '#450a0a' },
+  planned:   { label: 'Planned',   color: 'var(--text-muted)',         bg: 'var(--neutral-bg)' },
+  quoted:    { label: 'Quoted',    color: 'var(--blue-text)',           bg: 'var(--blue-bg)' },
+  ordered:   { label: 'Ordered',   color: 'var(--purple-text)',         bg: 'var(--purple-bg)' },
+  delivered: { label: 'Delivered', color: 'var(--green-text-strong)',   bg: 'var(--green-bg)' },
+  installed: { label: 'Installed', color: 'var(--green-text-strong)',   bg: 'var(--green-bg)' },
+  cancelled: { label: 'Cancelled', color: 'var(--red-text-strong)',     bg: 'var(--red-bg)' },
 };
 
 const NEXT = { planned: 'quoted', quoted: 'ordered', ordered: 'delivered', delivered: 'installed' };
@@ -102,17 +102,17 @@ export default function MaterialsTab({ job }) {
     if (confirmAction?.id === order.id) {
       return (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}>
-          <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{confirmAction.label}?</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{confirmAction.label}?</span>
           <button
             onClick={() => handleTransition(order.id, confirmAction.action)}
             disabled={working === order.id}
-            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: '1px solid #ef4444', background: '#450a0a', color: 'var(--red-text)', cursor: 'pointer' }}
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 'var(--r-xs)', border: '1px solid var(--red-border)', background: 'var(--red-bg)', color: 'var(--red-text-strong)', cursor: 'pointer' }}
           >
             {working === order.id ? '…' : 'Confirm'}
           </button>
           <button
             onClick={() => setConfirmAction(null)}
-            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 5, border: '1px solid #374151', background: 'transparent', color: 'var(--text-subtle)', cursor: 'pointer' }}
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
           >
             No
           </button>
@@ -123,16 +123,16 @@ export default function MaterialsTab({ job }) {
     // Delivery photo gate panel
     if (next === 'delivered' && pendingDelivery?.orderId === order.id) {
       return (
-        <div style={{ marginTop: 10, background: '#0d1f35', border: '1px solid #1e3a5f', borderRadius: 6, padding: '10px 12px' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#60a5fa', marginBottom: 6 }}>
+        <div style={{ marginTop: 10, background: 'var(--blue-bg)', border: '1px solid #BFDBFE', borderRadius: 'var(--r-sm)', padding: '10px 12px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--blue-text)', marginBottom: 6 }}>
             Delivery photo required
-            {pendingDelivery.photoCount > 0 && <span style={{ color: '#34d399', marginLeft: 8 }}>✓ {pendingDelivery.photoCount} added</span>}
+            {pendingDelivery.photoCount > 0 && <span style={{ color: 'var(--green-text-strong)', marginLeft: 8 }}>✓ {pendingDelivery.photoCount} added</span>}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button
               onClick={() => deliveryPhotoRef.current?.click()}
               disabled={deliveryUploading}
-              style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 5, border: '1px solid #3b82f6', background: '#1e3a5f', color: '#60a5fa', cursor: 'pointer' }}
+              style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--r-xs)', border: '1px solid var(--blue-text)', background: 'var(--blue-bg)', color: 'var(--blue-text)', cursor: 'pointer' }}
             >
               {deliveryUploading ? '…' : '📷 Take Photo'}
             </button>
@@ -140,13 +140,13 @@ export default function MaterialsTab({ job }) {
             <button
               onClick={() => handleTransition(order.id, 'delivered')}
               disabled={pendingDelivery.photoCount === 0 || working === order.id}
-              style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 5, border: `1px solid ${pendingDelivery.photoCount > 0 ? '#22c55e' : '#374151'}`, background: pendingDelivery.photoCount > 0 ? '#052e16' : 'transparent', color: pendingDelivery.photoCount > 0 ? '#34d399' : 'var(--text-muted)', cursor: pendingDelivery.photoCount > 0 ? 'pointer' : 'not-allowed' }}
+              style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--r-xs)', border: `1px solid ${pendingDelivery.photoCount > 0 ? '#BBF7D0' : 'var(--border)'}`, background: pendingDelivery.photoCount > 0 ? 'var(--green-bg)' : 'transparent', color: pendingDelivery.photoCount > 0 ? 'var(--green-text-strong)' : 'var(--text-muted)', cursor: pendingDelivery.photoCount > 0 ? 'pointer' : 'not-allowed' }}
             >
               {working === order.id ? '…' : 'Confirm Delivered'}
             </button>
             <button
               onClick={() => setPendingDelivery(null)}
-              style={{ fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid #374151', background: 'transparent', color: 'var(--text-subtle)', cursor: 'pointer' }}
+              style={{ fontSize: 11, padding: '4px 10px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
             >
               Cancel
             </button>
@@ -161,7 +161,7 @@ export default function MaterialsTab({ job }) {
           <button
             onClick={() => handleTransition(order.id, next)}
             disabled={working === order.id}
-            style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 5, border: '1px solid #3b82f6', background: '#1e3a5f', color: '#60a5fa', cursor: 'pointer' }}
+            style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--navy-900)', cursor: 'pointer' }}
           >
             {working === order.id ? '…' : `Mark ${STATUS_META[next]?.label}`}
           </button>
@@ -169,7 +169,7 @@ export default function MaterialsTab({ job }) {
         {canCancel && (
           <button
             onClick={() => setConfirmAction({ id: order.id, action: 'cancelled', label: 'Cancel this order' })}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid #374151', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
           >
             Cancel
           </button>
@@ -182,10 +182,10 @@ export default function MaterialsTab({ job }) {
     const photos = entityPhotos[orderId];
     if (!photos?.length) return null;
     return (
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px solid #1f2937' }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
         {photos.map(p => (
           <a key={p.id} href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', flexShrink: 0 }}>
-            <img src={p.url} alt={p.name || 'photo'} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 4, border: '1px solid #374151' }} />
+            <img src={p.url} alt={p.name || 'photo'} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 'var(--r-xs)', border: '1px solid var(--border)' }} />
           </a>
         ))}
       </div>
@@ -197,42 +197,42 @@ export default function MaterialsTab({ job }) {
     const mats = Array.isArray(order.materials) ? order.materials : [];
 
     return (
-      <div key={order.id} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '12px 14px', marginBottom: 8 }}>
+      <div key={order.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', boxShadow: 'var(--shadow-xs)', padding: '12px 14px', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
               {order.supplier_name
-                ? <span style={{ fontSize: 14, fontWeight: 600, color: '#f9fafb' }}>{order.supplier_name}</span>
+                ? <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{order.supplier_name}</span>
                 : <span style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>No supplier yet</span>
               }
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: meta.bg, color: meta.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--r-full)', background: meta.bg, color: meta.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 {meta.label}
               </span>
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {order.quote_total != null && (
-                <span style={{ color: '#60a5fa', fontWeight: 600 }}>{f$(order.quote_total)}</span>
+                <span style={{ color: 'var(--navy-900)', fontWeight: 600 }}>{f$(order.quote_total)}</span>
               )}
               {order.quoted_delivery_date && (
-                <span>Delivery: <span style={{ color: '#d1d5db' }}>{fD(order.quoted_delivery_date)}</span></span>
+                <span>Delivery: <span style={{ color: 'var(--text-secondary)' }}>{fD(order.quoted_delivery_date)}</span></span>
               )}
               {order.actual_delivery_date && (
-                <span>Delivered: <span style={{ color: '#34d399' }}>{fD(order.actual_delivery_date)}</span></span>
+                <span>Delivered: <span style={{ color: 'var(--green-text-strong)' }}>{fD(order.actual_delivery_date)}</span></span>
               )}
             </div>
           </div>
         </div>
 
         {mats.length > 0 && (
-          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #1f2937' }}>
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
             {mats.map((m, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--text-subtle)', padding: '2px 0' }}>
-                <span style={{ flex: 1, color: '#d1d5db' }}>{m.description}</span>
+                <span style={{ flex: 1, color: 'var(--text-secondary)' }}>{m.description}</span>
                 {m.quantity != null && (
                   <span style={{ flexShrink: 0 }}>{m.quantity}{m.unit ? ' ' + m.unit : ''}</span>
                 )}
                 {m.unit_price != null && (
-                  <span style={{ flexShrink: 0, color: '#60a5fa', fontWeight: 600, minWidth: 54, textAlign: 'right' }}>{f$(m.unit_price)}</span>
+                  <span style={{ flexShrink: 0, color: 'var(--navy-900)', fontWeight: 600, minWidth: 54, textAlign: 'right' }}>{f$(m.unit_price)}</span>
                 )}
               </div>
             ))}
@@ -253,7 +253,7 @@ export default function MaterialsTab({ job }) {
   return (
     <div style={{ padding: '0 0 80px' }}>
       {error && (
-        <div style={{ background: '#450a0a', color: 'var(--red-text)', padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>
+        <div style={{ background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '10px 14px', borderRadius: 'var(--r-sm)', fontSize: 13, marginBottom: 16, border: '1px solid var(--red-border)' }}>{error}</div>
       )}
 
       {loading && (
@@ -265,7 +265,8 @@ export default function MaterialsTab({ job }) {
           <div style={{ marginBottom: 12 }}>No material orders yet.</div>
           <button
             onClick={() => openAdd(null)}
-            style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: '1px solid #374151', background: '#1f2937', color: '#f9fafb', cursor: 'pointer' }}
+            className="btn btn-ghost"
+            style={{ fontSize: 12 }}
           >
             + Add first order
           </button>
@@ -275,10 +276,11 @@ export default function MaterialsTab({ job }) {
       {!loading && trades.map(trade => (
         <section key={trade} style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <h3 style={{ color: '#f9fafb', fontSize: 13, fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{trade}</h3>
+            <h3 style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{trade}</h3>
             <button
               onClick={() => openAdd(trade)}
-              style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #374151', background: '#1f2937', color: 'var(--text-subtle)', cursor: 'pointer' }}
+              className="btn btn-ghost"
+              style={{ fontSize: 11, padding: '4px 10px' }}
             >
               + Add quote
             </button>
@@ -290,7 +292,8 @@ export default function MaterialsTab({ job }) {
       {!loading && orders.length > 0 && (
         <button
           onClick={() => openAdd(null)}
-          style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: '1px solid #374151', background: '#1f2937', color: 'var(--text-subtle)', cursor: 'pointer', marginTop: 4 }}
+          className="btn btn-ghost"
+          style={{ fontSize: 12, marginTop: 4 }}
         >
           + Add order for new trade
         </button>
