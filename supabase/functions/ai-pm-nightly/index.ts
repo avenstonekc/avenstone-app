@@ -4,7 +4,6 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SB_URL      = Deno.env.get("SUPABASE_URL")!;
 const SB_SERVICE  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY    = Deno.env.get("SUPABASE_ANON_KEY") || "";
-const AI_PM_URL   = `${SB_URL}/functions/v1/ai-project-manager`;
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -251,6 +250,11 @@ Deno.serve(async (req) => {
             });
           }
         }
+
+        // DEAD SCHEMA — Rules 9/10/11: quote_requests table never exists in DB (legacy ITB schema
+        // dropped in Phase 3, 2026-05-06; migration 20260429_quote_requests_rename.sql deleted).
+        // quoteRequests always resolves to an empty array; these rules never fire.
+        // Port to job_sub_engagements / engagement_bids before any reactivation of this function.
 
         // Rule 9: bid_award_no_contract — awarded QR but no contract doc
         const hasAwardedQR = (quoteRequests || []).some(

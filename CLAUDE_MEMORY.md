@@ -47,9 +47,13 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 ---
 
-## Schema reality (verified 2026-05-05)
+## Schema reality (verified 2026-05-05; partial re-verify 2026-06-10)
 
 *Authoritative DB facts — verified against `information_schema`. Do not contradict without re-verifying.*
+
+**Schema drift notes (audit 2026-06-10):**
+- `job_lidar_scans.scanner_version` is selected in `normalize-scan/index.ts:345` but the column does not exist in DB — pre-existing read drift, inert on the current code path. Fix when next touching normalize-scan.
+- **pg_cron active jobs (verified 2026-06-10):** `anti-surprise-dispatcher` (*/15 min), `anti-surprise-generator` (03:00 daily), `sequence-runner` (*/15 min). `ai-pm-nightly` has NO cron schedule.
 
 - **Phase 3 DROPs (2026-05-06):** `invitations_to_bid` view, `itb_invitees`, `quote_requests`, `bid_responses` (legacy), `bids`, `sub_pricing_changes`, `job_subs` — all dropped. `engagement_bids` and `job_sub_engagements` are the canonical engagement schema. RLS policies on `job_messages` and `schedule_items` updated to reference `job_sub_engagements` in the same migration.
 - **`jobs.client_user_id` (uuid) EXISTS and is actively used** — `supabase.js` (job load + `sbNotifyUser`), `ClientPortal.jsx` (job query + Realtime subscription filter), `MessagesTab.jsx` (email-on-new-message). Do not NULL it carelessly.
@@ -76,8 +80,8 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - **notifications_type_check extended with 'todo_delegated'** (AGENT_OPS Phase 2.1, 2026-05-20). Migration: 20260520140000_notifications_type_todo_delegated.sql. notify-email SUBJECTS map updated with subject "You've been assigned a new todo".
 - **notifications_type_check extended with 'team_alert' and 'master_agent' reinstated** (AGENT_OPS Phase 2.2, 2026-05-20). Migration: 20260520150000_notifications_type_team_alert.sql. `master_agent` was inadvertently dropped in Phase 2.1's migration — reinstated. `team_alert` is the type for `notify_team_member` verb.
 - **on_notification_insert trigger now has priority gate** (AGENT_OPS Phase 2.2, 2026-05-20). Migration: 20260520160000_notification_email_trigger_priority_gate.sql. Trigger recreated with `WHEN (NEW.email_sent IS NOT TRUE)`. Priority gate contract: executor sets `email_sent = priority !== 'high'` at INSERT time — high priority emails; medium/low do not. Verified in pg_trigger via `pg_get_triggerdef`.
-- **ai-master-agent had 17 tools at Phase 2.2** (2026-05-20, superseded — see current count above). Added `notify_team_member` (CONFIRM_TOOLS). 4 more verbs added since (create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file → now 22 total, 11 CONFIRM_TOOLS).
-- **`trg_notification_push_fanout` trigger EXISTS on `notifications`** (PUSH_NOTIFICATIONS_ARC Phase 5, 2026-05-24). AFTER INSERT, calls `fn_notification_push_fanout()` which async-invokes `notification-push-fanout` edge fn via `net.http_post`. Independent from `on_notification_insert` email trigger — both fire on every INSERT. 2 other pre-existing Dashboard-created triggers also on notifications: `on_notification_insert_push`, `on_notification_insert_sms` — not in local migration files.
+- **ai-master-agent had 17 tools at Phase 2.2** (2026-05-20, superseded — see current count above). Added `notify_team_member` (CONFIRM_TOOLS). Superseded — current count maintained in the 24-tool entry above.
+- **`trg_notification_push_fanout` trigger EXISTS on `notifications`** (PUSH_NOTIFICATIONS_ARC Phase 5, 2026-05-24). AFTER INSERT, calls `fn_notification_push_fanout()` which async-invokes `notification-push-fanout` edge fn via `net.http_post`. Independent from `on_notification_insert` email trigger — both fire on every INSERT. 1 other pre-existing Dashboard trigger on notifications: `on_notification_insert_sms`. `on_notification_insert_push` was dropped in ANTI_SURPRISE_ENGINE_ARC Phase 0 (commit 9e6173b).
 - **`push_subscriptions` is now dual-channel** (PUSH_NOTIFICATIONS_ARC Phase 1, 2026-05-23). Columns: `id, user_id, channel ('web'|'apns'), endpoint, p256dh, auth, apns_token, created_at`. Two partial unique indexes: `idx_push_sub_web_unique` on (user_id, endpoint) WHERE channel='web'; `idx_push_sub_apns_unique` on (user_id, apns_token) WHERE channel='apns'. `channel_payload_check` enforces web rows have endpoint+p256dh+auth (apns_token NULL) and apns rows have apns_token only. 7 existing rows backfilled to channel='web'. Migration: 20260523100000_push_subscriptions_dual_channel.sql.
 - **`field_opus_messages` table EXISTS** (FIELD_OPUS_ARC Phase 1, 2026-05-24). Columns: id UUID PK, thread_id UUID NOT NULL, role TEXT CHECK (user/assistant/system/dispatch_result), content TEXT NOT NULL, meta JSONB DEFAULT '{}', created_at TIMESTAMPTZ. Single index on (thread_id, created_at). 4 RLS policies all gated by auth.uid() = Kalin's UUID literal (8171742a-b586-4f13-be61-744e191a1896). v1 uses a single hardcoded thread_id (11111111-1111-1111-1111-111111111111) — multi-thread deferred. Migration: 20260524110000_field_opus_messages.sql.
 - **`field_opus_dispatch_queue` table EXISTS** (FIELD_OPUS_ARC Phase 4, 2026-05-24). Columns: id UUID PK, thread_id UUID NOT NULL, message_id UUID NOT NULL FK→field_opus_messages(id) ON DELETE CASCADE, prompt TEXT NOT NULL, status TEXT CHECK (queued/dispatched/completed/failed/cancelled) DEFAULT 'queued', dispatched_at TIMESTAMPTZ nullable, completed_at TIMESTAMPTZ nullable, commit_hash TEXT nullable, result_text TEXT nullable, error_text TEXT nullable, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL. 2 custom indexes (idx_field_opus_queue_in_flight partial on in-flight rows, idx_field_opus_queue_thread). 4 RLS policies Kalin-only. updated_at trigger trg_fodq_updated_at. Migration: 20260524120000_field_opus_dispatch_queue.sql.
@@ -105,6 +109,8 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 - `VOICE_AGENT_ARC.md` — voice as first-class interface for in-field PM workflows. Reads EXECUTION_ARC data (checklists, todos, schedule items, phase context). See existing VOICE_AGENT.md.
 - `SALES_PIPELINE_ARC.md` — leads → qualified → consultations scheduled → proposals → contracts. Currently jobs start at `lead` phase; lead-handling is outside the platform. Open question whether platform should own this.
 - `CODE_JURISDICTION_ARC.md` — jurisdiction-aware inspection checklists (KC vs Overland Park, 2018 vs 2021 IRC). Hardcoded starter set is v1; AI-seeded jurisdiction-aware templates are the real moat play.
+
+**AI_PM_LEGACY_RULES** — 3 rules in ai-pm-nightly (bid_award_no_contract, itb_no_responses_due_soon, itb_award_pending) query `quote_requests`/ITB data via the `quoteRequests` parallel load (index.ts:76). The `quote_requests` table never exists in DB (migration `20260429_quote_requests_rename.sql` deleted from repo 2026-06-10 — it referenced dead legacy schema from the Phase 3 ITB drop on 2026-05-06). These 3 rules always receive an empty array and silently fire no alerts. The function has no pg_cron schedule so this is dormant. Before any reactivation: port these 3 rules to `job_sub_engagements` / `engagement_bids` (the live schema for sub bid tracking). Do NOT restore or recreate the deleted migration.
 - `FIELD_OPUS_ARC.md` — Opus-in-the-app dev console for Kalin. Hard-gated to Kalin's auth ID. Conversation interface inside the app, dispatches Sonnet prompts to the AUTO_FIX_ARC VM. 6 phases scoped; blueprint shipped 2026-05-23. Target build: 2026-05-24 morning.
 - `AUTO_FIX_ARC.md` — Dev-loop accelerator for the 2-user phase (Kalin + Blake). Gets ripped out before public launch — strictly internal tool, not a product feature.
 
@@ -1223,3 +1229,22 @@ ARCHITECTURE NOTES:
 - sbLoadOwnerDashboard: role-parameterized by tenantId today. Other role configs will filter differently but call the same function structure.
 - Shared shell = App.jsx NAV array (parameterized by role flags). No DashShell.jsx extraction needed for Phase 1 — that's a follow-on when 2+ roles exist.
 - First-pass: screenshot and refine via Vercel. Test tenant has sandbox/test jobs in active list (expected in dev).
+
+[LOG - 2026-06-04] ROLE_DASHBOARDS_ARC — OwnerHomeScr polish (commits 4535136, e19cfab, 95bb3b9)
+- 4535136: SVG chart smoothed (cubic bezier path), AI Insights chips now tap to open relevant screen, open todos count added to Company Health row.
+- e19cfab: Nav flash fix — `sel` state now initialized from `pendingJobId` before first render, eliminating the brief wrong-screen flash on cold-start with a pending job.
+- 95bb3b9: Expandable walkthrough list (tap to expand full list vs. top-3 preview), chart clip fix (SVG viewBox adjusted to prevent right-edge crop), mobile chart height tuned.
+
+[LOG - 2026-06-10] DOC_RECONCILE — memory/doc audit corrections
+- Action: 2026-06-10 audit found 8 doc drift items. All corrected in one pass.
+- Files: CLAUDE_MEMORY.md, CLAUDE.md, supabase/functions/ai-pm-nightly/index.ts, deleted supabase/migrations/20260429_quote_requests_rename.sql.
+- Changes:
+  1. CLAUDE_MEMORY line ~79: removed stale "22 total, 11 CONFIRM_TOOLS" sentence (superseded by 24-tool entry).
+  2. CLAUDE_MEMORY line ~80: corrected trigger list — on_notification_insert_push was dropped in P0 (9e6173b); only on_notification_insert_sms remains as a pre-existing Dashboard trigger.
+  3. CLAUDE_MEMORY: added LOG for 3 undocumented OwnerHomeScr polish commits (4535136, e19cfab, 95bb3b9).
+  4. CLAUDE_MEMORY Active open items: added AI_PM_LEGACY_RULES — 3 dead-schema rules in ai-pm-nightly, do not reactivate without porting to job_sub_engagements/engagement_bids.
+  5. Deleted supabase/migrations/20260429_quote_requests_rename.sql — references dead legacy ITB schema (invitations_to_bid dropped Phase 3, 2026-05-06). Landmine for future npm run migrate.
+  6. CLAUDE_MEMORY Schema reality: added drift note for job_lidar_scans.scanner_version + pg_cron active jobs list.
+  7. CLAUDE.md API Cost Rules: replaced stale "fires Opus narrative — DISABLED" with accurate "pure SQL (14 rules, zero model calls), no pg_cron schedule."
+  8. ai-pm-nightly/index.ts: deleted dead AI_PM_URL constant; added DEAD SCHEMA comment block above Rules 9/10/11.
+- Open: None.

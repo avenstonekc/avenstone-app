@@ -38,7 +38,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Rules:**
 - **Never fire Opus automatically** — Opus is for on-demand owner actions only, never background jobs
 - **Never fire any AI on a DB webhook/trigger** — DB events can cascade into thousands of calls
-- **ai-pm-nightly fires Opus narrative** — THIS IS DISABLED. Do not re-enable without explicit approval
+- **ai-pm-nightly is pure SQL** (14 rules, zero model calls) with no pg_cron schedule. Do not add a cron schedule without explicit approval. Three of its rules reference dropped legacy ITB schema — see AI_PM_LEGACY_RULES open item in CLAUDE_MEMORY.md.
 - **Agentic loops** — cap at 3 iterations max on Haiku, 3 on Sonnet. Every loop iteration = full API cost
 - **Conversation history window** — 10 messages max on Haiku agents, 20 max on Sonnet
 - **max_tokens** — Haiku: 1024 for simple responses, 2048 only when tools are active. Sonnet: 2048 default, 4096 only for complex reasoning. Never set higher than needed.
