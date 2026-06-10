@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 155" role="img" aria-label="Avenstone Group">
+
+  <!-- Outer house -->
+  <path d="M150,8 L195,44 L195,95 L105,95 L105,44 Z"
+        fill="none" stroke="#C9A84C" stroke-width="2.8"
+        stroke-linejoin="miter" stroke-miterlimit="8"/>
+  <!-- Middle house -->
+  <path d="M150,22 L182,50 L182,87 L118,87 L118,50 Z"
+        fill="none" stroke="#C9A84C" stroke-width="2.5"
+        stroke-linejoin="miter" stroke-miterlimit="8"/>
+  <!-- Inner A -->
+  <path d="M150,36 L171,57 L171,81 L163,81 M137,81 L129,81 L129,57 Z"
+        fill="none" stroke="#C9A84C" stroke-width="2.5"
+        stroke-linejoin="miter" stroke-miterlimit="8"
+        stroke-linecap="round"/>
+  <!-- A crossbar -->
+  <line x1="135" y1="69" x2="165" y2="69"
+        stroke="#C9A84C" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Wordmark: AVENSTONE -->
+  <!-- NOTE: font-family references DM Serif Display; convert to paths in Figma/Inkscape for production -->
+  <text x="150" y="118"
+        font-family="'DM Serif Display', Georgia, serif"
+        font-size="20" font-weight="400"
+        fill="#C9A84C" text-anchor="middle"
+        letter-spacing="5">AVENSTONE</text>
+  <!-- Flanking rules -->
+  <line x1="82" y1="132" x2="112" y2="132"
+        stroke="#C9A84C" stroke-width="0.8"/>
+  <line x1="188" y1="132" x2="218" y2="132"
+        stroke="#C9A84C" stroke-width="0.8"/>
+  <!-- GROUP subline -->
+  <text x="150" y="135"
+        font-family="'DM Sans', system-ui, sans-serif"
+        font-size="9" font-weight="600"
+        fill="#C9A84C" text-anchor="middle"
+        letter-spacing="4">GROUP</text>
+</svg>

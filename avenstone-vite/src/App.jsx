@@ -39,6 +39,7 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 import PlaybookChecklist from './components/jobs/PlaybookChecklist';
 import OwnerHomeScr from './components/owner/OwnerHomeScr';
 import ProjectsListScr from './components/jobs/ProjectsListScr';
+import BrandPreview from './components/brand/BrandPreview';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -51,7 +52,7 @@ const INVITE_TYPE   = new URLSearchParams(window.location.hash.replace('#', ''))
 
 const VALID_PG = new Set([
   'home', 'jobs', 'projects', 'todos', 'calendar', 'leads', 'pipeline', 'reports', 'stats',
-  'field-agent', 'subs', 'team', 'company-files', 'ai-knowledge', 'ai-pm',
+  'field-agent', 'subs', 'team', 'company-files', 'ai-knowledge', 'ai-pm', 'brandpreview',
   'sequences', 'owner-portal', 'admin-bugs',
 ]);
 const VALID_TAB = new Set(['info','estimate','subs','financials','sched','field','msgs','files','scanner','session']);
@@ -438,6 +439,7 @@ export default function App() {
             {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
             {pg === 'sequences' && profile?.role === 'owner' && <SequencesScr profile={profile} />}
             {pg === 'admin-bugs' && profile?.is_platform_owner && <BugReportsScr profile={profile} />}
+            {pg === 'brandpreview' && import.meta.env.DEV && <BrandPreview />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ marginBottom: 16 }}>
