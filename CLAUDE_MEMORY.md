@@ -1619,3 +1619,11 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Dead state removed: `propMargin = useState('25')` was set but never read after PROPOSAL_PDF_REBUILD removed the slider.
 - Files: EstimateTab.jsx (4 changes), JobDet.jsx (1 change — add `upd` prop).
 - Commit: 1 commit, pushed to main.
+
+[LOG - 2026-06-15] AI_COMMIT_STACKING_FIX — sbCommitEstimate(source='ai') was append-only; fixed to replace on re-commit
+- Root cause: `sbCommitEstimate` had scoped-delete only for source='takeoff' (WHERE notes LIKE 'takeoff:%'). source='ai' had no delete block — every re-commit appended a full new set. Crane St landed at 53 rows ($7,639) = V2 (27 rows, $4,106) + V3 (26 rows, $3,533) stacked.
+- Fix (commitEstimate.js): AI rows are now tagged `'ai:<qty_label>'` in the notes column at insert time (e.g. 'ai:1 LS', 'ai:186 SF'). A scoped delete `WHERE job_id = X AND notes LIKE 'ai:%'` fires before AI insert, so re-commit replaces rather than stacks. Pattern mirrors the takeoff isolation exactly.
+- Isolation guarantee: manual rows (notes = null or user text) → unaffected; consultation rows (notes = null) → unaffected; takeoff rows (notes LIKE 'takeoff:%') → unaffected. None of these will ever match `'ai:%'`.
+- Crane St cleanup: deleted all 53 rows (before: 53/$7,639.18, after: 0/$0) as a one-off DB op; not part of the code commit.
+- Files: `avenstone-vite/src/lib/commitEstimate.js` only.
+- Commit: 1 commit, pushed to main.

@@ -66,7 +66,11 @@ const VALID_CATEGORIES = ['labor', 'materials', 'equipment', 'sub', 'permit', 'o
  * source='takeoff': scoped-deletes rows WHERE notes LIKE 'takeoff:%' before insert,
  *   preserving the exact isolation used by acceptTakeoffDraft. Notes format is
  *   identical so takeoff re-runs started via either path produce the same isolation key.
- * All other sources: non-takeoff rows are inserted without touching takeoff rows.
+ * source='ai': scoped-deletes rows WHERE notes LIKE 'ai:%' before insert (re-commit
+ *   replaces rather than stacks). AI rows are tagged 'ai:<qty_label>' in notes at
+ *   insert time so they can be reliably targeted. Manual (null notes), consultation
+ *   (null notes), and takeoff ('takeoff:%' notes) rows are unaffected.
+ * All other sources: inserted without touching existing rows.
  *
  * markup_pct is forced to 0 on every row. A console.warn fires if a caller passes
  * a non-zero value — this surfaces the contract violation without hard-failing.
@@ -155,6 +159,20 @@ export async function sbCommitEstimate(supabase, tenantId, userId, { source, job
       }
     }
 
+    // ── AI source: scoped delete — re-commit replaces, not stacks ────────────────
+    // AI rows are tagged 'ai:<qty_label>' in notes. Manual rows have null notes;
+    // consultation rows have null notes; takeoff rows use 'takeoff:%'. None match here.
+    if (source === 'ai') {
+      const { error: delErr } = await supabase
+        .from('estimate_line_items')
+        .delete()
+        .eq('job_id', jobId)
+        .like('notes', 'ai:%');
+      if (delErr) {
+        return { ok: false, error: `Failed to clear existing AI rows: ${delErr.message}`, data: null };
+      }
+    }
+
     // ── Build row payloads ────────────────────────────────────────────────────────
     const rows = items.map((it, i) => {
       if (it.markup_pct !== undefined && it.markup_pct !== null && it.markup_pct !== 0) {
@@ -179,7 +197,10 @@ export async function sbCommitEstimate(supabase, tenantId, userId, { source, job
         multiplier:    it.multiplier,
         markup_pct:    0,
         display_order: i,
-        notes:         it.notes ?? null,
+        // AI rows are prefixed 'ai:' so they can be scoped-deleted on re-commit.
+        // All other sources use the caller-provided value (null for consultation/manual,
+        // 'takeoff:...' for takeoff — handled by the takeoff delete block above).
+        notes:         source === 'ai' ? 'ai:' + (it.notes || '') : (it.notes ?? null),
         created_by:    userId,
       };
     });
