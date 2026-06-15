@@ -1628,6 +1628,12 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Files: `avenstone-vite/src/lib/commitEstimate.js` only.
 - Commit: 1 commit, pushed to main.
 
+[LOG - 2026-06-15] DISPLAY_FIXES_COST_LABELS — Line Items footer and header money cards display fixes
+- Line Items footer "Total" was Σ(total_cost × markup) — cost+markup without pm_fee, labeled just "Total" (represented nothing a user would recognize). Replaced with two labeled rows: "Your Cost" (Σ total_cost, raw cost no markup) and "Client Price" (Σ lineClientPrice + job.pm_fee). Your Cost === Proposal HARD COST; Client Price === Proposal GRAND TOTAL, to the penny. Reused existing lineClientPrice() helper and job.pm_fee — no new markup paths.
+- Header money cards (CONTRACT VALUE / PAID TO DATE / REMAINING) used local fShort() helper that abbreviated to "$Nk" format — $6,524 rendered as "$7k". fShort is a local function in ProjectDetailHeader.jsx only (not exported, not used elsewhere). Replaced the three call sites with canonical f$() formatter from utils.jsx, which produces "$6,524.00" with thousands separators. fShort definition left in place (not deleted).
+- Files: EstimateTab.jsx (2 changes: yourCost/clientPrice vars, footer grid), ProjectDetailHeader.jsx (1 change: 3 fShort→f$ call sites).
+- Commit: 1 commit, pushed to main.
+
 [LOG - 2026-06-15] PROPOSAL_DELETE_RECOMPUTE — Proposal-tab × deleted from propLineItems only; summary/schedule stayed stale
 - Root cause: the × button in the Proposal line-items list called `setPropLineItems(filter(...))` only. propLineItems has no `id` field (so no DB delete was possible), and the HARD COST / MARKUP / GRAND TOTAL summary IIFE reads from `lineItems` state (not `propLineItems`) — so filtering propLineItems had zero effect on the totals. The payment schedule useEffect was already keyed on propLineItems, so it did update, but the dollar totals above it stayed stale.
 - Fix: added `id` to previewItems objects in `openProposal` so the row can be identified. The × handler is now async: deletes by id from DB, reloads `lineItems` via `sbLoadEstimateLineItems` (matching the Line Items tab path), then filters `propLineItems`. The IIFE re-renders from the refreshed `lineItems` → Hard Cost/Markup/Grand Total update immediately. The schedule useEffect fires on propLineItems change → payment schedule milestone amounts also update. Items manually added via "+ Add line item" (no id) are filtered from propLineItems only, no DB op.

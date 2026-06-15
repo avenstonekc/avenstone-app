@@ -492,7 +492,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const rate = markupRateForCategory(li.category, { laborPct, materialPct, categoryConfig });
       return cost * (1 + rate / 100);
     };
-    const total = lineItems.reduce((s, li) => s + lineClientPrice(li), 0);
+    const yourCost    = lineItems.reduce((s, li) => s + Number(li.total_cost ?? 0), 0);
+    const clientPrice = lineItems.reduce((s, li) => s + lineClientPrice(li), 0) + Number(job.pm_fee || 0);
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -539,9 +540,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
                 </div>
               );
             })}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 80px 32px', padding: '10px 12px', gap: 8, background: NAV, alignItems: 'center' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', gridColumn: '1/4' }}>Total</div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: GOLD }}>{f$(total)}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 80px 32px', padding: '10px 12px', gap: 8, background: NAV, alignItems: 'center', rowGap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.6)', gridColumn: '1/4' }}>Your Cost</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{f$(yourCost)}</div>
+              <div />
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', gridColumn: '1/4' }}>Client Price</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: GOLD }}>{f$(clientPrice)}</div>
               <div />
             </div>
           </div>

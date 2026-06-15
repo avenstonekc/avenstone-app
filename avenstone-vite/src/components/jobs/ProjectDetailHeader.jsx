@@ -86,10 +86,10 @@ export default function ProjectDetailHeader({ job }) {
     : '—';
 
   const kpis = [
-    { label: 'CONTRACT VALUE',  value: fShort(cv),        sub: null },
-    { label: 'PAID TO DATE',    value: fShort(paid),      sub: cv > 0 ? `${paidPct}% collected` : null },
-    { label: 'REMAINING',       value: fShort(remaining), sub: null },
-    { label: 'NEXT MILESTONE',  value: nextMilLabel,      sub: nextMil?.scheduled_date ? fDateShort(nextMil.scheduled_date) : null },
+    { label: 'CONTRACT VALUE',  value: f$(cv),        sub: null },
+    { label: 'PAID TO DATE',    value: f$(paid),      sub: cv > 0 ? `${paidPct}% collected` : null },
+    { label: 'REMAINING',       value: f$(remaining), sub: null },
+    { label: 'NEXT MILESTONE',  value: nextMilLabel,  sub: nextMil?.scheduled_date ? fDateShort(nextMil.scheduled_date) : null },
   ];
 
   const phases   = detail?.phases || [];
