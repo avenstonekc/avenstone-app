@@ -1609,3 +1609,5 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Files: `avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx` only.
 - Field-mapping note: qty_label ("550 SF", "1 LS") is preserved in estimate_line_items.notes. quantity/unit_cost are lump-sum (1 / amount). The Line Items tab displays total_cost (generated: quantity × unit_cost × multiplier = 1 × amount × 1 = amount), which is correct. openProposal reads lineItems from DB → builds propLineItems; buildProposalPDF reads lineItems → renders trade-grouped rows. All three consumers (Line Items tab, Proposal tab, PDF) read from the same DB rows — the write path is the only missing piece, now restored.
 - Commit: 1 commit, pushed to main.
+
+[LOG - 2026-06-15] AI_ESTIMATOR_FENCE_STRIP — extraction response arrives fence-wrapped; strip ```json fences + slice to outermost braces before JSON.parse (`commitEstimateFromChat` in EstimateTab.jsx).

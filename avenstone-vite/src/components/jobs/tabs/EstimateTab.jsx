@@ -212,7 +212,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
       }
       let parsed;
       try {
-        parsed = JSON.parse(data.content);
+        const clean = data.content.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+        const s = clean.indexOf('{'); const e = clean.lastIndexOf('}');
+        const jsonStr = (s !== -1 && e !== -1) ? clean.slice(s, e + 1) : clean;
+        parsed = JSON.parse(jsonStr);
       } catch (e) {
         console.error('ai-estimator: JSON parse failed on extraction response:', e, data.content);
         setEstCommitMsg('Could not parse extraction response — try again.');
