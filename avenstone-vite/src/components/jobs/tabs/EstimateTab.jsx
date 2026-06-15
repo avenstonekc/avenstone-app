@@ -22,7 +22,7 @@ const SUB_TABS = [
   { id: 'proposal', lb: 'Proposal' },
 ];
 
-export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
+export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }) {
   const [sub, setSub] = useState('build');
 
   // ── AI Estimator state ──────────────────────────────────────────────────────
@@ -51,8 +51,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
   // ── Proposal state ──────────────────────────────────────────────────────────
   const [propLoading, setPropLoading] = useState(false);
   const [propLineItems, setPropLineItems] = useState([]);
-  const [propPmFee, setPropPmFee] = useState('1200');
-  const [propMargin, setPropMargin] = useState('25');
+  const [propPmFee, setPropPmFee] = useState(job.pm_fee ?? 0);
   const [propNum, setPropNum] = useState('001');
   const [propSchedule, setPropSchedule] = useState([]);
   const [propErr, setPropErr] = useState('');
@@ -98,6 +97,21 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sub, lineItems.length]);
+
+  // Recompute payment schedule whenever PM fee or line item amounts change
+  useEffect(() => {
+    if (!propReady || !propLineItems.length) return;
+    const clientTotal = propLineItems.reduce((s, li) => s + Number(li.amount || 0), 0);
+    const grand = clientTotal + Number(propPmFee || 0);
+    const dep = Math.round(grand * 0.15);
+    const mid = Math.min(5000, Math.round(grand * 0.35));
+    const bal = Math.max(0, grand - dep - mid);
+    setPropSchedule([
+      { milestone: 'Deposit — Contract Signing', timing: 'Due at signing', amount: dep },
+      { milestone: 'Draw 1 — Rough-In Complete', timing: 'Upon rough-in approval', amount: mid },
+      { milestone: 'Final Payment — Project Complete', timing: 'Upon completion', amount: bal },
+    ]);
+  }, [propPmFee, propLineItems, propReady]);
 
   // Load estimator history on mount
   useEffect(() => {
@@ -333,19 +347,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
         };
       });
       setPropLineItems(previewItems);
-
-      // Payment schedule based on grand total (client prices + PM fee)
-      const clientTotal = previewItems.reduce((s, li) => s + Number(li.amount || 0), 0);
-      const grand = clientTotal + Number(propPmFee || 0);
-      const dep = Math.round(grand * 0.15);
-      const mid = Math.min(5000, Math.round(grand * 0.35));
-      const bal = Math.max(0, grand - dep - mid);
-      setPropSchedule([
-        { milestone: 'Deposit — Contract Signing', timing: 'Due at signing', amount: dep },
-        { milestone: 'Draw 1 — Rough-In Complete', timing: 'Upon rough-in approval', amount: mid },
-        { milestone: 'Final Payment — Project Complete', timing: 'Upon completion', amount: bal },
-      ]);
-      setPropReady(true);
+      setPropReady(true); // schedule derives from propLineItems + propPmFee via useEffect
     } catch (e) { setPropErr(e.message || 'Failed to load proposal data'); }
     setPropLoading(false);
   };
@@ -576,7 +578,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
         <Fragment>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
             <div className="fg"><label className="flbl">Proposal #</label><input className="finp" value={propNum} onChange={e => setPropNum(e.target.value)} /></div>
-            <div className="fg"><label className="flbl">PM Fee ($)</label><input className="finp" type="number" value={propPmFee} onChange={e => setPropPmFee(e.target.value)} /></div>
+            <div className="fg"><label className="flbl">PM Fee ($)</label><input className="finp" type="number" value={propPmFee} onChange={e => { const v = Number(e.target.value || 0); setPropPmFee(e.target.value); upd({ pm_fee: v }); }} /></div>
           </div>
           {lineItems.length > 0 && (() => {
             const _lp = Number(job.labor_markup_pct || 0);

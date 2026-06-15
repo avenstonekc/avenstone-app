@@ -1611,3 +1611,11 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Commit: 1 commit, pushed to main.
 
 [LOG - 2026-06-15] AI_ESTIMATOR_FENCE_STRIP — extraction response arrives fence-wrapped; strip ```json fences + slice to outermost braces before JSON.parse (`commitEstimateFromChat` in EstimateTab.jsx).
+
+[LOG - 2026-06-15] PROPOSAL_PM_FEE_SINGLE_SOURCE — propPmFee staleness bug fixed; single source of truth is jobs.pm_fee
+- Root cause: `propPmFee = useState('1200')` was hardcoded — never seeded from `job.pm_fee`. Proposal always showed $1,200 regardless of the job record. Markup %s were already correctly read from `job.labor_markup_pct`/`job.material_markup_pct` via the `job` prop — only PM fee was broken.
+- Fix: `useState(job.pm_fee ?? 0)` — seeded from the canonical column on mount. `upd` threaded from JobsScr → JobDet → EstimateTab (same pre-bound helper InfoTab uses); PM Fee onChange now calls `upd({ pm_fee: v })` → writes DB + updates in-memory jobs array + localStorage, matching InfoTab behavior exactly.
+- propSchedule recompute: payment schedule amounts were computed once inside `openProposal()` and never updated when PM fee changed. Moved to a `useEffect([propPmFee, propLineItems, propReady])` so milestone amounts recompute live on any PM-fee edit (or propLineItems change). `openProposal()` now only sets `propLineItems` and `propReady=true`; the effect takes it from there.
+- Dead state removed: `propMargin = useState('25')` was set but never read after PROPOSAL_PDF_REBUILD removed the slider.
+- Files: EstimateTab.jsx (4 changes), JobDet.jsx (1 change — add `upd` prop).
+- Commit: 1 commit, pushed to main.
