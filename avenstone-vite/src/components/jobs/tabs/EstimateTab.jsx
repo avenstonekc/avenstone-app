@@ -1,5 +1,6 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
 import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate } from '../../../lib/supabase';
+import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
 import { Ic, f$ } from '../../../lib/utils';
 import { buildProposalPDF } from '../../../lib/pdf';
@@ -35,6 +36,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
   const [estSaving, setEstSaving] = useState(false);
   const [estSendingClient, setEstSendingClient] = useState(false);
   const [estSaveMsg, setEstSaveMsg] = useState('');
+  const [estCommitting, setEstCommitting] = useState(false);
+  const [estCommitMsg, setEstCommitMsg] = useState('');
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -177,6 +180,88 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
     setEstStarted(true);
     const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${estForm.sqft ? `Square Footage: ${estForm.sqft} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
     await sendEstimatorMessage(prompt, estFile || null);
+  };
+
+  const commitEstimateFromChat = async () => {
+    if (!estMessages.some(m => m.role === 'assistant')) return;
+    setEstCommitting(true);
+    setEstCommitMsg('');
+    try {
+      // Sanitize history (same pattern as send — strip UI-only fields)
+      const apiMessages = estMessages.map(({ role, content }) => ({ role, content }));
+      // Append the extraction trigger as a user turn
+      const extractMessages = [...apiMessages, { role: 'user', content: 'EXTRACT_JSON_FOR_PROPOSAL' }];
+      const res = await fetch(AI_ESTIMATOR_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({ messages: extractMessages }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        const detail = data.error || `HTTP ${res.status}`;
+        console.error('ai-estimator extract error:', detail, data);
+        setEstCommitMsg(`Extraction failed: ${detail}`);
+        setEstCommitting(false);
+        return;
+      }
+      if (data.truncated) {
+        console.error('ai-estimator: extraction response was truncated (max_tokens hit)');
+        setEstCommitMsg('Estimate too large to commit automatically — please split or shorten.');
+        setEstCommitting(false);
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(data.content);
+      } catch (e) {
+        console.error('ai-estimator: JSON parse failed on extraction response:', e, data.content);
+        setEstCommitMsg('Could not parse extraction response — try again.');
+        setEstCommitting(false);
+        return;
+      }
+      const rawItems = parsed.line_items || [];
+      if (!rawItems.length) {
+        setEstCommitMsg('Extraction returned no line items — try again.');
+        setEstCommitting(false);
+        return;
+      }
+      // Map extraction shape → NormalizedEstimateInput.
+      // AI returns qty_label (string) + amount (lump total). No unit_cost decomposition
+      // is possible without the quantity and unit parsed out, so we commit each line as
+      // quantity=1 / unit='LS' / unit_cost=amount. qty_label is preserved in notes.
+      const items = rawItems.map(li => ({
+        source: 'ai',
+        trade: li.trade || 'GENERAL',
+        category: li.category || (/material|allowance/i.test(li.description) ? 'materials' : 'labor'),
+        description: li.description || '',
+        quantity: 1,
+        unit: 'LS',
+        unit_cost: Number(li.amount) || 0,
+        multiplier: 1.0,
+        notes: li.qty_label || null,
+      }));
+      const result = await sbCommitEstimate(sb, AV_TENANT, AV_USER_ID, {
+        source: 'ai',
+        jobId: job.id,
+        estimateId: null,
+        items,
+      });
+      if (!result.ok) {
+        console.error('sbCommitEstimate failed:', result.error);
+        setEstCommitMsg(`Commit failed: ${result.error}`);
+        setEstCommitting(false);
+        return;
+      }
+      const refreshed = await sbLoadEstimateLineItems(job.id);
+      setLineItems(refreshed || []);
+      setLineItemsLoaded(true);
+      setEstCommitMsg(`${result.data.inserted_count} line items committed`);
+      setTimeout(() => setEstCommitMsg(''), 6000);
+    } catch (e) {
+      console.error('commitEstimateFromChat error:', e);
+      setEstCommitMsg('Commit failed — try again.');
+    }
+    setEstCommitting(false);
   };
 
   const _buildProposalDoc = () => {
@@ -345,6 +430,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {estSaveMsg && <span style={{ fontSize: 11, color: 'var(--green-dot)', fontWeight: 600 }}>{estSaveMsg}</span>}
+            {estCommitMsg && <span style={{ fontSize: 11, color: lineItems.length > 0 ? 'var(--green-dot)' : 'var(--red-text)', fontWeight: 600 }}>{estCommitMsg}</span>}
+            {estMessages.some(m => m.role === 'assistant') && (
+              <button className="btn btn-navy" style={{ fontSize: 11 }} onClick={commitEstimateFromChat} disabled={estCommitting}>
+                {estCommitting ? 'Committing…' : 'Commit to Line Items'}
+              </button>
+            )}
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
@@ -470,7 +561,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
         <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-subtle)', fontSize: 13 }}>Loading proposal data…</div>
       ) : lineItems.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>No line items yet — generate an estimate in Build or add items in Line Items.</div>
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>No line items yet — generate an estimate in Build, then click Commit to Line Items — or add items manually in Line Items.</div>
           <button className="btn btn-navy" onClick={() => setSub('build')}>Go to Build →</button>
         </div>
       ) : !propReady ? (
