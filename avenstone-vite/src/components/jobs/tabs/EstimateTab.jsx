@@ -339,6 +339,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         const cost = Number(li.total_cost ?? 0);
         const rate = markupRateForCategory(li.category, { laborPct: lp, materialPct: mp, categoryConfig });
         return {
+          id:          li.id,
           trade:       li.trade || 'GENERAL',
           description: li.description || '',
           qty_label:   [li.quantity != null ? String(li.quantity) : '1', li.unit || ''].filter(Boolean).join(' '),
@@ -619,7 +620,16 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
                         <input value={li.description || ''} onChange={e => { const u = [...propLineItems]; u[i] = { ...u[i], description: e.target.value }; setPropLineItems(u); }} style={{ fontSize: 11, border: 'none', background: 'transparent', color: 'var(--text-secondary)', outline: 'none', width: '100%' }} />
                         <input value={li.qty_label || ''} onChange={e => { const u = [...propLineItems]; u[i] = { ...u[i], qty_label: e.target.value }; setPropLineItems(u); }} style={{ fontSize: 11, border: 'none', background: 'transparent', color: 'var(--text-muted)', outline: 'none' }} />
                         <input type="number" value={li.amount || ''} onChange={e => { const u = [...propLineItems]; u[i] = { ...u[i], amount: e.target.value }; setPropLineItems(u); }} style={{ fontSize: 11, border: 'none', background: 'transparent', color: NAV, fontWeight: 600, outline: 'none', textAlign: 'right' }} />
-                        <button onClick={() => setPropLineItems(propLineItems.filter((_, j) => j !== i))} style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 14, padding: 0 }}>×</button>
+                        <button onClick={async () => {
+                          const item = propLineItems[i];
+                          if (item.id) {
+                            await sb.from('estimate_line_items').delete().eq('id', item.id);
+                            const refreshed = await sbLoadEstimateLineItems(job.id);
+                            setLineItems(refreshed || []);
+                            setLineItemsLoaded(true);
+                          }
+                          setPropLineItems(prev => prev.filter((_, j) => j !== i));
+                        }} style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 14, padding: 0 }}>×</button>
                       </div>
                     </Fragment>
                   );

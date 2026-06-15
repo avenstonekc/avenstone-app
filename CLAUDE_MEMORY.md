@@ -1627,3 +1627,9 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Crane St cleanup: deleted all 53 rows (before: 53/$7,639.18, after: 0/$0) as a one-off DB op; not part of the code commit.
 - Files: `avenstone-vite/src/lib/commitEstimate.js` only.
 - Commit: 1 commit, pushed to main.
+
+[LOG - 2026-06-15] PROPOSAL_DELETE_RECOMPUTE — Proposal-tab × deleted from propLineItems only; summary/schedule stayed stale
+- Root cause: the × button in the Proposal line-items list called `setPropLineItems(filter(...))` only. propLineItems has no `id` field (so no DB delete was possible), and the HARD COST / MARKUP / GRAND TOTAL summary IIFE reads from `lineItems` state (not `propLineItems`) — so filtering propLineItems had zero effect on the totals. The payment schedule useEffect was already keyed on propLineItems, so it did update, but the dollar totals above it stayed stale.
+- Fix: added `id` to previewItems objects in `openProposal` so the row can be identified. The × handler is now async: deletes by id from DB, reloads `lineItems` via `sbLoadEstimateLineItems` (matching the Line Items tab path), then filters `propLineItems`. The IIFE re-renders from the refreshed `lineItems` → Hard Cost/Markup/Grand Total update immediately. The schedule useEffect fires on propLineItems change → payment schedule milestone amounts also update. Items manually added via "+ Add line item" (no id) are filtered from propLineItems only, no DB op.
+- Files: `avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx` (2 changes — previewItems id field, × handler).
+- Commit: 1 commit, pushed to main.
