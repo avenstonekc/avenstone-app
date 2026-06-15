@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 8192,
+        max_tokens: 32000,
         system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
         messages,
       }),
@@ -269,7 +269,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ content: data.content[0].text }), {
+    if (data.stop_reason === "max_tokens") {
+      console.error("ai-estimator truncated (max_tokens):", data.usage, "request_id:", data.id);
+    }
+
+    return new Response(JSON.stringify({
+      content: data.content[0].text,
+      ...(data.stop_reason === "max_tokens" ? { truncated: true } : {}),
+    }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

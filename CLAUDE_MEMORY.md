@@ -1590,5 +1590,12 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Fix Part 2 — surface real errors (`EstimateTab.jsx:161-168`): replaced `data.content || 'Sorry...'` with explicit `res.ok` + `data.error` check. Non-200 / error-body responses now show `"Sorry, something went wrong: <actual error detail>"` and `console.error` the full body. Generic fallback remains for the truly-no-content path only.
 - Files: `avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx` only (lines 153-168).
 - Build: green (428 modules, 529ms).
-- Latent items (NOT fixed in this slice, backlogged): `max_tokens: 8192` in `ai-estimator/index.ts` exceeds CLAUDE.md policy ceiling (Sonnet: 4096 max). No `stop_reason` check — truncated responses pass through silently.
+- Both latent items fixed in follow-up commit (see LOG AI_ESTIMATOR_INDEX_TS below).
+- Commit: 1 commit, pushed to main.
+
+[LOG - 2026-06-15] AI_ESTIMATOR_INDEX_TS — max_tokens raised + stop_reason truncation check
+- Files: `supabase/functions/ai-estimator/index.ts` only (lines 258, 272-281).
+- Part 1 — max_tokens raised 8192 → 32000 (`index.ts:258`). 8192 was throttling large estimates and causing mid-response cut-offs. Sonnet 4.6 supports 64K output; 32000 gives 4× headroom while leaving a ceiling. This was previously backlogged by mistake in bd47580.
+- Part 2 — stop_reason truncation check (`index.ts:272-278`). After the Anthropic response is confirmed OK, checks `data.stop_reason === "max_tokens"`. If so: `console.error` with `data.usage` and `data.id` (request_id) for log traceability; spreads `truncated: true` into the JSON response body so the client can detect a partial estimate. Non-truncated responses are unchanged (no extra field). Previously the function blindly returned `data.content[0].text` with no awareness of partial output.
+- Edge fn auto-deploys via GitHub Actions on push to main.
 - Commit: 1 commit, pushed to main.
