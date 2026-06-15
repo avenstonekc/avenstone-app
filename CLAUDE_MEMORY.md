@@ -1581,3 +1581,14 @@ RASTER EXPORTS: favicon.ico (32+16 ICO), apple-touch-icon.png (180), icon-192.pn
 PREVIEW URL: ?pg=brandpreview (DEV only, import.meta.env.DEV guard). Shows all 12 variants × 3 sizes (128/48/16px) × 3 backgrounds (navy/cream/white).
 
 NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add favicon link in index.html; wire apple-touch-icon/manifest entries.
+
+[LOG - 2026-06-15] AI_ESTIMATOR_FOLLOW_UP_BUG — UI metadata leak into Anthropic messages fixed
+- Root cause: `sendEstimatorMessage` built `displayMessages` with extra fields `_hasFile: true/false` and `_fileName: string` on each user message (for UI rendering — file attachment chip display). These display-state messages were stored in React `estMessages` state via `setEstMessages(finalDisplay)`. On follow-up turns, the handler built `newMessages = [...estMessages, currentMsg]` — `estMessages` now contained prior turn objects with `_hasFile`/`_fileName`. These leaked into the Anthropic API call body, which rejected with `invalid_request_error: messages.0._hasFile: Extra inputs are not permitted`.
+- Turn 1 succeeded because `estMessages` was empty and `newMessages` was built clean. Turn 2+ failed because `estMessages` contained the dirty display objects from turn 1.
+- Confirmed by live logs: 2 POST 500s (execution_time_ms: 383, 215) immediately after 1 successful POST 200 (49s, 4MB body with base64 file). Deno console.error matched exactly: "messages.0._hasFile: Extra inputs are not permitted".
+- Fix Part 1 — sanitize before send (`EstimateTab.jsx:154`): `const apiMessages = newMessages.map(({ role, content }) => ({ role, content }))`. Sends `apiMessages` in the fetch body instead of `newMessages`. State array unchanged — `_hasFile`/`_fileName` remain in `estMessages` for UI rendering. The destructuring pick (`{ role, content }`) means any future UI-only field added to message objects is also stripped automatically.
+- Fix Part 2 — surface real errors (`EstimateTab.jsx:161-168`): replaced `data.content || 'Sorry...'` with explicit `res.ok` + `data.error` check. Non-200 / error-body responses now show `"Sorry, something went wrong: <actual error detail>"` and `console.error` the full body. Generic fallback remains for the truly-no-content path only.
+- Files: `avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx` only (lines 153-168).
+- Build: green (428 modules, 529ms).
+- Latent items (NOT fixed in this slice, backlogged): `max_tokens: 8192` in `ai-estimator/index.ts` exceeds CLAUDE.md policy ceiling (Sonnet: 4096 max). No `stop_reason` check — truncated responses pass through silently.
+- Commit: 1 commit, pushed to main.

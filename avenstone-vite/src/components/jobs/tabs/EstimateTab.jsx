@@ -150,13 +150,22 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile }) {
     setEstMessages(displayMessages);
     setEstInput(''); setEstFile(null); setEstFileName('');
     setEstLoading(true);
+    // Strip UI-only metadata fields before sending — _hasFile/_fileName are display state only
+    const apiMessages = newMessages.map(({ role, content }) => ({ role, content }));
     const res = await fetch(AI_ESTIMATOR_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-      body: JSON.stringify({ messages: newMessages }),
+      body: JSON.stringify({ messages: apiMessages }),
     });
     const data = await res.json();
-    const reply = data.content || 'Sorry, something went wrong. Please try again.';
+    let reply;
+    if (!res.ok || data.error) {
+      const detail = data.error || `HTTP ${res.status}`;
+      console.error('ai-estimator error:', detail, data);
+      reply = `Sorry, something went wrong: ${detail}`;
+    } else {
+      reply = data.content || 'Sorry, something went wrong. Please try again.';
+    }
     const finalDisplay = [...displayMessages, { role: 'assistant', content: reply }];
     setEstMessages(finalDisplay);
     setEstLoading(false);
