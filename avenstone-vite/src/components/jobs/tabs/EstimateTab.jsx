@@ -7,6 +7,7 @@ import { buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
 import StructuredEstimate from './StructuredEstimate';
+import { deriveProjectSf } from '../../../lib/deriveProjectSf';
 
 const TakeoffWizard = lazy(() => import('./TakeoffWizard'));
 
@@ -31,7 +32,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [estInput, setEstInput] = useState('');
   const [estLoading, setEstLoading] = useState(false);
   const [estStarted, setEstStarted] = useState(false);
-  const [estForm, setEstForm] = useState({ scope: '', rooms: '', sqft: '', special: '' });
+  const [estForm, setEstForm] = useState({ scope: '', rooms: '', special: '' });
   const [estFile, setEstFile] = useState(null);
   const [estFileName, setEstFileName] = useState('');
   const [estSaving, setEstSaving] = useState(false);
@@ -41,6 +42,18 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [estCommitMsg, setEstCommitMsg] = useState('');
   const [pricedScope, setPricedScope] = useState(null); // 3c: priced lines from 3b-2 engine
   const [showRaw, setShowRaw]         = useState(false); // toggle raw chat when FACE is present
+
+  // Interview pricing inputs — seeded from job, user-confirmable before generating
+  // Markup seed precedence: default_markup_pct > labor_markup_pct > 30 (last-resort)
+  const [interviewSf, setInterviewSf]               = useState('');
+  const [interviewSfSource, setInterviewSfSource]   = useState(null); // 'scope'|'job'|'none'|null
+  const [interviewSfRoomCount, setInterviewSfRoomCount] = useState(0);
+  const [interviewTier, setInterviewTier]           = useState('mid');
+  const [interviewMarkup, setInterviewMarkup]       = useState(() =>
+    String(Number(job.default_markup_pct) > 0 ? Number(job.default_markup_pct)
+      : Number(job.labor_markup_pct) > 0 ? Number(job.labor_markup_pct)
+      : 30));
+  const [interviewPmFee, setInterviewPmFee]         = useState(String(Number(job.pm_fee) || 0));
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -135,9 +148,18 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       setEstForm({
         scope: job.scope || '',
         rooms: contextParts.join('\n'),
-        sqft: String(job.sqft || ''),
         special: [measureDoc ? '✓ Field measurements saved' : '', transcriptDoc ? '✓ Consultation notes saved' : ''].filter(Boolean).join(' · '),
       });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+
+  // Derive project SF from scoped rooms on mount
+  useEffect(() => {
+    deriveProjectSf(sb, job.id, job).then(({ sf, source, roomCount }) => {
+      setInterviewSfSource(source);
+      setInterviewSfRoomCount(roomCount || 0);
+      if (sf > 0) setInterviewSf(String(sf));
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
@@ -177,7 +199,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const res = await fetch(AI_ESTIMATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({ messages: apiMessages, tenant_id: AV_TENANT, project_sf: estForm.sqft ? parseInt(estForm.sqft, 10) : 0, finish_tier: 'mid' }),
+        body: JSON.stringify({ messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0, finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0 }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
@@ -201,7 +223,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const startEstimate = async () => {
     if (!estForm.scope.trim()) return;
     setEstStarted(true);
-    const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${estForm.sqft ? `Square Footage: ${estForm.sqft} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
+    const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${interviewSf ? `Square Footage: ${interviewSf} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
     await sendEstimatorMessage(prompt, estFile || null);
   };
 
@@ -253,7 +275,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const res = await fetch(AI_ESTIMATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({ messages: extractMessages, tenant_id: AV_TENANT, project_sf: estForm.sqft ? parseInt(estForm.sqft, 10) : 0, finish_tier: 'mid' }),
+        body: JSON.stringify({ messages: extractMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0, finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0 }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
@@ -464,7 +486,77 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           </div>
           <div className="fg"><label className="flbl"><span className="freq">*</span>Scope of Work</label><textarea className="finp fta" rows={3} value={estForm.scope} onChange={e => setEstForm(p => ({ ...p, scope: e.target.value }))} placeholder="e.g. Full kitchen remodel — demo existing, new cabinets, countertops, flooring, electrical updates, plumbing relocation" /></div>
           <div className="fg"><label className="flbl">Rooms / Areas</label><input className="finp" value={estForm.rooms} onChange={e => setEstForm(p => ({ ...p, rooms: e.target.value }))} placeholder="e.g. Kitchen, Master Bath, Living Room" /></div>
-          <div className="fg"><label className="flbl">Square Footage</label><input className="finp" type="number" value={estForm.sqft} onChange={e => setEstForm(p => ({ ...p, sqft: e.target.value }))} placeholder="e.g. 1200" /></div>
+
+          {/* ── Pricing interview ─────────────────────────────────────────────── */}
+          <div className="fg">
+            <label className="flbl">Project Square Footage <span style={{ color: 'var(--red-text)', fontWeight: 400 }}>*</span></label>
+            {interviewSfSource === 'scope' && (
+              <div style={{ fontSize: 12, color: 'var(--green-text)', marginBottom: 6 }}>
+                ✓ Pricing this as a {interviewSf} SF job (summed from {interviewSfRoomCount} scoped room{interviewSfRoomCount !== 1 ? 's' : ''})
+              </div>
+            )}
+            {interviewSfSource === 'job' && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                {interviewSf} SF (from job record) — confirm or override below
+              </div>
+            )}
+            {interviewSfSource === 'none' && (
+              <div style={{ fontSize: 12, color: 'var(--amber-text)', marginBottom: 6 }}>
+                No SF on file — I need the project square footage to price this.
+              </div>
+            )}
+            <input
+              className="finp"
+              type="number"
+              min="1"
+              value={interviewSf}
+              onChange={e => setInterviewSf(e.target.value)}
+              placeholder="e.g. 1200"
+              style={{ fontSize: 16 }}
+            />
+            {(!interviewSf || Number(interviewSf) <= 0) && (
+              <div style={{ fontSize: 11, color: 'var(--amber-text)', marginTop: 4 }}>
+                Square footage required to price the estimate.
+              </div>
+            )}
+          </div>
+
+          <div className="fg">
+            <label className="flbl">Finish Tier</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['low', 'Budget'], ['mid', 'Mid-grade'], ['high', 'Premium']].map(([val, lb]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setInterviewTier(val)}
+                  style={{
+                    flex: 1, minHeight: 36, padding: '6px 0',
+                    fontSize: 13, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                    border: `1.5px solid ${interviewTier === val ? 'var(--navy-900)' : 'var(--border)'}`,
+                    background: interviewTier === val ? 'var(--navy-900)' : 'transparent',
+                    color: interviewTier === val ? 'var(--gold-500)' : 'var(--text-muted)',
+                    transition: 'all 0.15s',
+                  }}
+                >{lb}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>Sets material pricing tier.</div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="fg">
+              <label className="flbl">Markup %</label>
+              <input className="finp" type="number" min="0" step="0.5" value={interviewMarkup} onChange={e => setInterviewMarkup(e.target.value)} placeholder="e.g. 30" style={{ fontSize: 16 }} />
+              <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>Running your standard {interviewMarkup || '?'}% — good or different?</div>
+            </div>
+            <div className="fg">
+              <label className="flbl">PM Fee</label>
+              <input className="finp" type="number" min="0" value={interviewPmFee} onChange={e => setInterviewPmFee(e.target.value)} placeholder="e.g. 1200" style={{ fontSize: 16 }} />
+              <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>{f$(Number(interviewPmFee) || 0)} — confirm or change.</div>
+            </div>
+          </div>
+          {/* ────────────────────────────────────────────────────────────────────── */}
+
           <div className="fg"><label className="flbl">Special Notes</label><textarea className="finp fta" rows={2} value={estForm.special} onChange={e => setEstForm(p => ({ ...p, special: e.target.value }))} placeholder="High-end finishes, specific products, client requests, existing conditions…" /></div>
           <div className="fg">
             <label className="flbl">Floor Plan / Photos <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>(optional — PDF or image)</span></label>
@@ -475,9 +567,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
               {estFileName && <button onClick={e => { e.preventDefault(); setEstFile(null); setEstFileName(''); }} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 16 }}>×</button>}
             </label>
           </div>
-          <button className={`btn ${estForm.scope.trim() ? 'btn-navy' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={startEstimate} disabled={!estForm.scope.trim() || estLoading}>
+          {(() => { const canGen = !!(estForm.scope.trim() && Number(interviewSf) > 0); return (
+          <button className={`btn ${canGen ? 'btn-navy' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={startEstimate} disabled={!canGen || estLoading}>
             {estLoading ? 'Generating…' : 'Generate Estimate'}
           </button>
+          ); })()}
         </div>
       )}
       {estStarted && (
@@ -493,7 +587,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', sqft: '', special: '' }); setPricedScope(null); setShowRaw(false); }}>Reset</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setShowRaw(false); }}>Reset</button>
           </div>
           {pricedScope?.length > 0 && (
             <>

@@ -295,6 +295,8 @@ function formatEstimate(
   pricedLines: PricedLine[],
   projectSf: number,
   finishTier: FinishTier,
+  markupPct: number,
+  pmFeeVal: number,
 ): string {
   const tier = getTier(projectSf);
   const tierLabel = {
@@ -337,15 +339,15 @@ function formatEstimate(
   }
 
   const subtotal = laborTotal + matTotal + generalTotal;
-  const markup = Math.round(subtotal * 0.30);
-  const pmFee = 1200;
+  const markup = Math.round(subtotal * (markupPct / 100));
+  const pmFee = Math.round(pmFeeVal);
   const total = subtotal + markup + pmFee;
 
   let out = `**Pricing Tier: ${tierLabel}** · Finish: **${finishLabel}**\n${body}
 ---
 Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}
 **Subtotal: ${fmtMoney(subtotal)}**
-Markup (30%): ${fmtMoney(markup)}
+Markup (${markupPct}%): ${fmtMoney(markup)}
 Project Management: ${fmtMoney(pmFee)}
 **TOTAL: ${fmtMoney(total)}**`;
 
@@ -391,7 +393,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { messages, tenant_id, project_sf, finish_tier } = await req.json();
+    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee } = await req.json();
     if (!messages?.length) return fail("no messages", 400);
     if (!tenant_id) return fail("tenant_id required", 400);
 
@@ -421,7 +423,23 @@ Deno.serve(async (req) => {
     const finishTier: FinishTier = ["low", "mid", "high"].includes(finish_tier)
       ? (finish_tier as FinishTier)
       : "mid";
-    const projectSf = typeof project_sf === "number" && project_sf > 0 ? project_sf : 0;
+
+    // Fail-loud: SF required — the engine cannot price SF/LF lines without it.
+    // Defense-in-depth: the client disables Generate when SF is missing, but this
+    // guard prevents silent HIGH-tier pricing from ANY caller.
+    if (typeof project_sf !== "number" || project_sf <= 0) {
+      return fail("project_sf required (> 0) to price SF/LF lines — enter the project square footage", 400);
+    }
+    const projectSf = project_sf;
+
+    // markup_pct and pm_fee: treat as 0 if absent (legacy sessions pre-Slice-3).
+    // Decision: absent = 0 (not 30/1200) so old sessions show $0 markup/pm in the
+    // formatted summary rather than silently baking in wrong numbers.
+    const markupPct = typeof markup_pct === "number" && markup_pct >= 0 ? markup_pct : 0;
+    const pmFeeVal  = typeof pm_fee    === "number" && pm_fee    >= 0 ? pm_fee    : 0;
+    if (markup_pct === undefined || pm_fee === undefined) {
+      console.warn("ai-estimator: markup_pct or pm_fee missing from request — using 0 (refresh EstimateTab)");
+    }
 
     // ── Scope call ─────────────────────────────────────────────────────────────
     const vocabSection = buildVocabSection(rateBook);
@@ -447,7 +465,7 @@ Deno.serve(async (req) => {
 
     // Price and format
     const pricedLines = priceScopeLines(scope.lines, rateBook, projectSf, finishTier);
-    const content = formatEstimate(scope, pricedLines, projectSf, finishTier);
+    const content = formatEstimate(scope, pricedLines, projectSf, finishTier, markupPct, pmFeeVal);
 
     // 3c: include priced_scope so EstimateTab can commit with exact source_labels
     // without a second AI EXTRACT_JSON_FOR_PROPOSAL round-trip.
