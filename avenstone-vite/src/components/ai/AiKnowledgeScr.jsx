@@ -20,13 +20,13 @@ const CATEGORIES = [
 ];
 
 const CAT_COLORS = {
-  pricing:      { bg: '#EFF6FF', text: '#1D4ED8' },
-  scheduling:   { bg: '#F0FDF4', text: '#15803D' },
-  trades:       { bg: '#FFF7ED', text: '#C2410C' },
-  materials:    { bg: '#FAF5FF', text: '#7C3AED' },
-  client_comms: { bg: '#FFF1F2', text: '#BE123C' },
-  process:      { bg: '#F0F9FF', text: '#0369A1' },
-  general:      { bg: '#F9FAFB', text: '#374151' },
+  pricing:      { bg: 'var(--blue-bg)',       text: 'var(--blue-text-link-strong)' },
+  scheduling:   { bg: 'var(--green-bg-soft)', text: 'var(--green-text-deep)' },
+  trades:       { bg: 'var(--amber-bg-soft)', text: 'var(--amber-text-strong)' },
+  materials:    { bg: 'var(--purple-bg)',      text: 'var(--purple-text)' },
+  client_comms: { bg: 'var(--red-bg)',         text: 'var(--red-text-strong)' },
+  process:      { bg: 'var(--blue-bg-new)',    text: 'var(--blue-text-deep)' },
+  general:      { bg: 'var(--neutral-bg)',     text: 'var(--neutral-text)' },
 };
 
 function Toggle({ value, onChange }) {
@@ -42,23 +42,45 @@ function Toggle({ value, onChange }) {
     >
       <span style={{
         position: 'absolute', top: 3, left: value ? 20 : 3,
-        width: 16, height: 16, borderRadius: '50%', background: '#fff',
+        width: 16, height: 16, borderRadius: '50%', background: 'white',
         transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
       }} />
     </button>
   );
 }
 
+function getSummary(content) {
+  const first = (content || '').trim().split('\n')[0].trim();
+  return first.length > 80 ? first.slice(0, 80) + '…' : first;
+}
+
+// Lenient "LABEL: value" parser — falls back to prose if fewer than 40% of lines match.
+function parseContent(content) {
+  const raw = (content || '').trim();
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  const KV_RE = /^([A-Za-z][^:\n]{0,40}):\s*(.+)$/;
+  const kvLines = lines.filter(l => KV_RE.test(l));
+  if (kvLines.length >= 2 && kvLines.length / lines.length >= 0.4) {
+    const pairs = kvLines.map(l => {
+      const m = l.match(KV_RE);
+      return { key: m[1].trim(), value: m[2].trim() };
+    });
+    return { type: 'kv', pairs };
+  }
+  return { type: 'prose', text: raw };
+}
+
 export default function AiKnowledgeScr({ profile }) {
-  const [items, setItems]       = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [catFilter, setCatFilter] = useState('all');
-  const [showAdd, setShowAdd]   = useState(false);
-  const [editItem, setEditItem] = useState(null);
-  const [form, setForm]         = useState({ category: 'pricing', content: '' });
-  const [saving, setSaving]     = useState(false);
-  const [err, setErr]           = useState('');
-  const [deleting, setDeleting] = useState(null);
+  const [items, setItems]           = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [catFilter, setCatFilter]   = useState('all');
+  const [expandedId, setExpandedId] = useState(null);
+  const [showAdd, setShowAdd]       = useState(false);
+  const [editItem, setEditItem]     = useState(null);
+  const [form, setForm]             = useState({ category: 'pricing', content: '' });
+  const [saving, setSaving]         = useState(false);
+  const [err, setErr]               = useState('');
+  const [deleting, setDeleting]     = useState(null);
   const [showWizard, setShowWizard] = useState(false);
 
   useEffect(() => { load(); }, []);
@@ -164,9 +186,9 @@ export default function AiKnowledgeScr({ profile }) {
         </div>
       </div>
 
-      {/* Info banner */}
-      <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '10px 14px', marginBottom: 20, fontSize: 12.5, color: '#1E40AF', lineHeight: 1.5 }}>
-        <strong>How it works:</strong> Active entries are injected into the AI companion's system prompt for every job conversation. Use this to teach the AI your pricing model, preferred subs, scheduling norms, and how you communicate with clients.
+      {/* Info banner — one line */}
+      <div style={{ background: 'var(--blue-bg)', border: '1px solid var(--blue-bg-new)', borderRadius: 'var(--r-xs)', padding: '8px 14px', marginBottom: 20, fontSize: 12.5, color: 'var(--blue-text-deep)' }}>
+        Active entries are injected into the AI's system prompt for every job conversation.
       </div>
 
       {/* Category filter pills */}
@@ -178,10 +200,10 @@ export default function AiKnowledgeScr({ profile }) {
               key={c.id}
               onClick={() => setCatFilter(c.id)}
               style={{
-                padding: '5px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 500, cursor: 'pointer',
+                padding: '5px 12px', borderRadius: 'var(--r-full)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer',
                 border: `1px solid ${catFilter === c.id ? NAV : BORDER}`,
-                background: catFilter === c.id ? NAV : '#fff',
-                color: catFilter === c.id ? '#fff' : 'var(--text-muted)',
+                background: catFilter === c.id ? NAV : 'var(--card-bg)',
+                color: catFilter === c.id ? 'var(--card-bg)' : 'var(--text-muted)',
                 transition: 'all 0.15s',
               }}
             >
@@ -199,69 +221,111 @@ export default function AiKnowledgeScr({ profile }) {
           {catFilter === 'all' ? 'No knowledge entries yet. Add your first one.' : `No entries in this category.`}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filtered.map(item => {
             const cat = CAT_COLORS[item.category] || CAT_COLORS.general;
             const catLabel = CATEGORIES.find(c => c.id === item.category)?.lb || item.category;
+            const isExpanded = expandedId === item.id;
+            const parsed = isExpanded ? parseContent(item.content) : null;
+            const summary = getSummary(item.content);
+
             return (
               <div
                 key={item.id}
                 style={{
-                  background: '#fff',
-                  border: `1px solid ${item.active ? BORDER : '#F3F4F6'}`,
-                  borderRadius: 8,
-                  padding: '14px 16px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 14,
+                  background: 'var(--card-bg)',
+                  border: `1px solid ${item.active ? BORDER : 'var(--neutral-bg)'}`,
+                  borderRadius: 'var(--r-sm)',
+                  padding: '11px 14px',
                   opacity: item.active ? 1 : 0.55,
                   transition: 'opacity 0.2s',
                 }}
               >
-                {/* Active toggle */}
-                <div style={{ paddingTop: 2 }}>
-                  <Toggle value={item.active} onChange={() => toggleActive(item)} />
-                </div>
+                {/* Card header row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {/* Active toggle */}
+                  <div style={{ flexShrink: 0 }}>
+                    <Toggle value={item.active} onChange={() => toggleActive(item)} />
+                  </div>
 
-                {/* Content */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                  {/* Clickable title + category + chevron */}
+                  <div
+                    style={{ flex: 1, minWidth: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                  >
                     <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                      background: cat.bg, color: cat.text, textTransform: 'uppercase', letterSpacing: 0.5,
+                      fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 'var(--r-full)',
+                      background: cat.bg, color: cat.text,
+                      textTransform: 'uppercase', letterSpacing: 0.6, flexShrink: 0,
                     }}>
                       {catLabel}
                     </span>
                     {!item.active && (
-                      <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>inactive — not injected into AI</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic', flexShrink: 0 }}>inactive</span>
                     )}
+                    <span style={{
+                      flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500,
+                      color: 'var(--text-primary)', overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {summary}
+                    </span>
+                    <span style={{
+                      width: 16, height: 16, display: 'flex', flexShrink: 0,
+                      color: 'var(--text-subtle)',
+                      transform: isExpanded ? 'rotate(180deg)' : 'none',
+                      transition: 'transform 0.2s',
+                    }}>
+                      {Ic.chev}
+                    </span>
                   </div>
-                  <div style={{ fontSize: 13.5, color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                    {item.content}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6 }}>
-                    Added {new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    <button
+                      onClick={() => openEdit(item)}
+                      style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 'var(--r-xs)', cursor: 'pointer', color: 'var(--text-muted)', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 5 }}
+                      title="Edit"
+                    >
+                      <span style={{ width: 13, height: 13, display: 'flex' }}>{Ic.edit}</span>
+                    </button>
+                    <button
+                      onClick={() => del(item.id)}
+                      disabled={deleting === item.id}
+                      style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 'var(--r-xs)', cursor: 'pointer', color: 'var(--red-text)', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 5 }}
+                      title="Delete"
+                    >
+                      <span style={{ width: 13, height: 13, display: 'flex' }}>{Ic.trash}</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                  <button
-                    onClick={() => openEdit(item)}
-                    style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
-                    title="Edit"
-                  >
-                    <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.edit}</span>
-                  </button>
-                  <button
-                    onClick={() => del(item.id)}
-                    disabled={deleting === item.id}
-                    style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, cursor: 'pointer', color: 'var(--red-text)', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
-                    title="Delete"
-                  >
-                    <span style={{ width: 14, height: 14, display: 'flex' }}>{Ic.trash}</span>
-                  </button>
-                </div>
+                {/* Expanded content */}
+                {isExpanded && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${BORDER}`, paddingLeft: 52 }}>
+                    {parsed.type === 'kv' ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 16, rowGap: 5 }}>
+                        {parsed.pairs.map(({ key, value }, i) => (
+                          <div key={i} style={{ display: 'contents' }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.8, paddingTop: 2, whiteSpace: 'nowrap' }}>
+                              {key}
+                            </span>
+                            <span style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                              {value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {parsed.text}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 10 }}>
+                      Added {new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -318,7 +382,7 @@ export default function AiKnowledgeScr({ profile }) {
             </div>
 
             {err && (
-              <div style={{ background: '#FEF2F2', color: 'var(--red-strong)', padding: '8px 12px', fontSize: 12.5, borderRadius: 4, marginBottom: 12, border: '1px solid #FECACA' }}>
+              <div style={{ background: 'var(--red-bg)', color: 'var(--red-strong)', padding: '8px 12px', fontSize: 12.5, borderRadius: 'var(--r-xs)', marginBottom: 12, border: '1px solid var(--red-border)' }}>
                 {err}
               </div>
             )}

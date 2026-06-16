@@ -1306,6 +1306,19 @@ ENTRY-POINT CHECK (all three actions confirmed reachable after removal):
 - Compose Draw: InvoicesSubTab.jsx Draws sub-tab header "Compose Draw" btn + FinancialsTab draw-nudge banner "Compose Draw →"
 - Add Receipt: FinancialsTab Ledger "+ Add" button (same TransactionModal as quick action)
 - Log Sub Invoice: SubInvoicesSection "+ Add Invoice" button (same AddInvoiceModal flow; openAddInvoiceOnMount trigger also remains usable via setFinancialsAction hook)
+
+[LOG - 2026-06-16] AI_KNOWLEDGE_RESTYLE — collapse-by-default, lenient KV grid, category tags, token cleanup
+- Action: Restyled AiKnowledgeScr.jsx — display only, no data model or behavior changes.
+- Files: avenstone-vite/src/components/ai/AiKnowledgeScr.jsx
+- Key changes:
+  1. COLLAPSED BY DEFAULT: each card shows category tag + first-line summary (≤80 chars) + chevron. Tap/click to expand.
+  2. EXPAND → FIELD GRID: `parseContent()` leniently detects "LABEL: value" lines (≥2 KV matches, ≥40% of lines). Structured entries render as small-caps label + value grid. Unstructured prose renders as `pre-wrap` plain text. Never breaks — fallback always shows readable text.
+  3. CATEGORY TAGS: replaced raw hex CAT_COLORS with token-based vars (var(--blue-bg), var(--green-bg-soft), var(--amber-bg-soft), var(--purple-bg), var(--red-bg), var(--blue-bg-new), var(--neutral-bg)).
+  4. INFO BANNER: trimmed to one line ("Active entries are injected into the AI's system prompt for every job conversation."). Token colors.
+  5. HEX CLEANUP: eliminated all 21 raw hex literals from the file. audit:hex went 1343 → 1312 (−31).
+  6. Padding tightened (14px→11px cards), gap reduced (10→8), actions buttons 30→28px.
+- Verified: build green; audit:hex 1312 < 1343 baseline. COMPANY_PROFILE expands into KV grid; prose entries (client_communication) expand into plain text.
+- Open: none.
 - All three also exist as MasterAgent CONFIRM_TOOLS verbs
 
 REMOVED BLOCKS:
