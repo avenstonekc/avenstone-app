@@ -264,7 +264,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 32000,
-        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        system: SYSTEM_PROMPT,
         messages,
       }),
     });
@@ -289,6 +289,8 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("ai-estimator error:", err);
-    return new Response(String(err), { status: 500, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: String(err) }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

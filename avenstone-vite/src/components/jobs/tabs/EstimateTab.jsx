@@ -169,19 +169,24 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setEstLoading(true);
     // Strip UI-only metadata fields before sending — _hasFile/_fileName are display state only
     const apiMessages = newMessages.map(({ role, content }) => ({ role, content }));
-    const res = await fetch(AI_ESTIMATOR_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-      body: JSON.stringify({ messages: apiMessages }),
-    });
-    const data = await res.json();
     let reply;
-    if (!res.ok || data.error) {
-      const detail = data.error || `HTTP ${res.status}`;
-      console.error('ai-estimator error:', detail, data);
-      reply = `Sorry, something went wrong: ${detail}`;
-    } else {
-      reply = data.content || 'Sorry, something went wrong. Please try again.';
+    try {
+      const res = await fetch(AI_ESTIMATOR_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({ messages: apiMessages }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        const detail = data.error || `HTTP ${res.status}`;
+        console.error('ai-estimator error:', detail, data);
+        reply = `Sorry, something went wrong: ${detail}`;
+      } else {
+        reply = data.content || 'Sorry, something went wrong. Please try again.';
+      }
+    } catch (e) {
+      console.error('ai-estimator fetch/parse error:', e);
+      reply = `Sorry, something went wrong: ${e.message || 'network error'}`;
     }
     const finalDisplay = [...displayMessages, { role: 'assistant', content: reply }];
     setEstMessages(finalDisplay);
@@ -324,7 +329,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const openProposal = async () => {
     setSub('proposal');
     if (propReady) return;
-    if (!lineItems.length) return;
+    if (!lineItems.length) {
+      setPropErr('Commit to Line Items first — run the estimator, then click Commit to Line Items.');
+      return;
+    }
     setPropLoading(true); setPropErr('');
     try {
       const moments = await sbLoadOhShitMoments(job.id);

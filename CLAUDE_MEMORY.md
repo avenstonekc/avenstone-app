@@ -1319,6 +1319,16 @@ ENTRY-POINT CHECK (all three actions confirmed reachable after removal):
 - Verified: build green; both prompts carry same Aven voice; estimator + chat extensions intact; all safety/confirm language still present.
 - Open: hardcoded rate table in ai-estimator still present (tracked in ESTIMATOR_KNOWLEDGE_ARC — delete when Rate Book replaces it).
 
+[LOG - 2026-06-16] ESTIMATOR_REFINEMENT_FIX — 4-part fix: cache_control root cause + error hardening + silent proposal bug
+- Action: Fixed estimator refinement turns failing + spinner freezing + silent Proposal dead-end.
+- Files: supabase/functions/ai-estimator/index.ts, avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx
+- Root cause (Fix C): cache_control: { type: 'ephemeral' } was set on the system block with NO anthropic-beta: prompt-caching header. This provided zero caching benefit and was the only structural asymmetry between the working 1-message initial turn and the failing multi-turn refinement request. Removed it; system block is now a plain string. One occurrence confirmed via grep before removing.
+- Fix A (edge fn): catch block was returning String(err) as a non-JSON body → frontend res.json() would throw → unhandled promise rejection → spinner frozen forever. Changed to JSON.stringify({ error: String(err) }) with Content-Type: application/json, status 500. All error paths now return parseable JSON.
+- Fix B (frontend): sendEstimatorMessage had no try/catch around the fetch+res.json() call. Added it. setEstLoading(false) now ALWAYS fires; catch sets reply to the actual error text so it appears in the chat. No more silent infinite spinners.
+- Fix D (frontend): openProposal silently returned when lineItems.length === 0 with no feedback. Now sets propErr: 'Commit to Line Items first — run the estimator, then click Commit to Line Items.' so the Proposal button explains itself.
+- Note: the max_tokens: 32000 hypothesis was WRONG — same code path applies to all turns, fix was already deployed. cache_control was the structural asymmetry.
+- Build: green.
+
 [LOG - 2026-06-16] FIELD_AGENT_LOG_RECEIPT_TYPE — fix silent mislabeling of expense type
 - Action: Fixed ai-field-agent log_receipt always writing type='material_purchase' regardless of actual expense.
 - File: supabase/functions/ai-field-agent/index.ts
