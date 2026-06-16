@@ -1,6 +1,6 @@
 # Estimator Knowledge Arc — Design Blueprint
 
-_Original decisions locked 2026-06-15 after Crane St forensic audit. Keystone decisions added 2026-06-16 — these supersede several 2026-06-15 entries. Superseded items are struck through and flagged inline._
+_Original decisions locked 2026-06-15 after Crane St forensic audit. Keystone decisions added 2026-06-16 (1–5) and 2026-06-16 late (6 — Range Collapse / Job-Size Tier) — these supersede several 2026-06-15 entries. Superseded items are struck through and flagged inline._
 
 ---
 
@@ -55,6 +55,34 @@ Aven leads a conversational interview to build the estimate. Kalin stays in cont
 This is the spine of the conversational-Aven estimator rebuild. Guided interview, not blank form, not silent auto-build.
 
 **Supersedes:** the earlier "interaction model: estimator behaves like the master agent" framing (correct directionally but underdetermined). The master-agent parallel holds on confirm-before-write and never-silent-write, but the primary interface is now a guided interview, not a freeform chat with popup gaps.
+
+### 6. Range → Point Collapse (locked 2026-06-16)
+
+Rate Book stores RANGES (`rate_low`–`rate_high`). Ranges never appear in estimate output — they're backstage reference. The estimator collapses each range to a single point via a **JOB-SIZE TIER**.
+
+**JOB-SIZE TIER** — keyed off total project SF, one tier for the whole estimate:
+
+| Total Project SF | Tier Applied |
+|---|---|
+| ≤ 750 SF | HIGH end of range |
+| 751 – 1,999 SF | MID (average of low and high) |
+| 2,000+ SF | LOW end of range |
+
+Rationale: small jobs price premium per-unit (mobilization/setup/overhead spread over less work); large jobs get volume pricing.
+
+**Collapse by unit type:**
+
+- **SF and LF** (work-rate units) — tier applies. Small job → high end on both.
+- **EA and LS** (fixed items: allowances, permits, fixtures, cleanup) — tier does NOT apply. Always use MID. A permit or toilet costs the same regardless of job size.
+
+**Application:** the estimator sets the tier automatically from project SF and collapses every line's range to its point by unit type. Kalin overrides per-line during the interview when a job breaks the pattern (guided interview confirm/override — same pattern as Keystone Decision 5).
+
+**This resolves the "ranges popping up in estimates" problem.** Ranges stay in the Rate Book as reference; the estimate shows a single tier-collapsed number per line.
+
+**Build requirements (Phase 3):**
+- Estimator must receive/compute total project SF before collapsing rates.
+- Unit type is already on `rate_book_labor.unit` — no new column needed.
+- Collapse logic: `MID = (rate_low + rate_high) / 2` rounded to the same precision as the stored rates.
 
 ---
 
@@ -215,7 +243,7 @@ _Effort estimates in Sonnet prompts; refine at build time._
 
 2. **Supabase connection + prompt injection** — Add a Supabase client to ai-estimator. At request time, load the tenant's active Labor Rate Book entries AND Material Tier Chart. Inject both into the prompt as two separate, explicitly-framed sections. Retire the hardcoded labor numbers from SYSTEM_PROMPT at this point; keep hardcoded material numbers temporarily as labeled fallback until tier chart is populated.
 
-3. **Cite-or-flag** — Every output line carries its source label. Labor lines cite tenant rate or flag as regional avg. Material lines cite the selected tier. No silent invention. Source label written to `estimate_line_items.source_label` on commit.
+3. **Cite-or-flag + Range Collapse** — Every output line carries its source label. Labor lines cite tenant rate or flag as regional avg. Material lines cite the selected tier. No silent invention. Source label written to `estimate_line_items.source_label` on commit. Rate Book ranges are collapsed to a single point via the Job-Size Tier rule (see Keystone Decision 6): project SF → tier (high/mid/low) → collapse by unit type (SF/LF use tier; EA/LS always use MID).
 
 4. **Guided interview flow** — Implement the conversational interview interface: finish tier selection, scope confirmation, pre-filled defaults (markup at 30%, baseline inclusions always-on), labor-gap batch-ask. Replaces the current freeform chat-then-generate flow.
 
