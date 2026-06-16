@@ -40,6 +40,23 @@ export const ll = (k, d) => { try { const x = localStorage.getItem(k); return x 
 // ─── Viewport ─────────────────────────────────────────────────────────────────
 export const isMob = () => window.innerWidth < 768;
 
+// ─── Estimator source badges ───────────────────────────────────────────────────
+// Keyed on source_label (not server source_badge) so fresh lines and edited DB rows
+// badge from the same source. vetted=false on labor_rate gets a warning variant.
+export const estimatorBadge = (source_label, vetted) => {
+  if (source_label === 'labor_rate') {
+    return vetted === false
+      ? { icon: '○', text: 'Rate Book*', bg: 'var(--amber-bg)',  color: 'var(--amber-text)' }
+      : { icon: '✓', text: 'Rate Book',  bg: 'var(--green-bg)',  color: 'var(--green-text)' };
+  }
+  const MAP = {
+    material_tier: { icon: '◈', text: 'Material',     bg: 'var(--navy-100)', color: 'var(--navy-900)' },
+    regional_avg:  { icon: '⚡', text: 'Regional Avg', bg: 'var(--amber-bg)', color: 'var(--amber-text)' },
+    user_entered:  { icon: '✎', text: 'You set',      bg: 'var(--navy-100)', color: 'var(--navy-900)' },
+  };
+  return MAP[source_label] || { icon: '·', text: source_label || '?', bg: 'var(--bg)', color: 'var(--text-muted)' };
+};
+
 // ─── Icons ────────────────────────────────────────────────────────────────────
 export const Ic = {
   grid:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,

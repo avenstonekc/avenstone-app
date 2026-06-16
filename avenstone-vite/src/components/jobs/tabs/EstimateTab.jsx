@@ -6,6 +6,7 @@ import { Ic, f$ } from '../../../lib/utils';
 import { buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
+import StructuredEstimate from './StructuredEstimate';
 
 const TakeoffWizard = lazy(() => import('./TakeoffWizard'));
 
@@ -39,6 +40,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [estCommitting, setEstCommitting] = useState(false);
   const [estCommitMsg, setEstCommitMsg] = useState('');
   const [pricedScope, setPricedScope] = useState(null); // 3c: priced lines from 3b-2 engine
+  const [showRaw, setShowRaw]         = useState(false); // toggle raw chat when FACE is present
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -491,8 +493,20 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', sqft: '', special: '' }); setPricedScope(null); }}>Reset</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', sqft: '', special: '' }); setPricedScope(null); setShowRaw(false); }}>Reset</button>
           </div>
+          {pricedScope?.length > 0 && (
+            <>
+              <StructuredEstimate lines={pricedScope} />
+              <button
+                onClick={() => setShowRaw(r => !r)}
+                style={{ fontSize: 11, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}
+              >
+                {showRaw ? '▲ Hide raw' : '▼ View raw estimate'}
+              </button>
+            </>
+          )}
+          {(!pricedScope?.length || showRaw) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 480, overflowY: 'auto' }}>
             {estMessages.map((m, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
@@ -510,6 +524,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
               </div>
             )}
           </div>
+          )}
           {estFileName && (
             <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '6px 10px', fontSize: 12, color: NAV, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: GOLD }}>{Ic.folder}</span>{estFileName}
