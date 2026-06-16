@@ -1691,3 +1691,12 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - fireTodoEvent/runTodoEngine chain (creates 'review auto-drafted invoice' todo) deliberately excluded — audit marked it optional; can be a follow-on slice if needed.
 - Files: supabase/functions/_shared/autoInvoice.ts (new), supabase/functions/_shared/tradeActuals.ts (new), supabase/functions/ai-master-agent/index.ts, supabase/functions/ai-field-agent/index.ts, avenstone-vite/src/lib/autoInvoice.js (guard header), avenstone-vite/src/lib/tradeActuals.js (guard header).
 - Commits: 2 commits, pushed to main.
+
+[LOG - 2026-06-16] BUG_C_VERIFY — verify_bugc.js added; all 14 assertions pass
+- Script: tools/verify_bugc.js. Proves the three side effects (notification, auto-invoice on phase advance, trade actuals on complete) fire on the AI path via ai-field-agent's confirmed+pending_action shortcut (model-bypass path, no Claude API call).
+- Test design: two test jobs (JobA=user path SQL, JobB=ai-field-agent HTTP). Both advance in_progress→final_touches (notification+auto-invoice) then final_touches→complete (notification+trade actuals). 14 assertions: execute:true, effect row counts > 0, AI counts == user counts, correct tenant/job linkage on rows.
+- Test data: jobs, draw_schedules, job_sub_engagements, engagement_bids created with ZZ_BUGC_TEST_ prefix. Cleanup deletes all test rows in FK-safe order in a finally block; verified per-table post-cleanup. 5 secondary staff received notifications (correct excludeId behavior).
+- Cleanup: deletes 8 table types (invoice_line_items, invoices, draw_schedules, engagement_bids, job_sub_engagements, trade_actuals, notifications, jobs) + post-cleanup zero-row verification.
+- First run revealed deployment gap: GitHub Actions workflow deployed functions as single-file uploads, so ../‌_shared/ imports were not bundled. ai-field-agent and ai-master-agent failed to deploy (HTTP 400 Module not found). Fixed by switching deploy workflow to Supabase CLI (supabase/setup-cli@v1 + supabase functions deploy <slug>), which bundles _shared/ dependencies automatically.
+- _shared/ pattern note: any future edge fn that imports from _shared/ will deploy correctly with the new CLI-based workflow. The divergence guard headers on both src/lib originals and _shared/ copies remain the only safeguard against silent drift.
+- Run pattern: node tools/verify_bugc.js. Uses PAT from C:/Users/Kalin/supabase-token.txt. Writes real rows to live DB; cleanup is mandatory and runs in finally.
