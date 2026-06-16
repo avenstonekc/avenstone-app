@@ -1671,3 +1671,13 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Fix: added `id` to previewItems objects in `openProposal` so the row can be identified. The × handler is now async: deletes by id from DB, reloads `lineItems` via `sbLoadEstimateLineItems` (matching the Line Items tab path), then filters `propLineItems`. The IIFE re-renders from the refreshed `lineItems` → Hard Cost/Markup/Grand Total update immediately. The schedule useEffect fires on propLineItems change → payment schedule milestone amounts also update. Items manually added via "+ Add line item" (no id) are filtered from propLineItems only, no DB op.
 - Files: `avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx` (2 changes — previewItems id field, × handler).
 - Commit: 1 commit, pushed to main.
+
+[LOG - 2026-06-16] BUG_C_CLOSED — AI advance_phase now fires all three sbAdvancePhase side effects
+- Root cause: ai-master-agent and ai-field-agent both had inline advance_phase implementations that wrote jobs.status correctly (same 5-field patch) but returned immediately after the write, skipping the three side effects sbAdvancePhase fires: sbNotify('phase_advanced'), checkAndAutoInvoice('phase.advanced'), captureTradeActualsForJob (on complete only).
+- Fix (2 slices, additive only — no gate/return-shape changes):
+  - Slice 1: Created supabase/functions/_shared/autoInvoice.ts and _shared/tradeActuals.ts (verbatim logic copies of src/lib/autoInvoice.js and tradeActuals.js). Both originals and copies have divergence-guard headers pointing at each other. These files have zero imports and are fully param-injected — the only pattern that survives the circular-import boundary.
+  - Slice 2: ai-master-agent advance_phase case now calls notifyTenantStaff + checkAndAutoInvoice + captureTradeActualsForJob (guarded by nextPhase==='complete') after the write. ai-field-agent advance_phase case does the same via its existing `notify` helper. Both use the sb/tenantId/userId already in scope.
+- _shared/ pattern: for any future helper that must run both in src/lib and in edge fns, copy to _shared/ with the same divergence-guard header. Never merge — the circular-import constraint is structural.
+- fireTodoEvent/runTodoEngine chain (creates 'review auto-drafted invoice' todo) deliberately excluded — audit marked it optional; can be a follow-on slice if needed.
+- Files: supabase/functions/_shared/autoInvoice.ts (new), supabase/functions/_shared/tradeActuals.ts (new), supabase/functions/ai-master-agent/index.ts, supabase/functions/ai-field-agent/index.ts, avenstone-vite/src/lib/autoInvoice.js (guard header), avenstone-vite/src/lib/tradeActuals.js (guard header).
+- Commits: 2 commits, pushed to main.

@@ -1,5 +1,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { checkAndAutoInvoice } from "../_shared/autoInvoice.ts";
+import { captureTradeActualsForJob } from "../_shared/tradeActuals.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1314,6 +1316,22 @@ async function executeTool(
           phase_override_by_id: useOverride ? userId : null,
         }).eq("id", input.job_id);
         if (error) return { error: error.message };
+        // Side effects — mirrors sbAdvancePhase: notification, auto-invoice, trade actuals.
+        let jobAddress = "";
+        try { const { data: jAddr } = await sb.from("jobs").select("address").eq("id", input.job_id).single(); jobAddress = (jAddr as any)?.address || ""; } catch (_) {}
+        notifyTenantStaff(sb, tenantId, userId, {
+          type: "phase_advanced",
+          title: `Phase advanced — ${jobAddress || "job"}`,
+          body: `Moved to ${PHASE_LABELS[nextPhase] || nextPhase}${useOverride ? " (override)" : ""}`,
+          jobId: String(input.job_id),
+        }).catch(() => {});
+        checkAndAutoInvoice(sb, tenantId, userId, "phase.advanced", {
+          jobId: String(input.job_id), newPhase: nextPhase,
+        }).catch((err: any) => console.warn("[autoInvoice] ai-master-agent advance_phase hook failed:", err?.message));
+        if (nextPhase === "complete") {
+          captureTradeActualsForJob(sb, tenantId, String(input.job_id))
+            .catch((err: any) => console.warn("[tradeActuals] ai-master-agent capture failed:", err?.message));
+        }
         return {
           success: true,
           from_phase: PHASE_LABELS[currentPhase] || currentPhase,

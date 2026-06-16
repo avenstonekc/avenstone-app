@@ -1,5 +1,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { checkAndAutoInvoice } from '../_shared/autoInvoice.ts';
+import { captureTradeActualsForJob } from '../_shared/tradeActuals.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -333,6 +335,22 @@ async function executeAction(sb: any, action: any, tenant_id: string, user_id: s
           phase_override_by_id: useOverride ? user_id : null,
         }).eq('id', input.job_id);
         if (error) throw error;
+        // Side effects — mirrors sbAdvancePhase: notification, auto-invoice, trade actuals.
+        let jobAddress = '';
+        try { const { data: jAddr } = await sb.from('jobs').select('address').eq('id', input.job_id).single(); jobAddress = jAddr?.address || ''; } catch (_) {}
+        notify(sb, tenant_id, user_id, {
+          type: 'phase_advanced',
+          title: `Phase advanced — ${jobAddress || 'job'}`,
+          body: `Moved to ${PHASE_LABELS[nextPhase] || nextPhase}${useOverride ? ' (override)' : ''}`,
+          jobId: input.job_id,
+        }).catch(() => {});
+        checkAndAutoInvoice(sb, tenant_id, user_id, 'phase.advanced', {
+          jobId: input.job_id, newPhase: nextPhase,
+        }).catch((err: any) => console.warn('[autoInvoice] ai-field-agent advance_phase hook failed:', err?.message));
+        if (nextPhase === 'complete') {
+          captureTradeActualsForJob(sb, tenant_id, input.job_id)
+            .catch((err: any) => console.warn('[tradeActuals] ai-field-agent capture failed:', err?.message));
+        }
         return {
           reply: `Moved to ${PHASE_LABELS[nextPhase] || nextPhase}${useOverride ? ' (override)' : ''}.`,
           executed: true,
