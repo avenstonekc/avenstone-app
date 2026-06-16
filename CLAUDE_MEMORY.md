@@ -1307,6 +1307,16 @@ ENTRY-POINT CHECK (all three actions confirmed reachable after removal):
 - Add Receipt: FinancialsTab Ledger "+ Add" button (same TransactionModal as quick action)
 - Log Sub Invoice: SubInvoicesSection "+ Add Invoice" button (same AddInvoiceModal flow; openAddInvoiceOnMount trigger also remains usable via setFinancialsAction hook)
 
+[LOG - 2026-06-16] AVEN_PROMPT_UNIFICATION — shared Aven identity + voice tightening in ai-master-agent and ai-estimator
+- Action: Prompt/identity text only. No logic, tools, schema, or model changes.
+- Files: supabase/functions/ai-master-agent/index.ts, supabase/functions/ai-estimator/index.ts
+- Mechanism: same identity block pasted into both with a comment (no shared module — no _shared/ infrastructure exists; paste + comment is the correct call per audit). Marker: `# ── AVEN CORE IDENTITY (same base as ai-estimator/ai-master-agent) ──`
+- Shared Aven base (both inherit): name=Aven (not "Master Agent" or "Estimator"), fewest-questions, task-focused, terse, anti-surprise as ONE line. Never-mention-Claude in identity.
+- ai-master-agent extension: added PROBLEM MAPPING section (generic problem → map to feature → one concrete offer). Removed "Act immediately / don't ask should I do X" (now in voice base). Removed "You are the operating system / Never mention Claude" (redundant). All confirm-gated write behavior, CONFIRM_TOOLS, currency formatting, receipt-from-photo, missing-field card logic — ALL KEPT.
+- ai-estimator extension: added rate-gap one-liner in anti-surprise ("[RATE MISSING: ... — using KC avg X]"). Identity replaces "Avenstone Estimator" with Aven; estimating instructions unchanged.
+- Verified: build green; both prompts carry same Aven voice; estimator + chat extensions intact; all safety/confirm language still present.
+- Open: hardcoded rate table in ai-estimator still present (tracked in ESTIMATOR_KNOWLEDGE_ARC — delete when Rate Book replaces it).
+
 [LOG - 2026-06-16] AI_KNOWLEDGE_RESTYLE — collapse-by-default, lenient KV grid, category tags, token cleanup
 - Action: Restyled AiKnowledgeScr.jsx — display only, no data model or behavior changes.
 - Files: avenstone-vite/src/components/ai/AiKnowledgeScr.jsx
