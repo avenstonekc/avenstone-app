@@ -1341,6 +1341,17 @@ ENTRY-POINT CHECK (all three actions confirmed reachable after removal):
 - Note: rides broken edge-deploy (fd81293). Will not go live until CLI deploy fix. Correct to commit now — ships together.
 - Build: green.
 
+[LOG - 2026-06-16] RATE_BOOK_SCHEMA_PHASE1_5 — rate_book_labor + rate_book_material + source_label (migrations 1+2; archive HELD)
+- Action: ESTIMATOR_KNOWLEDGE_ARC Phase 1.5 schema + seed applied and verified.
+- Files: supabase/migrations/20260616100000_rate_book_schema.sql, 20260616100001_rate_book_seed.sql
+- Migration 1 (schema): rate_book_labor (per-trade labor rates; vetted/needs_split flags; JSONB rate_data for future tiering; RLS mirrors ai_knowledge), rate_book_material (3-tier matrix; ai_drafted/kalin_adjusted; RLS same), estimate_line_items.source_label TEXT nullable. 15 objects verified PASS.
+- Migration 2 (seed): 143 labor rows + 23 material rows. vetted=false (all labor); ai_drafted=true kalin_adjusted=false (all material). ai_knowledge untouched — 21 rows still active.
+- Labor by trade: Demo(10) Drywall(8) Paint(9) Electrical(14) Plumbing(15) HVAC(13) Framing(13) Insulation(13) Roofing(15) Tile(6) Flooring(5) Cabinets/vanities(3) Trim/carpentry(6) Windows/doors(2) Garage door(1) Concrete(10). Material: 23 rows across flooring, tile, cabinets/countertops/vanities, windows/doors, drywall_board, paint, dumpsters.
+- E1 MISMATCH: 'Windows / doors' NOT in trade_taxonomy.parent_trade. 2 labor rows seeded + flagged in notes. Supply+install all-in prices in rate_book_material (no trade key). Action needed before wiring estimator lookup.
+- needs_split=true: 67/143 labor rows (all Framing, all Insulation, roofing combined rates, some drywall/flooring/cabinets). Surfaces for Kalin to decompose at Rate Book review.
+- Migration 3 (archive ai_knowledge pricing rows) HELD pending Kalin review.
+- Build: green.
+
 [LOG - 2026-06-16] DEAD_PENDING_STATUS_FIX — two one-line fixes, same root cause
 - Action: Fixed two dead filters on job_phases.status === 'pending' — a value that has NEVER existed in the DB. Live job_phases status values are only: not_started, in_progress, complete (confirmed via MODEL_B_AUDIT.md query).
 - Files:
