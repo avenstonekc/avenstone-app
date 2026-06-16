@@ -108,6 +108,8 @@ On session start: read this file top-to-bottom. Append a [LOG] at the end when a
 
 **AVEN_MERGE_ARC** — confirmed future arc (2-3 day arc, blueprinted). Model B audit found 6 unguarded duplicated blocks across the codebase (gate logic, phase constants, notification helpers, etc.) that create silent drift risk as the codebase grows. The merge is NOT a backdoor/incremental approach — it must be designed as a proper named arc with a blueprint MD first. Blocked on nothing currently. Priority: after any open slices; schedule when Kalin has a fresh 2-day window. The 6 drift-prone blocks are the primary risk it resolves.
 
+**SCOPE_RISK_ARC** drafted — optional client-facing "Potential Considerations" estimate section for setting expectations at sale time; informational, not COs; gated on ESTIMATOR_KNOWLEDGE_ARC.
+
 **Future arcs (named, sequenced — each needs a blueprint MD before building):**
 - `SUB_WORKFLOW_ARC.md` — daily logs, progress photos tied to phases, in-app payment requests + lien waivers, schedule conflict surfacing, sub availability calendar, multi-job dashboard. Sub portal is half-blind to field reality without subs engaged daily.
 - `ANALYTICS_ARC.md` — gross margin by trade across jobs, avg days per phase, sub reliability scoring, supplier delivery performance, CO frequency, profit/loss reports. Data already in DB, just needs query layer + dashboards. Also home for EXECUTION_ARC Phase 9 (learning loop rate overrides).
