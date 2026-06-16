@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
 
         // Rule 3: phase_starting_soon
         const upcoming = (phases || []).filter((p: any) => {
-          if (p.status !== "pending" || !p.start_date) return false;
+          if (p.status !== "not_started" || !p.start_date) return false;
           const daysUntil = Math.floor((new Date(p.start_date).getTime() - Date.now()) / 86400000);
           return daysUntil >= 0 && daysUntil <= 2;
         });

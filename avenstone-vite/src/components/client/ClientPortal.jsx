@@ -540,7 +540,7 @@ export default function ClientPortal({ profile, signOut }) {
             {/* B) Next Milestone Card */}
             {loaded.phases && phases.length > 0 && (() => {
               const inProgress = phases.find(p => p.status === 'in_progress');
-              const next = inProgress || phases.find(p => p.status === 'pending');
+              const next = inProgress || phases.find(p => p.status === 'not_started');
               const allDone = phases.every(p => p.status === 'complete');
               return (
                 <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderLeft: `4px solid ${GOLD}`, padding: 20, marginBottom: 16 }}>

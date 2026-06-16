@@ -1317,6 +1317,15 @@ ENTRY-POINT CHECK (all three actions confirmed reachable after removal):
 - Verified: build green; both prompts carry same Aven voice; estimator + chat extensions intact; all safety/confirm language still present.
 - Open: hardcoded rate table in ai-estimator still present (tracked in ESTIMATOR_KNOWLEDGE_ARC — delete when Rate Book replaces it).
 
+[LOG - 2026-06-16] DEAD_PENDING_STATUS_FIX — two one-line fixes, same root cause
+- Action: Fixed two dead filters on job_phases.status === 'pending' — a value that has NEVER existed in the DB. Live job_phases status values are only: not_started, in_progress, complete (confirmed via MODEL_B_AUDIT.md query).
+- Files:
+  - supabase/functions/vigilance-runner/index.ts:138 — Rule 3 (phase_starting_soon): `p.status !== "pending"` → `p.status !== "not_started"`. Rule 3 has never fired since shipping. Now detects phases with start_date ≤ 2 days away that haven't started yet.
+  - avenstone-vite/src/components/client/ClientPortal.jsx:543 — Next Milestone card: `phases.find(p => p.status === 'pending')` → `phases.find(p => p.status === 'not_started')`. Fallback always returned undefined before; now resolves to the first not-yet-started phase for clients.
+- Root cause: 'pending' was likely an early-design status value that was never implemented in the DB. No migration ever added it.
+- Build: green. No logic changes — filter value correction only.
+- Open: job_phases.status still has no CHECK constraint; adding one is a future hardening migration.
+
 [LOG - 2026-06-16] AI_KNOWLEDGE_RESTYLE — collapse-by-default, lenient KV grid, category tags, token cleanup
 - Action: Restyled AiKnowledgeScr.jsx — display only, no data model or behavior changes.
 - Files: avenstone-vite/src/components/ai/AiKnowledgeScr.jsx
