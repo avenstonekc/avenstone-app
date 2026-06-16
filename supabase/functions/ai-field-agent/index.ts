@@ -102,7 +102,7 @@ const TOOLS = [
   },
   {
     name: 'log_receipt',
-    description: 'Record an outbound expense (material purchase, sub payout, misc) on a job. Creates transaction only — photo attachment is added later in Financials tab. Confirmation required.',
+    description: 'Record an outbound expense on a job. Creates transaction only — photo attachment is added later in Financials tab. Confirmation required.',
     input_schema: {
       type: 'object',
       properties: {
@@ -110,6 +110,11 @@ const TOOLS = [
         amount: { type: 'number' },
         description: { type: 'string', description: 'What was purchased / who was paid' },
         vendor: { type: 'string', description: 'Vendor or payee name' },
+        type: {
+          type: 'string',
+          enum: ['material_purchase', 'fuel', 'permit', 'sub_payout', 'vendor_payment', 'commission', 'other_expense', 'equipment_rental', 'labor'],
+          description: 'Expense type. Infer from context: Home Depot/lumber/supplies=material_purchase; gas station=fuel; city/inspection fee=permit; sub contractor=sub_payout.',
+        },
       },
       required: ['job_id', 'amount', 'description'],
     },
@@ -262,13 +267,17 @@ async function executeAction(sb: any, action: any, tenant_id: string, user_id: s
       }
 
       case 'log_receipt': {
-        // Matches TransactionModal default for new outbound rows.
-        // Constraint job_transactions_type_check rejects 'expense'.
+        const ALLOWED_OUT = new Set([
+          'material_purchase', 'fuel', 'permit', 'sub_payout',
+          'vendor_payment', 'commission', 'other_expense', 'equipment_rental', 'labor',
+        ]);
+        const rawType = input.type as string | undefined;
+        const txType = rawType && ALLOWED_OUT.has(rawType) ? rawType : 'material_purchase';
         const { data, error } = await sb.from('job_transactions').insert({
           job_id: input.job_id,
           tenant_id,
           direction: 'out',
-          type: 'material_purchase',
+          type: txType,
           amount: Number(input.amount),
           description: input.description,
           payer_or_payee_name: input.vendor || null,

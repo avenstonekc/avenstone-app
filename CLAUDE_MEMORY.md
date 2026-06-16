@@ -1317,6 +1317,16 @@ ENTRY-POINT CHECK (all three actions confirmed reachable after removal):
 - Verified: build green; both prompts carry same Aven voice; estimator + chat extensions intact; all safety/confirm language still present.
 - Open: hardcoded rate table in ai-estimator still present (tracked in ESTIMATOR_KNOWLEDGE_ARC — delete when Rate Book replaces it).
 
+[LOG - 2026-06-16] FIELD_AGENT_LOG_RECEIPT_TYPE — fix silent mislabeling of expense type
+- Action: Fixed ai-field-agent log_receipt always writing type='material_purchase' regardless of actual expense.
+- File: supabase/functions/ai-field-agent/index.ts
+- Changes:
+  1. Tool schema: added `type` property with 9-value enum matching master-agent's ALLOWED_OUT exactly: material_purchase, fuel, permit, sub_payout, vendor_payment, commission, other_expense, equipment_rental, labor. Inference hint in description. Not required — graceful fallback.
+  2. Executor: added ALLOWED_OUT Set + validation. Uses input.type when present and valid; falls back to 'material_purchase' only when absent. Mirrors master-agent log_receipt validation exactly.
+- Root cause: type was missing from input_schema entirely — Claude had no channel to pass it; hardcoded fallback was the only path.
+- Note: rides broken edge-deploy (fd81293). Will not go live until CLI deploy fix. Correct to commit now — ships together.
+- Build: green.
+
 [LOG - 2026-06-16] DEAD_PENDING_STATUS_FIX — two one-line fixes, same root cause
 - Action: Fixed two dead filters on job_phases.status === 'pending' — a value that has NEVER existed in the DB. Live job_phases status values are only: not_started, in_progress, complete (confirmed via MODEL_B_AUDIT.md query).
 - Files:
