@@ -1,6 +1,10 @@
 
 
+import { createClient } from "npm:@supabase/supabase-js@2";
+
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const SYSTEM_PROMPT = `# ── AVEN CORE IDENTITY (same base as ai-master-agent) ──
 You are Aven — Avenstone's AI, here in the estimate builder. Never mention Claude, Anthropic, or any AI platform.
@@ -240,6 +244,63 @@ Rules for JSON extraction:
 - If there are multiple line items per trade, each gets its own object with the same "trade" value
 - "category" must be exactly "labor" or "materials" for every line item — labor/subcontractor lines get "labor"; material purchases, allowances, equipment, and permits get "materials"`;
 
+// ── 3a: Rate Book types ──────────────────────────────────────────────────────
+
+interface LaborRow {
+  trade: string;
+  line_item: string;
+  unit: string;
+  rate_low: number;
+  rate_high: number | null;
+  rate_data: Record<string, unknown>;
+  vetted: boolean;
+}
+
+interface MaterialRow {
+  category: string;
+  description: string;
+  unit: string;
+  tier_low_min: number | null;
+  tier_low_max: number | null;
+  tier_mid_min: number | null;
+  tier_mid_max: number | null;
+  tier_hi_min: number | null;
+  tier_hi_max: number | null;
+  tier_low_label: string;
+  tier_mid_label: string;
+  tier_hi_label: string;
+}
+
+interface RateBook {
+  laborRows: LaborRow[];
+  materialRows: MaterialRow[];
+}
+
+async function loadRateBook(tenantId: string): Promise<RateBook> {
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const [laborRes, materialRes] = await Promise.all([
+    sb.from("rate_book_labor")
+      .select("trade, line_item, unit, rate_low, rate_high, rate_data, vetted")
+      .eq("tenant_id", tenantId)
+      .eq("active", true)
+      .order("trade")
+      .order("line_item"),
+    sb.from("rate_book_material")
+      .select("category, description, unit, tier_low_min, tier_low_max, tier_mid_min, tier_mid_max, tier_hi_min, tier_hi_max, tier_low_label, tier_mid_label, tier_hi_label")
+      .eq("tenant_id", tenantId)
+      .eq("active", true)
+      .order("category"),
+  ]);
+  if (laborRes.error) console.error("ai-estimator: rate_book_labor error:", laborRes.error.message);
+  if (materialRes.error) console.error("ai-estimator: rate_book_material error:", materialRes.error.message);
+  const laborRows = (laborRes.data ?? []) as LaborRow[];
+  const materialRows = (materialRes.data ?? []) as MaterialRow[];
+  console.log(`ai-estimator [3a]: Rate Book loaded — ${laborRows.length} labor, ${materialRows.length} material (tenant: ${tenantId})`);
+  return { laborRows, materialRows };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 Deno.serve(async (req) => {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -251,8 +312,18 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { messages } = await req.json();
+    const { messages, tenant_id } = await req.json();
     if (!messages?.length) return new Response("no messages", { status: 400 });
+
+    // 3a: Load Rate Book — available for 3b prompt injection. No pricing change this slice.
+    let rateBook: RateBook = { laborRows: [], materialRows: [] };
+    if (tenant_id) {
+      rateBook = await loadRateBook(tenant_id);
+    } else {
+      console.warn("ai-estimator [3a]: no tenant_id in request — Rate Book not loaded");
+    }
+    // 3b will use rateBook for tier-collapse + prompt injection. Suppress lint until then.
+    void rateBook;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
