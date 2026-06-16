@@ -1755,3 +1755,31 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Verification: build green (430 modules). hex audit ≤ 1343 (1312 — no new hex added). Mock subtotal: LABOR $3,820 + MATERIALS $607.50 + ALLOWANCES $500 + GENERAL $200 (permit null→excluded) = $5,127.50.
 - Commit: 22a648d, pushed to main.
 - Open: Slice 2 (surgical edit flow), Slice 3 (interview inputs + SF derivation + kill server-side hardcoded markup/PM-fee).
+
+[LOG - 2026-06-16] ESTIMATOR_INTERVIEW_SLICE3 — Guided interview + SF derivation + server hardcodes killed — ESTIMATOR_KNOWLEDGE_ARC Phase 4 Slice 3
+- What shipped:
+  (A) `src/lib/deriveProjectSf.js` — async util that derives best SF for pricing from scoped rooms → job.sqft → none. Accepts sb as param (no circular import).
+  (B+C) EstimateTab.jsx — 4-field pricing interview panel replaces bare sqft input. Both fetch call sites now send project_sf, finish_tier, markup_pct, pm_fee.
+  (D) ai-estimator/index.ts — server fail-loud on missing/zero SF; markup/pm now read from request body, not hardcoded.
+- Files:
+  - `avenstone-vite/src/lib/deriveProjectSf.js` (new, 54 lines)
+  - `avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx` (interview state + panel + threading)
+  - `supabase/functions/ai-estimator/index.ts` (fail-loud + markup/pm passthrough + formatEstimate signature)
+- SF derivation contract (positive-SF predicate):
+  1. Sum areaSf over rooms where scope_tag is present AND !== 'not_in_scope'. Undecided rooms (no scope row) excluded.
+  2. If sum > 0 → { sf: sum, source: 'scope', roomCount: N }
+  3. Else if Number(job.sqft) > 0 → { sf: Number(job.sqft), source: 'job', roomCount: 0 }
+  4. Else → { sf: 0, source: 'none', roomCount: 0 }
+  "Scope rows exist" alone is NOT sufficient for source:'scope' — sum must be > 0. A scoped job with areaSf 0 rooms falls through to job.sqft.
+- Markup seed precedence (client): default_markup_pct > labor_markup_pct > 30 (last-resort only; documented, not silently baked). String(Number(job.default_markup_pct) > 0 ? ... : Number(job.labor_markup_pct) > 0 ? ... : 30).
+- Absent markup_pct/pm_fee server behavior: treat as 0, console.warn. NOT 30/1200. Old sessions that haven't refreshed show $0 markup/pm in the formatted summary — a visible signal that they need to refresh, not a silent wrong number.
+- Fail-loud guards:
+  1. Client: Generate button disabled (`canGen = !!(estForm.scope.trim() && Number(interviewSf) > 0)`). SF helper text shows "Square footage required" when empty.
+  2. Server: `if (typeof project_sf !== "number" || project_sf <= 0) return fail("project_sf required...", 400)`. Defense-in-depth for any caller bypassing the client guard.
+- Verify cases for deriveProjectSf:
+  (a) 2 scoped rooms 180+140 SF, one not_in_scope 300 SF → { 320, 'scope', 2 } ✓
+  (b) scope rows all areaSf=0, job.sqft=1200 → { 1200, 'job', 0 } ✓
+  (c) no scope rows, no job.sqft → { 0, 'none', 0 } ✓
+- Build: green (430 modules). hex 1312 ≤ 1343 baseline. No new hex literals.
+- Commits: 813592f (Part A), 2710844 (Parts B+C+D). Both pushed to main. Edge fn deploy via GitHub Actions CLI (bundles _shared/).
+- Open: Slice 4 (labor-gap batch-ask in the interview — surface regional_avg lines for rep review before committing). Doc-debt: arc doc's dead source_label taxonomy (tenant_rate/tier_*) should be reconciled to live (labor_rate/material_tier/regional_avg/user_entered).
