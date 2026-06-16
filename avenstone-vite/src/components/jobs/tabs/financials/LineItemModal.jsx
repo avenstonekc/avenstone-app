@@ -37,19 +37,20 @@ export default function LineItemModal({ mode: initialMode, item = {}, job, onClo
         if (delErr) throw delErr;
       }
       const commitItem = {
-        source:      'manual',
-        phase:       phase.trim() || null,
-        trade:       trade.trim(),
+        source:       'manual',
+        phase:        phase.trim() || null,
+        trade:        trade.trim(),
         category,
-        description: description.trim(),
-        quantity:    parseFloat(quantity) || 0,
-        unit:        unit.trim() || null,
-        unit_cost:   parseFloat(unitCost) || 0,
+        description:  description.trim(),
+        quantity:     parseFloat(quantity) || 0,
+        unit:         unit.trim() || null,
+        unit_cost:    parseFloat(unitCost) || 0,
         // Preserve existing floor premium on edits; new items have no geometry — pass 1.0 deliberately.
-        multiplier:  item.multiplier ?? 1.0,
-        markup_pct:  0,
-        notes:       notes.trim() || null,
-        waste_pct:   null,
+        multiplier:   item.multiplier ?? 1.0,
+        markup_pct:   0,
+        notes:        notes.trim() || null,
+        waste_pct:    null,
+        source_label: 'user_entered',
       };
       const commitResult = await sbCommitEstimate(sb, AV_TENANT, AV_USER_ID, {
         source:     'manual',

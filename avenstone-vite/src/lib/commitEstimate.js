@@ -201,6 +201,7 @@ export async function sbCommitEstimate(supabase, tenantId, userId, { source, job
         // All other sources use the caller-provided value (null for consultation/manual,
         // 'takeoff:...' for takeoff — handled by the takeoff delete block above).
         notes:         source === 'ai' ? 'ai:' + (it.notes || '') : (it.notes ?? null),
+        source_label:  it.source_label ?? null,
         created_by:    userId,
       };
     });

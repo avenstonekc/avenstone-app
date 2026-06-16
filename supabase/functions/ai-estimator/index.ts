@@ -449,7 +449,9 @@ Deno.serve(async (req) => {
     const pricedLines = priceScopeLines(scope.lines, rateBook, projectSf, finishTier);
     const content = formatEstimate(scope, pricedLines, projectSf, finishTier);
 
-    return ok({ content, ...(scopeResult.truncated ? { truncated: true } : {}) });
+    // 3c: include priced_scope so EstimateTab can commit with exact source_labels
+    // without a second AI EXTRACT_JSON_FOR_PROPOSAL round-trip.
+    return ok({ content, priced_scope: pricedLines, ...(scopeResult.truncated ? { truncated: true } : {}) });
   } catch (e) {
     console.error("ai-estimator error:", e);
     return fail(String(e));

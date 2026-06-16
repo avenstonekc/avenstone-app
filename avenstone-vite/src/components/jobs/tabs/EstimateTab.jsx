@@ -38,6 +38,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [estSaveMsg, setEstSaveMsg] = useState('');
   const [estCommitting, setEstCommitting] = useState(false);
   const [estCommitMsg, setEstCommitMsg] = useState('');
+  const [pricedScope, setPricedScope] = useState(null); // 3c: priced lines from 3b-2 engine
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -183,6 +184,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         reply = `Sorry, something went wrong: ${detail}`;
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
+        if (data.priced_scope?.length) setPricedScope(data.priced_scope); // 3c
       }
     } catch (e) {
       console.error('ai-estimator fetch/parse error:', e);
@@ -206,6 +208,42 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setEstCommitting(true);
     setEstCommitMsg('');
     try {
+      // ── 3c: priced_scope path — use pricing engine output directly ─────────────
+      // Avoids a second AI call; preserves exact qty/unit/unit_cost/source_label.
+      if (pricedScope?.length) {
+        const resolveCategory = line =>
+          line.category === 'materials' ? 'materials'
+          : (line.category === 'general' && line.line_item === 'permit') ? 'permit'
+          : 'labor';
+        const items = pricedScope.map(line => ({
+          source: 'ai',
+          trade: line.trade || 'GENERAL',
+          category: resolveCategory(line),
+          description: line.description,
+          quantity: line.quantity,
+          unit: line.unit || 'LS',
+          unit_cost: line.unit_price ?? 0,
+          multiplier: 1.0,
+          notes: String(line.quantity) + ' ' + line.unit,
+          source_label: line.source_label,
+        }));
+        const result = await sbCommitEstimate(sb, AV_TENANT, AV_USER_ID, {
+          source: 'ai', jobId: job.id, estimateId: null, items,
+        });
+        if (!result.ok) {
+          setEstCommitMsg(`Commit failed: ${result.error}`);
+          setEstCommitting(false);
+          return;
+        }
+        const refreshed = await sbLoadEstimateLineItems(job.id);
+        setLineItems(refreshed || []);
+        setLineItemsLoaded(true);
+        setEstCommitMsg(`${result.data.inserted_count} line items committed`);
+        setTimeout(() => setEstCommitMsg(''), 6000);
+        setEstCommitting(false);
+        return;
+      }
+      // ── Fallback: EXTRACT_JSON_FOR_PROPOSAL (pre-3b-2 conversations) ──────────
       // Sanitize history (same pattern as send — strip UI-only fields)
       const apiMessages = estMessages.map(({ role, content }) => ({ role, content }));
       // Append the extraction trigger as a user turn
@@ -453,7 +491,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', sqft: '', special: '' }); }}>Reset</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', sqft: '', special: '' }); setPricedScope(null); }}>Reset</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 480, overflowY: 'auto' }}>
             {estMessages.map((m, i) => (
