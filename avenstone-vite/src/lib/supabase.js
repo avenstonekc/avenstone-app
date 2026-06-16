@@ -6529,3 +6529,56 @@ export async function sbLoadWalkthroughItemPhotos(itemIds) {
   if (error) return { ok: false, error: error.message, data: null };
   return { ok: true, error: null, data: data || [] };
 }
+
+// ── Rate Book ────────────────────────────────────────────────────────────────
+
+export async function sbLoadRateBookLabor() {
+  try {
+    const { data, error } = await sb.from('rate_book_labor')
+      .select('*')
+      .eq('tenant_id', AV_TENANT)
+      .eq('active', true)
+      .order('trade')
+      .order('line_item');
+    if (error) return { ok: false, error: error.message, data: null };
+    return { ok: true, error: null, data: data || [] };
+  } catch (e) { return { ok: false, error: e.message, data: null }; }
+}
+
+export async function sbLoadRateBookMaterial() {
+  try {
+    const { data, error } = await sb.from('rate_book_material')
+      .select('*')
+      .eq('tenant_id', AV_TENANT)
+      .eq('active', true)
+      .order('category');
+    if (error) return { ok: false, error: error.message, data: null };
+    return { ok: true, error: null, data: data || [] };
+  } catch (e) { return { ok: false, error: e.message, data: null }; }
+}
+
+export async function sbUpdateRateBookLabor(id, fields) {
+  try {
+    const { data, error } = await sb.from('rate_book_labor')
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', AV_TENANT)
+      .select()
+      .single();
+    if (error) return { ok: false, error: error.message, data: null };
+    return { ok: true, error: null, data };
+  } catch (e) { return { ok: false, error: e.message, data: null }; }
+}
+
+export async function sbUpdateRateBookMaterial(id, fields) {
+  try {
+    const { data, error } = await sb.from('rate_book_material')
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', AV_TENANT)
+      .select()
+      .single();
+    if (error) return { ok: false, error: error.message, data: null };
+    return { ok: true, error: null, data };
+  } catch (e) { return { ok: false, error: e.message, data: null }; }
+}

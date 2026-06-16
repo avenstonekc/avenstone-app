@@ -40,6 +40,7 @@ import PlaybookChecklist from './components/jobs/PlaybookChecklist';
 import OwnerHomeScr from './components/owner/OwnerHomeScr';
 import ProjectsListScr from './components/jobs/ProjectsListScr';
 import BrandPreview from './components/brand/BrandPreview';
+import RateBookScr from './components/owner/RateBookScr';
 
 // Read URL params before React hydrates (mirrors legacy HTML behavior)
 const _params     = new URLSearchParams(window.location.search);
@@ -53,7 +54,7 @@ const INVITE_TYPE   = new URLSearchParams(window.location.hash.replace('#', ''))
 const VALID_PG = new Set([
   'home', 'jobs', 'projects', 'todos', 'calendar', 'leads', 'pipeline', 'reports', 'stats',
   'field-agent', 'subs', 'team', 'company-files', 'ai-knowledge', 'ai-pm', 'brandpreview',
-  'sequences', 'owner-portal', 'admin-bugs',
+  'sequences', 'owner-portal', 'admin-bugs', 'rate-book',
 ]);
 const VALID_TAB = new Set(['info','estimate','subs','financials','sched','field','msgs','files','scanner','session']);
 // deep-link segment → tab id (buildDeepLink emits 'schedule' but tab id is 'sched')
@@ -327,6 +328,7 @@ export default function App() {
     ...(isStaff ? [{ id: 'company-files', lb: 'Company Files', ic: 'folder', sec: 'Setup' }] : []),
     ...(profile?.role === 'owner' ? [
       { id: 'ai-knowledge', lb: 'AI Knowledge', ic: 'doc',  sec: 'Setup' },
+      { id: 'rate-book',    lb: 'Rate Book',    ic: 'box',  sec: 'Setup' },
       { id: 'sequences',    lb: 'Sequences',    ic: 'bell', sec: 'Setup' },
       { id: 'ai-pm',        lb: 'PM Dashboard', ic: 'bell', sec: 'Setup' },
       { id: 'owner-portal', lb: 'Owner Portal', ic: 'box',  sec: 'Setup' },
@@ -435,6 +437,7 @@ export default function App() {
             {pg === 'field-agent' && isStaff && <AiFieldAgent profile={profile} currentJob={jobs.find(j => j.id === pendingJobId) || null} />}
             {pg === 'company-files' && isStaff && <CompanyFilesScr profile={profile} />}
             {pg === 'ai-knowledge' && profile?.role === 'owner' && <AiKnowledgeScr profile={profile} />}
+            {pg === 'rate-book' && profile?.role === 'owner' && <RateBookScr profile={profile} />}
             {pg === 'ai-pm' && profile?.role === 'owner' && <AiPmDashboard profile={profile} />}
             {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
             {pg === 'sequences' && profile?.role === 'owner' && <SequencesScr profile={profile} />}
