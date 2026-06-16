@@ -16,10 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy all edge functions via Management API (multipart)
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy all edge functions via Supabase CLI
+        # Switched from raw Management API multipart (single-file upload) to
+        # Supabase CLI. Reason: single-file upload cannot resolve imports from
+        # supabase/functions/_shared/ — the bundler only sees the uploaded
+        # index.ts. The CLI bundles each function with its _shared/ dependencies
+        # before uploading, so relative imports like '../_shared/foo.ts' work.
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          PROJECT_REF: cbfftukmhqvvjlrlnltk
         run: |
           set -u
           FAILED=()
@@ -29,6 +37,7 @@ jobs:
             slug=$(basename "$dir")
             entry="${dir}index.ts"
 
+            # Skip _shared/ and any dir without an index.ts
             if [ ! -f "$entry" ]; then
               echo "::warning::Skipping $slug (no index.ts)"
               continue
@@ -36,21 +45,13 @@ jobs:
 
             echo "→ Deploying $slug"
 
-            response=$(curl -sS -w "\n__HTTP_STATUS__:%{http_code}" \
-              -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/functions/deploy?slug=${slug}" \
-              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-              -F "metadata={\"entrypoint_path\":\"index.ts\",\"name\":\"${slug}\",\"verify_jwt\":false};type=application/json" \
-              -F "file=@${entry};type=application/typescript" 2>&1)
-
-            status=$(echo "$response" | grep "__HTTP_STATUS__" | cut -d: -f2)
-            body=$(echo "$response" | sed '/__HTTP_STATUS__/d')
-
-            if [ "$status" = "200" ] || [ "$status" = "201" ]; then
-              echo "  ✓ $slug deployed (HTTP $status)"
+            if supabase functions deploy "$slug" \
+              --project-ref cbfftukmhqvvjlrlnltk \
+              --no-verify-jwt 2>&1; then
+              echo "  ✓ $slug deployed"
               DEPLOYED+=("$slug")
             else
-              echo "  ✗ $slug FAILED (HTTP $status)"
-              echo "    Response: $(echo "$body" | head -c 300)"
+              echo "  ✗ $slug FAILED"
               FAILED+=("$slug")
             fi
           done
