@@ -1732,3 +1732,26 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Deploy infrastructure fix: old workflow used Management API single-file upload which can't resolve _shared/ imports. Switched to Supabase CLI (supabase/setup-cli@v1). First verify_bugc.js run caught this — ai-field-agent and ai-master-agent had failed deploy (HTTP 400 Module not found); old code was still live. After CLI switch and manual workflow_dispatch, all 56 functions deployed; test passed.
 - CLAUDE.md updated: Edge Function Deploy section now documents CLI approach, _shared/ directory pattern, divergence-guard requirement, and verify_jwt=false policy. Tool count corrected from 24 to 28 (6 read + 22 write).
 - Edge deploy: verify_jwt=false for all functions via --no-verify-jwt flag on every supabase functions deploy call. No config.toml. 8 external-webhook functions covered.
+
+[LOG - 2026-06-16] ESTIMATOR_FACE_SLICE1 — structured estimate FACE (read-only render) — ESTIMATOR_KNOWLEDGE_ARC Phase 4 Slice 1
+- What shipped: Read-only structured render of priced_scope in the Build sub-tab. Grouped as Labor / Materials / Allowances / General with source-label badges and client-side subtotal. Raw chat collapses behind a "▼ View raw estimate" toggle.
+- Files:
+  - `avenstone-vite/src/lib/utils.jsx` — added `estimatorBadge(source_label, vetted)` named export
+  - `avenstone-vite/src/components/jobs/tabs/StructuredEstimate.jsx` — new component (~140 lines)
+  - `avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx` — import + showRaw state + FACE + toggle wire-in
+- source_label → badge map (LOCKED — Slice 2 must not change this):
+  - labor_rate + vetted=true  → ✓ Rate Book   (green-bg / green-text)
+  - labor_rate + vetted=false → ○ Rate Book*  (amber-bg / amber-text)
+  - material_tier             → ◈ Material    (navy-100 bg / navy-900 text)
+  - regional_avg              → ⚡ Regional Avg (amber-bg / amber-text)
+  - user_entered              → ✎ You set     (navy-100 bg / navy-900 text)
+- Key decisions:
+  - FACE derives badges from source_label (not server source_badge). server source_badge is display-only legacy; source_label is the structural truth keyed to the rate engine.
+  - FACE computes its own subtotal client-side (Σ non-null line.amount). Does NOT trust the markdown hardcoded total (has markup/PM-fee baked in and will be corrected in Slice 3).
+  - Subtotal labeled "Subtotal (cost)" to prevent confusion with client price.
+  - Allowances classified by /allowance/i on description (takes priority over materials category), so "Tile allowance" lines get their own section regardless of category.
+  - fixedUnit logic mirrors ai-estimator/index.ts:330 — ['EA','LS','room','load','sq'] → flat $X; others → $X/unit.
+  - user_entered included in badge map now so Slice 2 needs no badge change.
+- Verification: build green (430 modules). hex audit ≤ 1343 (1312 — no new hex added). Mock subtotal: LABOR $3,820 + MATERIALS $607.50 + ALLOWANCES $500 + GENERAL $200 (permit null→excluded) = $5,127.50.
+- Commit: 22a648d, pushed to main.
+- Open: Slice 2 (surgical edit flow), Slice 3 (interview inputs + SF derivation + kill server-side hardcoded markup/PM-fee).
