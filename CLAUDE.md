@@ -165,13 +165,23 @@ All URLs exported from `src/lib/supabase.js`. Function names are self-documentin
 - **Integrations / Payments / Data:** `create-payment-link`, `stripe-webhook`, `ghl-webhook`, `twilio-inbound`, `address-autocomplete`, `get-contractor-profile`, `get-job-status`, `sequence-runner`
 
 ### Edge Function Deploy
-**Functions auto-deploy via GitHub Actions on every push to `supabase/functions/**`.** Workflow uses the multipart `POST /v1/projects/{ref}/functions/deploy` Management API endpoint and reports per-function status.
+**Functions auto-deploy via GitHub Actions on every push to `supabase/functions/**`.** Workflow installs the Supabase CLI (`supabase/setup-cli@v1`) and deploys each function with `supabase functions deploy <slug> --project-ref cbfftukmhqvvjlrlnltk --no-verify-jwt`.
+
+**Why CLI, not raw Management API:** The old workflow used the Management API multipart upload, which sends only `index.ts` as a single file. Any import from `supabase/functions/_shared/` failed at bundle time with "Module not found." The CLI bundles each function with its `_shared/` dependencies before uploading, so relative imports like `../_shared/autoInvoice.ts` resolve correctly. Switched 2026-06-16.
+
+**`_shared/` directory** — holds modules that must run in edge functions but cannot be imported from `src/lib/` (circular-import constraint: edge fns can't import src/lib; src/lib can't import supabase.js). Current shared modules:
+- `_shared/autoInvoice.ts` — edge copy of `src/lib/autoInvoice.js` (identical logic, TypeScript typed)
+- `_shared/tradeActuals.ts` — edge copy of `src/lib/tradeActuals.js`
+
+Both files carry divergence-guard headers pointing at each other. Any logic change in one must be applied to the other manually — there is no automated sync. This is the only safeguard against drift across the boundary.
+
+**`verify_jwt` policy — all functions run with `verify_jwt=false`.** The `--no-verify-jwt` flag is applied uniformly on every deploy. Principle: edge functions enforce their own auth from the request body (user_id/tenant_id) or via the service-role key. Do not rely on Supabase JWT verification at the function level. The 8 external-webhook functions (stripe-webhook, twilio-inbound, ghl-webhook, missed-call-textback, get-job-status, get-contractor-profile, view-engagement, submit-bid-response) require `verify_jwt=false` to accept requests from external callers without a Supabase JWT; the uniform flag covers them correctly.
 
 ```bash
 # Manual fallback (use only if GitHub Actions is broken):
 # Token is in the GitHub secret SUPABASE_ACCESS_TOKEN — never paste it here or in any committed file.
 export SUPABASE_ACCESS_TOKEN=<paste from secure password manager>
-npx supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
+supabase functions deploy <name> --no-verify-jwt --project-ref cbfftukmhqvvjlrlnltk
 ```
 
 **PAT rotation gotchas (learned the hard way):**
@@ -482,7 +492,7 @@ npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop o
 ## Locked decisions — Master Agent v2
 
 - **Chat is the input surface.** Tiles are starter prompts (`TILE_PREFIXES`), not state-machine triggers. Do not reintroduce per-verb chip flows or a queue table — v1's queue layer was overbuilt for a single-tenant tool and was retired in `20260509180000_drop_pending_tasks.sql`.
-- **Confirm card is the only commit point.** Every write verb in `CONFIRM_TOOLS` (currently 13: log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file, record_deposit, compose_draw) returns `pending_action` from ai-master-agent. The agent never writes silently. New write tools must be added to this set unless deliberately excluded with a written reason. Total tools in ai-master-agent: 24 (2 read + 22 write). Verified in `AGENT_AUDIT.md` (2026-06-02) from `ai-master-agent/index.ts:137–151` and `index.ts:448–806`.
+- **Confirm card is the only commit point.** Every write verb in `CONFIRM_TOOLS` (currently 13: log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file, record_deposit, compose_draw) returns `pending_action` from ai-master-agent. The agent never writes silently. New write tools must be added to this set unless deliberately excluded with a written reason. Total tools in ai-master-agent: **28 (6 read + 22 write)**. Read tools (exempt from confirm): get_jobs, get_team, get_job_financials, get_schedule, get_open_todos, get_alerts. Write tools: 13 CONFIRM_TOOLS (listed above) + 9 auto-execute (add_note, advance_phase, update_phase, notify_team, update_job, add_contact, send_client_portal, invite_person, add_knowledge). Verified live from ai-master-agent/index.ts TOOLS array 2026-06-16.
 - **Money read-back is non-negotiable.** Money verbs include `amountToWords` output on the Confirm card so misheard digits read obviously wrong. The helper lives in ai-master-agent/index.ts (Deno-compatible). Same VOICE_AGENT money-safety pattern applies if more money verbs are added.
 - **MasterAgent mounts at App.jsx top level.** This is what makes the conversation persistent across `pg` navigation. Do not unmount it on route change. Do not move it inside a screen.
 - **Bug is the inline exception.** Bug submission does not go through ai-master-agent — html2canvas + getSnapshot fire at tile-tap (the screen changes during chat) and the description posts to submit-bug-report directly. Keep this path bypassed; it is intentionally not LLM-mediated.
