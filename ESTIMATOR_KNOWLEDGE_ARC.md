@@ -14,6 +14,45 @@ The ai-estimator does **not** read `ai_knowledge`. It has zero Supabase connecti
 
 ---
 
+## Finalized Design (2026-06-16 session)
+
+### Interaction model: estimator behaves like the master agent
+The estimator should work like ai-master-agent — conversational, interactive, asks-then-confirms, NEVER silently guesses. Same Confirm-card / popup pattern Kalin already built and trusts, applied to estimating.
+
+### Per-line rate resolution
+For each line item in a draft estimate:
+- Rate EXISTS in Rate Book → use it, cite it, no interruption.
+- NO rate / unbid → interactive popup (master-agent style), NOT buried text. Popup shows: the line description, "I don't have your rate for this," the average/suggested rate as a starting point CLEARLY FLAGGED as unbid/average (not presented as the user's real rate), an editable number field to override the rate right there, and a "Save to Rate Book" checkbox.
+- User answers in the moment → estimate keeps moving. If "Save to Rate Book" checked → that rate is written to the Rate Book and the gap is closed for all future estimates.
+
+### Behavior decision (locked)
+Option 2 + interactive: USE a flagged average to keep the estimate moving, but surface every gap via an interactive popup the user can't miss, with inline override + optional save. This is the Anti-Surprise Engine applied to pricing: the system always knows what it doesn't know and asks rather than bluffing.
+
+### Rename: "AI Knowledge" → "Rate Book"
+Kalin wants the AI Knowledge section renamed to "Rate Book."
+OPEN QUESTION for build: AI Knowledge currently holds MORE than rates (business_structure/markup config, client_communication tone, draw_schedule, estimating_guidelines, change_order_policy, company_profile). Decide at build time: (a) rename the whole section "Rate Book" and accept it also holds non-rate config, or (b) split the pricing entries into a "Rate Book" view and keep business rules in a separate section. Recommendation: lean (b) — a dedicated Rate Book view filtered to pricing entries, so the name matches the contents, with rules living elsewhere. Confirm with Kalin at build.
+
+### Manage-pricing UX (resolved — keep it simple)
+Do NOT put "change pricing" on every line item — that's clutter. The gap-flagging popup IS the primary editing surface (edit in the moment when something's flagged). The Rate Book view is the secondary place to review/edit all defaults. Reps can still freely edit line item numbers directly (existing escape hatch, unchanged). The product is the gap-detection + ask behavior, not a heavy pricing UI.
+
+### Rate data model: structured for future tiering (design now, build flat now)
+The Rate Book rate field must NOT be a bare number. Make it a small structure so tiered pricing can be added later WITHOUT a migration:
+- Now (build): `{ type: 'flat', rate: X, unit: '...' }`
+- Future (Phase 2, white-label): `{ type: 'tiered', apply: 'flat_per_tier' | 'marginal', bands: [{ up_to: 1000, rate: A }, { up_to: 2000, rate: B }, ...] }`
+
+Build ONLY flat now. No tiered UI. Just shape the column/field so tiered drops in later.
+
+### Tiered pricing — PHASE 2, white-label only (captured, not built)
+Volume-break pricing (painter charges $X/SF up to 1000 SF, $Y/SF 1001–2000, etc.; also material-type variants like siding type). This is mainly a white-label tenant need (SF-based bidders: painters, drywallers, flooring, siding). Avenstone/Kalin (cost-plus) does NOT need it — reps just edit the line. Tier application default for those tenants is typically "flat_per_tier" (whole job priced at the band it falls into), with "marginal" as a per-rate option. Build later when a real tiered tenant exists. Do not build now.
+
+### Hardcoded rates: delete, don't reconcile
+The ai-estimator SYSTEM_PROMPT hardcoded rate table (generic KC averages) should be DELETED, not migrated or crowned authoritative. Rationale: they aren't Kalin's rates and can't be vouched for; keeping them just gives the estimator a silent-fallback path (the original bug). Rate Book becomes the single source; gaps become popups. Kalin confirmed he's fine running on flagged averages during testing in the meantime — the current estimator already does this (it's been using the hardcoded averages all along), so testing is NOT blocked by this arc.
+
+### Note: contract signing used to work
+Kalin confirmed contract signing previously functioned — supports the CONTRACT_SIGNING_ARC Gap 5 hypothesis that the flow REGRESSED when magic links were retired (2026-06-01), rather than never having existed. Reframes that work as "restore access path," likely smaller than a from-scratch build.
+
+---
+
 ## Core Design: Per-Tenant Rate-Resolution Ladder
 
 The central insight: two tenant types need opposite behavior, solved by one config knob.
