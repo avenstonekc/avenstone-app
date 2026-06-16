@@ -1,6 +1,7 @@
 
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { type RateBook, type LaborRow, type MaterialRow } from "../_shared/rateBook.ts";
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -244,43 +245,15 @@ Rules for JSON extraction:
 - If there are multiple line items per trade, each gets its own object with the same "trade" value
 - "category" must be exactly "labor" or "materials" for every line item — labor/subcontractor lines get "labor"; material purchases, allowances, equipment, and permits get "materials"`;
 
-// ── 3a: Rate Book types ──────────────────────────────────────────────────────
-
-interface LaborRow {
-  trade: string;
-  line_item: string;
-  unit: string;
-  rate_low: number;
-  rate_high: number | null;
-  rate_data: Record<string, unknown>;
-  vetted: boolean;
-}
-
-interface MaterialRow {
-  category: string;
-  description: string;
-  unit: string;
-  tier_low_min: number | null;
-  tier_low_max: number | null;
-  tier_mid_min: number | null;
-  tier_mid_max: number | null;
-  tier_hi_min: number | null;
-  tier_hi_max: number | null;
-  tier_low_label: string;
-  tier_mid_label: string;
-  tier_hi_label: string;
-}
-
-interface RateBook {
-  laborRows: LaborRow[];
-  materialRows: MaterialRow[];
-}
+// ── 3b-1: Rate Book types imported from _shared/rateBook.ts ─────────────────
+// LaborRow / MaterialRow / RateBook types are defined there.
+// resolveRate() lives there too — wired into the prompt in 3b-2.
 
 async function loadRateBook(tenantId: string): Promise<RateBook> {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const [laborRes, materialRes] = await Promise.all([
     sb.from("rate_book_labor")
-      .select("trade, line_item, unit, rate_low, rate_high, rate_data, vetted")
+      .select("id, trade, line_item, unit, rate_low, rate_high, rate_data, vetted")
       .eq("tenant_id", tenantId)
       .eq("active", true)
       .order("trade")
@@ -295,7 +268,7 @@ async function loadRateBook(tenantId: string): Promise<RateBook> {
   if (materialRes.error) console.error("ai-estimator: rate_book_material error:", materialRes.error.message);
   const laborRows = (laborRes.data ?? []) as LaborRow[];
   const materialRows = (materialRes.data ?? []) as MaterialRow[];
-  console.log(`ai-estimator [3a]: Rate Book loaded — ${laborRows.length} labor, ${materialRows.length} material (tenant: ${tenantId})`);
+  console.log(`ai-estimator [3b-1]: Rate Book loaded — ${laborRows.length} labor, ${materialRows.length} material (tenant: ${tenantId})`);
   return { laborRows, materialRows };
 }
 
