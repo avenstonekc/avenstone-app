@@ -1,253 +1,76 @@
-
+// ESTIMATOR_KNOWLEDGE_ARC Phase 3b-2
+// AI scopes (JSON only, no prices). Code prices via resolveRate + material tiers.
+// Hardcoded rate table deleted. Rate Book is the sole pricing source.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { type RateBook, type LaborRow, type MaterialRow } from "../_shared/rateBook.ts";
+import {
+  type RateBook,
+  type LaborRow,
+  type MaterialRow,
+  resolveRate,
+  getTier,
+} from "../_shared/rateBook.ts";
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
-const SYSTEM_PROMPT = `# ── AVEN CORE IDENTITY (same base as ai-master-agent) ──
-You are Aven — Avenstone's AI, here in the estimate builder. Never mention Claude, Anthropic, or any AI platform.
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
-VOICE & BEHAVIOR:
-- Fewest questions: infer from scope, measurements, and AI Knowledge. Ask only what can't be inferred. One question max; if you can proceed, proceed.
-- Task-focused: build the estimate. No tangents, no over-explaining the process.
-- Terse: short and direct. No preamble, no filler.
-- Anti-surprise: if a rate is missing or unbid, flag it in ONE line at the top — e.g., "[RATE MISSING: carpet labor — using KC avg $3.50/SF]". Not a lecture.
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-# ── ESTIMATOR EXTENSION ──
-You generate detailed, accurate, trade-by-trade estimates for Avenstone Group LLC (Kansas City, MO — residential and light commercial).
+type FinishTier = "low" | "mid" | "high";
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-COMPANY ESTIMATING METHODOLOGY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Avenstone operates on a COST-PLUS model:
-- Profit Margin: 20–35% of total cost (default 25% for mid-size jobs)
-  - Jobs under $15k: 30–35%
-  - Jobs $15k–$50k: 25–30%
-  - Jobs over $50k: 20–25%
-- Project Management Fee: Flat rate (typically $800–$2,000 depending on complexity)
-- These are added AFTER the cost subtotal, shown separately at the bottom
-
-TRANSPARENCY FIRST: Avenstone shows clients exactly what materials cost, what labor costs, and what the markup is. All allowances are labeled. All quantities shown.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TRADE SECTIONS (use these exact groupings in order)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Only include trades relevant to the scope. Standard order:
-1. DEMO / TEAROUT
-2. FRAMING & CARPENTRY
-3. INSULATION
-4. DRYWALL
-5. TILE & WATERPROOFING
-6. FLOORING
-7. PLUMBING
-8. VANITY & FIXTURES
-9. ELECTRICAL
-10. HVAC
-11. CABINETS & COUNTERTOPS
-12. PAINT
-13. ROOFING
-14. SIDING & EXTERIOR
-15. WINDOWS & DOORS
-16. CONCRETE & MASONRY
-17. GENERAL (permits, protection, cleanup, contingency)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WASTE FACTORS — ALWAYS APPLY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Always apply waste and show the waste-adjusted quantity:
-- LVP / hardwood flooring: +12% (e.g., "550 SF with waste" for 490 SF net)
-- Tile (floor): +15%
-- Tile (wall / shower): +15%
-- Drywall: +10%
-- Paint: round up to nearest gallon (1 gal covers ~350 SF, 2 coats = ~175 SF)
-- Trim / baseboard: +10%
-- Insulation (batt): +8%
-- Framing lumber: +10%
-
-Always show the formula in the description: e.g., "LVP Material — Living Room (490 SF net + 12% waste = 550 SF @ $2.00/SF)"
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-KC METRO LABOR RATES (2026)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-DEMO:
-- Full gut demo + haul: $2.00–3.00/SF of gross area
-- Selective demo (per room): $500–1,500 LS
-- Dumpster (10-yard): $400–500; (20-yard): $600–700
-
-FRAMING:
-- Framing labor (walls, soffits): $3.50–5.00/SF of framed area
-- Lumber materials: $0.85–1.20/LF for 2x4, $1.10–1.50/LF for 2x6
-
-INSULATION:
-- Batt (R-13, 2x4 walls): $1.20–1.60/SF
-- Batt (R-19, 2x6 walls): $1.50–2.00/SF
-- Blown-in attic: $1.25–1.75/SF
-- Spray foam (closed cell): $4.00–6.00/SF
-
-DRYWALL:
-- Hang: $0.65–0.85/SF
-- Tape / mud / finish: $1.10–1.40/SF
-- Combined hang + finish: $1.75–2.25/SF
-- Drywall board: $14–18/sheet (4x8)
-
-TILE:
-- Tile labor (floor, standard): $8–11/SF
-- Tile labor (shower walls): $10–14/SF
-- Tile labor (small mosaic / intricate): $12–16/SF
-- Waterproofing membrane: $3–5/SF of shower area
-- Setting materials (thinset, backer board, grout, caulk): $3–5/SF LS
-
-FLOORING:
-- LVP installation: $2.00–2.50/SF
-- Hardwood installation: $3.50–5.00/SF
-- Carpet installation (incl. pad): $3.50–5.50/SF total (material + labor)
-
-PLUMBING:
-- Full PEX repipe (per fixture): $800–1,200/fixture
-- Finish plumbing per bathroom (rough-in done): $1,200–2,000 LS
-- Water heater swap: $800–1,200 LS
-
-ELECTRICAL:
-- Full rewire + panel: $8–12/SF of living area
-- Partial / update: $4,000–8,000 LS depending on scope
-- Recessed lighting (add circuit): $150–200/can installed
-- Panel upgrade (100A → 200A): $2,000–3,500
-
-HVAC:
-- Full system replacement (furnace + AC): $8,000–14,000
-- Ductwork extend / modify: $800–2,500 LS
-- Mini split (single zone): $2,500–4,000 installed
-
-PAINT:
-- Interior paint labor + materials: $1.50–2.25/SF of floor area (walls + ceiling)
-- Exterior paint: $2.00–3.00/SF of surface area
-- Cabinet painting (labor only): $800–1,500 LS
-
-TRIM & CARPENTRY:
-- Baseboard / trim install: $2.00–3.00/LF
-- Door install (pre-hung): $175–275/door
-- Window trim: $75–125/window
-
-ROOFING:
-- Asphalt shingle tear-off + replace: $4.00–6.50/SF (incl. underlayment, ice guard)
-- Metal roofing: $8–14/SF installed
-
-GENERAL:
-- Building permit: $300–900 depending on scope
-- Floor / stair protection: $150–400 LS
-- Final cleanup: $300–800 LS
-- Contingency (unknown conditions): 5–10% of hard costs
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-KC METRO MATERIAL RATES (2026)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-LVP FLOORING:
-- Budget (6mm, basic): $1.50–2.00/SF
-- Mid (8mm, commercial grade): $2.50–3.50/SF
-- Premium (12mm, waterproof): $4.00–5.50/SF
-
-TILE:
-- Subway / standard wall tile: $2–4/SF
-- 12x24 porcelain: $2.50–4.50/SF
-- Hex / mosaic: $6–14/SF
-- Large format (24x24+): $4–8/SF
-
-CARPET:
-- Budget (with pad): $2.50–3.50/SF
-- Mid-grade (with pad): $4.00–5.50/SF
-- Premium (with pad): $6.00–8.00/SF
-
-CABINETS:
-- Stock (Home Depot / Lowes): $75–150/LF of cabinet
-- Semi-custom (RTA): $150–250/LF
-- Custom: $350–600/LF
-
-COUNTERTOPS:
-- Laminate: $15–30/SF installed
-- Granite (level 1–2): $45–75/SF installed
-- Quartz: $55–90/SF installed
-
-VANITIES:
-- Stock 24–36" vanity: $150–400
-- Mid-grade 36–60": $400–800
-- Custom / semi-custom: $800–2,000
-
-FIXTURES:
-- Budget fixture package (toilet, faucets, shower): $400–700
-- Mid-grade brushed nickel: $800–1,500
-- Premium: $1,500–3,500
-
-PAINT:
-- Interior latex (gallon): $35–55
-- Coverage: ~350 SF/gallon (1 coat); assume 2 coats
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LINE ITEM FORMAT RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-For every line item:
-1. Description: Be specific. Include waste-adjusted quantities, unit prices, and spec level parenthetically
-2. QTY: Use "X SF", "X LF", "X EA", or "1 LS" — never leave blank
-3. Amount: Dollar amount for that line
-
-Examples of good line items:
-- "LVP Flooring Material — Living Room (490 SF + 12% waste = 550 SF @ $2.50/SF)" | 550 SF | $1,375
-- "Tile Labor — Shower Walls + Floor (waterproofing, setting, grouting)" | 1 LS | $4,800
-- "Toilet Allowance — Elongated, Standard Height" | 1 EA | $275
-- "Building Permit" | 1 LS | $450
-
-ALLOWANCES: Any line item that is a client-selected item (fixtures, tile, flooring material) must include "Allowance" in the name. This tells the client they own the upgrade/downgrade delta.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-FLAGS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-If any information is missing or unclear:
-- Flag it at the TOP of your response with [FLAG: ...]
-- Include a contingency line item for unknown conditions
-- Do NOT guess at missing dimensions — use a note instead
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JSON EXTRACTION MODE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-When you receive the message "EXTRACT_JSON_FOR_PROPOSAL", respond with ONLY valid JSON and absolutely nothing else — no preamble, no explanation, no markdown. The JSON must follow this exact structure:
-
-{
-  "scope_summary": ["bullet 1", "bullet 2", "...up to 12 bullets describing the full scope"],
-  "line_items": [
-    {
-      "trade": "DEMO / TEAROUT",
-      "description": "Full demo and haul — kitchen, 2 baths (1,200 SF @ $2.50/SF)",
-      "qty_label": "1 LS",
-      "amount": 3000,
-      "category": "labor"
-    }
-  ],
-  "flags": ["any missing info or concerns — empty array if none"],
-  "subtotal": 32590
+interface ScopeLine {
+  trade: string;
+  line_item: string;
+  unit: string;
+  quantity: number;
+  description: string;
+  category: "labor" | "materials" | "general";
+  regional_rate?: number | null; // AI-supplied fallback for gaps + general lines
 }
 
-Rules for JSON extraction:
-- Include ALL line items from the estimate, grouped by trade
-- The "trade" field must be one of the standard trade section names
-- amounts are numbers (no $ sign, no commas)
-- subtotal is the sum of all amounts
-- scope_summary bullets are client-facing (professional language, no pricing)
-- If there are multiple line items per trade, each gets its own object with the same "trade" value
-- "category" must be exactly "labor" or "materials" for every line item — labor/subcontractor lines get "labor"; material purchases, allowances, equipment, and permits get "materials"`;
+interface ScopeJSON {
+  scope_summary: string[];
+  lines: ScopeLine[];
+  flags: string[];
+}
 
-// ── 3b-1: Rate Book types imported from _shared/rateBook.ts ─────────────────
-// LaborRow / MaterialRow / RateBook types are defined there.
-// resolveRate() lives there too — wired into the prompt in 3b-2.
+interface PricedLine extends ScopeLine {
+  unit_price: number | null;
+  amount: number | null;
+  source_label: "labor_rate" | "material_tier" | "regional_avg";
+  source_badge: string;
+  vetted: boolean;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function ok(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { ...CORS, "Content-Type": "application/json" },
+  });
+}
+
+function fail(msg: string, status = 500): Response {
+  return new Response(JSON.stringify({ error: msg }), {
+    status,
+    headers: { ...CORS, "Content-Type": "application/json" },
+  });
+}
+
+function fmtMoney(n: number | null): string {
+  if (n == null) return "TBD";
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+// ── Rate Book loader ──────────────────────────────────────────────────────────
 
 async function loadRateBook(tenantId: string): Promise<RateBook> {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -264,77 +87,371 @@ async function loadRateBook(tenantId: string): Promise<RateBook> {
       .eq("active", true)
       .order("category"),
   ]);
-  if (laborRes.error) console.error("ai-estimator: rate_book_labor error:", laborRes.error.message);
-  if (materialRes.error) console.error("ai-estimator: rate_book_material error:", materialRes.error.message);
+  if (laborRes.error) console.error("ai-estimator rate_book_labor:", laborRes.error.message);
+  if (materialRes.error) console.error("ai-estimator rate_book_material:", materialRes.error.message);
   const laborRows = (laborRes.data ?? []) as LaborRow[];
   const materialRows = (materialRes.data ?? []) as MaterialRow[];
-  console.log(`ai-estimator [3b-1]: Rate Book loaded — ${laborRows.length} labor, ${materialRows.length} material (tenant: ${tenantId})`);
+  console.log(`ai-estimator [3b-2]: ${laborRows.length} labor, ${materialRows.length} material (tenant: ${tenantId})`);
   return { laborRows, materialRows };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Vocabulary builder (injected per-request) ─────────────────────────────────
 
-Deno.serve(async (req) => {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  };
+function buildVocabSection(rateBook: RateBook): string {
+  const tradeMap = new Map<string, string[]>();
+  for (const row of rateBook.laborRows) {
+    if (!tradeMap.has(row.trade)) tradeMap.set(row.trade, []);
+    tradeMap.get(row.trade)!.push(`${row.line_item}·${row.unit}`);
+  }
+  const laborVocab = [...tradeMap.entries()]
+    .map(([trade, items]) => `${trade}: ${items.join(", ")}`)
+    .join("\n");
 
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+  const matVocab = rateBook.materialRows.map((r) => `${r.category}·${r.unit}`).join(", ");
+
+  return `LABOR VOCABULARY — category="labor" lines: use EXACT trade / line_item / unit:
+${laborVocab}
+
+MATERIAL VOCABULARY — category="materials" lines: set line_item = exact category name:
+${matVocab}
+
+GENERAL LINES — category="general": line_item ∈ { permit | floor_protection | cleanup | contingency_ls }
+Always set regional_rate for general lines (your KC market estimate for that cost).`;
+}
+
+// ── Scope system prompt ───────────────────────────────────────────────────────
+
+function buildScopeSystemPrompt(vocabSection: string): string {
+  return `You are Aven — Avenstone's AI estimator (KC, MO residential + light commercial). Never mention Claude or Anthropic.
+
+YOUR ONLY JOB IS SCOPE. DO NOT INVENT OR OUTPUT PRICES. Pricing is applied by code after you respond.
+Output ONLY valid JSON — no prose, no markdown fences, no text before or after. Start your response with { and end with }.
+
+COMPANY: Cost-plus model. Markup (30%) and PM fee ($1,200) are added by code — do not include.
+TRANSPARENCY: Separate labor and material lines. Client-allowance items include "Allowance" in description.
+
+TRADE ORDER (include only relevant trades):
+DEMO/TEAROUT · FRAMING · INSULATION · DRYWALL · TILE & WATERPROOFING · FLOORING
+PLUMBING · VANITY & FIXTURES · ELECTRICAL · HVAC · CABINETS & COUNTERTOPS
+PAINT · ROOFING · SIDING/EXTERIOR · WINDOWS/DOORS · CONCRETE · GENERAL
+
+WASTE — apply to quantities, show math in description:
+Tile (floor or wall/shower): +15% | Drywall: +10% | LVP/hardwood: +12%
+Trim/baseboard: +10% | Insulation batt: +8% | Framing lumber: +10%
+
+BATHROOM RULES: use moisture_resistant (not hang/combined) for any wet-area drywall.
+If shower has tiled floor: include schluter_membrane (SF) + shower_pan_mudbed (LS).
+
+${vocabSection}
+
+SCOPE JSON SCHEMA:
+{
+  "scope_summary": ["<client-facing bullet>", ...],  // up to 12 bullets, no prices
+  "lines": [
+    {
+      "trade": "<exact trade string from LABOR VOCABULARY>",
+      "line_item": "<exact line_item or material category>",
+      "unit": "<SF|LF|EA|LS|sq|room|load>",
+      "quantity": <number, waste-adjusted>,
+      "description": "<specific, show waste math>",
+      "category": "labor" | "materials" | "general",
+      "regional_rate": <number|null>  // null for matched labor vocab; required for general + unmatched items
+    }
+  ],
+  "flags": ["<missing info, assumptions, unknowns>"]
+}
+
+RULES:
+- Labor vocab match → set regional_rate: null. EXACT trade/line_item/unit from vocabulary.
+- Labor with no vocab match → closest match, set regional_rate to your KC estimate, add a flag.
+- Materials → line_item = EXACT category from MATERIAL VOCABULARY.
+- General → always set regional_rate to your KC market estimate.`;
+}
+
+// ── Extraction prompt (EXTRACT_JSON_FOR_PROPOSAL pass-through) ────────────────
+
+const EXTRACT_SYSTEM_PROMPT = `You are Aven — Avenstone's AI. Read the estimate in the conversation and output ONLY valid JSON — no prose, no markdown.
+
+Output exactly:
+{
+  "scope_summary": ["<client bullet>", ...],
+  "line_items": [
+    {
+      "trade": "<trade section>",
+      "description": "<item description>",
+      "qty_label": "<quantity + unit>",
+      "amount": <dollar number, no $ or commas>,
+      "category": "labor" | "materials"
+    }
+  ],
+  "flags": ["..."],
+  "subtotal": <sum of all amounts, no markup>
+}
+Include ALL priced lines. amounts are plain numbers. subtotal = sum of line amounts only (not markup or PM fee).`;
+
+// ── Material pricing ──────────────────────────────────────────────────────────
+
+function priceMaterialLine(
+  category: string,
+  quantity: number,
+  rateBook: RateBook,
+  finishTier: FinishTier,
+): { price: number | null; amount: number | null; tierLabel: string } {
+  const row = rateBook.materialRows.find((r) => r.category === category);
+  if (!row) return { price: null, amount: null, tierLabel: "?" };
+  let minV: number | null, maxV: number | null, label: string;
+  if (finishTier === "low") {
+    minV = row.tier_low_min; maxV = row.tier_low_max; label = row.tier_low_label;
+  } else if (finishTier === "high") {
+    minV = row.tier_hi_min; maxV = row.tier_hi_max; label = row.tier_hi_label;
+  } else {
+    minV = row.tier_mid_min; maxV = row.tier_mid_max; label = row.tier_mid_label;
+  }
+  if (minV == null && maxV == null) return { price: null, amount: null, tierLabel: label };
+  const price = (Number(minV ?? maxV) + Number(maxV ?? minV)) / 2;
+  return { price, amount: Math.round(price * quantity * 100) / 100, tierLabel: label };
+}
+
+// ── Pricing orchestrator ──────────────────────────────────────────────────────
+
+function priceScopeLines(
+  lines: ScopeLine[],
+  rateBook: RateBook,
+  projectSf: number,
+  finishTier: FinishTier,
+): PricedLine[] {
+  return lines.map((line): PricedLine => {
+    // ── Labor ─────────────────────────────────────────────────────────────────
+    if (line.category === "labor") {
+      const result = resolveRate(
+        { trade: line.trade, line_item: line.line_item, unit: line.unit, quantity: line.quantity, project_sf: projectSf },
+        rateBook,
+      );
+      if (result.matched) {
+        const vRow = rateBook.laborRows.find((r) => r.id === result.labor_row_id);
+        return {
+          ...line,
+          unit_price: result.rate_point,
+          amount: result.amount,
+          source_label: "labor_rate",
+          source_badge: vRow?.vetted ? "✓ Rate Book" : "○ Rate Book*",
+          vetted: vRow?.vetted ?? false,
+        };
+      }
+      // Gap: use AI-supplied regional_rate
+      const rgRate = typeof line.regional_rate === "number" ? line.regional_rate : null;
+      return {
+        ...line,
+        unit_price: rgRate,
+        amount: rgRate != null ? Math.round(rgRate * line.quantity * 100) / 100 : null,
+        source_label: "regional_avg",
+        source_badge: "⚡ Regional Avg",
+        vetted: false,
+      };
+    }
+
+    // ── Materials ──────────────────────────────────────────────────────────────
+    if (line.category === "materials") {
+      const { price, amount, tierLabel } = priceMaterialLine(line.line_item, line.quantity, rateBook, finishTier);
+      if (price != null) {
+        return {
+          ...line,
+          unit_price: price,
+          amount,
+          source_label: "material_tier",
+          source_badge: `◈ Material (${tierLabel})`,
+          vetted: false,
+        };
+      }
+      // Material category not in Rate Book — use AI regional_rate
+      const rgRate = typeof line.regional_rate === "number" ? line.regional_rate : null;
+      return {
+        ...line,
+        unit_price: rgRate,
+        amount: rgRate != null ? Math.round(rgRate * line.quantity * 100) / 100 : null,
+        source_label: "regional_avg",
+        source_badge: "⚡ Regional Avg",
+        vetted: false,
+      };
+    }
+
+    // ── General (permit, cleanup, floor_protection, contingency_ls) ────────────
+    const rgRate = typeof line.regional_rate === "number" ? line.regional_rate : null;
+    return {
+      ...line,
+      unit_price: rgRate,
+      amount: rgRate != null ? Math.round(rgRate * line.quantity * 100) / 100 : null,
+      source_label: "regional_avg",
+      source_badge: "⚡ Regional Avg",
+      vetted: false,
+    };
+  });
+}
+
+// ── Estimate formatter ────────────────────────────────────────────────────────
+
+function formatEstimate(
+  scope: ScopeJSON,
+  pricedLines: PricedLine[],
+  projectSf: number,
+  finishTier: FinishTier,
+): string {
+  const tier = getTier(projectSf);
+  const tierLabel = {
+    high: `HIGH (${projectSf} SF — ≤750 SF premium per-unit)`,
+    mid: `MID (${projectSf} SF — 751–1,999 SF)`,
+    low: `LOW (${projectSf} SF — 2,000+ SF volume)`,
+  }[tier];
+  const finishLabel = { low: "Budget", mid: "Mid-grade", high: "Premium" }[finishTier];
+
+  // Group by trade, preserving line order
+  const tradeOrder: string[] = [];
+  const byTrade = new Map<string, PricedLine[]>();
+  for (const line of pricedLines) {
+    const key = line.trade || "General";
+    if (!byTrade.has(key)) { byTrade.set(key, []); tradeOrder.push(key); }
+    byTrade.get(key)!.push(line);
   }
 
+  let laborTotal = 0, matTotal = 0, generalTotal = 0;
+  const gapItems: string[] = [];
+  let body = "";
+
+  for (const trade of tradeOrder) {
+    const lines = byTrade.get(trade)!;
+    body += `\n**${trade.toUpperCase()}**\n`;
+    for (const line of lines) {
+      const amt = line.amount ?? 0;
+      if (line.category === "labor") laborTotal += amt;
+      else if (line.category === "materials") matTotal += amt;
+      else generalTotal += amt;
+      if (line.source_label === "regional_avg") gapItems.push(line.line_item);
+
+      const fixedUnit = ["EA", "LS", "room", "load", "sq"].includes(line.unit);
+      const rateStr = line.unit_price != null
+        ? (fixedUnit ? fmtMoney(line.unit_price) : `${fmtMoney(line.unit_price)}/${line.unit}`)
+        : "TBD";
+
+      body += `- ${line.description} | ${line.quantity} ${line.unit} | ${rateStr} | **${fmtMoney(line.amount)}** | ${line.source_badge}\n`;
+    }
+  }
+
+  const subtotal = laborTotal + matTotal + generalTotal;
+  const markup = Math.round(subtotal * 0.30);
+  const pmFee = 1200;
+  const total = subtotal + markup + pmFee;
+
+  let out = `**Pricing Tier: ${tierLabel}** · Finish: **${finishLabel}**\n${body}
+---
+Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}
+**Subtotal: ${fmtMoney(subtotal)}**
+Markup (30%): ${fmtMoney(markup)}
+Project Management: ${fmtMoney(pmFee)}
+**TOTAL: ${fmtMoney(total)}**`;
+
+  if (gapItems.length > 0) {
+    out += `\n\n> ⚡ **Regional Avg** lines (not from Rate Book): ${[...new Set(gapItems)].join(", ")}. Add to Rate Book to vet.`;
+  }
+  if (pricedLines.some((l) => l.source_label === "labor_rate" && !l.vetted)) {
+    out += "\n> ○ **Rate Book*** = seeded rate, not yet vetted by Kalin. Review in Rate Book → Labor Rates.";
+  }
+  if (scope.flags.length > 0) {
+    out += `\n\n**Flags:** ${scope.flags.join(" · ")}`;
+  }
+  return out;
+}
+
+// ── Anthropic call helper ─────────────────────────────────────────────────────
+
+async function callAnthropic(
+  system: string,
+  messages: Array<{ role: string; content: unknown }>,
+  maxTokens: number,
+): Promise<{ text: string; truncated: boolean; error?: string }> {
+  const res = await fetch(ANTHROPIC_URL, {
+    method: "POST",
+    headers: {
+      "x-api-key": ANTHROPIC_KEY,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, system, messages }),
+  });
+  const data = await res.json();
+  if (!res.ok) return { text: "", truncated: false, error: data.error?.message ?? "AI error" };
+  if (data.stop_reason === "max_tokens") {
+    console.error("ai-estimator truncated:", data.usage);
+  }
+  return { text: data.content?.[0]?.text ?? "", truncated: data.stop_reason === "max_tokens" };
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
   try {
-    const { messages, tenant_id } = await req.json();
-    if (!messages?.length) return new Response("no messages", { status: 400 });
+    const { messages, tenant_id, project_sf, finish_tier } = await req.json();
+    if (!messages?.length) return fail("no messages", 400);
+    if (!tenant_id) return fail("tenant_id required", 400);
 
-    // 3a: Load Rate Book — available for 3b prompt injection. No pricing change this slice.
-    let rateBook: RateBook = { laborRows: [], materialRows: [] };
-    if (tenant_id) {
-      rateBook = await loadRateBook(tenant_id);
-    } else {
-      console.warn("ai-estimator [3a]: no tenant_id in request — Rate Book not loaded");
-    }
-    // 3b will use rateBook for tier-collapse + prompt injection. Suppress lint until then.
-    void rateBook;
+    const rateBook = await loadRateBook(tenant_id);
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 32000,
-        system: SYSTEM_PROMPT,
-        messages,
-      }),
-    });
+    // ── EXTRACT_JSON_FOR_PROPOSAL: pass through to AI to extract from formatted markdown ──
+    const lastMsg = messages[messages.length - 1];
+    const isExtract =
+      typeof lastMsg?.content === "string" &&
+      lastMsg.content.trim() === "EXTRACT_JSON_FOR_PROPOSAL";
 
-    const data = await response.json();
-    if (!response.ok) {
-      console.error("Anthropic error:", data);
-      return new Response(JSON.stringify({ error: data.error?.message || "AI error" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (isExtract) {
+      const result = await callAnthropic(EXTRACT_SYSTEM_PROMPT, messages, 6000);
+      if (result.error) return fail(result.error);
+      return ok({ content: result.text, ...(result.truncated ? { truncated: true } : {}) });
     }
 
-    if (data.stop_reason === "max_tokens") {
-      console.error("ai-estimator truncated (max_tokens):", data.usage, "request_id:", data.id);
+    // ── Fail-loud: Rate Book must be populated for scope calls ─────────────────
+    if (!rateBook.laborRows.length) {
+      console.error("ai-estimator: Rate Book empty for tenant", tenant_id);
+      return fail(
+        "Rate Book not available for this tenant — cannot generate a priced estimate. Verify rate_book_labor rows exist and are active.",
+        503,
+      );
     }
 
-    return new Response(JSON.stringify({
-      content: data.content[0].text,
-      ...(data.stop_reason === "max_tokens" ? { truncated: true } : {}),
-    }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    console.error("ai-estimator error:", err);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const finishTier: FinishTier = ["low", "mid", "high"].includes(finish_tier)
+      ? (finish_tier as FinishTier)
+      : "mid";
+    const projectSf = typeof project_sf === "number" && project_sf > 0 ? project_sf : 0;
+
+    // ── Scope call ─────────────────────────────────────────────────────────────
+    const vocabSection = buildVocabSection(rateBook);
+    const scopeSystem = buildScopeSystemPrompt(vocabSection);
+
+    const scopeResult = await callAnthropic(scopeSystem, messages, 4000);
+    if (scopeResult.error) return fail(scopeResult.error);
+
+    // Parse scope JSON — strip markdown fences if AI added them despite instructions
+    let scope: ScopeJSON;
+    try {
+      const raw = scopeResult.text.trim();
+      const jsonStr = raw.startsWith("{")
+        ? raw
+        : (raw.match(/```(?:json)?\s*([\s\S]+?)```/)?.[1]?.trim() ?? raw);
+      scope = JSON.parse(jsonStr);
+      if (!Array.isArray(scope.lines)) throw new Error("missing lines array");
+    } catch (e) {
+      console.error("ai-estimator: scope JSON parse failed —", String(e), "| raw:", scopeResult.text.slice(0, 400));
+      // Graceful fallback: return raw text rather than a blank error
+      return ok({ content: scopeResult.text, parse_error: true });
+    }
+
+    // Price and format
+    const pricedLines = priceScopeLines(scope.lines, rateBook, projectSf, finishTier);
+    const content = formatEstimate(scope, pricedLines, projectSf, finishTier);
+
+    return ok({ content, ...(scopeResult.truncated ? { truncated: true } : {}) });
+  } catch (e) {
+    console.error("ai-estimator error:", e);
+    return fail(String(e));
   }
 });

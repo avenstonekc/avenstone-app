@@ -174,7 +174,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const res = await fetch(AI_ESTIMATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({ messages: apiMessages, tenant_id: AV_TENANT }),
+        body: JSON.stringify({ messages: apiMessages, tenant_id: AV_TENANT, project_sf: estForm.sqft ? parseInt(estForm.sqft, 10) : 0, finish_tier: 'mid' }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
@@ -213,7 +213,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const res = await fetch(AI_ESTIMATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({ messages: extractMessages, tenant_id: AV_TENANT }),
+        body: JSON.stringify({ messages: extractMessages, tenant_id: AV_TENANT, project_sf: estForm.sqft ? parseInt(estForm.sqft, 10) : 0, finish_tier: 'mid' }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
