@@ -146,7 +146,7 @@ Index categories are locked at three: function, date, failure pattern. Adding a 
 
 ## Doc count discipline
 
-**6-MD cap on root-level planning docs.** Acceptable root docs: CLAUDE.md, CLAUDE_MEMORY.md, CLAUDE_ARCHIVE.md, CLAUDE_INDEX.md, OPUS_RULES.md, AVENSTONE_VISION.md. Everything else folds in or archives.
+**7-doc cap on root-level planning docs.** Acceptable root docs: CLAUDE.md, CLAUDE_MEMORY.md, CLAUDE_ARCHIVE.md, CLAUDE_INDEX.md, OPUS_RULES.md, AVENSTONE_VISION.md, MASTER_BUILD_PLAN.md. Everything else folds in or archives. CLAUDE_INDEX.md now exists — Archive Rules A and B are active (no longer dormant).
 
 **Plan docs fold into VISION, then archive.** An arc planning doc (e.g. EXECUTION_ARC.md) is a working artifact. Once the arc ships, its content moves to CLAUDE_ARCHIVE.md under a slug heading, and the original file is replaced with a single redirect line (`See CLAUDE_ARCHIVE.md § slug-name`). This keeps root-level clutter at zero without destroying history.
 
