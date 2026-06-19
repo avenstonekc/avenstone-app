@@ -1,6 +1,8 @@
 # MASTER_BUILD_PLAN.md
-**DRAFT — pending Kalin review. Sequence not final until approved.**
+**APPROVED — locked 2026-06-19. 6-block order confirmed: Owner Foundation → Engine → Watcher → Seams → Client Front Door → Autopilot.**
 **Last full-code audit: 2026-06-19 (all 21 docs/arcs/ verified against live code)**
+
+> **Starting position: B1.1 (bid_model_config schema). Next session begins here.**
 
 ---
 
@@ -308,15 +310,17 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **What's NOT built (this block builds it):**
 
+**Order rationale:** Draw composer ships before killing hardcoded fallbacks. Reason: draw composer fixes a live double-charge risk on Kalin's own cost-plus billing (real money today). Killing the 30%/$1,200 hardcodes requires `bid_model_config` to read from — so schema goes first, then draw composer clears the immediate billing risk, then the hardcodes die, then the wizard serves future tenants.
+
 | Sub-step | What it does | Prompts | Prereq |
 |----------|-------------|---------|--------|
-| B1.1 — `bid_model_config` schema | New table: `supply_model` per category, markup per category, allowance flag. Backfill defaults that reproduce current behavior so nothing breaks. | 2 | None |
-| B1.2 — ai-estimator reads bid_model_config | Replace hardcoded 30% + $1,200 with config read from tenant `bid_model_config`. Add pm_fee read. | 2 | B1.1 |
-| B1.3 — Draw composer UI | Expense selector → markup preview → "Generate Invoice" button. Uses existing `sbComposeDraw`. | 3 | Cost-Plus schema ✓ |
-| B1.4 — Draw paid cascade + float visibility | Mark expenses reimbursed on pay. Float stat cards on FinancialsTab (bucket_balance, unreimbursed, client_owes). | 2 | B1.3 |
-| B1.5 — Master Agent compose_draw + record_deposit | Confirm-gated verbs for voice/chat draw composition and deposit recording. | 2 | B1.4 |
-| B1.6 — Cost-plus client portal | Replace legacy job_cost_items view with draw-based breakdown for cost-plus clients. | 2 | B1.5 |
-| B1.7 — Onboarding wizard (structured config writer) | New wizard replaces AiSetupWizard prose flow. Writes bid_model_config + markup_category_config + ai_knowledge. Trade-specific Q&A → config rows. | 4 | B1.1 |
+| B1.1 — `bid_model_config` schema | New table: `supply_model` per category, markup per category, allowance flag. Backfill defaults that reproduce current behavior so nothing breaks. **Starting gun.** | 2 | None |
+| B1.2 — Draw composer UI | Expense selector → markup preview → "Generate Invoice" button. Uses existing `sbComposeDraw`. Fixes live double-charge risk on cost-plus billing. | 3 | Cost-Plus schema ✓ |
+| B1.3 — Draw paid cascade + float visibility | Mark expenses reimbursed on pay. Float stat cards on FinancialsTab (bucket_balance, unreimbursed, client_owes). | 2 | B1.2 |
+| B1.4 — Master Agent compose_draw + record_deposit | Confirm-gated verbs for voice/chat draw composition and deposit recording. | 2 | B1.3 |
+| B1.5 — Cost-plus client portal | Replace legacy job_cost_items view with draw-based breakdown for cost-plus clients. | 2 | B1.4 |
+| B1.6 — ai-estimator reads bid_model_config | Replace hardcoded 30% + $1,200 with config read from tenant `bid_model_config`. Add pm_fee read. | 2 | B1.1 ✓ |
+| B1.7 — Onboarding wizard (structured config writer) | New wizard replaces AiSetupWizard prose flow. Writes bid_model_config + markup_category_config + ai_knowledge. Trade-specific Q&A → config rows. | 4 | B1.1 ✓ |
 
 **Block 1 total: 17 prompts**
 
@@ -508,12 +512,12 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 
 | # | Sub-step | Block | Prompts | Running Total | Arc Source |
 |---|----------|-------|---------|---------------|-----------|
-| 1 | bid_model_config schema + engine reads | B1 | 2 | 2 | TENANT_ONBOARDING Phase 1 + 2 |
-| 2 | ai-estimator kills hardcoded markup/pm_fee | B1 | 2 | 4 | ESTIMATOR Phase 4 (partial) |
-| 3 | Draw composer UI | B1 | 3 | 7 | COST_PLUS Phase 2 |
-| 4 | Draw paid cascade + float visibility | B1 | 2 | 9 | COST_PLUS Phases 3-4 |
-| 5 | Master Agent compose_draw + record_deposit | B1 | 2 | 11 | COST_PLUS Phase 5 |
-| 6 | Cost-plus client portal | B1 | 2 | 13 | COST_PLUS Phase 6 |
+| 1 | bid_model_config schema ← **START HERE** | B1 | 2 | 2 | TENANT_ONBOARDING Phase 1 |
+| 2 | Draw composer UI | B1 | 3 | 5 | COST_PLUS Phase 2 |
+| 3 | Draw paid cascade + float visibility | B1 | 2 | 7 | COST_PLUS Phases 3-4 |
+| 4 | Master Agent compose_draw + record_deposit | B1 | 2 | 9 | COST_PLUS Phase 5 |
+| 5 | Cost-plus client portal | B1 | 2 | 11 | COST_PLUS Phase 6 |
+| 6 | ai-estimator kills hardcoded markup/pm_fee | B1 | 2 | 13 | ESTIMATOR Phase 4 (partial) |
 | 7 | Onboarding wizard (structured config writer) | B1 | 4 | 17 | TENANT_ONBOARDING Phases 6-7 |
 | 8 | Guided interview w/ pre-filled defaults | B2 | 3 | 20 | ESTIMATOR Phase 4 |
 | 9 | Batch unknowns | B2 | 2 | 22 | ESTIMATOR Phase 6 |
