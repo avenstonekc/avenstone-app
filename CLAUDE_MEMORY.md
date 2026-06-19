@@ -1894,3 +1894,9 @@ KEY DECISIONS (locked):
 - 6-block order confirmed and locked: Owner Foundation → Engine → Watcher → Seams → Client Front Door → Autopilot.
 - Block 1 internal order: B1.1 bid_model_config → B1.2 Draw composer UI → B1.3 Draw cascade + float → B1.4 MA verbs → B1.5 Client portal → B1.6 Kill hardcodes → B1.7 Wizard. Draw composer first because it fixes live double-charge risk on Kalin's cost-plus billing (real money today); wizard serves future tenants who don't exist yet.
 - Running totals updated in sequence table (rows 2-6 shifted); Block 1 total stays 17; grand total stays 133.
+
+[LOG — 2026-06-19] — Block verification model updated: reviewer not tester, be-the-role at boundaries
+
+- Action: Replaced all 6 Prove-the-flow sections in MASTER_BUILD_PLAN.md with Verify-then-advance. Added verification model definition at top of Part 2. Added Block verification model rule to CLAUDE.md. Added Block verification gate section to OPUS_RULES.md. Commit 2ce1673.
+- Model: Code verifies (automated flow-tests prove plumbing, results inline) → Code tells Kalin exactly what surface to open and what right looks like → Kalin reviews and confirms or kicks back. Kalin does not execute build/test steps.
+- Role-seat rule: at role boundaries, Code points Kalin to review from that role's seat (rep, PM, sub, client). Judgment call — only when a human seat exists and the answer can only be felt from that seat.
