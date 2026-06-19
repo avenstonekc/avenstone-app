@@ -7,6 +7,7 @@ import { buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
 import StructuredEstimate from './StructuredEstimate';
+import GapBatchAsk from './GapBatchAsk';
 import { deriveProjectSf } from '../../../lib/deriveProjectSf';
 
 const TakeoffWizard = lazy(() => import('./TakeoffWizard'));
@@ -54,6 +55,9 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       : Number(job.labor_markup_pct) > 0 ? Number(job.labor_markup_pct)
       : 30));
   const [interviewPmFee, setInterviewPmFee]         = useState(String(Number(job.pm_fee) || 0));
+
+  // Gap batch-ask: keyed by gap_key → entered rate string (pre-filled from regional_rate)
+  const [gapRates, setGapRates] = useState({});
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -164,6 +168,21 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
 
+  // Seed gapRates from pricedScope when a new draft arrives.
+  // Only initializes NEW gap_keys — preserves any edits the rep already typed.
+  useEffect(() => {
+    if (!pricedScope?.length) { setGapRates({}); return; }
+    const gaps = pricedScope.filter(l => l.source_label === 'regional_avg' && l.gap_key);
+    if (!gaps.length) return;
+    setGapRates(prev => {
+      const next = { ...prev };
+      gaps.forEach(l => {
+        if (!(l.gap_key in next)) next[l.gap_key] = l.regional_rate != null ? String(l.regional_rate) : '';
+      });
+      return next;
+    });
+  }, [pricedScope]);
+
   const readFileAsBase64 = file => new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result.split(',')[1]);
@@ -225,6 +244,23 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setEstStarted(true);
     const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${interviewSf ? `Square Footage: ${interviewSf} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
     await sendEstimatorMessage(prompt, estFile || null);
+  };
+
+  // Apply entered gap rates to pricedScope in memory. Deterministic — no AI call.
+  // Filled gaps become source_label:'user_entered' (StructuredEstimate badges ✎ "You set").
+  // Blank/zero entries stay regional_avg/TBD — committing with unset gaps is allowed.
+  const applyGapRates = () => {
+    if (!pricedScope) return;
+    const mutated = pricedScope.map(line => {
+      if (line.source_label !== 'regional_avg' || !line.gap_key) return line;
+      const entered = gapRates[line.gap_key];
+      const rate = parseFloat(entered);
+      if (!entered || isNaN(rate) || rate <= 0) return line; // leave as TBD
+      // PHASE 6 LEARN-LOOP HOOK STUB — do NOT persist here; Phase 6 owns the save flow
+      // const _learnHook = { gap_key: line.gap_key, trade: line.trade, line_item: line.line_item, unit: line.unit, entered_rate: rate };
+      return { ...line, unit_price: rate, amount: Math.round(rate * line.quantity * 100) / 100, source_label: 'user_entered' };
+    });
+    setPricedScope(mutated);
   };
 
   const commitEstimateFromChat = async () => {
@@ -587,11 +623,17 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setShowRaw(false); }}>Reset</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setShowRaw(false); }}>Reset</button>
           </div>
           {pricedScope?.length > 0 && (
             <>
               <StructuredEstimate lines={pricedScope} />
+              {(() => {
+                const gaps = pricedScope.filter(l => l.source_label === 'regional_avg' && l.gap_key);
+                return gaps.length > 0
+                  ? <GapBatchAsk gaps={gaps} gapRates={gapRates} setGapRates={setGapRates} onApply={applyGapRates} />
+                  : null;
+              })()}
               <button
                 onClick={() => setShowRaw(r => !r)}
                 style={{ fontSize: 11, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}
