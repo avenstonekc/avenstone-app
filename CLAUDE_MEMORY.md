@@ -1887,3 +1887,10 @@ KEY DECISIONS (locked):
 - Action: Verified both CLAUDE.md and OPUS_RULES.md had the auto-file version (Step 4 wrote to plan immediately). Fixed both to two-step. Commit fa3da47.
 - Was: single-pass triage that wrote + committed to MASTER_BUILD_PLAN.md on the first mention of an idea.
 - Now: Step 1 (triggered by "new idea" etc.) = triage + discuss only, WRITE NOTHING. Step 2 (triggered by "lock it in") = write placement + commit. Plan only holds explicitly locked ideas.
+
+[LOG — 2026-06-19] — MASTER_BUILD_PLAN locked/approved; Block 1 draw-composer-first order set; starting position B1.1
+
+- Action: Removed DRAFT marker, marked APPROVED + locked 2026-06-19. Added starting position note: "B1.1 (bid_model_config). Next session begins here." Commit b859f7b.
+- 6-block order confirmed and locked: Owner Foundation → Engine → Watcher → Seams → Client Front Door → Autopilot.
+- Block 1 internal order: B1.1 bid_model_config → B1.2 Draw composer UI → B1.3 Draw cascade + float → B1.4 MA verbs → B1.5 Client portal → B1.6 Kill hardcodes → B1.7 Wizard. Draw composer first because it fixes live double-charge risk on Kalin's cost-plus billing (real money today); wizard serves future tenants who don't exist yet.
+- Running totals updated in sequence table (rows 2-6 shifted); Block 1 total stays 17; grand total stays 133.
