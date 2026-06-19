@@ -5073,3 +5073,46 @@ What shipped: ConsultationTab.jsx with AmbientPanel.jsx (ambient passive listeni
 Design locked: three modes — Ambient Listen (passive background capture), Measure Mode (active AI-guided data collection per trade), Generate Estimate (one-tap output from session data). Rep never leaves without a decision.
 Key files: avenstone-vite/src/components/jobs/tabs/ConsultationTab.jsx, avenstone-vite/src/components/jobs/consultation/.
 Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:docs/AI_CONSULTATION_BLUEPRINT.md
+
+## agent-audit-2026-06-02 · 2026-06-02 · Read-only audit of Avenstone agent layer
+
+Read-only audit 2026-06-02. Traced every claim to a verified file + line across master-agent, field-agent, agent cards, and supporting infrastructure.
+Headline findings informed AVEN_MERGE_AUDIT (tool count, duplicate blocks) and master-agent hardening work.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:AGENT_AUDIT.md
+
+## app-review-2026-05-25 · 2026-05-25 · Point-in-time structural codebase review
+
+Structural audit 2026-05-25. Working doc: Kalin reviewed each finding and marked status. Not a frozen roadmap.
+Findings consumed into subsequent arc work (UNIFIED_FILES_ARC, PROOF_ARC, Cost Plus, misc cleanups). No active commitments remain in this doc.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:APP_REVIEW_2026-05-25.md
+
+## aven-merge-audit-2026-06-16 · 2026-06-16 · ai-master-agent vs ai-field-agent divergence audit
+
+Read-only audit 2026-06-16. Compared 28-tool master agent vs 7-tool field agent across tools, system prompts, callers, and shared code.
+Headline findings: tool count corrected to 28 (CLAUDE.md had claimed 24); log_receipt hardcodes 'material_purchase' in field-agent (silent data-quality bug); 6 duplicated code blocks identified (phase constants, gate logic, notification helpers); merge scope ~2-3 days.
+Findings absorbed into MASTER_BUILD_PLAN (AVEN_MERGE_ARC as Phase 7) and CLASSIFICATION_REPORT.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:AVEN_MERGE_AUDIT.md
+
+## cost-plus-audit-2026-05-27 · 2026-05-27 · Pre-build audit of cost-plus draw composer gaps
+
+Read-only audit 2026-05-27. Identified three problems in the cost-plus flow before COST_PLUS_ARC.md Phases 2-6 were designed: no float visibility UI, double-charge risk without reimbursement_status state machine, markup logic split across three places.
+Findings fed COST_PLUS_ARC.md design. Phases 2-6 remain unbuilt as of 2026-06-19.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:COST_PLUS_AUDIT.md
+
+## model-b-audit-2026-06-16 · 2026-06-16 · Job lifecycle state audit
+
+Read-only audit 2026-06-16 mapping jobs table schema, status constraints (jobs_status_canonical_check), FK relationships, and lifecycle state machine from lead → complete.
+Headline findings: jobs.id is TEXT (SCHEMA_SMELL_JOBS_ID_TEXT); contract_signed + contract_signed_at columns exist; jobs_status_canonical_check enforces canonical statuses.
+Findings absorbed into MASTER_BUILD_PLAN and CLASSIFICATION_REPORT.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:MODEL_B_AUDIT.md
+
+## apns-cert-setup-2026-05 · 2026-05-24 · APNs certificate + secrets setup checklist
+
+One-time manual setup checklist for APNs Phase 5: App Store Connect API key, APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID secrets in Supabase Functions. Setup is complete — APNs push live since 2026-05-24.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:PUSH_NOTIFICATIONS_ARC_APNS_CERT_SETUP.md
+
+## audit-estimate-procurement-2026-04-30 · 2026-04-30 · Estimate + procurement flow audit
+
+Live DB + file read audit 2026-04-30 of the estimate and procurement arc. Mapped bid flow, estimate_line_items shape, quote_requests table state.
+Findings acted on in subsequent takeoff-schema-foundation, subs-tab, and consultation-estimate-restructure work.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:docs/AUDIT_2026-04-30_estimate_procurement.md
