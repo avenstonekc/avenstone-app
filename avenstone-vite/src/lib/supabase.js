@@ -1397,7 +1397,9 @@ export const sbSaveEstimate = async (jid, messages) => {
 };
 export const sbSendEstimateEmail = async (job, pdfBlob) => {
   const b64 = await toBase64(pdfBlob);
-  const res = await fetch(`${FN}/send-estimate-email`, { method: 'POST', headers: authHeader(), body: JSON.stringify({ job_id: job.id, job_address: job.address, client_email: job.client_email, client_name: job.client_name, pdf_base64: b64, tenant_id: AV_TENANT }) });
+  // Field was 'client_email' — edge fn expects 'to'. Also supply 'html' body.
+  const html = `<p>Hi ${job.client_name || 'there'},</p><p>Please find your estimate for <strong>${job.address}</strong> attached. Contact us with any questions.</p><p>Thank you,<br/>Avenstone Group</p>`;
+  const res = await fetch(`${FN}/send-estimate-email`, { method: 'POST', headers: authHeader(), body: JSON.stringify({ to: job.client_email, job_address: job.address, client_name: job.client_name, html, pdf_base64: b64 }) });
   return res.json();
 };
 
