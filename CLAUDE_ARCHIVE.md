@@ -5023,3 +5023,53 @@ Kalin's goal: app should work as both PWA (for web/Android users + desktop) AND 
 - DAVIS REPAIR #2: 25 transactions orphaned again (in_draw, draw_id=NULL) after user compose+delete before eefa7de deployed. Fixed via direct UPDATE: reimbursement_status='unreimbursed'. Verified: 25 rows now unreimbursed ($62,276.03). Ready to compose fresh draw.
 - RETAINAGE_HELD: void_draw does not reverse retainage_held on draw_schedules. Deferred — cancelled draws filtered from rollup, not causing visible bugs.
 
+
+## agent-cards-arc-2026-05 · 2026-05-18 · Agent confirm-card system: 7 phases shipped
+
+All 7 phases shipped 2026-05-18 to 2026-05-20. Card types: select, multi_select, radio_per_item, text.
+What shipped: REQUIRED_FIELDS registry (12 write tools); receipt categorization card; job disambiguation card; generic missing-field validator; gate-resolution card for advance_phase; contextual job context (viewportJobId lifted to App.jsx; context_job_id in every POST body).
+Locked decisions: confirm card is the ONLY commit point for money/dangerous verbs; REQUIRED_FIELDS elicitation replaces per-verb bespoke prompts; Option A (viewport-context wins over conversation-context) for job disambiguation; pending_card.meta echo channel wired.
+Carve-out: Phase 6 (field voice rendering of cards) deferred — gated on VOICE_AGENT Phase 3+ hands-free STT.
+Key files: avenstone-vite/src/lib/agentCards.js, supabase/functions/ai-master-agent/index.ts.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:AGENT_CARDS_ARC.md
+
+## daily-log-arc-2026-05 · 2026-05-26 · Daily log system: all 5 phases shipped
+
+All 5 phases shipped. One-box capture (work_completed textarea) → AI drafts client_message via ai-daily-log-draft edge fn → PM reviews + curates photos → sends to client → client portal shows approved logs.
+DB: daily_logs.client_message column, photos linked via related_entity_type='daily_log', status/approved_at columns.
+Locked decisions: work_completed = raw field capture; client_message = AI output (a client-facing prose update, not an internal summary); AI generation is soft-failure (proceed even if AI call fails); photo curation per-review (PM toggles client_visible per photo before send).
+Key files: avenstone-vite/src/components/jobs/tabs/LogsTab.jsx, supabase/functions/ai-daily-log-draft/.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:DAILY_LOG_ARC.md
+
+## financials-plan-2026-04 · 2026-04-23 · Financials rebuild Phases 3-6 shipped
+
+Phases 3-6 shipped. job_transactions is the single source of truth (replaced job_cost_invoices + payments tables, which were renamed _deprecated_* then dropped). FinancialsTab with Ledger/Estimate/CO/Costs sub-tabs; QB CSV export via qb_category_map table; Field tab consolidation (Notes/Photos + Daily Logs + Materials → FieldTab wrapper); labor transaction type added 2026-05-19.
+Locked decisions: cost_plus is a client-visibility flag, not a data-model switch; lien waivers are warnings not hard blocks; retainage plumbed (default 0) for future use; QB columns exist from day one (nullable until integration built).
+Carve-out: Phase 7 (Haiku vision receipt extraction) unscheduled — must surface in a future arc before building.
+Key files: avenstone-vite/src/components/jobs/tabs/FinancialsTab.jsx, avenstone-vite/src/lib/qbExport.js.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:FINANCIALS_PLAN.md
+
+## push-notifications-arc-2026-05 · 2026-05-24 · APNs push notifications Phases 1-5 shipped
+
+Phases 1-5 shipped 2026-05-24. APNs v1 via Capacitor push-notifications; dual-channel push_subscriptions table (web|apns); send-push edge fn using raw HTTP/2 + crypto.subtle ES256 JWT (no external lib); notification-push-fanout DB trigger (7 push types, deep_link routing); App.jsx registration on mount gated by Capacitor.isNativePlatform().
+Locked decisions: no silent push v1 (user-visible alerts only); each device holds one channel only; APNs secrets stored in Supabase Function env.
+Carve-out: Phase 6 (Web Push / PWA) explicitly deferred — sw.js + PushManager branch needed; schema already designed for it (channel='web' path in send-push exists).
+Key files: avenstone-vite/src/lib/push.js, supabase/functions/send-push/, supabase/functions/notification-push-fanout/.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:PUSH_NOTIFICATIONS_ARC.md
+
+## sub-invoices-arc-2026-05 · 2026-05-27 · Sub invoice workflow Phases 1-5: ALL SHIPPED (doc never updated post-ship)
+
+All Phases 1-5 shipped despite arc doc reading as an unbuilt plan — doc was never updated after code shipped (classic doc-stale failure pattern).
+What shipped: sub_invoices + sub_invoice_payments tables (20260527000000_sub_invoices_arc_phase_1.sql + 4 variant migrations); SubInvoicesSection.jsx (3-bucket view: Pending Review / Outstanding / Paid; approve/dispute/payment/void full workflow); cash accounting (each payment writes job_transactions row via subInvoices.js with sub_payout type + reimbursement_status); Master Agent verbs log_sub_invoice, log_sub_payment, approve_sub_invoice (ai-master-agent/index.ts lines 159-161).
+Locked decisions: status DERIVED from approval state + payment sum via compute_sub_invoice_status function (not stored column); payments voidable not deletable (audit chain); only owner + PM can approve; invoice number vision-extracted first, auto-generated as fallback.
+Carve-out: Phase 6 (sub uploads own invoices via portal) explicitly deferred — schema forward-compatible via submitted_via='sub_portal' enum value already in CHECK constraint.
+Key files: avenstone-vite/src/components/jobs/tabs/financials/SubInvoicesSection.jsx, avenstone-vite/src/lib/subInvoices.js.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:SUB_INVOICES_ARC.md
+
+## ai-consultation-blueprint-2026-04 · 2026-04-28 · AI consultation feature blueprint — SHIPPED
+
+Pre-build spec written April 2026 for the on-site AI consultation flow. Feature fully shipped.
+What shipped: ConsultationTab.jsx with AmbientPanel.jsx (ambient passive listening), MeasurePanel.jsx (active AI-guided per-trade measurement collection), GapResolutionModal.jsx; consultation_sessions + consultation_measurements tables; ai-intake, process-transcript, generate-estimate-from-session, measure-guide edge functions.
+Design locked: three modes — Ambient Listen (passive background capture), Measure Mode (active AI-guided data collection per trade), Generate Estimate (one-tap output from session data). Rep never leaves without a decision.
+Key files: avenstone-vite/src/components/jobs/tabs/ConsultationTab.jsx, avenstone-vite/src/components/jobs/consultation/.
+Full original: git show a4fffa227a6352fd561ae6c32dac4e2567ffac35:docs/AI_CONSULTATION_BLUEPRINT.md
