@@ -1,5 +1,7 @@
 # FIELD_OPUS_ARC
 
+> **STATUS (2026-06-19):** Phase 4 half-built — Supabase `field-opus-dispatch-to-vm` edge fn shipped, VM `/dispatch-interactive` endpoint ABSENT (not in repo). Blocked on AUTO_FIX_ARC VM infrastructure setup. NOT a current build priority — VM setup must come first.
+
 Opus-in-the-app. A dev console for Kalin to talk to Opus from the field — describe a bug or change, Opus audits and writes a Sonnet prompt, Kalin taps Go, prompt fires to the AUTO_FIX_ARC VM, VM runs Claude Code, results stream back into the same chat thread.
 
 Same workflow Kalin uses in web Claude today, ported into the app. Repurposes AUTO_FIX_ARC's VM as the executor — different trigger (live conversation vs `bug_reports` row), same downstream pipeline.

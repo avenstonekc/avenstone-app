@@ -1,5 +1,7 @@
 # UNIFIED_FILES_ARC
 
+> **STATUS (2026-06-19):** Phases 1-2 SHIPPED — `job_files` migration (`20260526200000_unified_files_arc_phase_1.sql`) + `FilesTab.jsx` fully live. Phase 3 (deprecate `DocsTab.jsx`, rewire photo/doc surfaces) INCOMPLETE — `DocsTab.jsx` still live. Phases 4-5 not started. Doc Phase Plan table incorrectly shows all phases as "Planned."
+
 _Living doc. Update each phase as it ships._
 
 ---

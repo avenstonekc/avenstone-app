@@ -1,5 +1,7 @@
 # Contract Signing Arc — Design Blueprint
 
+> **STATUS (2026-06-19):** Future arc. STOP — Gap 5 (magic links possibly dead, retired 2026-06-01) MUST be verified as its own dispatch before any signing-flow build. Do not build on an unverified send path. Has LEGAL stakes — attorney review required before wiring full signing flow. `ClientSignContractModal.jsx` exists but signs boilerplate with no line items/price.
+
 _Blueprint only — not started. Audit complete 2026-06-15. Has LEGAL stakes — do not rush; design before building._
 
 ---
