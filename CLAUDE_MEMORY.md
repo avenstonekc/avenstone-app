@@ -1833,3 +1833,24 @@ KEY DECISIONS (locked):
 - Gate = estimate.status='awaiting_approval'. No push. State-surfaced like pending sub-invoices.
 - 6.1 merges into God Agent pricing tab Review mode. Not a separate screen.
 - Never write tenant_id=NULL to rate_book_labor (NULL = platform slot; would price all tenants).
+
+[VISION ANCHOR - 2026-06-18] THE SPINE + GUARDRAILED AUTONOMY (full in AVENSTONE_VISION.md)
+- SPINE: the job record is the spine. Captured ONCE, re-rendered for whoever picks the job
+  up next — a handoff chain, not many reports at once. Chain: sales captures (intake+photos+
+  scope) → rep sells (cheat-sheet/bid blueprint) → customer welcome (warm "here's your PM"
+  WITH PM photo, on conversion) → PM scope brief → sub/laborer pre-job brief → photos close
+  the loop (installer ref + client before/afters + marketing ads). "The form becomes a
+  prompt." Capture once, serve many. Every arc checked: strengthens the spine or side-quest?
+- DESTINATION: Aven sees books/schedule/delays/backlog. Owner + God Agent set guardrails
+  (margin floors, capacity thresholds, price aggressiveness). Within rails the system ACTS,
+  not just asks (backlog→raise; margin underwater→flag; bottleneck→hire). Sold as "set your
+  guardrails once, the system runs the routine calls you'd make anyway."
+- NON-NEGOTIABLE: autopilot is EARNED, never day-one. Trust ladder = the feature: recommend-
+  and-confirm → visible track record → God Agent PROPOSES ITS OWN GRADUATION after a proven
+  run → bounded, per-action-type, opt-in, logged, instantly reversible.
+- TRUTH: "I don't need you anymore" never literally true. Operator → overseer, not present →
+  absent. Aven acts inside the box; owner owns the box.
+- HARD FLOOR (any rung): every automated action logged + reversible; autopilot acts INSIDE
+  rails, never moves them; human-only forever = margin floor, max-% move per action,
+  anything irreversible/external (money leaving, client-facing send).
+- MECHANICS live in GOD_AGENT_ARC.md. Vision = destination/philosophy; arc = how.
