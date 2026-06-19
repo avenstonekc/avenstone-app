@@ -265,3 +265,131 @@ B4  — Capacity advisor (blocked on schedule signal — assess when SCHEDULING_
 ## Amendments
 
 _Empty — update as phases ship._
+
+---
+
+## Autopilot & Trust Ladder (mechanics)
+
+_Blueprint — not yet built. Dependencies: action_log table (below) + Capability 2 capacity
+signal. Build order: action_log schema comes with Phase 6.0 or B1, whichever ships first;
+autopilot graduation comes after ~6 months of Phase 6 recommend-and-confirm generating real
+track-record data. Do NOT build graduation logic until the track record exists._
+
+### action_log — the track-record substrate
+
+Every God Agent recommendation and every owner decision on it is recorded. This is the
+substrate that makes graduation possible and autopilot auditable.
+
+```
+god_agent_action_log
+  id             UUID PK DEFAULT gen_random_uuid()
+  tenant_id      UUID NOT NULL  -- RLS: own-tenant read; owner-only write
+  action_type    TEXT NOT NULL  -- 'backlog_price_raise' | 'margin_flag' | 'capacity_hire_signal' | 'deviation_gate' | ...
+  recommendation JSONB          -- { scope, direction, magnitude, affected_rows, preview }
+  decision       TEXT           -- 'approved' | 'modified' | 'rejected' | 'auto_executed'
+  decision_by    UUID           -- profiles.id (null if auto_executed)
+  decision_at    TIMESTAMPTZ
+  created_at     TIMESTAMPTZ DEFAULT now()
+```
+
+**Scope note:** `decision='auto_executed'` is the autopilot path. `decision_by=null` when
+the system acts; otherwise the owner/PM who approved. Tenant-scoped via RLS
+(`get_my_tenant_id()`). `recommendation` JSONB carries enough to reconstruct the preview
+(scope, direction, magnitude, affected rows, old→new values) — owner can always audit
+exactly what was proposed.
+
+### Graduation state per action-type
+
+Stored in `tenants.pricing_policy JSONB` (same place as the deviation tolerance pair):
+
+```json
+{
+  "deviation_up_pct": 30,
+  "deviation_down_pct": 15,
+  "autopilot": {
+    "backlog_price_raise": { "status": "manual", "eligible_at": null, "opted_in_at": null },
+    "margin_flag":         { "status": "manual" }
+  }
+}
+```
+
+`status` transitions: `"manual"` → `"eligible"` (threshold met, graduation proposal
+surfaced) → `"autopilot_on"` (owner opted in) → back to `"manual"` (owner reverts).
+Owner-only write. Never auto-transitions without explicit owner opt-in.
+
+**Eligibility threshold (tunable, not hardcoded):**
+- ≥ 20 decisions on this action-type, AND
+- ≥ 85% approval rate (approved + approved-with-minor-modification / total)
+- Threshold values live in `pricing_policy.autopilot_thresholds JSONB` with hardcoded
+  fallback `{ min_decisions: 20, min_approval_rate: 85 }` — same pattern as deviation pair.
+
+### The graduation proposal
+
+When eligibility threshold is crossed, the God Agent surfaces a proposal — once, on the
+God Agent tab — with the track record:
+
+> "You've approved 94% of my backlog-triggered price raises (21 of 22). Want me to handle
+> those automatically going forward and just tell you after? You can always turn this off."
+
+The proposal shows: action-type, decision count, approval rate, the 6% that were modified
+or rejected (to let the owner see where the agent was wrong), and a clear "Yes, automate /
+No, keep asking" confirmation. The system does NOT self-enable. Owner opts in.
+
+The proposal is logged in `god_agent_action_log` with `action_type='graduation_proposal'`
+and decision recorded when the owner responds.
+
+### Autopilot execution path
+
+When `status='autopilot_on'` for an action-type AND the action is within the margin rails
+AND under the configured `max_pct_move` (a separate `pricing_policy` key per action-type):
+
+1. Action executes directly (e.g. rate_book_labor UPDATE for a backlog-triggered raise)
+2. Logged to `god_agent_action_log` with `decision='auto_executed'`, `decision_by=null`
+3. Owner notified AFTER via a God Agent tab card: "I raised tile labor rates 8% — backlog
+   crossed the 10-week threshold. [View] [Revert]"
+4. Revert button: undo the write, log the reversal, drop status back to `'manual'`
+
+**Automatic fallback to recommend-and-confirm (always, no exceptions):**
+- Action is outside the margin rails (would punch the margin floor)
+- Action exceeds the `max_pct_move` configured for this action-type
+- Action type is in the `human_only` hardcoded set: any irreversible action, any
+  client-facing send, any money-out transaction
+- `status !== 'autopilot_on'` for this action-type
+
+The `human_only` set is code, not config — it cannot be moved to autopilot regardless of
+trust ladder rung:
+```js
+const HUMAN_ONLY_ACTION_TYPES = [
+  'send_to_client',       // client-facing send
+  'record_payment',       // money leaving
+  'approve_invoice',      // money leaving
+  'contract_send',        // irreversible external
+];
+```
+
+### Cross-references to existing specs in this doc
+
+- **Deviation gate + pricing_policy**: specified in the "Tenant Config Store" section above.
+  The autopilot mechanics extend `pricing_policy` — they do NOT fork it. Same JSONB column,
+  same migration, same RLS. When Phase 6.0 ships the `pricing_policy` migration, include
+  the `autopilot: {}` key with empty defaults so graduation logic has a clean slot.
+- **Owner write helper (Phase 6.1)**: the autopilot execution path for pricing actions
+  reuses the same `rate_book_labor` owner-write helper as the Review mode and Bulk pricing.
+  One write helper; three callers: manual promote (6.1), bulk adjust (B2), autopilot (here).
+- **action_log vs pricing_policy**: `pricing_policy` stores configuration (rails, thresholds,
+  graduation status). `god_agent_action_log` stores events (what happened, when, who decided).
+  Separate concerns, separate tables. Never collapse them.
+
+### Dependency ordering (what must exist before building this)
+
+1. `tenants.pricing_policy` migration → ships with Phase 6.0
+2. Phase 6 recommend-and-confirm in production, generating real decisions → ~6 months
+3. `god_agent_action_log` table → ships alongside Phase 6.0 or B1 (cheap table, no reason
+   to defer; graduation logic can't be built without it)
+4. Eligibility check + graduation proposal → build after threshold is reachable (~6 mo run)
+5. Autopilot execution path → build after graduation proposal exists and at least one
+   action-type has been graduated by a real owner
+
+**Do not build steps 4–5 early.** Building graduation UI before there's a track record to
+show means showing empty graphs to the owner and asking them to trust a system they've
+never watched. The trust ladder only works if the rungs are actually climbed in order.
