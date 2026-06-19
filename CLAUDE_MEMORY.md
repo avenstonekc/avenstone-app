@@ -1874,3 +1874,10 @@ KEY DECISIONS (locked):
 - Total: 130 Sonnet prompts, 50 sub-steps, 6 blocks.
 - Critical new finding: Client intake by project type (not AiIntakeWizard which is LiDAR scanner) does NOT EXIST anywhere. Front-of-funnel gap confirmed.
 - Open: 9 questions for Kalin listed in plan, most important = attorney review before contract signing build, per-trade risk library seed, MATERIAL_SELECTION vs SELECTIONS_ARC choice.
+
+[LOG — 2026-06-19] — New-idea triage rule added; GPS/ETA first triage test
+
+- Action: Added new-idea triage rule to CLAUDE.md (workflow section) and OPUS_RULES.md (new section). Added "Captured ideas — unplaced" stub as Section 8 of MASTER_BUILD_PLAN.md. GPS/ETA idea triaged and placed as B5.13. Commit d746bc9.
+- Rule: When Kalin signals a new idea (new idea / what if / I want to be able to / wouldn't it be cool) → triage against MASTER_BUILD_PLAN.md, classify+place, commit, report. Default: keep building current step.
+- GPS/ETA triage result: placed as B5.13 in Block 5 (Client Front Door), after B5.11 (sub workflow upgrades). Reuses: gps.js (browser navigator.geolocation — NOT @capacitor/geolocation which is NOT installed), ClientPortal.jsx, push-notifications, SubPortal job view. Net-new: job_location_pings table + maps API (Google Maps Distance Matrix or similar) + Realtime subscription in ClientPortal. 3 prompts. Grand total 130→133.
+- Note: @capacitor/geolocation is NOT installed; gps.js uses browser geolocation API. MVP path is one-shot "I'm on my way" location capture (no background tracking needed). Maps API is the only true new external dependency.
