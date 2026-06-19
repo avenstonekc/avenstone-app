@@ -1865,3 +1865,12 @@ KEY DECISIONS (locked):
 - PRE_MOVE_HASH for all git show pointers: a4fffa227a6352fd561ae6c32dac4e2567ffac35.
 - Assertion flag: root count = 21 (after removing CLASSIFICATION_REPORT), not 7. The 13 redirect stubs + 3 existing E-pointers remain at root. Decision needed on whether to delete redirect stubs (achieving 7 keepers only) or leave them as discoverability pointers per the established E-type pattern.
 - Open: Kalin to decide redirect stub fate (delete vs keep). SELECTIONS_ARC.md was untracked — added to git when moved to docs/arcs/.
+
+[LOG — 2026-06-19] — MASTER_BUILD_PLAN: full per-arc live-code audit + 6-block dependency-ordered build map
+
+- Action: Audited all 21 docs/arcs/ + shipped slugs against live code. Overwrote MASTER_BUILD_PLAN.md with audit results + 6-block map. Commit a9cf285.
+- Key corrections vs prior plan: FLOOR_PLAN_LAYOUT Phase 5e IS BUILT (send-floor-plan-email + sbSendFloorPlanVersion + UI — prior plan said "remaining"). COMPANY_FILES ALL 6 phases BUILT (doc said Planned). ESTIMATOR Phases 2+3 ARE BUILT (ai-estimator reads rate_book, getTier() active). PROOF Phase 2 IS BUILT (CO gate live in COTab.jsx). ESTIMATOR markup (30%) + pm_fee ($1200) STILL HARDCODED in SYSTEM_PROMPT text — not yet config-read.
+- 6-block ordering (Kalin-confirmed): Block 1 Owner Foundation (bid_model_config, kill hardcodes, draw composer), Block 2 Engine (guided interview, learn loop, scope risk), Block 3 Watcher (God Agent, deviation review, bulk pricing), Block 4 Seams (handoffs, role briefs, agent ops, contract signing), Block 5 Client Front Door (intake, selections, lien waivers), Block 6 Autopilot (earned trust ladder, scheduling intelligence).
+- Total: 130 Sonnet prompts, 50 sub-steps, 6 blocks.
+- Critical new finding: Client intake by project type (not AiIntakeWizard which is LiDAR scanner) does NOT EXIST anywhere. Front-of-funnel gap confirmed.
+- Open: 9 questions for Kalin listed in plan, most important = attorney review before contract signing build, per-trade risk library seed, MATERIAL_SELECTION vs SELECTIONS_ARC choice.
