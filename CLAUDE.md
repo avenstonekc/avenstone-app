@@ -92,6 +92,19 @@ Default: keep building current step. Discussing an idea does not change the buil
 
 ---
 
+## Block verification model
+
+When a block (or sub-step) ships:
+
+1. **Code verifies first.** Run automated flow-tests that prove the plumbing. Commit self-verification results inline.
+2. **Tell Kalin what to look at.** Point to the specific live surface, the specific result, and what "right" looks like. Do not ask Kalin to run build steps or execute tests — he reviews what shipped.
+3. **At role boundaries — be the role.** When the block ships a surface a real person uses (rep, PM, sub, client), point Kalin to review it from that role's seat: "look at this as the rep pricing a job" or "open the client portal as the homeowner." Judgment call — only where a human seat exists and "does this help?" can only be felt from that seat.
+4. **If anything needs logging,** prompt Kalin to log it. Don't assume he will.
+
+Kalin confirms it's there and correct, or kicks it back. He does not manually execute anything.
+
+---
+
 ## Working Preferences (READ FIRST — follow every session)
 
 - **Code only by default** — no explanations, no commentary unless explicitly asked

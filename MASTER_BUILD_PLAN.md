@@ -294,6 +294,8 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Organizing principle (Kalin-confirmed):** The app must HAVE THE INFORMATION before the engine can run. Build the front door for each actor first (gather info), then the engine runs. Start from the OWNER — make the system run start-to-finish beginning with onboarding — then move actor-by-actor outward. End state: AI runs the estimate with no rep required (client self-serves scan + interview).
 
+**Verification model (applies to every block):** Code builds, self-verifies (automated flow-tests prove the plumbing), and pushes. Code then tells Kalin exactly what to look at — the specific live surface, the specific result, and what "right" looks like. Kalin reviews and confirms it's there and correct, or kicks it back. He does not manually execute build or test steps. At role boundaries — when a block ships a surface a real person uses — Code points Kalin to review it from that role's seat. This is a judgment call, not a rote gate on every step: only where a human seat exists and "does this help?" can only be felt from that seat.
+
 ---
 
 ### Block 1 — Owner Foundation
@@ -324,9 +326,10 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Block 1 total: 17 prompts**
 
-**Prove-the-flow:**
-- (a) Claude Code flow test: login as owner → run wizard → verify `bid_model_config` rows land; run estimator → verify markup read from config, not 30% hardcoded; compose draw → verify job_transactions updated + float balance changes
-- (b) Kalin 5-min check: create a new job, run wizard, change markup to 28%, run estimate, confirm 28% appears — not 30%
+**Verify-then-advance:**
+- Code verifies: `bid_model_config` rows in DB with correct defaults; estimator reads markup from config (not 30% hardcoded); `job_transactions` updated after compose draw; float balance computed correctly on FinancialsTab.
+- Kalin reviews: Code points you to a specific cost-plus job — open FinancialsTab and confirm the float stat cards show bucket_balance + unreimbursed; open EstimateTab and confirm the interview pre-fill shows your actual markup, not 30%.
+- Role seat (owner): review the draw composer as the person who composes draws — does the expense selector, markup preview, and resulting invoice reflect how you actually bill?
 
 **Parked in Block 1:** TENANT_ONBOARDING Phases 4-5 (interview engine + plan upload ingest) — after core config is running and Kalin has used it on real jobs
 
@@ -356,9 +359,10 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Block 2 total: 13 prompts**
 
-**Prove-the-flow:**
-- (a) Flow test: run estimate for bathroom job → verify interview shows tenant markup (not 30%), gap lines appear in batch-ask, confirm one → verify offer-to-save appears, accept → verify unvetted row in rate_book_labor. Verify Potential Considerations section in proposal PDF.
-- (b) Kalin: run a real estimate, compare pre-fill values to his actual business parameters
+**Verify-then-advance:**
+- Code verifies: interview pre-fills with tenant config values (not 30% hardcoded); gap lines surface as numbered batch-ask before draft; offer-to-save appears after a gap rate is confirmed; unvetted row written to `rate_book_labor`; "Potential Considerations" section renders in proposal PDF.
+- Kalin reviews: Code points you to a specific estimate — open it and confirm the pre-fill matches your actual markup; walk through a batch-ask and see the save offer appear.
+- Role seat (rep): review the interview as the rep running an estimate — does the pre-fill feel natural, does the batch-ask flow cleanly, or does it slow you down?
 
 ---
 
@@ -387,9 +391,10 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Gate:** Phase B4 (capacity advisor) is explicitly parked — needs Scheduling Intelligence backlog-density signal from Block 6.
 
-**Prove-the-flow:**
-- (a) Flow test as sales_rep: submit estimate → hits gate → `awaiting_approval`; as owner: see God Agent tab → approve → verify decision in action_log. As owner: type "raise Drywall hang 10%" → verify rate_book_labor updated + action logged.
-- (b) Kalin: run a gated estimate as himself (sales_rep role on test), then approve as owner, confirm rate promotion offers appear
+**Verify-then-advance:**
+- Code verifies: estimate submitted by sales_rep lands in `awaiting_approval` state; God Agent tab renders the approval queue with flagged lines; action_log row written after owner decision; `rate_book_labor` updated + logged after a bulk-pricing command.
+- Kalin reviews: Code points you to the God Agent tab — confirm the gated estimate appears with the right lines flagged; type a bulk-pricing command and confirm the preview table looks right before confirming.
+- Role seat (owner): review the God Agent tab as the person who sets rates — does this feel like real control, or is it still a tech demo?
 
 ---
 
@@ -430,9 +435,10 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Prereq note:** Legal review for contract signing must happen BEFORE B4.1. This is not a Sonnet prompt — it's Kalin consulting a MO-licensed attorney about ESIGN/UETA compliance.
 
-**Prove-the-flow:**
-- (a) Flow test: login as PM → verify brief shows active phase + pending subs (not generic HomeScr); add a schedule item slip → verify cascade fires; submit daily log → verify watchdog poke appears next day
-- (b) Kalin: check in as each role (PM, rep, sub) and confirm the brief is relevant; walk through a gated CO to confirm contract has line items before client sees it
+**Verify-then-advance:**
+- Code verifies: PM home screen shows different content than the generic HomeScr; cascade fires on a test schedule slip and produces rescheduled successors; watchdog poke appears in scheduled_actions after the trigger condition; contract PDF includes estimate total + payment schedule before signing.
+- Kalin reviews: Code points you to a PM-role login — confirm the brief shows active phase + pending subs (not a generic todo list); open a job with a slipped item and confirm cascade preview; open the contract signing flow and confirm line items are visible.
+- Role seat (PM brief): review as PM — does this brief tell you what you need at 7am? Role seat (client contract): review as the client — would you sign this knowing exactly what you're agreeing to?
 
 ---
 
@@ -468,9 +474,10 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Block 5 total: 36 prompts** _(+3 from GPS/ETA triage 2026-06-19)_
 
-**Prove-the-flow:**
-- (a) Flow test: create kitchen remodel → adaptive intake appears → answers pre-fill estimator → selections generated for tile + paint → client portal shows selections with confirm-by date → client confirms → materials can proceed
-- (b) Kalin: walk a full bathroom job from intake to signed contract to selections confirmed. Time the full flow.
+**Verify-then-advance:**
+- Code verifies: intake questions appear on new-job creation for each project type; estimator pre-fills from intake answers; selections auto-generated for job trades; client portal shows selections with confirm-by date; sub portal shows lien waiver status; GPS ETA appears in client portal when sub triggers "I'm on my way."
+- Kalin reviews: Code points you to a new bathroom job — open the intake and confirm the questions match that project type; run the estimate and confirm it pre-filled from intake; open the client portal as the homeowner and walk the selections flow.
+- Role seat (client confirming selections): review as the homeowner — is this portal clear enough to use without a rep explaining it? Role seat (rep at intake): did intake save you 10 minutes on the estimate setup?
 
 ---
 
@@ -497,6 +504,11 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 **Block 6 total: 25 prompts**
 
 **Gate:** B6.4 requires real data from god_agent_action_log (~6 months of confirm decisions). Do not build graduation UI before the track record exists.
+
+**Verify-then-advance:**
+- Code verifies: merged agent handles both chat and voice TOOLS sets; scheduling cascade fires correctly on a test slip; actor_memory rows accumulate; eligibility threshold computed correctly from action_log.
+- Kalin reviews: Code points you to the God Agent tab — confirm the graduation proposal surface appears and the track record summary looks accurate.
+- No role seat: autopilot is infrastructure + governance, not a human workflow surface.
 
 **Parked — not on the critical path:**
 - Scheduling Intelligence Phases 5-13 (weather gating, inspection deps, SLA escalation, Gantt UI, external calendar sync) — after MVA is running with real jobs

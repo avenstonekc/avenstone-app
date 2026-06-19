@@ -79,6 +79,16 @@ Do not narrate the fetch to the user. Just do it silently and use the fresh stat
 
 10. **Migration verification is mandatory.** Every prompt that includes a database migration must require a post-apply schema verification step (SELECT against `information_schema` for the expected columns, `pg_policies` for RLS, `pg_indexes` for indexes) as canonical proof of landing — not the apply-script success message. The session of 2026-05-06 burned 4+ hours across 4 separate bug-fix detours because "applied" reports were trusted without verification. Verification SQL goes in the closing tasks of any migration-bearing prompt and must run against the live DB before the prompt declares the migration shipped.
 
+## Block verification gate
+
+Every prompt that ships a block sub-step must close with a **"Verify-then-advance"** section. Structure it as:
+
+1. **Code verifies:** list the specific automated checks that prove the plumbing (DB rows, computed values, rendered components). Claude Code runs these and reports results inline.
+2. **Kalin reviews:** name the specific live surface Kalin should open, and what "right" looks like. Be precise — not "check the estimate" but "open EstimateTab on job X and confirm the markup pre-fill shows 28%, not 30%." Kalin reviews; he does not execute build steps.
+3. **Role seat (judgment call):** if the sub-step ships a surface a real person uses, name the role and the specific thing to feel: "review as the rep pricing this estimate — does the batch-ask flow feel fast or clunky?" Only when a human seat exists and the answer can only come from that seat.
+
+If a sub-step is pure infrastructure (migration, schema, cron wiring) with no human surface, role seat is omitted.
+
 ## Rules Opus follows when writing
 
 - Ground every fix in evidence. If the user sent a screenshot or
