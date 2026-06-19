@@ -449,3 +449,90 @@ Last updated: 2026-05-09
 - **Owner approves** — merges PR. Vercel prod auto-deploys. `UPDATE bug_reports SET status='fixed'` triggered on merge.
 - **iOS pipeline** — Codemagic builds from merged PR. Deferred until iOS RN parity catches up.
 - **Trigger:** ~30 days of v1 bug volume to understand real fix patterns before building the auto-fix pipeline. Build v2 as a separate arc prompt once volume is there.
+
+---
+
+## The spine: one flowing system (added 2026-06-18)
+
+The deeper architecture under everything above: **the job record is the spine, and
+information flows down a handoff chain — captured once, then re-rendered for whoever picks
+the job up next.** Not many reports fired at everyone at once. One continuous handoff,
+where the same captured data travels *with the job* and gets rendered into the view each
+actor needs at their moment in the lifecycle.
+
+### The handoff chain
+1. **Sales captures** — intake (ideally a guided client questionnaire that fact-finds the
+   structured 80% and flags the rest for the rep), scope, photos, dimensions, finishes,
+   timeline, budget signal. One capture.
+2. **Rep sells** — the captured data renders into a "how to win this bid" brief / cheat
+   sheet (a rep who doesn't know fences asks the agent for a blueprint off the bid info).
+   Estimator prices off the Rate Book.
+3. **Customer welcome** — on conversion, the same data renders into a warm client-facing
+   "here's what happens, here's how we do it, here's your PM" message — *with the PM's
+   photo* — so the customer knows who's in charge and is never wondering what's next.
+   Anti-surprise pointed at the relationship. Nearly free; the data's already in the system.
+4. **PM scope** — renders into the PM's scope-and-risk brief for execution.
+5. **Sub / laborer pre-job brief** — sent to subs in the system, or scheduled and pushed to
+   laborers before their job: exactly what they're walking into, site conditions, EOD
+   expectations.
+6. **Photos close the loop** — captured at sales, they serve the installer (what it looks
+   like), the customer (progress, before/afters), and marketing (ads). One capture, three
+   lifetimes, zero re-entry.
+
+### The principles that make it buildable
+- **The job record carries the thread, not a pile of separate documents.** Each stage is a
+  different *view* of the same growing record — render templates over one spine.
+- **Capture once, serve many.** Photos and intake entered once, rendered for every
+  downstream actor. The form becomes a prompt.
+- **One product wearing different hats.** Cheat sheet, capacity advisor, bulk pricing,
+  intake-to-report — same engine: take what we know, analyze it, hand the right person the
+  thing that helps them succeed at the next step. Anti-surprise pointed at people.
+
+Through-line every future arc is checked against: *does this strengthen the spine, or is it
+a side-quest?*
+
+## The destination: guardrailed autonomy (added 2026-06-18)
+
+North star: Aven sees the books, schedule, delays, backlog. Owner + God Agent agree on
+**guardrails** (margin floors, capacity thresholds, price aggressiveness). Within the rails
+the system *acts*, not just asks: backlog hits 10 weeks → raise pricing X%; a department
+underwater on margin → flag it; installers are the bottleneck → surface "time to hire."
+Everything in business is margin-based; set the rails, the system runs the routine pricing
+and capacity calls the owner would make anyway. Sold as exactly that: *set your guardrails
+once, the system handles the routine decisions you'd make anyway.*
+
+### The non-negotiable: earned trust, not day-one autopilot
+The leap from "recommends, owner confirms" to "acts automatically" is the highest-stakes
+decision in the system. It is the **last thing earned, never a default.** The biggest
+surprise this system could generate is an automated action the owner didn't expect — the
+anti-surprise thesis turned against itself. Trust is earned through *observed* behavior, and
+you can't observe behavior you've never seen. Autopilot is reached via a **trust ladder**,
+and the ladder is the feature:
+1. **Recommend-and-confirm** — every move/flag comes to the owner; owner approves. (Phase 6
+   + God Agent as blueprinted.)
+2. **Visible track record** — every recommendation + the owner's decision is logged; the
+   owner watches the agent's judgment match their own, repeatedly, on real calls.
+3. **The agent proposes its own graduation** — after a proven run (~6 mo, high approval
+   rate) it surfaces the track record and asks for the keys: "you approved 94% of my
+   backlog-triggered raises — want me to stop asking on the ≤10% ones and just handle them,
+   tell you after?" The system surfaces its own readiness; the owner is shown proof, not
+   asked to gamble.
+4. **Bounded opt-in autopilot** — per-action-type, bounded by the margin rails, fully
+   logged, instantly reversible.
+
+### The truth inside the autopilot
+"I don't need you anymore" is never literally true, and the system never acts like it is.
+Even at full autopilot the owner moved from *approving every call* to *setting the rails and
+watching the log*. Operator → overseer, not present → absent. Aven acts inside the box; the
+owner always owns the box.
+
+### The hard floor (never moves, any ladder rung)
+- Every automated action is **logged and reversible.**
+- Autopilot operates **inside** the rails; it never moves the rails or punches the floor.
+- Human-only forever: the **margin floor**, a **max-% move** per action, and **anything
+  irreversible or external** — money leaving, client-facing sends. The owner sets the box;
+  the AI acts freely inside it; the box edges always require a human.
+
+*Autopilot mechanics (deviation gate, pricing_policy, graduation proposal, action log) are
+specified in GOD_AGENT_ARC.md. This section is the destination and philosophy; the arc is
+the how.*
