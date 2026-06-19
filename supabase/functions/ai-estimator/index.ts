@@ -44,9 +44,10 @@ interface ScopeJSON {
 interface PricedLine extends ScopeLine {
   unit_price: number | null;
   amount: number | null;
-  source_label: "labor_rate" | "material_tier" | "regional_avg";
+  source_label: "labor_rate" | "material_tier" | "regional_avg" | "user_entered";
   source_badge: string;
   vetted: boolean;
+  gap_key?: string; // present on regional_avg lines; format: "trade::line_item::unit"
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -238,7 +239,7 @@ function priceScopeLines(
           vetted: vRow?.vetted ?? false,
         };
       }
-      // Gap: use AI-supplied regional_rate
+      // Gap: use AI-supplied regional_rate; carry gap_key for client batch-ask
       const rgRate = typeof line.regional_rate === "number" ? line.regional_rate : null;
       return {
         ...line,
@@ -247,6 +248,7 @@ function priceScopeLines(
         source_label: "regional_avg",
         source_badge: "⚡ Regional Avg",
         vetted: false,
+        gap_key: `${line.trade}::${line.line_item}::${line.unit}`,
       };
     }
 
@@ -263,7 +265,7 @@ function priceScopeLines(
           vetted: false,
         };
       }
-      // Material category not in Rate Book — use AI regional_rate
+      // Material category not in Rate Book — use AI regional_rate; carry gap_key
       const rgRate = typeof line.regional_rate === "number" ? line.regional_rate : null;
       return {
         ...line,
@@ -272,6 +274,7 @@ function priceScopeLines(
         source_label: "regional_avg",
         source_badge: "⚡ Regional Avg",
         vetted: false,
+        gap_key: `${line.trade}::${line.line_item}::${line.unit}`,
       };
     }
 
@@ -284,6 +287,7 @@ function priceScopeLines(
       source_label: "regional_avg",
       source_badge: "⚡ Regional Avg",
       vetted: false,
+      gap_key: `${line.trade}::${line.line_item}::${line.unit}`,
     };
   });
 }
