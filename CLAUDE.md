@@ -92,6 +92,12 @@ Default: keep building current step. Discussing an idea does not change the buil
 
 ---
 
+## Model directive on dispatch prompts
+
+Every dispatch prompt Opus writes for Claude Code opens with `Model: Sonnet` or `Model: Opus — <one-line why>`. Sonnet = defined execution. Opus = judgment-over-execution (architecture decisions, gnarly debugging, auditing before building). This is a **signal to Kalin**, not an automatic switch — a prompt line cannot change the running session's model. When the directive says Opus, Kalin runs `/model claude-opus-4-8` before pasting; Sonnet, he pastes as-is. Full rule in OPUS_RULES.md § "Structure every prompt includes" item 11.
+
+---
+
 ## Block verification model
 
 When a block (or sub-step) ships:

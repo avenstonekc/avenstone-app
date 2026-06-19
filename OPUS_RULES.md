@@ -79,6 +79,19 @@ Do not narrate the fetch to the user. Just do it silently and use the fresh stat
 
 10. **Migration verification is mandatory.** Every prompt that includes a database migration must require a post-apply schema verification step (SELECT against `information_schema` for the expected columns, `pg_policies` for RLS, `pg_indexes` for indexes) as canonical proof of landing — not the apply-script success message. The session of 2026-05-06 burned 4+ hours across 4 separate bug-fix detours because "applied" reports were trusted without verification. Verification SQL goes in the closing tasks of any migration-bearing prompt and must run against the live DB before the prompt declares the migration shipped.
 
+11. **Model directive — first line of every dispatch prompt.**
+    Every dispatch opens with one of:
+    - `Model: Sonnet` — default; defined execution work (schema, helpers, UI, wiring, migrations).
+    - `Model: Opus — <one-line why>` — when the task needs judgment over execution: multi-system architecture decisions where a wrong call cascades, gnarly non-obvious debugging, auditing a complex system before building, shape decisions that affect many downstream steps.
+
+    The tell: "build this specific thing, here's the target" = Sonnet. "figure out how this should work, then build it" = Opus.
+
+    **This is a signal, not an automatic switch.** A directive line inside a pasted prompt cannot change the running session's model — model selection is a session/CLI setting. When the prompt says `Model: Opus`, Kalin runs `/model claude-opus-4-8` (or switches in the UI) before pasting. When it says `Model: Sonnet`, he pastes as-is (or runs `/model claude-sonnet-4-6` if coming off an Opus session). Opus decides and labels; Kalin acts on the label.
+
+    When `Model: Opus` is used, shape the dispatch for reasoning: open with an audit/decision phase, ask for tradeoffs, surface the decision before the build step.
+
+    Roadmap note: Opus candidates cluster in Block 6 (agent merge, scheduling MVA, trust ladder) + Model B consolidation. Block 1 is Sonnet throughout.
+
 ## Block verification gate
 
 Every prompt that ships a block sub-step must close with a **"Verify-then-advance"** section. Structure it as:
