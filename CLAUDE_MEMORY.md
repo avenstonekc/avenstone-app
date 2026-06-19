@@ -1854,3 +1854,14 @@ KEY DECISIONS (locked):
   rails, never moves them; human-only forever = margin floor, max-% move per action,
   anything irreversible/external (money leaving, client-facing send).
 - MECHANICS live in GOD_AGENT_ARC.md. Vision = destination/philosophy; arc = how.
+
+[LOG — 2026-06-19] — DOC CONSOLIDATION: root planning docs 34 → 21 root stubs (7 keepers + 13 redirects + 3 existing E-pointers + minus CLASSIFICATION_REPORT)
+
+- Action: Full doc consolidation per CLASSIFICATION_REPORT.md. CLAUDE_INDEX.md created (67 slugs, 3 categories). 13 new slugs appended to CLAUDE_ARCHIVE.md. 21 future-arc docs moved to docs/arcs/. 3 carve-out STATUS headers added before moving (UNIFIED_FILES_ARC: phases 1-2 shipped/3 incomplete; FIELD_OPUS_ARC: VM dispatch unbuilt; CONTRACT_SIGNING_ARC: magic link gap must be verified first, legal stakes). OPUS_RULES doc cap updated 6→7 (MASTER_BUILD_PLAN added as 7th keeper). Archive Rules A+B now active.
+- Archived (A — SHIPPED, lean slug): AGENT_CARDS_ARC, DAILY_LOG_ARC, FINANCIALS_PLAN, PUSH_NOTIFICATIONS_ARC, SUB_INVOICES_ARC, docs/AI_CONSULTATION_BLUEPRINT. Note: SUB_INVOICES_ARC marked doc-stale failure pattern (all phases shipped, doc never updated).
+- Archived (B — AUDIT/SNAPSHOT, lean slug): AGENT_AUDIT, APP_REVIEW_2026-05-25, AVEN_MERGE_AUDIT, COST_PLUS_AUDIT, MODEL_B_AUDIT, PUSH_NOTIFICATIONS_ARC_APNS_CERT_SETUP, docs/AUDIT_2026-04-30_estimate_procurement.
+- Moved to docs/arcs/ (C — FUTURE ARC, full content kept): 21 docs including all active design arcs.
+- Carve-outs preserved: SUB_INVOICES Phase 6 (sub portal submission), PUSH_NOTIFICATIONS Phase 6 (Web Push), FINANCIALS Phase 7 (receipt vision), AGENT_CARDS Phase 6 (field voice rendering).
+- PRE_MOVE_HASH for all git show pointers: a4fffa227a6352fd561ae6c32dac4e2567ffac35.
+- Assertion flag: root count = 21 (after removing CLASSIFICATION_REPORT), not 7. The 13 redirect stubs + 3 existing E-pointers remain at root. Decision needed on whether to delete redirect stubs (achieving 7 keepers only) or leave them as discoverability pointers per the established E-type pattern.
+- Open: Kalin to decide redirect stub fate (delete vs keep). SELECTIONS_ARC.md was untracked — added to git when moved to docs/arcs/.
