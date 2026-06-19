@@ -1802,3 +1802,34 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Commits: cb413a2 (Part A), 6569069 (Parts B+C). Pushed to main.
 - PHASE 4 COMPLETE. All four slices shipped (Slice 1: FACE render; Slice 3: interview inputs + server fail-loud; Slice 4: gap batch-ask).
 - Open: Phase 6 learn-loop — when rep sets a rate for a regional_avg gap (user_entered), offer "save to Rate Book". Hook stub is at EstimateTab.jsx applyGapRates(), the commented `_learnHook` block. Doc-debt: arc doc's dead source_label taxonomy (tenant_rate/tier_*) should be reconciled to live (labor_rate/material_tier/regional_avg/user_entered).
+
+[LOG - 2026-06-18] PHASE6_ARC_B_BLUEPRINT — Phase 6 + God Agent session blueprint
+- Session scope: Live doc fetch (ESTIMATOR_KNOWLEDGE_ARC, CLAUDE_MEMORY, CLAUDE.md, CONTRACT_SIGNING_ARC), send-flow audit, God Agent MD home decision, combined slice sequence.
+
+SEND-TO-CLIENT BUG (S0, FIXED commit 4c5c0ee):
+- sbSendEstimateEmail (supabase.js:1400) sent {client_email} but edge fn expects {to} → hard 400, email never sent.
+- html body also missing — even if to were fixed, email body would be undefined/blank.
+- Fix: renamed client_email→to, added minimal HTML body template. File: avenstone-vite/src/lib/supabase.js. Build green.
+
+GOD AGENT MD:
+- No existing God Agent MD found. Closest: TENANT_ONBOARDING_ARC.md (wizard write path). Decision: create GOD_AGENT_ARC.md.
+- TENANT_ONBOARDING_ARC = setup/wizard (one-time write). GOD_AGENT_ARC = ongoing owner control (editor).
+- GOD_AGENT_ARC.md covers: Capability 1 (conversational bulk pricing, preview-then-confirm, owner-only, tenant-scoped, reuses Phase 6 owner write helper); Capability 2 (capacity-aware pricing advisor, blueprint-only, gated on SCHEDULING_INTELLIGENCE signal); pricing_policy JSONB on tenants table (first entry: deviation_up_pct/deviation_down_pct); merge of Phase 6.1 Rate Book review into God Agent pricing tab; combined Phase 6 + Arc B slice sequence.
+
+COMBINED SLICE SEQUENCE (locked for Phase 6 + Arc B):
+- S0: Fix send-to-client — DONE (commit 4c5c0ee)
+- 6.0: Deviation gate + awaiting-approval state (2 prompts) — migration tenants.pricing_policy JSONB, job_estimates.status+'awaiting_approval', deviation check at commit, manager bypass
+- 6.1/B1: God Agent Phase 1 — owner rate review surface + promote to rate_book_labor (2 prompts)
+- 6.2: Manager approval surface + send unlock — sits on fixed send path (2 prompts)
+- 6.3: Loop closure verification (1 prompt)
+- B2: God Agent Capability 1 — conversational bulk pricing (3 prompts)
+- B3: pricing_policy edit via God Agent (1 prompt)
+- B4: Capacity advisor — gated on SCHEDULING_INTELLIGENCE signal (build later)
+
+KEY DECISIONS (locked):
+- Tolerance pair (+30% up / −15% down): stored in tenants.pricing_policy JSONB, fallback hardcoded so Phase 6 ships independent of wizard.
+- Gap fills (no vetted baseline) always gate, regardless of tolerance.
+- Manager (owner/PM) path → no gate, immediately sendable.
+- Gate = estimate.status='awaiting_approval'. No push. State-surfaced like pending sub-invoices.
+- 6.1 merges into God Agent pricing tab Review mode. Not a separate screen.
+- Never write tenant_id=NULL to rate_book_labor (NULL = platform slot; would price all tenants).
