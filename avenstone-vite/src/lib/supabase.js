@@ -1403,6 +1403,29 @@ export const sbSendEstimateEmail = async (job, pdfBlob) => {
   return res.json();
 };
 
+// ─── Deviation gate helpers (DEVIATION_GATE_ARC 6.0) ─────────────────────────
+export const sbGetPricingPolicy = async (tenantId) => {
+  const { data } = await sb.from('tenants').select('pricing_policy').eq('id', tenantId).single();
+  const tol = data?.pricing_policy?.tolerance;
+  return { up_pct: tol?.up_pct ?? 30, down_pct: tol?.down_pct ?? 15 };
+};
+
+// Upserts approval state onto the job_estimates row for jobId.
+// Uses upsert (not update) so it works even if the row was created by manual line-item path.
+// Chains .select('id').single() as RLS-false-positive guard — throws if row not returned.
+export const sbSetEstimateApproval = async (jobId, status, meta) => {
+  const { data, error } = await sb.from('job_estimates')
+    .upsert(
+      { job_id: jobId, tenant_id: AV_TENANT, approval_status: status, approval_meta: meta },
+      { onConflict: 'job_id' }
+    )
+    .select('id')
+    .single();
+  if (error) throw new Error(`sbSetEstimateApproval: ${error.message}`);
+  if (!data) throw new Error('sbSetEstimateApproval: no row returned (RLS blocked?)');
+  return data;
+};
+
 // ─── Payments ─────────────────────────────────────────────────────────────────
 export const sbLoadPayments = async jid => {
   const { data } = await sb.from('payments').select('*').eq('job_id', jid).order('created_at', { ascending: false });

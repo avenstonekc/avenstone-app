@@ -1,5 +1,6 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval } from '../../../lib/supabase';
+import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
 import { Ic, f$ } from '../../../lib/utils';
@@ -413,8 +414,24 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const sendEstimateToClient = async () => {
     if (!job.client_email) { setEstSaveMsg('No client email on this job'); return; }
     if (!lineItems.length) { setEstSaveMsg('No line items — run the estimator first'); return; }
+    const isManager = profile?.role === 'owner' || profile?.role === 'project_manager';
     setEstSendingClient(true); setEstSaveMsg('');
     try {
+      if (!isManager) {
+        const policy = await sbGetPricingPolicy(AV_TENANT);
+        const dev = await computeEstimateDeviation(sb, AV_TENANT, lineItems, policy);
+        if (dev.gated) {
+          await sbSetEstimateApproval(job.id, 'awaiting_approval', {
+            gatedLines: dev.gatedLines,
+            requested_by: AV_USER_ID,
+            at: new Date().toISOString(),
+          });
+          setEstSaveMsg(`Sent for manager approval — ${dev.gatedLines.length} line(s) below margin band`);
+          setEstSendingClient(false);
+          return;
+        }
+      }
+      // not gated (or manager) → existing send path unchanged
       const blob = _buildProposalDoc().output('blob');
       await sbSendEstimateEmail(job, blob);
       const file = new File([blob], `Proposal — ${job.address}.pdf`, { type: 'application/pdf' });
