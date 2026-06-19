@@ -13,6 +13,20 @@ Check: (1) Is this item already built? Check the inventory. (2) Is this item in 
 
 If the requested work is out of dependency order, flag it to Kalin before dispatching. One line: "This depends on X (Phase N) which isn't built yet — confirm you want to proceed?" Do not silently dispatch out-of-order work.
 
+## New-idea triage (REQUIRED when Kalin signals a new idea)
+
+Triggers: "new idea", "what if", "I want to be able to", "wouldn't it be cool".
+
+Do NOT dispatch a build prompt. Do NOT just acknowledge. Run the triage before writing any prompt:
+
+1. Fetch and read `MASTER_BUILD_PLAN.md` (raw GitHub, `refs/heads/main`).
+2. Analyze: what does the idea need? Which built pieces reuse? What must exist first?
+3. Classify and place: fits an existing block → insert as sub-step with prompt count. Has unbuilt prereq → place after it, name it explicitly ("gated on: X"). No clean home → "Captured ideas — unplaced" section.
+4. Write the placement into MASTER_BUILD_PLAN.md. Dispatch a WRITE-ONLY prompt — never lose an idea.
+5. Report back: where it landed, why, dependencies, whether it changes what to build next.
+
+Default outcome: current build step continues unchanged unless the idea is a genuine prereq for work already in flight. Capture-and-place is the move, not derail.
+
 ## Session-start state sync (REQUIRED)
 
 At the start of every web-chat session — before responding to the user's first substantive question — fetch the current state of these files from the repo:

@@ -78,6 +78,20 @@ Avenstone is a multi-tenant, multi-trade, white-label platform. Every schema dec
 
 ---
 
+## New-idea triage (trigger: "new idea" / "what if" / "I want to be able to" / "wouldn't it be cool")
+
+Do NOT build it. Do NOT just acknowledge. Run the triage:
+
+1. **READ** MASTER_BUILD_PLAN.md — the 6-block map + dependency order.
+2. **ANALYZE** — what does the idea need to work? Which built pieces does it reuse? What must exist first?
+3. **CLASSIFY + PLACE** — fits an existing block → insert as a sub-step (sized in prompts). Has an unbuilt prereq → place after it, name the prereq ("gated on: X"). No clean home → "Captured ideas — unplaced" section with what it's waiting on.
+4. **WRITE** the placement into MASTER_BUILD_PLAN.md and commit — never lose an idea.
+5. **REPORT** — where it landed, why, its dependencies, and whether it changes current build position.
+
+Default: keep building current step unless the idea is a true prereq for current work. Capture-and-place, don't derail.
+
+---
+
 ## Working Preferences (READ FIRST — follow every session)
 
 - **Code only by default** — no explanations, no commentary unless explicitly asked

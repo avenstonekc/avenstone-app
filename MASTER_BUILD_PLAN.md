@@ -460,8 +460,9 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | B5.10 — SELECTIONS Phase 6: visualize render | Edge fn calling Gemini/image-edit model. "Visualization is an approximation" disclaimer. Approval binds to spec + render version. | 2 | B5.9 |
 | B5.11 — Sub workflow upgrades | PM→Sub direct chat thread. Phase start/complete confirmation by sub. CO submission by sub from field. | 4 | SubPortal ✓ |
 | B5.12 — UNIFIED_FILES Phases 4-5 | Client + sub filtered folder trees in portals. Mobile camera flow (Capacitor native sheet). Search performance on 200+ file jobs. | 3 | B5.4 |
+| B5.13 — GPS/ETA: sub/rep on the way → client portal | Sub taps "I'm on my way" on their job view → captures current location via `navigator.geolocation` (already in `src/lib/gps.js`) → ETA calculated against `jobs.address` via a maps API → client portal shows "Your contractor is X mins away" banner + push notification fires via existing `send-push`. Schema: `job_location_pings(id, job_id, user_id, lat, lng, eta_minutes, triggered_at)`; Realtime subscription in ClientPortal. | 3 | B5.11 (sub job view), ClientPortal ✓, push-notifications ✓ |
 
-**Block 5 total: 33 prompts**
+**Block 5 total: 36 prompts** _(+3 from GPS/ETA triage 2026-06-19)_
 
 **Prove-the-flow:**
 - (a) Flow test: create kitchen remodel → adaptive intake appears → answers pre-fill estimator → selections generated for tile + paint → client portal shows selections with confirm-by date → client confirms → materials can proceed
@@ -551,14 +552,15 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | 42 | SELECTIONS Phases 4-5: PM tab + client confirm | B5 | 4 | 96 | SELECTIONS_ARC Phases 4-5 |
 | 43 | SELECTIONS Phase 6: visualize render | B5 | 2 | 98 | SELECTIONS_ARC Phase 6 |
 | 44 | Sub workflow upgrades | B5 | 4 | 102 | SUB_WORKFLOW_ARC (partial) |
-| 45 | UNIFIED_FILES Phases 4-5: portals + polish | B5 | 3 | 105 | UNIFIED_FILES Phases 4-5 |
-| 46 | AVEN_MERGE_ARC | B6 | 5 | 110 | AVEN_MERGE_ARC |
-| 47 | Scheduling Intelligence MVA (Phases 1-4) | B6 | 11 | 121 | SCHEDULING_INTELLIGENCE Phases 1-4 |
-| 48 | AGENT_INTELLIGENCE: actor_memory layer | B6 | 3 | 124 | AGENT_INTELLIGENCE_ARC (partial) |
-| 49 | Trust ladder eligibility + graduation | B6 | 3 | 127 | GOD_AGENT B4 prereq |
-| 50 | Bounded autopilot execution | B6 | 3 | 130 | GOD_AGENT autopilot (AVENSTONE_VISION north star) |
+| 45 | GPS/ETA: sub/rep on the way → client portal | B5 | 3 | 105 | Idea triage 2026-06-19 |
+| 46 | UNIFIED_FILES Phases 4-5: portals + polish | B5 | 3 | 108 | UNIFIED_FILES Phases 4-5 |
+| 47 | AVEN_MERGE_ARC | B6 | 5 | 113 | AVEN_MERGE_ARC |
+| 48 | Scheduling Intelligence MVA (Phases 1-4) | B6 | 11 | 124 | SCHEDULING_INTELLIGENCE Phases 1-4 |
+| 49 | AGENT_INTELLIGENCE: actor_memory layer | B6 | 3 | 127 | AGENT_INTELLIGENCE_ARC (partial) |
+| 50 | Trust ladder eligibility + graduation | B6 | 3 | 130 | GOD_AGENT B4 prereq |
+| 51 | Bounded autopilot execution | B6 | 3 | 133 | GOD_AGENT autopilot (AVENSTONE_VISION north star) |
 
-**Grand total: 130 Sonnet prompts** across 50 sub-steps in 6 blocks.
+**Grand total: 133 Sonnet prompts** across 51 sub-steps in 6 blocks.
 
 ---
 
@@ -597,3 +599,15 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | **MOBILE_AUDIT_ARC** | UX pass; doesn't block features | Block 4 complete |
 | **SALES_PIPELINE_ARC** (leads → qualified → consultations → proposals) | Basic LeadsScr exists; intake arc (B5.1-B5.3) closes the "form becomes a prompt" gap | Block 5 intake complete |
 | **GOD_MASTER_AGENT (white-label configurator)** | Requires Avenstone-for-GC shipping to paying customer + 4+ weeks AUTO_FIX data | Stage 2 (first real customer) |
+
+---
+
+## 8. Captured Ideas — Unplaced
+
+Ideas that have been triaged but don't yet have a clean home in the 6-block sequence. Each is waiting on a named prereq or a Kalin decision before it can be placed.
+
+_First idea → GPS/ETA was triaged and placed as B5.13 (2026-06-19). No unplaced ideas yet._
+
+| Idea | What it's waiting on | Triage date |
+|------|---------------------|-------------|
+| _(empty — add via triage rule)_ | — | — |
