@@ -72,6 +72,12 @@ Avenstone is a multi-tenant, multi-trade, white-label platform. Every schema dec
 
 ---
 
+## Master Build Plan (CHECK FIRST — before starting any new phase)
+
+**Before starting any new feature, arc, or slice:** read `MASTER_BUILD_PLAN.md`. Check the build-state inventory for current status. Check the dependency-ordered roadmap for correct sequencing. Do not build out of dependency order. If a prompt requests work that is out of sequence (e.g., building a feature that depends on an unbuilt prerequisite), flag it before starting. This doc is checked every session — not just when explicitly asked.
+
+---
+
 ## Working Preferences (READ FIRST — follow every session)
 
 - **Code only by default** — no explanations, no commentary unless explicitly asked

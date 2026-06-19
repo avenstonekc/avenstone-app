@@ -4,6 +4,15 @@ Rules for prompts Opus writes for Claude Code to execute. Opus reads
 this at the start of every chat in this project. Every prompt Opus
 writes must follow these.
 
+## Master Build Plan — check before every new arc (REQUIRED)
+
+Before writing a prompt that starts a new feature, arc, or slice, fetch and read `MASTER_BUILD_PLAN.md` from:
+`https://raw.githubusercontent.com/avenstonekc/avenstone-app/refs/heads/main/MASTER_BUILD_PLAN.md`
+
+Check: (1) Is this item already built? Check the inventory. (2) Is this item in the correct phase given its dependencies? Check the roadmap. (3) Does the prompt touch anything listed as Parked/Blocked?
+
+If the requested work is out of dependency order, flag it to Kalin before dispatching. One line: "This depends on X (Phase N) which isn't built yet — confirm you want to proceed?" Do not silently dispatch out-of-order work.
+
 ## Session-start state sync (REQUIRED)
 
 At the start of every web-chat session — before responding to the user's first substantive question — fetch the current state of these files from the repo:
