@@ -1881,3 +1881,9 @@ KEY DECISIONS (locked):
 - Rule: When Kalin signals a new idea (new idea / what if / I want to be able to / wouldn't it be cool) → triage against MASTER_BUILD_PLAN.md, classify+place, commit, report. Default: keep building current step.
 - GPS/ETA triage result: placed as B5.13 in Block 5 (Client Front Door), after B5.11 (sub workflow upgrades). Reuses: gps.js (browser navigator.geolocation — NOT @capacitor/geolocation which is NOT installed), ClientPortal.jsx, push-notifications, SubPortal job view. Net-new: job_location_pings table + maps API (Google Maps Distance Matrix or similar) + Realtime subscription in ClientPortal. 3 prompts. Grand total 130→133.
 - Note: @capacitor/geolocation is NOT installed; gps.js uses browser geolocation API. MVP path is one-shot "I'm on my way" location capture (no background tracking needed). Maps API is the only true new external dependency.
+
+[LOG — 2026-06-19] — New-idea triage rule fixed: auto-file → two-step discuss-then-lock
+
+- Action: Verified both CLAUDE.md and OPUS_RULES.md had the auto-file version (Step 4 wrote to plan immediately). Fixed both to two-step. Commit fa3da47.
+- Was: single-pass triage that wrote + committed to MASTER_BUILD_PLAN.md on the first mention of an idea.
+- Now: Step 1 (triggered by "new idea" etc.) = triage + discuss only, WRITE NOTHING. Step 2 (triggered by "lock it in") = write placement + commit. Plan only holds explicitly locked ideas.
