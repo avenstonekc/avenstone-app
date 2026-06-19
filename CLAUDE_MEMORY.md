@@ -1900,3 +1900,9 @@ KEY DECISIONS (locked):
 - Action: Replaced all 6 Prove-the-flow sections in MASTER_BUILD_PLAN.md with Verify-then-advance. Added verification model definition at top of Part 2. Added Block verification model rule to CLAUDE.md. Added Block verification gate section to OPUS_RULES.md. Commit 2ce1673.
 - Model: Code verifies (automated flow-tests prove plumbing, results inline) → Code tells Kalin exactly what surface to open and what right looks like → Kalin reviews and confirms or kicks back. Kalin does not execute build/test steps.
 - Role-seat rule: at role boundaries, Code points Kalin to review from that role's seat (rep, PM, sub, client). Judgment call — only when a human seat exists and the answer can only be felt from that seat.
+
+[LOG — 2026-06-19] — Three doc rule updates: reviewer model + be-the-role + model directive
+
+- Action: Changes 1+2 (reviewer model + be-the-role gate) were already live from prior session — confirmed correct, no change needed. Added Change 3 (model directive). Commit 6c007c5.
+- Change 3: Every dispatch prompt Opus writes opens with "Model: Sonnet" or "Model: Opus — <why>". Sonnet = defined execution. Opus = judgment over execution (architecture decisions, gnarly debugging, audit-before-build). Full rule in OPUS_RULES.md item 11; pointer in CLAUDE.md.
+- VERIFICATION ANSWER: A "Model: Opus" directive line inside a pasted prompt CANNOT change the executing model. Model selection is a session/CLI setting, not prompt-level. The directive is a SIGNAL from Opus to Kalin — when it says Opus, Kalin runs /model claude-opus-4-8 before pasting; Sonnet, pastes as-is. Opus decides and labels; Kalin acts on the label.
