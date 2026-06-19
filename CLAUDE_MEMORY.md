@@ -1783,3 +1783,22 @@ NEXT (Slice 2): swap logo.png in sidebar/auth screens with the new SVGs; add fav
 - Build: green (430 modules). hex 1312 ≤ 1343 baseline. No new hex literals.
 - Commits: 813592f (Part A), 2710844 (Parts B+C+D). Both pushed to main. Edge fn deploy via GitHub Actions CLI (bundles _shared/).
 - Open: Slice 4 (labor-gap batch-ask in the interview — surface regional_avg lines for rep review before committing). Doc-debt: arc doc's dead source_label taxonomy (tenant_rate/tier_*) should be reconciled to live (labor_rate/material_tier/regional_avg/user_entered).
+
+[LOG - 2026-06-18] ESTIMATOR_GAP_BATCHASK_SLICE4 — Labor-gap batch-ask (pre-commit) — ESTIMATOR_KNOWLEDGE_ARC Phase 4 Slice 4 — PHASE 4 COMPLETE
+- What shipped:
+  (A) ai-estimator: gap_key added to all three regional_avg PricedLine return paths. Format: "trade::line_item::unit". PricedLine.source_label type extended with "user_entered".
+  (B) GapBatchAsk.jsx — new component (~110 lines). Batch-ask panel for all regional_avg gaps at once. Input pre-filled from line.regional_rate (the AI guess), empty when null. Live amount updates as rep types. "Use these rates" button calls onApply. Unset counter shows "{M} of {N} still unset — will commit as TBD" / "All rates set ✓". Mobile: 2-row stack per line.
+  (C) EstimateTab.jsx wiring: gapRates state (keyed by gap_key → rate string); useEffect seeds NEW gap_keys from pricedScope on each draft (preserves rep edits on re-seed); applyGapRates() mutates pricedScope in-memory (user_entered + real unit_price/amount for filled gaps, regional_avg/TBD unchanged for blanks); panel renders between StructuredEstimate and raw toggle when gaps.length > 0; Reset clears gapRates.
+- Files:
+  - `supabase/functions/ai-estimator/index.ts` (gap_key on 3 return paths + type extension)
+  - `avenstone-vite/src/components/jobs/tabs/GapBatchAsk.jsx` (new)
+  - `avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx` (state + useEffect + applyGapRates + panel wire-in)
+- Post-draft/pre-commit sequencing decision: gaps are only knowable after scoping+pricing. Applying typed rates to specific lines is deterministic (no AI re-scope). This does NOT violate the "chat is a first-draft generator, never an editor" rule — the draft is uncommitted and the apply is a deterministic write, not a model call. Locked: no regenerate, no AI in batch-ask path.
+- user_entered stamp: confirmed gaps become source_label:'user_entered' in pricedScope memory. StructuredEstimate already badges user_entered as ✎ "You set" (from Slice 1). Commit maps source_label directly from pricedScope line — no mapping change needed.
+- TBD gaps allowed: do NOT force rep to fill all gaps before commit. Unfilled lines stay regional_avg, unit_price=null, commit as unit_cost=0 with source_label='regional_avg'. Counter shows count honestly.
+- Learn-loop hook stub: EstimateTab.jsx applyGapRates(), commented block capturing `{ gap_key, trade, line_item, unit, entered_rate }`. No write to rate_book_labor. Phase 6 owns the save flow.
+- Verify mock: 2 regional_avg gaps (tile backsplash 40SF regional_rate=$8, custom niche 2EA null). gapRates seeds {"TILE::tile_backsplash::SF":"8", "TILE::custom_niche::EA":""}. After entering $10 for niche and applying: tile→user_entered unit_price=8 amount=320; niche→user_entered unit_price=10 amount=20. Blank gap (no entry) stays regional_avg/TBD. Commit: unit_cost=8,source_label='user_entered' and unit_cost=10,source_label='user_entered'.
+- Build: green (430 modules). hex 1312 ≤ 1343. No new hex.
+- Commits: cb413a2 (Part A), 6569069 (Parts B+C). Pushed to main.
+- PHASE 4 COMPLETE. All four slices shipped (Slice 1: FACE render; Slice 3: interview inputs + server fail-loud; Slice 4: gap batch-ask).
+- Open: Phase 6 learn-loop — when rep sets a rate for a regional_avg gap (user_entered), offer "save to Rate Book". Hook stub is at EstimateTab.jsx applyGapRates(), the commented `_learnHook` block. Doc-debt: arc doc's dead source_label taxonomy (tenant_rate/tier_*) should be reconciled to live (labor_rate/material_tier/regional_avg/user_entered).
