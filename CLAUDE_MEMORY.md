@@ -1907,6 +1907,14 @@ KEY DECISIONS (locked):
 - Change 3: Every dispatch prompt Opus writes opens with "Model: Sonnet" or "Model: Opus — <why>". Sonnet = defined execution. Opus = judgment over execution (architecture decisions, gnarly debugging, audit-before-build). Full rule in OPUS_RULES.md item 11; pointer in CLAUDE.md.
 - VERIFICATION ANSWER: A "Model: Opus" directive line inside a pasted prompt CANNOT change the executing model. Model selection is a session/CLI setting, not prompt-level. The directive is a SIGNAL from Opus to Kalin — when it says Opus, Kalin runs /model claude-opus-4-8 before pasting; Sonnet, pastes as-is. Opus decides and labels; Kalin acts on the label.
 
+[LOG — 2026-06-20] — B1.2 draw composer UI verified; double-charge gap found at line-item level (STOP)
+
+- Action: ComposeDrawScr.jsx was already fully built (641 lines) from COST_PLUS_ARC — expense selector, per-row markup from DB `markup_pct`, forward-looking lines, retainage controls, sbComposeDraw call. Already wired in FinancialsTab.jsx. Added post-write verification to sbComposeDraw: after RPC returns draw_id, SELECT draw_schedules to confirm row landed. Commit 40922d6.
+- Test draw confirmed: draw_schedules row ✅, draw_line_items rows ✅, job_transactions flipped to in_draw ✅. Both test draws voided, transactions restored to unreimbursed ✅.
+- Double-charge guard — PARTIAL. Transaction-level: ✅ protected. RPC flips with `AND reimbursement_status = 'unreimbursed'`, so transactions stay with the first draw. UI-level: ✅ protected. `sbLoadUnreimbursedExpenses` only shows unreimbursed rows; in_draw transactions disappear from the selector. Line-item level: ❌ GAP. `draw_line_items` has NO UNIQUE constraint on `transaction_id`. A second compose_draw call can insert duplicate line_items for the same transactions. `tx_flipped` RPC metric is misleading — it counts array length, not actual UPDATE row count.
+- STOP: double-charge line-item gap requires a schema fix (partial UNIQUE index on draw_line_items.transaction_id WHERE transaction_id IS NOT NULL + RPC guard to RAISE on already-in-draw). Scope guard triggered — this is its own slice (B1.2.5 or pre-req for B1.3).
+- Open: B1.2.5 — UNIQUE constraint on draw_line_items.transaction_id + compose_draw RPC pre-flight check. Must ship before B1.3 (draw paid cascade) to close the double-charge window permanently.
+
 [LOG — 2026-06-20] — B1.1 bid_model_config schema shipped (MASTER_BUILD_PLAN Block 1 starting gun)
 
 - Action: Created `bid_model_config` table. Migration: `20260620100000_bid_model_config.sql`. Applied + verified.
