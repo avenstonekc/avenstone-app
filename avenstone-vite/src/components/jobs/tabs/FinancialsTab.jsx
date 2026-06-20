@@ -365,8 +365,10 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             const projNoteColor = summary.projected_final_bill != null
               ? ((summary.contract_variance ?? 0) >= 0 ? 'var(--green-dot)' : 'var(--red-text)')
               : undefined;
+            const cpUnreimbursed = summary.float_unreimbursed ?? 0;
             const cpStats = [
               { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? 'var(--red-text)' : 'var(--text-subtle)' },
+              { lb: 'Unreimbursed',      v: f$(cpUnreimbursed), c: cpUnreimbursed > 0 ? 'var(--amber-text-strong)' : 'var(--text-subtle)', note: cpUnreimbursed > 0 ? 'pending draw request' : 'all expenses drawn' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
               ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
               { lb: 'Projected Profit',  v: f$(summary.projected_profit), c: summary.projected_profit > 0 ? 'var(--green-dot)' : 'var(--text-subtle)', note: projNote, noteColor: projNoteColor },
