@@ -1906,3 +1906,15 @@ KEY DECISIONS (locked):
 - Action: Changes 1+2 (reviewer model + be-the-role gate) were already live from prior session — confirmed correct, no change needed. Added Change 3 (model directive). Commit 6c007c5.
 - Change 3: Every dispatch prompt Opus writes opens with "Model: Sonnet" or "Model: Opus — <why>". Sonnet = defined execution. Opus = judgment over execution (architecture decisions, gnarly debugging, audit-before-build). Full rule in OPUS_RULES.md item 11; pointer in CLAUDE.md.
 - VERIFICATION ANSWER: A "Model: Opus" directive line inside a pasted prompt CANNOT change the executing model. Model selection is a session/CLI setting, not prompt-level. The directive is a SIGNAL from Opus to Kalin — when it says Opus, Kalin runs /model claude-opus-4-8 before pasting; Sonnet, pastes as-is. Opus decides and labels; Kalin acts on the label.
+
+[LOG — 2026-06-20] — B1.1 bid_model_config schema shipped (MASTER_BUILD_PLAN Block 1 starting gun)
+
+- Action: Created `bid_model_config` table. Migration: `20260620100000_bid_model_config.sql`. Applied + verified.
+- Files: `supabase/migrations/20260620100000_bid_model_config.sql`, `avenstone-vite/src/types/database.types.ts`
+- Schema: id (uuid PK), tenant_id (uuid NOT NULL explicit per Principle 11), category (text NOT NULL), supply_model (text CHECK contractor|owner, DEFAULT contractor), markup_pct (numeric(5,2) DEFAULT 30), pm_fee (numeric(10,2) DEFAULT 1200), allowance (boolean DEFAULT false), created_at, updated_at. UNIQUE (tenant_id, category).
+- Indexes: idx_bid_model_config_tenant_id, idx_bid_model_config_tenant_category.
+- RLS: 4 policies (SELECT/INSERT/UPDATE/DELETE) all scoped by get_my_tenant_id().
+- Backfill: 1 row for Avenstone tenant (00000000-0000-0000-0000-000000000001), category='default', supply_model='contractor', markup_pct=30, pm_fee=1200, allowance=false. Reproduces hardcoded behavior exactly.
+- Consumer contract confirmed (read ai-estimator/index.ts L400, L442-443): markup_pct and pm_fee are single flat body params per estimate call passed from the frontend — NOT per-line or per-trade. Table is a config store the frontend reads; no category granularity mismatch.
+- NOTIFY pgrst, 'reload schema' issued. Types regenerated.
+- Open: B1.6 will wire the estimator frontend to read from this table instead of hardcoded constants. ai-estimator SYSTEM_PROMPT still says "Markup (30%) and PM fee ($1,200) are added by code" — cosmetic; fix in B1.6.
