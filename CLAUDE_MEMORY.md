@@ -1907,6 +1907,26 @@ KEY DECISIONS (locked):
 - Change 3: Every dispatch prompt Opus writes opens with "Model: Sonnet" or "Model: Opus — <why>". Sonnet = defined execution. Opus = judgment over execution (architecture decisions, gnarly debugging, audit-before-build). Full rule in OPUS_RULES.md item 11; pointer in CLAUDE.md.
 - VERIFICATION ANSWER: A "Model: Opus" directive line inside a pasted prompt CANNOT change the executing model. Model selection is a session/CLI setting, not prompt-level. The directive is a SIGNAL from Opus to Kalin — when it says Opus, Kalin runs /model claude-opus-4-8 before pasting; Sonnet, pastes as-is. Opus decides and labels; Kalin acts on the label.
 
+[LOG — 2026-06-20] — B1.5 cost-plus client portal draw-based breakdown shipped
+
+- Action: Fixed two data leak vectors + added draw running totals. Commit adade6d.
+- Files: `avenstone-vite/src/lib/supabase.js`, `avenstone-vite/src/components/client/ClientPortal.jsx`
+- Legacy location: The "Financials" tab on the ClientPortal was rendering BOTH an `actualSpend` section (raw transaction table with payees + markup rates) AND a DrawCard that exposed `base_amount`/`markup_pct` per line item. Both leaked owner-only data to the client.
+- Fix 1 (supabase.js): `sbLoadClientDrawBreakdown` SELECT on draw_line_items stripped of `base_amount`, `markup_pct`, `markup_amount`. Client payload now only receives `description` + `total_with_markup` per draw line item.
+- Fix 2 (DrawCard): Removed "Cost" and "Markup" columns from the per-line table → now "Description" + "Amount" only. Removed "Subtotal (costs)" + "Markup" summary rows → now shows "Draw Total", optional "Deposit credit applied", "Amount Invoiced", paid date.
+- Fix 3 (financials tab): Removed the "What We've Spent" section (individual vendor transactions with payee names, categories, raw amounts, and markup rate label). Kept headline stat cards (Original Contract, Authorized Contract, Paid to Date, Projected Total, Remaining Balance) — aggregate numbers only.
+- Added running totals strip below draw history: Invoiced to Date / Paid / Balance Due — computed from drawBreakdown (no helper needed, pure client-side math from already-loaded data).
+- Legacy fallback (cost_items): Removed the `Estimate` and `Markup: X%` fields. Now only shows "Your Price" (client-facing total). Only shows when drawBreakdown is empty (pre-arc jobs).
+- Owner-only field leak check: base_amount, markup_pct, markup_amount — NOT in SELECT payload ✅. Raw vendor transactions — NOT rendered ✅. Float — NOT shown in financials tab ✅. Fixed-price clients do not get the "financials" tab at all (getClientTabs gating confirmed at line 269).
+- Totals verification (Lucy Webb job 5ebd7c3c, draw ae52303c):
+  | Label | Displayed | Hand-computed |
+  | Invoiced to Date | $41,073.90 | invoice.total_amount = $41,073.90 ✓ |
+  | Total Paid | $41,073.90 | status='paid', 1 draw ✓ |
+  | Balance Due | $0.00 | $41,073.90 − $41,073.90 = $0 ✓ |
+  | DrawCard Total | $49,573.90 | SUM(total_with_markup) = $49,573.90 ✓ |
+  | Deposit credit applied | $8,500.00 | draw_total − invoice_total = $8,500 ✓ |
+- Client portal route: open `https://avenstone-app.vercel.app` → log in as client (kalinspratling@gmail.com) → open the Lucy Webb job → "Financials" tab. B1.5 complete.
+
 [LOG — 2026-06-20] — B1.4 Master Agent compose_draw + record_deposit audit and finish
 
 - AUDIT: Both verbs fully wired across all 5 registration points (TOOLS, CONFIRM_TOOLS, REQUIRED_FIELDS, describeConfirmAction, executor). record_deposit = all 5 clean, no changes. compose_draw = 3/5 clean, 2 gaps found.
