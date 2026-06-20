@@ -1907,6 +1907,16 @@ KEY DECISIONS (locked):
 - Change 3: Every dispatch prompt Opus writes opens with "Model: Sonnet" or "Model: Opus — <why>". Sonnet = defined execution. Opus = judgment over execution (architecture decisions, gnarly debugging, audit-before-build). Full rule in OPUS_RULES.md item 11; pointer in CLAUDE.md.
 - VERIFICATION ANSWER: A "Model: Opus" directive line inside a pasted prompt CANNOT change the executing model. Model selection is a session/CLI setting, not prompt-level. The directive is a SIGNAL from Opus to Kalin — when it says Opus, Kalin runs /model claude-opus-4-8 before pasting; Sonnet, pastes as-is. Opus decides and labels; Kalin acts on the label.
 
+[LOG — 2026-06-20] — B1.2.5 draw double-charge guard closed (schema + RPC)
+
+- Action: Migration `20260620110000_b1_2_5_draw_double_charge_guard.sql`. Commit 6818e62.
+- Part 1: `CREATE UNIQUE INDEX idx_dli_unique_transaction ON draw_line_items (transaction_id) WHERE transaction_id IS NOT NULL`. Partial — NULL (forward-looking) rows unrestricted. Verified via pg_indexes.
+- Part 2: `compose_draw` rewrite. Pre-flight: collects non-null tx_ids from input, queries job_transactions for any already `in_draw`, raises P0001 with count + UUIDs if found. `tx_flipped` now uses `GET DIAGNOSTICS ROW_COUNT` after the UPDATE (was: `array_length(v_tx_ids,1)` — always ≥ 1 even when 0 rows flipped).
+- Attack test: compose draw A → attempt draw B with same tx_id → P0001 raised: "Cannot compose draw: 1 transaction(s) already in_draw". ✅
+- NULL-line test: compose draw with 2 forward-looking lines (NULL transaction_id) → succeeded, `tx_flipped: 0`. ✅
+- Both test draws voided cleanly.
+- B1.3 (draw paid cascade) is now unblocked.
+
 [LOG — 2026-06-20] — B1.2 draw composer UI verified; double-charge gap found at line-item level (STOP)
 
 - Action: ComposeDrawScr.jsx was already fully built (641 lines) from COST_PLUS_ARC — expense selector, per-row markup from DB `markup_pct`, forward-looking lines, retainage controls, sbComposeDraw call. Already wired in FinancialsTab.jsx. Added post-write verification to sbComposeDraw: after RPC returns draw_id, SELECT draw_schedules to confirm row landed. Commit 40922d6.
