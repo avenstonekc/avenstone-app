@@ -520,11 +520,19 @@ npx playwright test tests/portals-e2e.spec.js --grep "Step 1"        # one step
 npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop only
 ```
 
-**Test accounts:**
+**Test accounts (Playwright e2e):**
 - PM: `test-pm@avenstonekc.com` / `TestPM2026!`
 - Rep: `test-salesrep@avenstonekc.com` / `TestSalesRep2026!`
 - Sub: `test-sub@avenstonekc.com` / `TestSub2026!`
 - Client: `kalinspratling@gmail.com` / `TestClient2026!`
+
+**Seat-review accounts (manual role-seat review — password: `Avenstone`):**
+- Owner: Kalin's own account (covers this seat)
+- PM: `pm+test@avenstonekc.com` — role `project_manager`, Avenstone tenant
+- Rep: `rep+test@avenstonekc.com` — role `sales_rep`, Avenstone tenant
+- Sub: `sub+test@avenstonekc.com` — role `sub`, Avenstone tenant, `onboarding_completed=true`, active Framing engagement on "999 Cost Plus Sandbox"
+- Client: `client+test@avenstonekc.com` — role `client`, linked to "999 Cost Plus Sandbox — DO NOT BILL" (has draws → Financials tab renders) + "11291 Hemlock Test, KS" (no draws → B1.5.1 fallback)
+- These accounts live in the Avenstone DB only (not committed data). Reprovisioned via `node tools/provision_seat_accounts.js`.
 
 ---
 

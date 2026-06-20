@@ -1994,3 +1994,17 @@ KEY DECISIONS (locked):
 - Consumer contract confirmed (read ai-estimator/index.ts L400, L442-443): markup_pct and pm_fee are single flat body params per estimate call passed from the frontend — NOT per-line or per-trade. Table is a config store the frontend reads; no category granularity mismatch.
 - NOTIFY pgrst, 'reload schema' issued. Types regenerated.
 - Open: B1.6 will wire the estimator frontend to read from this table instead of hardcoded constants. ai-estimator SYSTEM_PROMPT still says "Markup (30%) and PM fee ($1,200) are added by code" — cosmetic; fix in B1.6.
+
+[LOG — 2026-06-20] — SEAT_TESTING_INFRA: 4 role-seat review accounts provisioned
+
+- Action: Created pm+test, rep+test, sub+test, client+test accounts on the Avenstone tenant. Script: `tools/provision_seat_accounts.js`. These live in the DB only (not committed data). Re-run script to recreate if lost.
+- Trigger: B1.5 client-seat review blocked — no non-owner login existed.
+- Provisioning chain (audited from code): Supabase Auth Admin API `createUser` → `handle_new_user()` AFTER INSERT trigger auto-inserts `profiles` row from `raw_user_meta_data`. Profiles required: id, tenant_id, full_name, email, role. Sub additionally needs `onboarding_completed=true` (SubPortal gate) + `job_sub_engagements` row. Client needs `jobs.client_user_id` link.
+- Accounts (all password: `Avenstone`, Avenstone tenant 00000000-0000-0000-0000-000000000001):
+  - `pm+test@avenstonekc.com` — role=project_manager, id=717700d7-69b7-409f-ad3b-7db8897f5eb0
+  - `rep+test@avenstonekc.com` — role=sales_rep, id=9473c326-80e6-4152-afc6-1319106d24ac
+  - `sub+test@avenstonekc.com` — role=sub, id=5f854abe-52d1-40b6-a552-6cf40fdf7d1e, onboarding_completed=true, active Framing engagement on 999 Cost Plus Sandbox (5ebd7c3c)
+  - `client+test@avenstonekc.com` — role=client, id=8fe683b8-44df-408e-bcef-ac3499d09b71, linked to "999 Cost Plus Sandbox — DO NOT BILL" (5ebd7c3c, has draws — Financials tab renders) AND "11291 Hemlock Test, KS" (b5c413fa, no draws — B1.5.1 zero-draw fallback check)
+- Owner seat: Kalin's existing owner account covers this; no test account needed.
+- Note: these are SEPARATE from the Playwright e2e accounts (test-pm@, test-salesrep@, test-sub@, kalinspratling@). Do not change Playwright account passwords — they use TestPM2026!/TestSalesRep2026!/TestSub2026!/TestClient2026!.
+- CLAUDE.md updated: Testing section now has both "Test accounts (Playwright)" and "Seat-review accounts" blocks.
