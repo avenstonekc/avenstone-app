@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig } from '../../../lib/supabase';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
@@ -45,8 +45,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [pricedScope, setPricedScope] = useState(null); // 3c: priced lines from 3b-2 engine
   const [showRaw, setShowRaw]         = useState(false); // toggle raw chat when FACE is present
 
-  // Interview pricing inputs — seeded from job, user-confirmable before generating
-  // Markup seed precedence: default_markup_pct > labor_markup_pct > 30 (last-resort)
+  // Interview pricing inputs — seeded from job overrides then bid_model_config tenant defaults
+  // Precedence: job.default_markup_pct > job.labor_markup_pct > bid_model_config 'default'
   const [interviewSf, setInterviewSf]               = useState('');
   const [interviewSfSource, setInterviewSfSource]   = useState(null); // 'scope'|'job'|'none'|null
   const [interviewSfRoomCount, setInterviewSfRoomCount] = useState(0);
@@ -54,8 +54,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [interviewMarkup, setInterviewMarkup]       = useState(() =>
     String(Number(job.default_markup_pct) > 0 ? Number(job.default_markup_pct)
       : Number(job.labor_markup_pct) > 0 ? Number(job.labor_markup_pct)
-      : 30));
-  const [interviewPmFee, setInterviewPmFee]         = useState(String(Number(job.pm_fee) || 0));
+      : 0)); // seed from bid_model_config via useEffect; 0 until config loads
+  const [interviewPmFee, setInterviewPmFee]         = useState(String(Number(job.pm_fee) || 0)); // seed from bid_model_config via useEffect if job.pm_fee unset
 
   // Gap batch-ask: keyed by gap_key → entered rate string (pre-filled from regional_rate)
   const [gapRates, setGapRates] = useState({});
@@ -80,6 +80,24 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [propOhShit, setPropOhShit] = useState([]);
   const [propOhShitExpanded, setPropOhShitExpanded] = useState(false);
   const [propReady, setPropReady] = useState(false);
+
+  // B1.6: seed markup and pm_fee from bid_model_config tenant default.
+  // Fires on mount; only overwrites if the job-level values aren't already set.
+  useEffect(() => {
+    sbLoadBidModelConfig(job.tenant_id || AV_TENANT).then(result => {
+      if (!result.ok) return; // config row missing; edge fn will fail-loud when generate fires
+      const { markup_pct: cfgMarkup, pm_fee: cfgPmFee } = result.data;
+      setInterviewMarkup(prev => {
+        if (Number(prev) > 0) return prev; // job-level override already in place
+        return String(cfgMarkup);
+      });
+      setInterviewPmFee(prev => {
+        if (Number(prev) > 0) return prev; // job-level override already in place
+        return String(cfgPmFee);
+      });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
 
   // Default tab: items (if line items exist) → scope (if scope rows exist) → build
   useEffect(() => {

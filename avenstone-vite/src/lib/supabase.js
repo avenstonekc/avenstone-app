@@ -6621,3 +6621,21 @@ export async function sbUpdateRateBookMaterial(id, fields) {
     return { ok: true, error: null, data };
   } catch (e) { return { ok: false, error: e.message, data: null }; }
 }
+
+/**
+ * Load the tenant's 'default' bid_model_config row.
+ * Returns { markup_pct, pm_fee, supply_model, allowance } for the tenant default.
+ * Returns { ok: false } if no row exists — callers must handle this explicitly.
+ */
+export async function sbLoadBidModelConfig(tenantId) {
+  if (!tenantId) return { ok: false, error: 'tenantId required', data: null };
+  const { data, error } = await sb
+    .from('bid_model_config')
+    .select('markup_pct, pm_fee, supply_model, allowance')
+    .eq('tenant_id', tenantId)
+    .eq('category', 'default')
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message, data: null };
+  if (!data) return { ok: false, error: "bid_model_config 'default' row not found for tenant", data: null };
+  return { ok: true, error: null, data };
+}
