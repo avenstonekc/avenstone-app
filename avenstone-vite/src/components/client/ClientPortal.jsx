@@ -390,7 +390,24 @@ export default function ClientPortal({ profile, signOut }) {
     if (loaded.spend) return;
     setActualSpendLoading(true);
     sbLoadClientActualSpend(sb, job.id, AV_TENANT).then(result => {
-      setActualSpend(result.ok ? result.data : null);
+      if (result.ok) {
+        // Strip owner-only fields before storing in React state so they never
+        // land in the client's browser runtime (markup rates, raw vendor rows,
+        // cost breakdowns). Only aggregate totals the client is permitted to see.
+        const {
+          transactions,        // raw expense rows with vendor names
+          labor_markup_pct,    // owner-only rate
+          material_markup_pct, // owner-only rate
+          markup_amount,       // owner-only aggregate
+          cost_subtotal,       // owner-only
+          material_subtotal,   // owner-only
+          labor_subtotal,      // owner-only
+          ...clientSafeFields
+        } = result.data;
+        setActualSpend(clientSafeFields);
+      } else {
+        setActualSpend(null);
+      }
       setActualSpendLoading(false);
       setLoaded(p => ({ ...p, spend: true }));
     });
