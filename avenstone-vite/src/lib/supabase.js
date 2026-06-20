@@ -5865,6 +5865,18 @@ export async function sbComposeDraw({ jobId, title, description, targetAmount, a
       ...(isRetainageRelease     && { is_retainage_release: true }),
     }).eq('id', data.draw_id);
   }
+  // Post-write verification: confirm the draw row actually landed.
+  // RLS can silently swallow writes and return no error; this SELECT catches that.
+  if (data?.draw_id) {
+    const { data: verifyRow, error: verifyErr } = await sb
+      .from('draw_schedules')
+      .select('id')
+      .eq('id', data.draw_id)
+      .single();
+    if (verifyErr || !verifyRow) {
+      return { ok: false, error: 'Draw composed but row not confirmed — possible RLS block. Check draw_schedules.', data: null };
+    }
+  }
   return { ok: true, error: null, data };
 }
 
