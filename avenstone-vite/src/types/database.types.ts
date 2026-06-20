@@ -241,6 +241,42 @@ export type Database = {
           },
         ]
       }
+      bid_model_config: {
+        Row: {
+          allowance: boolean
+          category: string
+          created_at: string
+          id: string
+          markup_pct: number
+          pm_fee: number
+          supply_model: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          allowance?: boolean
+          category: string
+          created_at?: string
+          id?: string
+          markup_pct?: number
+          pm_fee?: number
+          supply_model?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          allowance?: boolean
+          category?: string
+          created_at?: string
+          id?: string
+          markup_pct?: number
+          pm_fee?: number
+          supply_model?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bug_reports: {
         Row: {
           app_version: string | null
@@ -1479,6 +1515,7 @@ export type Database = {
           notes: string | null
           phase: string | null
           quantity: number
+          source_label: string | null
           tenant_id: string
           total_cost: number | null
           trade: string | null
@@ -1501,6 +1538,7 @@ export type Database = {
           notes?: string | null
           phase?: string | null
           quantity?: number
+          source_label?: string | null
           tenant_id: string
           total_cost?: number | null
           trade?: string | null
@@ -1523,6 +1561,7 @@ export type Database = {
           notes?: string | null
           phase?: string | null
           quantity?: number
+          source_label?: string | null
           tenant_id?: string
           total_cost?: number | null
           trade?: string | null
@@ -2089,6 +2128,8 @@ export type Database = {
       }
       job_estimates: {
         Row: {
+          approval_meta: Json | null
+          approval_status: string | null
           created_at: string | null
           created_by: string | null
           estimate_data: Json | null
@@ -2102,6 +2143,8 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          approval_meta?: Json | null
+          approval_status?: string | null
           created_at?: string | null
           created_by?: string | null
           estimate_data?: Json | null
@@ -2115,6 +2158,8 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          approval_meta?: Json | null
+          approval_status?: string | null
           created_at?: string | null
           created_by?: string | null
           estimate_data?: Json | null
@@ -4082,6 +4127,139 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_book_labor: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          line_item: string
+          notes: string | null
+          rate_data: Json
+          rate_high: number | null
+          rate_low: number
+          tenant_id: string | null
+          trade: string
+          unit: string
+          updated_at: string
+          vetted: boolean
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          line_item: string
+          notes?: string | null
+          rate_data?: Json
+          rate_high?: number | null
+          rate_low: number
+          tenant_id?: string | null
+          trade: string
+          unit: string
+          updated_at?: string
+          vetted?: boolean
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          line_item?: string
+          notes?: string | null
+          rate_data?: Json
+          rate_high?: number | null
+          rate_low?: number
+          tenant_id?: string | null
+          trade?: string
+          unit?: string
+          updated_at?: string
+          vetted?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rate_book_labor_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rate_book_material: {
+        Row: {
+          active: boolean
+          ai_drafted: boolean
+          category: string
+          created_at: string
+          description: string
+          id: string
+          kalin_adjusted: boolean
+          notes: string | null
+          tenant_id: string | null
+          tier_hi_label: string
+          tier_hi_max: number | null
+          tier_hi_min: number | null
+          tier_low_label: string
+          tier_low_max: number | null
+          tier_low_min: number | null
+          tier_mid_label: string
+          tier_mid_max: number | null
+          tier_mid_min: number | null
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          ai_drafted?: boolean
+          category: string
+          created_at?: string
+          description: string
+          id?: string
+          kalin_adjusted?: boolean
+          notes?: string | null
+          tenant_id?: string | null
+          tier_hi_label?: string
+          tier_hi_max?: number | null
+          tier_hi_min?: number | null
+          tier_low_label?: string
+          tier_low_max?: number | null
+          tier_low_min?: number | null
+          tier_mid_label?: string
+          tier_mid_max?: number | null
+          tier_mid_min?: number | null
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          ai_drafted?: boolean
+          category?: string
+          created_at?: string
+          description?: string
+          id?: string
+          kalin_adjusted?: boolean
+          notes?: string | null
+          tenant_id?: string | null
+          tier_hi_label?: string
+          tier_hi_max?: number | null
+          tier_hi_min?: number | null
+          tier_low_label?: string
+          tier_low_max?: number | null
+          tier_low_min?: number | null
+          tier_mid_label?: string
+          tier_mid_max?: number | null
+          tier_mid_min?: number | null
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rate_book_material_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_sessions: {
         Row: {
           client_id: string | null
@@ -5598,6 +5776,7 @@ export type Database = {
           name: string
           notification_rules: Json | null
           plan: string | null
+          pricing_policy: Json | null
           primary_color: string | null
           slug: string
         }
@@ -5611,6 +5790,7 @@ export type Database = {
           name: string
           notification_rules?: Json | null
           plan?: string | null
+          pricing_policy?: Json | null
           primary_color?: string | null
           slug: string
         }
@@ -5624,6 +5804,7 @@ export type Database = {
           name?: string
           notification_rules?: Json | null
           plan?: string | null
+          pricing_policy?: Json | null
           primary_color?: string | null
           slug?: string
         }
