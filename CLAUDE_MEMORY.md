@@ -1907,6 +1907,19 @@ KEY DECISIONS (locked):
 - Change 3: Every dispatch prompt Opus writes opens with "Model: Sonnet" or "Model: Opus — <why>". Sonnet = defined execution. Opus = judgment over execution (architecture decisions, gnarly debugging, audit-before-build). Full rule in OPUS_RULES.md item 11; pointer in CLAUDE.md.
 - VERIFICATION ANSWER: A "Model: Opus" directive line inside a pasted prompt CANNOT change the executing model. Model selection is a session/CLI setting, not prompt-level. The directive is a SIGNAL from Opus to Kalin — when it says Opus, Kalin runs /model claude-opus-4-8 before pasting; Sonnet, pastes as-is. Opus decides and labels; Kalin acts on the label.
 
+[LOG — 2026-06-20] — B1.4 Master Agent compose_draw + record_deposit audit and finish
+
+- AUDIT: Both verbs fully wired across all 5 registration points (TOOLS, CONFIRM_TOOLS, REQUIRED_FIELDS, describeConfirmAction, executor). record_deposit = all 5 clean, no changes. compose_draw = 3/5 clean, 2 gaps found.
+- GAP 1 (compose_draw executor): no post-write draw_schedules SELECT after RPC call. Added: after cdRpc returns draw_id, SELECT draw_schedules to confirm row landed before returning success. Guards against silent RLS block.
+- GAP 2 (compose_draw describeConfirmAction): missing amountToWords on net draw target. Added amountToWords(cdNetDue) to match money-verb pattern used by record_deposit and all other financial verbs.
+- record_deposit confirmed distinct from log_payment: inserts direction='in', type='client_deposit', invoice_id=NULL (bucket deposit). log_payment is invoice-tied. Not conflated.
+- RPCs confirmed: compose_draw, cascade_draw_paid_to_transactions, void_draw — all in pg_proc.
+- Commit: cff777b.
+- SANDBOX VERIFICATION (999 Cost Plus Sandbox, 5ebd7c3c):
+  - record_deposit: chat → confirm card with amountToWords "three thousand five hundred dollars" ✅ → confirmed → tx id 0ca5e347 landed: direction=in, type=client_deposit, amount=3500, invoice_id=NULL ✅
+  - compose_draw: chat → confirm card with amountToWords "(zero dollars)" ✅ (bucket $12K covered $2.4K draw) → confirmed → draw id 74be96c2: draw_schedules row planned ✅, draw_line_items 1 row ✅, tx flipped to in_draw ✅
+  - Sandbox restored: test draw voided (tx_reverted=1), test expense + deposit deleted, sandbox back to original 2 deposits + 43 reimbursed ✅
+
 [LOG — 2026-06-20] — B1.3 draw paid cascade (already live) + Unreimbursed stat card added
 
 - Part 1 (cascade): Already shipped in COST_PLUS_ARC Phase 3 (migration 20260527070000_cost_plus_phase_3_cascade_rpcs.sql). `cascade_draw_paid_to_transactions(UUID)` + `reverse_draw_paid_cascade(UUID)`. Hooked in sbMarkInvoicePaid (fires on fully paid only, not partial_paid). Also wired in stripe-webhook handleInvoicePayment. Cascade fires: invoice→draw_id→flip in_draw→reimbursed with reimbursed_at timestamp. Lucy Webb draw: 43/43 reimbursed confirmed live.
