@@ -1907,6 +1907,21 @@ KEY DECISIONS (locked):
 - Change 3: Every dispatch prompt Opus writes opens with "Model: Sonnet" or "Model: Opus — <why>". Sonnet = defined execution. Opus = judgment over execution (architecture decisions, gnarly debugging, audit-before-build). Full rule in OPUS_RULES.md item 11; pointer in CLAUDE.md.
 - VERIFICATION ANSWER: A "Model: Opus" directive line inside a pasted prompt CANNOT change the executing model. Model selection is a session/CLI setting, not prompt-level. The directive is a SIGNAL from Opus to Kalin — when it says Opus, Kalin runs /model claude-opus-4-8 before pasting; Sonnet, pastes as-is. Opus decides and labels; Kalin acts on the label.
 
+[LOG — 2026-06-20] — B1.6 ai-estimator reads bid_model_config (hardcoded 30%/$1,200 killed)
+
+- Hardcode locations found (all fixed):
+  1. `supabase/functions/ai-estimator/index.ts:131` — SYSTEM_PROMPT text "Markup (30%) and PM fee ($1,200)". Replaced with `Markup (${markupPct}%) and PM fee (${pmFmtd})` injected from config.
+  2. `avenstone-vite/src/components/jobs/tabs/EstimateTab.jsx:57` — `interviewMarkup` initializer last-resort fallback `: 30`. Replaced with `: 0`, seeded from bid_model_config via useEffect.
+  3. Implicit: estimator's `markup_pct`/`pm_fee` defaulted to 0 when body params absent — now defaults to bid_model_config values.
+- Full chain: EstimateTab.jsx seeds interviewMarkup/interviewPmFee → sends as body params → edge fn uses them (or falls back to config). Config is now authoritative at the edge fn layer.
+- ai-estimator/index.ts changes: `loadBidModelConfig(tenantId)` function added (mirrors loadRateBook pattern). Fail-loud guard: if 'default' row missing → 503 "Markup configuration not available". `buildScopeSystemPrompt` updated to accept markupPct + pmFee params. Commits: ab50638 (edge fn), f9afaad (frontend).
+- supabase.js: `sbLoadBidModelConfig(tenantId)` helper added.
+- EstimateTab.jsx: imported sbLoadBidModelConfig, useEffect seeds interviewMarkup/interviewPmFee from config on mount (job-level overrides take precedence).
+- SIDE-BY-SIDE PROOF: Set markup_pct=27 in bid_model_config → called estimator WITHOUT body params → response: "Markup (27%): $690" ✓. Config drove the estimate, not hardcode. Restored to 30.
+- FAIL-LOUD TEST: Deleted bid_model_config default row → called estimator with real Avenstone tenant (Rate Book present) → "Markup configuration not available for this tenant — add a 'default' row to bid_model_config before generating estimates." ✓. Config row restored.
+- No hardcoded 30/1200 found elsewhere in estimator chain after grep.
+- B1.6 complete. B1.7 (onboarding wizard) is next.
+
 [LOG — 2026-06-20] — B1.5.1 client portal payload hardening — owner fields stripped from actualSpend state
 
 - Issue found: B1.5 stopped RENDERING owner-only data but sbLoadClientActualSpend still put markup rates + vendor names into React state, meaning they existed in the client's browser JS runtime (visible in devtools).
