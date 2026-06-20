@@ -1907,6 +1907,20 @@ KEY DECISIONS (locked):
 - Change 3: Every dispatch prompt Opus writes opens with "Model: Sonnet" or "Model: Opus — <why>". Sonnet = defined execution. Opus = judgment over execution (architecture decisions, gnarly debugging, audit-before-build). Full rule in OPUS_RULES.md item 11; pointer in CLAUDE.md.
 - VERIFICATION ANSWER: A "Model: Opus" directive line inside a pasted prompt CANNOT change the executing model. Model selection is a session/CLI setting, not prompt-level. The directive is a SIGNAL from Opus to Kalin — when it says Opus, Kalin runs /model claude-opus-4-8 before pasting; Sonnet, pastes as-is. Opus decides and labels; Kalin acts on the label.
 
+[LOG — 2026-06-20] — B1.3 draw paid cascade (already live) + Unreimbursed stat card added
+
+- Part 1 (cascade): Already shipped in COST_PLUS_ARC Phase 3 (migration 20260527070000_cost_plus_phase_3_cascade_rpcs.sql). `cascade_draw_paid_to_transactions(UUID)` + `reverse_draw_paid_cascade(UUID)`. Hooked in sbMarkInvoicePaid (fires on fully paid only, not partial_paid). Also wired in stripe-webhook handleInvoicePayment. Cascade fires: invoice→draw_id→flip in_draw→reimbursed with reimbursed_at timestamp. Lucy Webb draw: 43/43 reimbursed confirmed live.
+- Live cascade test (B1.3): Compose draw → create test invoice → cascade_draw_paid_to_transactions returns 1 → transaction reimbursed + has_ts ✓. Reverse cascade: 1 returned, tx back to in_draw ✓. Void draw: tx_reverted=1 → unreimbursed, draw_id=null ✓. Clean state restored.
+- Pay event scope guard: cascade fires at single clean transition (full payment only, invoice→paid via sbMarkInvoicePaid). Partial payments don't cascade. No scope guard trigger.
+- Part 2 (stat cards): Added 'Unreimbursed' stat card to FinancialsTab.jsx cpStats (always visible on cost-plus jobs). Shows summary.float_unreimbursed. Amber when >0 ('pending draw request'), subtle when 0 ('all expenses drawn'). Commit 4a9d29a.
+- Stat card verification (job 58345dc5, 'Cost-plus project at 25% markup'):
+  | Label | Displayed | Hand-computed |
+  | Unreimbursed | $69,214.88 | SUM(out, unreimbursed): $8,500+$9,716+$861+$28,010+$3,700+$228+$18,200 = $69,214.88 ✓ |
+  | Client Owes | $3,987.08 | bucket_balance: $65,000−($47,087+$21,900) = −$3,987 → abs = $3,987.08 ✓ |
+  | (Bucket Credit shows when positive) | — | n/a for this job (negative balance) |
+- No schema changes; no migration. No NOTIFY needed.
+- Open: B1.4 (Master Agent compose_draw + record_deposit verbs).
+
 [LOG — 2026-06-20] — B1.2.5 draw double-charge guard closed (schema + RPC)
 
 - Action: Migration `20260620110000_b1_2_5_draw_double_charge_guard.sql`. Commit 6818e62.
