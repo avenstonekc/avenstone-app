@@ -1907,6 +1907,17 @@ KEY DECISIONS (locked):
 - Change 3: Every dispatch prompt Opus writes opens with "Model: Sonnet" or "Model: Opus — <why>". Sonnet = defined execution. Opus = judgment over execution (architecture decisions, gnarly debugging, audit-before-build). Full rule in OPUS_RULES.md item 11; pointer in CLAUDE.md.
 - VERIFICATION ANSWER: A "Model: Opus" directive line inside a pasted prompt CANNOT change the executing model. Model selection is a session/CLI setting, not prompt-level. The directive is a SIGNAL from Opus to Kalin — when it says Opus, Kalin runs /model claude-opus-4-8 before pasting; Sonnet, pastes as-is. Opus decides and labels; Kalin acts on the label.
 
+[LOG — 2026-06-20] — B1.5.1 client portal payload hardening — owner fields stripped from actualSpend state
+
+- Issue found: B1.5 stopped RENDERING owner-only data but sbLoadClientActualSpend still put markup rates + vendor names into React state, meaning they existed in the client's browser JS runtime (visible in devtools).
+- Zero-draw job used for payload inspection: 58345dc5 (8617 Houston, Lenexa KS) — confirmed no draw_schedules rows, no job_cost_items rows for this job.
+- Payload confirmed before fix: actualSpend.transactions[0].payer_or_payee_name = "Home Depot", actualSpend.labor_markup_pct = 22, actualSpend.material_markup_pct = 22.
+- Fix (ClientPortal.jsx): Destructure sbLoadClientActualSpend result before setActualSpend — discard: transactions, labor_markup_pct, material_markup_pct, markup_amount, cost_subtotal, material_subtotal, labor_subtotal. Store only: authorized_contract, paid_to_date, firm_projected_total, remaining_balance, potential_additional, original_signed_contract. Commit 6f48624.
+- Render-level grep (both paths): zero hits for "Markup" / "markup" as rendered text, zero hits for "%" near markup label, zero hits for "payee"/"vendor"/"float" in rendered JSX. Only hits are in code comments and JavaScript calculations (not DOM output).
+- Zero-draw path confirmed: for jobs with drawBreakdown.length=0 and no job_cost_items rows (all existing zero-draw cost-plus jobs), client sees: headline stat cards + "No draw invoices yet" empty state. No unsafe data in payload or rendering.
+- Remaining known gap (flagged, not fixed): sbLoadCostItems does select('*') so markup_pct is in costItems state for pre-arc jobs with job_cost_items rows. Only used in calculations, never rendered. No production zero-draw cost-plus jobs have job_cost_items rows, so inert today. Fix via targeted SELECT or table drop when @deprecated tables are cleaned.
+- No sandbox created/needed — existing zero-draw production job 58345dc5 used directly.
+
 [LOG — 2026-06-20] — B1.5 cost-plus client portal draw-based breakdown shipped
 
 - Action: Fixed two data leak vectors + added draw running totals. Commit adade6d.
