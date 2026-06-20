@@ -2164,9 +2164,21 @@ async function executeTool(
         });
         if (cdErr) return { error: cdErr.message };
         const cdResult = Array.isArray(cdRpc) ? cdRpc[0] : cdRpc;
+        const cdDrawId = (cdResult as any)?.draw_id;
+        // Post-write verification: confirm draw_schedules row actually landed.
+        if (cdDrawId) {
+          const { data: cdVerify, error: cdVerifyErr } = await sb
+            .from("draw_schedules")
+            .select("id")
+            .eq("id", cdDrawId)
+            .single();
+          if (cdVerifyErr || !cdVerify) {
+            return { error: "Draw composed but row not confirmed in DB — possible RLS block." };
+          }
+        }
         return {
           success: true,
-          draw_id:     (cdResult as any)?.draw_id,
+          draw_id:     cdDrawId,
           draw_number: (cdResult as any)?.draw_number,
           line_count:  (cdResult as any)?.line_count,
           target:      cdNetDue,
@@ -2390,11 +2402,12 @@ function describeConfirmAction(tool: string, input: any): string {
       const cdCount = Number(input._expense_count || 0);
       const cdGrossStr = fmtMoney(input._gross);
       const cdBucket = Number(input._bucket || 0);
-      const cdNetStr = fmtMoney(input._net_due);
+      const cdNetDue = Number(input._net_due || 0);
+      const cdNetStr = fmtMoney(cdNetDue);
       const cdAddr = input._job_address ? ` for ${String(input._job_address)}` : "";
       const cdTitle = input.title ? ` "${String(input.title)}"` : "";
       const cdBucketBit = cdBucket > 0 ? ` · bucket offset -${fmtMoney(cdBucket)}` : "";
-      return `Compose draw${cdAddr}${cdTitle}: ${cdCount} expense${cdCount !== 1 ? "s" : ""}, gross ${cdGrossStr}${cdBucketBit}, draw target ${cdNetStr}.`;
+      return `Compose draw${cdAddr}${cdTitle}: ${cdCount} expense${cdCount !== 1 ? "s" : ""}, gross ${cdGrossStr}${cdBucketBit}, draw target ${cdNetStr} (${amountToWords(cdNetDue)}).`;
     }
     default:
       return "Perform this action.";
