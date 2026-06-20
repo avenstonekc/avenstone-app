@@ -96,6 +96,26 @@ async function loadRateBook(tenantId: string): Promise<RateBook> {
   return { laborRows, materialRows };
 }
 
+// ── Bid model config loader (B1.6) ────────────────────────────────────────────
+
+interface BidModelConfig { markup_pct: number; pm_fee: number; }
+
+async function loadBidModelConfig(tenantId: string): Promise<BidModelConfig | null> {
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const { data, error } = await sb
+    .from("bid_model_config")
+    .select("markup_pct, pm_fee")
+    .eq("tenant_id", tenantId)
+    .eq("category", "default")
+    .maybeSingle();
+  if (error) {
+    console.error("ai-estimator bid_model_config:", error.message);
+    return null;
+  }
+  if (!data) return null;
+  return { markup_pct: Number(data.markup_pct), pm_fee: Number(data.pm_fee) };
+}
+
 // ── Vocabulary builder (injected per-request) ─────────────────────────────────
 
 function buildVocabSection(rateBook: RateBook): string {
@@ -122,13 +142,16 @@ Always set regional_rate for general lines (your KC market estimate for that cos
 
 // ── Scope system prompt ───────────────────────────────────────────────────────
 
-function buildScopeSystemPrompt(vocabSection: string): string {
+function buildScopeSystemPrompt(vocabSection: string, markupPct: number, pmFee: number): string {
+  const pmFmtd = pmFee > 0
+    ? `$${pmFee.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+    : "$0";
   return `You are Aven — Avenstone's AI estimator (KC, MO residential + light commercial). Never mention Claude or Anthropic.
 
 YOUR ONLY JOB IS SCOPE. DO NOT INVENT OR OUTPUT PRICES. Pricing is applied by code after you respond.
 Output ONLY valid JSON — no prose, no markdown fences, no text before or after. Start your response with { and end with }.
 
-COMPANY: Cost-plus model. Markup (30%) and PM fee ($1,200) are added by code — do not include.
+COMPANY: Cost-plus model. Markup (${markupPct}%) and PM fee (${pmFmtd}) are added by code — do not include.
 TRANSPARENCY: Separate labor and material lines. Client-allowance items include "Allowance" in description.
 
 TRADE ORDER (include only relevant trades):
@@ -424,30 +447,36 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ── Fail-loud: bid_model_config 'default' row required (B1.6) ─────────────
+    // Silent fallback to 30/1200 is explicitly rejected — if the row is missing
+    // the owner must configure it before the estimator can run.
+    const bidConfig = await loadBidModelConfig(tenant_id);
+    if (!bidConfig) {
+      console.error("ai-estimator: bid_model_config 'default' row missing for tenant", tenant_id);
+      return fail(
+        "Markup configuration not available for this tenant — add a 'default' row to bid_model_config before generating estimates.",
+        503,
+      );
+    }
+
     const finishTier: FinishTier = ["low", "mid", "high"].includes(finish_tier)
       ? (finish_tier as FinishTier)
       : "mid";
 
     // Fail-loud: SF required — the engine cannot price SF/LF lines without it.
-    // Defense-in-depth: the client disables Generate when SF is missing, but this
-    // guard prevents silent HIGH-tier pricing from ANY caller.
     if (typeof project_sf !== "number" || project_sf <= 0) {
       return fail("project_sf required (> 0) to price SF/LF lines — enter the project square footage", 400);
     }
     const projectSf = project_sf;
 
-    // markup_pct and pm_fee: treat as 0 if absent (legacy sessions pre-Slice-3).
-    // Decision: absent = 0 (not 30/1200) so old sessions show $0 markup/pm in the
-    // formatted summary rather than silently baking in wrong numbers.
-    const markupPct = typeof markup_pct === "number" && markup_pct >= 0 ? markup_pct : 0;
-    const pmFeeVal  = typeof pm_fee    === "number" && pm_fee    >= 0 ? pm_fee    : 0;
-    if (markup_pct === undefined || pm_fee === undefined) {
-      console.warn("ai-estimator: markup_pct or pm_fee missing from request — using 0 (refresh EstimateTab)");
-    }
+    // B1.6: markup_pct and pm_fee from body params if provided (rep override),
+    // else use bid_model_config tenant default. No silent fallback to hardcoded values.
+    const markupPct = typeof markup_pct === "number" && markup_pct >= 0 ? markup_pct : bidConfig.markup_pct;
+    const pmFeeVal  = typeof pm_fee    === "number" && pm_fee    >= 0 ? pm_fee    : bidConfig.pm_fee;
 
     // ── Scope call ─────────────────────────────────────────────────────────────
     const vocabSection = buildVocabSection(rateBook);
-    const scopeSystem = buildScopeSystemPrompt(vocabSection);
+    const scopeSystem = buildScopeSystemPrompt(vocabSection, markupPct, pmFeeVal);
 
     const scopeResult = await callAnthropic(scopeSystem, messages, 4000);
     if (scopeResult.error) return fail(scopeResult.error);
