@@ -171,10 +171,10 @@ const DRAW_STATUS_STYLE = {
 
 function DrawCard({ draw, lineItems, invoice }) {
   const [expanded, setExpanded] = useState(true);
-  const baseSum    = lineItems.reduce((s, l) => s + Number(l.base_amount   || 0), 0);
-  const markupSum  = lineItems.reduce((s, l) => s + Number(l.markup_amount || 0), 0);
-  const drawTotal  = baseSum + markupSum;
-  const invoiced   = Number(invoice?.total_amount || 0);
+  // Use total_with_markup only — base_amount and markup_pct are owner-only fields
+  // not included in sbLoadClientDrawBreakdown's client-safe SELECT.
+  const drawTotal     = lineItems.reduce((s, l) => s + Number(l.total_with_markup || 0), 0);
+  const invoiced      = Number(invoice?.total_amount || 0);
   const creditApplied = drawTotal - invoiced;
   const style = DRAW_STATUS_STYLE[invoice?.status] || { text: invoice?.status || '—', color: 'var(--text-subtle)', bg: CREAM };
 
@@ -189,7 +189,8 @@ function DrawCard({ draw, lineItems, invoice }) {
             {draw.title || `Draw ${draw.draw_number}`}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-            {lineItems.length} line item{lineItems.length !== 1 ? 's' : ''} · Draw total {f$(drawTotal)}
+            {lineItems.length} line item{lineItems.length !== 1 ? 's' : ''}
+            {draw.created_at ? ` · ${fD(draw.created_at.slice(0, 10))}` : ''}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -205,9 +206,7 @@ function DrawCard({ draw, lineItems, invoice }) {
               <thead>
                 <tr style={{ borderBottom: `1px solid var(--bg-alt)` }}>
                   <th style={{ textAlign: 'left', padding: '6px 8px 6px 0', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Description</th>
-                  <th style={{ textAlign: 'right', padding: '6px 0', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>Cost</th>
-                  <th style={{ textAlign: 'right', padding: '6px 0', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Markup</th>
-                  <th style={{ textAlign: 'right', padding: '6px 0 6px 8px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total</th>
+                  <th style={{ textAlign: 'right', padding: '6px 0 6px 8px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -217,8 +216,6 @@ function DrawCard({ draw, lineItems, invoice }) {
                       {li.description}
                       {li.is_forward_looking && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic' }}>(pre-bill)</span>}
                     </td>
-                    <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{f$(Number(li.base_amount))}</td>
-                    <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{Number(li.markup_pct).toFixed(0)}%</td>
                     <td style={{ padding: '8px 0 8px 8px', textAlign: 'right', color: NAV, fontWeight: 600, whiteSpace: 'nowrap' }}>{f$(Number(li.total_with_markup))}</td>
                   </tr>
                 ))}
@@ -228,18 +225,12 @@ function DrawCard({ draw, lineItems, invoice }) {
 
           <div style={{ borderTop: `2px solid ${BORDER}`, marginTop: 10, paddingTop: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-                <span>Subtotal (costs)</span><span>{f$(baseSum)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-                <span>Markup</span><span>{f$(markupSum)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: NAV, borderTop: `1px solid var(--bg-alt)`, paddingTop: 6, marginTop: 3 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: NAV }}>
                 <span>Draw Total</span><span style={{ fontFamily: "'DM Serif Display',serif" }}>{f$(drawTotal)}</span>
               </div>
               {creditApplied > 0.01 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--green-text)' }}>
-                  <span>Credit Applied (deposit)</span><span>−{f$(creditApplied)}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--green-dot)' }}>
+                  <span>Deposit credit applied</span><span>−{f$(creditApplied)}</span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: NAV, borderTop: `1px solid var(--bg-alt)`, paddingTop: 6, marginTop: 3 }}>
@@ -915,27 +906,12 @@ export default function ClientPortal({ profile, signOut }) {
           </div>}
 
           {tab === 'financials' && job?.cost_plus && <div>
-            {/* ── Actual-spend ledger (cost-plus) ── */}
+            {/* ── Headline summary cards (aggregate only — no raw costs or markup rates) ── */}
             {actualSpendLoading && (
               <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>Loading financials...</div>
             )}
             {!actualSpendLoading && actualSpend && (() => {
               const s = actualSpend;
-              const markupEqual = s.labor_markup_pct === s.material_markup_pct;
-              const markupLabel = markupEqual
-                ? `+${s.labor_markup_pct}%`
-                : `labor +${s.labor_markup_pct}% / materials +${s.material_markup_pct}%`;
-              const TYPE_LABEL = {
-                material_purchase: 'Materials',
-                material: 'Materials',
-                supply: 'Materials',
-                sub_payout: 'Labor',
-                labor: 'Labor',
-                subcontractor: 'Labor',
-                equipment: 'Equipment',
-                permit: 'Permit',
-                other: 'Other',
-              };
               const hasOriginal = s.original_signed_contract !== null;
               const headlineCards = [
                 ...(hasOriginal ? [{ lb: 'Original Contract', val: f$(s.original_signed_contract) }] : []),
@@ -944,8 +920,8 @@ export default function ClientPortal({ profile, signOut }) {
                 { lb: 'Current Projected Total', val: f$(s.firm_projected_total), gold: true },
               ];
               return (
-                <div style={{ marginBottom: 24 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${headlineCards.length},1fr)`, gap: 1, background: BORDER, marginBottom: 16 }}>
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${headlineCards.length},1fr)`, gap: 1, background: BORDER, marginBottom: 14 }}>
                     {headlineCards.map(({ lb, val, gold, caption }) => (
                       <div key={lb} style={{ background: 'var(--card-bg)', padding: '14px 12px', textAlign: 'center' }}>
                         <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{lb}</div>
@@ -956,105 +932,81 @@ export default function ClientPortal({ profile, signOut }) {
                   </div>
 
                   {s.potential_additional > 0 && (
-                    <div style={{ background: 'var(--amber-bg-soft)', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 12 }}>
+                    <div style={{ background: 'var(--amber-bg-soft)', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 16px', marginBottom: 14, fontSize: 12 }}>
                       <div style={{ fontWeight: 700, color: 'var(--amber-text-strong)', marginBottom: 4 }}>Potential Additional Work</div>
                       <div style={{ color: 'var(--amber-text-deep)', lineHeight: 1.5 }}>
-                        {f$(s.potential_additional)} in submitted invoices is pending approval and not yet included in the projected total above. This amount may be added once reviewed.
+                        {f$(s.potential_additional)} in submitted invoices is pending approval and not yet included in the projected total above.
                       </div>
                     </div>
                   )}
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: CREAM, borderRadius: 8, marginBottom: 20, fontSize: 13 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: CREAM, borderRadius: 8, marginBottom: 4, fontSize: 13 }}>
                     <span style={{ color: 'var(--text-muted)' }}>Remaining Balance</span>
                     <span style={{ fontWeight: 700, color: NAV, fontFamily: "'DM Serif Display',serif" }}>{f$(Math.max(0, s.remaining_balance))}</span>
                   </div>
-
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>What We've Spent</div>
-                  {!s.transactions.length && (
-                    <div className="empty">{Ic.doc}<div className="empty-t">No expenses recorded yet</div><div>Paid expenses will appear here as work progresses</div></div>
-                  )}
-                  {s.transactions.length > 0 && (
-                    <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, marginBottom: 16 }}>
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                          <thead>
-                            <tr style={{ borderBottom: `1px solid var(--bg-alt)` }}>
-                              <th style={{ textAlign: 'left', padding: '10px 12px 10px 16px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap' }}>Date</th>
-                              <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Payee</th>
-                              <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</th>
-                              <th style={{ textAlign: 'right', padding: '10px 16px 10px 12px', color: 'var(--text-subtle)', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Amount</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {s.transactions.map((t, i) => (
-                              <tr key={i} style={{ borderBottom: `1px solid ${CREAM}` }}>
-                                <td style={{ padding: '9px 12px 9px 16px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{t.date ? fD(t.date) : '—'}</td>
-                                <td style={{ padding: '9px 12px', color: 'var(--text-secondary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.payee}</td>
-                                <td style={{ padding: '9px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{TYPE_LABEL[t.category] || t.category || '—'}</td>
-                                <td style={{ padding: '9px 16px 9px 12px', textAlign: 'right', color: NAV, fontWeight: 600, whiteSpace: 'nowrap' }}>{f$(t.amount)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div style={{ borderTop: `2px solid ${BORDER}`, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-                          <span>Subtotal (cost)</span><span>{f$(s.cost_subtotal)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-                          <span>Markup ({markupLabel})</span><span>+{f$(s.markup_amount)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: NAV, borderTop: `1px solid var(--bg-alt)`, paddingTop: 8, marginTop: 2 }}>
-                          <span>Total</span><span style={{ fontFamily: "'DM Serif Display',serif" }}>{f$(s.marked_up_total)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })()}
-            {/* ── New draw breakdown (Phase 6) ── */}
+
+            {/* ── Draw breakdown ── */}
             {drawBreakdownLoading && (
               <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>Loading draws...</div>
             )}
 
             {!drawBreakdownLoading && drawBreakdown && drawBreakdown.length > 0 && (
               <>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Draw History</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginTop: 8 }}>Draw History</div>
                 {drawBreakdown.map(({ draw, lineItems: dli, invoice }) => (
                   <DrawCard key={draw.id} draw={draw} lineItems={dli} invoice={invoice} />
                 ))}
+                {/* Running totals from draws */}
+                {(() => {
+                  const totalInvoiced = drawBreakdown.reduce((s, { invoice: inv }) => s + Number(inv?.total_amount || 0), 0);
+                  const totalPaid     = drawBreakdown.filter(({ invoice: inv }) => inv?.status === 'paid').reduce((s, { invoice: inv }) => s + Number(inv?.total_amount || 0), 0);
+                  const balanceDue    = Math.max(0, totalInvoiced - totalPaid);
+                  return (
+                    <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: '14px 16px', marginTop: 4 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Invoice Summary</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)' }}>
+                          <span>Invoiced to Date</span><span style={{ fontWeight: 600, color: NAV }}>{f$(totalInvoiced)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)' }}>
+                          <span>Paid</span><span style={{ fontWeight: 600, color: 'var(--green-dot)' }}>{f$(totalPaid)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: balanceDue > 0 ? 'var(--red-text)' : NAV, borderTop: `1px solid var(--bg-alt)`, paddingTop: 8, marginTop: 4 }}>
+                          <span>Balance Due</span><span style={{ fontFamily: "'DM Serif Display',serif" }}>{f$(balanceDue)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
 
-            {/* ── Legacy fallback (jobs with no draws — predates the arc) ── */}
-            {!drawBreakdownLoading && drawBreakdown !== null && drawBreakdown.length === 0 && (
+            {!drawBreakdownLoading && drawBreakdown && drawBreakdown.length === 0 && (
+              <div className="empty">{Ic.doc}<div className="empty-t">No draw invoices yet</div><div>Draw invoices will appear here once sent</div></div>
+            )}
+
+            {/* ── Legacy fallback: pre-arc jobs only (cost_items with no draws) ── */}
+            {!drawBreakdownLoading && drawBreakdown !== null && drawBreakdown.length === 0 && costItems.filter(i => i.client_visible).length > 0 && (
               <>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Costs</div>
-                {!costItems.filter(i => i.client_visible).length && <div className="empty">{Ic.doc}<div className="empty-t">No cost items yet</div><div>Your contractor will add cost details here</div></div>}
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginTop: 20 }}>Project Costs</div>
                 {costItems.filter(i => i.client_visible).map(item => {
-                  const factor = 1 + Number(item.markup_pct || 0) / 100;
-                  const estimate = Number(item.estimate || 0);
-                  const clientPrice = estimate * factor;
+                  const clientPrice = Number(item.estimate || 0) * (1 + Number(item.markup_pct || 0) / 100);
                   const itemInvs = costInvoices.filter(i => i.cost_item_id === item.id && i.paid);
-                  const paidToDate = itemInvs.reduce((a, i) => a + Number(i.amount || 0), 0) * factor;
+                  const paidToDate = itemInvs.reduce((a, i) => a + Number(i.amount || 0), 0) * (1 + Number(item.markup_pct || 0) / 100);
                   return (
                     <div key={item.id} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, padding: 16, marginBottom: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                         <div>
                           <div style={{ fontSize: 14, fontWeight: 700, color: NAV }}>{item.trade}</div>
-                          {item.vendor && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{item.vendor}</div>}
                           {item.proposal_signed_url && (
                             <a href={item.proposal_signed_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: 'var(--blue-link)', textDecoration: 'none', fontWeight: 600 }}>📄 View Proposal</a>
                           )}
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 4 }}>Estimate</div>
-                          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{f$(estimate)}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6, marginBottom: 2 }}>Markup</div>
-                          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{item.markup_pct || 0}%</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6, marginBottom: 2 }}>Your Price</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 2 }}>Your Price</div>
                           <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: NAV, fontWeight: 700 }}>{f$(clientPrice)}</div>
                           {paidToDate > 0 && <div style={{ fontSize: 12, color: 'var(--green-dot)', marginTop: 4 }}>Paid {f$(paidToDate)}</div>}
                         </div>
@@ -1066,7 +1018,7 @@ export default function ClientPortal({ profile, signOut }) {
                             <div key={inv.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: 'var(--text-secondary)' }}>
                               <span>{inv.date || '—'}</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <span style={{ fontWeight: 600 }}>{f$(Number(inv.amount || 0) * factor)}</span>
+                                <span style={{ fontWeight: 600 }}>{f$(Number(inv.amount || 0) * (1 + Number(item.markup_pct || 0) / 100))}</span>
                                 {inv.lien_waiver_signed_url && <a href={inv.lien_waiver_signed_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--blue-link)', textDecoration: 'none' }}>📎 Lien Waiver</a>}
                               </div>
                             </div>

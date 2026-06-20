@@ -5919,10 +5919,12 @@ export async function sbLoadClientDrawBreakdown(jobId) {
 
   const drawIds = draws.map(d => d.id);
 
-  // Load line items for these draws
+  // Load line items for these draws.
+  // Client-safe select: omits base_amount, markup_pct, markup_amount (owner-only fields).
+  // Clients see description + total_with_markup only — not the cost/markup breakdown.
   const { data: lineItems, error: liErr } = await sb
     .from('draw_line_items')
-    .select('id, draw_id, transaction_id, description, base_amount, markup_pct, markup_amount, total_with_markup, is_forward_looking, display_order, notes')
+    .select('id, draw_id, description, total_with_markup, is_forward_looking, display_order, notes')
     .in('draw_id', drawIds)
     .order('display_order', { ascending: true });
 
