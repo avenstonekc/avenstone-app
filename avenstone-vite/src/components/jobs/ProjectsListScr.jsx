@@ -235,8 +235,31 @@ export default function ProjectsListScr({
     });
   }, [profile?.tenant_id]);
 
-  // selJ: prefer full app-level job (has all fields JobDet needs); fall back to
-  // enriched projects list entry (partial but usable for header display).
+  // Unique PM names for filter
+  const pmOptions = useMemo(() =>
+    [...new Set(projects.map(p => p.pm_name).filter(Boolean))].sort(),
+    [projects]
+  );
+
+  // Filter + sort
+  const filtered = useMemo(() => {
+    let out = projects.filter(p => {
+      if (search && !p.address?.toLowerCase().includes(search.toLowerCase())) return false;
+      if (filterStatus !== 'all' && p.status !== filterStatus) return false;
+      if (filterPM !== 'all' && p.pm_name !== filterPM) return false;
+      return true;
+    });
+    if (sort === 'oldest')   out = [...out].sort((a, b) => a.created_at?.localeCompare(b.created_at));
+    else if (sort === 'value-desc') out = [...out].sort((a, b) => (b.contract_value || 0) - (a.contract_value || 0));
+    else if (sort === 'value-asc')  out = [...out].sort((a, b) => (a.contract_value || 0) - (b.contract_value || 0));
+    // default 'newest': already sorted desc by created_at from DB
+    return out;
+  }, [projects, search, filterStatus, filterPM, sort]);
+
+  // Reset pagination when filters change
+  useEffect(() => { setPage(1); setMobileShown(PAGE_SIZE); }, [search, filterStatus, filterPM, sort]);
+
+  // All hooks above this line. Non-hook logic + early returns below.
   const selJ = sel ? (appJobs.find(j => j.id === sel) || projects.find(j => j.id === sel)) : null;
 
   const updJob = (id, ch) => {
@@ -283,30 +306,6 @@ export default function ProjectsListScr({
       />
     </ErrorBoundary>
   );
-
-  // Unique PM names for filter
-  const pmOptions = useMemo(() =>
-    [...new Set(projects.map(p => p.pm_name).filter(Boolean))].sort(),
-    [projects]
-  );
-
-  // Filter + sort
-  const filtered = useMemo(() => {
-    let out = projects.filter(p => {
-      if (search && !p.address?.toLowerCase().includes(search.toLowerCase())) return false;
-      if (filterStatus !== 'all' && p.status !== filterStatus) return false;
-      if (filterPM !== 'all' && p.pm_name !== filterPM) return false;
-      return true;
-    });
-    if (sort === 'oldest')   out = [...out].sort((a, b) => a.created_at?.localeCompare(b.created_at));
-    else if (sort === 'value-desc') out = [...out].sort((a, b) => (b.contract_value || 0) - (a.contract_value || 0));
-    else if (sort === 'value-asc')  out = [...out].sort((a, b) => (a.contract_value || 0) - (b.contract_value || 0));
-    // default 'newest': already sorted desc by created_at from DB
-    return out;
-  }, [projects, search, filterStatus, filterPM, sort]);
-
-  // Reset pagination when filters change
-  useEffect(() => { setPage(1); setMobileShown(PAGE_SIZE); }, [search, filterStatus, filterPM, sort]);
 
   const totalPages  = Math.ceil(filtered.length / PAGE_SIZE);
   const desktopRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
