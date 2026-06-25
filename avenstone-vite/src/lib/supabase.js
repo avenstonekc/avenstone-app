@@ -1450,9 +1450,17 @@ export const sbLoadJobTransactions = async (jobId, filters = {}) => {
   const { data } = await q;
   return data || [];
 };
-export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTotal = 0, costPlus = false } = {}) => {
+export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTotal = 0, costPlus = false, financialModel = null } = {}) => {
   const round2 = n => Math.round(n * 100) / 100;
-  const cpFallback = costPlus ? { float_unreimbursed: 0, bucket_balance: 0, client_float_owed: 0, markup_earned: 0, outstanding_pending: 0, projected_profit: 0, projected_total_revenue: 0, margin_pct: 0, pm_fee: 0 } : {};
+  // Dual-read: financialModel param (Phase 3+ callers) overrides legacy costPlus boolean.
+  // Existing callers that only pass costPlus still work unchanged.
+  const model = financialModel || (costPlus ? 'cost_plus' : 'fixed_bid');
+  const isDrawMode = model === 'cost_plus' || model === 'flip';
+  const cpFallback = model === 'cost_plus'
+    ? { float_unreimbursed: 0, bucket_balance: 0, client_float_owed: 0, markup_earned: 0, outstanding_pending: 0, projected_profit: 0, projected_total_revenue: 0, margin_pct: 0, pm_fee: 0 }
+    : model === 'flip'
+    ? { float_unreimbursed: 0, markup_earned: 0, outstanding_pending: 0, projected_profit: 0, projected_total_revenue: 0, margin_pct: 0, pm_fee: 0, cost_basis: 0, arv_target: null }
+    : {};
   const { data } = await sb.from('job_transactions')
     .select('direction,amount,status,type,lien_waiver_required,lien_waiver_url,invoice_id,reimbursement_status,created_at')
     .eq('job_id', jobId).neq('status', 'void');
@@ -1461,18 +1469,18 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
   const total_out  = data.filter(t => t.direction === 'out' && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
   const pending_out = data.filter(t => t.direction === 'out' && t.status === 'pending').reduce((s, t) => s + Number(t.amount || 0), 0);
   const lien_waivers_missing = data.filter(t => t.lien_waiver_required && !t.lien_waiver_url).length;
-  const contract_total = costPlus ? Number(contractValue || 0) : Number(contractValue || 0) + Number(coTotal || 0);
+  const contract_total = isDrawMode ? Number(contractValue || 0) : Number(contractValue || 0) + Number(coTotal || 0);
   const client_owes = contract_total - total_in;
   const summary = { total_in, total_out, pending_out, lien_waivers_missing, contract_total, client_owes };
 
-  if (costPlus) {
-    // Raw client deposits (inbound, not attached to an invoice)
-    // Unreimbursed — outbound rows still waiting to be billed in a draw
+  if (isDrawMode) {
+    // Bucket accumulates client deposits (cost_plus only — flip has no prepay bucket)
+    // Unreimbursed — outbound rows waiting to be drawn against
     let bucket = 0;
     let unreimbursed = 0;
     for (const r of data) {
       const amt = Number(r.amount) || 0;
-      if (r.direction === 'in' && r.invoice_id === null && r.status === 'paid') bucket += amt;
+      if (model === 'cost_plus' && r.direction === 'in' && r.invoice_id === null && r.status === 'paid') bucket += amt;
       else if (r.direction === 'out' && r.reimbursement_status === 'unreimbursed') unreimbursed += amt;
     }
 
@@ -1492,7 +1500,7 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     );
 
     // Projected profit — per-category markup rate via shared markupRateForCategory mapper
-    const { data: jobRow } = await sb.from('jobs').select('labor_markup_pct,material_markup_pct,pm_fee,tenant_id').eq('id', jobId).single();
+    const { data: jobRow } = await sb.from('jobs').select('labor_markup_pct,material_markup_pct,pm_fee,tenant_id,arv').eq('id', jobId).single();
     const laborMarkupPct   = Number(jobRow?.labor_markup_pct   || 0);
     const materialMarkupPct = Number(jobRow?.material_markup_pct || 0);
     const pm_fee = Number(jobRow?.pm_fee || 0);
@@ -1513,15 +1521,16 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
       ? Math.round((projected_profit / projected_total_revenue) * 1000) / 10
       : 0;
 
-    // Bucket balance — signed: positive = client has prepaid more than current obligations,
-    // negative = client owes (request a draw). Includes both paid and pending obligations.
-    const bucket_balance = round2(bucket - (total_out + outstanding_pending));
+    // Bucket layer — cost_plus only. Flip has no client prepay bucket; these 4 sites are absent.
+    if (model === 'cost_plus') {
+      const bucket_balance = round2(bucket - (total_out + outstanding_pending));
+      summary.received          = round2(bucket);
+      summary.bucket_balance    = bucket_balance;
+      summary.client_float_owed = round2(Math.max(0, -bucket_balance));
+    }
 
-    summary.received             = round2(bucket);
     summary.paid_out             = round2(total_out);
     summary.float_unreimbursed   = round2(unreimbursed);
-    summary.bucket_balance       = bucket_balance;
-    summary.client_float_owed    = round2(Math.max(0, -bucket_balance));
     summary.markup_earned        = markup_earned;
     summary.outstanding_pending  = outstanding_pending;
     summary.projected_profit     = projected_profit;
@@ -1534,6 +1543,21 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     const contract_variance      = round2(contract_total - projected_final_bill);
     summary.projected_final_bill = projected_final_bill;
     summary.contract_variance    = contract_variance;
+
+    // Flip-native margin fields — absent on cost_plus and fixed_bid
+    if (model === 'flip') {
+      const arv_num = jobRow?.arv != null ? Number(jobRow.arv) : null;
+      const arv_target = (arv_num !== null && !Number.isNaN(arv_num)) ? round2(arv_num) : null;
+      summary.cost_basis  = round2(total_cost_base);
+      summary.arv_target  = arv_target;
+      if (arv_target !== null) {
+        const projected_flip_profit = round2(arv_target - total_cost_base);
+        summary.projected_flip_profit = projected_flip_profit;
+        if (arv_target > 0) {
+          summary.margin_on_arv_pct = Math.round((projected_flip_profit / arv_target) * 1000) / 10;
+        }
+      }
+    }
 
     // Activity pulse timestamps — derived from already-fetched data + one schedule query
     const outSorted = data.filter(t => t.direction === 'out' && t.created_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
