@@ -76,7 +76,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
     if (!expRes.ok) { setError(expRes.error); setLoading(false); return; }
     if (!balRes.ok) { setError(balRes.error); setLoading(false); return; }
     setExpenses(expRes.data);
-    setSelectedIds(new Set(expRes.data.filter(r => r.status === 'paid').map(r => r.id)));
+    setSelectedIds(new Set(expRes.data.filter(r => r.status === 'pending').map(r => r.id)));
     setBalance(balRes.data);
     setLoading(false);
   };
