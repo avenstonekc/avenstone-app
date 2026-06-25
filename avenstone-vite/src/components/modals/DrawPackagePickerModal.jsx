@@ -39,6 +39,7 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
   const [compFiles, setCompFiles]     = useState([]);
   const [loading, setLoading]         = useState(true);
   const [selected, setSelected]       = useState(new Set());
+  const [txAmounts, setTxAmounts]     = useState(new Map());
 
   // Build/save state
   const [saving, setSaving]           = useState(false);
@@ -97,6 +98,21 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
       const files = jfRes.data || [];
       setJobFiles(files);
       setCompFiles(cfRes.data || []);
+
+      // Fetch amounts for all receipt files linked to transactions
+      const linkedTxIds = [...new Set(
+        files
+          .filter(f => f.related_entity_type === 'job_transaction' && f.related_entity_id)
+          .map(f => f.related_entity_id)
+      )];
+      if (linkedTxIds.length > 0) {
+        const { data: txData } = await sb.from('job_transactions')
+          .select('id, amount')
+          .in('id', linkedTxIds);
+        if (txData) {
+          setTxAmounts(new Map(txData.map(tx => [tx.id, tx.amount])));
+        }
+      }
 
       // Auto-select receipt files that belong to this draw's line items
       const drawTxIds = new Set((liRes.data || []).map(li => li.transaction_id));
@@ -310,12 +326,26 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
                           </div>
                         ) : (
                           <div style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            {files.map(f => (
-                              <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 6, background: isSelected('job_file', f.id) ? 'var(--cream-banner)' : 'var(--card-bg)', border: `1px solid ${isSelected('job_file', f.id) ? 'var(--gold-500)' : 'var(--border)'}` }}>
-                                <input type="checkbox" checked={isSelected('job_file', f.id)} onChange={() => toggleFile('job_file', f.id)} style={{ cursor: 'pointer', accentColor: 'var(--gold-500)' }} />
-                                <span style={{ fontSize: 12, color: 'var(--navy-900)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || '(unnamed)'}</span>
-                              </label>
-                            ))}
+                            {[...files].sort((a, b) => {
+                              const amtA = txAmounts.get(a.related_entity_id) ?? -1;
+                              const amtB = txAmounts.get(b.related_entity_id) ?? -1;
+                              return amtB - amtA;
+                            }).map(f => {
+                              const amt = f.related_entity_type === 'job_transaction'
+                                ? txAmounts.get(f.related_entity_id)
+                                : null;
+                              return (
+                                <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 6, background: isSelected('job_file', f.id) ? 'var(--cream-banner)' : 'var(--card-bg)', border: `1px solid ${isSelected('job_file', f.id) ? 'var(--gold-500)' : 'var(--border)'}` }}>
+                                  <input type="checkbox" checked={isSelected('job_file', f.id)} onChange={() => toggleFile('job_file', f.id)} style={{ cursor: 'pointer', accentColor: 'var(--gold-500)' }} />
+                                  <span style={{ fontSize: 12, color: 'var(--navy-900)', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || '(unnamed)'}</span>
+                                  {amt != null && (
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy-900)', flexShrink: 0 }}>
+                                      ${amt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  )}
+                                </label>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -345,18 +375,31 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid #E8E4DC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: 'var(--bg)', gap: 8 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
-            {selected.size === 0 ? 'Cover sheet only' : `${selected.size} file${selected.size > 1 ? 's' : ''} selected`}
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {saveError && <span style={{ fontSize: 11, color: 'var(--red-text)' }}>{saveError}</span>}
-            <button onClick={onClose} className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 14px' }}>Close</button>
-            <button onClick={handleSave} disabled={saving} className="btn btn-gold" style={{ fontSize: 12, padding: '6px 16px', opacity: saving ? 0.6 : 1 }}>
-              {saving ? 'Saving...' : savedThisSession ? 'Resave' : 'Save Package'}
-            </button>
-          </div>
-        </div>
+        {(() => {
+          const MAX = 20;
+          const overCap = selected.size > MAX;
+          const atCap   = selected.size === MAX;
+          return (
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #E8E4DC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: 'var(--bg)', gap: 8 }}>
+              <div style={{ fontSize: 12, flexShrink: 0 }}>
+                {selected.size === 0
+                  ? <span style={{ color: 'var(--text-muted)' }}>Cover sheet only</span>
+                  : <span style={{ color: overCap ? 'var(--red-text)' : atCap ? 'var(--amber-text-strong)' : 'var(--text-muted)' }}>
+                      {selected.size} / {MAX} attachments
+                      {overCap && ' — too many for email'}
+                    </span>
+                }
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {saveError && <span style={{ fontSize: 11, color: 'var(--red-text)' }}>{saveError}</span>}
+                <button onClick={onClose} className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 14px' }}>Close</button>
+                <button onClick={handleSave} disabled={saving || overCap} className="btn btn-gold" style={{ fontSize: 12, padding: '6px 16px', opacity: (saving || overCap) ? 0.5 : 1 }}>
+                  {saving ? 'Saving...' : savedThisSession ? 'Resave' : 'Save Package'}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

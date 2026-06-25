@@ -226,9 +226,17 @@ async function loadFileDetails(sb: ReturnType<typeof createClient>, fileRefs: Fi
   });
 }
 
-async function fetchBytes(sb: ReturnType<typeof createClient>, bucket: string, path: string): Promise<Uint8Array | null> {
+async function fetchBytes(
+  sb: ReturnType<typeof createClient>,
+  bucket: string,
+  path: string,
+  isImage = false,
+): Promise<Uint8Array | null> {
   try {
-    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 120);
+    const opts = isImage
+      ? { transform: { width: 1200, quality: 80 } }
+      : undefined;
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 120, opts);
     if (error || !data?.signedUrl) return null;
     const res = await fetch(data.signedUrl);
     if (!res.ok) return null;
@@ -287,6 +295,11 @@ async function addPhotoPages(
 
       const gridTop = 738;
 
+      // Fetch all images in this chunk concurrently
+      const chunkBytes = await Promise.all(
+        chunk.map(f => fetchBytes(sb, f.storage_bucket, f.storage_path, true))
+      );
+
       for (let j = 0; j < chunk.length; j++) {
         const col  = j % 2;
         const row  = Math.floor(j / 2);
@@ -294,7 +307,7 @@ async function addPhotoPages(
         const imgTopY = gridTop - row * (ROW_H + ROW_GAP);
         const imgBotY = imgTopY - IMG_H;
 
-        const bytes = await fetchBytes(sb, chunk[j].storage_bucket, chunk[j].storage_path);
+        const bytes = chunkBytes[j];
         if (bytes && bytes.length > 0) {
           try {
             const isMime = (chunk[j].mime_type || "").toLowerCase();
@@ -331,8 +344,24 @@ async function addDocumentPages(
   const margin = 50;
   const W      = 512;
 
-  for (const file of documents) {
-    const bytes = await fetchBytes(sb, file.storage_bucket, file.storage_path);
+  // Prefetch all files in parallel batches of 6 to avoid sequential round-trips
+  const BATCH = 6;
+  const allBytes: (Uint8Array | null)[] = [];
+  for (let i = 0; i < documents.length; i += BATCH) {
+    const batch = documents.slice(i, i + BATCH);
+    const mime  = batch.map(f => (f.mime_type || "").toLowerCase());
+    const fetched = await Promise.all(
+      batch.map((f, bi) => {
+        const isImg = mime[bi].includes("jpeg") || mime[bi].includes("jpg") || mime[bi].includes("png");
+        return fetchBytes(sb, f.storage_bucket, f.storage_path, isImg);
+      })
+    );
+    allBytes.push(...fetched);
+  }
+
+  for (let idx = 0; idx < documents.length; idx++) {
+    const file  = documents[idx];
+    const bytes = allBytes[idx];
     if (!bytes || bytes.length === 0) continue;
 
     const mime = (file.mime_type || "").toLowerCase();
