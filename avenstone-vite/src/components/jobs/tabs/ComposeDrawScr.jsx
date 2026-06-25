@@ -317,12 +317,12 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                   {/* Column headers */}
                   <div style={{
                     display: 'grid',
-                    gridTemplateColumns: '24px 80px 1fr 76px 76px 60px 76px',
+                    gridTemplateColumns: '24px 80px 1fr 108px 76px 60px 76px',
                     gap: 6, padding: '4px 6px', marginBottom: 4,
                     borderBottom: `1px solid ${BORDER}`,
                   }}>
                     {['', 'Date', 'Description', 'Type', 'Cost', 'Markup %', 'Total'].map(h => (
-                      <div key={h} style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
+                      <div key={h} style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</div>
                     ))}
                   </div>
 
@@ -336,7 +336,7 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                       return (
                         <div key={row.id} style={{
                           display: 'grid',
-                          gridTemplateColumns: '24px 80px 1fr 76px 76px 60px 76px',
+                          gridTemplateColumns: '24px 80px 1fr 108px 76px 60px 76px',
                           gap: 6, alignItems: 'center',
                           padding: '6px 6px', borderRadius: 4,
                           background: checked ? CREAM : '#F9FAFB',
@@ -354,12 +354,12 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                             })}
                             style={{ width: 14, height: 14, cursor: 'pointer', margin: 0 }}
                           />
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fD(row.date_incurred)}</div>
-                          <div style={{ fontSize: 11, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.description || ''}>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fD(row.date_incurred)}</div>
+                          <div style={{ fontSize: 12, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.description || ''}>
                             {row.description || '—'}
                           </div>
-                          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{TYPE_LABELS[row.type] || row.type}</div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>{f$(base)}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{TYPE_LABELS[row.type] || row.type}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{f$(base)}</div>
                           <input
                             type="number"
                             min="0"
@@ -367,12 +367,12 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                             value={overrides[row.id] ?? row.markup_pct ?? 0}
                             onChange={ev => setOverrides(prev => ({ ...prev, [row.id]: parseFloat(ev.target.value) || 0 }))}
                             style={{
-                              width: '100%', fontSize: 11, padding: '3px 5px',
+                              width: '100%', fontSize: 12, padding: '3px 5px',
                               border: `1px solid ${BORDER}`, borderRadius: 4,
                               boxSizing: 'border-box', background: '#fff', textAlign: 'right',
                             }}
                           />
-                          <div style={{ fontSize: 12, fontWeight: 700, color: markupAmt > 0 ? GOLD : NAVY }}>{f$(rowTotal)}</div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: markupAmt > 0 ? GOLD : NAVY }}>{f$(rowTotal)}</div>
                         </div>
                       );
                     })}
