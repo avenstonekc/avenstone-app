@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbLoadBidModelConfig, AV_TENANT } from '../../lib/supabase';
+import { sbLoadBidModelConfig, sbSaveBidModelConfig, AV_TENANT } from '../../lib/supabase';
 
 const NAV  = 'var(--navy-900)';
 const GOLD = 'var(--gold-500)';
@@ -88,6 +88,8 @@ export default function BidModelWizard({ onDone }) {
   const [step, setStep]       = useState(0);
   const [loading, setLoading] = useState(true);
   const [vals, setVals]       = useState(DEFAULTS);
+  const [saving, setSaving]   = useState(false);
+  const [saved, setSaved]     = useState(false);
   const [err, setErr]         = useState('');
 
   useEffect(() => {
@@ -105,6 +107,24 @@ export default function BidModelWizard({ onDone }) {
   }, []);
 
   const set = (key, val) => setVals(p => ({ ...p, [key]: val }));
+
+  const save = async () => {
+    setSaving(true);
+    setErr('');
+    const result = await sbSaveBidModelConfig(AV_TENANT, {
+      supply_model: vals.supply_model,
+      markup_pct:   Number(vals.markup_pct),
+      pm_fee:       Number(vals.pm_fee),
+      allowance:    Boolean(vals.allowance),
+    });
+    if (!result.ok) {
+      setErr(result.error || 'Save failed — check your role or connection.');
+      setSaving(false);
+      return;
+    }
+    setSaved(true);
+    setSaving(false);
+  };
 
   const next = () => {
     if (step === 1) {
@@ -289,13 +309,15 @@ export default function BidModelWizard({ onDone }) {
                 <ReviewRow label="PM fee" value={`$${Number(vals.pm_fee).toLocaleString()}`} />
                 <ReviewRow label="Allowances by default" value={vals.allowance ? 'Yes' : 'No'} />
               </div>
-              <div style={{
-                marginTop: 16, padding: '9px 13px', borderRadius: 6,
-                background: '#FEF3C7', border: '1px solid #FCD34D',
-                fontSize: 12, color: '#92400E',
-              }}>
-                Save wires in Phase 3. Values shown are what will be written to <code>bid_model_config</code>.
-              </div>
+              {saved && (
+                <div style={{
+                  marginTop: 16, padding: '9px 13px', borderRadius: 6,
+                  background: '#D1FAE5', border: '1px solid #6EE7B7',
+                  fontSize: 12.5, color: '#065F46', fontWeight: 500,
+                }}>
+                  ✓ Estimating defaults saved.
+                </div>
+              )}
             </>
           )}
 
@@ -320,14 +342,20 @@ export default function BidModelWizard({ onDone }) {
               </button>
             )}
             {isReview ? (
-              <button
-                className="btn btn-navy"
-                disabled
-                style={{ minWidth: 120, opacity: 0.4, cursor: 'not-allowed' }}
-                title="Write path ships in Phase 3"
-              >
-                Save Defaults
-              </button>
+              saved ? (
+                <button className="btn btn-navy" onClick={onDone} style={{ minWidth: 120 }}>
+                  Done →
+                </button>
+              ) : (
+                <button
+                  className="btn btn-navy"
+                  onClick={save}
+                  disabled={saving}
+                  style={{ minWidth: 120 }}
+                >
+                  {saving ? 'Saving…' : 'Save Defaults'}
+                </button>
+              )
             ) : (
               <button className="btn btn-navy" onClick={next} style={{ minWidth: 100 }}>
                 Next →

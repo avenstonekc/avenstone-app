@@ -6671,3 +6671,29 @@ export async function sbLoadBidModelConfig(tenantId) {
   if (!data) return { ok: false, error: "bid_model_config 'default' row not found for tenant", data: null };
   return { ok: true, error: null, data };
 }
+
+/**
+ * Upsert the tenant's 'default' bid_model_config row.
+ * Requires caller to be owner or project_manager (RLS enforced at DB level).
+ * Returns { ok, error, data } — data is the written row on success.
+ * A null data on success means RLS silently blocked the write — treated as failure.
+ */
+export async function sbSaveBidModelConfig(tenantId, vals) {
+  if (!tenantId) return { ok: false, error: 'tenantId required', data: null };
+  const { data, error } = await sb
+    .from('bid_model_config')
+    .upsert({
+      tenant_id:    tenantId,
+      category:     'default',
+      supply_model: vals.supply_model,
+      markup_pct:   Number(vals.markup_pct),
+      pm_fee:       Number(vals.pm_fee),
+      allowance:    Boolean(vals.allowance),
+      updated_at:   new Date().toISOString(),
+    }, { onConflict: 'tenant_id,category' })
+    .select('supply_model, markup_pct, pm_fee, allowance, updated_at')
+    .single();
+  if (error) return { ok: false, error: error.message, data: null };
+  if (!data) return { ok: false, error: 'Write returned no row — possible RLS block on read-back', data: null };
+  return { ok: true, error: null, data };
+}
