@@ -861,6 +861,29 @@ const TOOLS = [
   },
 ];
 
+// ─── Shared job resolver ─────────────────────────────────────────────────────
+// Single source of truth for fuzzy job lookup by name/address/PO.
+// Used by read verbs (get_job_financials, get_schedule, get_open_todos).
+// Write verbs pre-resolve via get_jobs + the POST_EXECUTE_ELICIT card.
+async function resolveJobByName(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  term: string,
+): Promise<{ id: string } | { error: string; matches?: { id: string; address: string; client_name: string | null }[] }> {
+  const escaped = term.trim().replace(/%/g, "\\%");
+  const { data } = await sb.from("jobs")
+    .select("id, address, client_name")
+    .eq("tenant_id", tenantId)
+    .or(`address.ilike.%${escaped}%,client_name.ilike.%${escaped}%,po_number.ilike.%${escaped}%`)
+    .limit(5);
+  if (!data?.length) return { error: `No job found matching "${term}".` };
+  if (data.length > 1) return {
+    error: `Multiple jobs match "${term}" — be more specific.`,
+    matches: (data as any[]).map((j) => ({ id: j.id, address: j.address, client_name: j.client_name })),
+  };
+  return { id: (data[0] as any).id };
+}
+
 // ─── Tool executor ────────────────────────────────────────────────────────────
 
 async function executeTool(
@@ -883,7 +906,7 @@ async function executeTool(
         if (input.status) q = q.eq("status", String(input.status));
         if (input.search && typeof input.search === "string" && input.search.trim()) {
           const term = input.search.trim().replace(/%/g, "\\%");
-          q = q.or(`address.ilike.%${term}%,client_name.ilike.%${term}%`);
+          q = q.or(`address.ilike.%${term}%,client_name.ilike.%${term}%,po_number.ilike.%${term}%`);
         }
         const { data, error } = await q;
         if (error) return { error: error.message, jobs: [], count: 0 };
@@ -904,17 +927,9 @@ async function executeTool(
         // 1. Resolve job
         let gjfJobId = input.job_id ? String(input.job_id) : null;
         if (!gjfJobId && input.job_name) {
-          const term = String(input.job_name).trim().replace(/%/g, "\\%");
-          const { data: gjfSearch } = await sb.from("jobs")
-            .select("id, address, client_name")
-            .eq("tenant_id", tenantId)
-            .or(`address.ilike.%${term}%,client_name.ilike.%${term}%`)
-            .limit(5);
-          if (!gjfSearch?.length) return { error: `No job found matching "${input.job_name}".` };
-          if (gjfSearch.length > 1) {
-            return { error: `Multiple jobs match "${input.job_name}" — be more specific.`, matches: gjfSearch.map((j: any) => ({ id: j.id, address: j.address, client_name: j.client_name })) };
-          }
-          gjfJobId = (gjfSearch[0] as any).id;
+          const rjb = await resolveJobByName(sb, tenantId, String(input.job_name));
+          if ("error" in rjb) return rjb;
+          gjfJobId = rjb.id;
         }
         if (!gjfJobId) return { error: "Provide job_id or job_name." };
 
@@ -1018,13 +1033,9 @@ async function executeTool(
         // Optional job filter via fuzzy match
         let gsJobId: string | null = null;
         if (input.job_name) {
-          const term = String(input.job_name).trim().replace(/%/g, "\\%");
-          const { data: gsJobs } = await sb.from("jobs")
-            .select("id, address").eq("tenant_id", tenantId)
-            .or(`address.ilike.%${term}%,client_name.ilike.%${term}%`).limit(5);
-          if (!gsJobs?.length) return { error: `No job found matching "${input.job_name}".` };
-          if (gsJobs.length > 1) return { error: `Multiple jobs match — be more specific.`, matches: gsJobs.map((j: any) => ({ id: j.id, address: j.address })) };
-          gsJobId = (gsJobs[0] as any).id;
+          const rjb = await resolveJobByName(sb, tenantId, String(input.job_name));
+          if ("error" in rjb) return rjb;
+          gsJobId = rjb.id;
         }
 
         let q = sb.from("schedule_items")
@@ -1069,13 +1080,9 @@ async function executeTool(
         // Optional job filter
         let gotJobId: string | null = null;
         if (input.job_name) {
-          const term = String(input.job_name).trim().replace(/%/g, "\\%");
-          const { data: gotJobs } = await sb.from("jobs")
-            .select("id, address").eq("tenant_id", tenantId)
-            .or(`address.ilike.%${term}%,client_name.ilike.%${term}%`).limit(5);
-          if (!gotJobs?.length) return { error: `No job found matching "${input.job_name}".` };
-          if (gotJobs.length > 1) return { error: `Multiple jobs match — be more specific.` };
-          gotJobId = (gotJobs[0] as any).id;
+          const rjb = await resolveJobByName(sb, tenantId, String(input.job_name));
+          if ("error" in rjb) return rjb;
+          gotJobId = rjb.id;
         }
 
         let q = sb.from("todos")
