@@ -146,7 +146,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     setBudgetLoading(false);
   };
 
-  const lienCount = txs.filter(t => t.lien_waiver_required && !t.lien_waiver_url).length;
+  const lienCount = txs.filter(t => t.lien_waiver_required && !t.lien_waiver_url && t.status !== 'void').length;
   const isManager = ['owner', 'project_manager'].includes(profile?.role);
 
   const openQbModal = async () => {
@@ -355,27 +355,18 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
           {summary && (() => {
             const owes = summary.client_owes;
             const isCostPlus = job?.cost_plus === true && summary.received !== undefined;
-            const cpBucketBalance = summary.bucket_balance ?? 0;
-            // Cost-plus stat cards: Contract (signed) + Received removed — already in
-            // ProjectDetailHeader KPI strip (CONTRACT VALUE, PAID TO DATE). Projection
-            // sub-line moves to Projected Profit.
-            const projNote = summary.projected_final_bill != null
-              ? `${f$(summary.projected_final_bill)} projected · ${f$(Math.abs(summary.contract_variance ?? 0))} ${(summary.contract_variance ?? 0) >= 0 ? 'under' : 'over'} · ${summary.margin_pct ?? 0}% margin`
-              : `${summary.margin_pct ?? 0}% margin · +${f$(summary.pm_fee ?? 0)} PM`;
-            const projNoteColor = summary.projected_final_bill != null
-              ? ((summary.contract_variance ?? 0) >= 0 ? 'var(--green-dot)' : 'var(--red-text)')
-              : undefined;
-            const cpUnreimbursed = summary.float_unreimbursed ?? 0;
+            // Cost-plus stat cards — cost-ledger language (redesigned B1 session).
+            // Removed: Unreimbursed (label confuses owners), Projected Profit (meaningless
+            // at 0% margin / $0 contract), Bucket Credit / Client Owes (collapsed into
+            // Received + Next Draw which say the same thing more directly).
+            const cpSpent = (summary.paid_out ?? summary.total_out ?? 0) + (summary.pending_out ?? 0);
             const cpStats = [
-              { lb: 'Paid Out',          v: f$(summary.paid_out ?? summary.total_out), c: (summary.paid_out ?? summary.total_out) > 0 ? 'var(--red-text)' : 'var(--text-subtle)' },
-              { lb: 'Unreimbursed',      v: f$(cpUnreimbursed), c: cpUnreimbursed > 0 ? 'var(--amber-text-strong)' : 'var(--text-subtle)', note: cpUnreimbursed > 0 ? 'pending draw request' : 'all expenses drawn' },
+              { lb: 'Spent',     v: f$(cpSpent),                                    c: cpSpent > 0 ? 'var(--red-text)' : 'var(--text-subtle)',          note: 'all costs logged' },
+              { lb: 'Received',  v: f$(summary.total_in ?? 0),                      c: (summary.total_in ?? 0) > 0 ? 'var(--green-dot)' : 'var(--text-subtle)', note: 'draws paid back' },
+              { lb: 'Next Draw', v: f$(summary.pending_out ?? 0),                   c: (summary.pending_out ?? 0) > 0 ? 'var(--amber-text-strong)' : 'var(--text-subtle)', note: 'owed — pending costs' },
+              { lb: 'Settled',   v: f$(summary.paid_out ?? summary.total_out ?? 0), c: 'var(--text-muted)',                                               note: 'paid costs' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
               ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
-              { lb: 'Projected Profit',  v: f$(summary.projected_profit), c: summary.projected_profit > 0 ? 'var(--green-dot)' : 'var(--text-subtle)', note: projNote, noteColor: projNoteColor },
-              ...(cpBucketBalance >= 0
-                ? [{ lb: 'Bucket Credit', v: f$(cpBucketBalance), c: 'var(--green-dot)', note: 'client prepaid balance' }]
-                : [{ lb: 'Client Owes',   v: f$(Math.abs(cpBucketBalance)), c: 'var(--red-text)', note: 'request a draw' }]
-              ),
             ];
             // Fixed-price stat cards: Contract + Received removed — in header KPI strip.
             // "% collected" is the header's PAID TO DATE sub-line — confirmed present, not duplicated.
