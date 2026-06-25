@@ -323,9 +323,10 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | B1.5 — Cost-plus client portal | Replace legacy job_cost_items view with draw-based breakdown for cost-plus clients. | 2 | B1.4 |
 | B1.6 — ai-estimator reads bid_model_config | Replace hardcoded 30% + $1,200 with config read from tenant `bid_model_config`. Add pm_fee read. | 2 | B1.1 ✓ |
 | B1.7 — Onboarding wizard (structured config writer) | New wizard replaces AiSetupWizard prose flow. Writes bid_model_config + markup_category_config + ai_knowledge. Trade-specific Q&A → config rows. [Phase 1 schema audit ✓ 2026-06-25 — all 3 tables exist, no blockers. bid_model_config default row confirmed (markup 30 / pm_fee 1200 / contractor). Phase 3 carries a one-line migration adding role-gate (owner/PM) to bid_model_config INSERT/UPDATE RLS — it is the only config table without DB-level write role restriction. Phase 4 carries ALTER TABLE ai_knowledge ALTER COLUMN tenant_id SET NOT NULL.] | 4 | B1.1 ✓ |
-| FUZZY_JOB_RESOLVER — agent partial job-name matching | Agent resolves partial/fuzzy job references ("log this to 8617") instead of requiring exact name match. Resolver: ILIKE on job name + address fields, scoped to tenant. Exactly-one match → use it; multiple → agent asks which; zero → reports plainly. Touches every job-scoped agent write, not just receipts. | 3 | B1.7 |
+| FUZZY_JOB_RESOLVER — agent partial job-name matching | Agent resolves partial/fuzzy job references ("log this to 8617") instead of requiring exact name match. Resolver: ILIKE on job name + address fields, scoped to tenant. Exactly-one match → use it; multiple → agent asks which; zero → reports plainly. Touches every job-scoped agent write, not just receipts. [SHIPPED 2026-06-25 — Phase 1 audit + Phase 2 build. Came in under budget: built in 2 prompts not 3 (resolver already existed; fixed broken po_number search + consolidated 3-copy Bug-C divergence into resolveJobByName). Live PO-match bug in receipt-from-photo path fixed as part of this.] | 3 | B1.7 |
+| DRAW_PDF_POLISH — lender-facing draw-request PDF quality (AUDIT-FIRST) | Three confirmed defects from Draw #1 live flip (1206 W Lucy Webb Rd), lender/investor-facing priority, locked 2026-06-25. (1) Line-item truncation: items cap on page 1 with "…and N more" collapse instead of flowing to page 2+ — remove the truncation cap. (2) Receipt photo degradation: embedded receipt photos come through washed-out, cropped at edges, with color bleed (HEIC→JPEG conversion, 1024px canvas resize, or pdf-lib embed path — audit cause before fixing). (3) Logo: header is text-only; embed the Avenstone Group logo from wherever tenant branding already stores it (white-label invoice path — reuse, do not introduce new asset). Audit-first prompt covers photo root cause + logo source; 1-2 build prompts follow. | 3 | None (draw PDF already ships) |
 
-**Block 1 total: 20 prompts** (17 original + 3 FUZZY_JOB_RESOLVER, locked 2026-06-25)
+**Block 1 total: 22 prompts** (17 original + 3 FUZZY_JOB_RESOLVER budgeted + 3 DRAW_PDF_POLISH, locked 2026-06-25; FUZZY came in at 2 vs 3 budgeted, −1 actual)
 
 **Verify-then-advance:**
 - Code verifies: `bid_model_config` rows in DB with correct defaults; estimator reads markup from config (not 30% hardcoded); `job_transactions` updated after compose draw; float balance computed correctly on FinancialsTab.
@@ -335,6 +336,8 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 **Parked in Block 1:** TENANT_ONBOARDING Phases 4-5 (interview engine + plan upload ingest) — after core config is running and Kalin has used it on real jobs
 
 **Parked (post-Block 1, audit-first):** RECEIPT_MODAL_EXTRACTION — wire existing Haiku receipt-vision path onto the manual Add-Receipt modal (FinancialsTab TransactionModal) so an uploaded receipt auto-fills price/description/vendor/date. Add pending/paid toggle (owner-scoped — explicitly NOT baked into client onboarding flow). Size TBD — opens with an audit confirming whether modal extraction already exists or is agent-chat-only. Logged 2026-06-25.
+
+**Flagged (fast-follow candidate, not locked):** SUB_NAME_RESOLVER — sub-name matching has the SAME Bug-C divergence the job resolver just fixed: inline `.ilike` copies in `create_schedule_item`, `log_sub_invoice`, `approve_sub_invoice`, no shared helper. Generalize `resolveJobByName`'s pattern to a `resolveSubByName` helper. Found in FUZZY Phase 1 audit 2026-06-25. Size: ~1 prompt.
 
 ---
 
@@ -581,7 +584,7 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | 50 | Trust ladder eligibility + graduation | B6 | 3 | 130 | GOD_AGENT B4 prereq |
 | 51 | Bounded autopilot execution | B6 | 3 | 133 | GOD_AGENT autopilot (AVENSTONE_VISION north star) |
 
-**Grand total: 149 Sonnet prompts** across 54 sub-steps in 6 blocks.
+**Grand total: 152 Sonnet prompts** across 55 sub-steps in 6 blocks.
 
 ---
 
