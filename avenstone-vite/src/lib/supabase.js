@@ -1592,6 +1592,38 @@ export const sbGetReceiptUrl = async (path) => {
     return { ok: true, error: null, data: { signedUrl: data?.signedUrl } };
   } catch (e) { return { ok: false, error: e.message || 'Failed to get receipt URL', data: null }; }
 };
+
+// Upserts a job_files entry for a receipt attached to a transaction.
+// Mirrors the dual-write in ai-master-agent log_receipt so TransactionModal
+// receipts appear in the Files tab and DrawPackagePickerModal.
+export async function sbUpsertReceiptJobFile({ jobId, transactionId, path, mimeType, name }) {
+  if (!jobId || !transactionId || !path) return { ok: false };
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) return { ok: false };
+    await sb.from('job_files')
+      .delete()
+      .eq('related_entity_type', 'job_transaction')
+      .eq('related_entity_id', transactionId)
+      .eq('category', 'Receipts');
+    const { error } = await sb.from('job_files').insert({
+      tenant_id: AV_TENANT,
+      job_id: jobId,
+      uploaded_by_id: user.id,
+      name: name || 'Receipt',
+      storage_path: path,
+      storage_bucket: 'job-receipts',
+      mime_type: mimeType || 'image/jpeg',
+      category: 'Receipts',
+      subcategory: null,
+      client_visible: false,
+      related_entity_type: 'job_transaction',
+      related_entity_id: transactionId,
+      lifecycle_status: 'active',
+    });
+    return { ok: !error, error: error?.message };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
 export const sbUploadLienWaiverTx = async (file, jobId) => {
   try {
     const ext = (file.name.split('.').pop() || 'bin').toLowerCase();

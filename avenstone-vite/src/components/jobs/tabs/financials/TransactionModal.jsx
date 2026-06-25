@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbGetReceiptUrl, sbUploadLienWaiverTx, sbLoadPhases, sbLoadActiveSubs, sbResolveTodosBySource, captureFailedIntent } from '../../../../lib/supabase';
+import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbGetReceiptUrl, sbUpsertReceiptJobFile, sbUploadLienWaiverTx, sbLoadPhases, sbLoadActiveSubs, sbResolveTodosBySource, captureFailedIntent } from '../../../../lib/supabase';
 import { f$ } from '../../../../lib/utils';
 
 const TX_TYPES_IN  = ['client_payment','client_deposit','client_refund','other_income'];
@@ -103,6 +103,14 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
         captureFailedIntent({ kind: 'transaction_save', payload: { ...form }, jobId: job.id, message: msg }).catch(() => {});
         return;
       }
+      if (receiptUrl && r.data?.id) {
+        sbUpsertReceiptJobFile({
+          jobId: job.id,
+          transactionId: r.data.id,
+          path: receiptUrl,
+          name: `Receipt - ${form.payer_or_payee_name || form.description || form.type || 'expense'}`,
+        }).catch(() => {});
+      }
     } else {
       const { error } = await sbUpdateTransaction(tx.id, payload);
       if (error) {
@@ -124,7 +132,16 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
     setErr(null);
     const res = await sbUploadReceipt(file, job.id);
     if (!res.error && res.path) {
-      if (!isNew && tx.id) await sbUpdateTransaction(tx.id, { receipt_url: res.path });
+      if (!isNew && tx.id) {
+        await sbUpdateTransaction(tx.id, { receipt_url: res.path });
+        sbUpsertReceiptJobFile({
+          jobId: job.id,
+          transactionId: tx.id,
+          path: res.path,
+          mimeType: file.type,
+          name: `Receipt - ${form.payer_or_payee_name || form.description || form.type || 'expense'}`,
+        }).catch(() => {});
+      }
       setReceiptUrl(res.path);
     } else if (res.error) {
       setErr(`Receipt upload failed: ${res.error}`);
