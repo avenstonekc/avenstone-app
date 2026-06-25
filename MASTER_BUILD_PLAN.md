@@ -322,9 +322,10 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | B1.4 — Master Agent compose_draw + record_deposit | Confirm-gated verbs for voice/chat draw composition and deposit recording. | 2 | B1.3 |
 | B1.5 — Cost-plus client portal | Replace legacy job_cost_items view with draw-based breakdown for cost-plus clients. | 2 | B1.4 |
 | B1.6 — ai-estimator reads bid_model_config | Replace hardcoded 30% + $1,200 with config read from tenant `bid_model_config`. Add pm_fee read. | 2 | B1.1 ✓ |
-| B1.7 — Onboarding wizard (structured config writer) | New wizard replaces AiSetupWizard prose flow. Writes bid_model_config + markup_category_config + ai_knowledge. Trade-specific Q&A → config rows. | 4 | B1.1 ✓ |
+| B1.7 — Onboarding wizard (structured config writer) | New wizard replaces AiSetupWizard prose flow. Writes bid_model_config + markup_category_config + ai_knowledge. Trade-specific Q&A → config rows. [Phase 1 schema audit ✓ 2026-06-25 — all 3 tables exist, no blockers. bid_model_config default row confirmed (markup 30 / pm_fee 1200 / contractor). Phase 3 carries a one-line migration adding role-gate (owner/PM) to bid_model_config INSERT/UPDATE RLS — it is the only config table without DB-level write role restriction. Phase 4 carries ALTER TABLE ai_knowledge ALTER COLUMN tenant_id SET NOT NULL.] | 4 | B1.1 ✓ |
+| FUZZY_JOB_RESOLVER — agent partial job-name matching | Agent resolves partial/fuzzy job references ("log this to 8617") instead of requiring exact name match. Resolver: ILIKE on job name + address fields, scoped to tenant. Exactly-one match → use it; multiple → agent asks which; zero → reports plainly. Touches every job-scoped agent write, not just receipts. | 3 | B1.7 |
 
-**Block 1 total: 17 prompts**
+**Block 1 total: 20 prompts** (17 original + 3 FUZZY_JOB_RESOLVER, locked 2026-06-25)
 
 **Verify-then-advance:**
 - Code verifies: `bid_model_config` rows in DB with correct defaults; estimator reads markup from config (not 30% hardcoded); `job_transactions` updated after compose draw; float balance computed correctly on FinancialsTab.
@@ -332,6 +333,8 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 - Role seat (owner): review the draw composer as the person who composes draws — does the expense selector, markup preview, and resulting invoice reflect how you actually bill?
 
 **Parked in Block 1:** TENANT_ONBOARDING Phases 4-5 (interview engine + plan upload ingest) — after core config is running and Kalin has used it on real jobs
+
+**Parked (post-Block 1, audit-first):** RECEIPT_MODAL_EXTRACTION — wire existing Haiku receipt-vision path onto the manual Add-Receipt modal (FinancialsTab TransactionModal) so an uploaded receipt auto-fills price/description/vendor/date. Add pending/paid toggle (owner-scoped — explicitly NOT baked into client onboarding flow). Size TBD — opens with an audit confirming whether modal extraction already exists or is agent-chat-only. Logged 2026-06-25.
 
 ---
 
@@ -576,7 +579,7 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | 50 | Trust ladder eligibility + graduation | B6 | 3 | 130 | GOD_AGENT B4 prereq |
 | 51 | Bounded autopilot execution | B6 | 3 | 133 | GOD_AGENT autopilot (AVENSTONE_VISION north star) |
 
-**Grand total: 133 Sonnet prompts** across 51 sub-steps in 6 blocks.
+**Grand total: 136 Sonnet prompts** across 52 sub-steps in 6 blocks.
 
 ---
 
