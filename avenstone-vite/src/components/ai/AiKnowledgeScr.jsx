@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { sb, AV_TENANT } from '../../lib/supabase';
 import { Ic } from '../../lib/utils';
-import AiSetupWizard from './AiSetupWizard';
 import BidModelWizard from './BidModelWizard';
 
 const NAV    = 'var(--navy-900)';
@@ -82,7 +81,6 @@ export default function AiKnowledgeScr({ profile }) {
   const [saving, setSaving]         = useState(false);
   const [err, setErr]               = useState('');
   const [deleting, setDeleting]     = useState(null);
-  const [showWizard, setShowWizard]    = useState(false);
   const [showBidWizard, setShowBidWizard] = useState(false);
 
   useEffect(() => { load(); }, []);
@@ -176,13 +174,6 @@ export default function AiKnowledgeScr({ profile }) {
             style={{ whiteSpace: 'nowrap', fontSize: 13 }}
           >
             ⚙ Config Wizard
-          </button>
-          <button
-            onClick={() => setShowWizard(true)}
-            className="btn btn-ghost"
-            style={{ whiteSpace: 'nowrap', fontSize: 13 }}
-          >
-            ✦ Retake Setup
           </button>
           <button
             onClick={openAdd}
@@ -343,11 +334,6 @@ export default function AiKnowledgeScr({ profile }) {
 
       {showBidWizard && (
         <BidModelWizard onDone={() => setShowBidWizard(false)} />
-      )}
-
-      {/* Retake setup wizard */}
-      {showWizard && (
-        <AiSetupWizard profile={profile} onDone={() => { setShowWizard(false); load(); }} />
       )}
 
       {/* Add / Edit Modal */}
