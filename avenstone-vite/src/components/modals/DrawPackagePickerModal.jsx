@@ -107,10 +107,10 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
       )];
       if (linkedTxIds.length > 0) {
         const { data: txData } = await sb.from('job_transactions')
-          .select('id, amount')
+          .select('id, amount, date_incurred')
           .in('id', linkedTxIds);
         if (txData) {
-          setTxAmounts(new Map(txData.map(tx => [tx.id, tx.amount])));
+          setTxAmounts(new Map(txData.map(tx => [tx.id, { amount: tx.amount, date: tx.date_incurred }])));
         }
       }
 
@@ -327,20 +327,26 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
                         ) : (
                           <div style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 3 }}>
                             {[...files].sort((a, b) => {
-                              const amtA = txAmounts.get(a.related_entity_id) ?? -1;
-                              const amtB = txAmounts.get(b.related_entity_id) ?? -1;
-                              return amtB - amtA;
+                              const dateA = txAmounts.get(a.related_entity_id)?.date ?? '';
+                              const dateB = txAmounts.get(b.related_entity_id)?.date ?? '';
+                              return dateB.localeCompare(dateA);
                             }).map(f => {
-                              const amt = f.related_entity_type === 'job_transaction'
+                              const tx = f.related_entity_type === 'job_transaction'
                                 ? txAmounts.get(f.related_entity_id)
+                                : null;
+                              const dateStr = tx?.date
+                                ? new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                                 : null;
                               return (
                                 <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 6, background: isSelected('job_file', f.id) ? 'var(--cream-banner)' : 'var(--card-bg)', border: `1px solid ${isSelected('job_file', f.id) ? 'var(--gold-500)' : 'var(--border)'}` }}>
                                   <input type="checkbox" checked={isSelected('job_file', f.id)} onChange={() => toggleFile('job_file', f.id)} style={{ cursor: 'pointer', accentColor: 'var(--gold-500)' }} />
                                   <span style={{ fontSize: 12, color: 'var(--navy-900)', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || '(unnamed)'}</span>
-                                  {amt != null && (
+                                  {dateStr && (
+                                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{dateStr}</span>
+                                  )}
+                                  {tx?.amount != null && (
                                     <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy-900)', flexShrink: 0 }}>
-                                      ${amt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                   )}
                                 </label>
