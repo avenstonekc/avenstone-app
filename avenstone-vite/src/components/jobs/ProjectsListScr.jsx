@@ -1,6 +1,26 @@
 import { useState, useEffect, useMemo } from 'react';
-import { sbLoadProjectsList } from '../../lib/supabase.js';
-import { f$, isMob } from '../../lib/utils.jsx';
+import { sbLoadProjectsList, sbUpd, sbDel } from '../../lib/supabase.js';
+import { f$, isMob, ls } from '../../lib/utils.jsx';
+import JobDet from './JobDet';
+
+function ErrorBoundary({ back, children }) {
+  const [err, setErr] = useState(null);
+  if (err) return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+      <div style={{ background: 'var(--navy-900)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', width: 24, height: 24, display: 'flex', alignItems: 'center' }} onClick={back}>←</button>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>Project</div>
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
+        <div style={{ fontSize: 32 }}>⚠️</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--navy-900)', textAlign: 'center' }}>Something went wrong loading this project</div>
+        <div style={{ fontSize: 13, color: 'var(--text-subtle)', textAlign: 'center', maxWidth: 300 }}>{err?.message || 'Unknown error'}</div>
+        <button className="btn btn-navy" style={{ marginTop: 8 }} onClick={back}>← Back to Projects</button>
+      </div>
+    </div>
+  );
+  try { return children; } catch (e) { setErr(e); return null; }
+}
 
 const NAVY  = 'var(--navy-900)';
 const GOLD  = 'var(--gold-500)';
@@ -184,7 +204,14 @@ function ProjectCard({ job, onClick }) {
 }
 
 // ── Main screen ───────────────────────────────────────────────────────────────
-export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
+export default function ProjectsListScr({
+  profile, onNewProject,
+  jobs: appJobs = [], setJobs,
+  pendingAction, clearPendingAction,
+  pendingTab, clearPendingTab,
+  onTabChange, onAgentDrawPoke, onOpenWalkthrough,
+  onJobOpen, onJobClose,
+}) {
   const mob = isMob();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -195,6 +222,9 @@ export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
   const [sort, setSort] = useState('newest');
   const [page, setPage] = useState(1);
   const [mobileShown, setMobileShown] = useState(PAGE_SIZE);
+  const [sel, setSel] = useState(null);
+
+  useEffect(() => { if (sel) onJobOpen?.(sel); else onJobClose?.(); }, [sel]);
 
   useEffect(() => {
     if (!profile?.tenant_id) return;
@@ -204,6 +234,55 @@ export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
       setLoading(false);
     });
   }, [profile?.tenant_id]);
+
+  // selJ: prefer full app-level job (has all fields JobDet needs); fall back to
+  // enriched projects list entry (partial but usable for header display).
+  const selJ = sel ? (appJobs.find(j => j.id === sel) || projects.find(j => j.id === sel)) : null;
+
+  const updJob = (id, ch) => {
+    const u = appJobs.map(j => j.id === id ? { ...j, ...ch } : j);
+    setJobs?.(u); ls('av_j', u); sbUpd(id, ch);
+  };
+  const delJob = async id => {
+    if (!window.confirm('Delete this job?')) return;
+    const u = appJobs.filter(j => j.id !== id);
+    setJobs?.(u); ls('av_j', u); setSel(null);
+    const r = await sbDel(id);
+    if (!r.ok) { setJobs?.(appJobs); ls('av_j', appJobs); alert('Delete failed: ' + (r.error || 'Unknown error')); }
+  };
+
+  // Job loading skeleton — sel set but job not in either array yet
+  if (sel && !selJ) return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
+      <div style={{ background: 'var(--navy-900)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => setSel(null)}>
+          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>← Projects</span>
+        </button>
+      </div>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>
+        Loading project…
+      </div>
+    </div>
+  );
+
+  if (selJ) return (
+    <ErrorBoundary back={() => setSel(null)}>
+      <JobDet
+        job={selJ}
+        upd={ch => updJob(selJ.id, ch)}
+        del={() => delJob(selJ.id)}
+        back={() => setSel(null)}
+        profile={profile}
+        pendingAction={pendingAction}
+        clearPendingAction={clearPendingAction}
+        pendingTab={pendingTab}
+        clearPendingTab={clearPendingTab}
+        onTabChange={onTabChange}
+        onAgentDrawPoke={onAgentDrawPoke}
+        onOpenWalkthrough={onOpenWalkthrough}
+      />
+    </ErrorBoundary>
+  );
 
   // Unique PM names for filter
   const pmOptions = useMemo(() =>
@@ -302,7 +381,7 @@ export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
       {mob && filtered.length > 0 && (
         <>
           {mobileCards.map(job => (
-            <ProjectCard key={job.id} job={job} onClick={() => onOpenJob(job.id)} />
+            <ProjectCard key={job.id} job={job} onClick={() => setSel(job.id)} />
           ))}
           {mobileShown < filtered.length && (
             <button
@@ -337,7 +416,7 @@ export default function ProjectsListScr({ profile, onOpenJob, onNewProject }) {
               </thead>
               <tbody>
                 {desktopRows.map(job => (
-                  <TableRow key={job.id} job={job} onClick={() => onOpenJob(job.id)} />
+                  <TableRow key={job.id} job={job} onClick={() => setSel(job.id)} />
                 ))}
               </tbody>
             </table>
