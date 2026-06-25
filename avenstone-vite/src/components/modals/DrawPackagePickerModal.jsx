@@ -76,9 +76,9 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
   const loadFiles = async () => {
     setLoading(true);
     try {
-      const [jfRes, cfRes] = await Promise.all([
+      const [jfRes, cfRes, liRes] = await Promise.all([
         sb.from('job_files')
-          .select('id, category, subcategory, mime_type, name, storage_path, storage_bucket')
+          .select('id, category, subcategory, mime_type, name, storage_path, storage_bucket, related_entity_type, related_entity_id')
           .eq('job_id', job.id)
           .eq('lifecycle_status', 'active')
           .neq('category', 'Draws')
@@ -89,9 +89,29 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
           .eq('lifecycle_status', 'active')
           .in('category', COMPLIANCE_CATS)
           .order('category').order('type'),
+        sb.from('draw_line_items')
+          .select('transaction_id')
+          .eq('draw_id', draw.id)
+          .not('transaction_id', 'is', null),
       ]);
-      setJobFiles(jfRes.data || []);
+      const files = jfRes.data || [];
+      setJobFiles(files);
       setCompFiles(cfRes.data || []);
+
+      // Auto-select receipt files that belong to this draw's line items
+      const drawTxIds = new Set((liRes.data || []).map(li => li.transaction_id));
+      if (drawTxIds.size > 0) {
+        const autoKeys = files
+          .filter(f => f.related_entity_type === 'job_transaction' && drawTxIds.has(f.related_entity_id))
+          .map(f => `job_file:${f.id}`);
+        if (autoKeys.length > 0) {
+          setSelected(prev => {
+            const next = new Set(prev);
+            autoKeys.forEach(k => next.add(k));
+            return next;
+          });
+        }
+      }
     } catch (e) {
       setSaveError(e.message || 'Failed to load files.');
     }
