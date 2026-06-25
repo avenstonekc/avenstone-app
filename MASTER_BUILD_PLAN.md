@@ -359,8 +359,9 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | B2.4 — Scope Risk Phase 1 | Risk knowledge source: extend `tenant_playbook_items` with `is_scope_risk BOOLEAN` + `risk_price_low/high`. Seed Avenstone per-trade library (mold, old plumbing, structural surprises). | 2 | B2.3 |
 | B2.5 — Scope Risk Phase 2 | ai-estimator suggests applicable risks from playbook; rep reviews + includes/excludes before generating. | 2 | B2.4 |
 | B2.6 — Scope Risk Phase 3 | "Potential Considerations" section rendered in estimate/proposal. Conditional language, Rate Book ballpark ranges, clearly excluded from quoted total. | 2 | B2.5 |
+| FLIP_FINANCIAL_MODEL — job financial-model enum + surface gating | Promote jobs.cost_plus boolean → financial_model enum (flip / cost_plus / fixed_bid). Model gates which financial surfaces render: flip = owner-financed margin tracking (cost basis vs projected/actual margin against sale price), cost-plus draw/bucket/reimbursement/client-portal-billing apparatus OFF. Productization: sellable to flippers as non-contractor vertical. Blueprint-gated (10+ prompts). | 12 | Model B lifecycle |
 
-**Block 2 total: 13 prompts**
+**Block 2 total: 25 prompts** (13 original + 12 FLIP_FINANCIAL_MODEL, locked 2026-06-25)
 
 **Verify-then-advance:**
 - Code verifies: interview pre-fills with tenant config values (not 30% hardcoded); gap lines surface as numbered batch-ask before draft; offer-to-save appears after a gap rate is confirmed; unvetted row written to `rate_book_labor`; "Potential Considerations" section renders in proposal PDF.
@@ -580,7 +581,7 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | 50 | Trust ladder eligibility + graduation | B6 | 3 | 130 | GOD_AGENT B4 prereq |
 | 51 | Bounded autopilot execution | B6 | 3 | 133 | GOD_AGENT autopilot (AVENSTONE_VISION north star) |
 
-**Grand total: 137 Sonnet prompts** across 53 sub-steps in 6 blocks.
+**Grand total: 149 Sonnet prompts** across 54 sub-steps in 6 blocks.
 
 ---
 
