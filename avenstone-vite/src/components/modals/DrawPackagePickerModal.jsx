@@ -58,6 +58,9 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
   const [sendError, setSendError]     = useState(null);
   const [sentInfo, setSentInfo]       = useState(null);
 
+  // Search
+  const [search, setSearch]           = useState('');
+
   // Copy link
   const [copied, setCopied]           = useState(false);
   const [copying, setCopying]         = useState(false);
@@ -231,8 +234,23 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
     } finally { setSending(false); }
   };
 
+  const q = search.trim().toLowerCase();
+  const matchesSearch = (f) => {
+    if (!q) return true;
+    if ((f.name || '').toLowerCase().includes(q)) return true;
+    const tx = f.related_entity_type === 'job_transaction' ? txAmounts.get(f.related_entity_id) : null;
+    if (tx?.date && tx.date.includes(q)) return true;
+    if (tx?.amount != null && String(tx.amount).includes(q)) return true;
+    if (tx?.date) {
+      const dateStr = new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toLowerCase();
+      if (dateStr.includes(q)) return true;
+    }
+    return false;
+  };
+
   const jobGroups = {};
   for (const f of jobFiles) {
+    if (!matchesSearch(f)) continue;
     const c = f.category || 'Other';
     if (!jobGroups[c]) jobGroups[c] = [];
     jobGroups[c].push(f);
@@ -246,7 +264,15 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
         {/* Header */}
         <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid #E8E4DC', flexShrink: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy-900)' }}>Draw Package — Draw #{draw.draw_number}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{draw.title || job.address}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, marginBottom: 10 }}>{draw.title || job.address}</div>
+          <input
+            className="finp"
+            type="search"
+            placeholder="Search by name, date, or amount…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: '100%', fontSize: 13 }}
+          />
         </div>
 
         {/* Action Panel — only when package is saved */}
@@ -378,7 +404,7 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
                   <div style={{ fontSize: 12, color: 'var(--text-subtle)', fontStyle: 'italic' }}>No Insurance, License, or Compliance documents on file.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {compFiles.map(f => (
+                    {compFiles.filter(f => !q || (f.name || '').toLowerCase().includes(q)).map(f => (
                       <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 10px', borderRadius: 6, background: isSelected('company_file', f.id) ? 'var(--cream-banner)' : 'var(--card-bg)', border: `1px solid ${isSelected('company_file', f.id) ? 'var(--gold-500)' : 'var(--border)'}` }}>
                         <input type="checkbox" checked={isSelected('company_file', f.id)} onChange={() => toggleFile('company_file', f.id)} style={{ cursor: 'pointer', accentColor: 'var(--gold-500)' }} />
                         <span style={{ fontSize: 12, color: 'var(--navy-900)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || '(unnamed)'}</span>
