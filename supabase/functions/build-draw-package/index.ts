@@ -335,16 +335,26 @@ async function addDocumentPages(
     const bytes = await fetchBytes(sb, file.storage_bucket, file.storage_path);
     if (!bytes || bytes.length === 0) continue;
 
+    const mime = (file.mime_type || "").toLowerCase();
+
     try {
       if (file.mime_type === "application/pdf") {
         const extDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
         const indices = extDoc.getPageIndices();
         const copied  = await doc.copyPages(extDoc, indices);
         for (const pg of copied) doc.addPage(pg);
-      } else if (file.mime_type?.startsWith("image/")) {
-        const page  = doc.addPage([612, 792]);
-        const isMime = file.mime_type.toLowerCase();
-        const img   = isMime.includes("png") ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      } else if (mime.includes("jpeg") || mime.includes("jpg")) {
+        const img    = await doc.embedJpg(bytes);
+        const page   = doc.addPage([612, 792]);
+        const scaled = img.scaleToFit(W, 692);
+        page.drawImage(img, {
+          x: margin + (W - scaled.width) / 2,
+          y: margin + (692 - scaled.height) / 2,
+          width: scaled.width, height: scaled.height,
+        });
+      } else if (mime.includes("png")) {
+        const img    = await doc.embedPng(bytes);
+        const page   = doc.addPage([612, 792]);
         const scaled = img.scaleToFit(W, 692);
         page.drawImage(img, {
           x: margin + (W - scaled.width) / 2,
@@ -352,7 +362,10 @@ async function addDocumentPages(
           width: scaled.width, height: scaled.height,
         });
       }
-    } catch { /* skip unprocessable file */ }
+      // HEIC, WebP, and other formats: skip silently — pdf-lib can't embed them
+    } catch (e) {
+      console.warn(`[build-draw-package] skipping unembeddable file ${file.id} (${mime}):`, (e as Error).message);
+    }
   }
 }
 
@@ -427,9 +440,10 @@ Deno.serve(async (req) => {
     }
 
     // Build PDF
+    let step = "pdf-init";
     const doc = await PDFDocument.create();
 
-    // 1. Cover sheet
+    step = "cover-sheet";
     await generateCoverSheet(
       doc,
       draw as Record<string, unknown>,
@@ -440,32 +454,35 @@ Deno.serve(async (req) => {
       cover_notes as string | null,
     );
 
-    // 2. Selected files
+    step = "load-file-details";
     if (Array.isArray(file_refs) && file_refs.length > 0) {
       const fileDetails = await loadFileDetails(sb, file_refs);
       const photos    = fileDetails.filter(f => f.category === "Photos");
       const documents = fileDetails.filter(f => f.category !== "Photos");
 
+      step = "photo-pages";
       if (photos.length > 0) await addPhotoPages(doc, photos, sb);
+      step = "document-pages";
       if (documents.length > 0) await addDocumentPages(doc, documents, sb);
     }
 
+    step = "pdf-save";
     const pdfBytes = await doc.save();
 
-    // Upload
+    step = "pdf-upload";
     const pdfPath = `${job_id}/${draw_id}/cover.pdf`;
     const { error: uploadErr } = await sb.storage
       .from(BUCKET)
       .upload(pdfPath, pdfBytes, { contentType: "application/pdf", upsert: true });
-    if (uploadErr) throw new Error(`PDF upload failed: ${uploadErr.message}`);
+    if (uploadErr) return json({ ok: false, error: `PDF upload failed: ${uploadErr.message}` }, 500);
 
-    // Signed URL (1 year)
+    step = "signed-url";
     const { data: signedData, error: signedErr } = await sb.storage
       .from(BUCKET)
       .createSignedUrl(pdfPath, 60 * 60 * 24 * 365);
-    if (signedErr || !signedData?.signedUrl) throw new Error(`Signed URL failed: ${signedErr?.message ?? "no URL"}`);
+    if (signedErr || !signedData?.signedUrl) return json({ ok: false, error: `Signed URL failed: ${signedErr?.message ?? "no URL"}` }, 500);
 
-    // Update draw_packages
+    step = "draw-packages-update";
     const now = new Date().toISOString();
     await sb.from("draw_packages").update({
       generated_pdf_path: pdfPath,
@@ -478,7 +495,8 @@ Deno.serve(async (req) => {
     return json({ ok: true, signed_url: signedData.signedUrl, draw_package_id: pkgId });
 
   } catch (err: unknown) {
-    console.error("build-draw-package error:", err);
-    return json({ ok: false, error: (err as Error).message ?? "Unexpected error" }, 500);
+    const msg = (err as Error)?.message ?? "Unexpected error";
+    console.error("build-draw-package error:", msg, err);
+    return json({ ok: false, error: msg }, 500);
   }
 });

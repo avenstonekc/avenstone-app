@@ -4392,7 +4392,11 @@ export async function sbBuildDrawPackage(drawId, jobId, coverNotes = null, fileR
   const { data, error } = await sb.functions.invoke('build-draw-package', {
     body: { draw_id: drawId, job_id: jobId, cover_notes: coverNotes, file_refs: fileRefs },
   });
-  if (error) throw error;
+  if (error) {
+    const body = error?.context;
+    const detail = typeof body === 'object' ? (body?.error || body?.message) : null;
+    throw new Error(detail || error.message || 'Build draw package failed');
+  }
   if (!data?.ok) throw new Error(data?.error ?? 'Failed to build draw package');
   return data; // { signed_url, draw_package_id }
 }
