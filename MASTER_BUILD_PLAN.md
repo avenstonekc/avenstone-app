@@ -461,6 +461,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 | Sub-step | What it does | Prompts | Prereq |
 |----------|-------------|---------|--------|
+| B5.0 — Cross-tenant leak fix (gating) | ai-consultation-gap-analyzer reads ai_knowledge via SERVICE_ROLE with no tenant_id filter — cross-tenant leak. Add tenant_id scoping. MUST land before any second tenant onboards. Found in B1.7 Phase 4 audit 2026-06-25. | 1 | None (blocks all B5) |
 | B5.1 — Client INTAKE arc Phase 1 | Schema: `project_types` + `intake_questions` (type-adaptive per project type). Seed Avenstone-GC types: kitchen, bathroom, full gut, exterior, fire/water damage, fence, mechanical. | 2 | None |
 | B5.2 — Client INTAKE arc Phase 2 | Intake UI: project type picker → adaptive question set → answers saved to job. Shows on new-job creation + lead→proposal transition. | 3 | B5.1 |
 | B5.3 — Client INTAKE arc Phase 3 | Estimator integration: intake answers pre-fill interview fields (SF, finish tier, scope notes, room list, flagged questions). "Form becomes a prompt." | 2 | B5.2 + Block 2 |
@@ -475,7 +476,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | B5.12 — UNIFIED_FILES Phases 4-5 | Client + sub filtered folder trees in portals. Mobile camera flow (Capacitor native sheet). Search performance on 200+ file jobs. | 3 | B5.4 |
 | B5.13 — GPS/ETA: sub/rep on the way → client portal | Sub taps "I'm on my way" on their job view → captures current location via `navigator.geolocation` (already in `src/lib/gps.js`) → ETA calculated against `jobs.address` via a maps API → client portal shows "Your contractor is X mins away" banner + push notification fires via existing `send-push`. Schema: `job_location_pings(id, job_id, user_id, lat, lng, eta_minutes, triggered_at)`; Realtime subscription in ClientPortal. | 3 | B5.11 (sub job view), ClientPortal ✓, push-notifications ✓ |
 
-**Block 5 total: 36 prompts** _(+3 from GPS/ETA triage 2026-06-19)_
+**Block 5 total: 37 prompts** _(+3 from GPS/ETA triage 2026-06-19, +1 B5.0 cross-tenant leak fix, locked 2026-06-25)_
 
 **Verify-then-advance:**
 - Code verifies: intake questions appear on new-job creation for each project type; estimator pre-fills from intake answers; selections auto-generated for job trades; client portal shows selections with confirm-by date; sub portal shows lien waiver status; GPS ETA appears in client portal when sub triggers "I'm on my way."
@@ -579,7 +580,7 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | 50 | Trust ladder eligibility + graduation | B6 | 3 | 130 | GOD_AGENT B4 prereq |
 | 51 | Bounded autopilot execution | B6 | 3 | 133 | GOD_AGENT autopilot (AVENSTONE_VISION north star) |
 
-**Grand total: 136 Sonnet prompts** across 52 sub-steps in 6 blocks.
+**Grand total: 137 Sonnet prompts** across 53 sub-steps in 6 blocks.
 
 ---
 
