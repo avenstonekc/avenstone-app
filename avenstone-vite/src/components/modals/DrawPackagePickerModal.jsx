@@ -155,7 +155,18 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
 
   const buildFileRefs = () => {
     const refs = [];
-    for (const key of selected) { const [source, id] = key.split(':'); refs.push({ id, source }); }
+    for (const key of selected) {
+      const [source, id] = key.split(':');
+      const ref = { id, source };
+      if (source === 'job_file') {
+        const file = jobFiles.find(f => f.id === id);
+        if (file?.related_entity_type === 'job_transaction') {
+          const tx = txAmounts.get(file.related_entity_id);
+          if (tx) { ref.amount = tx.amount; ref.date = tx.date; }
+        }
+      }
+      refs.push(ref);
+    }
     return refs;
   };
 

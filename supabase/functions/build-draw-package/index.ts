@@ -174,7 +174,12 @@ async function generateCoverSheet(
 
 // ── File helpers ───────────────────────────────────────────────────────────────
 
-interface FileRef { id: string; source: "job_file" | "company_file"; }
+interface FileRef {
+  id: string;
+  source: "job_file" | "company_file";
+  amount?: number;
+  date?: string;
+}
 
 interface FileDetail {
   id: string;
@@ -185,6 +190,8 @@ interface FileDetail {
   storage_path: string;
   storage_bucket: string;
   source: "job_file" | "company_file";
+  amount?: number;
+  date?: string;
 }
 
 async function loadFileDetails(sb: ReturnType<typeof createClient>, fileRefs: FileRef[]): Promise<FileDetail[]> {
@@ -372,22 +379,41 @@ async function addDocumentPages(
         const indices = extDoc.getPageIndices();
         const copied  = await doc.copyPages(extDoc, indices);
         for (const pg of copied) doc.addPage(pg);
-      } else if (mime.includes("jpeg") || mime.includes("jpg")) {
-        const img    = await doc.embedJpg(bytes);
+      } else if (mime.includes("jpeg") || mime.includes("jpg") || mime.includes("png")) {
+        const img    = mime.includes("png") ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
         const page   = doc.addPage([612, 792]);
-        const scaled = img.scaleToFit(W, 692);
+
+        // Header strip: name · date · amount
+        const hFont  = await doc.embedFont(StandardFonts.Helvetica);
+        const hBold  = await doc.embedFont(StandardFonts.HelveticaBold);
+        const navy   = rgb(0.102, 0.145, 0.251);
+        const gold   = rgb(0.788, 0.659, 0.298);
+        const white  = rgb(1, 1, 1);
+        const HEADER_H = 36;
+        const headerY  = 792 - HEADER_H;
+        page.drawRectangle({ x: 0, y: headerY, width: 612, height: HEADER_H, color: navy });
+
+        const label = (file.name || "Receipt").slice(0, 55);
+        page.drawText(label, { x: margin, y: headerY + 13, size: 10, font: hBold, color: white });
+
+        const metaParts: string[] = [];
+        if (file.date) {
+          const d = new Date(file.date + "T00:00:00");
+          metaParts.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
+        }
+        if (file.amount != null) metaParts.push(fmtCurrency(file.amount));
+        if (metaParts.length > 0) {
+          const metaStr = metaParts.join("  ·  ");
+          const metaW   = hFont.widthOfTextAtSize(metaStr, 9);
+          page.drawText(metaStr, { x: margin + W - metaW, y: headerY + 14, size: 9, font: hFont, color: gold });
+        }
+
+        // Image below header
+        const imgAreaH = headerY - margin;
+        const scaled   = img.scaleToFit(W, imgAreaH);
         page.drawImage(img, {
           x: margin + (W - scaled.width) / 2,
-          y: margin + (692 - scaled.height) / 2,
-          width: scaled.width, height: scaled.height,
-        });
-      } else if (mime.includes("png")) {
-        const img    = await doc.embedPng(bytes);
-        const page   = doc.addPage([612, 792]);
-        const scaled = img.scaleToFit(W, 692);
-        page.drawImage(img, {
-          x: margin + (W - scaled.width) / 2,
-          y: margin + (692 - scaled.height) / 2,
+          y: margin + (imgAreaH - scaled.height) / 2,
           width: scaled.width, height: scaled.height,
         });
       }
@@ -485,7 +511,11 @@ Deno.serve(async (req) => {
 
     step = "load-file-details";
     if (Array.isArray(file_refs) && file_refs.length > 0) {
-      const fileDetails = await loadFileDetails(sb, file_refs);
+      const refMeta = new Map(file_refs.map(r => [`${r.source}:${r.id}`, r]));
+      const fileDetails = (await loadFileDetails(sb, file_refs)).map(d => {
+        const ref = refMeta.get(`${d.source}:${d.id}`);
+        return ref ? { ...d, amount: ref.amount, date: ref.date } : d;
+      });
       const photos    = fileDetails.filter(f => f.category === "Photos");
       const documents = fileDetails.filter(f => f.category !== "Photos");
 
