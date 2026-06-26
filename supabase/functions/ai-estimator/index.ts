@@ -10,6 +10,16 @@ import {
   resolveRate,
   getTier,
 } from "../_shared/rateBook.ts";
+import {
+  assembleChecklist,
+  detectTriggers,
+  collectRequiredFields,
+  openQuestions,
+  makeAnswerRecord,
+  type ChecklistRow,
+  type ModuleRow,
+  type ScopeField,
+} from "../_shared/scopeEngine.ts";
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -116,6 +126,141 @@ async function loadBidModelConfig(tenantId: string): Promise<BidModelConfig | nu
   return { markup_pct: Number(data.markup_pct), pm_fee: Number(data.pm_fee) };
 }
 
+// ── Scope-interview engine (SCOPE_CAPTURE_ENGINE P1B) ─────────────────────────
+
+// Load platform-default (tenant_id NULL) + tenant-override checklist & module rows.
+// Service role bypasses RLS, so the NULL+tenant scoping is done explicitly here.
+async function loadScopeConfig(
+  tenantId: string,
+  projectType: string,
+): Promise<{ checklist: ChecklistRow[]; modules: ModuleRow[] }> {
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const [clRes, modRes] = await Promise.all([
+    sb.from("scope_checklists")
+      .select("tenant_id, project_type, field_key, question, field_type, options, money_risk_rank, adds_trades, active")
+      .eq("project_type", projectType)
+      .eq("active", true)
+      .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`),
+    sb.from("scope_modules")
+      .select("tenant_id, module_key, label, trigger_phrases, adds_fields, adds_trades, active")
+      .eq("active", true)
+      .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`),
+  ]);
+  if (clRes.error) console.error("ai-estimator scope_checklists:", clRes.error.message);
+  if (modRes.error) console.error("ai-estimator scope_modules:", modRes.error.message);
+  return {
+    checklist: (clRes.data ?? []) as ChecklistRow[],
+    modules: (modRes.data ?? []) as ModuleRow[],
+  };
+}
+
+// The AI's bounded job: extract which required fields the conversation already answered,
+// and phrase the still-open ones conversationally. It does NOT decide completion (the
+// edge fn recomputes openQuestions deterministically from the AI's answered set).
+function buildInterviewSystemPrompt(fields: ScopeField[], projectType: string): string {
+  const fieldLines = fields.map((f) => {
+    const opts = Array.isArray(f.options) ? ` options:[${(f.options as string[]).join(", ")}]` : "";
+    const tag = f.origin === "base" ? "" : ` (${f.origin})`;
+    return `- ${f.field_key} [${f.field_type}${opts}]${tag} — ${f.question}`;
+  }).join("\n");
+
+  return `You are Aven — Avenstone's AI scope interviewer (KC, MO residential + light commercial). Never mention Claude or Anthropic.
+You are GATHERING SCOPE for a ${projectType} remodel BEFORE any pricing. Do NOT discuss prices, rates, or totals.
+
+You are given the REQUIRED SCOPE FIELDS (priority order, most important first) and the conversation so far. Each turn:
+1. Read the whole conversation. Decide which REQUIRED SCOPE FIELDS are already answered by what the rep/homeowner said. Map free text onto a field's options when it is a choice. Only mark a field answered when the conversation actually gives that answer — never guess.
+2. Write ONE short, friendly, conversational message asking ONLY the fields still unanswered, most important first. Group related questions naturally; do not interrogate one-by-one or restate answered fields. If nothing remains, give a one-line confirmation.
+
+Output ONLY valid JSON — no prose, no markdown fences. Start with { and end with }:
+{
+  "answered": [{ "field_key": "<key>", "value": "<answer or chosen option>", "confidence": 0.0-1.0 }],
+  "questions_message": "<conversational batched ask of the still-open fields, or a brief confirmation if none>",
+  "all_answered": true | false
+}
+
+REQUIRED SCOPE FIELDS (priority order):
+${fieldLines}`;
+}
+
+// One interview turn. Deterministic gate; AI does NL extraction + phrasing only.
+async function handleScopeInterview(
+  messages: Array<{ role: string; content: unknown }>,
+  tenantId: string,
+  projectType: string | undefined,
+): Promise<Response> {
+  // No project type → nothing to ask → complete, so the frontend falls straight to pricing.
+  if (!projectType) {
+    return ok({ scope_complete: true, content: "", answers: [] });
+  }
+
+  const { checklist, modules } = await loadScopeConfig(tenantId, projectType);
+  const baseFields = assembleChecklist(projectType, checklist);
+  if (baseFields.length === 0) {
+    // No seeded checklist for this project type — nothing to ask; price as today.
+    console.log(`ai-estimator scope-interview: no checklist for '${projectType}' (tenant ${tenantId}) — completing.`);
+    return ok({ scope_complete: true, content: "", answers: [] });
+  }
+
+  // Deterministic: fire modules from ALL rep text so far, build the full required set.
+  const repText = messages
+    .filter((m) => m.role === "user")
+    .map((m) =>
+      typeof m.content === "string"
+        ? m.content
+        : Array.isArray(m.content)
+          ? (m.content as Array<{ type?: string; text?: string }>)
+              .filter((p) => p?.type === "text").map((p) => p.text ?? "").join(" ")
+          : ""
+    )
+    .join("\n");
+  const fired = detectTriggers(repText, modules);
+  const requiredFields = collectRequiredFields(baseFields, fired);
+
+  // AI: extract answered + phrase open (phrasing only — the completion gate is deterministic).
+  const system = buildInterviewSystemPrompt(requiredFields, projectType);
+  const aiRes = await callAnthropic(system, messages, 1500);
+  if (aiRes.error) return fail(aiRes.error);
+
+  let parsed: {
+    answered?: Array<{ field_key: string; value: unknown; confidence?: number }>;
+    questions_message?: string;
+    all_answered?: boolean;
+  };
+  try {
+    const raw = aiRes.text.trim();
+    const jsonStr = raw.startsWith("{")
+      ? raw
+      : (raw.match(/```(?:json)?\s*([\s\S]+?)```/)?.[1]?.trim() ?? raw);
+    parsed = JSON.parse(jsonStr);
+  } catch (e) {
+    console.error("ai-estimator scope-interview parse failed —", String(e), "| raw:", aiRes.text.slice(0, 300));
+    // Don't hard-block the rep — let them proceed to pricing if the interview misfires.
+    return ok({ scope_complete: true, content: "", answers: [], parse_error: true });
+  }
+
+  const answers = (parsed.answered ?? [])
+    .filter((a) => a && typeof a.field_key === "string")
+    .map((a) => makeAnswerRecord(a.field_key, a.value, typeof a.confidence === "number" ? a.confidence : 1));
+  const answeredKeys = new Set(answers.map((a) => a.field_key));
+
+  // Deterministic completion gate — NOT the AI's claim.
+  const stillOpen = openQuestions(requiredFields, answeredKeys);
+  const complete = stillOpen.length === 0;
+
+  const content = complete
+    ? "Got everything I need on scope — putting your estimate together now."
+    : (parsed.questions_message?.trim() || "A few more scope details before I price this:");
+
+  console.log(`ai-estimator scope-interview [${projectType}]: ${answers.length} answered, ${stillOpen.length} open, fired=[${fired.map((m) => m.module_key).join(",")}]`);
+
+  return ok({
+    scope_complete: complete,
+    content,
+    answers,
+    open_field_keys: stillOpen.map((f) => f.field_key),
+    fired_modules: fired.map((m) => m.module_key),
+  });
+}
 // ── Vocabulary builder (injected per-request) ─────────────────────────────────
 
 function buildVocabSection(rateBook: RateBook): string {
@@ -172,7 +317,6 @@ Tile (floor or wall/shower): +15% | Drywall: +10% | LVP/hardwood: +12%
 Trim/baseboard: +10% | Insulation batt: +8% | Framing lumber: +10%
 
 BATHROOM RULES: use moisture_resistant (not hang/combined) for any wet-area drywall.
-If shower has tiled floor: include schluter_membrane (SF) + shower_pan_mudbed (LS).
 
 ${vocabSection}
 
@@ -435,9 +579,17 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model } = await req.json();
+    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type } = await req.json();
     if (!messages?.length) return fail("no messages", 400);
     if (!tenant_id) return fail("tenant_id required", 400);
+
+    // ── Scope-interview mode (SCOPE_CAPTURE_ENGINE P1B) — strictly UPSTREAM of pricing.
+    // Asks the checklist questions until scope is complete; never prices here. The pricing
+    // path below is untouched: when complete, the frontend re-POSTs without mode and the
+    // existing scope->price->priced_scope contract runs over the confirmed conversation.
+    if (mode === "scope_interview") {
+      return await handleScopeInterview(messages, tenant_id, project_type);
+    }
 
     const rateBook = await loadRateBook(tenant_id);
 
@@ -534,3 +686,6 @@ Deno.serve(async (req) => {
     return fail(String(e));
   }
 });
+
+
+
