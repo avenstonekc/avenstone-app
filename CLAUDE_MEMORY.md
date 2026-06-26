@@ -2095,3 +2095,13 @@ KEY DECISIONS (locked):
 - create_schedule_item fix bonus: old JS .find() silently dropped multi-matches; new helper causes "Couldn't find sub" note on both zero and multi — avoids silently assigning wrong sub.
 - CLAUDE_INDEX.md updated: function=Sub Portal & Ops, date=2026-06, failure-pattern=Bug-C divergence.
 - SUB_NAME_RESOLVER flagged entry in MASTER_BUILD_PLAN.md updated to SHIPPED.
+
+[LOG — 2026-06-25] — B2.1 shipped: guided interview states markup+pm_fee at scope start (0bead89 + bd3fb84)
+
+- Action: Added state-and-proceed preamble to estimator output and config-missing fail-loud to EstimateTab.
+- AUDIT FINDING: Most of B2.1 was already built in B1.6. sbLoadBidModelConfig is called on EstimateTab mount, seeding interviewMarkup and interviewPmFee states. Both fields are already visible pre-fill inputs with "Running your standard X% — good or different?" sub-hint. Both values already sent in every ai-estimator call (markup_pct, pm_fee in body). The "rep-facing override surface" was substantially done.
+- Gap 1 (backend, closed): formatEstimate output had no opening statement of the rates. The chat reply started directly with pricing tier + lines. Added preamble line: "_Running at **X%** markup · **$Y** PM fee — edit the fields above if this job's different._" prepended to formatted output. Also updated buildScopeSystemPrompt COMPANY line to make the configured rates explicit and instruct the model not to re-ask about them. State-and-proceed: single line, then estimate follows immediately.
+- Gap 2 (frontend, closed): when sbLoadBidModelConfig returns ok:false, interviewMarkup and interviewPmFee stayed at 0 with no visible warning. Added configMissing state — set to true when !result.ok. Amber warning banner appears above the markup/PM fee fields directing to Settings → Bid Config. Sub-hints ("Running your standard X%") hidden when configMissing to avoid misleading "?% — good or different?" text.
+- Override channel: frontend sends config values explicitly (markup_pct: Number(interviewMarkup)) on every call. No behavior change when values are untouched — backend override condition (>= 0) and config fallback both yield the same result.
+- ESTIMATOR Phase 4 (guided interview pre-fill): now live. 4 of 7 ESTIMATOR phases built.
+- Next: B2.2 (Batch unknowns — collect all missing-rate lines before draft, surface as numbered batch-ask).

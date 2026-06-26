@@ -2,7 +2,7 @@
 **APPROVED — locked 2026-06-19. 6-block order confirmed: Owner Foundation → Engine → Watcher → Seams → Client Front Door → Autopilot.**
 **Last full-code audit: 2026-06-19 (all 21 docs/arcs/ verified against live code)**
 
-> **Starting position: B2.1 (Guided interview w/ pre-filled defaults). Block 1 COMPLETE as of 2026-06-25.** All B1 sub-steps (B1.1–B1.7 + FUZZY_JOB_RESOLVER + DRAW_PDF_POLISH) shipped and confirmed live. Next build session opens at Block 2.
+> **Starting position: B2.2 (Batch unknowns). B2.1 SHIPPED 2026-06-25 (0bead89 + bd3fb84).** Block 1 complete. Next session opens at B2.2.
 
 ---
 
@@ -356,7 +356,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 | Sub-step | What it does | Prompts | Prereq |
 |----------|-------------|---------|--------|
-| B2.1 — Guided interview w/ pre-filled defaults | "Running your standard X% — good or different?" pattern. Pre-fill SF, tier, markup, pm_fee from tenant config + job record. Show Keystone Decision 5 UX. | 3 | B1.2 |
+| B2.1 — Guided interview w/ pre-filled defaults | "Running your standard X% — good or different?" pattern. Pre-fill SF, tier, markup, pm_fee from tenant config + job record. Show Keystone Decision 5 UX. **[SHIPPED 2026-06-25 — 0bead89 (backend state-and-proceed preamble in formatEstimate + system prompt update) + bd3fb84 (frontend configMissing fail-loud). AUDIT FINDING: override surface, pre-fill seeding (sbLoadBidModelConfig), and "Running your standard X%" hint were already built in B1.6. Actual gaps: (1) chat preamble stating the rates was absent from formatEstimate output; (2) configMissing=true path showed 0%/$0 with no warning. Both closed. ESTIMATOR Phase 4 now live.]** | 3 | B1.2 |
 | B2.2 — Batch unknowns | Collect all missing-rate lines before draft generation. Surface as numbered batch-ask (not one-by-one). | 2 | B2.1 |
 | B2.3 — Learn loop | After rep confirms a gap rate, offer "Save to Rate Book?" with confirm. Writes `rate_book_labor` unvetted row. Owner promotes via RateBookScr. | 2 | B2.2 |
 | B2.4 — Scope Risk Phase 1 | Risk knowledge source: extend `tenant_playbook_items` with `is_scope_risk BOOLEAN` + `risk_price_low/high`. Seed Avenstone per-trade library (mold, old plumbing, structural surprises). | 2 | B2.3 |
