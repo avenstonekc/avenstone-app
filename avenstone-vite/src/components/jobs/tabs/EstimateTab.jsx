@@ -280,16 +280,21 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // Blank/zero entries stay regional_avg/TBD — committing with unset gaps is allowed.
   const applyGapRates = () => {
     if (!pricedScope) return;
+    const candidates = [];
     const mutated = pricedScope.map(line => {
       if (line.source_label !== 'regional_avg' || !line.gap_key) return line;
       const entered = gapRates[line.gap_key];
       const rate = parseFloat(entered);
       if (!entered || isNaN(rate) || rate <= 0) return line; // leave as TBD
-      // PHASE 6 LEARN-LOOP HOOK STUB — do NOT persist here; Phase 6 owns the save flow
-      // const _learnHook = { gap_key: line.gap_key, trade: line.trade, line_item: line.line_item, unit: line.unit, entered_rate: rate };
+      // B2.3 learn hook — collect filled labor gaps for the save offer (no persist here)
+      if (line.category === 'labor') {
+        candidates.push({ gap_key: line.gap_key, trade: line.trade, line_item: line.line_item, unit: line.unit, rate });
+      }
       return { ...line, unit_price: rate, amount: Math.round(rate * line.quantity * 100) / 100, source_label: 'user_entered' };
     });
     setPricedScope(mutated);
+    setLearnCandidates(candidates);
+    setLearnSaveState('');
   };
 
   // B2.3: save learnCandidates (labor gaps the rep just applied) to rate_book_labor.
