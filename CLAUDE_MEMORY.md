@@ -2206,3 +2206,13 @@ KEY DECISIONS (locked):
 
 - The door dedup in _renderSummaryPage already existed (added previously to mirror _dedupFeatures). Bug: when scan data omits normal vectors (nx=nz=0), the final dedup check `Math.abs(0*0+0*0) = 0 < 0.9` returns false (not a dup) even though midpoint+width already confirmed it's the same door. Fix: added `bothNoNormal` fallback — when both entries have zero normals, midpoint+width match alone is sufficient (same as isDupFeat for windows). Dedup tolerance unchanged: 0.5 ft midpoint, 10% width ratio. Normal check only applied when at least one entry has a real normal vector.
 - Flag for follow-up: _dedupFeatures.isDupDoor (line 691) has the identical zero-normal blind spot affecting door GLYPH rendering on the floor plan drawing (doors may be double-drawn). Not fixed here — separate rendering fix.
+
+[LOG — 2026-06-26] — P1B-schema shipped (re-run after first attempt was interrupted post-audit before migration) — af697d0 + 427e706
+
+- Note: The first P1B-schema dispatch ran the audit correctly, then was interrupted before the DDL was written. This re-run is idempotent (ON CONFLICT DO NOTHING on seed; IF NOT EXISTS not needed since tables didn't exist).
+- Three scope tables created: scope_checklists, scope_modules, scope_conflict_rules. All mirror takeoff_templates platform-default/tenant-override pattern: tenant_id NULL = platform default, UNIQUE NULLS NOT DISTINCT on natural keys, SELECT open (tenant OR NULL), write owner-only.
+- Bathroom checklist seeded (9 fields, money_risk_rank 1-9): shower_type, shower_floor_tiled, layout_change, wall_tile_extent, vanity_count, floor_finish, ventilation, drywall_wet_area, access_panel. All tenant_id NULL (platform defaults).
+- Cross-cutting modules seeded (5): waterproofing (replaces BATHROOM RULES hardcode — schluter/mudbed is now a module that fires on "tiled shower floor"), structural, plumbing_relocation, electrical_upgrade, water_mold_remediation.
+- Conflict rules seeded (2, Phase-3 shape proof): shower_fixture_conflict, wet_wall_window_omission.
+- Verified: information_schema (columns + types), pg_policies (6 RLS policies), pg_indexes (3 custom + 3 unique constraint indexes), seed counts (9 bathroom, 5 modules, 2 rules), sample rows quoted.
+- Next: P1B-interview-mode dispatch (Opus — the scope-interview mode in ai-estimator, assembles checklist per job, batches open questions, trigger-on-every-answer). Blocked until now on this schema.
