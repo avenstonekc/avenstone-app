@@ -91,6 +91,7 @@ Failure-Pattern entries are supplemental (slug also appears in Function + Date).
 - 2026-04-29 · subs-tab
 - 2026-04-29 · sub-onboarding-rebuild
 - 2026-05-05 · sub-engagement-arc
+- 2026-06-25 · sub-name-resolver-2026-06-25
 
 ### Voice Agent
 - 2026-05-08 · voice-agent-audit-2026-05-08
@@ -172,6 +173,7 @@ Failure-Pattern entries are supplemental (slug also appears in Function + Date).
 - 2026-06-02 · agent-audit-2026-06-02
 - 2026-06-16 · aven-merge-audit-2026-06-16
 - 2026-06-16 · model-b-audit-2026-06-16
+- 2026-06-25 · sub-name-resolver-2026-06-25
 
 ---
 
@@ -188,3 +190,6 @@ Failure-Pattern entries are supplemental (slug also appears in Function + Date).
 
 ### doc-stale (arc doc never updated after code shipped)
 - 2026-05-27 · sub-invoices-arc-2026-05
+
+### Bug-C divergence (inline copy instead of shared helper — copy count diverges over time)
+- 2026-06-25 · sub-name-resolver-2026-06-25

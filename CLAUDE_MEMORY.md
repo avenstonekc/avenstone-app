@@ -2080,3 +2080,18 @@ KEY DECISIONS (locked):
 - .single() fail-loud noted: adding tenant scope means a foreign job_id yields zero rows → .single() throws → caught by outer try/catch → 500 error. This is correct behavior; foreign access should error. No silent fallback added.
 - All 7 sb.from() reads in the file now have appropriate scoping. No remaining unscoped SERVICE_ROLE reads on tenant-owned tables. (consultation_sessions scoped by session_id — acceptable session-gating read.)
 - B5.0 flags from 2e98e32 resolved. No plan inventory change needed (B5.0 already SHIPPED).
+
+[LOG — 2026-06-25] — SUB_NAME_RESOLVER shipped (d06565f + ec6df21)
+
+- Action: Consolidated sub-name fuzzy matching into two shared helpers in ai-master-agent/index.ts, eliminating Bug-C divergence across 4 call sites.
+- Divergence found: The three flagged call sites were NOT all using the same entity — this was the key audit finding:
+  - create_schedule_item: profiles table (role='sub'), full_name field, JS-side .find() (not even DB ilike) — silently picked first on multi-match
+  - log_sub_invoice, log_sub_payment, approve_sub_invoice: contacts table (type='sub'), name field, DB ilike
+  - A 4th site (log_sub_payment) was found in audit — same contacts ilike pattern, also fixed
+- Two helpers added (not one): `resolveSubContact` (contacts, name ilike) + `resolveSubProfile` (profiles, full_name ilike). Inline alongside resolveJobByName, same { id, name } / { error, matches? } return shape, same limit(5), tenant-scoped.
+- Location: inline in ai-master-agent/index.ts (no _shared module — same pattern as resolveJobByName, no other function needs sub resolution).
+- Auto-create preserved: log_sub_invoice auto-creates a contact on zero-match. Helper returns { error } with no 'matches' on zero vs { error, matches } on multi — call site checks for 'matches' field to distinguish paths.
+- Ambiguity contract: matches resolveJobByName — zero-match error, multi-match error+matches list, single-match returns { id, name }.
+- create_schedule_item fix bonus: old JS .find() silently dropped multi-matches; new helper causes "Couldn't find sub" note on both zero and multi — avoids silently assigning wrong sub.
+- CLAUDE_INDEX.md updated: function=Sub Portal & Ops, date=2026-06, failure-pattern=Bug-C divergence.
+- SUB_NAME_RESOLVER flagged entry in MASTER_BUILD_PLAN.md updated to SHIPPED.
