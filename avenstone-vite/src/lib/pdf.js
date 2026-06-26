@@ -1671,7 +1671,11 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl, 
         if (Math.hypot((d.x1+d.x2)/2-(k.x1+k.x2)/2, (d.z1+d.z2)/2-(k.z1+k.z2)/2) > 0.5) return false;
         const aw = Math.hypot(d.x2-d.x1, d.z2-d.z1), bw = Math.hypot(k.x2-k.x1, k.z2-k.z1);
         if (Math.abs(aw-bw) / Math.max(aw, bw, 0.01) > 0.1) return false;
-        return Math.abs(d.nx*k.nx + d.nz*k.nz) >= 0.9;
+        // When both normals are zero (scan omitted directional info), the dot product is always 0
+        // and fails the >= 0.9 threshold, leaving shared doorways un-deduped → double-count.
+        // Fall back to midpoint+width match alone in that case (same logic as isDupFeat).
+        const bothNoNormal = (d.nx === 0 && d.nz === 0) && (k.nx === 0 && k.nz === 0);
+        return bothNoNormal || Math.abs(d.nx*k.nx + d.nz*k.nz) >= 0.9;
       });
       if (!dup) _keptFloorDoors.push(d);
     }
