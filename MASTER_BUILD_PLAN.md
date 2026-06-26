@@ -623,6 +623,7 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | **MOBILE_AUDIT_ARC** | UX pass; doesn't block features | Block 4 complete |
 | **SALES_PIPELINE_ARC** (leads → qualified → consultations → proposals) | Basic LeadsScr exists; intake arc (B5.1-B5.3) closes the "form becomes a prompt" gap | Block 5 intake complete |
 | **GOD_MASTER_AGENT (white-label configurator)** | Requires Avenstone-for-GC shipping to paying customer + 4+ weeks AUTO_FIX data | Stage 2 (first real customer) |
+| **PDF_BRANDING (design pass)** | Logo rendering on PDF documents needs a proper visual/layout solution, not piecemeal per-document hacks. History: the draw-package logo took 3 crash-fix rounds (RGBA-PNG alpha → embedPng OOM, resolved 17a034b by JPEG-with-matte) and THEN rendered broken (overlapped the city tagline), so it was removed 2026-06-25. Lesson: the embed is now memory-safe (JPEG, no alpha) but POSITIONING/layout is unsolved. When tackled: solve logo placement ONCE as a shared header pattern, then apply across ALL PDF surfaces that need branding — draw-package, invoices, lien waivers (upcoming), proposals, any send-* PDF. Likely paired with an external design pass for visual polish. Until then, all PDFs use clean text headers (business name + tagline, no logo image). Logged 2026-06-25. | Design pass decision from Kalin |
 
 ---
 
