@@ -36,6 +36,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [estStarted, setEstStarted] = useState(false);
   const [estForm, setEstForm] = useState({ scope: '', rooms: '', special: '' });
   const [sessionPrefill, setSessionPrefill] = useState(null); // P1A: set when drafted from a consultation session
+  const [estimateScopeOrigin, setEstimateScopeOrigin] = useState(null); // persisted scope_origin from job_estimates
   const [estFile, setEstFile] = useState(null);
   const [estFileName, setEstFileName] = useState('');
   const [estSaving, setEstSaving] = useState(false);
@@ -176,6 +177,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // Load estimator history on mount
   useEffect(() => {
     sbLoadEstimate(job.id).then(saved => {
+      if (saved?.scope_origin) setEstimateScopeOrigin(saved.scope_origin);
       if (saved?.messages?.length) {
         setEstMessages(saved.messages);
         setEstStarted(true);
@@ -276,7 +278,9 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     const finalDisplay = [...displayMessages, { role: 'assistant', content: reply }];
     setEstMessages(finalDisplay);
     setEstLoading(false);
-    sbSaveEstimate(job.id, finalDisplay);
+    // Pass scope_origin only once (first save of a session-prefilled estimate) —
+    // upsert preserves existing value when scope_origin is omitted on subsequent saves.
+    sbSaveEstimate(job.id, finalDisplay, sessionPrefill ? 'session' : undefined);
   };
 
   const startEstimate = async () => {
@@ -711,7 +715,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setSessionPrefill(null); setShowRaw(false); }}>Reset</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setSessionPrefill(null); setEstimateScopeOrigin(null); setShowRaw(false); }}>Reset</button>
           </div>
           {pricedScope?.length > 0 && (
             <>

@@ -1392,9 +1392,14 @@ export const sbLoadEstimate = async jid => {
   const { data } = await sb.from('job_estimates').select('*').eq('job_id', jid).single();
   return data || null;
 };
-export const sbSaveEstimate = async (jid, messages) => {
+// scopeOrigin: pass 'session'|'manual'|'incomplete' on the FIRST save to stamp the row.
+// Omit (undefined) on subsequent saves — upsert only updates provided fields,
+// so the existing scope_origin value is preserved.
+export const sbSaveEstimate = async (jid, messages, scopeOrigin) => {
   try {
-    const { data } = await sb.from('job_estimates').upsert({ job_id: jid, tenant_id: AV_TENANT, messages, updated_at: new Date().toISOString() }, { onConflict: 'job_id' }).select().single();
+    const payload = { job_id: jid, tenant_id: AV_TENANT, messages, updated_at: new Date().toISOString() };
+    if (scopeOrigin !== undefined) payload.scope_origin = scopeOrigin;
+    const { data } = await sb.from('job_estimates').upsert(payload, { onConflict: 'job_id' }).select().single();
     return data;
   } catch (e) { console.error('[sbSaveEstimate]', e); return null; }
 };
