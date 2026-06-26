@@ -424,7 +424,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee } = await req.json();
+    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model } = await req.json();
     if (!messages?.length) return fail("no messages", 400);
     if (!tenant_id) return fail("tenant_id required", 400);
 
@@ -473,14 +473,25 @@ Deno.serve(async (req) => {
     }
     const projectSf = project_sf;
 
+    // Resolve financial model — default to 'fixed_bid' (column default) if absent.
+    const financialModel: string =
+      financial_model === "flip" || financial_model === "cost_plus" || financial_model === "fixed_bid"
+        ? financial_model
+        : "fixed_bid";
+
     // B1.6: markup_pct and pm_fee from body params if provided (rep override),
     // else use bid_model_config tenant default. No silent fallback to hardcoded values.
-    const markupPct = typeof markup_pct === "number" && markup_pct >= 0 ? markup_pct : bidConfig.markup_pct;
-    const pmFeeVal  = typeof pm_fee    === "number" && pm_fee    >= 0 ? pm_fee    : bidConfig.pm_fee;
+    let markupPct = typeof markup_pct === "number" && markup_pct >= 0 ? markup_pct : bidConfig.markup_pct;
+    let pmFeeVal  = typeof pm_fee    === "number" && pm_fee    >= 0 ? pm_fee    : bidConfig.pm_fee;
+
+    // Flip renovation: profit is ARV−cost_basis spread — no markup or PM fee.
+    // Force both to 0 regardless of what the frontend sends (bid_model_config
+    // holds the cost-plus default; a flip job must never apply it).
+    if (financialModel === "flip") { markupPct = 0; pmFeeVal = 0; }
 
     // ── Scope call ─────────────────────────────────────────────────────────────
     const vocabSection = buildVocabSection(rateBook);
-    const scopeSystem = buildScopeSystemPrompt(vocabSection, markupPct, pmFeeVal);
+    const scopeSystem = buildScopeSystemPrompt(vocabSection, markupPct, pmFeeVal, financialModel);
 
     const scopeResult = await callAnthropic(scopeSystem, messages, 4000);
     if (scopeResult.error) return fail(scopeResult.error);
@@ -502,7 +513,7 @@ Deno.serve(async (req) => {
 
     // Price and format
     const pricedLines = priceScopeLines(scope.lines, rateBook, projectSf, finishTier);
-    const content = formatEstimate(scope, pricedLines, projectSf, finishTier, markupPct, pmFeeVal);
+    const content = formatEstimate(scope, pricedLines, projectSf, finishTier, markupPct, pmFeeVal, financialModel);
 
     // 3c: include priced_scope so EstimateTab can commit with exact source_labels
     // without a second AI EXTRACT_JSON_FOR_PROPOSAL round-trip.
