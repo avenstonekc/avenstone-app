@@ -1734,21 +1734,16 @@ async function executeTool(
           }
         }
 
-        // Resolve sub from profiles (role=sub), fuzzy match on full_name
+        // Resolve sub via shared helper (DB-level ilike on profiles, role='sub', tenant-scoped)
         let assignedSubId: string | null = null;
         let subNote = "";
         if (input.sub_search) {
-          const { data: subs } = await sb.from("profiles").select("id, full_name").eq("tenant_id", tenantId).eq("role", "sub");
-          const search = String(input.sub_search).toLowerCase();
-          const match = (subs || []).find((s: any) => {
-            const n = (s.full_name || "").toLowerCase();
-            return n.includes(search) || search.includes(n.split(" ")[0]);
-          });
-          if (match) {
-            assignedSubId = (match as any).id;
-            subNote = ` Invited ${(match as any).full_name}.`;
-          } else {
+          const rsp = await resolveSubProfile(sb, tenantId, String(input.sub_search));
+          if ("error" in rsp) {
             subNote = ` (Couldn't find sub matching '${input.sub_search}' — created without invitee.)`;
+          } else {
+            assignedSubId = rsp.id;
+            subNote = ` Invited ${rsp.name}.`;
           }
         }
 
@@ -1833,17 +1828,15 @@ async function executeTool(
       }
 
       case "log_sub_invoice": {
-        // 1. Resolve sub_contact_id from sub_name
-        const { data: siContacts } = await sb
-          .from("contacts")
-          .select("id, name")
-          .eq("tenant_id", tenantId)
-          .eq("type", "sub")
-          .ilike("name", `%${String(input.sub_name)}%`);
-
+        // 1. Resolve sub_contact_id from sub_name via shared helper
+        const rsi = await resolveSubContact(sb, tenantId, String(input.sub_name));
         let subContactId: string;
-        if (!siContacts || siContacts.length === 0) {
-          // Auto-create minimal contact (matches UI combobox behavior)
+        if ("error" in rsi) {
+          if (rsi.matches) {
+            // Multi-match — surface error, do not create
+            return { error: rsi.error };
+          }
+          // Zero match — auto-create minimal contact (matches UI combobox behavior)
           const { data: newContact, error: createErr } = await sb
             .from("contacts")
             .insert({ name: String(input.sub_name).trim(), type: "sub", tenant_id: tenantId })
@@ -1851,11 +1844,8 @@ async function executeTool(
             .single();
           if (createErr || !newContact) return { error: `Could not create sub contact: ${createErr?.message}` };
           subContactId = (newContact as any).id;
-        } else if (siContacts.length > 1) {
-          const names = siContacts.map((c: any) => c.name).join(", ");
-          return { error: `Multiple subs match "${input.sub_name}": ${names}. Please be more specific.` };
         } else {
-          subContactId = (siContacts[0] as any).id;
+          subContactId = rsi.id;
         }
 
         // 2. Auto-generate invoice number if not provided
@@ -1899,18 +1889,11 @@ async function executeTool(
       }
 
       case "log_sub_payment": {
-        // 1. Resolve sub contact
-        const { data: spContacts } = await sb
-          .from("contacts")
-          .select("id, name")
-          .eq("tenant_id", tenantId)
-          .eq("type", "sub")
-          .ilike("name", `%${String(input.sub_name)}%`);
-
-        if (!spContacts?.length) return { error: `No sub found matching "${input.sub_name}".` };
-        if (spContacts.length > 1) return { error: `Multiple subs match "${input.sub_name}": ${spContacts.map((c: any) => c.name).join(", ")}. Be more specific.` };
-        const spSubContactId = (spContacts[0] as any).id;
-        const spSubName = (spContacts[0] as any).name;
+        // 1. Resolve sub contact via shared helper
+        const rsp2 = await resolveSubContact(sb, tenantId, String(input.sub_name));
+        if ("error" in rsp2) return { error: rsp2.error };
+        const spSubContactId = rsp2.id;
+        const spSubName = rsp2.name;
 
         // 2. Resolve invoice
         let spInvoiceId = input.invoice_id ? String(input.invoice_id) : null;
@@ -1954,18 +1937,11 @@ async function executeTool(
           return { error: "Only owner or project manager can approve sub invoices." };
         }
 
-        // 2. Resolve sub contact
-        const { data: apContacts } = await sb
-          .from("contacts")
-          .select("id, name")
-          .eq("tenant_id", tenantId)
-          .eq("type", "sub")
-          .ilike("name", `%${String(input.sub_name)}%`);
-
-        if (!apContacts?.length) return { error: `No sub found matching "${input.sub_name}".` };
-        if (apContacts.length > 1) return { error: `Multiple subs match "${input.sub_name}": ${apContacts.map((c: any) => c.name).join(", ")}. Be more specific.` };
-        const apSubContactId = (apContacts[0] as any).id;
-        const apSubName = (apContacts[0] as any).name;
+        // 2. Resolve sub contact via shared helper
+        const rap = await resolveSubContact(sb, tenantId, String(input.sub_name));
+        if ("error" in rap) return { error: rap.error };
+        const apSubContactId = rap.id;
+        const apSubName = rap.name;
 
         // 3. Resolve invoice
         let apInvoiceId = input.invoice_id ? String(input.invoice_id) : null;
