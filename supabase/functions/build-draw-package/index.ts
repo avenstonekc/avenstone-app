@@ -82,12 +82,9 @@ async function generateCoverSheet(
   const safeClient = safe(job.client_name as string);
   const safeJobAddr = safe(job.address as string);
 
-  // Logo — module-level LOGO_JPG_BYTES decoded once at isolate startup.
-  // embedJpg (header-only, memory-safe) — NEVER embedPng here (OOMs on alpha PNG).
-  let logoImg: Awaited<ReturnType<typeof doc.embedJpg>> | null = null;
-  if (LOGO_JPG_BYTES) {
-    try { logoImg = await doc.embedJpg(LOGO_JPG_BYTES); } catch { /* text fallback */ }
-  }
+  // Logo rendering removed 2026-06-25: the JPEG embed is memory-safe (see LOGO_JPG_BYTES
+  // above) but placement overlapped the city tagline in the navy header. Proper logo layout
+  // is parked in PDF_BRANDING arc — solve once across all PDF surfaces in a design pass.
 
   // Space needed on the last page for the total box + footer
   const retainage   = Number(draw.retainage_held ?? 0);
@@ -100,17 +97,8 @@ async function generateCoverSheet(
     const pg = doc.addPage([612, 792]);
     pg.drawRectangle({ x: 0, y: 722, width: 612, height: 70, color: navy });
 
-    if (isFirst && logoImg) {
-      const scaled = logoImg.scaleToFit(180, 46);
-      pg.drawImage(logoImg, {
-        x: margin,
-        y: 722 + (70 - scaled.height) / 2,
-        width: scaled.width, height: scaled.height,
-      });
-    } else {
-      const nameLabel = isFirst ? safeName : `${safeName}  (continued)`;
-      pg.drawText(nameLabel, { x: margin, y: 766, size: isFirst ? 18 : 11, font: bold, color: gold });
-    }
+    const nameLabel = isFirst ? safeName : `${safeName}  (continued)`;
+    pg.drawText(nameLabel, { x: margin, y: 766, size: isFirst ? 18 : 11, font: bold, color: gold });
 
     const drawLabel  = "DRAW REQUEST";
     const drawLabelW = bold.widthOfTextAtSize(drawLabel, isFirst ? 16 : 11);
