@@ -257,7 +257,10 @@ const BASE_CLIENT_TABS = [
   { id: 'photos',    lb: 'Photos',    ic: 'cam'  },
   { id: 'msgs',      lb: 'Messages',  ic: 'note' },
 ];
-const getClientTabs = job => job?.cost_plus ? [...BASE_CLIENT_TABS, { id: 'financials', lb: 'Financials', ic: 'doc' }] : BASE_CLIENT_TABS;
+const getClientTabs = job => {
+  const m = job?.financial_model || (job?.cost_plus ? 'cost_plus' : 'fixed_bid');
+  return m === 'cost_plus' ? [...BASE_CLIENT_TABS, { id: 'financials', lb: 'Financials', ic: 'doc' }] : BASE_CLIENT_TABS;
+};
 
 const CLIENT_STATUS = s => ({
   lead: 'In Review', bid_sent: 'Proposal Sent', signed: 'Contract Signed',
@@ -317,6 +320,7 @@ export default function ClientPortal({ profile, signOut }) {
   }, [profile?.id]);
 
   const job = sel ? jobs.find(j => j.id === sel) : null;
+  const model = job?.financial_model || (job?.cost_plus ? 'cost_plus' : 'fixed_bid');
 
   useEffect(() => {
     if (!job) return;
@@ -371,7 +375,7 @@ export default function ClientPortal({ profile, signOut }) {
   useEffect(() => { if (msgs.length && msgsEndRef.current) msgsEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
   useEffect(() => {
-    if (!job || tab !== 'financials' || !job.cost_plus) return;
+    if (!job || tab !== 'financials' || model !== 'cost_plus') return;
     // Legacy helpers kept for backward compat fallback (jobs with no draws)
     Promise.all([sbLoadCostItems(job.id), sbLoadCostInvoices(job.id), sbLoadEstimateLineItems(job.id)])
       .then(([its, invs, budget]) => { setCostItems(its); setCostInvoices(invs); setBudgetItems(budget); });
@@ -383,9 +387,9 @@ export default function ClientPortal({ profile, signOut }) {
     });
   }, [job?.id, tab]);
 
-  // Actual-spend helper — fires on overview OR financials tab for cost_plus jobs (once per job open)
+  // Actual-spend helper — fires on overview OR financials tab for cost_plus jobs only (once per job open)
   useEffect(() => {
-    if (!job || !job.cost_plus) return;
+    if (!job || model !== 'cost_plus') return;
     if (tab !== 'overview' && tab !== 'financials') return;
     if (loaded.spend) return;
     setActualSpendLoading(true);
@@ -637,7 +641,7 @@ export default function ClientPortal({ profile, signOut }) {
 
             {/* D) Quick Stats Row — cost_plus reads from the same helper as Financials tab */}
             {(() => {
-              if (job.cost_plus && actualSpend) {
+              if (model === 'cost_plus' && actualSpend) {
                 const s = actualSpend;
                 const contractLabel = s.original_signed_contract != null ? 'Original Contract' : 'Authorized Contract';
                 const contractVal = s.original_signed_contract != null ? s.original_signed_contract : s.authorized_contract;
@@ -922,7 +926,7 @@ export default function ClientPortal({ profile, signOut }) {
             </>}
           </div>}
 
-          {tab === 'financials' && job?.cost_plus && <div>
+          {tab === 'financials' && model === 'cost_plus' && <div>
             {/* ── Headline summary cards (aggregate only — no raw costs or markup rates) ── */}
             {actualSpendLoading && (
               <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>Loading financials...</div>
