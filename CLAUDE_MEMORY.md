@@ -2193,3 +2193,12 @@ KEY DECISIONS (locked):
 - Read path: sbLoadEstimate result on mount reads scope_origin into estimateScopeOrigin state.
 - Badge: blue pill "Session-sourced" renders in estimate action bar when estimateScopeOrigin === 'session' (from DB, survives reload) OR sessionPrefill is set (draft time). Block 3 approval queue reads job_estimates.approval_status — scope_origin is on the same row, immediately available for Block 3.
 - Satisfies the soft-gate-with-a-mark rule's persistence requirement: a session-prefilled estimate is now distinguishable from a fully-interviewed one at the approval gate, not just at draft time.
+
+[LOG — 2026-06-25] — SCOPE_CAPTURE_ENGINE blueprint approved + plan updated
+
+- Blueprint (1ce3031, SCOPE_CAPTURE_ENGINE_BLUEPRINT.md) approved by Kalin 2026-06-25.
+- Phase 1A dispatch UNBLOCKED (consolidate to one generator, retire generate-estimate-from-session pricing). Phase 1B BLOCKED on Kalin seed content (§3.1 — checklists, modules, conflict rules).
+- Forks resolved: (1) retire gefs = YES, Phase 1A; oh_shit_moments risk capture preserved. (2) Open Q10 → ABSORB: Client INTAKE (B5.1-B5.3) is SCOPE_CAPTURE_ENGINE Phase 4 role-instance, not standalone. (3) Scope-complete gate = SOFT with visible mark (rep may force-draft; flagged as incomplete-source).
+- Prompt count revised: ~10-13 (up from ~6-8) per blueprint audit — parallel generator to retire + answer-source layer for Phase 3 added scope.
+- Block 2 total updated to ~35-38 prompts. Master sequence table rows 10.5–51 running totals updated.
+- LOCKED RULE: Unvetted Rep-Rate Approval Gate (Kalin, 2026-06-25) — auto-reuse at pricing layer stays (B2.3 loadRateBook no vetted= filter CONFIRMED CORRECT, unchanged). BUT estimate with any vetted=false rep rate cannot reach company-approved/signed state until management promotes it. Gate enforced at B3.1/B3.2 (second trigger alongside margin deviation) and Block 4 contract signing. Logged across B2.3, B3.1/B3.2, Block 4 in plan. Commits: 78b7524 (blueprint/forks) + ffa3118 (approval gate).
