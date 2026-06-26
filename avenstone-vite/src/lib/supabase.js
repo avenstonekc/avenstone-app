@@ -6680,6 +6680,35 @@ export async function sbUpdateRateBookLabor(id, fields) {
   } catch (e) { return { ok: false, error: e.message, data: null }; }
 }
 
+// B2.3 learn loop — write a rep-learned labor rate as an unvetted row.
+// Uses upsert on (tenant_id, trade, line_item, unit): new rows default vetted=false;
+// existing rows keep their vetted status (not in payload) so a promoted rate isn't
+// silently reset. Post-write verify: if RLS blocks, no row comes back → ok:false.
+export async function sbInsertRateBookLabor({ trade, line_item, unit, rate }) {
+  try {
+    const { data, error } = await sb.from('rate_book_labor')
+      .upsert(
+        {
+          tenant_id: AV_TENANT,
+          trade,
+          line_item,
+          unit,
+          rate_low: rate,
+          rate_data: { type: 'flat' },
+          active: true,
+          notes: 'Rep-learned rate — awaiting owner vetting',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'tenant_id,trade,line_item,unit' }
+      )
+      .select('id')
+      .single();
+    if (error) return { ok: false, error: error.message, data: null };
+    if (!data?.id) return { ok: false, error: 'Row not returned — RLS may have blocked', data: null };
+    return { ok: true, error: null, data };
+  } catch (e) { return { ok: false, error: e.message, data: null }; }
+}
+
 export async function sbUpdateRateBookMaterial(id, fields) {
   try {
     const { data, error } = await sb.from('rate_book_material')
