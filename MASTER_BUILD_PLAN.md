@@ -2,7 +2,7 @@
 **APPROVED — locked 2026-06-19. 6-block order confirmed: Owner Foundation → Engine → Watcher → Seams → Client Front Door → Autopilot.**
 **Last full-code audit: 2026-06-19 (all 21 docs/arcs/ verified against live code)**
 
-> **Starting position: B1.1 (bid_model_config schema). Next session begins here.**
+> **Starting position: B2.1 (Guided interview w/ pre-filled defaults). Block 1 COMPLETE as of 2026-06-25.** All B1 sub-steps (B1.1–B1.7 + FUZZY_JOB_RESOLVER + DRAW_PDF_POLISH) shipped and confirmed live. Next build session opens at Block 2.
 
 ---
 
@@ -65,13 +65,13 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 |-------|--------|----------|
 | 0 — checkDepositPaid OR fix | **BUILT** | Fix applied in phaseGates.js + both agent fns 2026-05-27 |
 | 1 — Schema foundation | **BUILT** | `20260527050000_cost_plus_phase_1a_schema.sql` + `20260527060000_cost_plus_phase_1b_trigger.sql`; `draw_line_items`, `labor_markup_pct`, `material_markup_pct`, `reimbursement_status` all live |
-| 2 — Draw composer UI | NOT-BUILT | Helpers `sbComposeDraw`/`sbGetBucketBalance` exist; no modal UI component |
-| 3 — Draw paid cascade | NOT-BUILT | No cascade marking expenses reimbursed |
-| 4 — Float visibility (stat cards) | PARTIAL | `float_unreimbursed` calculated in FinancialsTab; **no display to user** |
-| 5 — Master Agent verbs (compose_draw, record_deposit) | PARTIAL | `compose_draw` in CONFIRM_TOOLS (not verified wired); `record_deposit` status unclear |
-| 6 — Client portal migration | NOT-BUILT | Legacy view still in use |
+| 2 — Draw composer UI | **BUILT** | B1.2 shipped (40922d6 sbComposeDraw post-write verify; 6818e62 B1.2.5 double-charge guard) |
+| 3 — Draw paid cascade | **BUILT** | B1.3 shipped (4a9d29a unreimbursed stat card on FinancialsTab; 645be45 LOG) |
+| 4 — Float visibility (stat cards) | **BUILT** | B1.3 shipped float stat card display to user |
+| 5 — Master Agent verbs (compose_draw, record_deposit) | **BUILT** | B1.4 shipped (cff777b compose_draw post-write verify + amountToWords on confirm card; 200ce31 LOG) |
+| 6 — Client portal migration | **BUILT** | B1.5 shipped (adade6d draw-based breakdown + seal owner leaks; 6f48624 B1.5.1 payload hardening) |
 
-**Net: 2 of 6 phases live.** Draw composer UI (Phase 2) is the highest-value unbuilt piece — helpers exist, UI missing.
+**Net: 6 of 6 phases live. COMPLETE as of 2026-06-25 via B1.2–B1.5.**
 
 ---
 
@@ -94,15 +94,15 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 | Phase | Status | Evidence |
 |-------|--------|----------|
-| 1 — bid_model_config schema | NOT-BUILT | No migration found; table does not exist |
-| 2 — Estimate engine reads bid model | NOT-BUILT | ai-estimator reads rate_book but NOT bid_model_config |
+| 1 — bid_model_config schema | **BUILT** | B1.1 shipped (edd13a6); 1 row confirmed in DB; CONFIRMED-LIVE |
+| 2 — Estimate engine reads bid model | **BUILT** | B1.6 shipped (ab50638 ai-estimator, f9afaad EstimateTab; b7db63b LOG) |
 | 3 — Allowance as first-class | NOT-BUILT | Allowances use description convention only |
-| 4 — Interview engine + photo-in-interview | NOT-BUILT | — |
+| 4 — Interview engine + photo-in-interview | NOT-BUILT | Parked in Block 1 after B1.7 (TENANT_ONBOARDING Phase 4-5 explicitly deferred) |
 | 5 — Plan upload ingest | PARTIAL | Floor plan upload exists but not on estimate rail |
-| 6 — Wizard writes structured config | NOT-BUILT | `AiSetupWizard.jsx` writes prose `ai_knowledge` entries — NOT structured config |
-| 7 — Onboarding wizard UI | NOT-BUILT | AiSetupWizard is original 7-question prose writer |
+| 6 — Wizard writes structured config | **BUILT** | B1.7 Phase 3 shipped (19cf93e wizard Save + role-gate migration + round-trip verified) |
+| 7 — Onboarding wizard UI | **BUILT** | B1.7 Phases 2–4 shipped (4d33aad BidModelWizard scaffold; 3d88635 retire AiSetupWizard; ai_knowledge.tenant_id NOT NULL CONFIRMED-LIVE) |
 
-**Net: 0 of 7 phases live.** `bid_model_config` absence is load-bearing — blocks all downstream engine phases.
+**Net: 4 of 7 phases live (+ 1 PARTIAL). Phases 3, 4 not built; Phase 5 PARTIAL. Updated 2026-06-25.**
 
 ---
 
@@ -316,17 +316,17 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 | Sub-step | What it does | Prompts | Prereq |
 |----------|-------------|---------|--------|
-| B1.1 — `bid_model_config` schema | New table: `supply_model` per category, markup per category, allowance flag. Backfill defaults that reproduce current behavior so nothing breaks. **Starting gun.** | 2 | None |
-| B1.2 — Draw composer UI | Expense selector → markup preview → "Generate Invoice" button. Uses existing `sbComposeDraw`. Fixes live double-charge risk on cost-plus billing. | 3 | Cost-Plus schema ✓ |
-| B1.3 — Draw paid cascade + float visibility | Mark expenses reimbursed on pay. Float stat cards on FinancialsTab (bucket_balance, unreimbursed, client_owes). | 2 | B1.2 |
-| B1.4 — Master Agent compose_draw + record_deposit | Confirm-gated verbs for voice/chat draw composition and deposit recording. | 2 | B1.3 |
-| B1.5 — Cost-plus client portal | Replace legacy job_cost_items view with draw-based breakdown for cost-plus clients. | 2 | B1.4 |
-| B1.6 — ai-estimator reads bid_model_config | Replace hardcoded 30% + $1,200 with config read from tenant `bid_model_config`. Add pm_fee read. | 2 | B1.1 ✓ |
-| B1.7 — Onboarding wizard (structured config writer) | New wizard replaces AiSetupWizard prose flow. Writes bid_model_config + markup_category_config + ai_knowledge. Trade-specific Q&A → config rows. [Phase 1 schema audit ✓ 2026-06-25 — all 3 tables exist, no blockers. bid_model_config default row confirmed (markup 30 / pm_fee 1200 / contractor). Phase 3 carries a one-line migration adding role-gate (owner/PM) to bid_model_config INSERT/UPDATE RLS — it is the only config table without DB-level write role restriction. Phase 4 carries ALTER TABLE ai_knowledge ALTER COLUMN tenant_id SET NOT NULL.] | 4 | B1.1 ✓ |
-| FUZZY_JOB_RESOLVER — agent partial job-name matching | Agent resolves partial/fuzzy job references ("log this to 8617") instead of requiring exact name match. Resolver: ILIKE on job name + address fields, scoped to tenant. Exactly-one match → use it; multiple → agent asks which; zero → reports plainly. Touches every job-scoped agent write, not just receipts. [SHIPPED 2026-06-25 — Phase 1 audit + Phase 2 build. Came in under budget: built in 2 prompts not 3 (resolver already existed; fixed broken po_number search + consolidated 3-copy Bug-C divergence into resolveJobByName). Live PO-match bug in receipt-from-photo path fixed as part of this.] | 3 | B1.7 |
-| DRAW_PDF_POLISH — lender-facing draw-request PDF quality (AUDIT-FIRST) | Three confirmed defects from Draw #1 live flip (1206 W Lucy Webb Rd), lender/investor-facing priority, locked 2026-06-25. (1) Line-item truncation: items cap on page 1 with "…and N more" collapse instead of flowing to page 2+ — remove the truncation cap. (2) Receipt photo degradation: embedded receipt photos come through washed-out, cropped at edges, with color bleed (HEIC→JPEG conversion, 1024px canvas resize, or pdf-lib embed path — audit cause before fixing). (3) Logo: header is text-only; embed the Avenstone Group logo from wherever tenant branding already stores it (white-label invoice path — reuse, do not introduce new asset). Audit-first prompt covers photo root cause + logo source; 1-2 build prompts follow. | 3 | None (draw PDF already ships) |
+| B1.1 — `bid_model_config` schema | New table: `supply_model` per category, markup per category, allowance flag. Backfill defaults that reproduce current behavior so nothing breaks. **[SHIPPED — edd13a6; 1 row CONFIRMED-LIVE in DB]** | 2 | None |
+| B1.2 — Draw composer UI | Expense selector → markup preview → "Generate Invoice" button. Uses existing `sbComposeDraw`. Fixes live double-charge risk on cost-plus billing. **[SHIPPED — 40922d6 composer verify; 6818e62 B1.2.5 double-charge guard]** | 3 | Cost-Plus schema ✓ |
+| B1.3 — Draw paid cascade + float visibility | Mark expenses reimbursed on pay. Float stat cards on FinancialsTab (bucket_balance, unreimbursed, client_owes). **[SHIPPED — 4a9d29a unreimbursed stat card; 645be45 LOG]** | 2 | B1.2 |
+| B1.4 — Master Agent compose_draw + record_deposit | Confirm-gated verbs for voice/chat draw composition and deposit recording. **[SHIPPED — cff777b post-write verify + amountToWords; 200ce31 LOG]** | 2 | B1.3 |
+| B1.5 — Cost-plus client portal | Replace legacy job_cost_items view with draw-based breakdown for cost-plus clients. **[SHIPPED — adade6d draw breakdown; 6f48624 B1.5.1 payload hardening; 9e72860 LOG]** | 2 | B1.4 |
+| B1.6 — ai-estimator reads bid_model_config | Replace hardcoded 30% + $1,200 with config read from tenant `bid_model_config`. Add pm_fee read. **[SHIPPED — ab50638 ai-estimator; f9afaad EstimateTab; b7db63b LOG]** | 2 | B1.1 ✓ |
+| B1.7 — Onboarding wizard (structured config writer) | New wizard replaces AiSetupWizard prose flow. Writes bid_model_config + markup_category_config + ai_knowledge. Trade-specific Q&A → config rows. **[SHIPPED COMPLETE 2026-06-25 — P1: schema audit (c59056e); P2: 4d33aad BidModelWizard scaffold; P3: 19cf93e wizard Save + role-gate migration; P4: 3d88635 retire AiSetupWizard + ai_knowledge.tenant_id NOT NULL (CONFIRMED-LIVE). All 4 phases done.]** | 4 | B1.1 ✓ |
+| FUZZY_JOB_RESOLVER — agent partial job-name matching | Agent resolves partial/fuzzy job references ("log this to 8617") instead of requiring exact name match. Resolver: ILIKE on job name + address fields, scoped to tenant. Exactly-one match → use it; multiple → agent asks which; zero → reports plainly. Touches every job-scoped agent write, not just receipts. [SHIPPED 2026-06-25 — Phase 1 audit + Phase 2 build. Came in under budget: built in 2 prompts not 3 (resolver already existed; fixed broken po_number search + consolidated 3-copy Bug-C divergence into resolveJobByName). Live PO-match bug in receipt-from-photo path fixed as part of this. CONFIRMED-LIVE: resolveJobByName + po_number search at line 879 of ai-master-agent/index.ts.] | 3 | B1.7 |
+| DRAW_PDF_POLISH — lender-facing draw-request PDF quality | Three confirmed defects from Draw #1 live flip (1206 W Lucy Webb Rd, Lucy Webb draw). **[SHIPPED 2026-06-25 — (1) Multi-page line items: 49e4cb6 (continuation pages, no truncation cap). (2) Receipt photo quality: 21a8745 (imgproxy resize + parallel fetch + HEIC handling). (3) Logo: REMOVED — logo JPEG embed shipped memory-safe (17a034b) but rendered broken (overlapped city tagline); pulled 23da4ae. Full logo solution PARKED as PDF_BRANDING design-pass arc. Also in scope: WinAnsi safe() crash fix d94fa7c; alpha-PNG OOM guard + batched embed 17a034b. Verified live: 0–70 receipts all ok:true; 37 line items across continuation pages CONFIRMED; no resource ceiling found within available pool. ONE KNOWN CAVEAT: alpha/RGBA receipt PNGs degrade to a labelled placeholder (not crash) — safe but won't display the image. All real-world JEPGs and RGB-PNG receipts embed correctly.]** | 3 | None (draw PDF already ships) |
 
-**Block 1 total: 22 prompts** (17 original + 3 FUZZY_JOB_RESOLVER budgeted + 3 DRAW_PDF_POLISH, locked 2026-06-25; FUZZY came in at 2 vs 3 budgeted, −1 actual)
+**Block 1 total: 22 prompts** (17 original + 3 FUZZY_JOB_RESOLVER budgeted + 3 DRAW_PDF_POLISH, locked 2026-06-25; FUZZY came in at 2 vs 3 budgeted, −1 actual) — **BLOCK 1 COMPLETE 2026-06-25.**
 
 **Verify-then-advance:**
 - Code verifies: `bid_model_config` rows in DB with correct defaults; estimator reads markup from config (not 30% hardcoded); `job_transactions` updated after compose draw; float balance computed correctly on FinancialsTab.

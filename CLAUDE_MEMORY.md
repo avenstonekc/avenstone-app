@@ -2035,3 +2035,30 @@ KEY DECISIONS (locked):
 - Decision: pdf-lib `embedPng` is unsafe on alpha PNGs in the Supabase edge runtime — standing rule is JPEG for all brand/UI images. Logged to symptom index; flagged for the upcoming lien-waiver PDF work which also uses pdf-lib.
 - Note: edge runtime logs are not reachable via PAT (confirmed) — diagnosis was code-reasoning + stage-gated deploy probes + real-token reproduction, not log hunting.
 - Open: none. Function is live (CLI deploy) and committed to main so the next Actions deploy won't revert it.
+
+[LOG — 2026-06-25] — PLAN RECONCILIATION: Block 1 confirmed complete, plan corrected to match live code
+
+- Action: Read git log (80 commits), spot-verified 3 live-code claims against DB + edge function, corrected MASTER_BUILD_PLAN.md and this memory file to match reality.
+
+- SESSION SHIPS (all CONFIRMED-LIVE):
+  1. **B1.7 Phases 1-4 (BidModelWizard, role-gate migration, AiSetupWizard retired, ai_knowledge.tenant_id NOT NULL)** — P1 audit: c59056e; P2 scaffold: 4d33aad; P3 wire+save: 19cf93e; P4 retire+constraint: 3d88635. ai_knowledge.tenant_id NOT NULL CONFIRMED via information_schema.
+  2. **FUZZY_JOB_RESOLVER** — 5e2b865. po_number + address + client_name ILIKE in resolveJobByName, consolidated Bug-C 3-copy divergence. CONFIRMED-LIVE at line 879 of ai-master-agent/index.ts. "Log this to 8617" use-case covered. Came in at 2 prompts not 3 as budgeted.
+  3. **FLIP_FINANCIAL_MODEL all 6 phases** — ccd1245 (Phase 1 schema) through 54c88bc (Phase 6 margin view), plan update de08024. jobs.financial_model TEXT NOT NULL, arv/sale_price/sold_date NUMERIC/DATE CONFIRMED-LIVE. 12 prompts as budgeted.
+  4. **DRAW_PDF_POLISH** — 49e4cb6 (multi-page line items); 21a8745 (imgproxy resize + parallel fetch + HEIC); d94fa7c (WinAnsi safe() crash); 17a034b (JPEG alpha-PNG guard + batched embed); 23da4ae (logo removed — overlapped city tagline). Logo REMOVED not shipped — parked as PDF_BRANDING design-pass arc at 3307b29. Verified 0–70 receipts ok:true; no resource ceiling found.
+  5. **B1.1 through B1.6** (all shipped prior session, now CONFIRMED via git history and DB): bid_model_config 1 row live; draw composer + float stat cards + compose_draw agent verb + client portal draw breakdown + ai-estimator config-read all confirmed by commit chain edd13a6 → b7db63b.
+
+- JOBS TABLE NEW COLUMNS (from FLIP): financial_model TEXT NOT NULL DEFAULT 'fixed_bid' CHECK (flip|cost_plus|fixed_bid); arv NUMERIC; sale_price NUMERIC; sold_date DATE. Existing GC/cost-plus jobs unaffected (default fixed_bid).
+
+- PARKED OPEN ITEMS:
+  - **PDF_BRANDING** — logo positional layout unsolved. Safe to embed JPEG (17a034b fix holds) but WHERE it goes in the header is a design-pass decision. All PDFs use clean text headers until then. In plan parked section.
+  - **SUB_NAME_RESOLVER** — fast-follow, ~1 prompt. create_schedule_item / log_sub_invoice / approve_sub_invoice have inline .ilike copies (same Bug-C pattern FUZZY fixed for jobs). Flagged in Block 1 fast-follow note in plan.
+  - **B5.0 cross-tenant leak** — ai-consultation-gap-analyzer reads ai_knowledge without tenant scoping. Must fix before second tenant onboards. Locked as first B5 item (31c24cf).
+
+- KNOWN OPEN CAVEAT: RGBA/alpha-PNG receipt images degrade to labelled placeholder in draw PDFs (not a crash — the alpha-PNG guard in 17a034b catches it). RGB-PNG and all JPEG/HEIC receipts embed correctly. Relevant if users ever upload RGBA receipts.
+
+- PLAN STATE AFTER THIS SESSION:
+  - Starting position: **B2.1** (Guided interview w/ pre-filled defaults). Block 1 COMPLETE.
+  - Block 1 total: 22 prompts, all shipped.
+  - Next block: Block 2 — The Engine (25 prompts). First item: B2.1 — guided interview pre-fill ("running your standard X% — good?").
+  - FLIP_FINANCIAL_MODEL already marked SHIPPED in Block 2 table.
+  - B5.0 cross-tenant leak first gate in Block 5.
