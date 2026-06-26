@@ -142,16 +142,24 @@ Always set regional_rate for general lines (your KC market estimate for that cos
 
 // ── Scope system prompt ───────────────────────────────────────────────────────
 
-function buildScopeSystemPrompt(vocabSection: string, markupPct: number, pmFee: number): string {
+function buildScopeSystemPrompt(vocabSection: string, markupPct: number, pmFee: number, financialModel = "fixed_bid"): string {
   const pmFmtd = pmFee > 0
     ? `$${pmFee.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
     : "$0";
+
+  const companyLine =
+    financialModel === "flip"
+      ? "BILLING MODEL: Flip renovation. This job is reimbursed against receipts via draws by a lender or investor — profit is the ARV−cost-basis spread. There is NO markup and NO PM fee on a flip estimate. Your job is to capture the complete cost basis for the renovation. Do NOT mention markup, client pricing, or PM fees anywhere in your output."
+      : financialModel === "cost_plus"
+        ? `BILLING MODEL: Cost-plus. The owner has configured ${markupPct}% markup and ${pmFmtd} PM fee — these are applied by code and do NOT appear in your scope output. The rep sees these rates pre-filled and edits them only when this job differs. Do not ask about them.`
+        : `BILLING MODEL: Fixed-bid. Markup (${markupPct}%) and PM fee (${pmFmtd}) are applied by code to produce the client price — do NOT include them in your scope output. The rep sees these rates pre-filled and edits them only when this job differs. Do not ask about them.`;
+
   return `You are Aven — Avenstone's AI estimator (KC, MO residential + light commercial). Never mention Claude or Anthropic.
 
 YOUR ONLY JOB IS SCOPE. DO NOT INVENT OR OUTPUT PRICES. Pricing is applied by code after you respond.
 Output ONLY valid JSON — no prose, no markdown fences, no text before or after. Start your response with { and end with }.
 
-COMPANY: Cost-plus model. The owner has configured ${markupPct}% markup and ${pmFmtd} PM fee — these are applied by code and do NOT appear in your scope output. The rep sees these rates pre-filled on their form and edits them only when the job is different from the standard. Do not ask about them.
+${companyLine}
 TRANSPARENCY: Separate labor and material lines. Client-allowance items include "Allowance" in description.
 
 TRADE ORDER (include only relevant trades):
@@ -324,6 +332,7 @@ function formatEstimate(
   finishTier: FinishTier,
   markupPct: number,
   pmFeeVal: number,
+  financialModel = "fixed_bid",
 ): string {
   const tier = getTier(projectSf);
   const tierLabel = {
@@ -370,17 +379,19 @@ function formatEstimate(
   const pmFee = Math.round(pmFeeVal);
   const total = subtotal + markup + pmFee;
 
-  // State-and-proceed: open with the rates being applied so the rep can correct
-  // by exception before reading the full estimate. Single line, then proceed.
-  const preamble = `_Running at **${markupPct}%** markup · **${fmtMoney(pmFeeVal)}** PM fee — edit the fields above if this job's different._\n\n`;
+  // State-and-proceed preamble: model-aware — flip suppresses markup/PM-fee framing.
+  const preamble = financialModel === "flip"
+    ? `_Flip renovation — estimating cost basis only. No markup or PM fee applied._\n\n`
+    : `_Running at **${markupPct}%** markup · **${fmtMoney(pmFeeVal)}** PM fee — edit the fields above if this job's different._\n\n`;
+
+  // Summary footer: flip shows cost basis only; cost_plus/fixed_bid show markup breakdown.
+  const summaryFooter = financialModel === "flip"
+    ? `Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}\n**TOTAL COST BASIS: ${fmtMoney(subtotal)}**`
+    : `Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}\n**Subtotal: ${fmtMoney(subtotal)}**\nMarkup (${markupPct}%): ${fmtMoney(markup)}\nProject Management: ${fmtMoney(pmFee)}\n**TOTAL: ${fmtMoney(total)}**`;
 
   let out = preamble + `**Pricing Tier: ${tierLabel}** · Finish: **${finishLabel}**\n${body}
 ---
-Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}
-**Subtotal: ${fmtMoney(subtotal)}**
-Markup (${markupPct}%): ${fmtMoney(markup)}
-Project Management: ${fmtMoney(pmFee)}
-**TOTAL: ${fmtMoney(total)}**`;
+${summaryFooter}`;
 
   if (gapItems.length > 0) {
     out += `\n\n> ⚡ **Regional Avg** lines (not from Rate Book): ${[...new Set(gapItems)].join(", ")}. Add to Rate Book to vet.`;
