@@ -2062,3 +2062,12 @@ KEY DECISIONS (locked):
   - Next block: Block 2 — The Engine (25 prompts). First item: B2.1 — guided interview pre-fill ("running your standard X% — good?").
   - FLIP_FINANCIAL_MODEL already marked SHIPPED in Block 2 table.
   - B5.0 cross-tenant leak first gate in Block 5.
+
+[LOG — 2026-06-25] — B5.0: cross-tenant ai_knowledge leak closed in gap-analyzer (2e98e32)
+
+- Action: Scoped the ai_knowledge read in ai-consultation-gap-analyzer/index.ts to the session's tenant_id.
+- Leak: Line 33 original — `sb.from("ai_knowledge").select("category, content").eq("active", true)` — SERVICE_ROLE client (bypasses RLS), NO tenant filter. Returned all tenants' active ai_knowledge to every gap analysis request.
+- Fix shape (a) chosen: consultation_sessions pulled out of the single Promise.all first (serial, one round-trip) to get `session.tenant_id` before the knowledge read. Early-return on session not found. Remaining 5 reads (measurements, extraction, jobs, ai_knowledge, lidar scans) in a second Promise.all with ai_knowledge now scoped: `.eq("active", true).eq("tenant_id", session.tenant_id)`. Shape (a) over (b) because (b) would double-fetch consultation_sessions; the one extra round-trip is the correct tradeoff for a security fix.
+- B5.0 status: SHIPPED. This was the gating item for all of Block 5 — now unblocked.
+- Flagged for follow-up (NOT fixed, scope guard): `jobs` and `job_lidar_scans` in the same function also use SERVICE_ROLE filtered only by caller-provided `job_id` with no tenant_id filter. Lower risk (attacker needs a valid UUID from another tenant; no mass-data exposure), but should receive `.eq("tenant_id", session.tenant_id)` scoping in a follow-up pass.
+- Next item: B5.1 (structured intake schema).
