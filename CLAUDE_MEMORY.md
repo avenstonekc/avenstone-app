@@ -2129,3 +2129,13 @@ KEY DECISIONS (locked):
 - Sequencing decision surfaced: plan said "before draft generation" but current implementation is after-draft. After-draft is the right call — rep sees full estimate context + source badges before answering gap questions. No sequencing change made; noted in plan as the design decision, flagged for Kalin if before-draft is wanted later.
 - Plan: B2.2 row marked SHIPPED, ESTIMATOR Phase 6 updated to BUILT, starting position → B2.3.
 - Next: B2.3 (Learn loop — after rep confirms gap rate, offer "Save to Rate Book?" with confirm card).
+
+[LOG — 2026-06-25] — B2.3 learn loop shipped (48aea78 + a84f0fc + 7f95fe5)
+
+- Action: Learn loop — rep fills a gap rate, applies it, gets an explicit offer to save it to rate_book_labor as an unvetted row for owner promotion. Three commits.
+- Unvetted marker: `vetted BOOLEAN NOT NULL DEFAULT false`. rep-learned rows: tenant_id=AV_TENANT, vetted=false. owner-vetted: vetted=true. platform defaults: tenant_id=NULL. No separate `source` column.
+- Insert-vs-upsert: UPSERT on natural key (tenant_id, trade, line_item, unit). `vetted` NOT in upsert payload — new rows get column default (false); existing vetted=true rows keep their status. Post-write verify: .select('id').single(); if RLS blocks, ok:false surfaced.
+- Labor-only: only `category === 'labor'` gaps collected in learnCandidates. Material gaps excluded — rate_book_material has a tier-band schema (low/mid/high), not a flat rate. Material save is a future follow-up item.
+- Save offer: explicit rep confirm (button click), not automatic. Panel shows after GapBatchAsk when learnCandidates.length > 0. Success shows "✓ Saved — owner can vet in Rate Book → Labor Rates". applyGapRates remains a pure in-memory mutation; the save is a separate action.
+- ESTIMATOR Phase 7 (Learn loop): BUILT. 7 of 7 ESTIMATOR phases now live.
+- Next: B2.4 (Scope Risk Phase 1 — tenant_playbook_items is_scope_risk + risk_price_low/high, seed Avenstone library).

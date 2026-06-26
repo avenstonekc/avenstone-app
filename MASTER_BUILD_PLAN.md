@@ -2,7 +2,7 @@
 **APPROVED — locked 2026-06-19. 6-block order confirmed: Owner Foundation → Engine → Watcher → Seams → Client Front Door → Autopilot.**
 **Last full-code audit: 2026-06-19 (all 21 docs/arcs/ verified against live code)**
 
-> **Starting position: B2.3 (Learn loop). B2.1 + B2.2 SHIPPED 2026-06-25.** Next session opens at B2.3.
+> **Starting position: B2.4 (Scope Risk Phase 1). B2.1 + B2.2 + B2.3 SHIPPED 2026-06-25.** Next session opens at B2.4.
 
 ---
 
@@ -52,7 +52,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | 4 — Guided interview w/ pre-filled defaults | NOT-BUILT | Chat exists but no "running your standard X% — good?" pre-fill; markup + pm_fee hardcoded in prompt text (30%, $1,200) |
 | 5 — Per-tenant fallback mode config | NOT-BUILT | No `estimator_fallback_mode` column; no tenant config read for fallback |
 | 6 — Batch unknowns | **BUILT** | GapBatchAsk.jsx + applyGapRates (after-draft sequencing, confirmed live — ESTIMATOR Phase 6, reconciled 2026-06-25) |
-| 7 — Learn loop (save gaps to Rate Book) | NOT-BUILT | No offer-to-save UI |
+| 7 — Learn loop (save gaps to Rate Book) | **BUILT** | sbInsertRateBookLabor + learnCandidates + save offer panel in EstimateTab — ESTIMATOR Phase 7, shipped 2026-06-25 (48aea78 + a84f0fc + 7f95fe5) |
 
 **Net: 3 of 7 phases live.** Phases 4-7 define the guided interview experience.
 **Critical finding:** markup (30%) and pm_fee ($1,200) are **hardcoded in the ai-estimator SYSTEM_PROMPT text** — not read from tenant config. Kills the "honor tenant config" goal of Block 1.
@@ -358,7 +358,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 |----------|-------------|---------|--------|
 | B2.1 — Guided interview w/ pre-filled defaults | "Running your standard X% — good or different?" pattern. Pre-fill SF, tier, markup, pm_fee from tenant config + job record. Show Keystone Decision 5 UX. **[SHIPPED 2026-06-25 — 0bead89 (backend state-and-proceed preamble in formatEstimate + system prompt update) + bd3fb84 (frontend configMissing fail-loud). AUDIT FINDING: override surface, pre-fill seeding (sbLoadBidModelConfig), and "Running your standard X%" hint were already built in B1.6. Actual gaps: (1) chat preamble stating the rates was absent from formatEstimate output; (2) configMissing=true path showed 0%/$0 with no warning. Both closed. ESTIMATOR Phase 4 now live.]** | 3 | B1.2 |
 | B2.2 — Batch unknowns | Collect all missing-rate lines before draft generation. Surface as numbered batch-ask (not one-by-one). **[SHIPPED — already live as GapBatchAsk.jsx + applyGapRates in EstimateTab. Reconciled 2026-06-25. IMPLEMENTATION NOTE: surfaces gaps AFTER the priced draft, not before (rep sees full estimate context + source badges before answering). All 5 acceptance criteria confirmed ✓ except row numbering — numbering + category labels added e2d4cab. After-draft sequencing kept; if before-draft is wanted it's a separate dispatch with a Kalin decision. ESTIMATOR Phase 6 = BUILT.]** | 2 | B2.1 |
-| B2.3 — Learn loop | After rep confirms a gap rate, offer "Save to Rate Book?" with confirm. Writes `rate_book_labor` unvetted row. Owner promotes via RateBookScr. | 2 | B2.2 |
+| B2.3 — Learn loop | After rep confirms a gap rate, offer "Save to Rate Book?" with confirm. Writes `rate_book_labor` unvetted row. Owner promotes via RateBookScr. **[SHIPPED 2026-06-25 — 48aea78 sbInsertRateBookLabor (upsert, vetted not in payload, post-write verify); a84f0fc save offer UI + learnCandidates state + saveLearnedRates(); 7f95fe5 activate hook in applyGapRates. Labor-only: material gaps excluded (rate_book_material has different tier schema — material save is a follow-up). Unvetted marker: vetted=false (column default). ESTIMATOR Phase 7 = BUILT.]** | 2 | B2.2 |
 | B2.4 — Scope Risk Phase 1 | Risk knowledge source: extend `tenant_playbook_items` with `is_scope_risk BOOLEAN` + `risk_price_low/high`. Seed Avenstone per-trade library (mold, old plumbing, structural surprises). | 2 | B2.3 |
 | B2.5 — Scope Risk Phase 2 | ai-estimator suggests applicable risks from playbook; rep reviews + includes/excludes before generating. | 2 | B2.4 |
 | B2.6 — Scope Risk Phase 3 | "Potential Considerations" section rendered in estimate/proposal. Conditional language, Rate Book ballpark ranges, clearly excluded from quoted total. | 2 | B2.5 |
