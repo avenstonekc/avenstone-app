@@ -3,7 +3,7 @@ import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, 
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
-import { Ic, f$ } from '../../../lib/utils';
+import { Ic, f$, ll, ls } from '../../../lib/utils';
 import { buildProposalPDF } from '../../../lib/pdf';
 import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
@@ -35,6 +35,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [estLoading, setEstLoading] = useState(false);
   const [estStarted, setEstStarted] = useState(false);
   const [estForm, setEstForm] = useState({ scope: '', rooms: '', special: '' });
+  const [sessionPrefill, setSessionPrefill] = useState(null); // P1A: set when drafted from a consultation session
   const [estFile, setEstFile] = useState(null);
   const [estFileName, setEstFileName] = useState('');
   const [estSaving, setEstSaving] = useState(false);
@@ -120,10 +121,20 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         setLineItems(items);
         setLineItemsLoaded(true);
         setSub('items');
-      } else if (scopes?.length) {
-        setSub('scope');
       } else {
-        setSub('build');
+        // P1A: a consultation session may have drafted a prefill (scope/rooms/special).
+        // Apply it only when no estimate exists yet — feeds the interview, doesn't clobber.
+        const prefill = ll(`av_estimate_prefill_${job.id}`, null);
+        if (prefill) {
+          setEstForm({ scope: prefill.scope || '', rooms: prefill.rooms || '', special: prefill.special || '' });
+          setSessionPrefill(prefill);
+          ls(`av_estimate_prefill_${job.id}`, null); // one-shot — clear after applying
+          setSub('build');
+        } else if (scopes?.length) {
+          setSub('scope');
+        } else {
+          setSub('build');
+        }
       }
       if (cfg) setCategoryConfig(cfg);
     });

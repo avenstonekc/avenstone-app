@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis, sbCreateCOFromOhShit } from '../../../lib/supabase';
-import { sbCommitEstimate } from '../../../lib/commitEstimate';
-import { Ic, f$, isMob } from '../../../lib/utils';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis, sbCreateCOFromOhShit, sbLoadJobRoomScopes } from '../../../lib/supabase';
+import { sessionToEstimatePrefill } from '../../../lib/sessionToEstimatePrefill';
+import { Ic, f$, isMob, ls } from '../../../lib/utils';
 import GapResolutionModal from '../consultation/GapResolutionModal';
 import MeasurePanel from '../consultation/MeasurePanel';
 import AmbientPanel from '../consultation/AmbientPanel';
@@ -302,60 +302,35 @@ export default function ConsultationTab({ job, profile, setTab }) {
     setConvertSaving(false);
   };
 
-  // ─── Save Estimate to job_estimates ───────────────────────────────────────
-
-  const saveEstimate = async () => {
-    if (!result || savingEstimate) return;
+  // ─── Draft estimate from session (P1A reroute) ────────────────────────────
+  // The session no longer generates/commits its own priced estimate (that path
+  // invented prices with no Rate Book). Instead the captured data PREFILLS the
+  // ai-estimator entry and hands off to the Estimate tab, where the rep runs the
+  // Rate Book interview OVER the prefill — feeds the interview, never bypasses it.
+  const draftEstimateFromSession = async () => {
+    if (savingEstimate) return;
     setSavingEstimate(true);
     setErr('');
     try {
-      const userId = AV_USER_ID || profile?.id;
-      const tenantId = AV_TENANT || profile?.tenant_id;
-      // Upsert keyed on job_id — coexists with Estimator chat row (writes messages only).
-      // Multi-source split deferred until Estimator produces structured iterative output.
-      // oh_shit_moments snapshot omitted — live oh_shit_moments table with included_in_proposal is truth.
-      const { data: estRow, error } = await sb.from('job_estimates').upsert({
-        job_id: job.id,
-        session_id: sessionIdRef.current,
-        tenant_id: tenantId,
-        created_by: userId,
-        estimate_data: result.estimate,
-        total: result.estimate?.total,
-        source: 'ai_consultation',
-      }, { onConflict: 'job_id' }).select('id').single();
-      if (error) throw error;
-
-      // Persist line items for Budget vs Actual
-      const trades = result.estimate?.trades || [];
-      const commitItems = trades.flatMap(trade =>
-        (trade.line_items || []).map(li => ({
-          source:      'consultation',
-          trade:       trade.trade,
-          category:    'labor',
-          description: li.description || trade.trade,
-          quantity:    Number(li.qty  ?? 1),
-          unit:        li.unit  || null,
-          unit_cost:   Number(li.unit_cost ?? li.total ?? 0),
-          multiplier:  1.0,
-          markup_pct:  0,
-          notes:       null,
-          waste_pct:   null,
-        }))
-      );
-      if (commitItems.length) {
-        const commitResult = await sbCommitEstimate(sb, tenantId, userId, {
-          source:     'consultation',
-          jobId:      job.id,
-          estimateId: estRow?.id || null,
-          items:      commitItems,
-        });
-        if (!commitResult.ok) throw new Error(commitResult.error);
-      }
-
+      const sid = sessionIdRef.current;
+      const [extRes, measRes, roomScopes] = await Promise.all([
+        sb.from('consultation_extractions').select('*').eq('session_id', sid).maybeSingle(),
+        sb.from('consultation_measurements').select('*').eq('session_id', sid),
+        sbLoadJobRoomScopes(job.id),
+      ]);
+      const prefill = sessionToEstimatePrefill({
+        extraction: extRes.data,
+        measurements: measRes.data || [],
+        roomScopes: roomScopes || [],
+        jobScope: job.scope || '',
+        sessionId: sid,
+        sessionDate: new Date().toISOString(),
+      });
+      ls(`av_estimate_prefill_${job.id}`, prefill);
       setEstimateSaved(true);
       setTab?.('estimate');
     } catch (e) {
-      setErr(`Save failed: ${e.message}`);
+      setErr(`Couldn't draft estimate: ${e.message}`);
     } finally {
       setSavingEstimate(false);
     }
@@ -528,82 +503,19 @@ export default function ConsultationTab({ job, profile, setTab }) {
       );
     }
 
-    const est = result.estimate || {};
-    const trades = est.trades || est.line_items || [];
     const ohShitMoments = result.oh_shit_moments || [];
-    const total = est.total ?? trades.reduce((sum, t) => sum + (t.subtotal || t.total || t.amount || 0), 0);
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* Estimate breakdown */}
-        <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ background: NAV, color: '#fff', padding: mob ? '12px 14px' : '14px 20px' }}>
-            <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18 }}>Estimate Breakdown</span>
+        {/* Session captured — estimate drafts in the Estimate tab (Rate Book pricing) */}
+        <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 12, padding: mob ? '14px 16px' : '18px 22px' }}>
+          <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: NAV, marginBottom: 6 }}>
+            Session captured
           </div>
-          <div style={{ padding: 0 }}>
-            {trades.length === 0 && (
-              <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: 14 }}>No trade breakdown available.</div>
-            )}
-            {trades.map((trade, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  padding: mob ? '10px 14px' : '14px 20px',
-                  borderBottom: i < trades.length - 1 ? `1px solid ${BORDER}` : 'none',
-                  background: i % 2 === 0 ? '#fff' : CREAM,
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, color: NAV, fontSize: 14 }}>
-                    {trade.trade || trade.name || trade.category}
-                  </div>
-                  {trade.description && (
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{trade.description}</div>
-                  )}
-                  {/* Line item details */}
-                  {(trade.line_items || []).length > 0 && (
-                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {(trade.line_items || []).map((li, j) => (
-                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4, flex: 1 }}>
-                            {li.description || li.name}
-                            {li.qty && li.unit ? <span style={{ color: 'var(--text-subtle)' }}> · {li.qty} {li.unit}</span> : null}
-                          </div>
-                          <div style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                            {f$(li.total || li.amount || (li.qty && li.unit_cost ? li.qty * li.unit_cost : 0) || 0)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {trade.confidence !== undefined && (
-                    <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>
-                      Confidence: {Math.round((trade.confidence || 0) * 100)}%
-                    </div>
-                  )}
-                </div>
-                <div style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, color: NAV, fontSize: 15, whiteSpace: 'nowrap', marginLeft: 16, alignSelf: 'flex-start' }}>
-                  {f$(trade.subtotal || trade.total || trade.amount || (trade.line_items || []).reduce((s, li) => s + (li.total || li.amount || (li.qty && li.unit_cost ? li.qty * li.unit_cost : 0) || 0), 0) || 0)}
-                </div>
-              </div>
-            ))}
-            {/* Total row */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: mob ? '12px 14px' : '16px 20px',
-              background: NAV,
-              color: '#fff',
-            }}>
-              <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 16 }}>Total Estimate</span>
-              <span style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 800, fontSize: 20, color: GOLD }}>
-                {f$(total)}
-              </span>
-            </div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            Risks below are saved to this job. Draft the estimate in the Estimate tab — your
+            on-site scope, rooms, and notes prefill the estimator, then you run it over the
+            Rate Book (your configured markup + PM fee) and confirm what the session assumed.
           </div>
         </div>
 
@@ -738,15 +650,15 @@ export default function ConsultationTab({ job, profile, setTab }) {
           </div>
         )}
 
-        {/* Save to estimate tab */}
+        {/* Draft estimate from session → Estimate tab (Rate Book) */}
         <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10 }}>
           <button
             className="btn btn-gold"
             style={{ flex: 1, fontSize: 15, padding: '14px 0' }}
-            onClick={saveEstimate}
+            onClick={draftEstimateFromSession}
             disabled={savingEstimate || estimateSaved}
           >
-            {estimateSaved ? '✓ Saved — opening Estimate tab…' : savingEstimate ? 'Saving…' : 'Save estimate'}
+            {estimateSaved ? '✓ Opening Estimate tab…' : savingEstimate ? 'Drafting…' : 'Draft Estimate from Session →'}
           </button>
           <button
             className="btn btn-ghost"
