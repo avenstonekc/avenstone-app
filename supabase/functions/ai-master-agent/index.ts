@@ -886,6 +886,52 @@ async function resolveJobByName(
   return { id: (data[0] as any).id };
 }
 
+// ─── Shared sub resolvers ────────────────────────────────────────────────────
+// Two helpers because subs exist as two different entities:
+//   resolveSubContact — external sub companies in the contacts table (invoice verbs)
+//   resolveSubProfile — internal team members with role='sub' in profiles (schedule_item)
+// Both mirror resolveJobByName: DB-level ilike, tenant-scoped, { id, name } / { error, matches? }.
+
+async function resolveSubContact(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  term: string,
+): Promise<{ id: string; name: string } | { error: string; matches?: { id: string; name: string }[] }> {
+  const escaped = term.trim().replace(/%/g, "\\%");
+  const { data } = await sb.from("contacts")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("type", "sub")
+    .ilike("name", `%${escaped}%`)
+    .limit(5);
+  if (!data?.length) return { error: `No sub found matching "${term}".` };
+  if (data.length > 1) return {
+    error: `Multiple subs match "${term}": ${(data as any[]).map((c) => c.name).join(", ")}. Be more specific.`,
+    matches: (data as any[]).map((c) => ({ id: c.id, name: c.name })),
+  };
+  return { id: (data[0] as any).id, name: (data[0] as any).name };
+}
+
+async function resolveSubProfile(
+  sb: ReturnType<typeof createClient>,
+  tenantId: string,
+  term: string,
+): Promise<{ id: string; name: string } | { error: string; matches?: { id: string; name: string }[] }> {
+  const escaped = term.trim().replace(/%/g, "\\%");
+  const { data } = await sb.from("profiles")
+    .select("id, full_name")
+    .eq("tenant_id", tenantId)
+    .eq("role", "sub")
+    .ilike("full_name", `%${escaped}%`)
+    .limit(5);
+  if (!data?.length) return { error: `No sub profile found matching "${term}".` };
+  if (data.length > 1) return {
+    error: `Multiple subs match "${term}": ${(data as any[]).map((p) => p.full_name).join(", ")}. Be more specific.`,
+    matches: (data as any[]).map((p) => ({ id: p.id, name: p.full_name })),
+  };
+  return { id: (data[0] as any).id, name: (data[0] as any).full_name };
+}
+
 // ─── Tool executor ────────────────────────────────────────────────────────────
 
 async function executeTool(
