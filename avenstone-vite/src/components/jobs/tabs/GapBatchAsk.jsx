@@ -46,6 +46,7 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, onApply }) {
         const fallback = g.regional_rate != null
           ? `est. ${f$(Math.round(g.regional_rate * g.quantity * 100) / 100)}`
           : 'TBD';
+        const catLabel = g.category === 'labor' ? 'labor' : g.category === 'materials' ? 'materials' : null;
 
         if (mob) {
           return (
@@ -55,8 +56,10 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, onApply }) {
               background: 'var(--card-bg)',
             }}>
               <div style={{ fontSize: 13, color: NAV, marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-subtle)', marginRight: 6, fontVariantNumeric: 'tabular-nums' }}>{i + 1}.</span>
                 {g.description}
                 <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>· {g.unit}</span>
+                {catLabel && <span style={{ fontSize: 10, color: 'var(--text-subtle)', marginLeft: 6 }}>{catLabel}</span>}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>$/unit</span>
@@ -83,10 +86,12 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, onApply }) {
             alignItems: 'center', background: 'var(--card-bg)',
           }}>
             <span style={{ fontSize: 13, color: NAV }}>
+              <span style={{ fontSize: 11, color: 'var(--text-subtle)', marginRight: 6, fontVariantNumeric: 'tabular-nums' }}>{i + 1}.</span>
               {g.description}
               <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>
                 {g.quantity} {g.unit}
               </span>
+              {catLabel && <span style={{ fontSize: 10, color: 'var(--text-subtle)', marginLeft: 6 }}>{catLabel}</span>}
             </span>
             <input
               type="number" min="0" step="0.01"
