@@ -2184,3 +2184,12 @@ KEY DECISIONS (locked):
 - Follow-up flagged: persisting the session-sourced marker onto the committed estimate row (needs a column) — UI-only marker for now. This is P1A; checklist tables + scope-interview mode = P1B (not built). Did NOT edit MASTER_BUILD_PLAN.md (parallel window owns it).
 
 [LOG — 2026-06-25] — Inserted a HomeScr todo (todos.id a182c969-a0cd-41d1-abfc-b6a51a98bb07) reminding Kalin to run the P1A live test (consultation → Draft Estimate → confirm Rate-Book priced, not 25%). status=open, type=user_task, assigned+created = Kalin (8171742a), job_id=null, due 2026-06-26. Render-condition verified against sbLoadTodosForUser filter — it will appear on Today.
+
+[LOG — 2026-06-25] — Session-sourced marker now persists onto job_estimates (e2134bb + ce7958a + f897b2b)
+
+- Action: Closed the P1A UI-only gap — the "drafted from session" mark now survives estimate commit and page reload.
+- Column: job_estimates.scope_origin TEXT NOT NULL DEFAULT 'manual'. Values: 'manual' (default, all existing rows), 'session' (P1A session-prefill), 'incomplete' (reserved for 1B force-drafted past incomplete scope). Migration verified via information_schema.
+- Write path: sbSaveEstimate now accepts optional scopeOrigin param. When provided, included in upsert; when omitted, upsert does NOT update the column (preserves existing value). EstimateTab passes 'session' on first save when sessionPrefill is non-null; subsequent saves omit it.
+- Read path: sbLoadEstimate result on mount reads scope_origin into estimateScopeOrigin state.
+- Badge: blue pill "Session-sourced" renders in estimate action bar when estimateScopeOrigin === 'session' (from DB, survives reload) OR sessionPrefill is set (draft time). Block 3 approval queue reads job_estimates.approval_status — scope_origin is on the same row, immediately available for Block 3.
+- Satisfies the soft-gate-with-a-mark rule's persistence requirement: a session-prefilled estimate is now distinguishable from a fully-interviewed one at the approval gate, not just at draft time.
