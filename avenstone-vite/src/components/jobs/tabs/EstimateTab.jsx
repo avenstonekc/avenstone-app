@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor } from '../../../lib/supabase';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
@@ -60,6 +60,9 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
 
   // Gap batch-ask: keyed by gap_key → entered rate string (pre-filled from regional_rate)
   const [gapRates, setGapRates] = useState({});
+  // B2.3 learn loop: labor gaps the rep just applied — offered for Rate Book save
+  const [learnCandidates, setLearnCandidates] = useState([]);
+  const [learnSaveState, setLearnSaveState] = useState(''); // '' | 'saving' | 'saved' | 'error'
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -287,6 +290,19 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       return { ...line, unit_price: rate, amount: Math.round(rate * line.quantity * 100) / 100, source_label: 'user_entered' };
     });
     setPricedScope(mutated);
+  };
+
+  // B2.3: save learnCandidates (labor gaps the rep just applied) to rate_book_labor.
+  // Rep explicitly opts in — never fired automatically.
+  const saveLearnedRates = async () => {
+    if (!learnCandidates.length) return;
+    setLearnSaveState('saving');
+    let allOk = true;
+    for (const c of learnCandidates) {
+      const res = await sbInsertRateBookLabor({ trade: c.trade, line_item: c.line_item, unit: c.unit, rate: c.rate });
+      if (!res.ok) allOk = false;
+    }
+    setLearnSaveState(allOk ? 'saved' : 'error');
   };
 
   const commitEstimateFromChat = async () => {
@@ -674,7 +690,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setShowRaw(false); }}>Reset</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setShowRaw(false); }}>Reset</button>
           </div>
           {pricedScope?.length > 0 && (
             <>
@@ -685,6 +701,25 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
                   ? <GapBatchAsk gaps={gaps} gapRates={gapRates} setGapRates={setGapRates} onApply={applyGapRates} />
                   : null;
               })()}
+              {learnCandidates.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                  {learnSaveState === 'saved' ? (
+                    <span style={{ fontSize: 12, color: 'var(--green-text)', fontWeight: 600 }}>✓ Saved to Rate Book — owner can vet in Rate Book → Labor Rates</span>
+                  ) : learnSaveState === 'error' ? (
+                    <span style={{ fontSize: 12, color: 'var(--red-text)' }}>Failed to save — try again or add manually in Rate Book</span>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        Save {learnCandidates.length} labor rate{learnCandidates.length !== 1 ? 's' : ''} to Rate Book?
+                        <span style={{ color: 'var(--text-subtle)', marginLeft: 4 }}>They'll stop being gaps next time.</span>
+                      </span>
+                      <button className="btn btn-navy" style={{ fontSize: 11, minHeight: 32, padding: '0 12px' }} onClick={saveLearnedRates} disabled={learnSaveState === 'saving'}>
+                        {learnSaveState === 'saving' ? 'Saving…' : 'Save to Rate Book'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               <button
                 onClick={() => setShowRaw(r => !r)}
                 style={{ fontSize: 11, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}
