@@ -31,12 +31,15 @@ const DRAW_POKE_THRESHOLD = 0.90;
 
 export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendingAction, clearPendingAction, financialsAction, clearFinancialsAction, onAgentDrawPoke }) {
   const mob = isMob();
-  // Cost-plus: Draws tab instead of Invoices. Fixed-price: Invoices tab, no Draws.
+  // Dual-read: financial_model (Phase 3+) overrides legacy cost_plus boolean.
+  const model = job.financial_model || (job.cost_plus ? 'cost_plus' : 'fixed_bid');
+  const isDrawMode = model === 'cost_plus' || model === 'flip';
+  // Draw modes (cost_plus + flip): Draws tab. Fixed-price: Invoices / Payment Schedule.
   const SUB_TABS = [
     { id: 'ledger',      lb: 'Ledger' },
     { id: 'budget',      lb: 'Budget' },
     { id: 'co',          lb: 'Change Orders' },
-    ...(job.cost_plus
+    ...(isDrawMode
       ? [{ id: 'draws',   lb: 'Draws' }]
       : [{ id: 'billing', lb: 'Invoices / Payment Schedule' }]),
     { id: 'sub_invoices', lb: 'Sub Invoices' },
@@ -92,9 +95,9 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   useEffect(() => { if (sub !== 'sub_invoices') setOpenSubInvoiceOnMount(false); }, [sub]);
   // Reset to ledger if current sub-tab doesn't exist for this billing model
   useEffect(() => {
-    if (job.cost_plus && sub === 'billing') setSub('ledger');
-    if (!job.cost_plus && sub === 'draws') setSub('ledger');
-  }, [job.cost_plus]);
+    if (isDrawMode && sub === 'billing') setSub('ledger');
+    if (!isDrawMode && sub === 'draws') setSub('ledger');
+  }, [model]);
   useEffect(() => {
     if (!financialsAction) return;
     if (financialsAction.kind === 'compose_draw') { setSub('ledger'); setShowComposeDraw(true); }
@@ -107,13 +110,13 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     setLoading(true);
     const [data, sum] = await Promise.all([
       sbLoadJobTransactions(job.id),
-      sbLoadJobFinancialSummary(job.id, { contractValue: job.contract_value, coTotal: job.co_total, costPlus: job.cost_plus }),
+      sbLoadJobFinancialSummary(job.id, { contractValue: job.contract_value, coTotal: job.co_total, costPlus: job.cost_plus, financialModel: job.financial_model }),
     ]);
     setTxs(data);
     setSummary(sum);
     setLoading(false);
-    // Agent draw poke — cost-plus only, owner/PM only, fires once per mount
-    if (job.cost_plus && sum && !drawPokedRef.current) {
+    // Agent draw poke — draw modes only (cost_plus + flip), owner/PM only, fires once per mount
+    if (isDrawMode && sum && !drawPokedRef.current) {
       const unreimb = sum.float_unreimbursed || 0;
       const cv = Number(job.contract_value) || 0;
       if (cv > 0 && unreimb >= DRAW_POKE_THRESHOLD * cv) {
@@ -223,9 +226,9 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
 
       {sub === 'co' && <COTab job={job} upd={upd} profile={profile} />}
 
-      {sub === 'draws' && job.cost_plus && <InvoicesSubTab job={job} profile={profile} />}
+      {sub === 'draws' && isDrawMode && <InvoicesSubTab job={job} profile={profile} />}
 
-      {sub === 'billing' && !job.cost_plus && (
+      {sub === 'billing' && model === 'fixed_bid' && (
         <div>
           <PaymentScheduleTab job={job} profile={profile} />
           <div style={{ borderTop: '2px solid #E8E4DC', margin: '28px 0 20px' }} />
@@ -351,14 +354,10 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
 
       {sub === 'ledger' && (
         <div>
-          {/* Stat bar — cost-plus-aware */}
+          {/* Stat bar — three-mode: cost_plus / flip / fixed_bid */}
           {summary && (() => {
             const owes = summary.client_owes;
-            const isCostPlus = job?.cost_plus === true && summary.received !== undefined;
             // Cost-plus stat cards — cost-ledger language (redesigned B1 session).
-            // Removed: Unreimbursed (label confuses owners), Projected Profit (meaningless
-            // at 0% margin / $0 contract), Bucket Credit / Client Owes (collapsed into
-            // Received + Next Draw which say the same thing more directly).
             const cpSpent = (summary.paid_out ?? summary.total_out ?? 0) + (summary.pending_out ?? 0);
             const cpStats = [
               { lb: 'Spent',     v: f$(cpSpent),                                    c: cpSpent > 0 ? 'var(--red-text)' : 'var(--text-subtle)',          note: 'all costs logged' },
@@ -368,9 +367,41 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
               ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
             ];
+            // Flip stat cards — flip language, no bucket/client-money fields.
+            const flipStats = [
+              {
+                lb: 'Cost Basis',
+                v: f$(summary.cost_basis ?? 0),
+                c: (summary.cost_basis ?? 0) > 0 ? 'var(--red-text)' : 'var(--text-subtle)',
+                note: 'total invested',
+              },
+              {
+                lb: 'ARV',
+                v: summary.arv_target != null ? f$(summary.arv_target) : 'Not set',
+                c: summary.arv_target != null ? 'var(--navy-900)' : 'var(--text-subtle)',
+                note: summary.arv_target != null ? 'after-repair value' : 'enter ARV to see profit',
+              },
+              {
+                lb: 'Projected Profit',
+                v: summary.projected_flip_profit != null ? f$(summary.projected_flip_profit) : '—',
+                c: summary.projected_flip_profit != null
+                  ? summary.projected_flip_profit >= 0 ? 'var(--green-dot)' : 'var(--red-text)'
+                  : 'var(--text-subtle)',
+                note: summary.projected_flip_profit == null ? 'set ARV to see profit' : undefined,
+              },
+              {
+                lb: 'Margin',
+                v: summary.margin_on_arv_pct != null ? `${summary.margin_on_arv_pct}%` : '—',
+                c: summary.margin_on_arv_pct != null ? 'var(--navy-900)' : 'var(--text-subtle)',
+                note: summary.margin_on_arv_pct != null ? 'of ARV' : undefined,
+              },
+              ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
+              ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
+            ];
             // Fixed-price stat cards: Contract + Received removed — in header KPI strip.
-            // "% collected" is the header's PAID TO DATE sub-line — confirmed present, not duplicated.
-            const stats = isCostPlus
+            const stats = model === 'flip'
+              ? flipStats
+              : model === 'cost_plus'
               ? cpStats
               : [
                   { lb: 'Client Owes', v: owes < 0 ? `Overpaid ${f$(Math.abs(owes))}` : f$(owes),        c: owes < 0 ? 'var(--green-dot)' : owes > 0 ? 'var(--gold-500)' : 'var(--text-subtle)' },
@@ -390,8 +421,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             );
           })()}
 
-          {/* Draw-request nudge — cost-plus only, non-blocking */}
-          {job.cost_plus && isManager && summary && !dismissedDrawNudge && (() => {
+          {/* Draw-request nudge — draw modes (cost_plus + flip), non-blocking */}
+          {isDrawMode && isManager && summary && !dismissedDrawNudge && (() => {
             const unreimb = summary.float_unreimbursed || 0;
             const cv = Number(job.contract_value) || 0;
             if (unreimb < DRAW_NUDGE_THRESHOLD * cv) return null;
@@ -591,7 +622,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
         />
       )}
 
-      {showComposeDraw && job.cost_plus && (
+      {showComposeDraw && isDrawMode && (
         <ComposeDrawScr
           job={job}
           onClose={() => setShowComposeDraw(false)}
