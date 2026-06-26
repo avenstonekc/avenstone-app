@@ -705,6 +705,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       {estStarted && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {(estimateScopeOrigin === 'session' || (sessionPrefill && !estimateScopeOrigin)) && (
+              <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE', fontWeight: 600, letterSpacing: 0.2 }}>
+                📋 Session-sourced
+              </span>
+            )}
             {estSaveMsg && <span style={{ fontSize: 11, color: 'var(--green-dot)', fontWeight: 600 }}>{estSaveMsg}</span>}
             {estCommitMsg && <span style={{ fontSize: 11, color: lineItems.length > 0 ? 'var(--green-dot)' : 'var(--red-text)', fontWeight: 600 }}>{estCommitMsg}</span>}
             {estMessages.some(m => m.role === 'assistant') && (
