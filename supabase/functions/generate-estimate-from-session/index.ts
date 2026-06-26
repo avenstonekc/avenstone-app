@@ -10,6 +10,114 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
+// ── Risk capture (oh_shit_moments) + session-complete ────────────────────────
+// SCOPE_CAPTURE_ENGINE P1A: this is the KEEP half of this function — the
+// consultation's risk-surfacing value. It does NOT depend on the priced estimate
+// (uses measurements + ambient context + unresolved_gaps). Isolated so the
+// invented-pricing half can be retired without touching this. Behavior is
+// byte-for-byte the original: same AI risks + unresolved_gaps merge, same
+// severity→likelihood map, same insert, same session-complete update.
+async function captureSessionRisks(
+  sb: ReturnType<typeof createClient>,
+  {
+    session_id, job_id, job, session, measurements, measureSummary, ambientContext, unresolved_gaps,
+  }: {
+    session_id: string;
+    job_id: string;
+    job: Record<string, unknown> | null;
+    session: Record<string, unknown>;
+    measurements: Record<string, unknown>[];
+    measureSummary: string;
+    ambientContext: string;
+    unresolved_gaps: unknown[];
+  },
+): Promise<Record<string, unknown>[]> {
+  // Generate OH SHIT moments
+  const ohShitPrompt = `Based on this construction job and measurements, identify the top 3-5 "OH SHIT moments" — unexpected conditions that commonly occur and would result in a change order.
+
+Job: ${job?.address || "Unknown"}
+Trades: ${measurements.map((m: Record<string, unknown>) => m.trade).join(", ")}
+Measurements: ${measureSummary}
+${ambientContext ? `Context: ${ambientContext}` : ""}
+
+Return a JSON array:
+[
+  {
+    "condition": "description of what might be found",
+    "likelihood": "low|medium|high",
+    "estimated_cost_low": 500,
+    "estimated_cost_high": 1500,
+    "how_to_present": "one sentence explaining this to the homeowner"
+  }
+]
+
+Return only valid JSON array. No explanation.`;
+
+  const ohShitRes = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": ANTHROPIC_KEY,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 2048,
+      messages: [{ role: "user", content: ohShitPrompt }],
+    }),
+  });
+
+  const ohShitJson = await ohShitRes.json();
+  const ohShitRaw = ohShitJson.content?.[0]?.text || "[]";
+  let ohShitMoments: Record<string, unknown>[];
+  try {
+    const clean = ohShitRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    ohShitMoments = JSON.parse(clean);
+  } catch {
+    ohShitMoments = [];
+  }
+
+  // Append unresolved gaps from gap analyzer as oh_shit_moments
+  const gapSeverityToLikelihood: Record<string, string> = {
+    blocker: "high",
+    strong: "medium",
+    nice_to_have: "low",
+  };
+  if (Array.isArray(unresolved_gaps) && unresolved_gaps.length) {
+    for (const g of unresolved_gaps as Record<string, unknown>[]) {
+      ohShitMoments.push({
+        condition: g.title || g.description || "Unresolved gap",
+        likelihood: gapSeverityToLikelihood[g.severity as string] || "medium",
+        estimated_cost_low: null,
+        estimated_cost_high: null,
+        how_to_present: g.suggested_action || g.description || "",
+      });
+    }
+  }
+
+  // Save OH SHIT moments to DB
+  if (ohShitMoments.length) {
+    await sb.from("oh_shit_moments").insert(
+      ohShitMoments.map((m) => ({
+        session_id,
+        job_id,
+        tenant_id: session.tenant_id,
+        condition: m.condition,
+        likelihood: m.likelihood,
+        estimated_cost_low: m.estimated_cost_low,
+        estimated_cost_high: m.estimated_cost_high,
+        how_to_present: m.how_to_present,
+        included_in_proposal: false,
+      }))
+    );
+  }
+
+  // Mark session complete
+  await sb.from("consultation_sessions").update({ status: "complete", ended_at: new Date().toISOString() }).eq("id", session_id);
+
+  return ohShitMoments;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -118,88 +226,10 @@ Return only valid JSON.`;
       return new Response(JSON.stringify({ error: "Estimate AI returned invalid JSON", raw: estimateRaw }), { status: 500, headers: { ...CORS, "Content-Type": "application/json" } });
     }
 
-    // Generate OH SHIT moments
-    const ohShitPrompt = `Based on this construction job and measurements, identify the top 3-5 "OH SHIT moments" — unexpected conditions that commonly occur and would result in a change order.
-
-Job: ${job?.address || "Unknown"}
-Trades: ${measurements.map((m: Record<string, unknown>) => m.trade).join(", ")}
-Measurements: ${measureSummary}
-${ambientContext ? `Context: ${ambientContext}` : ""}
-
-Return a JSON array:
-[
-  {
-    "condition": "description of what might be found",
-    "likelihood": "low|medium|high",
-    "estimated_cost_low": 500,
-    "estimated_cost_high": 1500,
-    "how_to_present": "one sentence explaining this to the homeowner"
-  }
-]
-
-Return only valid JSON array. No explanation.`;
-
-    const ohShitRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 2048,
-        messages: [{ role: "user", content: ohShitPrompt }],
-      }),
+    // Risk capture + session-complete (the KEEP half — see captureSessionRisks)
+    const ohShitMoments = await captureSessionRisks(sb, {
+      session_id, job_id, job, session, measurements, measureSummary, ambientContext, unresolved_gaps,
     });
-
-    const ohShitJson = await ohShitRes.json();
-    const ohShitRaw = ohShitJson.content?.[0]?.text || "[]";
-    let ohShitMoments: Record<string, unknown>[];
-    try {
-      const clean = ohShitRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      ohShitMoments = JSON.parse(clean);
-    } catch {
-      ohShitMoments = [];
-    }
-
-    // Append unresolved gaps from gap analyzer as oh_shit_moments
-    const gapSeverityToLikelihood: Record<string, string> = {
-      blocker: "high",
-      strong: "medium",
-      nice_to_have: "low",
-    };
-    if (Array.isArray(unresolved_gaps) && unresolved_gaps.length) {
-      for (const g of unresolved_gaps as Record<string, unknown>[]) {
-        ohShitMoments.push({
-          condition: g.title || g.description || "Unresolved gap",
-          likelihood: gapSeverityToLikelihood[g.severity as string] || "medium",
-          estimated_cost_low: null,
-          estimated_cost_high: null,
-          how_to_present: g.suggested_action || g.description || "",
-        });
-      }
-    }
-
-    // Save OH SHIT moments to DB
-    if (ohShitMoments.length) {
-      await sb.from("oh_shit_moments").insert(
-        ohShitMoments.map((m) => ({
-          session_id,
-          job_id,
-          tenant_id: session.tenant_id,
-          condition: m.condition,
-          likelihood: m.likelihood,
-          estimated_cost_low: m.estimated_cost_low,
-          estimated_cost_high: m.estimated_cost_high,
-          how_to_present: m.how_to_present,
-          included_in_proposal: false,
-        }))
-      );
-    }
-
-    // Mark session complete
-    await sb.from("consultation_sessions").update({ status: "complete", ended_at: new Date().toISOString() }).eq("id", session_id);
 
     return new Response(JSON.stringify({ ok: true, estimate, oh_shit_moments: ohShitMoments, measurements }), {
       headers: { ...CORS, "Content-Type": "application/json" },
