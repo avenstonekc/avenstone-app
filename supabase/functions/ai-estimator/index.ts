@@ -151,7 +151,7 @@ function buildScopeSystemPrompt(vocabSection: string, markupPct: number, pmFee: 
 YOUR ONLY JOB IS SCOPE. DO NOT INVENT OR OUTPUT PRICES. Pricing is applied by code after you respond.
 Output ONLY valid JSON — no prose, no markdown fences, no text before or after. Start your response with { and end with }.
 
-COMPANY: Cost-plus model. Markup (${markupPct}%) and PM fee (${pmFmtd}) are added by code — do not include.
+COMPANY: Cost-plus model. The owner has configured ${markupPct}% markup and ${pmFmtd} PM fee — these are applied by code and do NOT appear in your scope output. The rep sees these rates pre-filled on their form and edits them only when the job is different from the standard. Do not ask about them.
 TRANSPARENCY: Separate labor and material lines. Client-allowance items include "Allowance" in description.
 
 TRADE ORDER (include only relevant trades):
@@ -370,7 +370,11 @@ function formatEstimate(
   const pmFee = Math.round(pmFeeVal);
   const total = subtotal + markup + pmFee;
 
-  let out = `**Pricing Tier: ${tierLabel}** · Finish: **${finishLabel}**\n${body}
+  // State-and-proceed: open with the rates being applied so the rep can correct
+  // by exception before reading the full estimate. Single line, then proceed.
+  const preamble = `_Running at **${markupPct}%** markup · **${fmtMoney(pmFeeVal)}** PM fee — edit the fields above if this job's different._\n\n`;
+
+  let out = preamble + `**Pricing Tier: ${tierLabel}** · Finish: **${finishLabel}**\n${body}
 ---
 Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}
 **Subtotal: ${fmtMoney(subtotal)}**
