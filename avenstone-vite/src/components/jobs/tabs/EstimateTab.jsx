@@ -594,6 +594,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <div style={{ fontSize: 13, fontWeight: 700, color: GOLD, letterSpacing: 0.3 }}>AI Estimator</div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>Generate a trade-by-trade material &amp; labor estimate</div>
           </div>
+          {sessionPrefill && (
+            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '10px 12px', marginBottom: 14, fontSize: 12, color: '#1E40AF', lineHeight: 1.5 }}>
+              📋 <strong>Drafted from a consultation session{sessionPrefill.sessionDate ? ` (${new Date(sessionPrefill.sessionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})` : ''}.</strong> The scope, rooms, and notes below are prefilled from the on-site capture — review them, then <strong>Generate</strong> to run the Rate Book estimate over them. Prefilled assumptions get confirmed in the estimate, not taken as settled.
+            </div>
+          )}
           <div className="fg"><label className="flbl"><span className="freq">*</span>Scope of Work</label><textarea className="finp fta" rows={3} value={estForm.scope} onChange={e => setEstForm(p => ({ ...p, scope: e.target.value }))} placeholder="e.g. Full kitchen remodel — demo existing, new cabinets, countertops, flooring, electrical updates, plumbing relocation" /></div>
           <div className="fg"><label className="flbl">Rooms / Areas</label><input className="finp" value={estForm.rooms} onChange={e => setEstForm(p => ({ ...p, rooms: e.target.value }))} placeholder="e.g. Kitchen, Master Bath, Living Room" /></div>
 
@@ -706,7 +711,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setShowRaw(false); }}>Reset</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setSessionPrefill(null); setShowRaw(false); }}>Reset</button>
           </div>
           {pricedScope?.length > 0 && (
             <>
