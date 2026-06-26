@@ -186,8 +186,13 @@ ${fieldLines}`;
 async function handleScopeInterview(
   messages: Array<{ role: string; content: unknown }>,
   tenantId: string,
-  projectType: string | undefined,
+  rawProjectType: string | undefined,
 ): Promise<Response> {
+  // The body project_type is the authoritative source. The frontend resolves it
+  // (typed Rooms field → job_room_scopes → none) before sending; here we just
+  // normalize (trim + lowercase) so a typed "Bathroom"/"BATHROOM " still matches the
+  // lowercase seed — loadScopeConfig's .eq("project_type", ...) is case-sensitive.
+  const projectType = typeof rawProjectType === "string" ? rawProjectType.trim().toLowerCase() : undefined;
   // No project type → nothing to ask → complete, so the frontend falls straight to pricing.
   if (!projectType) {
     return ok({ scope_complete: true, content: "", answers: [] });
