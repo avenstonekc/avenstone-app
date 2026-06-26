@@ -56,6 +56,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       : Number(job.labor_markup_pct) > 0 ? Number(job.labor_markup_pct)
       : 0)); // seed from bid_model_config via useEffect; 0 until config loads
   const [interviewPmFee, setInterviewPmFee]         = useState(String(Number(job.pm_fee) || 0)); // seed from bid_model_config via useEffect if job.pm_fee unset
+  const [configMissing, setConfigMissing]           = useState(false); // true when bid_model_config 'default' row absent
 
   // Gap batch-ask: keyed by gap_key → entered rate string (pre-filled from regional_rate)
   const [gapRates, setGapRates] = useState({});
@@ -83,9 +84,15 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
 
   // B1.6: seed markup and pm_fee from bid_model_config tenant default.
   // Fires on mount; only overwrites if the job-level values aren't already set.
+  // B2.1: sets configMissing=true when the 'default' row is absent so the rep
+  // sees a visible warning rather than a misleading 0% / $0 pre-fill.
   useEffect(() => {
     sbLoadBidModelConfig(job.tenant_id || AV_TENANT).then(result => {
-      if (!result.ok) return; // config row missing; edge fn will fail-loud when generate fires
+      if (!result.ok) {
+        setConfigMissing(true); // edge fn will also fail-loud when generate fires
+        return;
+      }
+      setConfigMissing(false);
       const { markup_pct: cfgMarkup, pm_fee: cfgPmFee } = result.data;
       setInterviewMarkup(prev => {
         if (Number(prev) > 0) return prev; // job-level override already in place
@@ -614,16 +621,25 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>Sets material pricing tier.</div>
           </div>
 
+          {configMissing && (
+            <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#92400E' }}>
+              ⚠ Markup config not set — go to Settings → Bid Config to add a default row, or enter markup and PM fee manually below.
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="fg">
               <label className="flbl">Markup %</label>
               <input className="finp" type="number" min="0" step="0.5" value={interviewMarkup} onChange={e => setInterviewMarkup(e.target.value)} placeholder="e.g. 30" style={{ fontSize: 16 }} />
-              <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>Running your standard {interviewMarkup || '?'}% — good or different?</div>
+              {!configMissing && (
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>Running your standard {interviewMarkup || '?'}% — good or different?</div>
+              )}
             </div>
             <div className="fg">
               <label className="flbl">PM Fee</label>
               <input className="finp" type="number" min="0" value={interviewPmFee} onChange={e => setInterviewPmFee(e.target.value)} placeholder="e.g. 1200" style={{ fontSize: 16 }} />
-              <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>{f$(Number(interviewPmFee) || 0)} — confirm or change.</div>
+              {!configMissing && (
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>{f$(Number(interviewPmFee) || 0)} — confirm or change.</div>
+              )}
             </div>
           </div>
           {/* ────────────────────────────────────────────────────────────────────── */}
