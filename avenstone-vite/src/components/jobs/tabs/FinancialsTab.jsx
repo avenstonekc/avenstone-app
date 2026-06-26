@@ -35,6 +35,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   const model = job.financial_model || (job.cost_plus ? 'cost_plus' : 'fixed_bid');
   const isDrawMode = model === 'cost_plus' || model === 'flip';
   // Draw modes (cost_plus + flip): Draws tab. Fixed-price: Invoices / Payment Schedule.
+  // Flip also gets a Margin tab for ARV vs cost basis tracking.
   const SUB_TABS = [
     { id: 'ledger',      lb: 'Ledger' },
     { id: 'budget',      lb: 'Budget' },
@@ -42,6 +43,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     ...(isDrawMode
       ? [{ id: 'draws',   lb: 'Draws' }]
       : [{ id: 'billing', lb: 'Invoices / Payment Schedule' }]),
+    ...(model === 'flip' ? [{ id: 'margin', lb: 'Margin' }] : []),
     { id: 'sub_invoices', lb: 'Sub Invoices' },
     { id: 'materials',   lb: 'Materials' },
   ];
@@ -70,6 +72,14 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   const [openSubInvoiceOnMount, setOpenSubInvoiceOnMount] = useState(false);
   const [dismissedDrawNudge, setDismissedDrawNudge] = useState(false);
   const drawPokedRef = useRef(false); // fire agent poke once per mount
+  // Flip Margin tab state
+  const [arvInput, setArvInput] = useState('');
+  const [arvEditing, setArvEditing] = useState(false);
+  const [arvSaving, setArvSaving] = useState(false);
+  const [arvError, setArvError] = useState(null);
+  const [salePriceInput, setSalePriceInput] = useState('');
+  const [soldDateInput, setSoldDateInput] = useState('');
+  const [saleDetailsSaving, setSaleDetailsSaving] = useState(false);
 
   useEffect(() => {
     if (!pendingAction) return;
@@ -182,6 +192,24 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     if (qbMarkSynced) loadLedger();
   };
 
+  const saveArv = async () => {
+    const n = Number(String(arvInput).replace(/[$,]/g, ''));
+    if (!n || n <= 0) { setArvError('Enter a valid dollar amount'); return; }
+    setArvSaving(true); setArvError(null);
+    upd(job.id, { arv: n });
+    await loadLedger();
+    setArvInput(''); setArvEditing(false); setArvSaving(false);
+  };
+
+  const saveSaleDetails = async () => {
+    const price = Number(String(salePriceInput).replace(/[$,]/g, ''));
+    if (!price || price <= 0) return;
+    setSaleDetailsSaving(true);
+    upd(job.id, { sale_price: price, ...(soldDateInput ? { sold_date: soldDateInput } : {}) });
+    await loadLedger();
+    setSalePriceInput(''); setSoldDateInput(''); setSaleDetailsSaving(false);
+  };
+
   const handleMarkPaid = async () => {
     const ids = Array.from(selectedIds);
     const total = txs.filter(r => selectedIds.has(r.id)).reduce((sum, r) => sum + Number(r.amount || 0), 0);
@@ -227,6 +255,134 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
       {sub === 'co' && <COTab job={job} upd={upd} profile={profile} />}
 
       {sub === 'draws' && isDrawMode && <InvoicesSubTab job={job} profile={profile} />}
+
+      {sub === 'margin' && model === 'flip' && (
+        <div style={{ maxWidth: 640 }}>
+
+          {/* ── ARV ─────────────────────────────────────────────── */}
+          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '16px 20px', marginBottom: 14 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>After-Repair Value (ARV)</div>
+            {job.arv != null && !arvEditing ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, color: 'var(--navy-900)' }}>{f$(job.arv)}</div>
+                <button onClick={() => { setArvInput(String(job.arv)); setArvEditing(true); }} style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>Edit</button>
+              </div>
+            ) : (
+              <div>
+                {job.arv == null && <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginBottom: 10 }}>Set the projected sale price to calculate your margin.</div>}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>$</span>
+                    <input className="finp" type="number" min="0" step="1000" placeholder="e.g. 280000" value={arvInput} onChange={e => { setArvInput(e.target.value); setArvError(null); }} style={{ width: 160, fontSize: 14 }} autoFocus={arvEditing} />
+                  </div>
+                  <button className="btn btn-navy" onClick={saveArv} disabled={arvSaving || !arvInput.trim()} style={{ fontSize: 12, padding: '6px 16px' }}>{arvSaving ? 'Saving…' : job.arv != null ? 'Update ARV' : 'Set ARV'}</button>
+                  {arvEditing && <button onClick={() => { setArvEditing(false); setArvInput(''); setArvError(null); }} style={{ fontSize: 12, padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>Cancel</button>}
+                </div>
+                {arvError && <div style={{ fontSize: 12, color: 'var(--red-text)', marginTop: 6 }}>{arvError}</div>}
+              </div>
+            )}
+          </div>
+
+          {/* ── KPI Cards ───────────────────────────────────────── */}
+          {summary && (
+            <div style={{ display: 'grid', gridTemplateColumns: mob ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
+              {[
+                { lb: 'Cost Basis',        v: f$(summary.cost_basis ?? 0),   c: (summary.cost_basis ?? 0) > 0 ? 'var(--red-text)' : 'var(--text-subtle)',                                                                                                          note: 'total invested' },
+                { lb: 'ARV',               v: job.arv != null ? f$(job.arv) : 'Not set',                                c: job.arv != null ? 'var(--navy-900)' : 'var(--text-subtle)',                                                                              note: job.arv != null ? 'target sale price' : 'set above' },
+                { lb: 'Projected Profit',  v: summary.projected_flip_profit != null ? f$(summary.projected_flip_profit) : '—', c: summary.projected_flip_profit != null ? (summary.projected_flip_profit >= 0 ? 'var(--green-dot)' : 'var(--red-text)') : 'var(--text-subtle)', note: summary.projected_flip_profit == null ? 'set ARV' : undefined },
+                { lb: 'Margin',            v: summary.margin_on_arv_pct != null ? `${summary.margin_on_arv_pct}%` : '—',    c: summary.margin_on_arv_pct != null ? 'var(--navy-900)' : 'var(--text-subtle)',                                                         note: summary.margin_on_arv_pct != null ? 'of ARV' : undefined },
+              ].map(({ lb, v, c, note }) => (
+                <div key={lb} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{lb}</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: mob ? 18 : 22, color: c }}>{v}</div>
+                  {note && <div style={{ fontSize: 10, color: 'var(--text-subtle)', marginTop: 4 }}>{note}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Visual bar: cost vs ARV ──────────────────────────── */}
+          {summary && job.arv != null && (summary.cost_basis ?? 0) >= 0 && (() => {
+            const arv = Number(job.arv);
+            const basis = summary.cost_basis ?? 0;
+            const pct = arv > 0 ? Math.min(100, Math.round((basis / arv) * 100)) : 0;
+            const over = pct >= 100;
+            return (
+              <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 18px', marginBottom: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                  <span>Cost basis</span>
+                  <span>ARV {f$(arv)}</span>
+                </div>
+                <div style={{ height: 10, background: '#E5E7EB', borderRadius: 5, overflow: 'hidden' }}>
+                  <div style={{ width: `${pct}%`, height: '100%', background: over ? 'var(--red-text)' : 'var(--navy-900)', borderRadius: 5, transition: 'width 0.4s ease' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 6 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>{f$(basis)} ({pct}%)</span>
+                  <span style={{ color: over ? 'var(--red-text)' : 'var(--green-dot)', fontWeight: 600 }}>
+                    {over ? `Over ARV by ${f$(basis - arv)}` : `${f$(arv - basis)} margin`}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Actual Realization (once sold) ──────────────────── */}
+          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '16px 20px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Actual Realization</div>
+            {job.sale_price != null ? (
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: mob ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 8, marginBottom: 8 }}>
+                  {(() => {
+                    const sp = Number(job.sale_price);
+                    const basis = summary?.cost_basis ?? 0;
+                    const actualProfit = sp - basis;
+                    const actualMargin = sp > 0 ? Math.round((actualProfit / sp) * 1000) / 10 : 0;
+                    const vsProjected = summary?.projected_flip_profit != null ? actualProfit - summary.projected_flip_profit : null;
+                    return [
+                      { lb: 'Sale Price',     v: f$(sp),          c: 'var(--green-dot)' },
+                      { lb: 'Actual Profit',  v: f$(actualProfit), c: actualProfit >= 0 ? 'var(--green-dot)' : 'var(--red-text)' },
+                      { lb: 'Actual Margin',  v: `${actualMargin}%`, c: 'var(--navy-900)' },
+                    ].map(({ lb, v, c }) => (
+                      <div key={lb} style={{ background: 'var(--green-bg-soft)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
+                        <div style={{ fontSize: 9, color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{lb}</div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: mob ? 16 : 20, color: c }}>{v}</div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+                {job.sold_date && <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>Closed {job.sold_date}</div>}
+                {summary?.projected_flip_profit != null && (() => {
+                  const sp = Number(job.sale_price); const basis = summary.cost_basis ?? 0;
+                  const delta = (sp - basis) - summary.projected_flip_profit;
+                  return (
+                    <div style={{ marginTop: 10, fontSize: 12, color: delta >= 0 ? 'var(--green-dot)' : 'var(--red-text)', fontWeight: 600 }}>
+                      {delta >= 0 ? `+${f$(delta)} vs projected` : `${f$(delta)} vs projected`}
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginBottom: 12 }}>Not yet sold. Record the sale price when the property closes.</div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Sale Price</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>$</span>
+                      <input className="finp" type="number" min="0" step="1000" placeholder="e.g. 295000" value={salePriceInput} onChange={e => setSalePriceInput(e.target.value)} style={{ width: 140, fontSize: 14 }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Closing Date (optional)</div>
+                    <input className="finp" type="date" value={soldDateInput} onChange={e => setSoldDateInput(e.target.value)} style={{ width: 150, fontSize: 14 }} />
+                  </div>
+                  <button className="btn btn-navy" onClick={saveSaleDetails} disabled={saleDetailsSaving || !salePriceInput.trim()} style={{ fontSize: 12, padding: '8px 16px' }}>{saleDetailsSaving ? 'Saving…' : 'Record Sale'}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {sub === 'billing' && model === 'fixed_bid' && (
         <div>
