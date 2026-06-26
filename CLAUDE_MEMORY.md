@@ -2116,3 +2116,16 @@ KEY DECISIONS (locked):
   - fixed_bid: "Fixed-bid model. Markup (X%) and PM fee ($Y) applied by code..." (neutral framing, same math).
 - Frontend: financial_model: job.financial_model || 'fixed_bid' now sent in both ai-estimator fetch calls. B2.1 hint tightened: "Your standard rate — edit if this job differs." (was "Running your standard X% — good or different?" — question-mark framing read as a gate). Hint hidden entirely for flip.
 - Note: This corrected a cost-plus hardcode left over after FLIP_FINANCIAL_MODEL. No new plan item — logged as fast-follow to B2.1. Block 2 layers (B2.2+) now build on a correct model assumption.
+
+[LOG — 2026-06-25] — B2.2 verified already-live, reconciled (e2d4cab + plan update)
+
+- Action: Audit of B2.2 (Batch unknowns) against 5 acceptance criteria. Found GapBatchAsk.jsx + applyGapRates already fully implemented, not noted in the plan. Plan corrected.
+- Criteria results:
+  1. ✓ Batch panel — all regional_avg gaps in one component, single "Use these rates" button.
+  2. ✓ Regional estimate as pre-filled default — gapRates seeded from regional_rate on new draft (EstimateTab line 206); input placeholder shows regional_rate.
+  3. ✓ Deterministic apply, user_entered — applyGapRates() line 278-290, no AI call, source_label='user_entered' for filled gaps.
+  4. ✓ Commit with unset gaps allowed — line 284 leaves blank/zero entries as TBD; footer shows count of unset.
+  5. ✗ NOT numbered — rows had no sequential number or category label. FIXED: e2d4cab adds "1. 2. 3." prefix + "(labor)/(materials)" inline label in both mobile and desktop branches.
+- Sequencing decision surfaced: plan said "before draft generation" but current implementation is after-draft. After-draft is the right call — rep sees full estimate context + source badges before answering gap questions. No sequencing change made; noted in plan as the design decision, flagged for Kalin if before-draft is wanted later.
+- Plan: B2.2 row marked SHIPPED, ESTIMATOR Phase 6 updated to BUILT, starting position → B2.3.
+- Next: B2.3 (Learn loop — after rep confirms gap rate, offer "Save to Rate Book?" with confirm card).
