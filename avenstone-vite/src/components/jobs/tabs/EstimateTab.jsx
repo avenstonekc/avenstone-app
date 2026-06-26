@@ -18,6 +18,10 @@ const GOLD = 'var(--gold-500)';
 const CREAM = 'var(--bg)';
 const BORDER = 'var(--border)';
 
+// SCOPE_CAPTURE_ENGINE P1B: final nudge that flips the scope-interview into the
+// unchanged pricing path (sent to the API, never shown as a chat bubble).
+const PRICING_TRIGGER = 'All scope questions answered — generate the full priced estimate now.';
+
 const SUB_TABS = [
   { id: 'build',    lb: 'Build' },
   { id: 'scope',    lb: 'Scope' },
@@ -65,6 +69,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // B2.3 learn loop: labor gaps the rep just applied — offered for Rate Book save
   const [learnCandidates, setLearnCandidates] = useState([]);
   const [learnSaveState, setLearnSaveState] = useState(''); // '' | 'saving' | 'saved' | 'error'
+
+  // SCOPE_CAPTURE_ENGINE P1B: scope-interview-before-pricing state.
+  const [scopeProjectType, setScopeProjectType]           = useState(null);  // e.g. 'bathroom', from job_room_scopes
+  const [scopeInterviewActive, setScopeInterviewActive]   = useState(false); // gathering scope (upstream of pricing)
+  const [scopeComplete, setScopeComplete]                 = useState(false); // interview satisfied → run pricing
+  const [forceDraftedIncomplete, setForceDraftedIncomplete] = useState(false); // rep forced a draft past open questions
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -118,6 +128,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       sbLoadJobRoomScopes(job.id),
       sbLoadCategoryConfig(job.tenant_id || AV_TENANT),
     ]).then(([items, scopes, cfg]) => {
+      // SCOPE_CAPTURE_ENGINE P1B: derive project_type from scoped room types.
+      // Prefer 'bathroom' (the seeded/tested type); else first room_type; else null
+      // (null → no interview, existing one-shot flow). ai-estimator returns
+      // scope_complete:true for any project_type with no seeded checklist.
+      const roomTypes = [...new Set((scopes || []).map(s => (s.room_type || '').toLowerCase()).filter(Boolean))];
+      setScopeProjectType(roomTypes.includes('bathroom') ? 'bathroom' : (roomTypes[0] || null));
       if (items?.length) {
         setLineItems(items);
         setLineItemsLoaded(true);
@@ -225,6 +241,15 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     });
   }, [pricedScope]);
 
+  // SCOPE_CAPTURE_ENGINE P1B: when scope completes (or is force-drafted), run the
+  // EXISTING pricing path over the confirmed conversation. Effect → fresh estMessages.
+  useEffect(() => {
+    if (scopeComplete && estStarted && !pricedScope?.length && !estLoading) {
+      runPricing();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeComplete]);
+
   const readFileAsBase64 = file => new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result.split(',')[1]);
@@ -232,7 +257,41 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     r.readAsDataURL(file);
   });
 
-  const sendEstimatorMessage = async (msgOverride, fileOverride) => {
+  // Run the UNCHANGED pricing path with the current conversation + a final user nudge.
+  // Fired by the [scopeComplete] effect once the scope interview is satisfied/forced.
+  // The conversation already carries the confirmed scope answers, so the priced draft
+  // reflects them. The PRICING_TRIGGER is sent to the API but not shown as a bubble.
+  const runPricing = async () => {
+    setEstLoading(true);
+    const apiMessages = [
+      ...estMessages.map(({ role, content }) => ({ role, content })),
+      { role: 'user', content: PRICING_TRIGGER },
+    ];
+    let reply;
+    try {
+      const res = await fetch(AI_ESTIMATOR_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({ messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0, finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0, financial_model: job.financial_model || 'fixed_bid' }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        reply = `Sorry, something went wrong: ${data.error || `HTTP ${res.status}`}`;
+      } else {
+        reply = data.content || 'Sorry, something went wrong. Please try again.';
+        if (data.priced_scope?.length) setPricedScope(data.priced_scope); // 3c
+      }
+    } catch (e) {
+      console.error('ai-estimator pricing error:', e);
+      reply = `Sorry, something went wrong: ${e.message || 'network error'}`;
+    }
+    const finalDisplay = [...estMessages, { role: 'assistant', content: reply }];
+    setEstMessages(finalDisplay);
+    setEstLoading(false);
+    sbSaveEstimate(job.id, finalDisplay, forceDraftedIncomplete ? 'incomplete' : (sessionPrefill ? 'session' : undefined));
+  };
+
+  const sendEstimatorMessage = async (msgOverride, fileOverride, modeOverride) => {
     const text = msgOverride || estInput.trim();
     if ((!text && !fileOverride && !estFile) || estLoading) return;
     let userContent;
@@ -255,18 +314,30 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setEstLoading(true);
     // Strip UI-only metadata fields before sending — _hasFile/_fileName are display state only
     const apiMessages = newMessages.map(({ role, content }) => ({ role, content }));
+    // Route to scope-interview mode while an interview is active and not yet complete.
+    const mode = modeOverride || (scopeInterviewActive && !scopeComplete ? 'scope_interview' : undefined);
     let reply;
+    let completedNow = false;
     try {
       const res = await fetch(AI_ESTIMATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({ messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0, finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0, financial_model: job.financial_model || 'fixed_bid' }),
+        body: JSON.stringify({
+          messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0,
+          finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0,
+          financial_model: job.financial_model || 'fixed_bid',
+          ...(mode === 'scope_interview' ? { mode: 'scope_interview', project_type: scopeProjectType } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
         const detail = data.error || `HTTP ${res.status}`;
         console.error('ai-estimator error:', detail, data);
         reply = `Sorry, something went wrong: ${detail}`;
+      } else if (mode === 'scope_interview') {
+        // Upstream of pricing: render the batched questions; flag completion for the effect.
+        reply = data.content || 'Let me get a few scope details.';
+        if (data.scope_complete) completedNow = true;
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
         if (data.priced_scope?.length) setPricedScope(data.priced_scope); // 3c
@@ -278,16 +349,36 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     const finalDisplay = [...displayMessages, { role: 'assistant', content: reply }];
     setEstMessages(finalDisplay);
     setEstLoading(false);
-    // Pass scope_origin only once (first save of a session-prefilled estimate) —
-    // upsert preserves existing value when scope_origin is omitted on subsequent saves.
-    sbSaveEstimate(job.id, finalDisplay, sessionPrefill ? 'session' : undefined);
+    // scope_origin: 'incomplete' when force-drafted; else 'session' on a prefilled
+    // estimate; else undefined (upsert preserves the existing value).
+    sbSaveEstimate(job.id, finalDisplay, forceDraftedIncomplete ? 'incomplete' : (sessionPrefill ? 'session' : undefined));
+    // Scope just completed → leave interview; the [scopeComplete] effect runs pricing.
+    if (completedNow) { setScopeComplete(true); setScopeInterviewActive(false); }
   };
 
   const startEstimate = async () => {
     if (!estForm.scope.trim()) return;
     setEstStarted(true);
     const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${interviewSf ? `Square Footage: ${interviewSf} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
-    await sendEstimatorMessage(prompt, estFile || null);
+    if (scopeProjectType) {
+      // SCOPE_CAPTURE_ENGINE P1B: gather scope (checklist + trigger modules) BEFORE pricing.
+      setScopeInterviewActive(true);
+      setScopeComplete(false);
+      setForceDraftedIncomplete(false);
+      await sendEstimatorMessage(prompt, estFile || null, 'scope_interview');
+    } else {
+      await sendEstimatorMessage(prompt, estFile || null);
+    }
+  };
+
+  // Soft gate (blueprint Decision C / Kalin fork 3): the rep may force a draft past open
+  // scope questions. The estimate is marked scope_origin='incomplete' so the approval gate
+  // can flag it; the [scopeComplete] effect then runs the unchanged pricing path.
+  const forceDraftAnyway = () => {
+    if (estLoading) return;
+    setForceDraftedIncomplete(true);
+    setScopeInterviewActive(false);
+    setScopeComplete(true);
   };
 
   // Apply entered gap rates to pricedScope in memory. Deterministic — no AI call.
@@ -712,7 +803,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             )}
             {estSaveMsg && <span style={{ fontSize: 11, color: 'var(--green-dot)', fontWeight: 600 }}>{estSaveMsg}</span>}
             {estCommitMsg && <span style={{ fontSize: 11, color: lineItems.length > 0 ? 'var(--green-dot)' : 'var(--red-text)', fontWeight: 600 }}>{estCommitMsg}</span>}
-            {estMessages.some(m => m.role === 'assistant') && (
+            {estMessages.some(m => m.role === 'assistant') && !scopeInterviewActive && (
               <button className="btn btn-navy" style={{ fontSize: 11 }} onClick={commitEstimateFromChat} disabled={estCommitting}>
                 {estCommitting ? 'Committing…' : 'Commit to Line Items'}
               </button>
@@ -720,7 +811,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setSessionPrefill(null); setEstimateScopeOrigin(null); setShowRaw(false); }}>Reset</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setSessionPrefill(null); setEstimateScopeOrigin(null); setShowRaw(false); setScopeInterviewActive(false); setScopeComplete(false); setForceDraftedIncomplete(false); }}>Reset</button>
           </div>
           {pricedScope?.length > 0 && (
             <>
@@ -781,6 +872,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '6px 10px', fontSize: 12, color: NAV, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: GOLD }}>{Ic.folder}</span>{estFileName}
               <button onClick={() => { setEstFile(null); setEstFileName(''); }} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+          )}
+          {scopeInterviewActive && !scopeComplete && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--amber-text-strong)', background: 'var(--amber-bg-soft)', border: '1px solid var(--amber-border-soft)', borderRadius: 6, padding: '8px 12px' }}>
+              <span>📋 Gathering scope — answer the questions above for an accurate estimate.</span>
+              <button className="btn btn-ghost" style={{ fontSize: 11, minHeight: 32, marginLeft: 'auto' }} onClick={forceDraftAnyway} disabled={estLoading}>Draft anyway →</button>
             </div>
           )}
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1033,3 +1130,4 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     </div>
   );
 }
+
