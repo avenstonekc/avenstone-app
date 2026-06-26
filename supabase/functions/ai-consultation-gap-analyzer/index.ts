@@ -24,26 +24,10 @@ Deno.serve(async (req) => {
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    const [sessionRes, measurementsRes, extractionRes, jobRes, knowledgeRes, scanRes] =
-      await Promise.all([
-        sb.from("consultation_sessions").select("*").eq("id", session_id).single(),
-        sb.from("consultation_measurements").select("*").eq("session_id", session_id),
-        sb.from("consultation_extractions").select("*").eq("session_id", session_id).maybeSingle(),
-        sb.from("jobs").select("address, scope, sqft, client_name").eq("id", job_id).single(),
-        sb.from("ai_knowledge").select("category, content").eq("active", true),
-        sb.from("job_lidar_scans")
-          .select("rooms, total_sqft, capture_mode, quality_grade")
-          .eq("job_id", job_id)
-          .order("created_at", { ascending: false })
-          .limit(1),
-      ]);
-
+    // Fetch session first to get tenant_id — needed to scope the ai_knowledge read below.
+    // ai_knowledge is read via SERVICE_ROLE which bypasses RLS; tenant_id must be filtered explicitly.
+    const sessionRes = await sb.from("consultation_sessions").select("*").eq("id", session_id).single();
     const session = sessionRes.data;
-    const measurements = measurementsRes.data || [];
-    const extraction = extractionRes.data;
-    const job = jobRes.data;
-    const knowledge = knowledgeRes.data || [];
-    const latestScan = scanRes.data?.[0] || null;
 
     if (!session) {
       return new Response(JSON.stringify({ error: "Session not found" }), {
@@ -51,6 +35,26 @@ Deno.serve(async (req) => {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
+
+    const [measurementsRes, extractionRes, jobRes, knowledgeRes, scanRes] =
+      await Promise.all([
+        sb.from("consultation_measurements").select("*").eq("session_id", session_id),
+        sb.from("consultation_extractions").select("*").eq("session_id", session_id).maybeSingle(),
+        sb.from("jobs").select("address, scope, sqft, client_name").eq("id", job_id).single(),
+        // tenant-scoped: ai_knowledge is read via SERVICE_ROLE which bypasses RLS — must filter tenant_id explicitly
+        sb.from("ai_knowledge").select("category, content").eq("active", true).eq("tenant_id", session.tenant_id),
+        sb.from("job_lidar_scans")
+          .select("rooms, total_sqft, capture_mode, quality_grade")
+          .eq("job_id", job_id)
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ]);
+
+    const measurements = measurementsRes.data || [];
+    const extraction = extractionRes.data;
+    const job = jobRes.data;
+    const knowledge = knowledgeRes.data || [];
+    const latestScan = scanRes.data?.[0] || null;
 
     const measureSummary = measurements.length
       ? measurements
