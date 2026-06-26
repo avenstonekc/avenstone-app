@@ -244,7 +244,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const res = await fetch(AI_ESTIMATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({ messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0, finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0 }),
+        body: JSON.stringify({ messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0, finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0, financial_model: job.financial_model || 'fixed_bid' }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
@@ -337,7 +337,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const res = await fetch(AI_ESTIMATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({ messages: extractMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0, finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0 }),
+        body: JSON.stringify({ messages: extractMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0, finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0, financial_model: job.financial_model || 'fixed_bid' }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
@@ -630,8 +630,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <div className="fg">
               <label className="flbl">Markup %</label>
               <input className="finp" type="number" min="0" step="0.5" value={interviewMarkup} onChange={e => setInterviewMarkup(e.target.value)} placeholder="e.g. 30" style={{ fontSize: 16 }} />
-              {!configMissing && (
-                <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>Running your standard {interviewMarkup || '?'}% — good or different?</div>
+              {!configMissing && job.financial_model !== 'flip' && (
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>Your standard rate — edit if this job differs.</div>
               )}
             </div>
             <div className="fg">
