@@ -2160,3 +2160,13 @@ KEY DECISIONS (locked):
 - Key decisions: (A) engine home = ai-estimator + new src/lib/scopeEngine.js, one generator not two. (B) storage = 3 new tenant-scoped tables: scope_checklists, scope_modules, scope_conflict_rules (platform-default/tenant-override pattern). (C) scope-interview BEFORE draft (structural — changes WHICH lines), rate-gaps AFTER draft (numeric) — no B2.2 conflict. (D) session→estimate = deterministic prefill of estForm/interviewSf on Build-tab open; retire generate-estimate-from-session. (E) Phase-1 answer records carry source+confidence so Phase-3 vision reconciliation drops in without rework; see-not-measure locked. (F) ~10-13 prompts (revised UP from plan's 6-8). (G) Open Q10 → recommend ABSORB Client INTAKE as the client role instance.
 - Kalin owes before Phase 1: seed content (exact format in §3.1 — checklists per project_type, modules with trigger_phrases+adds_fields+adds_trades, conflict rules) + 3 forks (retire generate-estimate-from-session? / absorb vs feed INTAKE? / soft vs hard scope-complete gate?).
 - NEXT: Kalin reviews blueprint → approves → Phase 1 build dispatch (Sonnet). No plan edit yet (blueprint approval gates plan update per dispatch).
+
+[LOG — 2026-06-25] — B2.3-VERIFY: learn-loop reuse round-trip audit
+
+- VERDICT: MATCH — the round-trip closes cleanly. No fix applied.
+- WRITE: sbInsertRateBookLabor stores verbatim AI output strings for trade/line_item/unit (no casing or trimming applied). active=true. vetted NOT set (defaults false). tenant_id=AV_TENANT.
+- READ: loadRateBook loads all active=true rows for tenant — NO vetted filter. matchLaborRow normalizes (toLowerCase+trim) both stored values and input values before comparing — case-insensitive, bridges any casing divergence.
+- ROUND-TRIP TRACE (trade='TILE', line_item='wall tile labor', unit='SF'): (1) gap detected → stored verbatim; (2) next loadRateBook includes new row; (3) buildVocabSection lists it as 'TILE: wall tile labor·SF'; (4) AI instructed to use EXACT vocab strings; (5) matchLaborRow: norm('TILE')=norm('TILE') ✓, norm('wall tile labor')=norm('wall tile labor') ✓, norm('SF')=norm('SF') ✓ → MATCH → rate priced from Rate Book at "○ Rate Book*" badge.
+- VETTED FILTER: None on read. Rep-saved unvetted rows (vetted=false) ARE reused immediately on next estimate — AUTO-REUSE behavior (no owner promotion required to close the gap). Owner promotion upgrades badge from "○ Rate Book*" to "✓ Rate Book" but does not gate reuse. This appears intentional by design.
+- TENANT MATCH: Write stores AV_TENANT; EstimateTab passes tenant_id: AV_TENANT in every AI estimator fetch body; loadRateBook filters eq('tenant_id', tenantId) — exact match on both sides.
+- No code changed. Audit-only.
