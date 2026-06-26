@@ -2071,3 +2071,12 @@ KEY DECISIONS (locked):
 - B5.0 status: SHIPPED. This was the gating item for all of Block 5 — now unblocked.
 - Flagged for follow-up (NOT fixed, scope guard): `jobs` and `job_lidar_scans` in the same function also use SERVICE_ROLE filtered only by caller-provided `job_id` with no tenant_id filter. Lower risk (attacker needs a valid UUID from another tenant; no mass-data exposure), but should receive `.eq("tenant_id", session.tenant_id)` scoping in a follow-up pass.
 - Next item: B5.1 (structured intake schema).
+
+[LOG — 2026-06-25] — B5.0-followup: IDOR guard on jobs + job_lidar_scans in gap-analyzer (3ce335f)
+
+- Action: Closed the two IDOR reads flagged in B5.0 audit (2e98e32) — `jobs` and `job_lidar_scans` were read via SERVICE_ROLE scoped only by caller-provided `job_id` with no tenant filter.
+- Both tenant_id columns confirmed live (uuid, NOT NULL) on both tables.
+- Fix: added `.eq("tenant_id", session.tenant_id)` alongside existing `job_id` filter on both reads. session.tenant_id was already resolved at line 30 (B5.0 fix) — no restructuring needed.
+- .single() fail-loud noted: adding tenant scope means a foreign job_id yields zero rows → .single() throws → caught by outer try/catch → 500 error. This is correct behavior; foreign access should error. No silent fallback added.
+- All 7 sb.from() reads in the file now have appropriate scoping. No remaining unscoped SERVICE_ROLE reads on tenant-owned tables. (consultation_sessions scoped by session_id — acceptable session-gating read.)
+- B5.0 flags from 2e98e32 resolved. No plan inventory change needed (B5.0 already SHIPPED).
