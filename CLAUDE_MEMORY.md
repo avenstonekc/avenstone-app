@@ -2105,3 +2105,14 @@ KEY DECISIONS (locked):
 - Override channel: frontend sends config values explicitly (markup_pct: Number(interviewMarkup)) on every call. No behavior change when values are untouched — backend override condition (>= 0) and config fallback both yield the same result.
 - ESTIMATOR Phase 4 (guided interview pre-fill): now live. 4 of 7 ESTIMATOR phases built.
 - Next: B2.2 (Batch unknowns — collect all missing-rate lines before draft, surface as numbered batch-ask).
+
+[LOG — 2026-06-25] — ESTIMATOR_MODEL_AWARENESS: estimator now model-aware for flip/cost_plus/fixed_bid (1a8137c + e386f7b + e85e75f)
+
+- Action: Fast-follow after FLIP_FINANCIAL_MODEL shipped. The ai-estimator was model-blind — hardcoded "Cost-plus model" for all job types, announced markup/PM fee even on flip jobs where no markup applies.
+- Flip markup reality (audit finding): bid_model_config 'default' row holds 30% markup. For flip jobs, interviewMarkup was seeded to 30 from config — the estimator would have estimated with 30% markup incorrectly. Fix: backend forces markupPct=0 and pmFeeVal=0 when financial_model='flip', regardless of what the frontend sends. Markup math unchanged (0 * subtotal = 0); the change is suppressing the announcement and the wrong config value.
+- Three model branches now:
+  - flip: "Flip renovation. Profit is ARV−cost_basis spread. NO markup, NO PM fee." Preamble: "_Flip renovation — estimating cost basis only._". Footer: "TOTAL COST BASIS: $X" (no markup/PM-fee lines).
+  - cost_plus: "Cost-plus model. Owner has configured X% markup and $Y PM fee..." (existing behavior preserved).
+  - fixed_bid: "Fixed-bid model. Markup (X%) and PM fee ($Y) applied by code..." (neutral framing, same math).
+- Frontend: financial_model: job.financial_model || 'fixed_bid' now sent in both ai-estimator fetch calls. B2.1 hint tightened: "Your standard rate — edit if this job differs." (was "Running your standard X% — good or different?" — question-mark framing read as a gate). Hint hidden entirely for flip.
+- Note: This corrected a cost-plus hardcode left over after FLIP_FINANCIAL_MODEL. No new plan item — logged as fast-follow to B2.1. Block 2 layers (B2.2+) now build on a correct model assumption.

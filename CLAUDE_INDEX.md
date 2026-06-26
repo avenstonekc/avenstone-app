@@ -28,6 +28,7 @@ Failure-Pattern entries are supplemental (slug also appears in Function + Date).
 - 2026-04-29 · takeoff-wizard-build
 - 2026-04-30 · audit-estimate-procurement-2026-04-30
 - 2026-06-25 · b2-1-guided-interview-2026-06-25
+- 2026-06-25 · estimator-model-awareness-2026-06-25
 
 ### Field Ops
 - 2026-04-25 · consultation-bugs
@@ -176,6 +177,7 @@ Failure-Pattern entries are supplemental (slug also appears in Function + Date).
 - 2026-06-16 · model-b-audit-2026-06-16
 - 2026-06-25 · sub-name-resolver-2026-06-25
 - 2026-06-25 · b2-1-guided-interview-2026-06-25
+- 2026-06-25 · estimator-model-awareness-2026-06-25
 
 ---
 
