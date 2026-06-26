@@ -75,6 +75,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [scopeInterviewActive, setScopeInterviewActive]   = useState(false); // gathering scope (upstream of pricing)
   const [scopeComplete, setScopeComplete]                 = useState(false); // interview satisfied → run pricing
   const [forceDraftedIncomplete, setForceDraftedIncomplete] = useState(false); // rep forced a draft past open questions
+  const [knownProjectTypes, setKnownProjectTypes]         = useState([]); // distinct project_types seeded in scope_checklists
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -250,6 +251,20 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeComplete]);
 
+  // SCOPE_CAPTURE_ENGINE P1B-fallback: load the seeded project_types so the typed
+  // Rooms/Areas field can be matched against what actually exists (no hardcoded list
+  // that drifts). Platform defaults (tenant_id NULL) + this tenant's overrides.
+  useEffect(() => {
+    const tid = job.tenant_id || AV_TENANT;
+    sb.from('scope_checklists').select('project_type').eq('active', true)
+      .or(`tenant_id.is.null,tenant_id.eq.${tid}`)
+      .then(({ data }) => {
+        const types = [...new Set((data || []).map(r => (r.project_type || '').toLowerCase()).filter(Boolean))];
+        setKnownProjectTypes(types);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+
   const readFileAsBase64 = file => new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result.split(',')[1]);
@@ -326,7 +341,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0,
           finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0,
           financial_model: job.financial_model || 'fixed_bid',
-          ...(mode === 'scope_interview' ? { mode: 'scope_interview', project_type: scopeProjectType } : {}),
+          ...(mode === 'scope_interview' ? { mode: 'scope_interview', project_type: resolveProjectType() } : {}),
         }),
       });
       const data = await res.json();
@@ -356,11 +371,21 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     if (completedNow) { setScopeComplete(true); setScopeInterviewActive(false); }
   };
 
+  // Resolve project_type for the scope interview. Order (blueprint / dispatch):
+  // explicit typed Rooms/Areas field → job_room_scopes derivation → none (one-shot).
+  // The typed field is matched against the live seeded project_types, never a hardcoded
+  // list. This is what makes the interview fire on a typed-from-scratch bathroom job.
+  const resolveProjectType = () => {
+    const rooms = (estForm.rooms || '').toLowerCase();
+    const typed = rooms.trim() ? (knownProjectTypes.find(pt => pt && rooms.includes(pt)) || null) : null;
+    return typed || scopeProjectType || null;
+  };
+
   const startEstimate = async () => {
     if (!estForm.scope.trim()) return;
     setEstStarted(true);
     const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${interviewSf ? `Square Footage: ${interviewSf} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
-    if (scopeProjectType) {
+    if (resolveProjectType()) {
       // SCOPE_CAPTURE_ENGINE P1B: gather scope (checklist + trigger modules) BEFORE pricing.
       setScopeInterviewActive(true);
       setScopeComplete(false);
@@ -695,7 +720,13 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             </div>
           )}
           <div className="fg"><label className="flbl"><span className="freq">*</span>Scope of Work</label><textarea className="finp fta" rows={3} value={estForm.scope} onChange={e => setEstForm(p => ({ ...p, scope: e.target.value }))} placeholder="e.g. Full kitchen remodel — demo existing, new cabinets, countertops, flooring, electrical updates, plumbing relocation" /></div>
-          <div className="fg"><label className="flbl">Rooms / Areas</label><input className="finp" value={estForm.rooms} onChange={e => setEstForm(p => ({ ...p, rooms: e.target.value }))} placeholder="e.g. Kitchen, Master Bath, Living Room" /></div>
+          <div className="fg"><label className="flbl">Rooms / Areas</label><input className="finp" value={estForm.rooms} onChange={e => setEstForm(p => ({ ...p, rooms: e.target.value }))} placeholder="e.g. Kitchen, Master Bath, Living Room" />
+            {resolveProjectType() && (
+              <div style={{ fontSize: 11, color: 'var(--green-text)', marginTop: 4 }}>
+                ✓ {resolveProjectType()} — scope interview on (I'll confirm the scope before pricing)
+              </div>
+            )}
+          </div>
 
           {/* ── Pricing interview ─────────────────────────────────────────────── */}
           <div className="fg">
