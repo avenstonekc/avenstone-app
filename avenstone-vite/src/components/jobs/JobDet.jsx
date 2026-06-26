@@ -66,9 +66,10 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
   }, [tab]);
 
   useEffect(() => {
-    if (!job.cost_plus) return;
+    const jobModel = job.financial_model || (job.cost_plus ? 'cost_plus' : 'fixed_bid');
+    if (jobModel === 'fixed_bid') return;
     sbLoadCostPlusActivityPulse(job.id).then(setCpPulse).catch(() => {});
-  }, [job.id, job.cost_plus]);
+  }, [job.id, job.financial_model, job.cost_plus]);
 
   const reviewLink = `${window.location.origin}?review=${job.id}&rt=${AV_TENANT}`;
   const completionLink = `${window.location.origin}?completion=${job.id}`;

@@ -72,6 +72,9 @@ export const sbSave = async j => {
       referring_realtor_name: j.referring_realtor_name || '',
       referring_realtor_phone: j.referring_realtor_phone || '',
       referring_realtor_email: j.referring_realtor_email || '',
+      financial_model: j.financial_model || 'fixed_bid',
+      cost_plus: j.financial_model === 'cost_plus',
+      arv: (j.financial_model === 'flip' && j.arv != null && j.arv !== '') ? Number(j.arv) : null,
     });
     if (error) return { ok: false, error: error.message };
     sbSeedJobPhases(j.id, AV_TENANT).catch(() => {});
@@ -6527,6 +6530,10 @@ export async function sbLoadProjectDetail(jobId, assignedPmId) {
     const paid_to_date = (txnsRes.data || [])
       .filter(t => t.direction === 'in' && t.status === 'paid')
       .reduce((s, t) => s + Number(t.amount || 0), 0);
+    // cost_basis: flip-native — total expenses paid out. Same txn query, no extra round-trip.
+    const cost_basis = (txnsRes.data || [])
+      .filter(t => t.direction === 'out' && t.status === 'paid')
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
 
     // Next milestone: first non-complete inspection or milestone item, prefer future dates
     const milestones = (schedRes.data || []).filter(s =>
@@ -6539,6 +6546,7 @@ export async function sbLoadProjectDetail(jobId, assignedPmId) {
       data: {
         phases: phasesRes.data || [],
         paid_to_date,
+        cost_basis,
         next_milestone: nextMilestone,
         thumbnail_url: photoRes.data?.[0]?.url || null,
         pm_profile: pmRes.data || null,

@@ -74,23 +74,39 @@ export default function ProjectDetailHeader({ job }) {
     });
   }, [job?.id, job?.assigned_pm]);
 
-  const cv       = Number(job?.contract_value || 0) + Number(job?.co_total || 0);
-  const paid     = detail?.paid_to_date || 0;
-  const remaining = Math.max(0, cv - paid);
-  const paidPct  = cv > 0 ? Math.round((paid / cv) * 100) : 0;
-  const pct      = Number(job?.phase_pct_complete || 0);
+  const model = job?.financial_model || (job?.cost_plus ? 'cost_plus' : 'fixed_bid');
+  const pct   = Number(job?.phase_pct_complete || 0);
 
   const nextMil = detail?.next_milestone;
   const nextMilLabel = nextMil?.title
     ? (nextMil.title.length > 18 ? nextMil.title.substring(0, 16) + '…' : nextMil.title)
     : '—';
 
-  const kpis = [
-    { label: 'CONTRACT VALUE',  value: f$(cv),        sub: null },
-    { label: 'PAID TO DATE',    value: f$(paid),      sub: cv > 0 ? `${paidPct}% collected` : null },
-    { label: 'REMAINING',       value: f$(remaining), sub: null },
-    { label: 'NEXT MILESTONE',  value: nextMilLabel,  sub: nextMil?.scheduled_date ? fDateShort(nextMil.scheduled_date) : null },
-  ];
+  let kpis;
+  if (model === 'flip') {
+    const arv       = job?.arv != null ? Number(job.arv) : null;
+    const costBasis = detail?.cost_basis || 0;
+    const profit    = arv !== null ? arv - costBasis : null;
+    const marginPct = arv !== null && arv > 0 ? Math.round((profit / arv) * 100) : null;
+    const reimbursed = detail?.paid_to_date || 0;
+    kpis = [
+      { label: 'ARV',               value: arv !== null ? fShort(arv) : 'Set ARV',  sub: arv !== null ? 'after-repair value' : 'enter in Info tab' },
+      { label: 'COST BASIS',        value: fShort(costBasis),                        sub: 'expenses paid' },
+      { label: 'PROJECTED PROFIT',  value: profit !== null ? fShort(profit) : '—',   sub: marginPct !== null ? `${marginPct}% of ARV` : 'set ARV to calculate' },
+      { label: 'REIMBURSED',        value: fShort(reimbursed),                       sub: 'draws paid back' },
+    ];
+  } else {
+    const cv        = Number(job?.contract_value || 0) + Number(job?.co_total || 0);
+    const paid      = detail?.paid_to_date || 0;
+    const remaining = Math.max(0, cv - paid);
+    const paidPct   = cv > 0 ? Math.round((paid / cv) * 100) : 0;
+    kpis = [
+      { label: 'CONTRACT VALUE',  value: f$(cv),        sub: null },
+      { label: 'PAID TO DATE',    value: f$(paid),      sub: cv > 0 ? `${paidPct}% collected` : null },
+      { label: 'REMAINING',       value: f$(remaining), sub: null },
+      { label: 'NEXT MILESTONE',  value: nextMilLabel,  sub: nextMil?.scheduled_date ? fDateShort(nextMil.scheduled_date) : null },
+    ];
+  }
 
   const phases   = detail?.phases || [];
   const pmP      = detail?.pm_profile || null;

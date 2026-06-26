@@ -37,6 +37,8 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   const [showNew, setShowNew] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
   const [newA, setNewA] = useState('');
+  const [newModel, setNewModel] = useState('fixed_bid');
+  const [newArv, setNewArv] = useState('');
   const [addrSuggestions, setAddrSuggestions] = useState([]);
   const [addrLoading, setAddrLoading] = useState(false);
   const addrTimer = useRef(null);
@@ -92,7 +94,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
   const upd = (id, ch) => { const u = jobs.map(j => j.id === id ? { ...j, ...ch } : j); setJobs(u); ls('av_j', u); sbUpd(id, ch); };
   const add = async () => {
     if (!newA.trim() || saving) return;
-    const j = { id: crypto.randomUUID(), address: newA.trim(), status: 'lead', created: new Date().toISOString(), scope: '', sqft: '', photos: [], activity: [], change_orders: [], client_name: '', client_phone: '', client_email: '', assigned_rep: '', assigned_subs: '', contract_value: 0, co_total: 0, target_completion: '' };
+    const j = { id: crypto.randomUUID(), address: newA.trim(), status: 'lead', created: new Date().toISOString(), scope: '', sqft: '', photos: [], activity: [], change_orders: [], client_name: '', client_phone: '', client_email: '', assigned_rep: '', assigned_subs: '', contract_value: 0, co_total: 0, target_completion: '', financial_model: newModel, cost_plus: newModel === 'cost_plus', arv: (newModel === 'flip' && newArv.trim()) ? newArv.trim() : null };
     const prev = [...jobs];
     const u = [j, ...jobs]; setJobs(u); ls('av_j', u);
     setSaving(true); setSaveErr(null);
@@ -111,7 +113,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
     if (pendingAction?.todoId) sbCompleteTodo(pendingAction.todoId).catch(() => {});
     // Phase 3a — attach client-visible company files as virtual job_files rows (non-blocking)
     sbCreateJobCompanyFileRefs(j.id, AV_TENANT).catch(() => {});
-    setNewA(''); setShowNew(false); setSel(j.id);
+    setNewA(''); setNewModel('fixed_bid'); setNewArv(''); setShowNew(false); setSel(j.id);
   };
   const del = async id => { if (!window.confirm('Delete this job?')) return; const u = jobs.filter(j => j.id !== id); setJobs(u); ls('av_j', u); setSel(null); const r = await sbDel(id); if (!r.ok) { setJobs(jobs); ls('av_j', jobs); alert('Delete failed: ' + (r.error || 'Unknown error')); } };
 
@@ -202,6 +204,30 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
               </div>}
             </div>
           </div>
+          <div className="fg" style={{ marginTop: 14 }}>
+            <label className="flbl">Billing Model</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+              {[
+                { id: 'fixed_bid', lb: 'Fixed Bid',  desc: 'Client billed on a fixed payment schedule' },
+                { id: 'cost_plus', lb: 'Cost-Plus',  desc: 'Client reimburses costs + markup via draws' },
+                { id: 'flip',      lb: 'Flip',       desc: 'You own it, reimbursed via draws, track margin vs sale price' },
+              ].map(opt => (
+                <label key={opt.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 10px', border: `1px solid ${newModel === opt.id ? 'var(--navy-900)' : 'var(--border)'}`, borderRadius: 6, cursor: 'pointer', background: newModel === opt.id ? 'var(--bg)' : '#fff' }}>
+                  <input type="radio" name="newModel" value={opt.id} checked={newModel === opt.id} onChange={() => setNewModel(opt.id)} style={{ marginTop: 2, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)' }}>{opt.lb}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 1 }}>{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          {newModel === 'flip' && (
+            <div className="fg" style={{ marginTop: 8 }}>
+              <label className="flbl">ARV — After-Repair Value (optional, enter later if unknown)</label>
+              <input className="finp" type="number" min="0" step="1000" value={newArv} onChange={e => setNewArv(e.target.value)} placeholder="e.g. 280000" />
+            </div>
+          )}
           {saveErr && (
             <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 6, padding: '8px 12px', marginTop: 8, fontSize: 12, color: '#991B1B', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>{saveErr}</span>

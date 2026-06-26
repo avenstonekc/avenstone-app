@@ -533,9 +533,11 @@ const TOOLS = [
         contract_value: { type: "number" },
         target_completion: { type: "string", description: "YYYY-MM-DD" },
         assigned_rep: { type: "string", description: "Full name of sales rep" },
-        cost_plus: { type: "boolean", description: "True if this is a cost-plus job (client billed for actual expenses + markup, not a fixed contract). Defaults to false." },
-        labor_markup_pct: { type: "number", description: "Markup percentage applied to labor expenses (sub_payout, labor types). Required when cost_plus=true. e.g. 15 for 15%." },
-        material_markup_pct: { type: "number", description: "Markup percentage applied to material/other expenses (material_purchase, fuel, permits, etc.). Required when cost_plus=true. e.g. 20 for 20%." },
+        financial_model: { type: "string", enum: ["flip", "cost_plus", "fixed_bid"], description: "Billing model. flip = owner-financed, reimbursed via draws, margin tracked vs sale price (ARV). cost_plus = client billed for actual costs + markup via draws. fixed_bid = client billed on a fixed payment schedule. Defaults to fixed_bid." },
+        arv: { type: "number", description: "After-repair value in dollars. Flip jobs only — the projected sale price used to compute margin. Optional at creation; can be set later." },
+        cost_plus: { type: "boolean", description: "Legacy field — prefer financial_model. True only when financial_model=cost_plus. Maintained for backward compat." },
+        labor_markup_pct: { type: "number", description: "Markup % on labor expenses (sub_payout, labor types). Required when financial_model=cost_plus. e.g. 15 for 15%." },
+        material_markup_pct: { type: "number", description: "Markup % on material/other expenses (material_purchase, fuel, permits, etc.). Required when financial_model=cost_plus. e.g. 20 for 20%." },
       },
       required: ["address"],
     },
@@ -1190,10 +1192,12 @@ async function executeTool(
           contract_value: input.contract_value || 0,
           target_completion: input.target_completion || null,
           assigned_rep: input.assigned_rep || null,
-          cost_plus: input.cost_plus === true,
-          labor_markup_pct: input.cost_plus ? Number(input.labor_markup_pct ?? 0) : null,
-          material_markup_pct: input.cost_plus ? Number(input.material_markup_pct ?? 0) : null,
-          default_markup_pct: input.cost_plus ? Number(input.labor_markup_pct ?? input.material_markup_pct ?? 0) : null,
+          financial_model: (input.financial_model as string) || (input.cost_plus ? "cost_plus" : "fixed_bid"),
+          cost_plus: input.financial_model === "cost_plus" || input.cost_plus === true,
+          arv: input.financial_model === "flip" && input.arv != null ? Number(input.arv) : null,
+          labor_markup_pct: (input.financial_model === "cost_plus" || input.cost_plus) ? Number(input.labor_markup_pct ?? 0) : null,
+          material_markup_pct: (input.financial_model === "cost_plus" || input.cost_plus) ? Number(input.material_markup_pct ?? 0) : null,
+          default_markup_pct: (input.financial_model === "cost_plus" || input.cost_plus) ? Number(input.labor_markup_pct ?? input.material_markup_pct ?? 0) : null,
           created_at: new Date().toISOString(),
         }).select().single();
         if (error) return { error: error.message };
@@ -2347,12 +2351,15 @@ function describeConfirmAction(tool: string, input: any): string {
       const lines: string[] = [`Create job: ${input.address || '(no address)'}`];
       if (input.client_name) lines.push(`  Client: ${input.client_name}`);
       if (input.contract_value) lines.push(`  Contract value: $${Number(input.contract_value).toFixed(2)}`);
-      if (input.cost_plus) {
+      const fm = (input.financial_model as string) || (input.cost_plus ? "cost_plus" : "fixed_bid");
+      if (fm === "flip") {
+        lines.push(`  Model: Flip${input.arv ? ` (ARV $${Number(input.arv).toFixed(0)})` : ''}`);
+      } else if (fm === "cost_plus") {
         const lp = Number(input.labor_markup_pct ?? 0);
         const mp = Number(input.material_markup_pct ?? 0);
-        lines.push(`  Cost-plus: yes (labor ${lp}%, material ${mp}%)`);
+        lines.push(`  Model: Cost-Plus (labor ${lp}%, material ${mp}%)`);
       } else {
-        lines.push(`  Cost-plus: no (fixed price)`);
+        lines.push(`  Model: Fixed Bid`);
       }
       if (input.status) lines.push(`  Status: ${input.status}`);
       if (input.scope) lines.push(`  Scope: ${String(input.scope).slice(0, 80)}${String(input.scope).length > 80 ? '...' : ''}`);
@@ -2530,12 +2537,14 @@ record_deposit is for cost-plus jobs only. Use when a client hands over a check,
 
 compose_draw is for cost-plus jobs only. Use when the owner says "compose a draw", "bill the client for expenses", "generate a draw", or similar. The system auto-loads all unreimbursed expenses and the current bucket balance, then surfaces a confirmation card showing expense count, gross total, bucket offset, and draw target. On confirm, the draw draft is created and transactions are flipped to in_draw. Owner/PM only — if a rep asks, explain the role requirement. After the draw is confirmed, tell the owner the draw number so they can proceed to invoice creation in the Financials tab. Do NOT call compose_draw on standard (non-cost-plus) jobs — the system will reject it. If the job is not cost-plus, explain how the Financials tab handles standard invoicing instead.
 
-When creating a cost-plus job via create_job, ALWAYS set:
-  - cost_plus: true
-  - labor_markup_pct (the labor/sub markup rate as a number)
-  - material_markup_pct (the material/other markup rate as a number)
+When creating a job via create_job, set financial_model to the appropriate value:
+  - financial_model: "flip" — for house flips (owner-financed, reimbursed via draws, tracked against ARV). Optionally include arv (numeric, the projected sale price in dollars).
+  - financial_model: "cost_plus" — for client-billed cost-plus jobs. ALWAYS also set labor_markup_pct and material_markup_pct.
+  - financial_model: "fixed_bid" — default; client billed on a fixed payment schedule.
 
-If the user gives a single markup percentage ("set it at 25%"), apply that percentage to BOTH labor and material. If they specify different rates ("15% labor, 20% material"), split accordingly. NEVER create a cost-plus job without both markup rates populated — the cost-plus state machine relies on them.
+If the user gives a single markup percentage ("set it at 25%"), apply that percentage to BOTH labor and material. If they specify different rates ("15% labor, 20% material"), split accordingly. NEVER create a cost_plus job without both markup rates populated — the cost-plus state machine relies on them.
+
+For flips: "create a flip at 123 Main" → financial_model="flip". If they mention a sale price or ARV, set arv to that number.
 
 DIAGNOSTIC REPORTING STYLE
 
