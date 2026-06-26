@@ -337,7 +337,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Parked (post-Block 1, audit-first):** RECEIPT_MODAL_EXTRACTION — wire existing Haiku receipt-vision path onto the manual Add-Receipt modal (FinancialsTab TransactionModal) so an uploaded receipt auto-fills price/description/vendor/date. Add pending/paid toggle (owner-scoped — explicitly NOT baked into client onboarding flow). Size TBD — opens with an audit confirming whether modal extraction already exists or is agent-chat-only. Logged 2026-06-25.
 
-**Flagged (fast-follow candidate, not locked):** SUB_NAME_RESOLVER — sub-name matching has the SAME Bug-C divergence the job resolver just fixed: inline `.ilike` copies in `create_schedule_item`, `log_sub_invoice`, `approve_sub_invoice`, no shared helper. Generalize `resolveJobByName`'s pattern to a `resolveSubByName` helper. Found in FUZZY Phase 1 audit 2026-06-25. Size: ~1 prompt.
+**Locked (fast-follow, SHIPPING this dispatch — 2026-06-25):** SUB_NAME_RESOLVER — sub-name matching has the SAME Bug-C divergence the job resolver fixed at 5e2b865: inline `.ilike` copies in `create_schedule_item`, `log_sub_invoice`, `approve_sub_invoice` (and `log_sub_payment` — 4th site found in audit), no shared helper. Fix: two helpers alongside `resolveJobByName` in ai-master-agent/index.ts — `resolveSubContact` (contacts table, for invoice verbs) and `resolveSubProfile` (profiles table, for schedule_item). Prereq: none. Size: ~1 prompt. [SHIPPED 2026-06-25 — see LOG]
 
 ---
 
