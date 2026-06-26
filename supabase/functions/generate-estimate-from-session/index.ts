@@ -164,74 +164,16 @@ Deno.serve(async (req) => {
         ].filter(Boolean).join("\n")
       : "";
 
-    // Generate estimate
-    const estimatePrompt = `Generate a detailed construction estimate for the following job.
-
-Job: ${job?.address || "Unknown address"}
-Client: ${job?.client_name || "Unknown"}
-${job?.sqft ? `Square footage: ${job.sqft} sqft` : ""}
-${job?.scope ? `Scope: ${job.scope}` : ""}
-
-${ambientContext ? `Consultation context:\n${ambientContext}\n` : ""}
-
-Measurements collected on-site:
-${measureSummary}
-
-Return a JSON object with:
-{
-  "trades": [
-    {
-      "trade": "trade name",
-      "line_items": [
-        { "description": "item", "qty": 1, "unit": "ea", "unit_cost": 0, "total": 0 }
-      ],
-      "subtotal": 0
-    }
-  ],
-  "materials_total": 0,
-  "labor_total": 0,
-  "cost_subtotal": 0,
-  "pm_fee": 0,
-  "margin_pct": 25,
-  "margin_amount": 0,
-  "total": 0,
-  "confidence_scores": { "trade_name": 95 }
-}
-
-Use Avenstone's cost-plus model: show material + labor per trade, then add PM fee ($800-$2000) and 20-35% margin on top.
-IMPORTANT: Use trade names exactly as they appear in "Measurements collected on-site" above — do not rename, abbreviate, or merge trades.
-Return only valid JSON.`;
-
-    const estimateRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8000,
-        messages: [{ role: "user", content: estimatePrompt }],
-      }),
-    });
-
-    const estimateJson = await estimateRes.json();
-    const estimateRaw = estimateJson.content?.[0]?.text || "{}";
-    let estimate: Record<string, unknown>;
-    try {
-      const clean = estimateRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      estimate = JSON.parse(clean);
-    } catch {
-      return new Response(JSON.stringify({ error: "Estimate AI returned invalid JSON", raw: estimateRaw }), { status: 500, headers: { ...CORS, "Content-Type": "application/json" } });
-    }
-
-    // Risk capture + session-complete (the KEEP half — see captureSessionRisks)
+    // P1A: pricing is intentionally NOT done here. Session estimates now route
+    // through ai-estimator (Rate Book + tenant bid_model_config) via the desk
+    // prefill flow. The old invented-price generator — no Rate Book, hardcoded
+    // "PM fee $800-2000, 20-35% margin" (the exact cost-plus hardcode B1.6 removed
+    // from ai-estimator) — is retired. This function is now risk-capture-only.
     const ohShitMoments = await captureSessionRisks(sb, {
       session_id, job_id, job, session, measurements, measureSummary, ambientContext, unresolved_gaps,
     });
 
-    return new Response(JSON.stringify({ ok: true, estimate, oh_shit_moments: ohShitMoments, measurements }), {
+    return new Response(JSON.stringify({ ok: true, oh_shit_moments: ohShitMoments, measurements }), {
       headers: { ...CORS, "Content-Type": "application/json" },
     });
   } catch (e) {
