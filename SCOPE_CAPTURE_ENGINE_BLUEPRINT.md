@@ -114,7 +114,7 @@ Flow in `EstimateTab` via the existing `estMessages` / `sendEstimatorMessage` lo
 | **1** | `scope_checklists` + `scope_modules` + `scope_conflict_rules` tables + seed; scope-interview mode in `ai-estimator` (assemble checklist, batched open questions, trigger-on-every-answer, soft scope-complete gate before pricing); answer records carry source+confidence; deterministic reconciliation of TYPED scope only | 3–4 | Kalin seed content |
 | **2** | `scopeEngine.js` session→estimate pre-fill transform; EstimateTab opens pre-drafted from a completed session; **retire/absorb `generate-estimate-from-session`** | 2–3 | Phase 1 + Kalin fork 1 |
 | **3** | Vision reconciliation: Haiku reads photos/plans → confirmable-assumption pre-answers + fired modules + conflict/omission forced questions (see-not-measure) | 2–3 | Phase 1 answer-source records |
-| **4+** | Role instances: PM execution capture, Sub pre-job brief; **fold Client INTAKE (B5.1–B5.3) as the client role instance** | 3–4 | Phase 1 + Kalin Open Q10 |
+| **4+** | Role instances: **client-faced self-serve** (ask plainly — AVENSTONE_VISION end-state); PM execution capture; Sub pre-job brief; **fold Client INTAKE (B5.1–B5.3) as the client role instance**; consultation mode = auto-pull + upsell surfacing (niche, bench, glass upgrade, heated floor) | 3–4 | Phase 1 + Kalin Open Q10 (RESOLVED: ABSORB) |
 
 **Total: ~10–13 prompts** (revises the plan's ~6–8 UP — the audit found a parallel generator to retire and an answer-source layer to add for Phase 3). Estimate firms after Kalin seed content lands.
 
@@ -122,6 +122,8 @@ Flow in `EstimateTab` via the existing `estMessages` / `sendEstimatorMessage` lo
 **Recommendation: ABSORB.** Client INTAKE becomes the **client role instance** of SCOPE_CAPTURE_ENGINE (Phase 4) — same `scope_checklists`/`scope_modules` tables, a client-scoped field subset, no pricing, output feeds the same pre-fill transform (Decision D).
 **Why:** the entire thesis is "one capture engine rendered per role" (AVENSTONE_VISION spine). Building INTAKE separately = a second checklist/trigger system that drifts from the rep/PM one — the exact two-generator failure we're already fixing in 1.3. One engine, four faces.
 **Kalin decides.**
+
+**Role-instance refinement (Kalin, 2026-06-26 — from live-testing the bathroom scope-interview):** The "desk estimator" is in reality the **client-faced self-serve instance** — the client answers the scope questions themselves, no rep required; this is the AVENSTONE_VISION end-state. CONSULTATION mode is the rep-on-site instance: it AUTO-PULLS answers (mic/photos/scan) instead of asking cold, AND surfaces UPSELLS (shower niche, bench/seat, glass enclosure upgrade, heated floor — the rep's suggestion opportunities). Same engine, same tables, different role jobs: client-faced = ask plainly; consultation = capture + upsell. This refines the Phase 4 role-instance plan. Upcoming engine work: consultation-mode interview + upsell surfacing (Phase 2/4 territory — not yet specced).
 
 ---
 
