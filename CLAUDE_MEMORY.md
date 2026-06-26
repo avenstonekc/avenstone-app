@@ -2139,3 +2139,14 @@ KEY DECISIONS (locked):
 - Save offer: explicit rep confirm (button click), not automatic. Panel shows after GapBatchAsk when learnCandidates.length > 0. Success shows "✓ Saved — owner can vet in Rate Book → Labor Rates". applyGapRates remains a pure in-memory mutation; the save is a separate action.
 - ESTIMATOR Phase 7 (Learn loop): BUILT. 7 of 7 ESTIMATOR phases now live.
 - Next: B2.4 (Scope Risk Phase 1 — tenant_playbook_items is_scope_risk + risk_price_low/high, seed Avenstone library).
+
+[LOG — 2026-06-25] — SCOPE_CAPTURE_ENGINE locked into MASTER_BUILD_PLAN (86640f1)
+
+- Action: Plan-write only. Locked 2026-06-25 (discuss-then-lock Step 2). Blueprint (Opus) required before build phases begin — not yet dispatched.
+- Placement: Block 2, between B2.3 (Learn loop) and B2.4 (Scope Risk Phase 1). B2.4 prereq updated to SCOPE_CAPTURE_ENGINE Phase 1.
+- Definition recorded: one role-agnostic capture+reconciliation engine — base checklists + expansion modules + trigger detection on every answer + multi-source reconciliation (typed/photo/plan) + residual-unknown pass + conversational batched interview. Vision layer = SEE/CATCH/RECONCILE, never MEASURE (LOCKED constraint).
+- Locked integration requirement: Consultation tab → Estimate tab auto-flow. On-site session writes estForm.scope, interviewSf, rooms, special + Scope Risk flags. Rep sits down to estimate and it's already drafted.
+- B5.1-B5.3 absorb-or-feed flagged: Client INTAKE is a role-instance of this engine. Blueprint must decide: absorb (B5.1-B5.3 become Phase 4 of this engine) or feed (two separate builds). Added as Open Question 10 in plan.
+- Seed-content dependency noted: base checklists per project type + expansion modules + trigger map + per-trade conflict/omission rules — Kalin owes this to the blueprint session.
+- Block 2 total: 25 → ~31-33 prompts pending blueprint. Downstream running totals noted as shifting by ~6-8.
+- Starting position: SCOPE_CAPTURE_ENGINE blueprint (Opus) is the next action before B2.4 builds.
