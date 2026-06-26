@@ -40,12 +40,15 @@ Deno.serve(async (req) => {
       await Promise.all([
         sb.from("consultation_measurements").select("*").eq("session_id", session_id),
         sb.from("consultation_extractions").select("*").eq("session_id", session_id).maybeSingle(),
-        sb.from("jobs").select("address, scope, sqft, client_name").eq("id", job_id).single(),
+        // tenant-scoped: SERVICE_ROLE bypasses RLS — IDOR guard, job_id alone is not a tenant boundary
+        sb.from("jobs").select("address, scope, sqft, client_name").eq("id", job_id).eq("tenant_id", session.tenant_id).single(),
         // tenant-scoped: ai_knowledge is read via SERVICE_ROLE which bypasses RLS — must filter tenant_id explicitly
         sb.from("ai_knowledge").select("category, content").eq("active", true).eq("tenant_id", session.tenant_id),
+        // tenant-scoped: SERVICE_ROLE bypasses RLS — IDOR guard, job_id alone is not a tenant boundary
         sb.from("job_lidar_scans")
           .select("rooms, total_sqft, capture_mode, quality_grade")
           .eq("job_id", job_id)
+          .eq("tenant_id", session.tenant_id)
           .order("created_at", { ascending: false })
           .limit(1),
       ]);
