@@ -1691,18 +1691,30 @@ export const sbSaveCategoryConfig = async (tenantId, configMap) => {
 };
 
 /**
- * Converts the current estimate_line_items into a contract value.
+ * Converts the current estimate_line_items into a contract value AND freezes a
+ * priced-scope snapshot — the mutual-commitment moment ("accept estimate").
  * Sums total_cost per line, applies per-category markup via markupRateForCategory,
  * adds pm_fee, then writes the result to:
  *   jobs.contract_value
- *   job_estimates.estimate_data.contract_total  (upserted)
+ *   job_estimates.estimate_data.contract_total     (upserted)
+ *   job_estimates.estimate_data.contract_snapshot  (upserted — transport copy the
+ *     client reads at sign time; Step 1b builds the unified signed PDF from this and
+ *     freezes a second evidence copy onto contract_signatures.scope_snapshot)
+ *
+ * Per-row client_price is recomputed via markupRateForCategory (the same per-category
+ * markup buildProposalPDF uses) — NOT the row's GENERATED estimate_line_items.client_price
+ * column, which uses the row-level markup_pct and would not match the proposal/grand total.
+ * grand_total is authoritative (full-precision sum + pm_fee); per-row prices are cents-rounded
+ * for display, so sum(rows) may differ from grand_total by rounding — 1b shows grand_total.
  *
  * @returns {{ ok: boolean, error: string|null, data: { contract_total: number }|null }}
  */
 export const sbSetContractFromEstimate = async (jobId) => {
   try {
     const [{ data: items }, { data: jobRow }] = await Promise.all([
-      sb.from('estimate_line_items').select('category,total_cost').eq('job_id', jobId).eq('tenant_id', AV_TENANT),
+      sb.from('estimate_line_items')
+        .select('description,trade,category,phase,quantity,unit,total_cost,updated_at')
+        .eq('job_id', jobId).eq('tenant_id', AV_TENANT),
       sb.from('jobs').select('labor_markup_pct,material_markup_pct,pm_fee,tenant_id').eq('id', jobId).single(),
     ]);
     if (!jobRow) return { ok: false, error: 'Job not found', data: null };
@@ -1711,13 +1723,41 @@ export const sbSetContractFromEstimate = async (jobId) => {
     const materialPct = Number(jobRow.material_markup_pct || 0);
     const pmFee       = Number(jobRow.pm_fee              || 0);
     const categoryConfig = await sbLoadCategoryConfig(jobRow.tenant_id);
+    const round2 = n => Math.round(Number(n || 0) * 100) / 100;
 
     const markedUpSum = (items || []).reduce((sum, li) => {
       const cost = Number(li.total_cost ?? 0);
       const rate = markupRateForCategory(li.category, { laborPct, materialPct, categoryConfig });
       return sum + cost * (1 + rate / 100);
     }, 0);
-    const contractTotal = Math.round((markedUpSum + pmFee) * 100) / 100;
+    const contractTotal = round2(markedUpSum + pmFee);
+
+    // Freeze the priced scope the rep accepted — mirrors buildProposalPDF's per-row + totals math.
+    const snapRows = (items || []).map(li => {
+      const cost = Number(li.total_cost ?? 0);
+      const rate = markupRateForCategory(li.category, { laborPct, materialPct, categoryConfig });
+      return {
+        description:  li.description || '',
+        trade:        li.trade || null,
+        category:     li.category || null,
+        phase:        li.phase || null,
+        qty:          li.quantity ?? null,
+        unit:         li.unit || null,
+        client_price: round2(cost * (1 + rate / 100)),
+      };
+    });
+    const hardCost = round2((items || []).reduce((s, li) => s + Number(li.total_cost ?? 0), 0));
+    const sourceUpdatedAt = (items || []).reduce(
+      (mx, li) => (li.updated_at && (!mx || li.updated_at > mx) ? li.updated_at : mx), null);
+    const contractSnapshot = {
+      rows:                       snapRows,
+      hard_cost:                  hardCost,
+      markup:                     round2(markedUpSum - hardCost),
+      pm_fee:                     pmFee,
+      grand_total:                contractTotal,
+      generated_at:               new Date().toISOString(),
+      source_estimate_updated_at: sourceUpdatedAt,
+    };
 
     const [jobUpd, estRow] = await Promise.all([
       sb.from('jobs').update({ contract_value: contractTotal }).eq('id', jobId).eq('tenant_id', AV_TENANT),
@@ -1727,7 +1767,7 @@ export const sbSetContractFromEstimate = async (jobId) => {
 
     const existingData = estRow.data?.estimate_data ?? {};
     const { error: estErr } = await sb.from('job_estimates').upsert(
-      { job_id: jobId, tenant_id: AV_TENANT, estimate_data: { ...existingData, contract_total: contractTotal }, updated_at: new Date().toISOString() },
+      { job_id: jobId, tenant_id: AV_TENANT, estimate_data: { ...existingData, contract_total: contractTotal, contract_snapshot: contractSnapshot }, updated_at: new Date().toISOString() },
       { onConflict: 'job_id' }
     );
     if (estErr) return { ok: false, error: estErr.message, data: null };
