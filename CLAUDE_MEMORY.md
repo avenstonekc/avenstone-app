@@ -2247,3 +2247,11 @@ KEY DECISIONS (locked):
 - BATHROOM GAP LIST (Kalin to confirm which are real for KC bathrooms before seeding — candidates from two live runs, not yet seeded): shower niche, shower bench/seat, glass enclosure (frameless/framed/curtain — big cost fork currently unasked), shower valve/fixtures (standard/rain/body), subfloor/substrate condition (rotted-subfloor surprise), insulation (exterior wall re-insulate while open). Tuning loop: Kalin confirms/cuts/adds → seed edit dispatch.
 - UPSELL IDEA (Kalin, 2026-06-26): consultation mode should surface upsells automatically (niche, bench, glass upgrade, heated floor) — the rep's suggestion opportunities at on-site scope time. Belongs in consultation role-instance, not the bare client-faced ask. Logged, not yet specced.
 - TEXT SIZE: interview chat text is too small / hard to read — quick UI fix deferred ("later").
+
+[LOG — 2026-06-30] — Bathroom checklist gap-fill seeded (SCOPE_CAPTURE_ENGINE seed tuning)
+
+- Kalin confirmed 4 of 6 gap candidates real for KC bathrooms: glass enclosure, shower valve/fixtures, shower niche, shower bench. Dropped subfloor condition (belongs in B2.4 Scope Risk, not checklist) + insulation-while-open (too situational). Purpose is COMPLETENESS not money-ordering — appended ranks 10-13 after existing 9, no re-shuffle.
+- Migration 20260630120000_scope_engine_seed_bathroom_gaps.sql. scope_checklists now 13 bathroom fields. Verified live via PAT: shower_enclosure(10,choice), shower_valve(11,choice), shower_niche(12,number), shower_bench(13,bool).
+- Glass enclosure options mirror live takeoff_unit_costs shower-door catalog (frameless/semi_frameless/glass_slider/curtain_rod/none/keep_existing). No separate shower-door trade exists — priced as material under 'Tile - Wall / shower'; adds_trades set accordingly.
+- Remaining bathroom gap candidates NOT seeded: subfloor/substrate condition (route to B2.4 Scope Risk), exterior-wall insulation-while-open. Other project types (kitchen, basement, etc.) still need checklists per §3.1 of SCOPE_CAPTURE_ENGINE_BLUEPRINT.md.
+- NEXT per master plan: SCOPE_CAPTURE_ENGINE P2 (session pre-fill) or B2.4 (Scope Risk). Kalin's call.
