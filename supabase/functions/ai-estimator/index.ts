@@ -19,6 +19,7 @@ import {
   type ChecklistRow,
   type ModuleRow,
   type ScopeField,
+  type AnswerRecord,
 } from "../_shared/scopeEngine.ts";
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
@@ -157,19 +158,27 @@ async function loadScopeConfig(
 // The AI's bounded job: extract which required fields the conversation already answered,
 // and phrase the still-open ones conversationally. It does NOT decide completion (the
 // edge fn recomputes openQuestions deterministically from the AI's answered set).
-function buildInterviewSystemPrompt(fields: ScopeField[], projectType: string): string {
+function buildInterviewSystemPrompt(fields: ScopeField[], projectType: string, preAnswered: AnswerRecord[]): string {
   const fieldLines = fields.map((f) => {
     const opts = Array.isArray(f.options) ? ` options:[${(f.options as string[]).join(", ")}]` : "";
     const tag = f.origin === "base" ? "" : ` (${f.origin})`;
     return `- ${f.field_key} [${f.field_type}${opts}]${tag} — ${f.question}`;
   }).join("\n");
 
+  // SCOPE_CAPTURE_ENGINE P2: fields the on-site consultation already captured. The
+  // deterministic gate treats these as answered; telling the model keeps it from
+  // re-asking them (it may briefly confirm instead).
+  const preLines = preAnswered.length
+    ? preAnswered.map((a) => `- ${a.field_key} = ${String(a.value)}`).join("\n")
+    : "(none)";
+
   return `You are Aven — Avenstone's AI scope interviewer (KC, MO residential + light commercial). Never mention Claude or Anthropic.
 You are GATHERING SCOPE for a ${projectType} remodel BEFORE any pricing. Do NOT discuss prices, rates, or totals.
 
-You are given the REQUIRED SCOPE FIELDS (priority order, most important first) and the conversation so far. Each turn:
+You are given the REQUIRED SCOPE FIELDS (priority order, most important first), any fields ALREADY CAPTURED on-site, and the conversation so far. Each turn:
 1. Read the whole conversation. Decide which REQUIRED SCOPE FIELDS are already answered by what the rep/homeowner said. Map free text onto a field's options when it is a choice. Only mark a field answered when the conversation actually gives that answer — never guess.
-2. Write ONE short, friendly, conversational message asking ONLY the fields still unanswered, most important first. Group related questions naturally; do not interrogate one-by-one or restate answered fields. If nothing remains, give a one-line confirmation.
+2. Treat every field under ALREADY CAPTURED ON-SITE as known — do NOT ask about it again. You may acknowledge it briefly, but never re-interrogate it.
+3. Write ONE short, friendly, conversational message asking ONLY the fields still unanswered, most important first. Group related questions naturally; do not interrogate one-by-one or restate answered fields. If nothing remains, give a one-line confirmation.
 
 Output ONLY valid JSON — no prose, no markdown fences. Start with { and end with }:
 {
@@ -177,6 +186,9 @@ Output ONLY valid JSON — no prose, no markdown fences. Start with { and end wi
   "questions_message": "<conversational batched ask of the still-open fields, or a brief confirmation if none>",
   "all_answered": true | false
 }
+
+ALREADY CAPTURED ON-SITE (do NOT ask again):
+${preLines}
 
 REQUIRED SCOPE FIELDS (priority order):
 ${fieldLines}`;
@@ -187,6 +199,7 @@ async function handleScopeInterview(
   messages: Array<{ role: string; content: unknown }>,
   tenantId: string,
   rawProjectType: string | undefined,
+  prefilledAnswers?: Record<string, unknown>,
 ): Promise<Response> {
   // The body project_type is the authoritative source. The frontend resolves it
   // (typed Rooms field → job_room_scopes → none) before sending; here we just
@@ -221,8 +234,34 @@ async function handleScopeInterview(
   const fired = detectTriggers(repText, modules);
   const requiredFields = collectRequiredFields(baseFields, fired);
 
+  // SCOPE_CAPTURE_ENGINE P2: fold session pre-answers (from the on-site consultation)
+  // into the answered set BEFORE the AI turn. Only keys matching a real required field
+  // count — free-form measurement keys are ignored. These are 'measured'-sourced and
+  // let the interview skip whatever the site visit already captured.
+  const requiredKeys = new Set(requiredFields.map((f) => f.field_key.toLowerCase()));
+  const sessionAnswers: AnswerRecord[] =
+    prefilledAnswers && typeof prefilledAnswers === "object"
+      ? Object.entries(prefilledAnswers)
+          .filter(([k, v]) => requiredKeys.has(String(k).toLowerCase()) && v != null && String(v).trim() !== "")
+          .map(([k, v]) => makeAnswerRecord(k, v, 0.9, "measured"))
+      : [];
+  const sessionKeys = new Set(sessionAnswers.map((a) => a.field_key));
+
+  // If the session already answered every required field, complete without an AI call
+  // (saves a Sonnet turn) — the rep drafted from a fully-captured site visit.
+  if (sessionKeys.size > 0 && openQuestions(requiredFields, sessionKeys).length === 0) {
+    console.log(`ai-estimator scope-interview [${projectType}]: complete from ${sessionAnswers.length} session pre-answers — no AI call`);
+    return ok({
+      scope_complete: true,
+      content: "Got your scope from the on-site session — putting your estimate together now.",
+      answers: sessionAnswers,
+      open_field_keys: [],
+      fired_modules: fired.map((m) => m.module_key),
+    });
+  }
+
   // AI: extract answered + phrase open (phrasing only — the completion gate is deterministic).
-  const system = buildInterviewSystemPrompt(requiredFields, projectType);
+  const system = buildInterviewSystemPrompt(requiredFields, projectType, sessionAnswers);
   const aiRes = await callAnthropic(system, messages, 1500);
   if (aiRes.error) return fail(aiRes.error);
 
@@ -243,9 +282,15 @@ async function handleScopeInterview(
     return ok({ scope_complete: true, content: "", answers: [], parse_error: true });
   }
 
-  const answers = (parsed.answered ?? [])
+  const aiAnswers = (parsed.answered ?? [])
     .filter((a) => a && typeof a.field_key === "string")
     .map((a) => makeAnswerRecord(a.field_key, a.value, typeof a.confidence === "number" ? a.confidence : 1));
+  // Merge session pre-answers with the AI's conversation extraction; the live
+  // conversation wins on a shared key (the rep may have changed it on the phone).
+  const mergedByKey = new Map<string, AnswerRecord>();
+  for (const a of sessionAnswers) mergedByKey.set(a.field_key.toLowerCase(), a);
+  for (const a of aiAnswers) mergedByKey.set(a.field_key.toLowerCase(), a);
+  const answers = [...mergedByKey.values()];
   const answeredKeys = new Set(answers.map((a) => a.field_key));
 
   // Deterministic completion gate — NOT the AI's claim.
@@ -584,7 +629,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type } = await req.json();
+    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type, prefilled_answers } = await req.json();
     if (!messages?.length) return fail("no messages", 400);
     if (!tenant_id) return fail("tenant_id required", 400);
 
@@ -593,7 +638,7 @@ Deno.serve(async (req) => {
     // path below is untouched: when complete, the frontend re-POSTs without mode and the
     // existing scope->price->priced_scope contract runs over the confirmed conversation.
     if (mode === "scope_interview") {
-      return await handleScopeInterview(messages, tenant_id, project_type);
+      return await handleScopeInterview(messages, tenant_id, project_type, prefilled_answers);
     }
 
     const rateBook = await loadRateBook(tenant_id);

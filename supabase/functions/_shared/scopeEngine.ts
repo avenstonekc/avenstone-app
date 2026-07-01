@@ -145,7 +145,14 @@ export function openQuestions(requiredFields: ScopeField[], answeredKeys: Set<st
     .sort((a, b) => a.money_risk_rank - b.money_risk_rank);
 }
 
-// Phase-1 answer record. source is always 'typed' now; the shape is the Phase-3 hook.
-export function makeAnswerRecord(fieldKey: string, value: unknown, confidence = 1): AnswerRecord {
-  return { field_key: fieldKey, value, source: "typed", confidence };
+// Answer record. source defaults to 'typed' (rep conversation); the Phase-2 session
+// pre-fill passes 'measured' for on-site captured fields, and Phase-3 vision will pass
+// 'photo'/'plan'. Keeping source explicit is the Phase-3 reconciliation hook (Decision E).
+export function makeAnswerRecord(
+  fieldKey: string,
+  value: unknown,
+  confidence = 1,
+  source: AnswerRecord["source"] = "typed",
+): AnswerRecord {
+  return { field_key: fieldKey, value, source, confidence };
 }
