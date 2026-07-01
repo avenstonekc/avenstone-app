@@ -5,19 +5,20 @@
 // prefill FEEDS the desk interview — it never bypasses it. The rep reviews the
 // prefilled scope and runs Generate (Rate Book pricing) over it.
 //
-// SF is intentionally NOT derived here: EstimateTab already derives project SF
-// via deriveProjectSf (scan/job). Free-form measurement→SF mapping is a 1B
-// measurement-field-convention concern, not 1A.
+// Phase 2: also emits a structured `measuredFields` map + a `sf` pre-fill. The edge
+// scope-interview folds any measuredFields key that matches a real checklist field into
+// the answered set (source 'measured'), so the interview skips what the site visit
+// captured. Free-form keys that don't match a field are ignored server-side.
 //
 // Inputs (all tolerant of null/empty):
 //   extraction  — consultation_extractions row { scope_hints[], client_concerns[],
 //                 risk_flags[], budget_signals, timeline }
-//   measurements — consultation_measurements rows [{ trade, scope_notes }]
+//   measurements — consultation_measurements rows [{ trade, scope_notes, fields }]
 //   roomScopes  — job_room_scopes rows [{ room_label, room_type, scope_tag }]
 //   jobScope    — jobs.scope (existing typed scope, if any)
 //   sessionId / sessionDate — provenance for the session-sourced marker
 //
-// Output: { scope, rooms, special, measuredTrades, sessionId, sessionDate, sourced:true }
+// Output: { scope, rooms, special, measuredTrades, measuredFields, sf, sessionId, sessionDate, sourced:true }
 
 export function sessionToEstimatePrefill({
   extraction = null,
@@ -56,11 +57,40 @@ export function sessionToEstimatePrefill({
   if (ext.timeline) specialParts.push(`Timeline: ${ext.timeline}`);
   const special = specialParts.join('\n');
 
+  // ── measured fields (structured pre-answers) ─────────────────────────────────
+  // Flatten every measurement row's `fields` JSONB into one {key: value} map. The
+  // edge interview keeps only keys that match a seeded checklist field_key.
+  const measuredFields = {};
+  for (const m of measurements) {
+    const f = m && m.fields;
+    if (!f || typeof f !== 'object' || Array.isArray(f)) continue;
+    for (const [k, v] of Object.entries(f)) {
+      if (v == null || String(v).trim() === '') continue;
+      measuredFields[k] = v;
+    }
+  }
+
+  // ── measured SF (interviewSf pre-fill) ───────────────────────────────────────
+  // Prefer an explicit total; else the largest single floor area found. Never sums
+  // across rows — several trades measuring the same room would double-count. 0 = no
+  // measured SF, so EstimateTab falls back to its scan-derived SF (deriveProjectSf).
+  const sfCandidates = [];
+  for (const m of measurements) {
+    const f = (m && m.fields) || {};
+    for (const key of ['total_sf', 'floor_sf', 'sqft', 'sf']) {
+      const n = Number(f[key]);
+      if (Number.isFinite(n) && n > 0) sfCandidates.push(n);
+    }
+  }
+  const sf = sfCandidates.length ? Math.max(...sfCandidates) : 0;
+
   return {
     scope,
     rooms,
     special,
     measuredTrades,
+    measuredFields,
+    sf,
     sessionId,
     sessionDate,
     sourced: true,

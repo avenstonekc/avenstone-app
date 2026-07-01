@@ -217,11 +217,16 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
 
-  // Derive project SF from scoped rooms on mount
+  // Derive project SF from scoped rooms on mount. P2: a completed consultation session
+  // may carry an on-site measured SF — that takes precedence over scan derivation. Read
+  // the prefill synchronously here (before the default-tab effect's async .then clears it).
   useEffect(() => {
+    const pf = ll(`av_estimate_prefill_${job.id}`, null);
+    const sessionSf = pf && Number(pf.sf) > 0 ? Number(pf.sf) : 0;
     deriveProjectSf(sb, job.id, job).then(({ sf, source, roomCount }) => {
-      setInterviewSfSource(source);
       setInterviewSfRoomCount(roomCount || 0);
+      if (sessionSf > 0) { setInterviewSf(String(sessionSf)); setInterviewSfSource('session'); return; }
+      setInterviewSfSource(source);
       if (sf > 0) setInterviewSf(String(sf));
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,7 +346,13 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0,
           finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0,
           financial_model: job.financial_model || 'fixed_bid',
-          ...(mode === 'scope_interview' ? { mode: 'scope_interview', project_type: resolveProjectType() } : {}),
+          ...(mode === 'scope_interview' ? {
+            mode: 'scope_interview',
+            project_type: resolveProjectType(),
+            // P2: forward on-site captured fields so the interview skips them.
+            ...(sessionPrefill?.measuredFields && Object.keys(sessionPrefill.measuredFields).length
+              ? { prefilled_answers: sessionPrefill.measuredFields } : {}),
+          } : {}),
         }),
       });
       const data = await res.json();
@@ -731,6 +742,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           {/* ── Pricing interview ─────────────────────────────────────────────── */}
           <div className="fg">
             <label className="flbl">Project Square Footage <span style={{ color: 'var(--red-text)', fontWeight: 400 }}>*</span></label>
+            {interviewSfSource === 'session' && (
+              <div style={{ fontSize: 12, color: 'var(--green-text)', marginBottom: 6 }}>
+                ✓ {interviewSf} SF measured on-site — confirm or override below
+              </div>
+            )}
             {interviewSfSource === 'scope' && (
               <div style={{ fontSize: 12, color: 'var(--green-text)', marginBottom: 6 }}>
                 ✓ Pricing this as a {interviewSf} SF job (summed from {interviewSfRoomCount} scoped room{interviewSfRoomCount !== 1 ? 's' : ''})
