@@ -2263,3 +2263,19 @@ KEY DECISIONS (locked):
 - Commits: (backend) scopeEngine.ts + ai-estimator; (frontend) sessionToEstimatePrefill.js + EstimateTab.jsx. Frontend build clean. Edge fn TS verified manually (deno not installed locally) — deploys via GitHub Actions.
 - KNOWN LIMIT (by design): measuredFields rarely match checklist field_keys TODAY — measurements are quantities (floor_sf/wall_sf), checklist is scope forks (shower_type etc.). Channel is dormant until Phase 3 vision (photos → confirmable checklist answers) or consultation-mode structured capture fills it. This was the explicit tradeoff Kalin accepted.
 - NEXT: SCOPE_CAPTURE_ENGINE P3 (vision reconciliation — fills the channel) OR B2.4 Scope Risk (needs Kalin risk-library seed) OR consultation upsell mode. Not yet chosen.
+
+[LOG — 2026-07-01] — INTAKE + ESTIMATOR input-chain audit (read-only)
+
+- Report: docs/audits/INTAKE_ESTIMATOR_AUDIT_2026-07-01.md (committed, unpushed). Five areas audited vs live code + information_schema.
+- Headlines: (1) AiIntakeWizard = LiDAR-scanner ONLY, zero intake questioning anywhere — no client-intake surface exists. (2) New-client path has NO questionnaire mount point; create-client-login canonical. (3) scope_checklists seeded BATHROOM ONLY (13 fields) — every other project_type returns scope_complete:true immediately (no questions). Answers live only in job_estimates.messages JSONB, no dedicated answer table. (4) Estimator inputs all reach the draft except P2 channel carries near-zero scope-fork answers (expected); session→estimate is a MANUAL button, not auto (contradicts SCE locked auto-flow req). (5) Trigger detection FULLY BUILT/live (detectTriggers on every turn); Phase 3 vision not started; scope_conflict_rules seeded but NO code reads them yet.
+- Key divergences: D10 (only bathroom seeded — blocks client-intake instance until Kalin supplies per-project-type checklist forks per blueprint §3.1); D2 (send-client-link NOT dead — see next LOG, now fixed); D4 (manual not auto session→estimate).
+
+[LOG — 2026-07-02] — send_client_portal: dead magic-link → provision + deliver via recovery link (audit D2 fix)
+
+- D2 was a live client-facing defect: send_client_portal verb fired send-client-link (magic links, retired 2026-06-01, known cross-tenant redirect bug). Owner saying "send client their portal link" could hand out a broken/cross-tenant link.
+- Fix in two dispatches. (1) Re-point verb to create-client-login (508074d + 28c6346) — killed the magic link but provision-only, no delivery + interim flow elicited a password in chat. (2) Option B (Kalin, 2026-07-02): deliver via client-set-own-password recovery link, agent NEVER handles a password.
+- Final shape: create-client-login gained opt-in `send_recovery:true` path — server-generated random 24-char pw (never returned), provisions, generateLink type=recovery, Resend email (portal URL + set-password link). UI PM-set-password path UNCHANGED. Agent verb: password dropped from schema+REQUIRED_FIELDS; passes send_recovery; MOVED auto-execute → CONFIRM_TOOLS (now 14 confirm / 8 auto — client-facing send must be gated); confirm card shows name/email/job address only.
+- Recovery LANDING verified present: SetPasswordScr (src/components/auth/SetPasswordScr.jsx), App.jsx:302 renders on #type=recovery; redirect https://avenstone-app.vercel.app allowlisted.
+- Credential redaction audit: 0 rows in job_ai_companions.conversation_history (interim verb live ~1 day, only test call went direct to create-client-login not chat).
+- Verified tenant 001, TEST email client-verify-test@avenstonekc.com: provisioned profile 9a632ae6-ec97-4182-98f5-eaf757808655 (role client), Resend id 41c10582-c14f-44c8-85ed-2523f6d30513, email_sent:true. Commits 9f3aa61 + 3fda649 pushed.
+- send-client-link edge fn now has ZERO live callers (grep-proven) — DEAD-PATH CANDIDATE for pre-launch integrity audit; NOT deleted. sbSendClientLink/sbGetClientLink + CLIENT_LINK_URL in supabase.js also legacy/unused.
