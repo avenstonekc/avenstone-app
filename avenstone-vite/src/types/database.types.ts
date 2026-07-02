@@ -67,7 +67,7 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           id: string
-          tenant_id: string | null
+          tenant_id: string
         }
         Insert: {
           active?: boolean | null
@@ -76,7 +76,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
-          tenant_id?: string | null
+          tenant_id: string
         }
         Update: {
           active?: boolean | null
@@ -85,7 +85,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
-          tenant_id?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -1002,11 +1002,13 @@ export type Database = {
       }
       contract_signatures: {
         Row: {
+          contract_total: number | null
           created_at: string | null
           document_url: string | null
           id: string
           job_id: string
           reference_id: string | null
+          scope_snapshot: Json | null
           signature_data: string | null
           signed_at: string | null
           signed_by_email: string | null
@@ -1015,11 +1017,13 @@ export type Database = {
           type: string
         }
         Insert: {
+          contract_total?: number | null
           created_at?: string | null
           document_url?: string | null
           id?: string
           job_id: string
           reference_id?: string | null
+          scope_snapshot?: Json | null
           signature_data?: string | null
           signed_at?: string | null
           signed_by_email?: string | null
@@ -1028,11 +1032,13 @@ export type Database = {
           type: string
         }
         Update: {
+          contract_total?: number | null
           created_at?: string | null
           document_url?: string | null
           id?: string
           job_id?: string
           reference_id?: string | null
+          scope_snapshot?: Json | null
           signature_data?: string | null
           signed_at?: string | null
           signed_by_email?: string | null
@@ -2136,6 +2142,7 @@ export type Database = {
           id: string
           job_id: string
           messages: Json | null
+          scope_origin: string
           session_id: string | null
           source: string | null
           tenant_id: string
@@ -2151,6 +2158,7 @@ export type Database = {
           id?: string
           job_id: string
           messages?: Json | null
+          scope_origin?: string
           session_id?: string | null
           source?: string | null
           tenant_id: string
@@ -2166,6 +2174,7 @@ export type Database = {
           id?: string
           job_id?: string
           messages?: Json | null
+          scope_origin?: string
           session_id?: string | null
           source?: string | null
           tenant_id?: string
@@ -3196,7 +3205,7 @@ export type Database = {
       jobs: {
         Row: {
           address: string
-          arv: string | null
+          arv: number | null
           assigned_pm: string | null
           assigned_rep: string | null
           assigned_subs: string | null
@@ -3215,6 +3224,7 @@ export type Database = {
           cost_plus: boolean
           created_at: string | null
           default_markup_pct: number
+          financial_model: string
           id: string
           intake_answers: Json | null
           labor_markup_pct: number | null
@@ -3233,7 +3243,9 @@ export type Database = {
           referring_realtor_name: string
           referring_realtor_phone: string
           retainage_pct: number | null
+          sale_price: number | null
           scope: string | null
+          sold_date: string | null
           spouse_email: string | null
           spouse_name: string | null
           spouse_phone: string | null
@@ -3248,7 +3260,7 @@ export type Database = {
         }
         Insert: {
           address: string
-          arv?: string | null
+          arv?: number | null
           assigned_pm?: string | null
           assigned_rep?: string | null
           assigned_subs?: string | null
@@ -3267,6 +3279,7 @@ export type Database = {
           cost_plus?: boolean
           created_at?: string | null
           default_markup_pct?: number
+          financial_model?: string
           id?: string
           intake_answers?: Json | null
           labor_markup_pct?: number | null
@@ -3285,7 +3298,9 @@ export type Database = {
           referring_realtor_name?: string
           referring_realtor_phone?: string
           retainage_pct?: number | null
+          sale_price?: number | null
           scope?: string | null
+          sold_date?: string | null
           spouse_email?: string | null
           spouse_name?: string | null
           spouse_phone?: string | null
@@ -3300,7 +3315,7 @@ export type Database = {
         }
         Update: {
           address?: string
-          arv?: string | null
+          arv?: number | null
           assigned_pm?: string | null
           assigned_rep?: string | null
           assigned_subs?: string | null
@@ -3319,6 +3334,7 @@ export type Database = {
           cost_plus?: boolean
           created_at?: string | null
           default_markup_pct?: number
+          financial_model?: string
           id?: string
           intake_answers?: Json | null
           labor_markup_pct?: number | null
@@ -3337,7 +3353,9 @@ export type Database = {
           referring_realtor_name?: string
           referring_realtor_phone?: string
           retainage_pct?: number | null
+          sale_price?: number | null
           scope?: string | null
+          sold_date?: string | null
           spouse_email?: string | null
           spouse_name?: string | null
           spouse_phone?: string | null
@@ -4700,6 +4718,81 @@ export type Database = {
           },
         ]
       }
+      scope_checklists: {
+        Row: {
+          active: boolean
+          adds_trades: string[] | null
+          created_at: string
+          field_key: string
+          field_type: string
+          id: string
+          money_risk_rank: number
+          options: Json | null
+          project_type: string
+          question: string
+          tenant_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          adds_trades?: string[] | null
+          created_at?: string
+          field_key: string
+          field_type: string
+          id?: string
+          money_risk_rank?: number
+          options?: Json | null
+          project_type: string
+          question: string
+          tenant_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          adds_trades?: string[] | null
+          created_at?: string
+          field_key?: string
+          field_type?: string
+          id?: string
+          money_risk_rank?: number
+          options?: Json | null
+          project_type?: string
+          question?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
+      scope_conflict_rules: {
+        Row: {
+          active: boolean
+          conflict_condition: string
+          created_at: string
+          id: string
+          question_when_conflict: string
+          rule_key: string
+          sources_compared: string[]
+          tenant_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          conflict_condition: string
+          created_at?: string
+          id?: string
+          question_when_conflict: string
+          rule_key: string
+          sources_compared?: string[]
+          tenant_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          conflict_condition?: string
+          created_at?: string
+          id?: string
+          question_when_conflict?: string
+          rule_key?: string
+          sources_compared?: string[]
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       scope_detail_schemas: {
         Row: {
           active: boolean | null
@@ -4733,6 +4826,42 @@ export type Database = {
           sort_order?: number | null
           tenant_id?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      scope_modules: {
+        Row: {
+          active: boolean
+          adds_fields: Json
+          adds_trades: string[] | null
+          created_at: string
+          id: string
+          label: string
+          module_key: string
+          tenant_id: string | null
+          trigger_phrases: string[]
+        }
+        Insert: {
+          active?: boolean
+          adds_fields?: Json
+          adds_trades?: string[] | null
+          created_at?: string
+          id?: string
+          label: string
+          module_key: string
+          tenant_id?: string | null
+          trigger_phrases?: string[]
+        }
+        Update: {
+          active?: boolean
+          adds_fields?: Json
+          adds_trades?: string[] | null
+          created_at?: string
+          id?: string
+          label?: string
+          module_key?: string
+          tenant_id?: string | null
+          trigger_phrases?: string[]
         }
         Relationships: []
       }
@@ -6269,6 +6398,7 @@ export type Database = {
         }[]
       }
       can_access_job: { Args: { p_job_id: string }; Returns: boolean }
+      cascade_draw_paid_by_draw: { Args: { p_draw_id: string }; Returns: Json }
       cascade_draw_paid_to_transactions: {
         Args: { p_invoice_id: string }
         Returns: number
