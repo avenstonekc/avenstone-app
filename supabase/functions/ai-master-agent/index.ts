@@ -239,6 +239,7 @@ const REQUIRED_FIELDS: Record<string, FieldSpec[]> = {
   send_client_portal: [
     { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
     { field: "email", type: "text", label: "Client email" },
+    { field: "password", type: "text", label: "Portal password (min 6 chars — share this with the client)" },
   ],
   invite_person: [
     { field: "email", type: "text", label: "Email" },
@@ -575,15 +576,16 @@ const TOOLS = [
   },
   {
     name: "send_client_portal",
-    description: "Send a magic link to a client so they can access their job portal.",
+    description: "Provision client portal access for a job. Sets an email+password login so the client can sign in at avenstone-app.vercel.app. Does NOT send an email — give the client their credentials manually. Use when a PM or owner asks to 'set up client access', 'create a client login', or 'give the client portal access'.",
     input_schema: {
       type: "object",
       properties: {
         job_id: { type: "string" },
         email: { type: "string" },
         client_name: { type: "string" },
+        password: { type: "string", description: "Password for the client's portal login (min 6 characters). The PM sets this and shares it with the client directly." },
       },
-      required: ["job_id", "email"],
+      required: ["job_id", "email", "password"],
     },
   },
   {
@@ -1289,20 +1291,38 @@ async function executeTool(
       }
 
       case "send_client_portal": {
-        const { data: job } = await sb.from("jobs").select("address").eq("id", input.job_id).single();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/send-client-link`, {
+        // Re-pointed 2026-07-02: calls create-client-login (canonical password path) instead of
+        // send-client-link (retired magic-link path). BEHAVIOR CHANGE: no email is sent to the
+        // client — the PM must share the credentials (email + password) directly. Mirror of
+        // InfoTab ClientLoginButton / sbCreateClientLogin in avenstone-vite/src/lib/supabase.js.
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/create-client-login`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}` },
           body: JSON.stringify({
             email: input.email,
+            password: input.password,
             client_name: input.client_name || "",
-            job_address: job?.address || "",
             job_id: input.job_id,
             tenant_id: tenantId,
           }),
         });
         const json = await res.json();
-        return res.ok ? { success: true, email_sent_to: input.email } : { error: json.error || "Send failed" };
+        if (!res.ok || !json.ok) return { error: json.error || "create-client-login failed" };
+        // Verify: read back the provisioned profile row to confirm the login was created.
+        const { data: profile } = await sb.from("profiles")
+          .select("id, tenant_id, role, email")
+          .eq("id", json.user_id)
+          .eq("tenant_id", tenantId)
+          .single();
+        if (!profile) return { error: "Login provisioned but profile verification failed" };
+        return {
+          ok: true,
+          user_id: json.user_id,
+          email: json.email,
+          role: (profile as any).role,
+          tenant_id: (profile as any).tenant_id,
+          note: "Login provisioned. No email was sent — share the email and password with the client directly.",
+        };
       }
 
       case "invite_person": {
