@@ -440,6 +440,7 @@ Always filter by `AV_TENANT`. Always handle loading, empty, and error states.
 - `ClientPortal.jsx` job query includes `.eq('tenant_id', AV_TENANT)` — strict tenant isolation. Client sees ONLY jobs in their own tenant.
 - DO NOT use magic links for client portal access — they redirect to wrong project/tenant. Magic link helpers in `supabase.js` (sbSendClientLink/sbGetClientLink) kept for email send flow only.
 - `get_auth_user_id_by_email` RPC is the ONLY reliable way to look up a Supabase auth user by email from within an edge function. GoTrue `?email=` filter and `listUsers()` are unreliable in the edge function context.
+- **Master Agent `send_client_portal` verb re-pointed 2026-07-02:** was calling `send-client-link` (magic-link path, broken redirect). Now calls `create-client-login` (canonical path) — same payload shape as `sbCreateClientLogin`. `password` field added to REQUIRED_FIELDS + tool schema so the agent elicits it. BEHAVIOR CHANGE: no email sent to client — PM must share credentials directly. `send-client-link` is now unreferenced by live code paths (grep-confirmed 2026-07-02); candidate for pre-launch integrity audit removal.
 
 ### Job statuses (in order)
 `lead → proposal → contract → in_progress → final_touches → complete`
