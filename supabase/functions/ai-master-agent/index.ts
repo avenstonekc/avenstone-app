@@ -162,6 +162,7 @@ const CONFIRM_TOOLS = new Set([
   "upload_company_file",
   "record_deposit",
   "compose_draw",
+  "send_client_portal",
 ]);
 
 // ── REQUIRED_FIELDS registry (Phase 4) ───────────────────────────────────────
@@ -239,7 +240,6 @@ const REQUIRED_FIELDS: Record<string, FieldSpec[]> = {
   send_client_portal: [
     { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
     { field: "email", type: "text", label: "Client email" },
-    { field: "password", type: "text", label: "Portal password (min 6 chars — share this with the client)" },
   ],
   invite_person: [
     { field: "email", type: "text", label: "Email" },
@@ -576,16 +576,15 @@ const TOOLS = [
   },
   {
     name: "send_client_portal",
-    description: "Provision client portal access for a job. Sets an email+password login so the client can sign in at avenstone-app.vercel.app. Does NOT send an email — give the client their credentials manually. Use when a PM or owner asks to 'set up client access', 'create a client login', or 'give the client portal access'.",
+    description: "Provision client portal access for a job and email the client a set-password link. The client sets their own password — no password is ever handled by the agent. Use when a PM or owner asks to 'set up client access', 'send the client portal', 'create a client login', or 'give the client portal access'.",
     input_schema: {
       type: "object",
       properties: {
         job_id: { type: "string" },
         email: { type: "string" },
         client_name: { type: "string" },
-        password: { type: "string", description: "Password for the client's portal login (min 6 characters). The PM sets this and shares it with the client directly." },
       },
-      required: ["job_id", "email", "password"],
+      required: ["job_id", "email"],
     },
   },
   {
@@ -1291,19 +1290,18 @@ async function executeTool(
       }
 
       case "send_client_portal": {
-        // Re-pointed 2026-07-02: calls create-client-login (canonical password path) instead of
-        // send-client-link (retired magic-link path). BEHAVIOR CHANGE: no email is sent to the
-        // client — the PM must share the credentials (email + password) directly. Mirror of
-        // InfoTab ClientLoginButton / sbCreateClientLogin in avenstone-vite/src/lib/supabase.js.
+        // Agent path: send_recovery=true causes create-client-login to generate a server-side
+        // random password (never returned), issue a Supabase recovery link, and email it via
+        // Resend. The agent never elicits, handles, or sees a client password.
         const res = await fetch(`${SUPABASE_URL}/functions/v1/create-client-login`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}` },
           body: JSON.stringify({
             email: input.email,
-            password: input.password,
             client_name: input.client_name || "",
             job_id: input.job_id,
             tenant_id: tenantId,
+            send_recovery: true,
           }),
         });
         const json = await res.json();
@@ -1319,9 +1317,10 @@ async function executeTool(
           ok: true,
           user_id: json.user_id,
           email: json.email,
+          email_sent: json.email_sent,
+          resend_id: json.resend_id,
           role: (profile as any).role,
           tenant_id: (profile as any).tenant_id,
-          note: "Login provisioned. No email was sent — share the email and password with the client directly.",
         };
       }
 
@@ -2465,6 +2464,14 @@ function describeConfirmAction(tool: string, input: any): string {
       const cdBucketBit = cdBucket > 0 ? ` · bucket offset -${fmtMoney(cdBucket)}` : "";
       return `Compose draw${cdAddr}${cdTitle}: ${cdCount} expense${cdCount !== 1 ? "s" : ""}, gross ${cdGrossStr}${cdBucketBit}, draw target ${cdNetStr} (${amountToWords(cdNetDue)}).`;
     }
+    case "send_client_portal": {
+      const cpBits: string[] = ["Set up client portal access"];
+      if (input._job_address) cpBits.push(String(input._job_address));
+      if (input.client_name)  cpBits.push(`client: ${String(input.client_name)}`);
+      cpBits.push(`email: ${String(input.email || "")}`);
+      cpBits.push("A set-password link will be emailed to the client.");
+      return cpBits.join(" · ") + ".";
+    }
     default:
       return "Perform this action.";
   }
@@ -2509,7 +2516,7 @@ Tenant: ${tenantId}
 
 WHAT YOU CAN DO:
 - Read: jobs, team, job financials, schedule, open todos, alerts
-- Write: create jobs, update jobs, add contacts, send portal links, invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, log sub invoices, log sub payments, approve sub invoices, send notifications, write to knowledge base, create schedule items, upload company files, record client deposits (cost-plus), compose cost-plus draws
+- Write: create jobs, update jobs, add contacts, send client portal access (provisions login + emails set-password link), invite people, add notes, add todos (action items), advance lifecycle phase, update trade phases, submit change orders, log payments, log receipts, log sub invoices, log sub payments, approve sub invoices, send notifications, write to knowledge base, create schedule items, upload company files, record client deposits (cost-plus), compose cost-plus draws
 
 ANSWERING QUESTIONS WITH READ TOOLS:
 - When the user asks about money, finances, what's owed, what's been paid, outstanding amounts, draw balance, or bucket credit on a job → call get_job_financials. Numbers come directly from the database and match the Financials tab exactly. Do NOT say "check the Financials tab" when you can answer it directly.
@@ -2523,7 +2530,7 @@ HOW TO BEHAVE:
 - When you take multiple actions, report each one clearly: "✓ Created job · ✓ Added note · ✓ Notified team"
 - If something fails, say what failed and why.
 - If a request is ambiguous in a way that would cause you to take the wrong action, ask ONE clarifying question.
-- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file, record_deposit, compose_draw): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
+- For confirm-gated write tools (log_payment, log_receipt, submit_change_order, add_todo, create_job, notify_team_member, create_schedule_item, log_sub_invoice, log_sub_payment, approve_sub_invoice, upload_company_file, record_deposit, compose_draw, send_client_portal): describe what's about to happen in one plain sentence and call the tool. The system surfaces a confirmation card automatically — do NOT ask the user to confirm via text first ("Confirm?", "Should I proceed?", etc.). The card IS the confirmation. Do not assume the action ran until you receive the tool_result.
 - Missing required fields: call the tool with whatever fields you have. If any required field is missing, the system surfaces a missing-field card automatically — do NOT ask in text first ("What's the amount?", "Which job?", etc.). Never invent values to fill gaps; just call the tool and let the card collect the rest.
 - Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to text responses, action descriptions, summaries, and any reference to a monetary value.
 - For advance_phase: do NOT pass override_reason. Just call the tool with the job_id. If gates fail, the system surfaces a gate-resolution card automatically (redirect to Schedule / leave open / override-with-structured-reason). Do not ask in text whether to override — the card IS the prompt.
@@ -2761,6 +2768,20 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
             inputObj._image_data = cfFileBlock.data;
             inputObj._image_mime = cfFileBlock.mime;
             inputObj._is_pdf     = cfFileBlock.isPdf;
+          }
+        }
+        // send_client_portal: pre-fetch job address + client_name for Confirm card readback.
+        if (confirmBlock.name === "send_client_portal" && inputObj.job_id) {
+          const { data: scpJobCard } = await sb.from("jobs")
+            .select("address, client_name")
+            .eq("id", String(inputObj.job_id))
+            .eq("tenant_id", tenantId)
+            .maybeSingle();
+          if (scpJobCard) {
+            inputObj._job_address = (scpJobCard as any).address;
+            if (!inputObj.client_name && (scpJobCard as any).client_name) {
+              inputObj.client_name = (scpJobCard as any).client_name;
+            }
           }
         }
         // record_deposit: pre-fetch job address for Confirm card readback.
