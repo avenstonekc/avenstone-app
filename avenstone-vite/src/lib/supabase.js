@@ -1539,6 +1539,15 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
 
     summary.paid_out             = round2(total_out);
     summary.float_unreimbursed   = round2(unreimbursed);
+    // Next Draw — pending-payment expenses NOT yet in any draw. reimbursement_status
+    // 'unreimbursed' is exactly "not linked to any draw_line_items" (compose_draw
+    // flips unreimbursed->in_draw on link; void_draw reverses it). Distinct from
+    // pending_out (which also counts already-drawn in_draw rows) and from
+    // float_unreimbursed (which also counts paid-status undrawn costs).
+    summary.next_draw            = round2(
+      data.filter(t => t.direction === 'out' && t.status === 'pending' && t.reimbursement_status === 'unreimbursed')
+          .reduce((s, t) => s + Number(t.amount || 0), 0)
+    );
     summary.markup_earned        = markup_earned;
     summary.outstanding_pending  = outstanding_pending;
     summary.projected_profit     = projected_profit;
@@ -4727,7 +4736,38 @@ export async function sbMarkDrawPaid(drawId, payment) {
   if (drawErr) throw drawErr;
 
   const newStatus = rpcResult.new_status;
-  return { tx, newStatus, newAmountPaid };
+
+  // Draw-paid cascade — when the draw reaches fully-paid, flip its source expense
+  // rows reimbursement_status in_draw -> reimbursed. The direct-draw path has no
+  // invoice, so the invoice-keyed cascade never runs; this is the flip for it.
+  // Not fire-and-forget: await the RPC, then read-back verify no in_draw rows
+  // remain on the draw (count must reach zero). Surface any shortfall loudly.
+  let cascade = { ok: true, error: null, data: { flipped: 0, remaining_in_draw: 0 } };
+  if (newStatus === 'paid') {
+    const { data: casRes, error: casErr } = await sb.rpc('cascade_draw_paid_by_draw', { p_draw_id: drawId });
+    if (casErr) {
+      cascade = { ok: false, error: casErr.message, data: null };
+    } else {
+      const { data: stuck, error: verErr } = await sb
+        .from('job_transactions')
+        .select('id')
+        .eq('draw_id', drawId)
+        .eq('reimbursement_status', 'in_draw');
+      if (verErr) {
+        cascade = { ok: false, error: verErr.message, data: null };
+      } else {
+        const remaining = stuck?.length ?? 0;
+        cascade = {
+          ok:    remaining === 0,
+          error: remaining === 0 ? null : `Cascade incomplete — ${remaining} row(s) still in_draw`,
+          data:  { flipped: casRes?.flipped ?? 0, remaining_in_draw: remaining },
+        };
+      }
+    }
+    if (!cascade.ok) throw new Error(`Draw marked paid but reimbursement cascade failed: ${cascade.error}`);
+  }
+
+  return { tx, newStatus, newAmountPaid, cascade };
 }
 
 // ---------------------------------------------------------------------------
