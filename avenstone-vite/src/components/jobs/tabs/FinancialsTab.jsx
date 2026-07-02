@@ -518,7 +518,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             const cpStats = [
               { lb: 'Spent',     v: f$(cpSpent),                                    c: cpSpent > 0 ? 'var(--red-text)' : 'var(--text-subtle)',          note: 'all costs logged' },
               { lb: 'Received',  v: f$(summary.total_in ?? 0),                      c: (summary.total_in ?? 0) > 0 ? 'var(--green-dot)' : 'var(--text-subtle)', note: 'draws paid back' },
-              { lb: 'Next Draw', v: f$(summary.pending_out ?? 0),                   c: (summary.pending_out ?? 0) > 0 ? 'var(--amber-text-strong)' : 'var(--text-subtle)', note: 'owed — pending costs' },
+              { lb: 'Next Draw', v: f$(summary.next_draw ?? 0),                     c: (summary.next_draw ?? 0) > 0 ? 'var(--amber-text-strong)' : 'var(--text-subtle)', note: 'pending, not yet drawn' },
               { lb: 'Settled',   v: f$(summary.paid_out ?? summary.total_out ?? 0), c: 'var(--text-muted)',                                               note: 'paid costs' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
               ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
@@ -551,6 +551,9 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                 c: summary.margin_on_arv_pct != null ? 'var(--navy-900)' : 'var(--text-subtle)',
                 note: summary.margin_on_arv_pct != null ? 'of ARV' : undefined,
               },
+              // Next Draw renders on all draws-enabled models (flip + cost_plus),
+              // gated on the financial_model enum via `model`, not legacy cost_plus.
+              { lb: 'Next Draw', v: f$(summary.next_draw ?? 0), c: (summary.next_draw ?? 0) > 0 ? 'var(--amber-text-strong)' : 'var(--text-subtle)', note: 'pending, not yet drawn' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
               ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
             ];
@@ -712,6 +715,13 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <div style={{ fontSize: 15, fontWeight: 700, color: isIn ? 'var(--green-dot)' : 'var(--red-text)' }}>{isIn ? '+' : '-'}{f$(tx.amount)}</div>
                           <div style={{ fontSize: 10, marginTop: 2, color: STATUS_COLOR[tx.status] || 'var(--text-subtle)', fontWeight: 600, textTransform: 'uppercase' }}>{tx.status}</div>
+                          {!isIn && (tx.reimbursement_status === 'in_draw' || tx.reimbursement_status === 'reimbursed') && (
+                            <span style={{ display: 'inline-block', marginTop: 3, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, padding: '1px 6px', borderRadius: 4,
+                              background: tx.reimbursement_status === 'reimbursed' ? 'var(--green-bg)' : 'var(--neutral-bg)',
+                              color:      tx.reimbursement_status === 'reimbursed' ? 'var(--green-text-strong)' : 'var(--text-muted)' }}>
+                              {tx.reimbursement_status === 'reimbursed' ? 'Reimbursed' : 'In Draw'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
