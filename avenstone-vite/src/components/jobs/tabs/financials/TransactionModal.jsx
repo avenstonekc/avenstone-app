@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbGetReceiptUrl, sbUpsertReceiptJobFile, sbUploadLienWaiverTx, sbLoadPhases, sbLoadActiveSubs, sbResolveTodosBySource, captureFailedIntent } from '../../../../lib/supabase';
+import { useState, useEffect, useRef } from 'react';
+import { sbCreateTransaction, sbUpdateTransaction, sbVoidTransaction, sbUploadReceipt, sbGetReceiptUrl, sbUpsertReceiptJobFile, sbExtractReceipt, sbUploadLienWaiverTx, sbLoadPhases, sbLoadActiveSubs, sbResolveTodosBySource, captureFailedIntent } from '../../../../lib/supabase';
 import { f$ } from '../../../../lib/utils';
 
 const TX_TYPES_IN  = ['client_payment','client_deposit','client_refund','other_income'];
@@ -44,6 +44,18 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
   const [lienUrl,    setLienUrl]    = useState(tx.lien_waiver_url  || null);
   const [phases,     setPhases]     = useState([]);
   const [subs,       setSubs]       = useState([]);
+  const [extracting, setExtracting] = useState(false);
+  const [extractHint, setExtractHint] = useState(false);
+
+  // Snapshot of the auto-fillable fields at mount. Extraction only writes a field
+  // that still equals its mount value — i.e. the user hasn't touched it. Their
+  // typed input always wins (same rule as the agent's receipt path).
+  const initialSnapRef = useRef({
+    payer_or_payee_name: tx.payer_or_payee_name || '',
+    amount:              tx.amount != null ? String(tx.amount) : '',
+    date_incurred:       tx.date_incurred || TODAY,
+    description:         tx.description || '',
+  });
 
   useEffect(() => {
     sbLoadPhases(job.id).then(data => setPhases(data || []));
@@ -127,9 +139,24 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
     onSaved();
   };
 
+  // Write extracted fields into the form, but only where the user hasn't typed
+  // anything (field still equals its mount snapshot). Returns true if anything changed.
+  const applyExtraction = x => {
+    const snap = initialSnapRef.current;
+    const patch = {};
+    if (x.vendor_name  && form.payer_or_payee_name === snap.payer_or_payee_name) patch.payer_or_payee_name = x.vendor_name;
+    if (x.amount != null && x.amount !== '' && form.amount === snap.amount)      patch.amount = String(x.amount);
+    if (x.invoice_date && form.date_incurred === snap.date_incurred)             patch.date_incurred = x.invoice_date;
+    if (x.description  && form.description === snap.description)                  patch.description = x.description;
+    if (Object.keys(patch).length === 0) return false;
+    setForm(p => ({ ...p, ...patch }));
+    return true;
+  };
+
   const uploadReceipt = async file => {
     setUploading(true);
     setErr(null);
+    setExtractHint(false);
     const res = await sbUploadReceipt(file, job.id);
     if (!res.error && res.path) {
       if (!isNew && tx.id) {
@@ -143,10 +170,19 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
         }).catch(() => {});
       }
       setReceiptUrl(res.path);
-    } else if (res.error) {
-      setErr(`Receipt upload failed: ${res.error}`);
+      setUploading(false);
+      // Auto-extract is a convenience layered on a successful upload. Any failure
+      // degrades silently to manual entry — it never blocks, errors, or gates save.
+      setExtracting(true);
+      try {
+        const ex = await sbExtractReceipt('job-receipts', res.path);
+        if (ex.ok && ex.data && applyExtraction(ex.data)) setExtractHint(true);
+      } catch { /* silent — manual entry remains available */ }
+      setExtracting(false);
+    } else {
+      if (res.error) setErr(`Receipt upload failed: ${res.error}`);
+      setUploading(false);
     }
-    setUploading(false);
   };
 
   const uploadLien = async file => {
@@ -337,14 +373,16 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
                 <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 6 }}>Receipt</div>
                 {uploading
                   ? <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Uploading…</span>
-                  : receiptUrl
-                    ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                        <span style={{ fontSize: 12, color: 'var(--green-dot)' }}>✓ Attached</span>
-                        {receiptSignedUrl && <a href={receiptSignedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--blue-link)', textDecoration: 'underline' }}>View</a>}
-                      </div>
-                    : <label style={{ fontSize: 12, color: 'var(--gold-500)', cursor: 'pointer' }}>
-                        Upload<input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={e => e.target.files[0] && uploadReceipt(e.target.files[0])} />
-                      </label>}
+                  : extracting
+                    ? <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Extracting…</span>
+                    : receiptUrl
+                      ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                          <span style={{ fontSize: 12, color: 'var(--green-dot)' }}>✓ Attached</span>
+                          {receiptSignedUrl && <a href={receiptSignedUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--blue-link)', textDecoration: 'underline' }}>View</a>}
+                        </div>
+                      : <label style={{ fontSize: 12, color: 'var(--gold-500)', cursor: 'pointer' }}>
+                          Upload<input type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={e => e.target.files[0] && uploadReceipt(e.target.files[0])} />
+                        </label>}
               </div>
               <div style={{ border: `1px solid ${lienMissing ? '#fca5a5' : 'var(--border)'}`, borderRadius: 6, padding: '10px 12px', textAlign: 'center', background: lienMissing ? 'var(--red-bg)' : 'var(--card-bg)' }}>
                 <div style={{ fontSize: 11, color: lienMissing ? 'var(--red-text-strong)' : 'var(--text-subtle)', marginBottom: 6 }}>Lien Waiver{lienMissing ? ' ⚠' : ''}</div>
@@ -355,6 +393,13 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
                     </label>}
               </div>
             </div>
+
+            {extractHint && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--warning-bg, #FEF3C7)', border: '1px solid #FCD34D', color: 'var(--amber-text-strong)', padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12 }}>
+                <span style={{ flex: 1 }}>Pre-filled from receipt — double-check the values.</span>
+                <button onClick={() => setExtractHint(false)} style={{ background: 'none', border: 'none', color: 'inherit', fontSize: 18, lineHeight: 1, cursor: 'pointer', padding: 0 }}>×</button>
+              </div>
+            )}
 
             {err && <div style={{ background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
