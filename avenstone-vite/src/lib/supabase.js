@@ -1787,6 +1787,25 @@ export const sbSetContractFromEstimate = async (jobId) => {
   }
 };
 
+/**
+ * Reads the accept-time frozen contract snapshot (transport copy) that
+ * sbSetContractFromEstimate wrote to job_estimates.estimate_data. This is the
+ * client-readable source the unified buildContractPDF renders and the evidence
+ * copy that gets frozen onto contract_signatures at sign time (Step 1b).
+ * Returns snapshot=null when no priced estimate has been accepted — callers must
+ * fail loud (block signing) rather than fall back to boilerplate.
+ * @returns {{ ok: boolean, error: string|null, snapshot: object|null, contractTotal: number|null }}
+ */
+export const sbGetContractSnapshot = async (jobId, tenantId) => {
+  const { data, error } = await sb.from('job_estimates')
+    .select('estimate_data').eq('job_id', jobId)
+    .eq('tenant_id', tenantId || AV_TENANT).maybeSingle();
+  if (error) return { ok: false, error: error.message, snapshot: null, contractTotal: null };
+  const ed = data?.estimate_data || {};
+  const snapshot = ed.contract_snapshot || null;
+  return { ok: true, error: null, snapshot, contractTotal: ed.contract_total ?? snapshot?.grand_total ?? null };
+};
+
 export const sbLoadCustomTakeoffLines = async (jobId, roomType) => {
   const prefix = `takeoff:custom:${roomType}:`;
   const { data } = await sb.from('estimate_line_items').select('*').eq('job_id', jobId).like('notes', `${prefix}%`);

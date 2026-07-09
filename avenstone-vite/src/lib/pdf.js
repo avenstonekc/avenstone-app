@@ -141,6 +141,172 @@ export const buildGenericPDF = ({ docType, job, bodyText, signaturePng }) => {
   return doc;
 };
 
+// ─── Contract PDF (unified — priced, signed + unsigned) ───────────────────────
+// Single source of truth for contract PDFs. Replaces the buildGenericPDF/
+// DEFAULT_CONTRACT_TEXT boilerplate path that signed a $0 document with no line
+// items (the legal gap CONTRACT_SIGNING Step 1b closes). Fed from the accept-time
+// frozen snapshot at job_estimates.estimate_data.contract_snapshot.
+//   - signaturePng present → signed client copy
+//   - signaturePng null    → unsigned send copy
+//   - clauseText override   → send-side editable legal text (else DEFAULT_CONTRACT_TEXT)
+// Text-only header per branding park (no logo embed). All text WinAnsi-sanitized
+// so smart quotes / em-dashes / arrows from AI-authored descriptions never render
+// as garbage in jsPDF's standard fonts.
+const _winAnsi = (s) => String(s ?? '')
+  .replace(/[‘’‚′]/g, "'")
+  .replace(/[“”„″]/g, '"')
+  .replace(/[–—―]/g, '-')
+  .replace(/…/g, '...')
+  .replace(/[•▪●■]/g, '-')
+  .replace(/[   ]/g, ' ')
+  .replace(/[←-⇿⌀-➿]/g, '');
+
+export const buildContractPDF = ({ job, snapshot, signaturePng = null, clauseText = null }) => {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
+  const W = 612, M = 48, CW = W - M * 2;
+  const SAFE_BOTTOM = 728;
+  const T = (s, x, y, opts) => doc.text(_winAnsi(s), x, y, opts);
+  const fmt = n => `$${Math.round(Number(n || 0)).toLocaleString()}`;
+  const f$ = n => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const chkPage = (y, h = 16) => { if (y + h > SAFE_BOTTOM) { doc.addPage(); return M + 8; } return y; };
+
+  const snap = snapshot || {};
+  const rows = Array.isArray(snap.rows) ? snap.rows : [];
+  const grandTotal = Number(snap.grand_total ?? job.contract_value ?? 0);
+
+  // ── Header (text-only) ────────────────────────────────────────────────────
+  doc.setFillColor(...navy); doc.rect(0, 0, W, 80, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...gold);
+  T('AVENSTONE GROUP', M, 34);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(...gold);
+  T('CONSTRUCTION SERVICES CONTRACT', M, 50);
+  doc.setTextColor(200, 200, 200); doc.setFontSize(9);
+  T('avenstonekc.com  ·  Kansas City, MO', W - M, 34, { align: 'right' });
+
+  // ── Job block ─────────────────────────────────────────────────────────────
+  let y = 100;
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(...navy);
+  T(job.address || '', M, y); y += 18;
+  if (job.client_name) { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray); T(`Client: ${job.client_name}`, M, y); y += 14; }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray);
+  T(`Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, M, y); y += 20;
+  doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 16;
+
+  // ── Legal clauses (price interpolated via f$) ─────────────────────────────
+  const clauses = clauseText || DEFAULT_CONTRACT_TEXT({ ...job, contract_value: grandTotal }, f$);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(55, 65, 81);
+  doc.splitTextToSize(_winAnsi(clauses), CW).forEach(line => { y = chkPage(y, 13); doc.text(line, M, y); y += 13; });
+  y += 8;
+
+  // ── Itemized scope & pricing (from frozen snapshot) ───────────────────────
+  if (rows.length) {
+    y = chkPage(y, 40);
+    doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 14;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
+    T('CONTRACT SCOPE & PRICING', M, y); y += 12;
+
+    const trades = []; const tmap = {};
+    rows.forEach(r => { const t = r.trade || 'GENERAL'; if (!tmap[t]) { tmap[t] = []; trades.push(t); } tmap[t].push(r); });
+
+    doc.setFillColor(...navy); doc.rect(M, y - 10, CW, 16, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...gold);
+    T('DESCRIPTION', M + 4, y); T('QTY / UNIT', M + 330, y); T('PRICE', W - M, y, { align: 'right' }); y += 10;
+
+    let rowIdx = 0;
+    trades.forEach(trade => {
+      const items = tmap[trade];
+      const tradeSub = items.reduce((s, r) => s + Number(r.client_price || 0), 0);
+      y = chkPage(y, 20);
+      doc.setFillColor(232, 226, 210); doc.rect(M, y - 2, CW, 16, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
+      T(trade, M + 4, y + 10); y += 16;
+
+      items.forEach(r => {
+        const descLines = doc.splitTextToSize(_winAnsi(r.description || ''), 316);
+        const rowH = Math.max(14, descLines.length * 10 + 6);
+        y = chkPage(y, rowH);
+        doc.setFillColor(rowIdx % 2 === 0 ? 255 : 250, rowIdx % 2 === 0 ? 255 : 249, rowIdx % 2 === 0 ? 255 : 247);
+        doc.rect(M, y - 2, CW, rowH, 'F');
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81);
+        descLines.forEach((line, i) => doc.text(line, M + 4, y + 8 + i * 10));
+        const qtyStr = [r.qty != null ? String(r.qty) : '', r.unit || ''].filter(Boolean).join(' ');
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...gray); T(qtyStr, M + 330, y + 8);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...navy); T(fmt(r.client_price), W - M, y + 8, { align: 'right' });
+        y += rowH; rowIdx++;
+      });
+
+      y = chkPage(y, 16);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...gray);
+      T(`${trade} subtotal`, M + 4, y + 8);
+      doc.setTextColor(...navy); T(fmt(tradeSub), W - M, y + 8, { align: 'right' });
+      doc.setDrawColor(220, 215, 200); doc.setLineWidth(0.5); doc.line(M, y + 13, W - M, y + 13);
+      y += 18;
+    });
+    y += 6;
+
+    // Summary + contract total
+    y = chkPage(y, 70);
+    [['Hard Cost Subtotal', snap.hard_cost], ['Markup', snap.markup], ['PM Fee', snap.pm_fee]]
+      .filter(([, v]) => v != null)
+      .forEach(([label, val]) => {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...gray);
+        T(label, M, y); doc.setTextColor(...navy); T(fmt(val), W - M, y, { align: 'right' }); y += 15;
+      });
+    y += 4;
+    doc.setFillColor(...navy); doc.rect(M, y - 2, CW, 24, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
+    T('CONTRACT TOTAL', M + 8, y + 16);
+    doc.setTextColor(...gold); T(f$(grandTotal), W - M - 4, y + 16, { align: 'right' });
+    y += 34;
+  }
+
+  // ── Payment schedule (structured, only if snapshot carries one) ───────────
+  const paySched = Array.isArray(snap.payment_schedule) ? snap.payment_schedule : [];
+  if (paySched.length) {
+    y = chkPage(y, 50);
+    doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 14;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
+    T('PAYMENT SCHEDULE', M, y); y += 14;
+    paySched.forEach(ps => {
+      y = chkPage(y, 14);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...navy);
+      T(ps.milestone || '', M, y);
+      doc.setTextColor(...gray); T(ps.timing || '', W / 2, y, { align: 'center' });
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(...gold); T(fmt(ps.amount), W - M, y, { align: 'right' });
+      y += 13;
+    });
+    y += 6;
+  }
+
+  // ── Signature block ───────────────────────────────────────────────────────
+  if (signaturePng) {
+    y = chkPage(y, 100);
+    doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 16;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
+    T('SIGNED:', M, y); y += 8;
+    try { doc.addImage(signaturePng, 'PNG', M, y, 200, 60); } catch (e) {}
+    y += 70;
+    doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.5); doc.line(M, y, M + 240, y); y += 12;
+    doc.setFontSize(8); doc.setTextColor(...gray);
+    T(`${job.client_name || 'Client'}  ·  Signed ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, M, y);
+  }
+
+  // ── Footers ───────────────────────────────────────────────────────────────
+  const pages = doc.getNumberOfPages();
+  const now = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFillColor(...navy); doc.rect(0, 772, W, 40, 'F');
+    doc.setFontSize(8); doc.setTextColor(...gold); doc.setFont('helvetica', 'bold');
+    T('AVENSTONE GROUP LLC', M, 788);
+    doc.setTextColor(180, 180, 180); doc.setFont('helvetica', 'normal');
+    T(`Page ${i} of ${pages}`, W / 2, 788, { align: 'center' });
+    T(now, W - M, 788, { align: 'right' });
+  }
+  return doc;
+};
+
 // ─── Estimate PDF ──────────────────────────────────────────────────────────────
 export const buildEstimatePDF = (job, messages) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
