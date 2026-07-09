@@ -116,7 +116,7 @@ export default function SubComplianceModal({ sub, onClose, onUpdated }) {
           <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16, lineHeight: 1.6 }}>Send a digital subcontractor agreement for {sub.full_name || 'this sub'} to sign electronically.</div>
           <button className="btn btn-navy" style={{ width: '100%' }} onClick={async () => {
             if (!sub.email) { alert('No email on file for this sub.'); return; }
-            const res = await fetch(CONTRACT_EMAIL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` }, body: JSON.stringify({ email: sub.email, client_name: sub.full_name || '', job_address: 'Subcontractor Agreement', job_id: 'sub-' + sub.id, tenant_id: AV_TENANT, contract_type: 'subcontractor_agreement' }) });
+            const res = await fetch(CONTRACT_EMAIL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` }, body: JSON.stringify({ email: sub.email, client_name: sub.full_name || '', job_address: '', job_id: 'sub-' + sub.id, tenant_id: AV_TENANT, contract_type: 'subcontractor_agreement' }) });
             if (res.ok) alert(`Agreement sent to ${sub.email}`);
           }}>Send Agreement for Signature</button>
         </div>}

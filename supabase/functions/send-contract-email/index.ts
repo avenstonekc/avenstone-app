@@ -107,8 +107,25 @@ Deno.serve(async (req) => {
     }
 
     const greeting = client_name ? `Hi ${client_name.split(" ")[0]},` : "Hi,";
+    // Only client-facing types carry a real job address; subs pass none. Guard against a
+    // blank or label-only address so copy never reads "for your project at ." or doubles
+    // the type label (the SubComplianceModal-passes-the-label bug).
+    const hasAddress = !!(job_address && job_address.trim() && job_address.trim() !== typeLabel);
+    const addrPhrase = hasAddress ? ` for your project at <strong style="color:#0A1F44;">${job_address}</strong>` : "";
+
+    // Copy diverges by audience. Client-facing = a real recovery link → "Review & Sign".
+    // Subs get a plain, token-less login link (no in-email e-sign for subs without portal
+    // access), so their copy must not promise signing — the agreement is attached to review.
+    const heading    = isSubAgreement ? `Your ${typeLabel} Is Ready to Review` : `Please Sign Your ${typeLabel}`;
+    const bodyLine   = isSubAgreement
+      ? `Avenstone Group has sent you a <strong style="color:#0A1F44;">${typeLabel}</strong>${addrPhrase}. The agreement is <strong style="color:#0A1F44;">attached to this email</strong> for your review.`
+      : `Avenstone Group has sent you a <strong style="color:#0A1F44;">${typeLabel}</strong>${addrPhrase}.`;
+    const actionLine = isSubAgreement
+      ? `Review the attached agreement, then open Avenstone using the button below.`
+      : `Please review the document and sign electronically using the button below.`;
+    const buttonLabel = isSubAgreement ? "Open Avenstone →" : "Review &amp; Sign →";
     const linkNote = isSubAgreement
-      ? "Sign in to your Avenstone portal to review and sign."
+      ? "If you have portal access, sign in to review and sign. Otherwise, contact the office and we'll get you set up."
       : "This secure link expires in 24 hours. Contact us if you have questions.";
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
@@ -117,18 +134,17 @@ Deno.serve(async (req) => {
 <tr><td align="center"><table width="100%" style="max-width:560px;">
 <tr><td style="background:#0A1F44;padding:24px 32px;border-radius:8px 8px 0 0;">
   <div style="font-size:11px;color:#C9A84C;letter-spacing:4px;text-transform:uppercase;font-weight:700;">Avenstone Group</div>
-  <div style="font-size:22px;font-weight:700;color:#fff;margin-top:6px;">Please Sign Your ${typeLabel}</div>
+  <div style="font-size:22px;font-weight:700;color:#fff;margin-top:6px;">${heading}</div>
 </td></tr>
 <tr><td style="background:#fff;padding:32px;border:1px solid #E8E4DC;border-top:none;border-radius:0 0 8px 8px;">
   <p style="margin:0 0 16px;font-size:14px;color:#374151;">${greeting}</p>
   <p style="margin:0 0 16px;font-size:14px;color:#6B7280;line-height:1.7;">
-    Avenstone Group has sent you a <strong style="color:#0A1F44;">${typeLabel}</strong> for your project at
-    <strong style="color:#0A1F44;">${job_address}</strong>.
+    ${bodyLine}
   </p>
   <p style="margin:0 0 24px;font-size:14px;color:#6B7280;line-height:1.7;">
-    Please review the document and sign electronically using the button below.
+    ${actionLine}
   </p>
-  <a href="${buttonUrl}" style="display:inline-block;background:#0A1F44;color:#C9A84C;padding:14px 36px;border-radius:4px;text-decoration:none;font-size:14px;font-weight:700;letter-spacing:0.5px;">Review &amp; Sign →</a>
+  <a href="${buttonUrl}" style="display:inline-block;background:#0A1F44;color:#C9A84C;padding:14px 36px;border-radius:4px;text-decoration:none;font-size:14px;font-weight:700;letter-spacing:0.5px;">${buttonLabel}</a>
   <p style="margin:24px 0 0;font-size:12px;color:#9CA3AF;">${linkNote}</p>
 </td></tr>
 <tr><td style="padding-top:20px;text-align:center;font-size:11px;color:#9CA3AF;line-height:1.8;">
@@ -138,9 +154,13 @@ Deno.serve(async (req) => {
 </body></html>`;
 
     const attachments = pdf_base64 ? [{
-      filename: `${typeLabel} — ${job_address}.pdf`,
+      filename: hasAddress ? `${typeLabel} — ${job_address}.pdf` : `${typeLabel}.pdf`,
       content: pdf_base64,
     }] : [];
+
+    const subject = hasAddress
+      ? `Action Required: Sign your ${typeLabel} — ${job_address}`
+      : `Action Required: Your ${typeLabel}`;
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -148,7 +168,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: FROM,
         to: email,
-        subject: `Action Required: Sign your ${typeLabel} — ${job_address}`,
+        subject,
         html,
         ...(attachments.length ? { attachments } : {}),
       }),

@@ -49,7 +49,20 @@ const PRO_TENANT   = _params.get('pro');
 const REVIEW_JOB    = _params.get('review');
 const REVIEW_TENANT = _params.get('rt');
 const COMPLETION_JOB = _params.get('completion');
-const INVITE_TYPE   = new URLSearchParams(window.location.hash.replace('#', '')).get('type');
+const _hashParams   = new URLSearchParams(window.location.hash.replace('#', ''));
+const INVITE_TYPE   = _hashParams.get('type');
+// A consumed/expired recovery or magic link bounces back with an error hash
+// (#error=access_denied&error_code=otp_expired…) and NO session — without this it
+// would land silently on the login screen. Capture the message, strip the hash so a
+// refresh is clean; the message is surfaced on LoginScr below.
+const _authErrCode  = _hashParams.get('error_code');
+const _authErr      = _hashParams.get('error');
+const AUTH_LINK_ERROR = (_authErr || _authErrCode)
+  ? 'This sign-in link was already used or has expired. Ask your contractor to resend it, or log in with your password below.'
+  : null;
+if (AUTH_LINK_ERROR) {
+  try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch { /* noop */ }
+}
 
 const VALID_PG = new Set([
   'home', 'jobs', 'projects', 'todos', 'calendar', 'leads', 'pipeline', 'reports', 'stats',
@@ -297,7 +310,7 @@ export default function App() {
       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: 3, textTransform: 'uppercase' }}>Loading</div>
     </div>
   );
-  if (!session) return <LoginScr />;
+  if (!session) return <LoginScr notice={AUTH_LINK_ERROR} />;
 
   if ((INVITE_TYPE === 'invite' || INVITE_TYPE === 'recovery') && session) {
     return <SetPasswordScr onDone={() => window.history.replaceState(null, '', window.location.pathname)} />;

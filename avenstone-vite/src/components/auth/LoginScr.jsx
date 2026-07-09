@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { sb } from '../../lib/supabase';
 import logo from '../../assets/logo.png';
 
-export default function LoginScr() {
+export default function LoginScr({ notice = null }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -87,6 +87,7 @@ export default function LoginScr() {
           <div className="auth-card-body">
             <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: 'var(--navy-900)', marginBottom: 4, textAlign: 'center' }}>Sign in</div>
             <div style={{ fontSize: 13, color: 'var(--text-subtle)', textAlign: 'center', marginBottom: 28 }}>Avenstone Group</div>
+            {notice && <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, padding: '10px 12px', marginBottom: 16, fontSize: 12.5, color: '#92400E', lineHeight: 1.6 }}>{notice}</div>}
             {err && <div className="auth-err">{err}</div>}
             <div className="fg">
               <label className="flbl">Email</label>
