@@ -12,6 +12,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Server-side random password for first-time client provisioning. Never returned,
+// logged, or emailed — the client sets their own password via the recovery link.
+function randomPassword(length = 24): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*";
+  const arr = new Uint8Array(length);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map((b) => chars[b % chars.length]).join("");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -24,46 +33,83 @@ Deno.serve(async (req) => {
 
     const sb = createClient(SB_URL, SB_SERVICE, { auth: { autoRefreshToken: false, persistSession: false } });
 
-    // Ensure client has an auth account and is linked to this job
-    const { data: existingUsers } = await sb.auth.admin.listUsers();
+    const typeLabel = contract_type === "change_order" ? "Change Order" :
+                      contract_type === "completion" ? "Completion Sign-off" :
+                      contract_type === "subcontractor_agreement" ? "Subcontractor Agreement" :
+                      "Contract";
+
+    // Subcontractor agreements are NOT client portal docs. Subs authenticate through their
+    // own onboarding — never provision them, never write a client profile (this path used
+    // to mis-provision subs as clients). The email carries the PDF + a plain login link.
+    const isSubAgreement = contract_type === "subcontractor_agreement";
+
     let userId: string | null = null;
-    const existing = existingUsers?.users?.find((u: any) => u.email === email);
+    let buttonUrl = APP_URL; // sub path: plain, token-less login link
 
-    if (existing) {
-      userId = existing.id;
-    } else {
-      const { data, error } = await sb.auth.admin.inviteUserByEmail(email, {
-        data: { full_name: client_name || "", role: "client", tenant_id },
-      });
-      if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      userId = data.user.id;
-    }
+    if (!isSubAgreement) {
+      // ── Client-facing (contract / change_order / completion) ──────────────────
+      // Staff-role guard: never turn a staff member into a client.
+      const { data: profileRows } = await sb.from("profiles").select("id, role").eq("email", email).limit(1);
+      const staffRole = profileRows?.[0]?.role;
+      if (staffRole && ["owner", "project_manager", "sales_rep"].includes(staffRole)) {
+        return new Response(
+          JSON.stringify({ error: "Cannot send a client contract to a staff email — would overwrite their role" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
-    // Ensure profile exists with role=client — but never downgrade a staff member
-    const { data: existingProfile } = await sb.from("profiles").select("role").eq("id", userId).single();
-    const isStaff = existingProfile?.role && ["owner","project_manager","sales_rep"].includes(existingProfile.role);
-    if (!isStaff) {
+      // Auth is authoritative — resolve via RPC (listUsers paginates poorly).
+      const { data: authId } = await sb.rpc("get_auth_user_id_by_email", { p_email: email });
+      userId = (authId as string | null) ?? null;
+
+      if (!userId) {
+        // First-time client: create with a server-side random password (never surfaced).
+        // The recovery link below is how they actually get in and set their own password.
+        const { data, error } = await sb.auth.admin.createUser({
+          email,
+          password: randomPassword(),
+          email_confirm: true,
+          user_metadata: { full_name: client_name || "", role: "client", tenant_id },
+        });
+        if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        userId = data.user.id;
+      }
+      // NOTE: for an EXISTING auth user we deliberately do NOT reset the password —
+      // re-sending a contract must never invalidate a login the client already has.
+
+      // Ensure a correct client profile (creates if missing, fixes stale role). tenant_id explicit.
       await sb.from("profiles").upsert(
         { id: userId, tenant_id, full_name: client_name || "", email, role: "client" },
         { onConflict: "id" }
       );
+
+      // Link client to this job so RLS (can_access_job) lets them see + sign it.
+      const { error: jobLinkError } = await sb.from("jobs")
+        .update({ client_user_id: userId, client_email: email, client_name: client_name || undefined })
+        .eq("id", job_id);
+      if (jobLinkError) console.error("job link error:", jobLinkError.message);
+
+      // Recovery link — canonical client-access mechanism (App.jsx routes #type=recovery →
+      // SetPasswordScr → portal, which auto-shows the Sign Now banner). Generating a recovery
+      // link does not reset an existing password; it only lets the client set one if they choose.
+      const { data: linkData, error: linkError } = await sb.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: { redirectTo: APP_URL },
+      });
+      if (linkError || !linkData?.properties?.action_link) {
+        return new Response(
+          JSON.stringify({ error: `Failed to generate recovery link: ${linkError?.message || "unknown"}` }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      buttonUrl = linkData.properties.action_link;
     }
 
-    // Link client to this job — set both client_user_id and client_email
-    const { error: jobLinkError } = await sb.from("jobs")
-      .update({ client_user_id: userId, client_email: email, client_name: client_name || undefined })
-      .eq("id", job_id);
-    if (jobLinkError) console.error("job link error:", jobLinkError.message, jobLinkError);
-
-    // Generate magic link so client can sign
-    const { data: linkData } = await sb.auth.admin.generateLink({ type: "magiclink", email });
-    const loginUrl = linkData?.properties?.action_link || APP_URL;
-
-    const typeLabel = contract_type === "change_order" ? "Change Order" :
-                      contract_type === "completion" ? "Completion Sign-off" :
-                      "Contract";
-
     const greeting = client_name ? `Hi ${client_name.split(" ")[0]},` : "Hi,";
+    const linkNote = isSubAgreement
+      ? "Sign in to your Avenstone portal to review and sign."
+      : "This secure link expires in 24 hours. Contact us if you have questions.";
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#F7F5F0;font-family:sans-serif;">
@@ -82,8 +128,8 @@ Deno.serve(async (req) => {
   <p style="margin:0 0 24px;font-size:14px;color:#6B7280;line-height:1.7;">
     Please review the document and sign electronically using the button below.
   </p>
-  <a href="${loginUrl}" style="display:inline-block;background:#0A1F44;color:#C9A84C;padding:14px 36px;border-radius:4px;text-decoration:none;font-size:14px;font-weight:700;letter-spacing:0.5px;">Review &amp; Sign →</a>
-  <p style="margin:24px 0 0;font-size:12px;color:#9CA3AF;">This link expires in 24 hours. Contact us if you have questions.</p>
+  <a href="${buttonUrl}" style="display:inline-block;background:#0A1F44;color:#C9A84C;padding:14px 36px;border-radius:4px;text-decoration:none;font-size:14px;font-weight:700;letter-spacing:0.5px;">Review &amp; Sign →</a>
+  <p style="margin:24px 0 0;font-size:12px;color:#9CA3AF;">${linkNote}</p>
 </td></tr>
 <tr><td style="padding-top:20px;text-align:center;font-size:11px;color:#9CA3AF;line-height:1.8;">
   Avenstone Group · avenstonekc.com · Kansas City, MO
@@ -109,6 +155,7 @@ Deno.serve(async (req) => {
     });
 
     const resData = await res.json();
+    // Minimal shape — never return the recovery link or any credential.
     return new Response(JSON.stringify({ ...resData, user_id: userId }), {
       status: res.status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
