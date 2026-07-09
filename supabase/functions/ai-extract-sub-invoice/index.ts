@@ -11,7 +11,7 @@ const CORS = {
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB guard
 
-const SYSTEM_PROMPT = `You are extracting fields from a sub-contractor invoice. Return ONLY valid JSON, no preamble, no markdown fences, no commentary.
+const SYSTEM_PROMPT = `You are extracting fields from a subcontractor invoice or a vendor/materials receipt (e.g. a hardware store, lumberyard, or supplier receipt). Return ONLY valid JSON, no preamble, no markdown fences, no commentary.
 
 Schema:
 {
@@ -25,10 +25,10 @@ Schema:
 }
 
 Rules:
-- amount is the invoice grand total in USD as a number, no $ sign, no commas.
+- amount is the invoice or receipt grand total in USD as a number, no $ sign, no commas.
 - invoice_date and due_date must be ISO 8601 dates (YYYY-MM-DD); return null if you cannot determine the year.
 - line_items: return the array if the invoice has itemized lines; null if lump sum only.
-- vendor_name: the sub-contractor or vendor name (the issuer of the invoice, not the general contractor).
+- vendor_name: the vendor, supplier, or sub-contractor name (the issuer of the invoice or receipt, not the general contractor).
 - If a field is not present or cannot be determined, return null for that field.`;
 
 /** Convert ArrayBuffer to base64 without external deps. Chunked to avoid call-stack overflow on large files. */
@@ -72,32 +72,77 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "no tenant" }), { status: 400, headers: jsonHeaders });
     }
 
-    // ── Input ─────────────────────────────────────────────────────────────────
+    // ── Input — two accepted shapes ───────────────────────────────────────────
+    //   { jobFileId }     → resolve storage coords from a job_files row (original path)
+    //   { bucket, path }  → extract straight from a storage object (receipt-modal path,
+    //                       where the file isn't a job_files row yet)
     const body = await req.json();
-    const { jobFileId } = body as { jobFileId?: string };
-    if (!jobFileId) {
-      return new Response(JSON.stringify({ error: "jobFileId required" }), { status: 400, headers: jsonHeaders });
-    }
+    const jobFileId = (body as { jobFileId?: string }).jobFileId;
+    const directBucket = (body as { bucket?: string }).bucket;
+    const directPath = (body as { path?: string }).path;
 
-    // ── Fetch job_files row ───────────────────────────────────────────────────
-    const { data: fileRow, error: fileErr } = await sb
-      .from("job_files")
-      .select("id, storage_path, storage_bucket, mime_type, name, tenant_id")
-      .eq("id", jobFileId)
-      .single();
-    if (fileErr || !fileRow) {
-      return new Response(JSON.stringify({ error: "file not found" }), { status: 404, headers: jsonHeaders });
-    }
+    // Buckets permitted for the direct { bucket, path } shape. Tenant isolation on
+    // this shape is enforced via the job the object belongs to (path = `${jobId}/…`).
+    const ALLOWED_DIRECT_BUCKETS = new Set(["job-receipts"]);
 
-    // Tenant isolation check
-    if (fileRow.tenant_id !== tenantId) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), { status: 403, headers: jsonHeaders });
+    let storageBucket: string;
+    let storagePath: string;
+    let fileName: string;
+    let mimeType: string;
+
+    if (jobFileId) {
+      // ── Resolve from a job_files row (unchanged behavior) ────────────────────
+      const { data: fileRow, error: fileErr } = await sb
+        .from("job_files")
+        .select("id, storage_path, storage_bucket, mime_type, name, tenant_id")
+        .eq("id", jobFileId)
+        .single();
+      if (fileErr || !fileRow) {
+        return new Response(JSON.stringify({ error: "file not found" }), { status: 404, headers: jsonHeaders });
+      }
+      // Tenant isolation check
+      if (fileRow.tenant_id !== tenantId) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), { status: 403, headers: jsonHeaders });
+      }
+      storageBucket = fileRow.storage_bucket as string;
+      storagePath = fileRow.storage_path as string;
+      fileName = (fileRow.name as string | null) ?? "";
+      mimeType = (fileRow.mime_type as string | null)
+        ?? (fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+    } else if (directBucket && directPath) {
+      // ── Resolve from a direct storage coordinate ─────────────────────────────
+      if (!ALLOWED_DIRECT_BUCKETS.has(directBucket)) {
+        return new Response(JSON.stringify({ error: "unsupported bucket" }), { status: 400, headers: jsonHeaders });
+      }
+      // Tenant isolation: the object path is `${jobId}/…`; verify that job is in the
+      // caller's tenant so a guessed path can't reach across tenant boundaries.
+      const jobId = directPath.split("/")[0];
+      if (!jobId) {
+        return new Response(JSON.stringify({ error: "invalid path" }), { status: 400, headers: jsonHeaders });
+      }
+      const { data: jobRow, error: jobErr } = await sb
+        .from("jobs")
+        .select("id, tenant_id")
+        .eq("id", jobId)
+        .single();
+      if (jobErr || !jobRow) {
+        return new Response(JSON.stringify({ error: "job not found" }), { status: 404, headers: jsonHeaders });
+      }
+      if (jobRow.tenant_id !== tenantId) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), { status: 403, headers: jsonHeaders });
+      }
+      storageBucket = directBucket;
+      storagePath = directPath;
+      fileName = directPath.split("/").pop() ?? "";
+      mimeType = fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg";
+    } else {
+      return new Response(JSON.stringify({ error: "jobFileId or { bucket, path } required" }), { status: 400, headers: jsonHeaders });
     }
 
     // ── Download from storage ─────────────────────────────────────────────────
     const { data: blob, error: dlErr } = await sb.storage
-      .from(fileRow.storage_bucket as string)
-      .download(fileRow.storage_path as string);
+      .from(storageBucket)
+      .download(storagePath);
     if (dlErr || !blob) {
       return new Response(JSON.stringify({ error: "download_failed", detail: dlErr?.message }), { status: 500, headers: jsonHeaders });
     }
@@ -111,9 +156,6 @@ Deno.serve(async (req) => {
     const base64 = arrayBufferToBase64(ab);
 
     // ── Determine content type ────────────────────────────────────────────────
-    const fileName = (fileRow.name as string | null) ?? "";
-    const mimeType: string = (fileRow.mime_type as string | null)
-      ?? (fileName.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
     const isPdf = mimeType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
 
     // ── Build content block ───────────────────────────────────────────────────

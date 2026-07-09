@@ -1634,6 +1634,29 @@ export const sbGetReceiptUrl = async (path) => {
   } catch (e) { return { ok: false, error: e.message || 'Failed to get receipt URL', data: null }; }
 };
 
+// Extract vendor/amount/date/description from a receipt image or PDF already
+// uploaded to storage. Reuses the ai-extract-sub-invoice Haiku extractor via its
+// { bucket, path } input shape. Convenience only — callers MUST degrade to manual
+// entry on { ok: false }; extraction never gates the flow. Returns extracted fields
+// in data: { vendor_name, amount, invoice_date, due_date, description, ... }.
+export const sbExtractReceipt = async (bucket, path) => {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return { ok: false, error: 'not authenticated', data: null };
+    const res = await fetch(AI_EXTRACT_SUB_INVOICE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ bucket, path }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) return { ok: false, error: json.error || `extract failed (${res.status})`, data: null };
+    return { ok: true, error: null, data: json.extracted || {} };
+  } catch (e) {
+    return { ok: false, error: e.message || 'extract failed', data: null };
+  }
+};
+
 // Upserts a job_files entry for a receipt attached to a transaction.
 // Mirrors the dual-write in ai-master-agent log_receipt so TransactionModal
 // receipts appear in the Files tab and DrawPackagePickerModal.
