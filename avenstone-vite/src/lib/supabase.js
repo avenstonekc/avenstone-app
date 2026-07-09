@@ -1718,7 +1718,7 @@ export const sbSaveCategoryConfig = async (tenantId, configMap) => {
  *
  * @returns {{ ok: boolean, error: string|null, data: { contract_total: number }|null }}
  */
-export const sbSetContractFromEstimate = async (jobId) => {
+export const sbSetContractFromEstimate = async (jobId, paymentSchedule = null) => {
   try {
     const [{ data: items }, { data: jobRow }] = await Promise.all([
       sb.from('estimate_line_items')
@@ -1767,6 +1767,20 @@ export const sbSetContractFromEstimate = async (jobId) => {
       generated_at:               new Date().toISOString(),
       source_estimate_updated_at: sourceUpdatedAt,
     };
+
+    // Step 1c — freeze the payment schedule the rep set (transient proposal UI state,
+    // never persisted elsewhere) as an immutable deep-copy in the shape buildContractPDF
+    // renders: { milestone, timing, amount(dollars) }. Coerce amounts (number inputs give
+    // strings) and drop blank rows. If nothing meaningful is defined, omit the key entirely
+    // so the PDF falls back to legal clause 3 — never write an empty array.
+    const frozenSchedule = (Array.isArray(paymentSchedule) ? paymentSchedule : [])
+      .map(ps => ({
+        milestone: (ps?.milestone || '').trim(),
+        timing:    (ps?.timing || '').trim(),
+        amount:    round2(ps?.amount),
+      }))
+      .filter(ps => ps.milestone || ps.amount > 0);
+    if (frozenSchedule.length) contractSnapshot.payment_schedule = frozenSchedule;
 
     const [jobUpd, estRow] = await Promise.all([
       sb.from('jobs').update({ contract_value: contractTotal }).eq('id', jobId).eq('tenant_id', AV_TENANT),

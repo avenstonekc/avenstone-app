@@ -706,7 +706,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       if (!window.confirm(`This job already has a contract value of $${Number(job.contract_value).toLocaleString()}. Replace it with the estimate total?`)) return;
     }
     setAcceptingEstimate(true); setAcceptMsg('');
-    const result = await sbSetContractFromEstimate(job.id);
+    // Step 1c — freeze the rep's payment schedule into the contract snapshot. propSchedule
+    // is only populated once the Proposal sub-tab has computed/edited it; if empty, the
+    // helper omits the key and the contract PDF falls back to legal clause 3.
+    const result = await sbSetContractFromEstimate(job.id, propSchedule);
     if (result.ok) {
       setAcceptMsg(`Contract set to $${Number(result.data.contract_total).toLocaleString()}`);
       setTimeout(() => setAcceptMsg(''), 5000);
