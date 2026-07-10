@@ -43,10 +43,15 @@ Deno.serve(async (req) => {
     // to mis-provision subs as clients). The email carries the PDF + a plain login link.
     const isSubAgreement = contract_type === "subcontractor_agreement";
 
+    // signed_copy = post-signature delivery of the fully-executed PDF. The client already
+    // signed — this is a confirmation, not a request. NO provisioning, NO recovery link,
+    // no "Action Required". typeLabel stays "Contract" (the doc that was signed).
+    const isSignedCopy = contract_type === "signed_copy";
+
     let userId: string | null = null;
     let buttonUrl = APP_URL; // sub path: plain, token-less login link
 
-    if (!isSubAgreement) {
+    if (!isSubAgreement && !isSignedCopy) {
       // ── Client-facing (contract / change_order / completion) ──────────────────
       // Staff-role guard: never turn a staff member into a client.
       const { data: profileRows } = await sb.from("profiles").select("id, role").eq("email", email).limit(1);
@@ -113,20 +118,34 @@ Deno.serve(async (req) => {
     const hasAddress = !!(job_address && job_address.trim() && job_address.trim() !== typeLabel);
     const addrPhrase = hasAddress ? ` for your project at <strong style="color:#0A1F44;">${job_address}</strong>` : "";
 
-    // Copy diverges by audience. Client-facing = a real recovery link → "Review & Sign".
-    // Subs get a plain, token-less login link (no in-email e-sign for subs without portal
-    // access), so their copy must not promise signing — the agreement is attached to review.
-    const heading    = isSubAgreement ? `Your ${typeLabel} Is Ready to Review` : `Please Sign Your ${typeLabel}`;
-    const bodyLine   = isSubAgreement
-      ? `Avenstone Group has sent you a <strong style="color:#0A1F44;">${typeLabel}</strong>${addrPhrase}. The agreement is <strong style="color:#0A1F44;">attached to this email</strong> for your review.`
-      : `Avenstone Group has sent you a <strong style="color:#0A1F44;">${typeLabel}</strong>${addrPhrase}.`;
-    const actionLine = isSubAgreement
-      ? `Review the attached agreement, then open Avenstone using the button below.`
-      : `Please review the document and sign electronically using the button below.`;
-    const buttonLabel = isSubAgreement ? "Open Avenstone →" : "Review &amp; Sign →";
-    const linkNote = isSubAgreement
-      ? "If you have portal access, sign in to review and sign. Otherwise, contact the office and we'll get you set up."
-      : "This secure link expires in 24 hours. Contact us if you have questions.";
+    // Copy diverges by audience:
+    //  • signed_copy   = post-signature confirmation, executed PDF attached, no action, no recovery link.
+    //  • subcontractor = plain token-less login link, agreement attached to review.
+    //  • client sign   = real recovery link → "Review & Sign".
+    let heading: string, bodyLine: string, actionLine: string, buttonLabel: string, linkNote: string, subject: string;
+
+    if (isSignedCopy) {
+      heading     = `Your Signed ${typeLabel}`;
+      bodyLine    = `Thank you. Your signed <strong style="color:#0A1F44;">${typeLabel}</strong>${addrPhrase} is complete — a copy is <strong style="color:#0A1F44;">attached to this email for your records</strong>.`;
+      actionLine  = `No action is needed. You can view your project anytime in the Avenstone portal.`;
+      buttonLabel = "View Your Project →";
+      linkNote    = "Questions? Reply to this email or contact the office.";
+      subject     = hasAddress ? `Signed: ${typeLabel} — ${job_address}` : `Signed: Your ${typeLabel}`;
+    } else if (isSubAgreement) {
+      heading     = `Your ${typeLabel} Is Ready to Review`;
+      bodyLine    = `Avenstone Group has sent you a <strong style="color:#0A1F44;">${typeLabel}</strong>${addrPhrase}. The agreement is <strong style="color:#0A1F44;">attached to this email</strong> for your review.`;
+      actionLine  = `Review the attached agreement, then open Avenstone using the button below.`;
+      buttonLabel = "Open Avenstone →";
+      linkNote    = "If you have portal access, sign in to review and sign. Otherwise, contact the office and we'll get you set up.";
+      subject     = hasAddress ? `Action Required: Sign your ${typeLabel} — ${job_address}` : `Action Required: Your ${typeLabel}`;
+    } else {
+      heading     = `Please Sign Your ${typeLabel}`;
+      bodyLine    = `Avenstone Group has sent you a <strong style="color:#0A1F44;">${typeLabel}</strong>${addrPhrase}.`;
+      actionLine  = `Please review the document and sign electronically using the button below.`;
+      buttonLabel = "Review &amp; Sign →";
+      linkNote    = "This secure link expires in 24 hours. Contact us if you have questions.";
+      subject     = hasAddress ? `Action Required: Sign your ${typeLabel} — ${job_address}` : `Action Required: Your ${typeLabel}`;
+    }
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#F7F5F0;font-family:sans-serif;">
@@ -154,13 +173,20 @@ Deno.serve(async (req) => {
 </body></html>`;
 
     const attachments = pdf_base64 ? [{
-      filename: hasAddress ? `${typeLabel} — ${job_address}.pdf` : `${typeLabel}.pdf`,
+      filename: isSignedCopy
+        ? (hasAddress ? `Signed ${typeLabel} — ${job_address}.pdf` : `Signed ${typeLabel}.pdf`)
+        : (hasAddress ? `${typeLabel} — ${job_address}.pdf` : `${typeLabel}.pdf`),
       content: pdf_base64,
     }] : [];
 
-    const subject = hasAddress
-      ? `Action Required: Sign your ${typeLabel} — ${job_address}`
-      : `Action Required: Your ${typeLabel}`;
+    // signed_copy only: CC the tenant's business email so the office holds the same
+    // executed artifact the client received. Canonical source = tenants.business_email.
+    let ccList: string[] = [];
+    if (isSignedCopy) {
+      const { data: tRow } = await sb.from("tenants").select("business_email").eq("id", tenant_id).single();
+      const biz = ((tRow?.business_email as string | null) || "").trim();
+      if (biz && biz.toLowerCase() !== String(email).toLowerCase()) ccList = [biz];
+    }
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -168,6 +194,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: FROM,
         to: email,
+        ...(ccList.length ? { cc: ccList } : {}),
         subject,
         html,
         ...(attachments.length ? { attachments } : {}),
