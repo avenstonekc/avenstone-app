@@ -50,9 +50,10 @@ export const estimatorBadge = (source_label, vetted) => {
       : { icon: '✓', text: 'Rate Book',  bg: 'var(--green-bg)',  color: 'var(--green-text)' };
   }
   const MAP = {
-    material_tier: { icon: '◈', text: 'Material',     bg: 'var(--navy-100)', color: 'var(--navy-900)' },
-    regional_avg:  { icon: '⚡', text: 'Regional Avg', bg: 'var(--amber-bg)', color: 'var(--amber-text)' },
-    user_entered:  { icon: '✎', text: 'You set',      bg: 'var(--navy-100)', color: 'var(--navy-900)' },
+    material_tier:   { icon: '◈', text: 'Material',        bg: 'var(--navy-100)', color: 'var(--navy-900)' },
+    regional_avg:    { icon: '⚡', text: 'Regional Avg',    bg: 'var(--amber-bg)', color: 'var(--amber-text)' },
+    user_entered:    { icon: '✎', text: 'You set',         bg: 'var(--navy-100)', color: 'var(--navy-900)' },
+    client_supplied: { icon: '🛒', text: 'Client-Supplied', bg: 'var(--navy-100)', color: 'var(--navy-900)' },
   };
   return MAP[source_label] || { icon: '·', text: source_label || '?', bg: 'var(--bg)', color: 'var(--text-muted)' };
 };
