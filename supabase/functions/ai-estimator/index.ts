@@ -44,6 +44,7 @@ interface ScopeLine {
   description: string;
   category: "labor" | "materials" | "general";
   regional_rate?: number | null; // AI-supplied fallback for gaps + general lines
+  anchor_source?: string | null; // S5A: ai_knowledge category the regional_rate was cited from (null = uncited/blank ask)
 }
 
 interface ScopeJSON {
@@ -132,6 +133,38 @@ async function loadBidModelConfig(tenantId: string): Promise<BidModelConfig | nu
     supply_model: typeof data.supply_model === "string" ? data.supply_model : "contractor",
     allowance: data.allowance === true,
   };
+}
+
+// ── KC regional pricing reference loader (S5A — Path A anchor grounding) ───────
+// Grounds the model's regional_rate for gap lines in the tenant's ai_knowledge KC
+// pricing prose (labor_rates + pricing_* categories).
+//
+// DELIBERATELY reads these rows regardless of the `active` flag (decision 2026-07-10).
+// `active` is the owner's CLIENT-FACING toggle — it governs whether other AI surfaces
+// (ai-companion, ai-master-agent, etc.) inject a knowledge row. The estimator's pricing
+// grounding is internal math, not client-facing knowledge injection, so it uses the
+// pricing prose even when toggled off elsewhere. Blast radius: estimator only; other
+// consumers still filter `.eq('active', true)` and are unaffected.
+//
+// Token sanity: the full set is ~12KB (~3.1k tokens) across ~15 categories — small
+// enough to inject wholesale; no per-trade filtering needed at this size.
+async function loadPricingReference(tenantId: string): Promise<string> {
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const { data, error } = await sb
+    .from("ai_knowledge")
+    .select("category, content")
+    .eq("tenant_id", tenantId)
+    .or("category.eq.labor_rates,category.like.pricing_%")
+    .order("category");
+  if (error) {
+    console.error("ai-estimator ai_knowledge pricing ref:", error.message);
+    return "";
+  }
+  const rows = (data ?? []) as { category: string; content: string }[];
+  if (!rows.length) return "";
+  const blocks = rows.map((r) => `### ${r.category}\n${(r.content || "").trim()}`).join("\n\n");
+  console.log(`ai-estimator [S5A]: injected ${rows.length} pricing-reference categories (tenant: ${tenantId})`);
+  return blocks;
 }
 
 // ── Scope-interview engine (SCOPE_CAPTURE_ENGINE P1B) ─────────────────────────
@@ -344,10 +377,39 @@ Always set regional_rate for general lines (your KC market estimate for that cos
 
 // ── Scope system prompt ───────────────────────────────────────────────────────
 
-function buildScopeSystemPrompt(vocabSection: string, markupPct: number, pmFee: number, financialModel = "fixed_bid", supplyModel = "contractor", allowance = false): string {
+function buildScopeSystemPrompt(vocabSection: string, markupPct: number, pmFee: number, financialModel = "fixed_bid", supplyModel = "contractor", allowance = false, pricingReference = ""): string {
   const pmFmtd = pmFee > 0
     ? `$${pmFee.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
     : "$0";
+
+  // S5A anchor grounding: a fenced KC pricing reference block + directives. When present,
+  // any regional_rate the model sets MUST come from this reference and cite its category
+  // in anchor_source; uncovered lines get regional_rate:null + anchor_source:null (blank ask).
+  const referenceBlock = pricingReference
+    ? `\n=== KC REGIONAL PRICING REFERENCE (Avenstone, Kansas City) ===
+This is Avenstone's own KC market pricing. Use it as the ONLY source for regional_rate on any
+line NOT matched to the Rate Book vocabulary. Each block is headed by its category name.
+${pricingReference}
+=== END KC REGIONAL PRICING REFERENCE ===\n`
+    : "";
+
+  const anchorRules = pricingReference
+    ? `
+ANCHOR GROUNDING (regional_rate provenance — strict):
+- When you set regional_rate on a gap or general line, that number MUST fall within a range in
+  the KC REGIONAL PRICING REFERENCE above, and you MUST set "anchor_source" to the exact category
+  header you drew it from (e.g. "pricing_tile", "labor_rates").
+- If the reference does NOT cover a line's trade/work, set regional_rate: null AND anchor_source: null
+  — a blank ask the rep will fill. NEVER invent a rate that isn't in the reference. NEVER cite a
+  category that does not contain the number you used.
+- Matched Rate Book labor vocab lines: regional_rate: null, anchor_source: null (code prices them).`
+    : "";
+
+  // S6: reserve the word "Allowance" — the frontend routes lines to the Allowances section on
+  // that word, so the model must not spoof it outside the config-driven allowance mode.
+  const reserveAllowance = allowance
+    ? ""
+    : `\nRESERVED WORD: Do NOT use the word "Allowance" anywhere in a line description — it is reserved for a billing mode not active on this job.`;
 
   // Material supply directive. Precedence: client/owner-supplied WINS over allowance —
   // if the client buys the materials there is no allowance to bill. Prompt is the hint;
@@ -372,7 +434,7 @@ YOUR ONLY JOB IS SCOPE. DO NOT INVENT OR OUTPUT PRICES. Pricing is applied by co
 Output ONLY valid JSON — no prose, no markdown fences, no text before or after. Start your response with { and end with }.
 
 ${companyLine}
-${materialSupplyLine}
+${materialSupplyLine}${reserveAllowance}
 TRANSPARENCY: Separate labor and material lines. Client-allowance items include "Allowance" in description.
 
 TRADE ORDER (include only relevant trades):
@@ -387,7 +449,7 @@ Trim/baseboard: +10% | Insulation batt: +8% | Framing lumber: +10%
 BATHROOM RULES: use moisture_resistant (not hang/combined) for any wet-area drywall.
 
 ${vocabSection}
-
+${referenceBlock}
 SCOPE JSON SCHEMA:
 {
   "scope_summary": ["<client-facing bullet>", ...],  // up to 12 bullets, no prices
@@ -399,17 +461,18 @@ SCOPE JSON SCHEMA:
       "quantity": <number, waste-adjusted>,
       "description": "<specific, show waste math>",
       "category": "labor" | "materials" | "general",
-      "regional_rate": <number|null>  // null for matched labor vocab; required for general + unmatched items
+      "regional_rate": <number|null>,  // null for matched labor vocab AND for uncited gaps; a cited KC-reference number otherwise
+      "anchor_source": <string|null>   // the KC REGIONAL PRICING REFERENCE category cited (e.g. "pricing_tile"); null when uncited/matched
     }
   ],
   "flags": ["<missing info, assumptions, unknowns>"]
 }
 
 RULES:
-- Labor vocab match → set regional_rate: null. EXACT trade/line_item/unit from vocabulary.
-- Labor with no vocab match → closest match, set regional_rate to your KC estimate, add a flag.
+- Labor vocab match → regional_rate: null, anchor_source: null. EXACT trade/line_item/unit from vocabulary.
+- Labor with no vocab match → closest match; if the KC reference covers it, cite it (regional_rate from the range + anchor_source); else regional_rate: null + anchor_source: null. Add a flag.
 - Materials → line_item = EXACT category from MATERIAL VOCABULARY.
-- General → always set regional_rate to your KC market estimate.`;
+- General → cite the KC reference if it covers the item (regional_rate + anchor_source); else regional_rate: null + anchor_source: null.${anchorRules}`;
 }
 
 // ── Extraction prompt (EXTRACT_JSON_FOR_PROPOSAL pass-through) ────────────────
@@ -749,7 +812,8 @@ Deno.serve(async (req) => {
 
     // ── Scope call ─────────────────────────────────────────────────────────────
     const vocabSection = buildVocabSection(rateBook);
-    const scopeSystem = buildScopeSystemPrompt(vocabSection, markupPct, pmFeeVal, financialModel, bidConfig.supply_model, bidConfig.allowance);
+    const pricingReference = await loadPricingReference(tenant_id); // S5A anchor grounding
+    const scopeSystem = buildScopeSystemPrompt(vocabSection, markupPct, pmFeeVal, financialModel, bidConfig.supply_model, bidConfig.allowance, pricingReference);
 
     const scopeResult = await callAnthropic(scopeSystem, messages, 4000);
     if (scopeResult.error) return fail(scopeResult.error);
