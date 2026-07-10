@@ -55,7 +55,7 @@ interface ScopeJSON {
 interface PricedLine extends ScopeLine {
   unit_price: number | null;
   amount: number | null;
-  source_label: "labor_rate" | "material_tier" | "regional_avg" | "user_entered";
+  source_label: "labor_rate" | "material_tier" | "regional_avg" | "user_entered" | "client_supplied";
   source_badge: string;
   vetted: boolean;
   gap_key?: string; // present on regional_avg lines; format: "trade::line_item::unit"
@@ -109,13 +109,13 @@ async function loadRateBook(tenantId: string): Promise<RateBook> {
 
 // ── Bid model config loader (B1.6) ────────────────────────────────────────────
 
-interface BidModelConfig { markup_pct: number; pm_fee: number; }
+interface BidModelConfig { markup_pct: number; pm_fee: number; supply_model: string; allowance: boolean; }
 
 async function loadBidModelConfig(tenantId: string): Promise<BidModelConfig | null> {
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const { data, error } = await sb
     .from("bid_model_config")
-    .select("markup_pct, pm_fee")
+    .select("markup_pct, pm_fee, supply_model, allowance")
     .eq("tenant_id", tenantId)
     .eq("category", "default")
     .maybeSingle();
@@ -124,7 +124,14 @@ async function loadBidModelConfig(tenantId: string): Promise<BidModelConfig | nu
     return null;
   }
   if (!data) return null;
-  return { markup_pct: Number(data.markup_pct), pm_fee: Number(data.pm_fee) };
+  // supply_model: 'contractor' (we supply) vs client/owner-supplied. allowance: bill
+  // materials as client allowances. Both default safe if a column is somehow absent.
+  return {
+    markup_pct: Number(data.markup_pct),
+    pm_fee: Number(data.pm_fee),
+    supply_model: typeof data.supply_model === "string" ? data.supply_model : "contractor",
+    allowance: data.allowance === true,
+  };
 }
 
 // ── Scope-interview engine (SCOPE_CAPTURE_ENGINE P1B) ─────────────────────────
@@ -337,10 +344,20 @@ Always set regional_rate for general lines (your KC market estimate for that cos
 
 // ── Scope system prompt ───────────────────────────────────────────────────────
 
-function buildScopeSystemPrompt(vocabSection: string, markupPct: number, pmFee: number, financialModel = "fixed_bid"): string {
+function buildScopeSystemPrompt(vocabSection: string, markupPct: number, pmFee: number, financialModel = "fixed_bid", supplyModel = "contractor", allowance = false): string {
   const pmFmtd = pmFee > 0
     ? `$${pmFee.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
     : "$0";
+
+  // Material supply directive. Precedence: client/owner-supplied WINS over allowance —
+  // if the client buys the materials there is no allowance to bill. Prompt is the hint;
+  // priceScopeLines is the guard (it zeroes client-supplied lines regardless of the model).
+  const materialSupplyLine =
+    supplyModel !== "contractor"
+      ? `MATERIAL SUPPLY: The CLIENT/OWNER supplies ALL materials on this job. STILL LIST every material line (scope completeness — the client must see what they're buying), but do NOT price them: add "(client-supplied)" to each material line description. Code sets them to $0 and excludes them from totals. Labor lines are unaffected. (This overrides any allowance behavior.)`
+      : allowance
+        ? `MATERIAL SUPPLY: Materials are billed as CLIENT ALLOWANCES. Include the word "Allowance" in every material line description — the allowance amount is the normal material price. Labor lines are unaffected.`
+        : `MATERIAL SUPPLY: Contractor supplies materials (standard). Price material lines normally.`;
 
   const companyLine =
     financialModel === "flip"
@@ -355,6 +372,7 @@ YOUR ONLY JOB IS SCOPE. DO NOT INVENT OR OUTPUT PRICES. Pricing is applied by co
 Output ONLY valid JSON — no prose, no markdown fences, no text before or after. Start your response with { and end with }.
 
 ${companyLine}
+${materialSupplyLine}
 TRANSPARENCY: Separate labor and material lines. Client-allowance items include "Allowance" in description.
 
 TRADE ORDER (include only relevant trades):
@@ -445,6 +463,8 @@ function priceScopeLines(
   rateBook: RateBook,
   projectSf: number,
   finishTier: FinishTier,
+  supplyModel = "contractor",
+  allowance = false,
 ): PricedLine[] {
   return lines.map((line): PricedLine => {
     // ── Labor ─────────────────────────────────────────────────────────────────
@@ -479,14 +499,38 @@ function priceScopeLines(
 
     // ── Materials ──────────────────────────────────────────────────────────────
     if (line.category === "materials") {
+      // Precedence: client/owner-supplied WINS over allowance. When the client buys the
+      // materials, list the line for scope completeness but zero it and exclude from totals
+      // (amount 0 contributes 0). Code is the guard — enforced regardless of what the AI priced.
+      if (supplyModel !== "contractor") {
+        const desc = /client-supplied/i.test(line.description)
+          ? line.description
+          : `${line.description} (client-supplied)`;
+        return {
+          ...line,
+          description: desc,
+          unit_price: 0,
+          amount: 0,
+          source_label: "client_supplied",
+          source_badge: "🛒 Client-Supplied",
+          vetted: false,
+        };
+      }
+
+      // Allowance mode: keep normal material pricing but mark the line so it renders in the
+      // Allowances section (frontend classifies on the word "Allowance" in the description).
+      const withAllowanceTag = (d: string) =>
+        allowance && !/allowance/i.test(d) ? `${d} (Allowance)` : d;
+
       const { price, amount, tierLabel } = priceMaterialLine(line.line_item, line.quantity, rateBook, finishTier);
       if (price != null) {
         return {
           ...line,
+          description: withAllowanceTag(line.description),
           unit_price: price,
           amount,
           source_label: "material_tier",
-          source_badge: `◈ Material (${tierLabel})`,
+          source_badge: allowance ? `◈ Allowance (${tierLabel})` : `◈ Material (${tierLabel})`,
           vetted: false,
         };
       }
@@ -494,6 +538,7 @@ function priceScopeLines(
       const rgRate = typeof line.regional_rate === "number" ? line.regional_rate : null;
       return {
         ...line,
+        description: withAllowanceTag(line.description),
         unit_price: rgRate,
         amount: rgRate != null ? Math.round(rgRate * line.quantity * 100) / 100 : null,
         source_label: "regional_avg",
@@ -704,7 +749,7 @@ Deno.serve(async (req) => {
 
     // ── Scope call ─────────────────────────────────────────────────────────────
     const vocabSection = buildVocabSection(rateBook);
-    const scopeSystem = buildScopeSystemPrompt(vocabSection, markupPct, pmFeeVal, financialModel);
+    const scopeSystem = buildScopeSystemPrompt(vocabSection, markupPct, pmFeeVal, financialModel, bidConfig.supply_model, bidConfig.allowance);
 
     const scopeResult = await callAnthropic(scopeSystem, messages, 4000);
     if (scopeResult.error) return fail(scopeResult.error);
@@ -725,7 +770,7 @@ Deno.serve(async (req) => {
     }
 
     // Price and format
-    const pricedLines = priceScopeLines(scope.lines, rateBook, projectSf, finishTier);
+    const pricedLines = priceScopeLines(scope.lines, rateBook, projectSf, finishTier, bidConfig.supply_model, bidConfig.allowance);
     const content = formatEstimate(scope, pricedLines, projectSf, finishTier, markupPct, pmFeeVal, financialModel);
 
     // 3c: include priced_scope so EstimateTab can commit with exact source_labels
