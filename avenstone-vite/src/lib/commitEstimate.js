@@ -202,6 +202,7 @@ export async function sbCommitEstimate(supabase, tenantId, userId, { source, job
         // 'takeoff:...' for takeoff — handled by the takeoff delete block above).
         notes:         source === 'ai' ? 'ai:' + (it.notes || '') : (it.notes ?? null),
         source_label:  it.source_label ?? null,
+        rate_provenance: it.rate_provenance ?? null, // S9: gap-rate provenance (null on non-gap lines)
         created_by:    userId,
       };
     });

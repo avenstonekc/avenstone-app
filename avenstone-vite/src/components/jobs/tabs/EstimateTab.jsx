@@ -488,6 +488,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           multiplier: 1.0,
           notes: String(line.quantity) + ' ' + line.unit,
           source_label: line.source_label,
+          rate_provenance: line.rate_provenance ?? null, // S9: HOW the gap rate was set, persisted
         }));
         const result = await sbCommitEstimate(sb, AV_TENANT, AV_USER_ID, {
           source: 'ai', jobId: job.id, estimateId: null, items,
