@@ -1,101 +1,57 @@
-# Contract Signing Arc — Design Blueprint
+# Contract Signing Arc — SHIPPED (2026-07-10)
 
-> **STATUS (2026-06-19):** Future arc. STOP — Gap 5 (magic links possibly dead, retired 2026-06-01) MUST be verified as its own dispatch before any signing-flow build. Do not build on an unverified send path. Has LEGAL stakes — attorney review required before wiring full signing flow. `ClientSignContractModal.jsx` exists but signs boilerplate with no line items/price.
+**Status:** SHIPPED. ESIGN/UETA attorney review completed and cleared 2026-07-10 (Open Q1 closed). The priced-signing flow is live. Remaining items are electives (bottom).
 
-_Blueprint only — not started. Audit complete 2026-06-15. Has LEGAL stakes — do not rush; design before building._
-
----
-
-## Why This Matters
-
-The path "send proposal → client reviews the actual numbers → signs a contract containing those numbers → status flows correctly → audit trail holds up legally" is currently broken or disconnected at almost every step. Most urgent finding has legal exposure (see Gap 1).
+The arc closed the "send proposal → client sees the real numbers → signs a contract containing those numbers → evidence holds up legally" path that was broken or disconnected at almost every step.
 
 ---
 
-## Audit Findings (2026-06-15) — Current State of Send / Sign
+## What shipped (slice → commits)
 
-### Three "send" actions, all distinct
+| Slice | Commits | What |
+|---|---|---|
+| **1b — unified priced PDF + evidence freeze** | `dc188fc`, `be66116` | ONE `buildContractPDF` (src/lib/pdf.js) renders the accept-time `contract_snapshot` (line items, total, scope) — replaces the `DEFAULT_CONTRACT_TEXT` boilerplate that let a client sign a $0 document. Sign + send modals rewired to it. Sign-time evidence (price + scope) FROZEN as an immutable deep-copy onto `contract_signatures`. `sbGetContractSnapshot` helper. |
+| **1c — payment schedule freeze** | `a3be13c` | The rep's payment schedule is frozen into `contract_snapshot` **at accept** (not re-derived at sign). Clause-3 prose fallback when a job has none. |
+| **Magic-link → recovery migration (Gap 5)** | `be303ea`, `f51b500` | `send-contract-email` moved off the retired magic-link path onto the canonical `create-client-login` recovery-link pattern (mirrors `send_client_portal`). Dead `send-client-link` helpers removed (zero callers). |
+| **Email defect fixes** | `2b70f61` | Address-slot bug (SubComplianceModal passed the type label as `job_address`), sub-copy honesty, expired-link banner. |
+| **Signed-copy delivery** | `d636b43`, `4170c72` | After a signature saves, the client is emailed their fully-executed PDF (`contract_type: 'signed_copy'` branch — confirmation, not a request: no provisioning, no recovery link, no "Action Required"). |
+| **IP/UA evidence capture (Gap 4)** | `2f8d932`, `590fea2`, `3e856f5` | Migration `20260710120000` adds `ip_address` + `user_agent`. `record-signature-evidence` edge fn reads them server-side from request headers; `sbRecordSignatureEvidence` helper; `ClientSignContractModal` calls it post-save. |
 
-- **"Send to Client" (Build tab, `sendEstimateToClient`):** BROKEN. `sbSendEstimateEmail` sends `{ client_email, ... }` but the `send-estimate-email` edge fn destructures `{ to, ... }`. `to` is never populated → guard `if (!to || !pdf_base64)` returns 400 immediately. Email never sends. Also `html` body is never passed from the helper → body would be blank even if `to` were fixed.
+## Gap resolution (final)
 
-- **"Save to Documents" (Proposal tab, `generateProposalPDF`):** saves PDF to `job-documents` bucket. Sends NO email. Client has no portal tab to view it (see Gap 2).
-
-- **"Accept Estimate" (Line Items tab, `handleAcceptEstimate` → `sbSetContractFromEstimate`):** internal only. Sums `total_cost` + per-category markup + `pm_fee` → writes `jobs.contract_value` + `job_estimates.estimate_data.contract_total`. Does NOT change status, notify client, or create a signature record. Rep-side "lock in the number" only.
-
-### Client portal (`ClientPortal.jsx`)
-
-- Client is routed here when `profile.role === 'client'`. Tabs: Overview, Updates, Invoices, Schedule, Photos, Messages (+ Financials for cost_plus). **NO Proposal tab. NO Documents tab** (`docs` tab is explicitly dead code, `ClientPortal.jsx:348`).
-- Client **cannot** see the proposal PDF anywhere in the portal.
-- Overview shows: ProgressStepper (`Lead → Proposal → Contract → In Progress → Final Touches → Complete`), "contract ready to sign" banner when `contract_signed = false`, contract value / paid / remaining when `contract_value` is set.
-- Two access pathways: (1) password login via `create-client-login` (canonical per CLAUDE.md); (2) magic link via `send-client-link` / `send-contract-email` — CLAUDE.md says magic links were **retired 2026-06-01** because they redirect to wrong project/tenant. See Gap 5.
-
-### Signature flow (exists — partially functional)
-
-- Info tab "Send Contract" → `ContractModal` → `sbSendContractEmail` → `send-contract-email` edge fn: creates/updates client auth account, upserts `profiles` with `role = 'client'`, sets `jobs.client_user_id` + `client_email`, generates magic link, emails "Review & Sign →" button, optionally attaches contract PDF.
-- Client clicks link → portal → "Sign Now" → `ClientSignContractModal` (steps: review → sign → done). Reads `DEFAULT_CONTRACT_TEXT(job)`: a 10-clause boilerplate agreement with address + client name filled in. **No line items. No price. No payment schedule.**
-- Client draws signature on canvas (`SignaturePad.jsx`).
-- On submit: `buildGenericPDF({docType:'CONTRACT', bodyText: DEFAULT_CONTRACT_TEXT, signaturePng})` → upload to `job-documents` (client_visible: true) → `sbSaveSignature` inserts `contract_signatures` row `{ job_id, tenant_id, type:'contract', signed_by_name, signed_by_email, signature_data:png, signed_at, document_url }` → `jobs.update({ contract_signed:true, contract_signed_at, status:'in_progress' })` → notify owner.
-- `contract_signatures.ip_address` column EXISTS but is **never populated**.
-- Change orders reuse `send-contract-email` with `contract_type:'change_order'` from `COTab.jsx`.
+- **Gap 1 (contract embeds price/scope) — FIXED + attorney-cleared.**
+- **Gap 2 (client sees proposal in portal) — ELECTIVE, not built** (see bottom).
+- **Gap 3 (send-estimate email bug) — FIXED** (`sbSendEstimateEmail` uses `to` + html body).
+- **Gap 4 (IP capture) — FIXED this arc** (`2f8d932`/`590fea2`/`3e856f5`).
+- **Gap 5 (magic links) — RESOLVED** (recovery migration).
+- **Gap 6 (status lifecycle mismatch) — folded into Model B** (see `docs/arcs/MODEL_B_LIFECYCLE.md`).
 
 ---
 
-## Gaps to Fix (Priority Order)
+## Locked decisions
 
-### Gap 1 — LEGAL: Proposal and contract are completely disconnected (HIGHEST PRIORITY)
-
-The client signs a boilerplate text contract with **no dollar amounts, no line items, no payment schedule**. They could sign without ever seeing the $6,524 they're agreeing to pay. The signed contract has no embedded reference to the proposal numbers. This is legal exposure: a signature on a document that doesn't state price or scope.
-
-**Fix direction:** The signed contract must embed or reference the accepted proposal (price, scope, payment schedule), and/or the client must acknowledge the proposal before signing. Decide: does the contract PDF include the proposal line items + grand total + payment schedule, or does it reference an attached proposal the client must view first?
-
-### Gap 2 — Client can't see the proposal in the portal
-
-PDF saves to `job-documents` but the portal Documents tab is dead code. Client has no way to view what they're paying for.
-
-**Fix direction:** Add a client-visible Proposal/Documents view in `ClientPortal` so the client can review the proposal before signing.
-
-### Gap 3 — "Send to Client" email bug (quick fix, deferred to this arc)
-
-Field mismatch `client_email` vs `to` + missing `html` body in `sbSendEstimateEmail` → `send-estimate-email` returns 400. Small fix but folded here to keep the send/sign work together. (Could be pulled out as a standalone slice if a working proposal email is needed sooner.)
-
-### Gap 4 — No IP captured on signatures
-
-`contract_signatures.ip_address` exists, never populated. For ESIGN/UETA e-signature validity the audit trail (IP + timestamp + what-was-signed) matters.
-
-**Fix direction:** Capture client IP at signature submit. Ensure the signed document is locked to exactly what was presented.
-
-### Gap 5 — Magic links may be broken (VERIFY FIRST)
-
-`send-contract-email` + `send-client-link` use magic links CLAUDE.md flags as redirecting to wrong project/tenant (retired 2026-06-01). If broken, the "Review & Sign" email is unusable and the entire sign flow is dead on arrival. **This must be verified before building anything else in this arc** — if the client can't reach the portal, Gaps 1–4 are moot.
-
-**Likely fix:** Route signing through the canonical password-login path (`create-client-login`) instead of magic links, OR fix the magic link redirect.
-
-### Gap 6 — Status flow doesn't match lifecycle
-
-Portal stepper shows `Lead → Proposal → Contract → In Progress`, but signing jumps straight to `in_progress`; `proposal` and `contract` statuses are never set by any code path.
-
-**Fix direction:** Make signing advance status through the correct lifecycle phases. Intersects the Model B lifecycle consolidation work — cross-reference.
+1. **Two-point evidence freeze.** Price + scope are frozen at **accept** (`contract_snapshot` on `job_estimates.estimate_data`, the transport copy) AND again at **sign** (immutable deep-copy onto `contract_signatures.scope_snapshot`/`contract_total`, the evidence copy). The evidence copy is never a live reference to mutable estimate rows.
+2. **Fail-loud no-snapshot gate.** Signing is BLOCKED when no snapshot exists — no silent boilerplate fallback. Signing an unpriced contract was the legal exposure; the gate is the fix.
+3. **No auto-default payment schedule.** The system never invents a schedule; clause-3 prose covers the gap. A proactive accept-time nudge is optional future work ("1d"), not built.
+4. **Existing passwords are never reset on send.** A resend generates a recovery link but does not invalidate a login the client already has.
+5. **Subs are not clients (Fork B).** `subcontractor_agreement` sends never provision a client, never write a client profile, get a plain token-less login link. Sub e-sign is deliberately out of scope.
+6. **Capture is enrichment, not state change.** The signed-copy email and the IP/UA evidence record fire AFTER the signature is already saved; a failure in either logs and degrades — it never undoes or blocks the recorded signature.
 
 ---
 
-## Build Order (Rough)
+## Corrections — lies the audits caught
 
-1. **Verify Gap 5 (magic links) first** — determines whether the entire flow is reachable. Fix access path if broken.
-2. **Gap 1 (legal)** — make the signed contract contain or reference the actual proposal numbers + scope.
-3. **Gap 2** — client can view the proposal in the portal before signing.
-4. **Gap 3** — fix the Send to Client email (or pull earlier if needed standalone).
-5. **Gap 4** — IP capture + document-locking for audit trail.
-6. **Gap 6** — status lifecycle alignment (coordinate with Model B arc).
+- **`contract_signatures.ip_address` did NOT exist before 2026-07-10.** Earlier docs (and CLAUDE.md, ~2026-06-15) claimed the column "EXISTS but is never populated." False — it was first added by migration `20260710120000` (`2f8d932`) and is now populated by the evidence path. Do not repeat the old claim.
+- **The committed table defs `20260412_missing_tables.sql` / `20260413_remaining_tables.sql` are STALE and do not match the live table.** They declare `signer_name`, `signer_email`, `signature_png`, `pdf_url`. **Live truth:** `signed_by_name`, `signed_by_email`, `signature_data`, `document_url`. The live table was created by a different path than those committed migrations — trust `information_schema`, not those files.
 
----
-
-## Cross-References
-
-- **Model B lifecycle consolidation** (status flow) — Gap 6.
-- **ESTIMATOR_KNOWLEDGE_ARC** — proposal numbers feeding the contract come from the estimate engine; rate accuracy upstream affects what the client signs.
+### Live `contract_signatures` columns (truth, `information_schema` 2026-07-10)
+`id, tenant_id, job_id, type, reference_id, signed_by_name, signed_by_email, signature_data, signed_at, document_url, created_at, contract_total, scope_snapshot, ip_address, user_agent`
 
 ---
 
-## Not a Lawyer
+## Electives (deliberately not built)
 
-The legal exposure in Gap 1 and Gap 4 is flagged as a non-lawyer observation. Before relying on this e-signature flow for binding contracts, have the contract template and e-signature audit trail reviewed by an attorney licensed in MO. ESIGN/UETA compliance is a legal question, not just an engineering one.
+- **Gap 2 — client-visible proposal/documents view in the portal.** The signed PDF saves to `job-documents` (`client_visible: true`); a dedicated portal tab to browse it pre-sign is unbuilt.
+- **Optional accept-nudge ("1d").** Prompt the rep to set a payment schedule at accept when none exists. Locked as optional — the no-auto-default rule stands.
+- **Sub e-sign.** Out of scope per Fork B — subs authenticate through their own onboarding; the agreement is attached for review, not signed in-portal.
+- **`signed_copy` typeLabel extension.** The signed-copy email currently labels everything "Contract"; extend it to emit correct labels for `change_order` / `completion` signed copies.
