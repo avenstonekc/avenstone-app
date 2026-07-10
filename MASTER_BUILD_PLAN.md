@@ -22,6 +22,7 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
 | b | **Answer the SELECTIONS four field questions** (day-one trades + MATERIAL_SELECTION-vs-SELECTIONS "which first?" — Open Q3 + Q4) | Blocks SELECTIONS B5.7–B5.9 schema | June 2026 |
 | c | **Status-picker corrections** (owner-only): `1206 W Lucy Webb Rd` → `lead`; `999 Test Lane` → its true stage | Model B Phase 2 surfaced these as genuine `jobs.status` lies (stored ≠ derived); only the owner knows the true stage | 2026-07-10 |
 | d | **One browser sign on `456 Test Flow Ave`** (client seat: `kalinspratling@gmail.com`) | Verifies the CONTRACT_SIGNING evidence chain end-to-end (priced PDF → frozen evidence → IP/UA capture → signed-copy email) on real hardware | 2026-07-10 |
+| e | **Enable billing on the Gemini API project** (aistudio.google.com → Get API key → the key's Cloud project → enable billing) | The visual-option library (all 195 assets) is built + ready but BLOCKED: the free tier has image-gen quota `limit: 0`. After billing, run `node tools/generate-visual-assets.mjs` (resumable, fills all 195), then `fix` → `validate`. Est. one-time cost single-digit dollars for 195 flash-image generations. | 2026-07-10 |
 
 ### NEXT CODE DISPATCH (priority)
 
