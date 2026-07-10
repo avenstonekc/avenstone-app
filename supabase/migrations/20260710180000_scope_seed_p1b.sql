@@ -8,10 +8,11 @@ BEGIN;
 
 -- Bathroom reconciliation: drop old-key rows superseded by draft keys (answer persistence
 -- does not exist yet, so this is safe). shower_type→tub_shower_config, wall_tile_extent→tile_height,
--- floor_finish→floor_tile, shower_enclosure→shower_glass, shower_niche→niche, vanity_count→(draft vanity split).
-DELETE FROM scope_checklists WHERE tenant_id IS NULL AND project_type='bathroom' AND field_key IN ('shower_type','wall_tile_extent','floor_finish','shower_enclosure','shower_niche','vanity_count');
+-- floor_finish→floor_tile, shower_enclosure→shower_glass, shower_niche→niche.
+-- vanity_count RE-ADDED to the bathroom checklist (owner reversal 2026-07-10) — no longer deleted.
+DELETE FROM scope_checklists WHERE tenant_id IS NULL AND project_type='bathroom' AND field_key IN ('shower_type','wall_tile_extent','floor_finish','shower_enclosure','shower_niche');
 
--- BATHROOM (18 fields)
+-- BATHROOM (19 fields)
 INSERT INTO scope_checklists (tenant_id, project_type, field_key, question, field_type, options, money_risk_rank, adds_trades, audience, risk_note, active) VALUES
   (NULL, 'bathroom', 'tub_shower_config', 'Walk-in shower only, tub/shower combo, freestanding tub plus separate shower, or tub only?', 'choice', '["walkin","combo","freestanding_plus_shower","tub_only"]'::jsonb, 1, ARRAY['Plumbing - Rough-in','Tile - Wall / shower','Tile - Floor']::text[], 'rep_client', 'Drives plumbing rough-in, glass, waterproofing footprint — the single biggest layout fork', true),
   (NULL, 'bathroom', 'layout_change', 'Are fixtures staying where they are, or moving (toilet, vanity, tub/shower)?', 'choice', '["keep_layout","minor_moves","full_reconfigure"]'::jsonb, 2, ARRAY['Plumbing - Rough-in']::text[], 'rep_client', 'Every fixture move = drain + supply relocation; slab foundation makes this brutal', true),
@@ -25,12 +26,13 @@ INSERT INTO scope_checklists (tenant_id, project_type, field_key, question, fiel
   (NULL, 'bathroom', 'floor_tile', 'Floor material?', 'choice', '["porcelain_woodlook","porcelain_stonelook","natural_stone","lvp"]'::jsonb, 10, ARRAY['Tile - Floor','Flooring - LVP']::text[], 'rep_client', 'Natural stone = sealing + thickness transitions; LVP = budget signal', true),
   (NULL, 'bathroom', 'heated_floor', 'Heated floor?', 'bool', NULL, 11, ARRAY['Electrical - Rough-in']::text[], 'rep_client', 'Electric mat + dedicated circuit + thermostat — retrofit impossible after tile', true),
   (NULL, 'bathroom', 'vanity_style', 'Vanity style?', 'choice', '["floating","freestanding","builtin"]'::jsonb, 12, ARRAY['Cabinets / vanities - Install']::text[], 'rep_client', 'Floating = blocking in wall; size drives plumbing centers', true),
-  (NULL, 'bathroom', 'vanity_size_in', 'Vanity size, roughly, in inches?', 'number', NULL, 13, ARRAY['Cabinets / vanities - Install']::text[], 'rep_client', NULL, true),
-  (NULL, 'bathroom', 'countertop', 'Vanity top material?', 'choice', '["quartz","granite","cultured_marble"]'::jsonb, 14, NULL, 'rep_client', NULL, true),
-  (NULL, 'bathroom', 'fixture_finish', 'Fixture finish family?', 'choice', '["brushed_nickel","matte_black","chrome","brushed_gold"]'::jsonb, 15, ARRAY['Plumbing - Finish / fixtures']::text[], 'rep_client', 'Locks the whole fixture package; mixed finishes = client callback', true),
-  (NULL, 'bathroom', 'ventilation', 'Existing exhaust fan — present, and vented where?', 'choice', '["exists_vented_out","exists_vented_attic","none"]'::jsonb, 16, ARRAY['Electrical - Rough-in','Electrical - Finish']::text[], 'rep', 'Attic-vented or missing fan = code fix + roof/soffit penetration nobody quoted', true),
-  (NULL, 'bathroom', 'toilet', 'Toilet — reuse, standard replace, comfort-height, wall-hung, or bidet seat circuit?', 'choice', '["reuse","standard","comfort_height","wall_hung","bidet_circuit"]'::jsonb, 17, ARRAY['Plumbing - Finish / fixtures']::text[], 'rep_client', 'Wall-hung = in-wall carrier (framing + cost jump); bidet seat = outlet at toilet', true),
-  (NULL, 'bathroom', 'age_of_home', 'Roughly what year was the house built?', 'choice', '["pre_1950","1950_1977","1978_2000","post_2000"]'::jsonb, 18, NULL, 'rep_client', 'Pre-''78 = lead paint protocol; old homes = galvanized/cast-iron surprise territory', true)
+  (NULL, 'bathroom', 'vanity_count', 'How many vanities?', 'number', NULL, 13, ARRAY['Cabinets / vanities - Install','Plumbing - Finish / fixtures']::text[], 'rep_client', 'Double vanity = 2x plumbing centers + cabinetry', true),
+  (NULL, 'bathroom', 'vanity_size_in', 'Vanity size, roughly, in inches?', 'number', NULL, 14, ARRAY['Cabinets / vanities - Install']::text[], 'rep_client', NULL, true),
+  (NULL, 'bathroom', 'countertop', 'Vanity top material?', 'choice', '["quartz","granite","cultured_marble"]'::jsonb, 15, NULL, 'rep_client', NULL, true),
+  (NULL, 'bathroom', 'fixture_finish', 'Fixture finish family?', 'choice', '["brushed_nickel","matte_black","chrome","brushed_gold"]'::jsonb, 16, ARRAY['Plumbing - Finish / fixtures']::text[], 'rep_client', 'Locks the whole fixture package; mixed finishes = client callback', true),
+  (NULL, 'bathroom', 'ventilation', 'Existing exhaust fan — present, and vented where?', 'choice', '["exists_vented_out","exists_vented_attic","none"]'::jsonb, 17, ARRAY['Electrical - Rough-in','Electrical - Finish']::text[], 'rep', 'Attic-vented or missing fan = code fix + roof/soffit penetration nobody quoted', true),
+  (NULL, 'bathroom', 'toilet', 'Toilet — reuse, standard replace, comfort-height, wall-hung, or bidet seat circuit?', 'choice', '["reuse","standard","comfort_height","wall_hung","bidet_circuit"]'::jsonb, 18, ARRAY['Plumbing - Finish / fixtures']::text[], 'rep_client', 'Wall-hung = in-wall carrier (framing + cost jump); bidet seat = outlet at toilet', true),
+  (NULL, 'bathroom', 'age_of_home', 'Roughly what year was the house built?', 'choice', '["pre_1950","1950_1977","1978_2000","post_2000"]'::jsonb, 19, NULL, 'rep_client', 'Pre-''78 = lead paint protocol; old homes = galvanized/cast-iron surprise territory', true)
 ON CONFLICT (tenant_id, project_type, field_key) DO UPDATE SET question=EXCLUDED.question, field_type=EXCLUDED.field_type, options=EXCLUDED.options, money_risk_rank=EXCLUDED.money_risk_rank, adds_trades=EXCLUDED.adds_trades, audience=EXCLUDED.audience, risk_note=EXCLUDED.risk_note, active=true;
 
 -- KITCHEN (16 fields)

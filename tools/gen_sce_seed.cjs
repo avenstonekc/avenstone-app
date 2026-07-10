@@ -25,6 +25,7 @@ bathroom: [
   ['floor_tile','Floor material?','choice',['porcelain_woodlook','porcelain_stonelook','natural_stone','lvp'],RC,'Natural stone = sealing + thickness transitions; LVP = budget signal',['Tile - Floor','Flooring - LVP']],
   ['heated_floor','Heated floor?','bool',null,RC,'Electric mat + dedicated circuit + thermostat — retrofit impossible after tile',['Electrical - Rough-in']],
   ['vanity_style','Vanity style?','choice',['floating','freestanding','builtin'],RC,'Floating = blocking in wall; size drives plumbing centers',['Cabinets / vanities - Install']],
+  ['vanity_count','How many vanities?','number',null,RC,'Double vanity = 2x plumbing centers + cabinetry',['Cabinets / vanities - Install','Plumbing - Finish / fixtures']],
   ['vanity_size_in','Vanity size, roughly, in inches?','number',null,RC,null,['Cabinets / vanities - Install']],
   ['countertop','Vanity top material?','choice',['quartz','granite','cultured_marble'],RC,null,null],
   ['fixture_finish','Fixture finish family?','choice',['brushed_nickel','matte_black','chrome','brushed_gold'],RC,'Locks the whole fixture package; mixed finishes = client callback',['Plumbing - Finish / fixtures']],
@@ -130,7 +131,7 @@ gut: [
 };
 
 // Bathroom: obsolete live keys to DELETE (renamed to draft keys or superseded).
-const BATH_DELETE = ['shower_type','wall_tile_extent','floor_finish','shower_enclosure','shower_niche','vanity_count'];
+const BATH_DELETE = ['shower_type','wall_tile_extent','floor_finish','shower_enclosure','shower_niche'];
 // Bathroom survivors: draft omits, owner kept — re-ranked after the 18 draft fields, content preserved.
 const BATH_SURVIVORS = ['shower_floor_tiled','drywall_wet_area','access_panel','shower_valve','shower_bench'];
 
@@ -227,7 +228,7 @@ BEGIN;
 `;
 
 // Bathroom deletes (renamed/superseded live keys)
-s += `-- Bathroom reconciliation: drop old-key rows superseded by draft keys (answer persistence\n-- does not exist yet, so this is safe). shower_type→tub_shower_config, wall_tile_extent→tile_height,\n-- floor_finish→floor_tile, shower_enclosure→shower_glass, shower_niche→niche, vanity_count→(draft vanity split).\n`;
+s += `-- Bathroom reconciliation: drop old-key rows superseded by draft keys (answer persistence\n-- does not exist yet, so this is safe). shower_type→tub_shower_config, wall_tile_extent→tile_height,\n-- floor_finish→floor_tile, shower_enclosure→shower_glass, shower_niche→niche.\n-- vanity_count RE-ADDED to the bathroom checklist (owner reversal 2026-07-10) — no longer deleted.\n`;
 s += `DELETE FROM scope_checklists WHERE tenant_id IS NULL AND project_type='bathroom' AND field_key IN (${BATH_DELETE.map(q).join(',')});\n\n`;
 
 // Checklist upserts
