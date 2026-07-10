@@ -1,0 +1,77 @@
+VISUAL ASSET VALIDATOR — C:\Users\Kalin\Avenstone-Assets
+Manifest: 56 KALIN assets expected · 139 CLAUDE illustrations (ignored for punch list)
+
+─── HOW TO FIX (Blake) — nothing uploads to the bucket until this exits 0 ───
+  • BAD SPECS: crop each square, 800×800 min. If a photo's short side is under 800px it is
+    too small — re-pull it from the manufacturer product page at FULL size, then crop square.
+  • MISNAMED: rename to the exact filename shown after the arrow.
+  • CLAUDE-NAMED FILES PRESENT: delete them — Claude generates those (e.g. bath_niche_recessed.png).
+  • Re-run after each batch until READY = 56/56 and this exits 0.
+────────────────────────────────────────────────────────────────────────────
+
+MISSING (0) — expected KALIN photo, no file found:
+
+MISNAMED (0) — a file that should be renamed:
+
+BAD SPECS (53) — correctly named but off-spec:
+  - bath_counter_cultured_marble.png: short side 472px < 800
+  - bath_counter_granite.png: 267x158 not square (>2%); short side 158px < 800
+  - bath_counter_quartz.png: 540x360 not square (>2%); short side 360px < 800
+  - bath_finish_brushed_gold.png: short side 554px < 800
+  - bath_finish_brushed_nickel.png: 418x478 not square (>2%); short side 418px < 800
+  - bath_finish_chrome.png: short side 554px < 800
+  - bath_finish_matte_black.png: short side 360px < 800
+  - bath_floor_lvp.png: short side 646px < 800
+  - bsmt_floor_carpet.png: 547x365 not square (>2%); short side 365px < 800
+  - bsmt_floor_concrete.png: 387x516 not square (>2%); short side 387px < 800
+  - bsmt_floor_lvp.png: 415x739 not square (>2%); short side 415px < 800
+  - deck_material_cedar.png: 508x393 not square (>2%); short side 393px < 800
+  - deck_material_composite.png: 1915x1480 not square (>2%)
+  - deck_material_pt.png: short side 554px < 800
+  - deck_material_pvc.png: short side 447px < 800
+  - ext_siding_board_batten.png: short side 447px < 800
+  - ext_siding_fiber_cement.png: 624x416 not square (>2%); short side 416px < 800
+  - ext_siding_lp.png: short side 447px < 800
+  - ext_siding_stone_accent.png: 471x424 not square (>2%); short side 424px < 800
+  - ext_siding_vinyl.png: 698x295 not square (>2%); short side 295px < 800
+  - fence_cap_solar.png: 183x275 not square (>2%); short side 183px < 800
+  - fence_cap_wood.png: short side 447px < 800
+  - fence_material_cedar.png: 547x365 not square (>2%); short side 365px < 800
+  - fence_material_composite.png: 459x435 not square (>2%); short side 435px < 800
+  - fence_material_pt.png: short side 554px < 800
+  - fence_material_vinyl.png: 630x487 not square (>2%); short side 487px < 800
+  - kitch_cab_inset.png: 406x756 not square (>2%); short side 406px < 800
+  - kitch_cab_raised_panel.png: 397x503 not square (>2%); short side 397px < 800
+  - kitch_cab_shaker.png: 397x503 not square (>2%); short side 397px < 800
+  - kitch_cab_slab.png: 397x503 not square (>2%); short side 397px < 800
+  - kitch_counter_butcher_block.png: 515x388 not square (>2%); short side 388px < 800
+  - kitch_counter_granite.png: 624x350 not square (>2%); short side 350px < 800
+  - kitch_counter_laminate.png: 514x597 not square (>2%); short side 514px < 800
+  - kitch_counter_quartz.png: short side 554px < 800
+  - kitch_sink_dropin.png: short side 554px < 800
+  - kitch_sink_farmhouse.png: short side 225px < 800
+  - kitch_sink_undermount_single.png: short side 554px < 800
+  - kitch_splash_layout_slab.png: 605x507 not square (>2%); short side 507px < 800
+  - roof_gutter_5k.png: 416x303 not square (>2%); short side 303px < 800
+  - roof_gutter_6k.png: 506x395 not square (>2%); short side 395px < 800
+  - roof_gutter_guards.png: short side 447px < 800
+  - roof_material_asphalt.png: 346x280 not square (>2%); short side 280px < 800
+  - roof_material_rpanel.png: 637x313 not square (>2%); short side 313px < 800
+  - roof_material_shake.png: 389x280 not square (>2%); short side 280px < 800
+  - roof_material_standing_seam.png: 674x455 not square (>2%); short side 455px < 800
+  - roof_shingle_3tab.png: 678x452 not square (>2%); short side 452px < 800
+  - roof_shingle_architectural.png: short side 447px < 800
+  - roof_shingle_designer.png: short side 225px < 800
+  - univ_floor_carpet.png: 370x540 not square (>2%); short side 370px < 800
+  - univ_floor_engineered.png: 275x183 not square (>2%); short side 183px < 800
+  - univ_floor_hardwood.png: 528x378 not square (>2%); short side 378px < 800
+  - univ_floor_lvp.png: short side 447px < 800
+  - univ_floor_tile.png: short side 225px < 800
+
+EXTRA (0) — in the folder, match nothing in the manifest:
+
+CLAUDE-NAMED FILES PRESENT (0) — Claude-generated, not Kalin's to upload:
+
+READY: 3 / 56 KALIN assets (5%)
+
+RESULT: BLOCKED ✗ — 0 missing, 0 misnamed, 53 bad spec. Nothing uploads to the bucket until this exits 0.

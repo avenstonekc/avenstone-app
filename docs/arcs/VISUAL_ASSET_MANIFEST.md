@@ -4,6 +4,8 @@
 
 > **THE PICTURE RULE — LOCKED 2026-07-10.** Any field/option added post-lock requires a matching manifest image row in the same change, unless Kalin explicitly waives it.
 
+> **AMENDMENT — 2026-07-10 (owner-waived exception to the picture rule).** Removed `addn_ext_match` + `addn_ext_contrast` (House Addition → Exterior match). Rationale: "match existing / intentional contrast" is a fork about *this house*, not a stockable material — you can't photograph someone's own siding. It renders as a plain choice question (`addition.exterior_match`), no image. KALIN photo count **58 → 56**. This is the picture rule's explicit owner-waiver, recorded here per that rule.
+
 ---
 
 ## 1. Naming Convention (LOCKED FORMAT — do not deviate)
@@ -176,8 +178,6 @@
 | Roof tie-in | Perpendicular gable | CLAUDE | `addn_roof_perp_gable.png` |
 | Roof tie-in | Shed/lean-to | CLAUDE | `addn_roof_shed.png` |
 | Roof tie-in | Second-story (build up) | CLAUDE | `addn_roof_second_story.png` |
-| Exterior match | Match existing siding | KALIN | `addn_ext_match.png` |
-| Exterior match | Intentional contrast | KALIN | `addn_ext_contrast.png` |
 | Connection | Open passage | CLAUDE | `addn_connect_open.png` |
 | Connection | Doorway | CLAUDE | `addn_connect_door.png` |
 | Connection | Hallway/breezeway | CLAUDE | `addn_connect_hall.png` |
