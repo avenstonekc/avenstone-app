@@ -137,13 +137,13 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 | Gap | Status | Evidence |
 |-----|--------|----------|
-| Gap 1 — LEGAL: no proposal in contract | **TECH-FIXED (legal gate open)** | CONTRACT_SIGNING 1b/1c (dc188fc + be66116 + a3be13c): unified `buildContractPDF` renders the accept-time `contract_snapshot` (line items, total, payment schedule) instead of boilerplate; payment schedule frozen into the snapshot at accept, clause-3 fallback when none. Technical embedding done — **ESIGN/UETA attorney review (Open Q1) still gates go-live.** |
+| Gap 1 — LEGAL: no proposal in contract | **FIXED (attorney-cleared 2026-07-10)** | CONTRACT_SIGNING 1b/1c (dc188fc + be66116 + a3be13c): unified `buildContractPDF` renders the accept-time `contract_snapshot` (line items, total, payment schedule) instead of boilerplate; payment schedule frozen into the snapshot at accept, clause-3 fallback when none. **ESIGN/UETA attorney review completed and cleared 2026-07-10 (Open Q1 closed) — legal gate lifted, signing flow cleared for go-live.** |
 | Gap 2 — Client can't see proposal in portal | NOT-FIXED | No Documents/Proposal tab in ClientPortal |
 | Gap 3 — Send email bug | **FIXED** | `sbSendEstimateEmail` now uses `to: job.client_email` + html body |
 | Gap 4 — No IP capture | NOT-FIXED | `contract_signatures.ip_address` column exists but NOT populated by `sbSaveSignature` |
 | Gap 5 — Magic links unverified | **RESOLVED 2026-07-09** | send-contract-email migrated off the retired magic link onto the canonical recovery-link pattern (be303ea); existing passwords never reset; sub mis-provisioning bug killed; dead `send-client-link` helpers removed (f51b500, zero callers). No longer blocking. |
 
-**Net: 3 of 5 gaps addressed (Gap 3 email fixed; Gap 5 magic-link resolved 2026-07-09; Gap 1 technically embedded via 1b/1c).** Remaining: Gap 2 (portal proposal view), Gap 4 (IP capture / B4.3). **STOP still stands: ESIGN/UETA attorney review (Open Q1) required before the full signing flow goes live — Gap 1 is technically built but legally gated.**
+**Net: 3 of 5 gaps addressed (Gap 3 email fixed; Gap 5 magic-link resolved 2026-07-09; Gap 1 FIXED — embedded via 1b/1c AND attorney-cleared 2026-07-10).** Remaining: Gap 2 (portal proposal view), Gap 4 (IP capture / B4.3). **STOP LIFTED: ESIGN/UETA attorney review completed and cleared 2026-07-10 (Open Q1 closed) — the signing flow is legally cleared for go-live.**
 
 ---
 
@@ -429,7 +429,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | Sub-step | What it does | Prompts | Prereq |
 |----------|-------------|---------|--------|
 | B4.1 — Contract signing: Gap 5 verify | **[SHIPPED 2026-07-09 — be303ea + f51b500]** Verified dead: migrated send-contract-email onto the recovery-link pattern (create-client-login canonical), removed dead `send-client-link` helpers (zero callers). Magic links confirmed retired; sub mis-provisioning bug killed as part of the migration. | 1 | Legal review |
-| B4.2 — Contract signing: Gap 1 (embed proposal) | **[TECH-SHIPPED 2026-07-09 — CONTRACT_SIGNING 1b/1c: dc188fc + be66116 + a3be13c; legal gate Open Q1 still open]** Unified `buildContractPDF` renders accept-time `contract_snapshot` (line items, total, payment schedule) + sign-time evidence freeze (fail-loud no-snapshot gate); payment schedule frozen into the snapshot at accept with clause-3 fallback when none. LOCKED: no auto-default payment schedule — optional nudge deferred to future 1d. | 2 | B4.1 |
+| B4.2 — Contract signing: Gap 1 (embed proposal) | **[FIXED 2026-07-10 — CONTRACT_SIGNING 1b/1c: dc188fc + be66116 + a3be13c; attorney-cleared, Open Q1 closed]** Unified `buildContractPDF` renders accept-time `contract_snapshot` (line items, total, payment schedule) + sign-time evidence freeze (fail-loud no-snapshot gate); payment schedule frozen into the snapshot at accept with clause-3 fallback when none. ESIGN/UETA attorney review completed and cleared 2026-07-10 — legal gate lifted. LOCKED: no auto-default payment schedule — optional nudge deferred to future 1d. | 2 | B4.1 |
 | B4.3 — Contract signing: Gap 4 (IP capture) | Populate `contract_signatures.ip_address` from request headers in `ClientSignContractModal.jsx`. | 1 | B4.2 |
 | B4.4 — PM morning brief | `ProjectManagerHomeScr`: active phases + pending subs + overdue schedule items + open COs + draw status. Role-gate in App.jsx. | 2 | None |
 | B4.5 — Sales Rep morning brief | `SalesRepHomeScr`: today's active proposals, follow-up todos, pipeline by status (lead/proposal/contract), upcoming consultations. | 2 | None |
@@ -445,7 +445,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Block 4 total: 29 prompts**
 
-**Prereq note:** Legal review for contract signing must happen BEFORE B4.1. This is not a Sonnet prompt — it's Kalin consulting a MO-licensed attorney about ESIGN/UETA compliance.
+**Prereq note (CLEARED 2026-07-10):** Legal review for contract signing — Kalin consulted a MO-licensed attorney; ESIGN/UETA compliance reviewed and cleared 2026-07-10. Open Q1 closed; the signing flow is legally cleared for go-live.
 
 > **Unvetted rep-rate gate at contract signing (Locked Rule, 2026-06-25):** An estimate containing any \ate_book_labor\ rows with \etted=false\ cannot reach company-approved/signed state. The signing flow (B4.2 + ClientSignContractModal path) must check for unvetted-rate flags and block signing until management promotes them via B3.1/B3.2. Enforced before the contract embeds the estimate total — a contract signed against an unvetted rate is the exact failure the rule prevents.
 
@@ -600,7 +600,7 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 
 | # | Question | Stakes |
 |---|----------|--------|
-| 1 | **Contract signing: attorney review first?** CONTRACT_SIGNING_ARC explicitly flags ESIGN/UETA compliance exposure (Gap 1: contract signed with no price or line items). Before B4.2, confirm: is a MO-licensed attorney reviewing this? Timeline? | Legal risk — binds clients without seeing what they're paying for |
+| 1 | **CLOSED 2026-07-10 — Contract signing attorney review.** MO-licensed attorney reviewed the ESIGN/UETA signing flow (priced contract embeds line items + total + payment schedule via 1b/1c) and cleared it. Gap 1 / B4.2 now FIXED; the signing flow is legally cleared for go-live. | RESOLVED — legal gate lifted |
 | 2 | **RESOLVED 2026-07-09 — ASK with anchor.** When a rate isn't in Rate Book: ASK the rep, showing the KC regional average as an anchor. Rep accepts the anchor or overrides — BOTH write back to Rate Book with source recorded. No silent regional_avg fallback. This is Phase 5's locked behavior. | RESOLVED — drives ESTIMATOR Phase 5 build |
 | 3 | **SELECTIONS day-one trades:** Arc proposes tile + interior paint. Are there others to add at v1? (Cabinets? Countertops? Flooring?) Field judgment needed before B5.7. | Determines template scope for B5.7-B5.9 |
 | 4 | **MATERIAL_SELECTION vs SELECTIONS_ARC:** These are different features. MATERIAL_SELECTION = client self-service AI product catalog (chat-driven HD/Lowes). SELECTIONS_ARC = PM-driven trade selections (tile color, paint color, confirm-by). Both write to `job_selections`-family tables. Do you want both? Which first? | Schema coordination at B5.7 if both wanted |
@@ -644,6 +644,6 @@ _First idea → GPS/ETA was triaged and placed as B5.13 (2026-06-19). No unplace
 
 | Idea | What it's waiting on | Triage date |
 |------|---------------------|-------------|
-| _(empty — add via triage rule)_ | — | — |
+| **Harden client UPDATE RLS on `jobs` to column-scoped.** Model B audit (2026-07-09) found the `jobs: client sign` UPDATE policy checks only client↔job linkage (role + `client_user_id`/`client_email`), with **no column constraints** — a linked client could technically UPDATE any `jobs` column, not just the sign fields (`contract_signed`, `contract_signed_at`, `status`). Scope the policy to the columns the sign flow actually writes. | Standalone security hardening — no prereq; schedule alongside Model B Phase 3 (which touches `jobs.status` writers) or sooner | 2026-07-10 |
 
 
