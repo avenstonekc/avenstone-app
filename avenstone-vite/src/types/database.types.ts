@@ -1527,6 +1527,7 @@ export type Database = {
           notes: string | null
           phase: string | null
           quantity: number
+          rate_provenance: string | null
           source_label: string | null
           tenant_id: string
           total_cost: number | null
@@ -1550,6 +1551,7 @@ export type Database = {
           notes?: string | null
           phase?: string | null
           quantity?: number
+          rate_provenance?: string | null
           source_label?: string | null
           tenant_id: string
           total_cost?: number | null
@@ -1573,6 +1575,7 @@ export type Database = {
           notes?: string | null
           phase?: string | null
           quantity?: number
+          rate_provenance?: string | null
           source_label?: string | null
           tenant_id?: string
           total_cost?: number | null
@@ -4734,6 +4737,7 @@ export type Database = {
         Row: {
           active: boolean
           adds_trades: string[] | null
+          audience: string | null
           created_at: string
           field_key: string
           field_type: string
@@ -4742,11 +4746,13 @@ export type Database = {
           options: Json | null
           project_type: string
           question: string
+          risk_note: string | null
           tenant_id: string | null
         }
         Insert: {
           active?: boolean
           adds_trades?: string[] | null
+          audience?: string | null
           created_at?: string
           field_key: string
           field_type: string
@@ -4755,11 +4761,13 @@ export type Database = {
           options?: Json | null
           project_type: string
           question: string
+          risk_note?: string | null
           tenant_id?: string | null
         }
         Update: {
           active?: boolean
           adds_trades?: string[] | null
+          audience?: string | null
           created_at?: string
           field_key?: string
           field_type?: string
@@ -4768,6 +4776,7 @@ export type Database = {
           options?: Json | null
           project_type?: string
           question?: string
+          risk_note?: string | null
           tenant_id?: string | null
         }
         Relationships: []
