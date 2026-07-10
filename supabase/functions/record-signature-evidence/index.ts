@@ -54,6 +54,27 @@ Deno.serve(async (req) => {
 
     const row = Array.isArray(data) ? data[0] : null;
 
+    // CONTRACT_SIGNING · client-RLS hardening — set the job's SIGNED state server-side.
+    // The client session no longer has UPDATE on jobs (that column-unscoped hole is closed);
+    // this fn — already running service-side in the post-sign flow — owns the write. It mirrors
+    // the EXACT fields the client modal used to write. status:'in_progress' is kept verbatim for
+    // now; Model B Phase 3 owns changing that semantic, not this slice. Isolated: a failure here
+    // leaves contract_signed=false (the portal's sign banner persists) but NEVER touches the
+    // signature (already saved) — so we log LOUDLY and report it back for the caller to log too.
+    let contractMarked = false;
+    if (job_id) {
+      try {
+        const { error: jErr } = await sb.from("jobs")
+          .update({ contract_signed: true, contract_signed_at: new Date().toISOString(), status: "in_progress" })
+          .eq("id", job_id)
+          .eq("tenant_id", tenant_id);
+        if (jErr) console.error("record-signature-evidence contract_signed write FAILED:", jErr.message);
+        else contractMarked = true;
+      } catch (e) {
+        console.error("record-signature-evidence contract_signed write threw:", String(e));
+      }
+    }
+
     // Model B Phase 2 — contract SIGNED: advance Lead/Proposal/Contract → complete.
     // Routed here (not the client modal) because job_phases RLS forbids the client role
     // from writing; this fn already runs service-side in the post-sign flow. Forward-only
@@ -79,7 +100,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, updated: !!row, ip_captured: !!row?.ip_address, ua_captured: !!row?.user_agent });
+    return json({ ok: true, updated: !!row, ip_captured: !!row?.ip_address, ua_captured: !!row?.user_agent, contract_marked: contractMarked });
   } catch (err) {
     console.error("record-signature-evidence error:", err);
     return json({ error: String(err) }, 500);
