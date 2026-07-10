@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, sbUploadDoc, sbSaveSignature, sbNotify, sbGetContractSnapshot, sbSendContractEmail, AV_USER_ID } from '../../lib/supabase';
+import { sb, sbUploadDoc, sbSaveSignature, sbNotify, sbGetContractSnapshot, sbSendContractEmail, sbRecordSignatureEvidence, AV_USER_ID } from '../../lib/supabase';
 import { buildContractPDF, DEFAULT_CONTRACT_TEXT } from '../../lib/pdf';
 import SignaturePad from '../auth/SignaturePad';
 
@@ -77,6 +77,13 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
 
     await sb.from('jobs').update({ contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'in_progress' }).eq('id', job.id);
     sbNotify('note_posted', `Contract signed — ${job.address}`, 'The client has signed the contract.', job.id, AV_USER_ID);
+
+    // Capture server-side signer evidence (IP + user agent) onto the signature row. Fired
+    // post-save and independent of the signed-copy email below — neither waits on the other.
+    // Evidence enrichment, not a state change: a failure is logged and never blocks signing.
+    sbRecordSignatureEvidence({ signature_id: res.data?.id, tenant_id: job.tenant_id, job_id: job.id })
+      .then(r => { if (r?.error) console.error('Signature evidence capture failed:', r.error); })
+      .catch(e => console.error('Signature evidence capture error:', e));
 
     // Deliver the client their fully-executed copy (same signed PDF, CC'd to the office).
     // This is a NOTIFICATION, not a state change: the signature is already recorded above,
