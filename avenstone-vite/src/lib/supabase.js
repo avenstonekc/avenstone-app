@@ -33,6 +33,7 @@ export const CREATE_CLIENT_LOGIN_URL  = `${FN}/create-client-login`;
 export const PAYMENT_LINK_URL  = `${FN}/create-payment-link`;
 export const AI_ESTIMATOR_URL  = `${FN}/ai-estimator`;
 export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
+export const RECORD_SIGNATURE_EVIDENCE_URL = `${FN}/record-signature-evidence`;
 export const NOTIFY_REALTOR_URL = `${FN}/notify-realtor`;
 export const NOTIFY_EMAIL_URL   = `${FN}/notify-email`;
 export const authHeader = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` });
@@ -1252,6 +1253,17 @@ export const sbSaveSignature = async sig => {
     return { ok: false, error: error.message, data: null };
   }
   return { ok: true, error: null, data };
+};
+// Post-signature evidence enrichment: server-captures the signer's IP + user agent onto
+// the just-written contract_signatures row. Convenience/audit only — callers MUST treat
+// a failure as non-fatal (never gates the signature). The IP is read server-side from the
+// request; nothing trustworthy is sent from the client.
+export const sbRecordSignatureEvidence = async ({ signature_id, tenant_id, job_id }) => {
+  const res = await fetch(RECORD_SIGNATURE_EVIDENCE_URL, {
+    method: 'POST', headers: authHeader(),
+    body: JSON.stringify({ signature_id, tenant_id, job_id }),
+  });
+  return res.json();
 };
 export const sbSendContractEmail = async (job, contractType, pdfBlob) => {
   const b64 = pdfBlob ? await toBase64(pdfBlob) : null;
