@@ -456,7 +456,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setLearnSaveState('saving');
     let allOk = true;
     for (const c of learnCandidates) {
-      const res = await sbInsertRateBookLabor({ trade: c.trade, line_item: c.line_item, unit: c.unit, rate: c.rate });
+      // S8: write the real provenance ('rep_accepted_anchor' | 'rep_override' | 'rep_entered')
+      // per gap. Both accept and override fatten the book (locked); owner vet-promotion
+      // (source → 'owner_vetted') stays a separate, later action.
+      const res = await sbInsertRateBookLabor({ trade: c.trade, line_item: c.line_item, unit: c.unit, rate: c.rate, source: c.source });
       if (!res.ok) allOk = false;
     }
     setLearnSaveState(allOk ? 'saved' : 'error');
