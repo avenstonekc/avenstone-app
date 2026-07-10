@@ -1006,6 +1006,7 @@ export type Database = {
           created_at: string | null
           document_url: string | null
           id: string
+          ip_address: unknown
           job_id: string
           reference_id: string | null
           scope_snapshot: Json | null
@@ -1015,12 +1016,14 @@ export type Database = {
           signed_by_name: string | null
           tenant_id: string
           type: string
+          user_agent: string | null
         }
         Insert: {
           contract_total?: number | null
           created_at?: string | null
           document_url?: string | null
           id?: string
+          ip_address?: unknown
           job_id: string
           reference_id?: string | null
           scope_snapshot?: Json | null
@@ -1030,12 +1033,14 @@ export type Database = {
           signed_by_name?: string | null
           tenant_id: string
           type: string
+          user_agent?: string | null
         }
         Update: {
           contract_total?: number | null
           created_at?: string | null
           document_url?: string | null
           id?: string
+          ip_address?: unknown
           job_id?: string
           reference_id?: string | null
           scope_snapshot?: Json | null
@@ -1045,6 +1050,7 @@ export type Database = {
           signed_by_name?: string | null
           tenant_id?: string
           type?: string
+          user_agent?: string | null
         }
         Relationships: [
           {
