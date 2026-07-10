@@ -49,12 +49,12 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | 1.5 — Rate Book schema | **BUILT** | `20260616100000_rate_book_schema.sql`; `rate_book_labor` + `rate_book_material` tables live; `RateBookScr.jsx` at `src/components/owner/RateBookScr.jsx` |
 | 2 — Supabase connection + prompt injection | **BUILT** | `ai-estimator/index.ts` `loadRateBook(tenantId)` reads both tables; vocabulary injected into SYSTEM_PROMPT |
 | 3 — Cite-or-flag + Range Collapse (Job-Size Tier) | **BUILT** | `getTier(projectSf)` from `_shared/rateBook.ts`; tier collapse by unit type active; `source_label` written to `estimate_line_items` |
-| 4 — Guided interview w/ pre-filled defaults | NOT-BUILT | Chat exists but no "running your standard X% — good?" pre-fill; markup + pm_fee hardcoded in prompt text (30%, $1,200) |
-| 5 — Per-tenant fallback mode config | NOT-BUILT | No `estimator_fallback_mode` column; no tenant config read for fallback |
+| 4 — Guided interview w/ pre-filled defaults | **BUILT** | STALE INVENTORY corrected 2026-07-09 — shipped via B1.6 (ab50638 killed hardcoded 30%/$1,200, reads `bid_model_config`) + B2.1 (0bead89 "running your standard X%" preamble in formatEstimate; bd3fb84 configMissing fail-loud). Hardcoded rates gone; pre-fill + override surface live. |
+| 5 — Per-tenant fallback mode config | NOT-BUILT | No `estimator_fallback_mode` column; no tenant config read for fallback. **Behavior LOCKED 2026-07-09 (Open Q2): missing rate → ASK, show KC regional average as anchor, rep accepts-or-overrides, both write back to Rate Book with source recorded. No silent fallback.** |
 | 6 — Batch unknowns | **BUILT** | GapBatchAsk.jsx + applyGapRates (after-draft sequencing, confirmed live — ESTIMATOR Phase 6, reconciled 2026-06-25) |
 | 7 — Learn loop (save gaps to Rate Book) | **BUILT** | sbInsertRateBookLabor + learnCandidates + save offer panel in EstimateTab — ESTIMATOR Phase 7, shipped 2026-06-25 (48aea78 + a84f0fc + 7f95fe5) |
 
-**Net: 3 of 7 phases live.** Phases 4-7 define the guided interview experience.
+**Net: 5 of 7 phases live** (2, 3, 4, 6, 7 + schema 1.5 — Phase 4 was stale inventory, corrected 2026-07-09: shipped via B1.6/B2.1). Remaining: Phase 1 (rate reconciliation) + Phase 5 (per-tenant fallback mode — behavior locked, see row above). Phases 4-7 define the guided interview experience.
 **Critical finding:** markup (30%) and pm_fee ($1,200) are **hardcoded in the ai-estimator SYSTEM_PROMPT text** — not read from tenant config. Kills the "honor tenant config" goal of Block 1.
 
 ---
@@ -96,7 +96,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 |-------|--------|----------|
 | 1 — bid_model_config schema | **BUILT** | B1.1 shipped (edd13a6); 1 row confirmed in DB; CONFIRMED-LIVE |
 | 2 — Estimate engine reads bid model | **BUILT** | B1.6 shipped (ab50638 ai-estimator, f9afaad EstimateTab; b7db63b LOG) |
-| 3 — Allowance as first-class | NOT-BUILT | Allowances use description convention only |
+| 3 — Allowance as first-class | NOT-BUILT · QUEUED | Allowances use description convention only. **Next estimator slice (queued 2026-07-09): estimator consumes `supply_model` + allowance from `bid_model_config`** — B1.1 shipped the schema (`supply_model` per category); consumption into the estimate engine not yet wired. |
 | 4 — Interview engine + photo-in-interview | NOT-BUILT | Parked in Block 1 after B1.7 (TENANT_ONBOARDING Phase 4-5 explicitly deferred) |
 | 5 — Plan upload ingest | PARTIAL | Floor plan upload exists but not on estimate rail |
 | 6 — Wizard writes structured config | **BUILT** | B1.7 Phase 3 shipped (19cf93e wizard Save + role-gate migration + round-trip verified) |
@@ -137,13 +137,13 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 | Gap | Status | Evidence |
 |-----|--------|----------|
-| Gap 1 — LEGAL: no proposal in contract | **NOT-FIXED** | `ClientSignContractModal.jsx` renders `DEFAULT_CONTRACT_TEXT(job)` — boilerplate with no line items, price, or payment schedule |
+| Gap 1 — LEGAL: no proposal in contract | **TECH-FIXED (legal gate open)** | CONTRACT_SIGNING 1b/1c (dc188fc + be66116 + a3be13c): unified `buildContractPDF` renders the accept-time `contract_snapshot` (line items, total, payment schedule) instead of boilerplate; payment schedule frozen into the snapshot at accept, clause-3 fallback when none. Technical embedding done — **ESIGN/UETA attorney review (Open Q1) still gates go-live.** |
 | Gap 2 — Client can't see proposal in portal | NOT-FIXED | No Documents/Proposal tab in ClientPortal |
 | Gap 3 — Send email bug | **FIXED** | `sbSendEstimateEmail` now uses `to: job.client_email` + html body |
 | Gap 4 — No IP capture | NOT-FIXED | `contract_signatures.ip_address` column exists but NOT populated by `sbSaveSignature` |
-| Gap 5 — Magic links unverified | **BLOCKING** | `send-client-link` edge fn exists; CLAUDE.md flags magic links "retired 2026-06-01"; canonical path is `create-client-login` — **must verify before building anything in this arc** |
+| Gap 5 — Magic links unverified | **RESOLVED 2026-07-09** | send-contract-email migrated off the retired magic link onto the canonical recovery-link pattern (be303ea); existing passwords never reset; sub mis-provisioning bug killed; dead `send-client-link` helpers removed (f51b500, zero callers). No longer blocking. |
 
-**Net: 1 of 5 gaps fixed (Gap 3 email).** Legal exposure (Gap 1) is highest priority. **STOP: attorney review required before wiring full signing flow.**
+**Net: 3 of 5 gaps addressed (Gap 3 email fixed; Gap 5 magic-link resolved 2026-07-09; Gap 1 technically embedded via 1b/1c).** Remaining: Gap 2 (portal proposal view), Gap 4 (IP capture / B4.3). **STOP still stands: ESIGN/UETA attorney review (Open Q1) required before the full signing flow goes live — Gap 1 is technically built but legally gated.**
 
 ---
 
@@ -335,7 +335,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Parked in Block 1:** TENANT_ONBOARDING Phases 4-5 (interview engine + plan upload ingest) — after core config is running and Kalin has used it on real jobs
 
-**Parked (post-Block 1, audit-first):** RECEIPT_MODAL_EXTRACTION — wire existing Haiku receipt-vision path onto the manual Add-Receipt modal (FinancialsTab TransactionModal) so an uploaded receipt auto-fills price/description/vendor/date. Add pending/paid toggle (owner-scoped — explicitly NOT baked into client onboarding flow). Size TBD — opens with an audit confirming whether modal extraction already exists or is agent-chat-only. Logged 2026-06-25.
+**RECEIPT_MODAL_EXTRACTION — [SHIPPED 2026-07-09 · d167bbd + d35c3dc].** Audit-first (read-only audit corrected the premise: the agent's receipt-from-photo is inline **Sonnet**, NOT a callable Haiku path — do not copy it (Bug C); storage was already unified on the `job-receipts` bucket + `job_files` dual-write; the 3-way paid/pending/draft status toggle already existed). Build: generalized `ai-extract-sub-invoice` (Haiku claude-haiku-4-5) to accept `{bucket,path}` alongside `{jobFileId}` (tenant-isolated via the owning job; bucket allowlist), added `sbExtractReceipt` helper; TransactionModal auto-fills vendor/amount/date/description on upload — pre-fills ONLY untouched fields (user-typed values always win), silent degradation to manual entry on any extraction failure (never gates save). LIVE-VERIFIED 6/6 endpoint tests incl. a real receipt extraction + legacy `{jobFileId}` regression. **LOCKED: status toggle stays UNSCOPED to all roles** (dropped the parked "owner-scoped" idea). CLAUDE.md bucket list corrected (+`job-receipts`, the missing 5th bucket). Original parked note logged 2026-06-25.
 
 **Locked (fast-follow, SHIPPING this dispatch — 2026-06-25):** SUB_NAME_RESOLVER — sub-name matching has the SAME Bug-C divergence the job resolver fixed at 5e2b865: inline `.ilike` copies in `create_schedule_item`, `log_sub_invoice`, `approve_sub_invoice` (and `log_sub_payment` — 4th site found in audit), no shared helper. Fix: two helpers alongside `resolveJobByName` in ai-master-agent/index.ts — `resolveSubContact` (contacts table, for invoice verbs) and `resolveSubProfile` (profiles table, for schedule_item). Prereq: none. Size: ~1 prompt. [SHIPPED 2026-06-25 — see LOG]
 
@@ -428,8 +428,8 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 | Sub-step | What it does | Prompts | Prereq |
 |----------|-------------|---------|--------|
-| B4.1 — Contract signing: Gap 5 verify | Verify `send-client-link` magic link redirect behavior. One-prompt dispatch: test the send path, confirm working or confirm dead + which alternative to wire. **Legal review is NOT a Sonnet prompt — happens first.** | 1 | Legal review |
-| B4.2 — Contract signing: Gap 1 (embed proposal) | Embed the accepted estimate total, payment schedule, and scope summary into the contract before signing. `DEFAULT_CONTRACT_TEXT` reads from estimate + proposal data. | 2 | B4.1 |
+| B4.1 — Contract signing: Gap 5 verify | **[SHIPPED 2026-07-09 — be303ea + f51b500]** Verified dead: migrated send-contract-email onto the recovery-link pattern (create-client-login canonical), removed dead `send-client-link` helpers (zero callers). Magic links confirmed retired; sub mis-provisioning bug killed as part of the migration. | 1 | Legal review |
+| B4.2 — Contract signing: Gap 1 (embed proposal) | **[TECH-SHIPPED 2026-07-09 — CONTRACT_SIGNING 1b/1c: dc188fc + be66116 + a3be13c; legal gate Open Q1 still open]** Unified `buildContractPDF` renders accept-time `contract_snapshot` (line items, total, payment schedule) + sign-time evidence freeze (fail-loud no-snapshot gate); payment schedule frozen into the snapshot at accept with clause-3 fallback when none. LOCKED: no auto-default payment schedule — optional nudge deferred to future 1d. | 2 | B4.1 |
 | B4.3 — Contract signing: Gap 4 (IP capture) | Populate `contract_signatures.ip_address` from request headers in `ClientSignContractModal.jsx`. | 1 | B4.2 |
 | B4.4 — PM morning brief | `ProjectManagerHomeScr`: active phases + pending subs + overdue schedule items + open COs + draw status. Role-gate in App.jsx. | 2 | None |
 | B4.5 — Sales Rep morning brief | `SalesRepHomeScr`: today's active proposals, follow-up todos, pipeline by status (lead/proposal/contract), upcoming consultations. | 2 | None |
@@ -601,7 +601,7 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | # | Question | Stakes |
 |---|----------|--------|
 | 1 | **Contract signing: attorney review first?** CONTRACT_SIGNING_ARC explicitly flags ESIGN/UETA compliance exposure (Gap 1: contract signed with no price or line items). Before B4.2, confirm: is a MO-licensed attorney reviewing this? Timeline? | Legal risk — binds clients without seeing what they're paying for |
-| 2 | **ESTIMATOR Phase 5 (per-tenant fallback mode):** When a rate isn't in Rate Book, should Avenstone always ask the rep (ask mode) or use regional_avg silently? This is a tenant config value. What's Avenstone's default? | Determines Phase 5 UX and engine behavior |
+| 2 | **RESOLVED 2026-07-09 — ASK with anchor.** When a rate isn't in Rate Book: ASK the rep, showing the KC regional average as an anchor. Rep accepts the anchor or overrides — BOTH write back to Rate Book with source recorded. No silent regional_avg fallback. This is Phase 5's locked behavior. | RESOLVED — drives ESTIMATOR Phase 5 build |
 | 3 | **SELECTIONS day-one trades:** Arc proposes tile + interior paint. Are there others to add at v1? (Cabinets? Countertops? Flooring?) Field judgment needed before B5.7. | Determines template scope for B5.7-B5.9 |
 | 4 | **MATERIAL_SELECTION vs SELECTIONS_ARC:** These are different features. MATERIAL_SELECTION = client self-service AI product catalog (chat-driven HD/Lowes). SELECTIONS_ARC = PM-driven trade selections (tile color, paint color, confirm-by). Both write to `job_selections`-family tables. Do you want both? Which first? | Schema coordination at B5.7 if both wanted |
 | 5 | **AUTO_FIX_ARC setup session:** Phases A-E require a dedicated 4-6hr VM setup block (DigitalOcean/Hetzner, Claude Code on VM, PM2 listener). This also unblocks FIELD_OPUS Phase 4. When's the right window? Not in the main path — but worth scheduling soon. | Unblocks FIELD_OPUS dispatch + bug auto-repair |
