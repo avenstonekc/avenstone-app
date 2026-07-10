@@ -1,8 +1,11 @@
 # SCOPE_CAPTURE_ENGINE — Architecture Blueprint
 
-**Status:** Blueprint (decisions only — no code shipped). Locked arc 2026-06-25; this doc is the HOW for the WHAT recorded in MASTER_BUILD_PLAN.md (Block 2, row 10.5).
+**Status:** Blueprint + Phase 1B **SHIPPED**. Locked arc 2026-06-25; this doc is the HOW for the WHAT recorded in MASTER_BUILD_PLAN.md (Block 2, row 10.5).
+**Phase 1B — full seed SHIPPED 2026-07-10** (`fc65746`): 9 project types (bathroom 23 fields, kitchen 16, deck 12, addition 9, roof 9, fence 9, basement 9, exterior 8, gut 7) + 15 universal modules + 37 conflict rules, all `tenant_id=NULL` platform defaults, translated from the owner-locked `docs/arcs/SCOPE_SEED_CONTENT_DRAFT.md`. Schema gained `audience` + `risk_note` (`48b55d6`). Live-smoke-verified: scope-interview on `kitchen` returns the checklist money-risk-ordered through the deployed fn.
 **Doc discipline:** Working arc doc. Folds into AVENSTONE_VISION.md / CLAUDE_ARCHIVE.md once the arc ships; delete from root then (per OPUS_RULES 7-doc cap).
 **Author:** Opus, 2026-06-25. Every decision is grounded in a cited file/column read live.
+
+> **THE PICTURE RULE — LOCKED 2026-07-10** (also in VISUAL_ASSET_MANIFEST.md). Any field/option added post-lock requires a matching manifest image row in the same change, unless Kalin explicitly waives it.
 
 ---
 
