@@ -1,12 +1,15 @@
 VISUAL ASSET VALIDATOR — C:\Users\Kalin\Avenstone-Assets
 Manifest: 56 KALIN assets expected · 139 CLAUDE illustrations (ignored for punch list)
 
-─── HOW TO FIX (Blake) — nothing uploads to the bucket until this exits 0 ───
-  • BAD SPECS: crop each square, 800×800 min. If a photo's short side is under 800px it is
-    too small — re-pull it from the manufacturer product page at FULL size, then crop square.
-  • MISNAMED: rename to the exact filename shown after the arrow.
-  • CLAUDE-NAMED FILES PRESENT: delete them — Claude generates those (e.g. bath_niche_recessed.png).
-  • Re-run after each batch until READY = 56/56 and this exits 0.
+─── HOW TO FIX — nothing uploads to the bucket until this exits 0 ───
+  Workflow (Kalin, after each of Blake's drops):
+    1) node scripts/fix-visual-assets.mjs <folder>   — auto-squares every file with short side
+       >= 800px to 800x800 (originals saved to _originals/); never upscales.
+    2) node scripts/validate-visual-assets.mjs <folder>   — this report.
+  • Whatever remains under BAD SPECS after the fix reads "short side < 800px" — that is BLAKE'S
+    ONLY JOB: re-download each at FULL size from the manufacturer page (do NOT crop; the fixer squares it).
+  • MISNAMED: rename to the exact filename shown. CLAUDE-NAMED files: delete (e.g. bath_niche_recessed.png).
+  • Repeat fix → validate until READY = 56/56 and this exits 0.
 ────────────────────────────────────────────────────────────────────────────
 
 MISSING (0) — expected KALIN photo, no file found:
