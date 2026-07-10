@@ -1,5 +1,6 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases } from '../../../lib/supabase';
+import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
@@ -624,6 +625,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       await sbSendEstimateEmail(job, blob);
       const file = new File([blob], `Proposal — ${job.address}.pdf`, { type: 'application/pdf' });
       await sbUploadDoc(job.id, file, 'proposal');
+      // Model B Phase 2 — proposal SENT: Lead complete + Proposal in_progress. Only on the
+      // real send path (the gated-approval branch above returns early). Never block the send.
+      await sbSeedJobPhases(job.id, AV_TENANT);
+      const _adv = await markLifecyclePhases(sb, AV_TENANT, job.id, 'proposal_sent', AV_USER_ID);
+      if (!_adv.ok) console.error('proposal_sent phase advance failed —', _adv.error);
       setEstSaveMsg(`Sent to ${job.client_email}`);
     } catch (e) { setEstSaveMsg('Send failed — try again'); }
     setEstSendingClient(false); setTimeout(() => setEstSaveMsg(''), 4000);
@@ -711,6 +717,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     // helper omits the key and the contract PDF falls back to legal clause 3.
     const result = await sbSetContractFromEstimate(job.id, propSchedule);
     if (result.ok) {
+      // Model B Phase 2 — estimate ACCEPTED: Lead+Proposal complete, Contract in_progress.
+      // Never block the accept — it already succeeded above.
+      await sbSeedJobPhases(job.id, AV_TENANT);
+      const _adv = await markLifecyclePhases(sb, AV_TENANT, job.id, 'estimate_accepted', AV_USER_ID);
+      if (!_adv.ok) console.error('estimate_accepted phase advance failed —', _adv.error);
       setAcceptMsg(`Contract set to $${Number(result.data.contract_total).toLocaleString()}`);
       setTimeout(() => setAcceptMsg(''), 5000);
     } else {

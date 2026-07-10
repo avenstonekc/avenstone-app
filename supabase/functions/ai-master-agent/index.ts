@@ -1250,13 +1250,19 @@ async function executeTool(
         if (error) return { error: error.message };
         try {
           const DEFAULT_PHASES_SEED = ['Lead','Proposal','Contract','Demo','Rough-ins','Inspections','Drywall','Finishes','Final touches','Complete'];
+          // Model B Phase 2 — mirror markLifecyclePhases('created') (src/lib/lifecycle.js):
+          // a freshly-created job is at Lead, actively → seed Lead as in_progress, rest
+          // not_started. Kept inline (edge fns cannot import src/lib). Divergence-guard:
+          // if the 'created' target changes there, change it here too.
+          const nowIso = new Date().toISOString();
           await sb.from("job_phases").insert(
             DEFAULT_PHASES_SEED.map((name, i) => ({
               tenant_id: tenantId,
               job_id: data.id,
               phase_name: name,
               phase_order: i + 1,
-              status: "not_started",
+              status: name === 'Lead' ? 'in_progress' : 'not_started',
+              ...(name === 'Lead' ? { started_at: nowIso } : {}),
             }))
           );
         } catch (_) {}

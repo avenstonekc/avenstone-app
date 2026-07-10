@@ -4,6 +4,7 @@ import { runTodoEngine } from './todoEngine.js';
 import { checkAndCreateSubStart } from './scheduleAutoCreate.js';
 import { checkAndAutoInvoice } from './autoInvoice.js';
 import { countPhotosForEntity } from './photoGate.js';
+import { markLifecyclePhases } from './lifecycle.js';
 import { getTemplateItems } from './siteVisitTemplates.js';
 import { captureTradeActualsForJob } from './tradeActuals.js';
 import { normalizeFloorPlan } from './floorPlan/normalize.js';
@@ -570,6 +571,10 @@ export const sbSeedJobPhases = async (jobId, tenantId) => {
     }));
     const { error } = await sb.from('job_phases').insert(rows);
     if (error) return { ok: false, error: error.message };
+    // Model B Phase 2: a freshly-created job is at Lead, actively. Advance Lead →
+    // in_progress so the rollup reflects it. Never blocks the seed — log loud on failure.
+    const adv = await markLifecyclePhases(sb, tenantId, jobId, 'created', AV_USER_ID);
+    if (!adv.ok) console.error('sbSeedJobPhases: created-event advance failed —', adv.error);
     return { ok: true, seeded: true };
   } catch (e) { return { ok: false, error: e.message || 'Unknown error' }; }
 };

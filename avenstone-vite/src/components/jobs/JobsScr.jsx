@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY, ADDRESS_AUTOCOMPLETE_URL, AI_ERROR_LOGGER_URL, AV_USER_ID, AV_TENANT, captureFailedIntent, sbCompleteTodo } from '../../lib/supabase';
+import { sbLoad, sbSave, sbUpd, sbDel, ANON_KEY, ADDRESS_AUTOCOMPLETE_URL, AI_ERROR_LOGGER_URL, AV_USER_ID, AV_TENANT, captureFailedIntent, sbCompleteTodo, sbSeedJobPhases } from '../../lib/supabase';
 import { sbCreateJobCompanyFileRefs } from '../../lib/companyFiles';
 import { Ic, STATS, sc, sl, f$, isMob, ls } from '../../lib/utils';
 import JobDet from './JobDet';
@@ -111,6 +111,9 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
       return;
     }
     if (pendingAction?.todoId) sbCompleteTodo(pendingAction.todoId).catch(() => {});
+    // Model B Phase 2 — seed lifecycle phases at create (was lazy via ScheduleTab) and
+    // fire the 'created' event (Lead → in_progress). Non-blocking: job is already saved.
+    sbSeedJobPhases(j.id, AV_TENANT).then(r => { if (!r.ok) console.error('JobsScr: phase seed failed —', r.error); }).catch(e => console.error('JobsScr: phase seed error —', e));
     // Phase 3a — attach client-visible company files as virtual job_files rows (non-blocking)
     sbCreateJobCompanyFileRefs(j.id, AV_TENANT).catch(() => {});
     setNewA(''); setNewModel('fixed_bid'); setNewArv(''); setShowNew(false); setSel(j.id);

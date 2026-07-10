@@ -53,6 +53,32 @@ Deno.serve(async (req) => {
     if (error) return json({ error: error.message }, 500);
 
     const row = Array.isArray(data) ? data[0] : null;
+
+    // Model B Phase 2 — contract SIGNED: advance Lead/Proposal/Contract → complete.
+    // Routed here (not the client modal) because job_phases RLS forbids the client role
+    // from writing; this fn already runs service-side in the post-sign flow. Forward-only
+    // (never regress a complete row), idempotent, and NEVER affects the evidence response.
+    // Divergence-guard: mirrors markLifecyclePhases('contract_signed') in src/lib/lifecycle.js.
+    if (job_id) {
+      try {
+        const nowIso = new Date().toISOString();
+        const { data: phases } = await sb.from("job_phases")
+          .select("id, phase_name, status, started_at, completed_at")
+          .eq("job_id", job_id).eq("tenant_id", tenant_id)
+          .in("phase_name", ["Lead", "Proposal", "Contract"]);
+        for (const p of phases || []) {
+          if (p.status === "complete") continue; // forward-only no-op
+          const patch: Record<string, unknown> = { status: "complete", completed_at: p.completed_at || nowIso };
+          if (!p.started_at) patch.started_at = nowIso;
+          const { error: pErr } = await sb.from("job_phases")
+            .update(patch).eq("id", p.id).eq("tenant_id", tenant_id).neq("status", "complete");
+          if (pErr) console.error("record-signature-evidence phase advance:", p.phase_name, pErr.message);
+        }
+      } catch (e) {
+        console.error("record-signature-evidence contract_signed advance failed:", String(e));
+      }
+    }
+
     return json({ ok: true, updated: !!row, ip_captured: !!row?.ip_address, ua_captured: !!row?.user_agent });
   } catch (err) {
     console.error("record-signature-evidence error:", err);
