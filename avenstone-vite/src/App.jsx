@@ -34,6 +34,7 @@ import SequencesScr from './components/common/SequencesScr';
 import AiPmDashboard from './components/dashboard/AiPmDashboard';
 import MyTodosScreen from './components/todos/MyTodosScreen';
 import BugReportsScr from './components/admin/BugReportsScr';
+import LifecycleAuditScr from './components/admin/LifecycleAuditScr';
 import CompanyFilesScr from './components/company-files/CompanyFilesScr';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import PlaybookChecklist from './components/jobs/PlaybookChecklist';
@@ -67,7 +68,7 @@ if (AUTH_LINK_ERROR) {
 const VALID_PG = new Set([
   'home', 'jobs', 'projects', 'todos', 'calendar', 'leads', 'pipeline', 'reports', 'stats',
   'field-agent', 'subs', 'team', 'company-files', 'ai-knowledge', 'ai-pm', 'brandpreview',
-  'sequences', 'owner-portal', 'admin-bugs', 'rate-book',
+  'sequences', 'owner-portal', 'admin-bugs', 'rate-book', 'lifecycle-audit',
 ]);
 const VALID_TAB = new Set(['info','estimate','subs','financials','sched','field','msgs','files','scanner','session']);
 // deep-link segment → tab id (buildDeepLink emits 'schedule' but tab id is 'sched')
@@ -347,6 +348,7 @@ export default function App() {
       { id: 'owner-portal', lb: 'Owner Portal', ic: 'box',  sec: 'Setup' },
     ] : []),
     ...(profile?.is_platform_owner ? [{ id: 'admin-bugs', lb: 'Bug Reports', ic: 'warn', sec: 'Setup' }] : []),
+    ...(profile?.role === 'owner' ? [{ id: 'lifecycle-audit', lb: 'Lifecycle Audit', ic: 'grid', sec: 'Setup' }] : []),
   ];
 
   return (
@@ -455,6 +457,7 @@ export default function App() {
             {pg === 'owner-portal' && profile?.role === 'owner' && <OwnerPortal profile={profile} />}
             {pg === 'sequences' && profile?.role === 'owner' && <SequencesScr profile={profile} />}
             {pg === 'admin-bugs' && profile?.is_platform_owner && <BugReportsScr profile={profile} />}
+            {pg === 'lifecycle-audit' && profile?.role === 'owner' && <LifecycleAuditScr />}
             {pg === 'brandpreview' && profile?.role === 'owner' && <BrandPreview />}
             {pg === 'pipeline' && isOwnerOrRep && (
               <div style={{ padding: '16px 20px' }}>
