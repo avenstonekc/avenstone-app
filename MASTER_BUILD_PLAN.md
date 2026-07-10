@@ -25,7 +25,7 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
 
 ### NEXT CODE DISPATCH (priority)
 
-1. **Harden client UPDATE RLS on `jobs` to column-scoped.** Clients now receive real authenticated sessions via the contract flow; the live `jobs: client sign` policy checks linkage only (role + `client_user_id`/`client_email`) with **no column constraints** — any linked client session can UPDATE any `jobs` column, not just the sign fields. Scope the policy to the columns the sign flow writes (`contract_signed`, `contract_signed_at`, `status`). **Ahead of all pending estimator slices (Phase 5 ASK-with-anchor, `supply_model`/allowance consumption): security holes don't queue behind features.**
+1. ~~**Harden client UPDATE RLS on `jobs` to column-scoped.**~~ **SHIPPED 2026-07-10** — `bca24b4` dropped the column-unscoped client UPDATE policy; `0137df6` removed the client-side `jobs` write from the sign modal; `c808c08` moved the signed-state write server-side into `record-signature-evidence` (service-role). The client session no longer holds any `jobs` UPDATE. _(No open code dispatch queued — next work is Kalin-gated: see KALIN_QUEUE above.)_
 
 ### HARD DEPENDENCY GATE — Model B Phase 3
 
@@ -73,12 +73,12 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | 2 — Supabase connection + prompt injection | **BUILT** | `ai-estimator/index.ts` `loadRateBook(tenantId)` reads both tables; vocabulary injected into SYSTEM_PROMPT |
 | 3 — Cite-or-flag + Range Collapse (Job-Size Tier) | **BUILT** | `getTier(projectSf)` from `_shared/rateBook.ts`; tier collapse by unit type active; `source_label` written to `estimate_line_items` |
 | 4 — Guided interview w/ pre-filled defaults | **BUILT** | STALE INVENTORY corrected 2026-07-09 — shipped via B1.6 (ab50638 killed hardcoded 30%/$1,200, reads `bid_model_config`) + B2.1 (0bead89 "running your standard X%" preamble in formatEstimate; bd3fb84 configMissing fail-loud). Hardcoded rates gone; pre-fill + override surface live. |
-| 5 — Per-tenant fallback mode config | NOT-BUILT | No `estimator_fallback_mode` column; no tenant config read for fallback. **Behavior LOCKED 2026-07-09 (Open Q2): missing rate → ASK, show KC regional average as anchor, rep accepts-or-overrides, both write back to Rate Book with source recorded. No silent fallback.** |
+| 5 — Fallback mode (ASK-with-cited-anchor) | **SHIPPED 2026-07-10** | Shipped as behavior, not a config column: missing rate → ASK with a CITED KC anchor (grounded in `ai_knowledge` prose, `anchor_source` cited; uncited → blank ask), rep accept-or-override, both write `rate_book_labor` with provenance. S5A/S6 `b64845c`+`8544bc5` (cited anchor); S3/S4 `1099554`+`b302138` (provenance col + rep-write RLS + vet gate); S7/S8/S9 `81da4eb`+`3dfb900`+`0ee2997` (gap affordances → provenance → `estimate_line_items.rate_provenance` through commit). Doc: `docs/arcs/ESTIMATOR_KNOWLEDGE_ARC.md` shipped section. |
 | 6 — Batch unknowns | **BUILT** | GapBatchAsk.jsx + applyGapRates (after-draft sequencing, confirmed live — ESTIMATOR Phase 6, reconciled 2026-06-25) |
 | 7 — Learn loop (save gaps to Rate Book) | **BUILT** | sbInsertRateBookLabor + learnCandidates + save offer panel in EstimateTab — ESTIMATOR Phase 7, shipped 2026-06-25 (48aea78 + a84f0fc + 7f95fe5) |
 
-**Net: 5 of 7 phases live** (2, 3, 4, 6, 7 + schema 1.5 — Phase 4 was stale inventory, corrected 2026-07-09: shipped via B1.6/B2.1). Remaining: Phase 1 (rate reconciliation) + Phase 5 (per-tenant fallback mode — behavior locked, see row above). Phases 4-7 define the guided interview experience.
-**Critical finding:** markup (30%) and pm_fee ($1,200) are **hardcoded in the ai-estimator SYSTEM_PROMPT text** — not read from tenant config. Kills the "honor tenant config" goal of Block 1.
+**Net: 6 of 7 phases live** (2, 3, 4, 5, 6, 7 + schema 1.5). **Remaining: Phase 1 only** (rate reconciliation — SYSTEM_PROMPT vs `ai_knowledge` side-by-side; mostly a data task). Phases 4–7 define the guided interview experience.
+**~~Critical finding: markup/pm_fee hardcoded in SYSTEM_PROMPT.~~ RESOLVED** — B1.6 (`ab50638`) made the estimator read `bid_model_config`; the hardcoded 30%/$1,200 are gone (see Phase 4 row).
 
 ---
 
@@ -119,13 +119,13 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 |-------|--------|----------|
 | 1 — bid_model_config schema | **BUILT** | B1.1 shipped (edd13a6); 1 row confirmed in DB; CONFIRMED-LIVE |
 | 2 — Estimate engine reads bid model | **BUILT** | B1.6 shipped (ab50638 ai-estimator, f9afaad EstimateTab; b7db63b LOG) |
-| 3 — Allowance as first-class | NOT-BUILT · QUEUED | Allowances use description convention only. **Next estimator slice (queued 2026-07-09): estimator consumes `supply_model` + allowance from `bid_model_config`** — B1.1 shipped the schema (`supply_model` per category); consumption into the estimate engine not yet wired. |
+| 3 — Allowance as first-class | **SHIPPED 2026-07-10 (estimator S2)** | `41ac4ae` — estimator consumes `bid_model_config` `supply_model` + allowance; `60ea24e` — `client_supplied` badge. `supply_model` is a constrained enum (contractor\|owner); client-supplied wins over allowance; 'Allowance' is a reserved config-driven word in descriptions. |
 | 4 — Interview engine + photo-in-interview | NOT-BUILT | Parked in Block 1 after B1.7 (TENANT_ONBOARDING Phase 4-5 explicitly deferred) |
 | 5 — Plan upload ingest | PARTIAL | Floor plan upload exists but not on estimate rail |
 | 6 — Wizard writes structured config | **BUILT** | B1.7 Phase 3 shipped (19cf93e wizard Save + role-gate migration + round-trip verified) |
 | 7 — Onboarding wizard UI | **BUILT** | B1.7 Phases 2–4 shipped (4d33aad BidModelWizard scaffold; 3d88635 retire AiSetupWizard; ai_knowledge.tenant_id NOT NULL CONFIRMED-LIVE) |
 
-**Net: 4 of 7 phases live (+ 1 PARTIAL). Phases 3, 4 not built; Phase 5 PARTIAL. Updated 2026-06-25.**
+**Net: 5 of 7 phases live (+ 1 PARTIAL). Phase 4 not built; Phase 5 PARTIAL. Updated 2026-07-10 (Phase 3 shipped via estimator S2).**
 
 ---
 

@@ -252,3 +252,43 @@ _Effort estimates in Sonnet prompts; refine at build time._
 6. **Batch unknowns** — When fallback mode is `ask`, collect all missing-labor-rate lines and surface them as a single numbered list before generating the estimate. User answers in one pass.
 
 7. **Learn loop** — When user supplies a missing labor rate, offer to write it back to the Labor Rate Book with a confirm step. Same confirm-before-write contract as ai-master-agent.
+
+---
+
+## SHIPPED — Phase 5 fallback + provenance slices (2026-07-10)
+
+**Phase 5 shipped as ASK-with-cited-anchor — not the `estimator_fallback_mode` config column the 2026-06-15 blueprint imagined.** The locked behavior (Open Q2, 2026-07-09) IS the implementation: a missing rate is never invented; the rep is asked, shown a **cited** KC anchor, and accept-or-override both write the rate book with provenance. Net after this batch: **6 of 7** (Phase 1 rate reconciliation is the only remaining phase).
+
+### What shipped (commits — verified against git log)
+
+| Slice | Commits | What |
+|---|---|---|
+| **S2** — supply_model + allowance consumption | `41ac4ae`, `60ea24e` | estimator consumes `bid_model_config` `supply_model` + allowance; `client_supplied` `source_label` badge. Also closes TENANT_ONBOARDING Phase 3 (allowance as first-class). |
+| **S3 / S4** — provenance column + rep-write RLS | `1099554`, `b302138` | `rate_book_labor.source` provenance column; rep-write RLS path with a DB-level vet gate. |
+| **S5A / S6** — the cited anchor | `b64845c`, `8544bc5` | `regional_rate` grounded in the tenant's `ai_knowledge` KC pricing prose; gap lines carry `regional_rate` + `anchor_source`, code-guarded (uncited → blank ask). |
+| **S7 / S8 / S9** — affordances → provenance → commit | `81da4eb`, `3dfb900`, `0ee2997` | GapBatchAsk accept/override affordances + per-gap tag; write the real provenance to `rate_book_labor`; persist it through commit via new nullable `estimate_line_items.rate_provenance` column. |
+
+### Locked decisions
+
+1. **Missing rate → ASK with a CITED anchor.** The anchor number MUST come from the tenant's `ai_knowledge` KC pricing reference and cite its category in `anchor_source`; if the reference doesn't cover the line, `regional_rate = null` → **blank ask**. Never an uncited/invented number.
+2. **Blank-asks are the harvest, not a defect.** The prose is NOT patched to avoid blank-asks — a gap the rep fills is how the rate book grows.
+3. **Rep-write via RLS with a DB-level vet gate.** Reps write learned rates; `vetted=false` is forced on both the insert path and the RLS — a rep cannot self-vet.
+4. **The estimator ignores `ai_knowledge.active`.** `active` gates conversational surfaces (other agents), NOT the pricing engine — `pricing_*` rows stay inactive-for-other-agents while the estimator still reads them for grounding.
+5. **`supply_model` is a constrained enum** (`contractor` | `owner`). Client-supplied wins over allowance.
+6. **'Allowance' is a reserved, config-driven word** in line descriptions.
+
+### Orthogonality note — premise correction (DO NOT collapse these)
+
+`rate_book_labor` has **two orthogonal axes**:
+- **`source`** = PROVENANCE — how the rate was born: `seed` | `rep_entered` | `rep_accepted_anchor` | `rep_override`.
+- **`vetted`** = owner-approval boolean.
+
+Vetting flips `vetted=true` and **preserves `source`** — it does NOT overwrite `source` with `'owner_vetted'`. Overwriting would destroy the provenance the entire S7–S9 chain exists to capture (verified live 2026-07-10: after vetting, `source` stayed `rep_accepted_anchor`). The `'owner_vetted'` **source value** from the S3 backfill applies ONLY to pre-provenance historical rows that had no real provenance to preserve. No future dispatch should collapse `source` and `vetted` into one axis.
+
+### Deferred ledger
+
+- **Path B** — structured KC averages as NULL-tenant `rate_book` rows (platform defaults). **Trigger to build:** prose grounding (S5A) proves too loose in practice.
+- **Material gaps rep-write** — S7–S9 are labor-only; `rate_book_material` has a different tier schema.
+- **Per-category markup** — `bid_model_config` supports per-category rows; only the `default` row is consumed today.
+- **Waste-as-config** — waste % is still a prompt instruction, not tenant config.
+- **`ai_knowledge` active-flag semantics for conversational surfaces** — formalize what `active` gates for the non-pricing agents.
