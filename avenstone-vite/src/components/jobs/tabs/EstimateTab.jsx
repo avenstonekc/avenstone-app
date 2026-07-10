@@ -429,11 +429,20 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const entered = gapRates[line.gap_key];
       const rate = parseFloat(entered);
       if (!entered || isNaN(rate) || rate <= 0) return line; // leave as TBD
-      // B2.3 learn hook — collect filled labor gaps for the save offer (no persist here)
+      // S7 provenance — derived from the entered value vs the cited KC anchor.
+      // No anchor → rep_entered. Anchor + same number (numeric) → accepted. Else → override.
+      const anchor = line.regional_rate;
+      const rate_provenance = (anchor == null)
+        ? 'rep_entered'
+        : (Math.abs(rate - Number(anchor)) < 0.005 ? 'rep_accepted_anchor' : 'rep_override');
+      // B2.3 learn hook — collect filled labor gaps for the save offer (no persist here).
+      // S8: carry the provenance tag so the rate_book write records how the rate was set.
       if (line.category === 'labor') {
-        candidates.push({ gap_key: line.gap_key, trade: line.trade, line_item: line.line_item, unit: line.unit, rate });
+        candidates.push({ gap_key: line.gap_key, trade: line.trade, line_item: line.line_item, unit: line.unit, rate, source: rate_provenance });
       }
-      return { ...line, unit_price: rate, amount: Math.round(rate * line.quantity * 100) / 100, source_label: 'user_entered' };
+      // source_label stays 'user_entered' for the pricing/badge layer (unchanged readers);
+      // rate_provenance is the new carrier that survives to commit (S9).
+      return { ...line, unit_price: rate, amount: Math.round(rate * line.quantity * 100) / 100, source_label: 'user_entered', rate_provenance };
     });
     setPricedScope(mutated);
     setLearnCandidates(candidates);
