@@ -10,6 +10,29 @@
 
 ---
 
+## 0. Now / Next — open blockers (owner + code)
+
+### KALIN_QUEUE — the owner's open decisions & actions
+
+Owner blockers are tracked here so they are as visible as Code's build map. **Maintenance rule:** any dispatch that creates an owner decision/action MUST add it here; any report that resolves one MUST remove it.
+
+| # | Owner action | Blocks / why it matters | Open since |
+|---|--------------|-------------------------|------------|
+| a | **Red-pen `SCOPE_SEED_CONTENT_DRAFT.md`** → then manifest lock + Blake upload | Blocks SCE Phase 1B full seed (9 project types + 14 universal modules) | 2026-07-07 |
+| b | **Answer the SELECTIONS four field questions** (day-one trades + MATERIAL_SELECTION-vs-SELECTIONS "which first?" — Open Q3 + Q4) | Blocks SELECTIONS B5.7–B5.9 schema | June 2026 |
+| c | **Status-picker corrections** (owner-only): `1206 W Lucy Webb Rd` → `lead`; `999 Test Lane` → its true stage | Model B Phase 2 surfaced these as genuine `jobs.status` lies (stored ≠ derived); only the owner knows the true stage | 2026-07-10 |
+| d | **One browser sign on `456 Test Flow Ave`** (client seat: `kalinspratling@gmail.com`) | Verifies the CONTRACT_SIGNING evidence chain end-to-end (priced PDF → frozen evidence → IP/UA capture → signed-copy email) on real hardware | 2026-07-10 |
+
+### NEXT CODE DISPATCH (priority)
+
+1. **Harden client UPDATE RLS on `jobs` to column-scoped.** Clients now receive real authenticated sessions via the contract flow; the live `jobs: client sign` policy checks linkage only (role + `client_user_id`/`client_email`) with **no column constraints** — any linked client session can UPDATE any `jobs` column, not just the sign fields. Scope the policy to the columns the sign flow writes (`contract_signed`, `contract_signed_at`, `status`). **Ahead of all pending estimator slices (Phase 5 ASK-with-anchor, `supply_model`/allowance consumption): security holes don't queue behind features.**
+
+### HARD DEPENDENCY GATE — Model B Phase 3
+
+**Model B Phase 3 (the `jobs.status` source-of-truth flip) is a hard dependency gate for `JOBDET_MOBILE` and any other arc that renders job lifecycle state.** Every pre-flip feature adds status readers Phase 3 must migrate; `JOBDET_MOBILE` is almost entirely lifecycle-rendering surface. Do not dispatch a lifecycle-rendering arc until Phase 3 ships. **Phase 3 entry criteria:** Lifecycle Audit shadow-panel divergence reduced to semantics-only (the two owner-approved signed→`contract` cases) **and** a soak period of normal use. (Model B Phases 1–2 shipped 2026-07-10; see `docs/arcs/MODEL_B_LIFECYCLE.md`.)
+
+---
+
 ## 1. Purpose
 
 Single dependency-ordered source of truth for realizing the Avenstone vision. Every session that starts new work checks this document first. The inventory is verified against live code — never against the docs' self-reported status (docs have been wrong in both directions repeatedly).
@@ -267,6 +290,14 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 #### MATERIAL_SELECTION — `docs/arcs/`
 
 **Net: 0 of 5+ versions live.** No tables, no helpers, no components in production. This is a different feature from SELECTIONS_ARC: MATERIAL_SELECTION = client self-service AI product catalog (chat-driven HD/Lowes browsing). SELECTIONS_ARC = PM-driven trade selections (tile color, paint color, confirm-by workflow). Both are unbuilt; both land in Block 5. Schema coordination needed at build time (both touch `job_selections`-family tables).
+
+#### SCOPE_TO_ESTIMATE — the seam arc — **BLUEPRINT PENDING**
+
+**Status: BLUEPRINT PENDING.** Owner: an Opus blueprint pass after SCE Phase 1B ships. This arc owns the **handoff seam** the SCE and ESTIMATOR arcs meet at but neither owns end-to-end: scope interview → **persisted** scope answers → `adds_trades` consumption → estimator scope lines → priced draft. Today that seam is a set of disconnected halves.
+
+**Known seams it inherits (audit-proven — do not assume these are wired):** (1) scope answers are **in-memory only** — there is no `job_scope_answers` store; `makeAnswerRecord` produces records that live only in the request/response, so nothing persists an answer's value/source/confidence. (2) `scope_checklists.adds_trades` / `scope_modules.adds_trades` are **seeded but consumed by nothing** — the deterministic engine reads fields, never the trades. (3) the gap protocol (`GapBatchAsk`/`applyGapRates`) assumes scope lines **arrive priced-ready** — it reconciles rates, not scope-to-line translation.
+
+**Rule:** the SCE and ESTIMATOR arcs must NOT make assumptions about this seam (persistence shape, trade-consumption mechanism, scope→line contract) without recording the decision here first. This stub is the coordination point until the blueprint lands.
 
 ---
 
@@ -633,6 +664,7 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | **SALES_PIPELINE_ARC** (leads → qualified → consultations → proposals) | Basic LeadsScr exists; intake arc (B5.1-B5.3) closes the "form becomes a prompt" gap | Block 5 intake complete |
 | **GOD_MASTER_AGENT (white-label configurator)** | Requires Avenstone-for-GC shipping to paying customer + 4+ weeks AUTO_FIX data | Stage 2 (first real customer) |
 | **PDF_BRANDING (design pass)** | Logo rendering on PDF documents needs a proper visual/layout solution, not piecemeal per-document hacks. History: the draw-package logo took 3 crash-fix rounds (RGBA-PNG alpha → embedPng OOM, resolved 17a034b by JPEG-with-matte) and THEN rendered broken (overlapped the city tagline), so it was removed 2026-06-25. Lesson: the embed is now memory-safe (JPEG, no alpha) but POSITIONING/layout is unsolved. When tackled: solve logo placement ONCE as a shared header pattern, then apply across ALL PDF surfaces that need branding — draw-package, invoices, lien waivers (upcoming), proposals, any send-* PDF. Likely paired with an external design pass for visual polish. Until then, all PDFs use clean text headers (business name + tagline, no logo image). Logged 2026-06-25. | Design pass decision from Kalin |
+| **DESIGN_LANGUAGE (fetch-header rules doc)** | A lightweight, agent-fetchable design-language / header-rules doc so every UI-rendering dispatch conforms to one visual language without re-deriving it. Not in path yet. **Standing Opus position: the 1-prompt fetch-header rules doc remains cheap insurance; re-raise before JOBDET_MOBILE dispatches.** | Kalin decision — re-raised before JOBDET_MOBILE |
 
 ---
 
@@ -644,6 +676,6 @@ _First idea → GPS/ETA was triaged and placed as B5.13 (2026-06-19). No unplace
 
 | Idea | What it's waiting on | Triage date |
 |------|---------------------|-------------|
-| **Harden client UPDATE RLS on `jobs` to column-scoped.** Model B audit (2026-07-09) found the `jobs: client sign` UPDATE policy checks only client↔job linkage (role + `client_user_id`/`client_email`), with **no column constraints** — a linked client could technically UPDATE any `jobs` column, not just the sign fields (`contract_signed`, `contract_signed_at`, `status`). Scope the policy to the columns the sign flow actually writes. | Standalone security hardening — no prereq; schedule alongside Model B Phase 3 (which touches `jobs.status` writers) or sooner | 2026-07-10 |
+| _(empty — add via triage rule; "Harden client UPDATE RLS on jobs" promoted 2026-07-10 to §0 NEXT CODE DISPATCH)_ | — | — |
 
 
