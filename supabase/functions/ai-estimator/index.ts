@@ -519,6 +519,27 @@ function priceMaterialLine(
   return { price, amount: Math.round(price * quantity * 100) / 100, tierLabel: label };
 }
 
+// S6: build a gap (regional_avg) priced line. CODE IS THE GUARD — the price is applied
+// from regional_rate ONLY when the model cited an anchor_source; an uncited gap is forced
+// to a blank ask (null price/amount) so the model can never emit a final, vetted-looking
+// number without provenance. Badge distinguishes cited (⚡ KC Avg) vs no-anchor (⚠) for the rep.
+function buildGapLine(line: ScopeLine): PricedLine {
+  const anchorSrc = typeof line.anchor_source === "string" && line.anchor_source.trim()
+    ? line.anchor_source.trim()
+    : null;
+  const rgRate = anchorSrc && typeof line.regional_rate === "number" ? line.regional_rate : null;
+  return {
+    ...line,
+    unit_price: rgRate,
+    amount: rgRate != null ? Math.round(rgRate * line.quantity * 100) / 100 : null,
+    source_label: "regional_avg",
+    source_badge: anchorSrc ? "⚡ KC Avg (cited)" : "⚠ No Anchor — rep must enter",
+    vetted: false,
+    anchor_source: anchorSrc,
+    gap_key: `${line.trade}::${line.line_item}::${line.unit}`,
+  };
+}
+
 // ── Pricing orchestrator ──────────────────────────────────────────────────────
 
 function priceScopeLines(
@@ -547,17 +568,8 @@ function priceScopeLines(
           vetted: vRow?.vetted ?? false,
         };
       }
-      // Gap: use AI-supplied regional_rate; carry gap_key for client batch-ask
-      const rgRate = typeof line.regional_rate === "number" ? line.regional_rate : null;
-      return {
-        ...line,
-        unit_price: rgRate,
-        amount: rgRate != null ? Math.round(rgRate * line.quantity * 100) / 100 : null,
-        source_label: "regional_avg",
-        source_badge: "⚡ Regional Avg",
-        vetted: false,
-        gap_key: `${line.trade}::${line.line_item}::${line.unit}`,
-      };
+      // Gap: cited KC anchor → priced from regional_rate; uncited → blank ask (buildGapLine).
+      return buildGapLine(line);
     }
 
     // ── Materials ──────────────────────────────────────────────────────────────
@@ -597,31 +609,12 @@ function priceScopeLines(
           vetted: false,
         };
       }
-      // Material category not in Rate Book — use AI regional_rate; carry gap_key
-      const rgRate = typeof line.regional_rate === "number" ? line.regional_rate : null;
-      return {
-        ...line,
-        description: withAllowanceTag(line.description),
-        unit_price: rgRate,
-        amount: rgRate != null ? Math.round(rgRate * line.quantity * 100) / 100 : null,
-        source_label: "regional_avg",
-        source_badge: "⚡ Regional Avg",
-        vetted: false,
-        gap_key: `${line.trade}::${line.line_item}::${line.unit}`,
-      };
+      // Material category not in Rate Book — cited KC anchor priced; uncited → blank ask.
+      return buildGapLine({ ...line, description: withAllowanceTag(line.description) });
     }
 
     // ── General (permit, cleanup, floor_protection, contingency_ls) ────────────
-    const rgRate = typeof line.regional_rate === "number" ? line.regional_rate : null;
-    return {
-      ...line,
-      unit_price: rgRate,
-      amount: rgRate != null ? Math.round(rgRate * line.quantity * 100) / 100 : null,
-      source_label: "regional_avg",
-      source_badge: "⚡ Regional Avg",
-      vetted: false,
-      gap_key: `${line.trade}::${line.line_item}::${line.unit}`,
-    };
+    return buildGapLine(line);
   });
 }
 
@@ -654,7 +647,8 @@ function formatEstimate(
   }
 
   let laborTotal = 0, matTotal = 0, generalTotal = 0;
-  const gapItems: string[] = [];
+  const citedItems: string[] = [];   // gap lines grounded in a KC anchor
+  const noAnchorItems: string[] = []; // gap lines with no reference coverage — rep must enter
   let body = "";
 
   for (const trade of tradeOrder) {
@@ -665,7 +659,9 @@ function formatEstimate(
       if (line.category === "labor") laborTotal += amt;
       else if (line.category === "materials") matTotal += amt;
       else generalTotal += amt;
-      if (line.source_label === "regional_avg") gapItems.push(line.line_item);
+      if (line.source_label === "regional_avg") {
+        (line.anchor_source ? citedItems : noAnchorItems).push(line.line_item);
+      }
 
       const fixedUnit = ["EA", "LS", "room", "load", "sq"].includes(line.unit);
       const rateStr = line.unit_price != null
@@ -695,8 +691,11 @@ function formatEstimate(
 ---
 ${summaryFooter}`;
 
-  if (gapItems.length > 0) {
-    out += `\n\n> ⚡ **Regional Avg** lines (not from Rate Book): ${[...new Set(gapItems)].join(", ")}. Add to Rate Book to vet.`;
+  if (citedItems.length > 0) {
+    out += `\n\n> ⚡ **KC Avg (cited)** — grounded in Avenstone's KC pricing reference, not yet in the Rate Book: ${[...new Set(citedItems)].join(", ")}. Confirm or override, then add to the Rate Book to vet.`;
+  }
+  if (noAnchorItems.length > 0) {
+    out += `\n\n> ⚠ **No Anchor — rep must enter**: ${[...new Set(noAnchorItems)].join(", ")}. No KC reference covers these, so no rate was assumed — enter one before committing.`;
   }
   if (pricedLines.some((l) => l.source_label === "labor_rate" && !l.vetted)) {
     out += "\n> ○ **Rate Book*** = seeded rate, not yet vetted by Kalin. Review in Rate Book → Labor Rates.";
