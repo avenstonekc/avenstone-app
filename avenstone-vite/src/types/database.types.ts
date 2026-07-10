@@ -4161,6 +4161,7 @@ export type Database = {
           rate_data: Json
           rate_high: number | null
           rate_low: number
+          source: string | null
           tenant_id: string | null
           trade: string
           unit: string
@@ -4176,6 +4177,7 @@ export type Database = {
           rate_data?: Json
           rate_high?: number | null
           rate_low: number
+          source?: string | null
           tenant_id?: string | null
           trade: string
           unit: string
@@ -4191,6 +4193,7 @@ export type Database = {
           rate_data?: Json
           rate_high?: number | null
           rate_low?: number
+          source?: string | null
           tenant_id?: string | null
           trade?: string
           unit?: string
@@ -4217,6 +4220,7 @@ export type Database = {
           id: string
           kalin_adjusted: boolean
           notes: string | null
+          source: string | null
           tenant_id: string | null
           tier_hi_label: string
           tier_hi_max: number | null
@@ -4239,6 +4243,7 @@ export type Database = {
           id?: string
           kalin_adjusted?: boolean
           notes?: string | null
+          source?: string | null
           tenant_id?: string | null
           tier_hi_label?: string
           tier_hi_max?: number | null
@@ -4261,6 +4266,7 @@ export type Database = {
           id?: string
           kalin_adjusted?: boolean
           notes?: string | null
+          source?: string | null
           tenant_id?: string | null
           tier_hi_label?: string
           tier_hi_max?: number | null

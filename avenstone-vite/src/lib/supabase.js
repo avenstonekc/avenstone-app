@@ -6831,7 +6831,9 @@ export async function sbUpdateRateBookLabor(id, fields) {
 // Uses upsert on (tenant_id, trade, line_item, unit): new rows default vetted=false;
 // existing rows keep their vetted status (not in payload) so a promoted rate isn't
 // silently reset. Post-write verify: if RLS blocks, no row comes back → ok:false.
-export async function sbInsertRateBookLabor({ trade, line_item, unit, rate }) {
+// `source` (S3 provenance) defaults to 'rep_entered' so the existing B2.3 caller keeps
+// working unchanged; S8 passes explicit 'rep_accepted_anchor' / 'rep_override'.
+export async function sbInsertRateBookLabor({ trade, line_item, unit, rate, source = 'rep_entered' }) {
   try {
     const { data, error } = await sb.from('rate_book_labor')
       .upsert(
@@ -6843,6 +6845,7 @@ export async function sbInsertRateBookLabor({ trade, line_item, unit, rate }) {
           rate_low: rate,
           rate_data: { type: 'flat' },
           active: true,
+          source,
           notes: 'Rep-learned rate — awaiting owner vetting',
           updated_at: new Date().toISOString(),
         },
