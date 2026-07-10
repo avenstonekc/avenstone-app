@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <!-- Style system: see STYLE.md. Side section: bathroom floor runs FLUSH into the shower (no curb), slopes to a linear drain. -->
+  <defs>
+    <pattern id="wallTile" width="60" height="48" patternUnits="userSpaceOnUse">
+      <rect width="60" height="48" fill="none" stroke="#0A1F44" stroke-width="2.5"/>
+    </pattern>
+  </defs>
+  <rect width="800" height="800" fill="#ffffff"/>
+  <g fill="none" stroke="#0A1F44" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- back + partial walls, tiled -->
+    <rect x="120" y="180" width="560" height="300" fill="url(#wallTile)"/>
+    <rect x="120" y="180" width="560" height="300"/>
+    <!-- floor: bathroom side flat (120..400), then FLUSH into shower sloping to drain at 560, short flat to wall -->
+    <path d="M120 520 H400 L560 548 H680" stroke-width="4"/>
+    <!-- subfloor thickness -->
+    <path d="M120 520 V560 H680 V548" stroke-width="2.5"/>
+    <!-- slope arrow -->
+    <path d="M430 505 L545 532" stroke-width="2"/>
+    <path d="M535 522 L545 532 L533 536" stroke-width="2"/>
+  </g>
+  <!-- GOLD: the defining fork — flush threshold (no curb) + the linear drain -->
+  <g stroke="#C9A84C" stroke-width="4" stroke-linecap="round" fill="none">
+    <line x1="400" y1="500" x2="400" y2="540"/>            <!-- threshold marker: flush, where a curb would be -->
+    <rect x="540" y="543" width="44" height="10" rx="3"/>  <!-- linear drain -->
+  </g>
+  <text x="400" y="486" font-family="DM Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#C9A84C" text-anchor="middle">flush — no curb</text>
+  <text x="562" y="590" font-family="DM Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#C9A84C" text-anchor="middle">linear drain</text>
+  <text x="400" y="740" font-family="DM Sans, Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#0A1F44" text-anchor="middle">Shower entry — curbless</text>
+</svg>

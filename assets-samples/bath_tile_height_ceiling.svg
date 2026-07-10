@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <!-- Style system: see STYLE.md. Navy line work, gold accent = the defining fork. -->
+  <defs>
+    <pattern id="tileGrid" width="76" height="55" patternUnits="userSpaceOnUse">
+      <rect width="76" height="55" fill="none" stroke="#0A1F44" stroke-width="2.5"/>
+    </pattern>
+  </defs>
+  <rect width="800" height="800" fill="#ffffff"/>
+  <g fill="none" stroke="#0A1F44" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- ceiling + floor reference lines -->
+    <line x1="120" y1="150" x2="600" y2="150"/>
+    <line x1="120" y1="660" x2="600" y2="660"/>
+    <!-- tiled wall, full height (ceiling down to tub deck) -->
+    <rect x="150" y="150" width="380" height="430" fill="url(#tileGrid)"/>
+    <rect x="150" y="150" width="380" height="430"/>
+    <!-- tub / base for context -->
+    <path d="M150 580 h380 v70 a24 24 0 0 1 -24 24 h-332 a24 24 0 0 1 -24 -24 z"/>
+  </g>
+  <!-- GOLD: the fork is a dimension → floor-to-ceiling dimension line -->
+  <g stroke="#C9A84C" stroke-width="2.5" stroke-linecap="round" fill="none">
+    <line x1="575" y1="150" x2="575" y2="580"/>
+    <path d="M567 160 L575 150 L583 160"/>
+    <path d="M567 570 L575 580 L583 570"/>
+  </g>
+  <text x="600" y="370" transform="rotate(90 600 370)" font-family="DM Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#C9A84C" text-anchor="middle">tile to ceiling</text>
+  <text x="150" y="140" font-family="DM Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#0A1F44">ceiling</text>
+  <text x="400" y="740" font-family="DM Sans, Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#0A1F44" text-anchor="middle">Tile height — to ceiling</text>
+</svg>

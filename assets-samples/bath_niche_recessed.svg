@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <!-- Style system: see STYLE.md. Shower wall elevation with a recessed niche (double outline = depth) + a shelf. -->
+  <defs>
+    <pattern id="nicheWall" width="64" height="50" patternUnits="userSpaceOnUse">
+      <rect width="64" height="50" fill="none" stroke="#0A1F44" stroke-width="2.5"/>
+    </pattern>
+  </defs>
+  <rect width="800" height="800" fill="#ffffff"/>
+  <g fill="none" stroke="#0A1F44" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- tiled wall -->
+    <rect x="150" y="150" width="500" height="440" fill="url(#nicheWall)"/>
+    <rect x="150" y="150" width="500" height="440"/>
+  </g>
+  <!-- GOLD: the recessed niche (defining element). Outer = opening, inner = recess depth, mid line = shelf. -->
+  <g stroke="#C9A84C" fill="none" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="330" y="260" width="200" height="220" stroke-width="4"/>
+    <rect x="352" y="282" width="156" height="176" stroke-width="2.5"/>
+    <!-- depth connectors (corners) -->
+    <line x1="330" y1="260" x2="352" y2="282" stroke-width="2.5"/>
+    <line x1="530" y1="260" x2="508" y2="282" stroke-width="2.5"/>
+    <line x1="330" y1="480" x2="352" y2="458" stroke-width="2.5"/>
+    <line x1="530" y1="480" x2="508" y2="458" stroke-width="2.5"/>
+    <!-- shelf -->
+    <line x1="352" y1="372" x2="508" y2="372" stroke-width="3"/>
+  </g>
+  <text x="430" y="235" font-family="DM Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#C9A84C" text-anchor="middle">recessed niche</text>
+  <text x="400" y="740" font-family="DM Sans, Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#0A1F44" text-anchor="middle">Shower niche — recessed</text>
+</svg>
