@@ -75,19 +75,11 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
       return;
     }
 
-    await sb.from('jobs').update({ contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'in_progress' }).eq('id', job.id);
     sbNotify('note_posted', `Contract signed — ${job.address}`, 'The client has signed the contract.', job.id, AV_USER_ID);
 
-    // Capture server-side signer evidence (IP + user agent) onto the signature row. Fired
-    // post-save and independent of the signed-copy email below — neither waits on the other.
-    // Evidence enrichment, not a state change: a failure is logged and never blocks signing.
-    sbRecordSignatureEvidence({ signature_id: res.data?.id, tenant_id: job.tenant_id, job_id: job.id })
-      .then(r => { if (r?.error) console.error('Signature evidence capture failed:', r.error); })
-      .catch(e => console.error('Signature evidence capture error:', e));
-
     // Deliver the client their fully-executed copy (same signed PDF, CC'd to the office).
-    // This is a NOTIFICATION, not a state change: the signature is already recorded above,
-    // so a mail failure must never undo it or block the modal — log it and complete.
+    // Fire-and-forget NOTIFICATION, independent of the evidence call below — neither waits on
+    // the other. The signature is already recorded above, so a mail failure never blocks signing.
     if (job.client_email) {
       sbSendContractEmail(job, 'signed_copy', blob)
         .then(r => {
@@ -98,6 +90,20 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
     } else {
       console.warn('No client_email on job — signed copy not emailed.');
       setEmailStatus('failed');
+    }
+
+    // Server-side write: capture signer IP/UA AND set contract_signed + status='in_progress' on
+    // the job. The client session no longer has UPDATE on jobs (that column-unscoped hole is
+    // closed) — this service-role fn owns the write. AWAITED so the job's signed state has landed
+    // (or definitively failed) before we complete and the portal reloads. The signature is already
+    // saved above, so a failure here never BLOCKS signing — but it now matters (on failure
+    // contract_signed stays false and the portal's sign banner persists), so we log LOUDLY. The
+    // done-state copy only claims the signature was saved + emailed (true regardless), never that
+    // the job advanced.
+    const evid = await sbRecordSignatureEvidence({ signature_id: res.data?.id, tenant_id: job.tenant_id, job_id: job.id })
+      .catch(e => ({ error: e?.message || 'evidence call threw' }));
+    if (evid?.error || evid?.contract_marked === false) {
+      console.error('[SIGN] record-signature-evidence did NOT fully land — signature IS saved, but contract_signed/status may NOT have updated (portal sign banner may persist):', evid?.error || 'contract_marked=false');
     }
 
     setSaving(false); setStep('done');
