@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, sbUploadDoc, sbSaveSignature, sbNotify, sbGetContractSnapshot, AV_USER_ID } from '../../lib/supabase';
+import { sb, sbUploadDoc, sbSaveSignature, sbNotify, sbGetContractSnapshot, sbSendContractEmail, AV_USER_ID } from '../../lib/supabase';
 import { buildContractPDF, DEFAULT_CONTRACT_TEXT } from '../../lib/pdf';
 import SignaturePad from '../auth/SignaturePad';
 
@@ -13,6 +13,7 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
   const [loadErr, setLoadErr] = useState('');
   const [snapshot, setSnapshot] = useState(null);
   const [contractTotal, setContractTotal] = useState(null);
+  const [emailStatus, setEmailStatus] = useState('pending'); // pending | sent | failed
 
   // Load the accept-time frozen snapshot. FAIL LOUD if none — signing a contract
   // with no price is the legal exposure this step exists to close; never fall
@@ -76,6 +77,22 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
 
     await sb.from('jobs').update({ contract_signed: true, contract_signed_at: new Date().toISOString(), status: 'in_progress' }).eq('id', job.id);
     sbNotify('note_posted', `Contract signed — ${job.address}`, 'The client has signed the contract.', job.id, AV_USER_ID);
+
+    // Deliver the client their fully-executed copy (same signed PDF, CC'd to the office).
+    // This is a NOTIFICATION, not a state change: the signature is already recorded above,
+    // so a mail failure must never undo it or block the modal — log it and complete.
+    if (job.client_email) {
+      sbSendContractEmail(job, 'signed_copy', blob)
+        .then(r => {
+          if (r?.error) { console.error('Signed-copy email failed:', r.error); setEmailStatus('failed'); }
+          else setEmailStatus('sent');
+        })
+        .catch(e => { console.error('Signed-copy email error:', e); setEmailStatus('failed'); });
+    } else {
+      console.warn('No client_email on job — signed copy not emailed.');
+      setEmailStatus('failed');
+    }
+
     setSaving(false); setStep('done');
     if (onSigned) onSigned();
   };
@@ -132,7 +149,13 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
           <div style={{ padding: '24px 0', textAlign: 'center' }}>
             <div style={{ width: 48, height: 48, background: 'var(--green-dot)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', color: 'var(--card-bg)', fontSize: 20 }}>✓</div>
             <div style={{ fontWeight: 600, color: 'var(--navy-900)', marginBottom: 4 }}>Contract Signed!</div>
-            <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginBottom: 16 }}>Your signed contract has been saved.</div>
+            <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginBottom: 16 }}>
+              {emailStatus === 'sent'
+                ? 'Your signed contract has been saved and a copy emailed to you for your records.'
+                : emailStatus === 'failed'
+                  ? 'Your signed contract has been saved. Your copy will be emailed to you shortly.'
+                  : 'Your signed contract has been saved — a copy is on its way to your email.'}
+            </div>
             <button className="btn btn-ghost" style={{ width: '100%' }} onClick={onClose}>Close</button>
           </div>
         </>}
