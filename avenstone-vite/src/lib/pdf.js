@@ -307,6 +307,130 @@ export const buildContractPDF = ({ job, snapshot, signaturePng = null, clauseTex
   return doc;
 };
 
+// ─── Sub Work Packet PDF (SCOPE_TO_ESTIMATE Phase D) ────────────────────────────
+// Per-sub, per-trade work sheet: confirmed selections grouped by room, each with its bound
+// option image. Trade-less confirmed answers render in an "Unassigned — confirm trade" section
+// so nothing slips. ASYNC — pre-fetches the (public) option images to embed via doc.addImage.
+// packet = sbBuildSubWorkPacket(jobId, trade).data ; subName optional.
+const _humanize = (s) => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+
+const _fetchImageDataUrl = (url) => new Promise(resolve => {
+  if (!url) return resolve(null);
+  fetch(url)
+    .then(r => (r.ok ? r.blob() : null))
+    .then(blob => {
+      if (!blob) return resolve(null);
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    })
+    .catch(() => resolve(null));
+});
+
+export const buildSubWorkPacketPDF = async ({ packet, subName = '' }) => {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128], amber = [180, 83, 9];
+  const W = 612, M = 48, CW = W - M * 2, SAFE_BOTTOM = 728;
+  const T = (s, x, y, opts) => doc.text(_winAnsi(String(s ?? '')), x, y, opts);
+  const chkPage = (y, h = 16) => { if (y + h > SAFE_BOTTOM) { doc.addPage(); return M + 8; } return y; };
+
+  const job = packet?.job || {};
+  const trade = packet?.trade || '';
+  const rooms = Array.isArray(packet?.rooms) ? packet.rooms : [];
+  const unassigned = Array.isArray(packet?.unassigned) ? packet.unassigned : [];
+
+  // Pre-fetch bound images (public URLs) → dataURLs so the sync render can embed them.
+  const allPicks = [...rooms.flatMap(r => r.picks || []), ...unassigned];
+  const urls = [...new Set(allPicks.map(p => p.image_url).filter(Boolean))];
+  const imgMap = {};
+  await Promise.all(urls.map(async u => { imgMap[u] = await _fetchImageDataUrl(u); }));
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  doc.setFillColor(...navy); doc.rect(0, 0, W, 80, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...gold);
+  T('AVENSTONE GROUP', M, 34);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(...gold);
+  T('SUB WORK PACKET', M, 50);
+  doc.setTextColor(200, 200, 200); doc.setFontSize(9);
+  T('avenstonekc.com  ·  Kansas City, MO', W - M, 34, { align: 'right' });
+
+  // ── Job + trade block ───────────────────────────────────────────────────────
+  let y = 100;
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(...navy);
+  T(job.address || '', M, y); y += 18;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...navy);
+  T(`Trade: ${trade}`, M, y); y += 15;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray);
+  if (subName) { T(`Sub: ${subName}`, M, y); y += 13; }
+  if (job.client_name) { T(`Client: ${job.client_name}`, M, y); y += 13; }
+  T(`Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, M, y); y += 18;
+  doc.setDrawColor(...gold); doc.setLineWidth(1.5); doc.line(M, y, W - M, y); y += 16;
+
+  const renderPick = (p, yStart) => {
+    let yy = yStart;
+    const dataUrl = p.image_url ? imgMap[p.image_url] : null;
+    const imgW = 90, imgH = 68, blockH = Math.max(imgH + 8, 30);
+    yy = chkPage(yy, blockH);
+    if (dataUrl) { try { doc.addImage(dataUrl, 'PNG', M, yy, imgW, imgH); } catch (e) { /* skip image, keep text */ } }
+    const tx = dataUrl ? M + imgW + 12 : M;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
+    T(_humanize(p.field_key), tx, yy + 12);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(55, 65, 81);
+    T(_humanize(p.option_key || p.value || '') || '—', tx, yy + 28);
+    return yy + blockH + 8;
+  };
+
+  // ── Rooms (trade-matched confirmed selections) ──────────────────────────────
+  if (rooms.length) {
+    rooms.forEach(room => {
+      y = chkPage(y, 24);
+      doc.setFillColor(232, 226, 210); doc.rect(M, y - 2, CW, 18, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
+      T(room.room_label || 'Room', M + 4, y + 11); y += 24;
+      (room.picks || []).forEach(p => { y = renderPick(p, y); });
+      y += 6;
+    });
+  } else {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray);
+    T('No confirmed selections for this trade yet.', M, y); y += 18;
+  }
+
+  // ── Unassigned — confirm trade (orphan confirmed answers, trade NULL) ────────
+  if (unassigned.length) {
+    y = chkPage(y, 40);
+    doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 16;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...amber);
+    T('UNASSIGNED — CONFIRM TRADE', M, y); y += 12;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...gray);
+    T('These confirmed selections have no trade assigned — confirm who does them.', M, y); y += 16;
+    unassigned.forEach(p => {
+      const roomTag = p.room_label ? `${p.room_label}: ` : '';
+      const line = `${roomTag}${_humanize(p.field_key)} — ${_humanize(p.option_key || p.value || '') || '—'}`;
+      const dataUrl = p.image_url ? imgMap[p.image_url] : null;
+      y = chkPage(y, dataUrl ? 52 : 18);
+      if (dataUrl) { try { doc.addImage(dataUrl, 'PNG', M, y, 60, 45); } catch (e) {} }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(55, 65, 81);
+      T(line, dataUrl ? M + 72 : M, y + 14);
+      y += dataUrl ? 52 : 18;
+    });
+  }
+
+  // ── Footer ──────────────────────────────────────────────────────────────────
+  const pages = doc.getNumberOfPages();
+  const now = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFillColor(...navy); doc.rect(0, 772, W, 40, 'F');
+    doc.setFontSize(8); doc.setTextColor(...gold); doc.setFont('helvetica', 'bold');
+    T('AVENSTONE GROUP LLC', M, 788);
+    doc.setTextColor(180, 180, 180); doc.setFont('helvetica', 'normal');
+    T(`Page ${i} of ${pages}`, W / 2, 788, { align: 'center' });
+    T(now, W - M, 788, { align: 'right' });
+  }
+  return doc;
+};
+
 // ─── Estimate PDF ──────────────────────────────────────────────────────────────
 export const buildEstimatePDF = (job, messages) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });

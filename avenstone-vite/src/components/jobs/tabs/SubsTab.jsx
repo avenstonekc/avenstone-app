@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { sbLoadEngagementsForJob } from '../../../lib/supabase';
+import { sbLoadEngagementsForJob, sbBuildSubWorkPacket } from '../../../lib/supabase';
+import { buildSubWorkPacketPDF } from '../../../lib/pdf';
 import { Ic, f$, fD, fDT } from '../../../lib/utils';
 import AddSubToJobModal from '../../modals/AddSubToJobModal';
 import EngagementActionModal from '../../modals/EngagementActionModal';
@@ -24,12 +25,33 @@ export default function SubsTab({ job, profile, setTab }) {
   const [engagements, setEngagements] = useState([]);
   const [showOffJob, setShowOffJob] = useState(false);
   const [engagementAction, setEngagementAction] = useState(null); // { engagement, action } | null
+  const [packetBusy, setPacketBusy] = useState(null); // engagement id currently generating
 
   const loadEngagements = () => {
     sbLoadEngagementsForJob(job.id).then(res => { if (res.ok) setEngagements(res.data); });
   };
 
   useEffect(() => { loadEngagements(); }, [job.id]);
+
+  // SCOPE_TO_ESTIMATE Phase D — generate a per-sub work packet PDF from the job's confirmed
+  // selections, filtered to this engagement's trade (+ any trade-less "Unassigned" picks).
+  const generatePacket = async (eng) => {
+    if (!eng.trade) { showToast('This engagement has no trade set'); return; }
+    setPacketBusy(eng.id);
+    try {
+      const res = await sbBuildSubWorkPacket(job.id, eng.trade);
+      if (!res.ok) { showToast(res.error || 'Could not build work packet'); return; }
+      const hasContent = (res.data.rooms?.length || 0) > 0 || (res.data.unassigned?.length || 0) > 0;
+      if (!hasContent) { showToast('No confirmed selections on this job yet'); return; }
+      const doc = await buildSubWorkPacketPDF({ packet: res.data, subName: eng.sub?.full_name });
+      const safe = s => String(s || '').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      doc.save(`work-packet-${safe(eng.trade)}-${safe(job.address)}.pdf`);
+    } catch (e) {
+      showToast(e?.message || 'Work packet failed');
+    } finally {
+      setPacketBusy(null);
+    }
+  };
 
   return (
     <div style={{ padding: '0 0 80px', display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -99,6 +121,9 @@ export default function SubsTab({ job, profile, setTab }) {
                       <button style={btnStyle('ghost')} onClick={() => open('withdraw')}>Withdraw</button>
                     </>)}
                     {eng.status === 'active' && (<>
+                      <button style={btnStyle('ghost')} onClick={() => generatePacket(eng)} disabled={packetBusy === eng.id}>
+                        {packetBusy === eng.id ? 'Building…' : 'Work packet'}
+                      </button>
                       <button style={btnStyle('primary')} onClick={() => open('complete')}>Complete</button>
                       <button style={btnStyle('ghost')} onClick={() => open('remove')}>Remove</button>
                     </>)}
