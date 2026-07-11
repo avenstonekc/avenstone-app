@@ -2515,6 +2515,60 @@ export async function sbLoadScopeOptionData(projectType) {
   return { fields, images };
 }
 
+// SCOPE_TO_ESTIMATE Phase A — ensure exactly one interview default room per job.
+// Idempotent: returns the job's existing (earliest) room if present, else inserts one
+// labeled by project type (source='typed'). Multi-room granularity is a later refinement;
+// the interview default is a single room. Returns { ok, error, data:{ id } | null }.
+export async function sbEnsureDefaultRoom(jobId, projectType) {
+  try {
+    const { data: existing, error: selErr } = await sb.from('job_rooms')
+      .select('id').eq('tenant_id', AV_TENANT).eq('job_id', jobId)
+      .order('created_at', { ascending: true }).limit(1);
+    if (selErr) return { ok: false, error: selErr.message, data: null };
+    if (existing && existing.length) return { ok: true, error: null, data: { id: existing[0].id } };
+    const label = (projectType || 'Room').toString().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const { data, error } = await sb.from('job_rooms')
+      .insert({ tenant_id: AV_TENANT, job_id: jobId, label, source: 'typed' })
+      .select('id').single();
+    if (error) return { ok: false, error: error.message, data: null };
+    return { ok: true, error: null, data: { id: data.id } };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbEnsureDefaultRoom failed', data: null };
+  }
+}
+
+// SCOPE_TO_ESTIMATE Phase A — upsert scope answers on the unique tuple
+// (tenant_id, job_id, room_id, field_key). Chains .select('id') so an RLS silent-deny
+// (PostgREST 0-row, no error) surfaces as ok:false instead of a false success. Answers come
+// from ai-estimator [{ field_key, option_key?, value?, trade?, source }]; caller stamps
+// room_id. status is left to the DB default ('proposed'). Returns { ok, error, data }.
+export async function sbUpsertScopeAnswers(jobId, answers) {
+  try {
+    const rows = (answers || [])
+      .filter(a => a && a.field_key)
+      .map(a => ({
+        tenant_id:  AV_TENANT,
+        job_id:     jobId,
+        room_id:    a.room_id ?? null,
+        field_key:  a.field_key,
+        option_key: a.option_key ?? null,
+        value:      a.value ?? null,
+        trade:      a.trade ?? null,
+        source:     a.source || 'rep_typed',
+        updated_at: new Date().toISOString(),
+      }));
+    if (!rows.length) return { ok: true, error: null, data: [] };
+    const { data, error } = await sb.from('job_scope_answers')
+      .upsert(rows, { onConflict: 'tenant_id,job_id,room_id,field_key' })
+      .select('id');
+    if (error) return { ok: false, error: error.message, data: null };
+    if (!data || !data.length) return { ok: false, error: 'no rows written (possible RLS deny)', data: null };
+    return { ok: true, error: null, data };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbUpsertScopeAnswers failed', data: null };
+  }
+}
+
 export const sbSaveJobRoomScope = async ({
   jobId, roomId, roomLabel, roomType, scopeTag, customTrades, notes,
   scopeDetails, tenantId, userId,

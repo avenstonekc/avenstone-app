@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers } from '../../../lib/supabase';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
@@ -82,6 +82,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // interview response); optData = {fields, images} loaded once per project_type.
   const [scopeOpenFields, setScopeOpenFields]             = useState([]);
   const [scopeOptData, setScopeOptData]                   = useState({ fields: [], images: {} });
+  const [scopeSaveError, setScopeSaveError]               = useState(null); // Phase A: soft persist-failure banner
   const [resumeChecked, setResumeChecked]                 = useState(false); // one-shot resume-interview check
 
   // ── Line items state ────────────────────────────────────────────────────────
@@ -391,6 +392,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         reply = data.content || 'Let me get a few scope details.';
         if (data.scope_complete) completedNow = true;
         setScopeOpenFields(data.open_field_keys || []); // SCE 4B: drive the option cards
+        persistScopeAnswers(data.answers); // Phase A: persist answers (soft, non-blocking)
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
         if (data.priced_scope?.length) setPricedScope(data.priced_scope); // 3c
@@ -417,6 +419,24 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     const rooms = (estForm.rooms || '').toLowerCase();
     const typed = rooms.trim() ? (knownProjectTypes.find(pt => pt && rooms.includes(pt)) || null) : null;
     return typed || scopeProjectType || null;
+  };
+
+  // SCOPE_TO_ESTIMATE Phase A — persist interview answers so they stop evaporating.
+  // Ensures the job's default room, stamps room_id, upserts. SOFT: never blocks the
+  // interview — a failure just raises a dismissable banner (no new AI calls here).
+  const persistScopeAnswers = async (answers) => {
+    if (!answers?.length || !job?.id) return;
+    try {
+      const roomRes = await sbEnsureDefaultRoom(job.id, resolveProjectType());
+      if (!roomRes.ok) { console.error('[persistScopeAnswers] room:', roomRes.error); setScopeSaveError('Scope answers not saved — could not set up the room. Your interview continues normally.'); return; }
+      const stamped = answers.map(a => ({ ...a, room_id: roomRes.data.id }));
+      const upRes = await sbUpsertScopeAnswers(job.id, stamped);
+      if (!upRes.ok) { console.error('[persistScopeAnswers] upsert:', upRes.error); setScopeSaveError('Scope answers not saved this turn. Your interview continues normally.'); }
+      else setScopeSaveError(null);
+    } catch (e) {
+      console.error('[persistScopeAnswers]', e);
+      setScopeSaveError('Scope answers not saved this turn. Your interview continues normally.');
+    }
   };
 
   const startEstimate = async () => {
@@ -985,6 +1005,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
               disabled={estLoading}
               onPick={(f, opt) => sendEstimatorMessage(opt.replace(/_/g, ' '))}
             />
+          )}
+          {scopeSaveError && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--red-text-strong)', background: 'var(--red-bg)', border: '1px solid var(--red-text)', borderRadius: 6, padding: '8px 12px' }}>
+              <span>⚠ {scopeSaveError}</span>
+              <button onClick={() => setScopeSaveError(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--red-text-strong)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
           )}
           {scopeInterviewActive && !scopeComplete && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--amber-text-strong)', background: 'var(--amber-bg-soft)', border: '1px solid var(--amber-border-soft)', borderRadius: 6, padding: '8px 12px' }}>
