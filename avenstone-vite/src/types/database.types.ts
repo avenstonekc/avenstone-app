@@ -1528,6 +1528,8 @@ export type Database = {
           phase: string | null
           quantity: number
           rate_provenance: string | null
+          room_id: string | null
+          scope_field_key: string | null
           source_label: string | null
           tenant_id: string
           total_cost: number | null
@@ -1552,6 +1554,8 @@ export type Database = {
           phase?: string | null
           quantity?: number
           rate_provenance?: string | null
+          room_id?: string | null
+          scope_field_key?: string | null
           source_label?: string | null
           tenant_id: string
           total_cost?: number | null
@@ -1576,6 +1580,8 @@ export type Database = {
           phase?: string | null
           quantity?: number
           rate_provenance?: string | null
+          room_id?: string | null
+          scope_field_key?: string | null
           source_label?: string | null
           tenant_id?: string
           total_cost?: number | null
@@ -1597,6 +1603,13 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_line_items_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "job_rooms"
             referencedColumns: ["id"]
           },
         ]
