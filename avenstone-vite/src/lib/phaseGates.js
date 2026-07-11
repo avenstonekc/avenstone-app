@@ -4,11 +4,10 @@
 // - supabase/functions/ai-master-agent/index.ts
 // - supabase/functions/ai-field-agent/index.ts
 //
-// DIVERGENCE (SCOPE_TO_ESTIMATE Phase C2, 2026-07-11): checkSelectionsConfirmed
-// (contract→in_progress) is present HERE (UI path via PhaseAdvanceCard) but NOT yet
-// mirrored in the two edge copies — the agent's advance_phase won't enforce the
-// selections lock until synced. Scoped out of C2 (touches: phaseGates.js only);
-// sync the two edge fns as a follow-up.
+// RESOLVED (SCOPE_TO_ESTIMATE Phase D, 2026-07-11): checkSelectionsConfirmed
+// (contract→in_progress) is now mirrored into BOTH edge copies' runGatesForTransition
+// (ai-master-agent + ai-field-agent), so the agent's advance_phase enforces the
+// selections lock the same as the UI path. Keep all three in sync on any change.
 //
 // Phase advancement gate definitions for the Anti-Surprise Engine (EXECUTION_ARC Phase 4a).
 //

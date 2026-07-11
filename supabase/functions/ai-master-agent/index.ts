@@ -67,6 +67,33 @@ async function runGatesForTransition(jobId: string, fromPhase: string, toPhase: 
         .eq("job_id", jobId).in("type", ["client_payment", "client_deposit"]).eq("direction", "in").eq("status", "paid");
       return { key: "deposit_paid", label: "Client payment received", passed: (count ?? 0) > 0 };
     });
+    // SCOPE_TO_ESTIMATE Phase D — mirror of checkSelectionsConfirmed (phaseGates.js). Closes the
+    // tracked agent-gate divergence: the UI blocked contract→in_progress on unconfirmed selections
+    // but the agent path did not. is_selection fields for the job's project type (from the default
+    // room label) must all have a confirmed answer; zero applicable → passes.
+    checks.push(async () => {
+      const pass = { key: "selections_confirmed", label: "Client selections confirmed", passed: true };
+      const { data: rooms } = await sb.from("job_rooms").select("label")
+        .eq("job_id", jobId).order("created_at", { ascending: true }).limit(1);
+      const pt = (rooms?.[0]?.label || "").toLowerCase();
+      if (!pt) return pass;
+      const { data: fields } = await sb.from("scope_checklists").select("field_key")
+        .eq("project_type", pt).eq("is_selection", true).eq("active", true);
+      const applicable = [...new Set((fields || []).map((f: any) => f.field_key))];
+      if (!applicable.length) return pass;
+      const { data: confirmedRows } = await sb.from("job_scope_answers").select("field_key")
+        .eq("job_id", jobId).eq("status", "confirmed");
+      const confirmed = new Set((confirmedRows || []).map((r: any) => r.field_key));
+      const unconfirmed = applicable.filter((fk) => !confirmed.has(fk));
+      const lockedN = applicable.length - unconfirmed.length;
+      return {
+        key: "selections_confirmed",
+        label: unconfirmed.length
+          ? `Client selections locked (${lockedN} of ${applicable.length}) — unconfirmed: ${unconfirmed.join(", ")}`
+          : `Client selections locked (${applicable.length} of ${applicable.length})`,
+        passed: unconfirmed.length === 0,
+      };
+    });
   } else if (key === "in_progress→final_touches") {
     checks.push(async () => {
       const { count } = await sb.from("schedule_items").select("*", { count: "exact", head: true })
