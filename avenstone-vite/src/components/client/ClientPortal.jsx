@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 // Note: legacy `payments` compat view is deprecated. ClientPortal reads invoices + job_transactions directly.
 // Compat view still alive in DB until verified no consumers remain. — Phase 6a, 2026-05-06
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates, sbLoadClientMilestones, sbLoadClientDrawBreakdown, sbLoadClientActualSpend } from '../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates, sbLoadClientMilestones, sbLoadClientDrawBreakdown, sbLoadClientActualSpend, sbLoadScopeOptionData, sbLoadScopeAnswers, sbUpsertClientSelection, sbEnsureSelectionsOpen } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
 import ClientInvoicesTab from './ClientInvoicesTab';
+import ScopeOptionCards from '../jobs/tabs/ScopeOptionCards';
 
 const NAV    = 'var(--navy-900)';
 const GOLD   = 'var(--gold-500)';
@@ -259,7 +260,12 @@ const BASE_CLIENT_TABS = [
 ];
 const getClientTabs = job => {
   const m = job?.financial_model || (job?.cost_plus ? 'cost_plus' : 'fixed_bid');
-  return m === 'cost_plus' ? [...BASE_CLIENT_TABS, { id: 'financials', lb: 'Financials', ic: 'doc' }] : BASE_CLIENT_TABS;
+  const tabs = [...BASE_CLIENT_TABS];
+  if (m === 'cost_plus') tabs.push({ id: 'financials', lb: 'Financials', ic: 'doc' });
+  // Phase C1: Selections tab appears once selections_opened_at is stamped (contract signing
+  // or lazy open on portal load).
+  if (job?.selections_opened_at) tabs.push({ id: 'selections', lb: 'Selections', ic: 'check' });
+  return tabs;
 };
 
 const CLIENT_STATUS = s => ({
@@ -268,6 +274,115 @@ const CLIENT_STATUS = s => ({
   rough_mep: 'In Progress', drywall: 'In Progress', finish: 'In Progress',
   punch: 'Final Touches', complete: 'Complete', on_hold: 'On Hold',
 }[s] || sl(s));
+
+const humanizeOpt = s => (s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+// Phase C1 — client SELECTIONS tab. Renders client-facing (audience='rep_client') choice fields
+// as tappable option cards (reusing ScopeOptionCards); a tap soft-picks (client_selected/proposed,
+// DB-vet-gated). Confirmed picks render locked; proposed picks show "awaiting confirmation".
+// project_type is derived from the job's default room label (jobs has no project_type column).
+function ClientSelectionsView({ job }) {
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+  const [fields, setFields] = useState([]);
+  const [images, setImages] = useState({});
+  const [answers, setAnswers] = useState([]);
+  const [roomId, setRoomId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  const load = async () => {
+    setLoading(true); setErr(null);
+    try {
+      const { data: rooms } = await sb.from('job_rooms').select('id, label').eq('job_id', job.id).order('created_at', { ascending: true }).limit(1);
+      const room = rooms?.[0] || null;
+      setRoomId(room?.id || null); // null-room jobs (predate Phase A) still soft-pick with room_id NULL
+      const pt = (room?.label || '').toLowerCase();
+      if (!pt) { setFields([]); setAnswers([]); setLoading(false); return; }
+      const od = await sbLoadScopeOptionData(pt, { audience: 'rep_client' });
+      setFields(od.fields || []); setImages(od.images || {});
+      const a = await sbLoadScopeAnswers(job.id);
+      setAnswers(a.ok ? a.data : []);
+    } catch { setErr('Could not load your selections. Please try again.'); }
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, [job.id]);
+
+  const byField = {};
+  for (const a of answers) byField[a.field_key] = a;
+  const confirmed = fields.filter(f => byField[f.field_key]?.status === 'confirmed');
+  const openFields = fields.filter(f => byField[f.field_key]?.status !== 'confirmed');
+
+  const handlePick = async (f, opt) => {
+    setSaving(true); setErr(null);
+    const res = await sbUpsertClientSelection(job.id, roomId, f.field_key, opt, opt);
+    if (!res.ok) { setErr('Could not save that selection. Please try again.'); }
+    else { const a = await sbLoadScopeAnswers(job.id); setAnswers(a.ok ? a.data : []); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 3000); }
+    setSaving(false);
+  };
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>Loading your selections…</div>;
+  if (!fields.length) return <div className="empty">{Ic.check}<div className="empty-t">Selections aren't ready yet</div><div>Your contractor will open selections for this project soon.</div></div>;
+
+  const qOf = f => f.question || humanizeOpt(f.field_key);
+
+  return (
+    <div>
+      <div style={{ background: NAV, padding: '18px 20px', marginBottom: 16, borderRadius: 2 }}>
+        <div style={{ fontSize: 9, color: GOLD, letterSpacing: 4, textTransform: 'uppercase', marginBottom: 6 }}>Your Selections</div>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.6 }}>Pick your finishes below. Your project manager reviews and confirms each choice — confirmed picks lock in.</div>
+      </div>
+
+      {err && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--red-text-strong)', background: 'var(--red-bg)', border: '1px solid var(--red-text)', borderRadius: 6, padding: '10px 12px', marginBottom: 14 }}>
+          <span>⚠ {err}</span>
+          <button onClick={() => setErr(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--red-text-strong)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
+      {savedFlash && <div style={{ fontSize: 12, color: 'var(--green-text-strong)', background: 'var(--green-bg)', borderRadius: 6, padding: '8px 12px', marginBottom: 14 }}>✓ Selection saved — awaiting your PM's confirmation.</div>}
+
+      {confirmed.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--green-dot)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Confirmed ✓</div>
+          {confirmed.map(f => (
+            <div key={f.field_key} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderLeft: '3px solid var(--green-dot)', padding: '12px 14px', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginBottom: 3 }}>{qOf(f)}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: NAV }}>{humanizeOpt(byField[f.field_key]?.option_key || byField[f.field_key]?.value)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {openFields.length > 0 ? (
+        <>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Choose your finishes</div>
+          {openFields.map(f => {
+            const picked = byField[f.field_key];
+            const isProposed = picked?.status === 'proposed' && picked?.source === 'client_selected';
+            return (
+              <div key={f.field_key} style={{ marginBottom: 18 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: NAV }}>{qOf(f)}</span>
+                  {isProposed && <span style={{ fontSize: 9, background: 'var(--amber-bg)', color: 'var(--amber-text-strong)', padding: '3px 8px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Awaiting confirmation</span>}
+                </div>
+                <ScopeOptionCards
+                  openFieldKeys={[f.field_key]}
+                  fields={[{ field_key: f.field_key, question: '', options: f.options }]}
+                  images={images}
+                  disabled={saving}
+                  onPick={handlePick}
+                />
+                {isProposed && <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6 }}>Your pick: <strong style={{ color: NAV }}>{humanizeOpt(picked.option_key || picked.value)}</strong> — tap another option to change it.</div>}
+              </div>
+            );
+          })}
+        </>
+      ) : confirmed.length > 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>All your selections are confirmed. 🎉</div>
+      ) : null}
+    </div>
+  );
+}
 
 export default function ClientPortal({ profile, signOut }) {
   const [jobs, setJobs] = useState([]);
@@ -327,6 +442,13 @@ export default function ClientPortal({ profile, signOut }) {
     if (!loaded.phases) { sbLoadPhases(job.id).then(d => { setPhases(d); setLoaded(p => ({ ...p, phases: true })); }); }
     if (!loaded.subs) { sb.from('job_sub_engagements').select('id,trade,sub:profiles!sub_id(id,full_name,email)').eq('job_id', job.id).eq('status', 'active').order('activated_at', { ascending: true }).then(({ data }) => { setJobSubs(data || []); setLoaded(p => ({ ...p, subs: true })); }); }
     if (!staffOwnerId) { sb.from('profiles').select('id').eq('tenant_id', AV_TENANT).eq('role', 'owner').limit(1).single().then(({ data }) => { if (data?.id) setStaffOwnerId(data.id); }); }
+    // Phase C1: lazy idempotent SELECTIONS open — stamp on portal load for jobs that reached
+    // in_progress via status-picker/agent (no signature hook fired). Definer fn; no client jobs UPDATE.
+    if (job.status && !job.selections_opened_at) {
+      sbEnsureSelectionsOpen(job.id).then(res => {
+        if (res.ok && res.data) setJobs(prev => prev.map(j => j.id === job.id ? { ...j, selections_opened_at: res.data } : j));
+      });
+    }
   }, [job?.id]);
 
   useEffect(() => {
@@ -1052,6 +1174,8 @@ export default function ClientPortal({ profile, signOut }) {
               </>
             )}
           </div>}
+
+          {tab === 'selections' && <ClientSelectionsView job={job} />}
 
         </div>
 

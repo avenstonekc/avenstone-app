@@ -2488,12 +2488,17 @@ export const sbLoadJobRoomScopes = async (jobId) => {
 // fields (question + options, money/risk order) and a field_key→option_key→public URL
 // image map (scope_option_images bucket). project_type-specific image beats the univ_
 // shared fallback for the same option. Public bucket → plain public URLs, no signing.
-export async function sbLoadScopeOptionData(projectType) {
+export async function sbLoadScopeOptionData(projectType, opts = {}) {
   if (!projectType) return { fields: [], images: {} };
   const pt = String(projectType).toLowerCase();
+  let chkQuery = sb.from('scope_checklists').select('field_key, question, options, money_risk_rank, tenant_id')
+    .eq('project_type', pt).eq('field_type', 'choice').eq('active', true);
+  // Phase C1: the client Selections tab passes { audience:'rep_client' } to show only
+  // client-facing choice fields (the SCE 1B [RC] tag). Omitted elsewhere → all choice fields
+  // (EstimateTab's behavior unchanged).
+  if (opts.audience) chkQuery = chkQuery.eq('audience', opts.audience);
   const [chkRes, imgRes] = await Promise.all([
-    sb.from('scope_checklists').select('field_key, question, options, money_risk_rank, tenant_id')
-      .eq('project_type', pt).eq('field_type', 'choice').eq('active', true),
+    chkQuery,
     sb.from('scope_option_images').select('project_type, field_key, option_key, storage_path')
       .eq('active', true).or(`project_type.eq.${pt},project_type.is.null`),
   ]);
@@ -2595,6 +2600,30 @@ export async function sbEnsureSelectionsOpen(jobId) {
     return { ok: true, error: null, data: data || null };
   } catch (e) {
     return { ok: false, error: e?.message || 'sbEnsureSelectionsOpen failed', data: null };
+  }
+}
+
+// SCOPE_TO_ESTIMATE Phase C1 — client soft-pick. Upserts one selection into job_scope_answers,
+// forced source='client_selected' + status='proposed' (the DB vet-gate independently enforces
+// this via RLS). Upsert on the unique tuple so a re-pick UPDATEs the client's existing proposed
+// row (never duplicates). A field the PM already CONFIRMED is locked by RLS (client UPDATE USING
+// excludes confirmed) → 0 rows → ok:false; the UI renders confirmed fields non-tappable so this
+// path isn't hit normally. Returns { ok, error, data:<row> }.
+export async function sbUpsertClientSelection(jobId, roomId, fieldKey, optionKey, value) {
+  try {
+    const row = {
+      tenant_id: AV_TENANT, job_id: jobId, room_id: roomId ?? null,
+      field_key: fieldKey, option_key: optionKey ?? null, value: value ?? null,
+      source: 'client_selected', status: 'proposed', updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await sb.from('job_scope_answers')
+      .upsert(row, { onConflict: 'tenant_id,job_id,room_id,field_key' })
+      .select('id, field_key, option_key, value, status');
+    if (error) return { ok: false, error: error.message, data: null };
+    if (!data || !data.length) return { ok: false, error: 'no row written (field may be locked/confirmed)', data: null };
+    return { ok: true, error: null, data: data[0] };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbUpsertClientSelection failed', data: null };
   }
 }
 
