@@ -2484,6 +2484,37 @@ export const sbLoadJobRoomScopes = async (jobId) => {
   return data || [];
 };
 
+// SCE Phase 4B — scope-interview option cards. Returns the project type's choice
+// fields (question + options, money/risk order) and a field_key→option_key→public URL
+// image map (scope_option_images bucket). project_type-specific image beats the univ_
+// shared fallback for the same option. Public bucket → plain public URLs, no signing.
+export async function sbLoadScopeOptionData(projectType) {
+  if (!projectType) return { fields: [], images: {} };
+  const pt = String(projectType).toLowerCase();
+  const [chkRes, imgRes] = await Promise.all([
+    sb.from('scope_checklists').select('field_key, question, options, money_risk_rank, tenant_id')
+      .eq('project_type', pt).eq('field_type', 'choice').eq('active', true),
+    sb.from('scope_option_images').select('project_type, field_key, option_key, storage_path')
+      .eq('active', true).or(`project_type.eq.${pt},project_type.is.null`),
+  ]);
+  // Dedupe checklist by field_key — a tenant override beats the platform-null row.
+  const fmap = new Map();
+  for (const r of (chkRes.data || [])) {
+    const ex = fmap.get(r.field_key);
+    if (!ex || (r.tenant_id != null && ex.tenant_id == null)) fmap.set(r.field_key, r);
+  }
+  const fields = [...fmap.values()]
+    .sort((a, b) => (a.money_risk_rank ?? 99) - (b.money_risk_rank ?? 99))
+    .map(f => ({ field_key: f.field_key, question: f.question, options: f.options || [] }));
+  const base = `${SUPABASE_URL}/storage/v1/object/public/scope-option-images/`;
+  const images = {};
+  for (const r of (imgRes.data || [])) {
+    (images[r.field_key] ||= {});
+    if (!(r.option_key in images[r.field_key]) || r.project_type === pt) images[r.field_key][r.option_key] = base + r.storage_path;
+  }
+  return { fields, images };
+}
+
 export const sbSaveJobRoomScope = async ({
   jobId, roomId, roomLabel, roomType, scopeTag, customTrades, notes,
   scopeDetails, tenantId, userId,

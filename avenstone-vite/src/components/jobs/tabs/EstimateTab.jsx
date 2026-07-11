@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData } from '../../../lib/supabase';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
@@ -10,6 +10,7 @@ import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
 import StructuredEstimate from './StructuredEstimate';
 import GapBatchAsk from './GapBatchAsk';
+import ScopeOptionCards from './ScopeOptionCards';
 import { deriveProjectSf } from '../../../lib/deriveProjectSf';
 
 const TakeoffWizard = lazy(() => import('./TakeoffWizard'));
@@ -77,6 +78,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [scopeComplete, setScopeComplete]                 = useState(false); // interview satisfied → run pricing
   const [forceDraftedIncomplete, setForceDraftedIncomplete] = useState(false); // rep forced a draft past open questions
   const [knownProjectTypes, setKnownProjectTypes]         = useState([]); // distinct project_types seeded in scope_checklists
+  // SCE Phase 4B: option-image cards. openFields = current unanswered fields (from the
+  // interview response); optData = {fields, images} loaded once per project_type.
+  const [scopeOpenFields, setScopeOpenFields]             = useState([]);
+  const [scopeOptData, setScopeOptData]                   = useState({ fields: [], images: {} });
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -365,6 +370,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         // Upstream of pricing: render the batched questions; flag completion for the effect.
         reply = data.content || 'Let me get a few scope details.';
         if (data.scope_complete) completedNow = true;
+        setScopeOpenFields(data.open_field_keys || []); // SCE 4B: drive the option cards
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
         if (data.priced_scope?.length) setPricedScope(data.priced_scope); // 3c
@@ -397,11 +403,14 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     if (!estForm.scope.trim()) return;
     setEstStarted(true);
     const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${interviewSf ? `Square Footage: ${interviewSf} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
-    if (resolveProjectType()) {
+    const pt = resolveProjectType();
+    if (pt) {
       // SCOPE_CAPTURE_ENGINE P1B: gather scope (checklist + trigger modules) BEFORE pricing.
       setScopeInterviewActive(true);
       setScopeComplete(false);
       setForceDraftedIncomplete(false);
+      // SCE 4B: load the option-image cards for this project type (non-blocking).
+      sbLoadScopeOptionData(pt).then(setScopeOptData).catch(() => {});
       await sendEstimatorMessage(prompt, estFile || null, 'scope_interview');
     } else {
       await sendEstimatorMessage(prompt, estFile || null);
@@ -949,8 +958,17 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             </div>
           )}
           {scopeInterviewActive && !scopeComplete && (
+            <ScopeOptionCards
+              openFieldKeys={scopeOpenFields}
+              fields={scopeOptData.fields}
+              images={scopeOptData.images}
+              disabled={estLoading}
+              onPick={(f, opt) => sendEstimatorMessage(opt.replace(/_/g, ' '))}
+            />
+          )}
+          {scopeInterviewActive && !scopeComplete && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--amber-text-strong)', background: 'var(--amber-bg-soft)', border: '1px solid var(--amber-border-soft)', borderRadius: 6, padding: '8px 12px' }}>
-              <span>📋 Gathering scope — answer the questions above for an accurate estimate.</span>
+              <span>📋 Gathering scope — tap an option below or answer in the box for an accurate estimate.</span>
               <button className="btn btn-ghost" style={{ fontSize: 11, minHeight: 32, marginLeft: 'auto' }} onClick={forceDraftAnyway} disabled={estLoading}>Draft anyway →</button>
             </div>
           )}
