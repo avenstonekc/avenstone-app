@@ -2816,6 +2816,117 @@ export type Database = {
         }
         Relationships: []
       }
+      job_rooms: {
+        Row: {
+          created_at: string
+          id: string
+          job_id: string
+          label: string
+          scan_room_id: string | null
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_id: string
+          label: string
+          scan_room_id?: string | null
+          source: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_id?: string
+          label?: string
+          scan_room_id?: string | null
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_rooms_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_scope_answers: {
+        Row: {
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          field_key: string
+          id: string
+          job_id: string
+          option_key: string | null
+          room_id: string | null
+          source: string
+          status: string
+          tenant_id: string
+          trade: string | null
+          updated_at: string
+          value: string | null
+        }
+        Insert: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          field_key: string
+          id?: string
+          job_id: string
+          option_key?: string | null
+          room_id?: string | null
+          source: string
+          status?: string
+          tenant_id: string
+          trade?: string | null
+          updated_at?: string
+          value?: string | null
+        }
+        Update: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          field_key?: string
+          id?: string
+          job_id?: string
+          option_key?: string | null
+          room_id?: string | null
+          source?: string
+          status?: string
+          tenant_id?: string
+          trade?: string | null
+          updated_at?: string
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_scope_answers_confirmed_by_fkey"
+            columns: ["confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_scope_answers_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_scope_answers_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "job_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_sub_engagements: {
         Row: {
           activated_at: string | null
@@ -4883,6 +4994,36 @@ export type Database = {
           module_key?: string
           tenant_id?: string | null
           trigger_phrases?: string[]
+        }
+        Relationships: []
+      }
+      scope_option_images: {
+        Row: {
+          active: boolean
+          created_at: string
+          field_key: string
+          id: string
+          option_key: string
+          project_type: string | null
+          storage_path: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          field_key: string
+          id?: string
+          option_key: string
+          project_type?: string | null
+          storage_path: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          field_key?: string
+          id?: string
+          option_key?: string
+          project_type?: string | null
+          storage_path?: string
         }
         Relationships: []
       }
