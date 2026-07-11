@@ -82,6 +82,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // interview response); optData = {fields, images} loaded once per project_type.
   const [scopeOpenFields, setScopeOpenFields]             = useState([]);
   const [scopeOptData, setScopeOptData]                   = useState({ fields: [], images: {} });
+  const [resumeChecked, setResumeChecked]                 = useState(false); // one-shot resume-interview check
 
   // ── Line items state ────────────────────────────────────────────────────────
   const [lineItems, setLineItems] = useState([]);
@@ -222,6 +223,25 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
+
+  // SCE 4B: RESUME an in-progress interview. On a reload the interview state (active +
+  // option cards) is lost — the mount effect only rehydrates the chat. When a saved
+  // conversation exists, a project type resolves, the rep didn't force-draft, and nothing
+  // was priced/committed yet, re-enter interview mode and load the option cards — mirroring
+  // the fresh-start load path. Runs once; keyed on scopeProjectType so it waits for it.
+  useEffect(() => {
+    if (resumeChecked || !estStarted || scopeInterviewActive || scopeComplete) return;
+    if (!estMessages.length || pricedScope?.length) return;
+    const pt = resolveProjectType();
+    if (!pt || estimateScopeOrigin === 'incomplete') { setResumeChecked(true); return; }
+    setResumeChecked(true);
+    sbLoadEstimateLineItems(job.id).then(items => {
+      if (items?.length) return; // committed estimate — don't re-gate
+      setScopeInterviewActive(true);
+      sbLoadScopeOptionData(pt).then(setScopeOptData).catch(() => {});
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estStarted, scopeProjectType, resumeChecked]);
 
   // Derive project SF from scoped rooms on mount. P2: a completed consultation session
   // may carry an on-site measured SF — that takes precedence over scan derivation. Read
