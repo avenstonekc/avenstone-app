@@ -3365,6 +3365,7 @@ export type Database = {
           retainage_pct: number | null
           sale_price: number | null
           scope: string | null
+          selections_opened_at: string | null
           sold_date: string | null
           spouse_email: string | null
           spouse_name: string | null
@@ -3420,6 +3421,7 @@ export type Database = {
           retainage_pct?: number | null
           sale_price?: number | null
           scope?: string | null
+          selections_opened_at?: string | null
           sold_date?: string | null
           spouse_email?: string | null
           spouse_name?: string | null
@@ -3475,6 +3477,7 @@ export type Database = {
           retainage_pct?: number | null
           sale_price?: number | null
           scope?: string | null
+          selections_opened_at?: string | null
           sold_date?: string | null
           spouse_email?: string | null
           spouse_name?: string | null
@@ -6594,6 +6597,7 @@ export type Database = {
           new_status: string
         }[]
       }
+      ensure_selections_open: { Args: { p_job_id: string }; Returns: string }
       get_auth_user_id_by_email: { Args: { p_email: string }; Returns: string }
       get_job_co_total: { Args: { p_job_id: string }; Returns: number }
       get_my_role: { Args: never; Returns: string }
