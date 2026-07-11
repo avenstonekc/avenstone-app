@@ -51,6 +51,11 @@
  * @property {number}       markup_pct         — always committed as 0
  * @property {string|null}  notes              — takeoff: structured prefix; others: null
  * @property {number|null}  waste_pct          — informational, not stored
+ * @property {string|null}  [room_id]          — SEAM (Phase D): FK→job_rooms; null from every
+ *                                                current writer (takeoff roomId is a scan-string,
+ *                                                not a job_rooms UUID). Nullable passthrough only.
+ * @property {string|null}  [scope_field_key]  — SEAM (Phase D): source scope-answer field_key;
+ *                                                null from every current writer. Nullable passthrough.
  */
 
 const VALID_SOURCES    = ['takeoff', 'ai', 'consultation', 'plan_upload', 'manual'];
@@ -203,6 +208,9 @@ export async function sbCommitEstimate(supabase, tenantId, userId, { source, job
         notes:         source === 'ai' ? 'ai:' + (it.notes || '') : (it.notes ?? null),
         source_label:  it.source_label ?? null,
         rate_provenance: it.rate_provenance ?? null, // S9: gap-rate provenance (null on non-gap lines)
+        // Phase D seam — nullable passthrough; no current caller supplies these (see typedef).
+        room_id:         it.room_id ?? null,
+        scope_field_key: it.scope_field_key ?? null,
         created_by:    userId,
       };
     });
