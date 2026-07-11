@@ -4,6 +4,12 @@
 // - supabase/functions/ai-master-agent/index.ts
 // - supabase/functions/ai-field-agent/index.ts
 //
+// DIVERGENCE (SCOPE_TO_ESTIMATE Phase C2, 2026-07-11): checkSelectionsConfirmed
+// (contract→in_progress) is present HERE (UI path via PhaseAdvanceCard) but NOT yet
+// mirrored in the two edge copies — the agent's advance_phase won't enforce the
+// selections lock until synced. Scoped out of C2 (touches: phaseGates.js only);
+// sync the two edge fns as a follow-up.
+//
 // Phase advancement gate definitions for the Anti-Surprise Engine (EXECUTION_ARC Phase 4a).
 //
 // ARCHITECTURE: jobs.status IS the lifecycle phase tracker.
@@ -113,6 +119,43 @@ async function checkAllSubStartsComplete(jobId, sb) {
   };
 }
 
+// SCOPE_TO_ESTIMATE Phase C2 — Demo/selections gate. Demo (a trade phase) has no interactive
+// gate point (trade phases are schedule-driven via derivePhaseStatus), so the selections lock is
+// enforced at the lifecycle boundary the PM passes through before construction: contract→in_progress.
+// Applicable = is_selection fields for the job's project type (derived from the default room label,
+// as the Selections tab does); unconfirmed = those without a confirmed answer row. Zero applicable
+// → passes silently. The failing label names the unconfirmed fields so the override card reads well.
+async function checkSelectionsConfirmed(jobId, sb) {
+  const pass = { key: 'selections_confirmed', label: 'Client selections confirmed', passed: true };
+  const { data: rooms } = await sb
+    .from('job_rooms').select('label').eq('job_id', jobId)
+    .order('created_at', { ascending: true }).limit(1);
+  const pt = (rooms?.[0]?.label || '').toLowerCase();
+  if (!pt) return pass;
+
+  const { data: fields } = await sb
+    .from('scope_checklists').select('field_key')
+    .eq('project_type', pt).eq('is_selection', true).eq('active', true);
+  const applicable = [...new Set((fields || []).map(f => f.field_key))];
+  if (!applicable.length) return pass;
+
+  const { data: confirmedRows } = await sb
+    .from('job_scope_answers').select('field_key')
+    .eq('job_id', jobId).eq('status', 'confirmed');
+  const confirmed = new Set((confirmedRows || []).map(r => r.field_key));
+  const unconfirmed = applicable.filter(fk => !confirmed.has(fk));
+  const lockedN = applicable.length - unconfirmed.length;
+
+  return {
+    key: 'selections_confirmed',
+    label: unconfirmed.length
+      ? `Client selections locked (${lockedN} of ${applicable.length}) — unconfirmed: ${unconfirmed.join(', ')}`
+      : `Client selections locked (${applicable.length} of ${applicable.length})`,
+    passed: unconfirmed.length === 0,
+    message: unconfirmed.length ? `Unconfirmed selections: ${unconfirmed.join(', ')}` : undefined,
+  };
+}
+
 // ── Transition gate map ───────────────────────────────────────────────────────
 // Only transitions with clean data sources are listed.
 // Absent transitions with MANUAL_ONLY get requiresOverride:true from the runner.
@@ -120,7 +163,7 @@ async function checkAllSubStartsComplete(jobId, sb) {
 
 const TRANSITION_GATES = {
   'lead→proposal':            [checkScopeTagged, checkConsultationLogged],
-  'contract→in_progress':     [checkContractSigned, checkDepositPaid],
+  'contract→in_progress':     [checkContractSigned, checkDepositPaid, checkSelectionsConfirmed],
   'in_progress→final_touches': [checkAllSubStartsComplete],
 };
 
