@@ -2592,6 +2592,81 @@ export async function sbLoadScopeAnswers(jobId) {
   }
 }
 
+// SCOPE_TO_ESTIMATE Phase D — assemble a per-sub work packet: CONFIRMED job_scope_answers for a
+// job, joined room × option × bound image (scope_option_images), filtered to one trade. Trade-NULL
+// confirmed answers are NOT dropped — they go to the `unassigned` bucket so the packet can flag
+// "confirm who does this" (the orphan cases: countertop, counter_edge, basement.concrete_polished).
+// Regenerate-on-change v1: reflects current confirmed state at call time (no stored diff).
+// Staff RLS path (job_scope_answers/job_rooms staff SELECT). Returns { ok, error, data }.
+export async function sbBuildSubWorkPacket(jobId, trade) {
+  try {
+    const [ansRes, roomsRes, jobRes] = await Promise.all([
+      sb.from('job_scope_answers')
+        .select('room_id, field_key, option_key, value, trade')
+        .eq('tenant_id', AV_TENANT).eq('job_id', jobId).eq('status', 'confirmed'),
+      sb.from('job_rooms').select('id, label')
+        .eq('tenant_id', AV_TENANT).eq('job_id', jobId).order('created_at', { ascending: true }),
+      sb.from('jobs').select('id, address, client_name').eq('id', jobId).single(),
+    ]);
+    if (ansRes.error) return { ok: false, error: ansRes.error.message, data: null };
+    const answers = ansRes.data || [];
+    const rooms = roomsRes.data || [];
+    const roomById = new Map(rooms.map(r => [r.id, r]));
+    const job = jobRes.data || { id: jobId, address: '', client_name: '' };
+
+    // Bound images: load scope_option_images for the project types present across the job's rooms
+    // (room label → project_type), plus universal (null) rows. project-type-specific beats universal.
+    const projectTypes = [...new Set(rooms.map(r => (r.label || '').toLowerCase()).filter(Boolean))];
+    const imgKey = (pt, fk, ok) => `${pt}::${fk}::${ok}`;
+    const images = {};
+    if (projectTypes.length) {
+      const orExpr = projectTypes.map(pt => `project_type.eq.${pt}`).concat('project_type.is.null').join(',');
+      const { data: imgRows } = await sb.from('scope_option_images')
+        .select('project_type, field_key, option_key, storage_path').eq('active', true).or(orExpr);
+      const base = `${SUPABASE_URL}/storage/v1/object/public/scope-option-images/`;
+      for (const r of (imgRows || [])) {
+        for (const pt of projectTypes) {
+          if (r.project_type !== null && r.project_type !== pt) continue; // universal or this-pt only
+          const k = imgKey(pt, r.field_key, r.option_key);
+          if (!(k in images) || r.project_type === pt) images[k] = base + r.storage_path;
+        }
+      }
+    }
+    const imgFor = (pt, fk, ok) => (ok == null ? null : (images[imgKey(pt, fk, ok)] ?? null));
+
+    // Group trade-matched picks by room; collect trade-NULL picks into the Unassigned bucket.
+    const tradeRooms = new Map();
+    const unassigned = [];
+    for (const a of answers) {
+      const room = roomById.get(a.room_id);
+      const roomLabel = room?.label || 'Room';
+      const pt = roomLabel.toLowerCase();
+      const pick = {
+        field_key: a.field_key, option_key: a.option_key, value: a.value,
+        room_label: roomLabel, image_url: imgFor(pt, a.field_key, a.option_key),
+      };
+      if (a.trade == null) { unassigned.push(pick); continue; }
+      if (a.trade !== trade) continue; // belongs to another sub's packet
+      if (!tradeRooms.has(a.room_id)) tradeRooms.set(a.room_id, { room_id: a.room_id, room_label: roomLabel, picks: [] });
+      tradeRooms.get(a.room_id).picks.push(pick);
+    }
+    // Order rooms by job_rooms created_at (the rooms array is already ordered).
+    const orderedRooms = rooms.map(r => tradeRooms.get(r.id)).filter(Boolean);
+
+    return {
+      ok: true, error: null,
+      data: {
+        job: { id: job.id, address: job.address || '', client_name: job.client_name || '' },
+        trade,
+        rooms: orderedRooms,
+        unassigned,
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbBuildSubWorkPacket failed', data: null };
+  }
+}
+
 // SCOPE_TO_ESTIMATE Phase C1 — lazy idempotent SELECTIONS open. Calls the SECURITY DEFINER
 // ensure_selections_open(p_job_id) so a client loading the portal stamps selections_opened_at
 // for a job that reached in_progress via the status-picker/agent (no signature hook fired) —
