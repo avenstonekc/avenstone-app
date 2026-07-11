@@ -178,7 +178,7 @@ async function loadScopeConfig(
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const [clRes, modRes] = await Promise.all([
     sb.from("scope_checklists")
-      .select("tenant_id, project_type, field_key, question, field_type, options, money_risk_rank, adds_trades, active")
+      .select("tenant_id, project_type, field_key, question, field_type, options, money_risk_rank, adds_trades, active, is_selection")
       .eq("project_type", projectType)
       .eq("active", true)
       .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`),
@@ -451,6 +451,61 @@ async function handleScopeInterview(
     fired_modules: fired.map((m) => m.module_key),
   });
 }
+// ESTIMATE_CONFIGURATOR S1 — deterministic scope plan (NO LLM). Powers the tap-through
+// configurator: given project_type + answers so far, return the ordered required-field list
+// (base checklist + trigger-fired modules) so the frontend steps through it and re-fetches
+// after each answer to unlock follow-ups instantly. Same deterministic surface as the interview
+// gate — without the AI phrasing/extraction turn. answers: [{ field_key, value }].
+async function handleScopePlan(
+  tenantId: string,
+  rawProjectType: string | undefined,
+  answersIn: unknown,
+): Promise<Response> {
+  const projectType = typeof rawProjectType === "string" ? rawProjectType.trim().toLowerCase() : undefined;
+  if (!projectType) return ok({ fields: [], open_field_keys: [], fired_modules: [], scope_complete: true });
+
+  const { checklist, modules } = await loadScopeConfig(tenantId, projectType);
+  const baseFields = assembleChecklist(projectType, checklist);
+  if (baseFields.length === 0) return ok({ fields: [], open_field_keys: [], fired_modules: [], scope_complete: true });
+
+  // is_selection lives on scope_checklists (read-only here); map by field_key for the payload.
+  const isSel = new Map<string, boolean>();
+  for (const r of checklist) isSel.set(String(r.field_key).toLowerCase(), !!(r as { is_selection?: boolean }).is_selection);
+
+  const answers = Array.isArray(answersIn)
+    ? (answersIn as Array<{ field_key?: unknown; value?: unknown }>).filter((a) => a && typeof a.field_key === "string")
+    : [];
+
+  // Fire modules from the answer values + humanized labels (same union as the re-trigger pass).
+  const triggerText = answers
+    .flatMap((a) => { const s = String(a.value ?? ""); return [String(a.field_key), s, s.replace(/_/g, " ")]; })
+    .join("\n");
+  const fired = detectTriggers(triggerText, modules);
+  const requiredFields = collectRequiredFields(baseFields, fired);
+
+  const answeredKeys = new Set(
+    answers.filter((a) => a.value != null && String(a.value).trim() !== "").map((a) => String(a.field_key).toLowerCase()),
+  );
+  const open = openQuestions(requiredFields, answeredKeys);
+
+  const fields = requiredFields.map((f) => ({
+    field_key: f.field_key,
+    question: f.question,
+    field_type: f.field_type,
+    options: Array.isArray(f.options) ? f.options : [],
+    is_selection: isSel.get(f.field_key.toLowerCase()) ?? false,
+    money_risk_rank: f.money_risk_rank,
+    origin: f.origin,
+  }));
+
+  return ok({
+    fields,
+    open_field_keys: open.map((f) => f.field_key),
+    fired_modules: fired.map((m) => m.module_key),
+    scope_complete: open.length === 0,
+  });
+}
+
 // ── Vocabulary builder (injected per-request) ─────────────────────────────────
 
 function buildVocabSection(rateBook: RateBook): string {
@@ -836,7 +891,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type, prefilled_answers, client_prefs } = await req.json();
+    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type, prefilled_answers, client_prefs, answers } = await req.json();
+    // ESTIMATE_CONFIGURATOR S1: deterministic plan mode — no messages / no LLM required.
+    if (mode === "scope_plan") {
+      if (!tenant_id) return fail("tenant_id required", 400);
+      return await handleScopePlan(tenant_id, project_type, answers);
+    }
     if (!messages?.length) return fail("no messages", 400);
     if (!tenant_id) return fail("tenant_id required", 400);
 
