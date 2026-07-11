@@ -294,9 +294,9 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Net: 0 of 5+ versions live.** No tables, no helpers, no components in production. This is a different feature from SELECTIONS_ARC: MATERIAL_SELECTION = client self-service AI product catalog (chat-driven HD/Lowes browsing). SELECTIONS_ARC = PM-driven trade selections (tile color, paint color, confirm-by workflow). Both are unbuilt; both land in Block 5. Schema coordination needed at build time (both touch `job_selections`-family tables).
 
-#### SCOPE_TO_ESTIMATE — the seam arc — **BLUEPRINT PENDING**
+#### SCOPE_TO_ESTIMATE — the seam arc — **BLUEPRINT LOCKED**
 
-**Status: BLUEPRINT PENDING.** Owner: an Opus blueprint pass after SCE Phase 1B ships. This arc owns the **handoff seam** the SCE and ESTIMATOR arcs meet at but neither owns end-to-end: scope interview → **persisted** scope answers → `adds_trades` consumption → estimator scope lines → priced draft. Today that seam is a set of disconnected halves.
+**Status: BLUEPRINT LOCKED 2026-07-11 — full spec in `docs/arcs/SCOPE_TO_ESTIMATE_BLUEPRINT.md`.** This arc owns the **handoff seam** the SCE and ESTIMATOR arcs meet at but neither owns end-to-end: scope interview → **persisted** scope answers → `adds_trades` consumption → estimator scope lines → priced draft. One answer store (`job_scope_answers`) serves four consumers — interview persistence (SCE P2), photo intake (SCE P3), SELECTIONS, SUB_WORK_PACKET. Phases: A Foundation (persist answers + `job_rooms` + re-trigger pass) → B read-back pre-fill → C SELECTIONS (client soft-pick → PM confirm, "N of M locked" gates Demo) → D SUB_WORK_PACKET (needs `trade_taxonomy` expansion) → E CLIENT_VISION_RENDER (not scheduled here).
 
 **Known seams it inherits (audit-proven — do not assume these are wired):** (1) scope answers are **in-memory only** — there is no `job_scope_answers` store; `makeAnswerRecord` produces records that live only in the request/response, so nothing persists an answer's value/source/confidence. (2) `scope_checklists.adds_trades` / `scope_modules.adds_trades` are **seeded but consumed by nothing** — the deterministic engine reads fields, never the trades. (3) the gap protocol (`GapBatchAsk`/`applyGapRates`) assumes scope lines **arrive priced-ready** — it reconciles rates, not scope-to-line translation.
 
