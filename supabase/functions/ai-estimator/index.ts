@@ -195,6 +195,65 @@ async function loadScopeConfig(
   };
 }
 
+// SCOPE_TO_ESTIMATE Phase D — option→trade routing map (scope_option_trades). Loaded only for
+// the interview answer-emission path (S1 scope_plan does not need it). Platform (tenant_id NULL)
+// + tenant rows; universal (project_type NULL) rows apply to any project type. Service role
+// bypasses RLS, so tenant/null scoping is explicit.
+interface OptionTradeRow {
+  tenant_id: string | null;
+  project_type: string | null;
+  field_key: string;
+  option_key: string;
+  trade: string;
+}
+
+async function loadOptionTrades(tenantId: string, projectType: string): Promise<OptionTradeRow[]> {
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const { data, error } = await sb
+    .from("scope_option_trades")
+    .select("tenant_id, project_type, field_key, option_key, trade")
+    .eq("active", true)
+    .or(`project_type.is.null,project_type.eq.${projectType}`)
+    .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
+  if (error) console.error("ai-estimator scope_option_trades:", error.message);
+  return (data ?? []) as OptionTradeRow[];
+}
+
+// Index for per-answer trade derivation.
+// - mappedFields: field_keys (lower) that have ANY row → the field is "map-governed": the chosen
+//   option's row wins, a MISS = null (orphan, e.g. concrete_polished). This is what makes a
+//   single-adds_trades-but-option-conditional field (basement.flooring) orphan correctly instead
+//   of falling back to its lone adds_trades value.
+// - byOption: `${field_key}::${normOptKey(option_key)}` → trade, tenant row overriding platform,
+//   project-type-specific overriding universal.
+interface OptionTradeIndex { mappedFields: Set<string>; byOption: Map<string, string>; }
+
+function buildOptionTradeIndex(rows: OptionTradeRow[]): OptionTradeIndex {
+  const mappedFields = new Set<string>();
+  const byOption = new Map<string, string>();
+  // Precedence: platform+universal first, then override with tenant / project-specific rows.
+  const rank = (r: OptionTradeRow) => (r.tenant_id != null ? 2 : 0) + (r.project_type != null ? 1 : 0);
+  for (const r of [...rows].sort((a, b) => rank(a) - rank(b))) {
+    const fk = r.field_key.toLowerCase();
+    mappedFields.add(fk);
+    byOption.set(`${fk}::${normOptKey(r.option_key)}`, r.trade);
+  }
+  return { mappedFields, byOption };
+}
+
+// Derive one answer's trade. Map-governed field → option row wins, miss = null (orphan).
+// Un-mapped field → single-trade adds_trades → use it; multi/none → null.
+function deriveTrade(field: ScopeField | undefined, optionKey: string | null, idx: OptionTradeIndex): string | null {
+  if (!field) return null;
+  const fk = field.field_key.toLowerCase();
+  if (idx.mappedFields.has(fk)) {
+    if (optionKey == null) return null;
+    return idx.byOption.get(`${fk}::${normOptKey(optionKey)}`) ?? null;
+  }
+  const at = field.adds_trades;
+  return Array.isArray(at) && at.length === 1 ? at[0] : null;
+}
+
 // The AI's bounded job: extract which required fields the conversation already answered,
 // and phrase the still-open ones conversationally. It does NOT decide completion (the
 // edge fn recomputes openQuestions deterministically from the AI's answered set).
@@ -255,8 +314,9 @@ ${fieldLines}`;
 //   (rep conversation; ScopeOptionCards picks arrive as chat text and are indistinguishable
 //   from typed here, so they fold into rep_typed — see Phase A report). 'measured' stays.
 //   photo/plan/assumed → 'extracted'.
-// - trade: null in Phase A. ScopeField carries no adds_trades, so per-answer trade
-//   derivation is Phase D's job. room_id is stamped frontend-side (Phase A default room).
+// - trade (Phase D): derived per answer via deriveTrade — map-governed field (scope_option_trades)
+//   → chosen option's trade, miss = null (orphan); un-mapped single-trade field → adds_trades[0];
+//   else null. room_id is stamped frontend-side (Phase A default room).
 interface ScopeAnswerOut {
   field_key: string;
   option_key: string | null;
@@ -296,7 +356,7 @@ function normOptKey(s: unknown): string {
   return (s ?? "").toString().toLowerCase().replace(/[\s_]+/g, "").trim();
 }
 
-function toScopeAnswerPayload(answers: AnswerRecord[], fields: ScopeField[]): ScopeAnswerOut[] {
+function toScopeAnswerPayload(answers: AnswerRecord[], fields: ScopeField[], optIndex: OptionTradeIndex): ScopeAnswerOut[] {
   const byKey = new Map<string, ScopeField>();
   for (const f of fields) byKey.set(f.field_key.toLowerCase(), f);
   return answers.map((a) => {
@@ -307,7 +367,7 @@ function toScopeAnswerPayload(answers: AnswerRecord[], fields: ScopeField[]): Sc
       const match = (field.options as unknown[]).find((o) => normOptKey(o) === normOptKey(valStr));
       optionKey = match != null ? String(match) : null;
     }
-    return { field_key: a.field_key, option_key: optionKey, value: valStr, trade: null, source: mapAnswerSource(a.source) };
+    return { field_key: a.field_key, option_key: optionKey, value: valStr, trade: deriveTrade(field, optionKey, optIndex), source: mapAnswerSource(a.source) };
   });
 }
 
@@ -336,6 +396,9 @@ async function handleScopeInterview(
     console.log(`ai-estimator scope-interview: no checklist for '${projectType}' (tenant ${tenantId}) — completing.`);
     return ok({ scope_complete: true, content: "", answers: [] });
   }
+
+  // SCOPE_TO_ESTIMATE Phase D — option→trade map (loaded once; used by both answer-emit paths).
+  const optIndex = buildOptionTradeIndex(await loadOptionTrades(tenantId, projectType));
 
   // Deterministic: fire modules from ALL rep text so far, build the full required set.
   const repText = messages
@@ -394,7 +457,7 @@ async function handleScopeInterview(
     return ok({
       scope_complete: true,
       content: "Got your scope from the on-site session — putting your estimate together now.",
-      answers: toScopeAnswerPayload(sessionAnswers, requiredFields),
+      answers: toScopeAnswerPayload(sessionAnswers, requiredFields, optIndex),
       open_field_keys: [],
       fired_modules: fired.map((m) => m.module_key),
     });
@@ -446,7 +509,7 @@ async function handleScopeInterview(
   return ok({
     scope_complete: complete,
     content,
-    answers: toScopeAnswerPayload(answers, requiredFields),
+    answers: toScopeAnswerPayload(answers, requiredFields, optIndex),
     open_field_keys: stillOpen.map((f) => f.field_key),
     fired_modules: fired.map((m) => m.module_key),
   });

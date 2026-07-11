@@ -49,6 +49,10 @@ export interface ScopeField {
   options?: unknown;
   money_risk_rank: number;   // base rank; module fields sort just after the base set
   origin: string;            // "base" or the module_key that added it
+  // SCOPE_TO_ESTIMATE Phase D: field-level trade hint (checklist row / module). Threaded so the
+  // answer emitter can derive per-answer trade. Lossy by design (null on many fields, multi on
+  // some) — the option-conditional cases resolve via the scope_option_trades map, not this.
+  adds_trades: string[] | null;
 }
 
 // Answer record â€” Phase 1 only ever produces source:'typed'. The source/confidence
@@ -93,6 +97,7 @@ export function assembleChecklist(projectType: string, checklistRows: ChecklistR
       options: r.options ?? undefined,
       money_risk_rank: r.money_risk_rank ?? 99,
       origin: "base",
+      adds_trades: r.adds_trades ?? null,
     }));
 }
 
@@ -133,6 +138,9 @@ export function collectRequiredFields(baseFields: ScopeField[], firedModules: Mo
         options: f.options ?? undefined,
         money_risk_rank: moduleRank++,
         origin: m.module_key,
+        // Module-added field inherits its module's trade hint (module fields have no per-field
+        // adds_trades of their own).
+        adds_trades: m.adds_trades ?? null,
       });
     }
   }
