@@ -6,6 +6,8 @@
 
 > **AMENDMENT — 2026-07-10 (owner-waived exception to the picture rule).** Removed `addn_ext_match` + `addn_ext_contrast` (House Addition → Exterior match). Rationale: "match existing / intentional contrast" is a fork about *this house*, not a stockable material — you can't photograph someone's own siding. It renders as a plain choice question (`addition.exterior_match`), no image. KALIN photo count **58 → 56**. This is the picture rule's explicit owner-waiver, recorded here per that rule.
 
+> **LIBRARY GROWTH RULE — LOCKED 2026-07-11.** Scope-fork card sets stay LEAN permanently (a fork is 2–5 cards). Material/style DEPTH (quartz patterns, paint colors, cabinet colors) is **SELECTIONS-arc territory**: unlimited library size, curated per-tenant via `active` flags + `tenant_id` overrides so any single client interaction stays small. Storage/perf is a non-constraint; **decision fatigue is the constraint.**
+
 ---
 
 ## 1. Naming Convention (LOCKED FORMAT — do not deviate)
