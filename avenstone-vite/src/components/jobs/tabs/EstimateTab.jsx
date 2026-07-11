@@ -371,15 +371,22 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     // source} shape — a stored 'measured' stays 'measured' on round-trip (the edge maps db
     // source -> record source, not a blanket 'measured' relabel).
     let prefillPayload = null;
+    let clientPrefs = null;
     if (mode === 'scope_interview') {
       const sessionFields = sessionPrefill?.measuredFields || {};
       let storeRows = [];
       try { const r = await sbLoadScopeAnswers(job.id); if (r.ok) storeRows = r.data; } catch { /* soft — degrade to session-only prefill */ }
       const merged = {};
-      // Store first; sort so 'confirmed' lands last and wins on a duplicate field_key across rooms.
+      const prefs = [];
+      // Phase C2 SPLIT: a client_selected PROPOSED row is the homeowner's soft-pick — it goes to
+      // client_prefs (CONTEXT ONLY: the AI may reference it but it does NOT count as answered, so
+      // the field stays open and the rep still drives). Everything else — confirmed rows (any
+      // source) and the rep's own proposed measured/rep_typed answers — feeds the gating prefill.
+      // Sort so 'confirmed' lands last and wins on a duplicate field_key across rooms.
       for (const a of [...storeRows].sort((x, y) => (x.status === 'confirmed' ? 1 : 0) - (y.status === 'confirmed' ? 1 : 0))) {
         const v = a.value ?? a.option_key;
         if (!a.field_key || v == null || String(v).trim() === '') continue;
+        if (a.source === 'client_selected' && a.status === 'proposed') { prefs.push({ field_key: a.field_key, value: v }); continue; }
         merged[a.field_key] = { value: v, source: a.source || 'rep_typed', _confirmed: a.status === 'confirmed' };
       }
       // Session measured fields win UNLESS the store row is confirmed.
@@ -391,6 +398,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const clean = {};
       for (const [k, e] of Object.entries(merged)) clean[k] = { value: e.value, source: e.source };
       if (Object.keys(clean).length) prefillPayload = clean;
+      if (prefs.length) clientPrefs = prefs;
     }
     let reply;
     let completedNow = false;
@@ -407,6 +415,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             project_type: resolveProjectType(),
             // Phase B: store + session merged, source-aware prefill (built above).
             ...(prefillPayload ? { prefilled_answers: prefillPayload } : {}),
+            // Phase C2: client soft-picks as non-gating context.
+            ...(clientPrefs ? { client_prefs: clientPrefs } : {}),
           } : {}),
         }),
       });

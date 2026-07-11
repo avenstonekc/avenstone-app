@@ -56,7 +56,9 @@ export interface ScopeField {
 export interface AnswerRecord {
   field_key: string;
   value: unknown;
-  source: "typed" | "measured" | "photo" | "plan" | "assumed";
+  // 'client'/'card' (SCE Phase C2) are round-trip carriers for the job_scope_answers db sources
+  // client_selected / rep_card, so answers read back into a staff interview don't get relabeled.
+  source: "typed" | "measured" | "photo" | "plan" | "assumed" | "client" | "card";
   confidence: number;        // 0..1
 }
 

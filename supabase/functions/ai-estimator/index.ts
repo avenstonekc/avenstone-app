@@ -198,7 +198,7 @@ async function loadScopeConfig(
 // The AI's bounded job: extract which required fields the conversation already answered,
 // and phrase the still-open ones conversationally. It does NOT decide completion (the
 // edge fn recomputes openQuestions deterministically from the AI's answered set).
-function buildInterviewSystemPrompt(fields: ScopeField[], projectType: string, preAnswered: AnswerRecord[]): string {
+function buildInterviewSystemPrompt(fields: ScopeField[], projectType: string, preAnswered: AnswerRecord[], clientPrefs: Array<{ field_key: string; value: unknown }> = []): string {
   const fieldLines = fields.map((f) => {
     const opts = Array.isArray(f.options) ? ` options:[${(f.options as string[]).join(", ")}]` : "";
     const tag = f.origin === "base" ? "" : ` (${f.origin})`;
@@ -211,6 +211,13 @@ function buildInterviewSystemPrompt(fields: ScopeField[], projectType: string, p
   // reference them instead).
   const preLines = preAnswered.length
     ? preAnswered.map((a) => `- ${a.field_key} = ${String(a.value)}`).join("\n")
+    : "(none)";
+
+  // SCE Phase C2: the homeowner's portal soft-picks. CONTEXT ONLY — these are NOT in the
+  // answered set (the deterministic gate still lists them as open), so the rep drives; the AI
+  // may reference them to confirm but must still ask.
+  const prefLines = clientPrefs.length
+    ? clientPrefs.map((p) => `- ${p.field_key} = ${String(p.value)}`).join("\n")
     : "(none)";
 
   return `You are Aven — Avenstone's AI scope interviewer (KC, MO residential + light commercial). Never mention Claude or Anthropic.
@@ -230,6 +237,11 @@ Output ONLY valid JSON — no prose, no markdown fences. Start with { and end wi
 
 ALREADY ANSWERED (do NOT ask again — you may reference these):
 ${preLines}
+
+CLIENT PREFERENCES (the homeowner soft-picked these in their portal — NOT locked answers; you MAY
+reference them to confirm, e.g. "the homeowner leaned toward frameless glass — keep that?", but
+STILL ask these as open scope questions and do NOT treat them as answered — the rep decides):
+${prefLines}
 
 REQUIRED SCOPE FIELDS (priority order):
 ${fieldLines}`;
@@ -255,6 +267,8 @@ interface ScopeAnswerOut {
 
 function mapAnswerSource(s: AnswerRecord["source"]): ScopeAnswerOut["source"] {
   if (s === "measured") return "measured";
+  if (s === "client") return "client_selected";  // C2 carrier
+  if (s === "card") return "rep_card";            // C2 carrier
   if (s === "photo" || s === "plan" || s === "assumed") return "extracted";
   return "rep_typed";
 }
@@ -268,11 +282,12 @@ function mapAnswerSource(s: AnswerRecord["source"]): ScopeAnswerOut["source"] {
 // as rep_typed; client_selected is Phase C) — revisit here if Phase C introduces them.
 function dbSourceToRecord(s: unknown): AnswerRecord["source"] {
   switch (s) {
-    case "rep_typed": return "typed";
-    case "rep_card":  return "typed";
-    case "extracted": return "assumed";
-    case "measured":  return "measured";
-    default:          return "measured";
+    case "rep_typed":       return "typed";
+    case "rep_card":        return "card";    // C2 carrier (was 'typed' — now bijective)
+    case "client_selected": return "client";  // C2 carrier — client picks survive round-trip
+    case "extracted":       return "assumed";
+    case "measured":        return "measured";
+    default:                return "measured";
   }
 }
 
@@ -302,6 +317,7 @@ async function handleScopeInterview(
   tenantId: string,
   rawProjectType: string | undefined,
   prefilledAnswers?: Record<string, unknown>,
+  clientPrefs?: Array<{ field_key: string; value: unknown }>,
 ): Promise<Response> {
   // The body project_type is the authoritative source. The frontend resolves it
   // (typed Rooms field → job_room_scopes → none) before sending; here we just
@@ -385,7 +401,7 @@ async function handleScopeInterview(
   }
 
   // AI: extract answered + phrase open (phrasing only — the completion gate is deterministic).
-  const system = buildInterviewSystemPrompt(requiredFields, projectType, sessionAnswers);
+  const system = buildInterviewSystemPrompt(requiredFields, projectType, sessionAnswers, clientPrefs || []);
   const aiRes = await callAnthropic(system, messages, 1500);
   if (aiRes.error) return fail(aiRes.error);
 
@@ -820,7 +836,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type, prefilled_answers } = await req.json();
+    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type, prefilled_answers, client_prefs } = await req.json();
     if (!messages?.length) return fail("no messages", 400);
     if (!tenant_id) return fail("tenant_id required", 400);
 
@@ -829,7 +845,7 @@ Deno.serve(async (req) => {
     // path below is untouched: when complete, the frontend re-POSTs without mode and the
     // existing scope->price->priced_scope contract runs over the confirmed conversation.
     if (mode === "scope_interview") {
-      return await handleScopeInterview(messages, tenant_id, project_type, prefilled_answers);
+      return await handleScopeInterview(messages, tenant_id, project_type, prefilled_answers, client_prefs);
     }
 
     const rateBook = await loadRateBook(tenant_id);
