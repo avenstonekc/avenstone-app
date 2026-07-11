@@ -2584,6 +2584,20 @@ export async function sbLoadScopeAnswers(jobId) {
   }
 }
 
+// SCOPE_TO_ESTIMATE Phase C1 — lazy idempotent SELECTIONS open. Calls the SECURITY DEFINER
+// ensure_selections_open(p_job_id) so a client loading the portal stamps selections_opened_at
+// for a job that reached in_progress via the status-picker/agent (no signature hook fired) —
+// without the client role holding any jobs UPDATE. Returns { ok, error, data:<stamp|null> }.
+export async function sbEnsureSelectionsOpen(jobId) {
+  try {
+    const { data, error } = await sb.rpc('ensure_selections_open', { p_job_id: jobId });
+    if (error) return { ok: false, error: error.message, data: null };
+    return { ok: true, error: null, data: data || null };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbEnsureSelectionsOpen failed', data: null };
+  }
+}
+
 export const sbSaveJobRoomScope = async ({
   jobId, roomId, roomLabel, roomType, scopeTag, customTrades, notes,
   scopeDetails, tenantId, userId,

@@ -100,6 +100,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    // SCOPE_TO_ESTIMATE Phase C1 — SELECTIONS opens on contract signing. Stamp
+    // selections_opened_at once so the client portal surfaces the Selections tab. Service
+    // role → bypasses RLS; .is(null) → idempotent. Own try/catch, failure-isolated: never
+    // touches the signature or the evidence response.
+    if (job_id) {
+      try {
+        const { error: sErr } = await sb.from("jobs")
+          .update({ selections_opened_at: new Date().toISOString() })
+          .eq("id", job_id).eq("tenant_id", tenant_id).is("selections_opened_at", null);
+        if (sErr) console.error("record-signature-evidence selections_opened stamp:", sErr.message);
+      } catch (e) {
+        console.error("record-signature-evidence selections_opened stamp threw:", String(e));
+      }
+    }
+
     return json({ ok: true, updated: !!row, ip_captured: !!row?.ip_address, ua_captured: !!row?.user_agent, contract_marked: contractMarked });
   } catch (err) {
     console.error("record-signature-evidence error:", err);
