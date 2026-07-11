@@ -299,7 +299,7 @@ function ClientSelectionsView({ job }) {
       setRoomId(room?.id || null); // null-room jobs (predate Phase A) still soft-pick with room_id NULL
       const pt = (room?.label || '').toLowerCase();
       if (!pt) { setFields([]); setAnswers([]); setLoading(false); return; }
-      const od = await sbLoadScopeOptionData(pt, { audience: 'rep_client' });
+      const od = await sbLoadScopeOptionData(pt, { audience: 'rep_client', isSelection: true });
       setFields(od.fields || []); setImages(od.images || {});
       const a = await sbLoadScopeAnswers(job.id);
       setAnswers(a.ok ? a.data : []);
@@ -307,6 +307,18 @@ function ClientSelectionsView({ job }) {
     setLoading(false);
   };
   useEffect(() => { load(); }, [job.id]);
+
+  // Phase C2 — realtime: a PM confirming/overriding a pick flips the client's view without a
+  // reload. Mirrors the job_phases channel pattern. Cleanup on unmount is non-negotiable.
+  useEffect(() => {
+    if (!job?.id) return;
+    const ch = sb.channel(`client-selections-${job.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_scope_answers', filter: `job_id=eq.${job.id}` }, () => {
+        sbLoadScopeAnswers(job.id).then(a => { if (a.ok) setAnswers(a.data); });
+      })
+      .subscribe();
+    return () => sb.removeChannel(ch);
+  }, [job.id]);
 
   const byField = {};
   for (const a of answers) byField[a.field_key] = a;
