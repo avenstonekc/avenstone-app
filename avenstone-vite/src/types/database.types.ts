@@ -5046,6 +5046,47 @@ export type Database = {
         }
         Relationships: []
       }
+      scope_option_trades: {
+        Row: {
+          active: boolean
+          created_at: string
+          field_key: string
+          id: string
+          option_key: string
+          project_type: string | null
+          tenant_id: string | null
+          trade: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          field_key: string
+          id?: string
+          option_key: string
+          project_type?: string | null
+          tenant_id?: string | null
+          trade: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          field_key?: string
+          id?: string
+          option_key?: string
+          project_type?: string | null
+          tenant_id?: string | null
+          trade?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scope_option_trades_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sequence_enrollments: {
         Row: {
           completed_at: string | null
