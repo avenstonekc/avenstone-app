@@ -2497,6 +2497,9 @@ export async function sbLoadScopeOptionData(projectType, opts = {}) {
   // client-facing choice fields (the SCE 1B [RC] tag). Omitted elsewhere → all choice fields
   // (EstimateTab's behavior unchanged).
   if (opts.audience) chkQuery = chkQuery.eq('audience', opts.audience);
+  // Phase C2: is_selection=true narrows to pure finish/material picks (client Selections tab +
+  // PM confirm surface + Demo gate all use this).
+  if (opts.isSelection) chkQuery = chkQuery.eq('is_selection', true);
   const [chkRes, imgRes] = await Promise.all([
     chkQuery,
     sb.from('scope_option_images').select('project_type, field_key, option_key, storage_path')
@@ -2624,6 +2627,45 @@ export async function sbUpsertClientSelection(jobId, roomId, fieldKey, optionKey
     return { ok: true, error: null, data: data[0] };
   } catch (e) {
     return { ok: false, error: e?.message || 'sbUpsertClientSelection failed', data: null };
+  }
+}
+
+// SCOPE_TO_ESTIMATE Phase C2 — PM confirms a scope answer as-is (accepts the client's pick).
+// Staff RLS. Flips status='confirmed' + confirmed_by/at; source/option preserved. .select('id')
+// silent-deny guard. Returns { ok, error, data }.
+export async function sbConfirmScopeAnswer(id) {
+  try {
+    const { data, error } = await sb.from('job_scope_answers')
+      .update({ status: 'confirmed', confirmed_by: AV_USER_ID, confirmed_at: new Date().toISOString() })
+      .eq('id', id).select('id, status');
+    if (error) return { ok: false, error: error.message, data: null };
+    if (!data || !data.length) return { ok: false, error: 'no row updated (RLS?)', data: null };
+    return { ok: true, error: null, data: data[0] };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbConfirmScopeAnswer failed', data: null };
+  }
+}
+
+// SCOPE_TO_ESTIMATE Phase C2 — PM override / direct pick+confirm. Upserts the unique tuple with
+// the PM's option and confirms it in one write (source='rep_card', status='confirmed',
+// confirmed_by/at). Supersedes the client's proposed pick on the same row (no versioning in v1).
+// Uniform row keys; upsert = no dup. Staff RLS + .select('id') guard. Returns { ok, error, data }.
+export async function sbUpsertStaffSelection(jobId, roomId, fieldKey, optionKey, value) {
+  try {
+    const row = {
+      tenant_id: AV_TENANT, job_id: jobId, room_id: roomId ?? null,
+      field_key: fieldKey, option_key: optionKey ?? null, value: value ?? null,
+      source: 'rep_card', status: 'confirmed', confirmed_by: AV_USER_ID,
+      confirmed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await sb.from('job_scope_answers')
+      .upsert(row, { onConflict: 'tenant_id,job_id,room_id,field_key' })
+      .select('id, option_key, status');
+    if (error) return { ok: false, error: error.message, data: null };
+    if (!data || !data.length) return { ok: false, error: 'no row written (RLS?)', data: null };
+    return { ok: true, error: null, data: data[0] };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbUpsertStaffSelection failed', data: null };
   }
 }
 

@@ -10,6 +10,7 @@ import ConsultationTab from './tabs/ConsultationTab';
 import FinancialsTab from './tabs/FinancialsTab';
 import FieldTab from './tabs/FieldTab';
 import EstimateTab from './tabs/EstimateTab';
+import PmSelectionsTab from './tabs/PmSelectionsTab';
 import SubsTab from './tabs/SubsTab';
 import CompanyFileExpirationBanner from '../common/CompanyFileExpirationBanner';
 import ProjectDetailHeader from './ProjectDetailHeader';
@@ -19,6 +20,7 @@ const FloorPlanTab = lazy(() => import('./tabs/FloorPlanTab'));
 const TABS = [
   { id: 'info',       lb: 'Info',         ic: 'info' },
   { id: 'estimate',   lb: 'Estimate',     ic: 'doc' },
+  { id: 'selections', lb: 'Selections',   ic: 'check', pmOnly: true },
   { id: 'subs',       lb: 'Subs',         ic: 'clip' },
   { id: 'financials', lb: 'Financials',   ic: 'doc' },
   { id: 'sched',      lb: 'Schedule',     ic: 'sched' },
@@ -338,6 +340,7 @@ export default function JobDet({ job, upd, del, back, profile, pendingAction, cl
           </div>
         )}
         {tab === 'estimate' && <EstimateTab job={job} photos={job.photos || []} docs={docs} setDocs={setDocs} profile={profile} upd={upd} />}
+        {tab === 'selections' && <PmSelectionsTab job={job} />}
         {tab === 'subs' && <SubsTab job={job} profile={profile} setTab={setTab} />}
         {tab === 'financials' && <FinancialsTab job={job} upd={upd} profile={profile} docs={docs} setDocs={setDocs} pendingAction={pendingAction} clearPendingAction={clearPendingAction} financialsAction={financialsAction} clearFinancialsAction={() => setFinancialsAction(null)} onAgentDrawPoke={onAgentDrawPoke} />}
         {tab === 'sched' && <ScheduleTab job={job} />}
