@@ -383,6 +383,7 @@ function ClientSelectionsView({ job }) {
                   images={images}
                   disabled={saving}
                   onPick={handlePick}
+                  size="lg"
                 />
                 {isProposed && <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6 }}>Your pick: <strong style={{ color: NAV }}>{humanizeOpt(picked.option_key || picked.value)}</strong> — tap another option to change it.</div>}
               </div>

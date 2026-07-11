@@ -91,7 +91,7 @@ export default function PmSelectionsTab({ job }) {
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 6 }}>{isClientProposed ? '…or tap a different option to override & confirm:' : 'Tap an option to confirm:'}</div>
-                <ScopeOptionCards openFieldKeys={[f.field_key]} fields={[{ field_key: f.field_key, question: '', options: f.options }]} images={images} disabled={busy === f.field_key} onPick={overridePick} />
+                <ScopeOptionCards openFieldKeys={[f.field_key]} fields={[{ field_key: f.field_key, question: '', options: f.options }]} images={images} disabled={busy === f.field_key} onPick={overridePick} size="lg" />
               </>
             )}
           </div>
