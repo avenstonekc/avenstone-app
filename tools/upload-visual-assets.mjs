@@ -30,6 +30,38 @@ const PREFIX_PT = { bath: 'bathroom', kitch: 'kitchen', deck: 'deck', addn: 'add
 // univ_ field tokens (manifest §11), longest-first so floor_layout beats floor.
 const UNIV_FIELDS = ['floor_layout', 'casing', 'floor', 'crown', 'door', 'base'];
 
+// Alias map: filenames whose manifest field/option token differs from the live seed
+// field_key/option. NOT a rename (manifest + seed are locked) — an explicit override,
+// verified against live scope_checklists options. Binds active.
+const ALIAS = {
+  'bsmt_bath_full.png':            { project_type: 'basement', field_key: 'bathroom',         option_key: 'full' },
+  'bsmt_bath_none.png':            { project_type: 'basement', field_key: 'bathroom',         option_key: 'none' },
+  'bsmt_ceiling_exposed.png':      { project_type: 'basement', field_key: 'ceiling',          option_key: 'exposed_painted' },
+  'bsmt_egress_existing.png':      { project_type: 'basement', field_key: 'egress',           option_key: 'egress_exists' },
+  'bsmt_egress_new.png':           { project_type: 'basement', field_key: 'egress',           option_key: 'egress_new' },
+  'bsmt_floor_concrete.png':       { project_type: 'basement', field_key: 'flooring',         option_key: 'concrete_polished' },
+  'deck_cover_none.png':           { project_type: 'deck',     field_key: 'overhead',         option_key: 'none' },
+  'ext_profile_shake.png':         { project_type: 'exterior', field_key: 'profile',          option_key: 'shake_accent' },
+  'kitch_cab_slab.png':            { project_type: 'kitchen',  field_key: 'cabinet_style',    option_key: 'slab' },
+  'kitch_layout_wall_removal.png': { project_type: 'kitchen',  field_key: 'layout_change',    option_key: 'wall_removal_open_concept' },
+  'kitch_splash_layout_slab.png':  { project_type: 'kitchen',  field_key: 'backsplash_layout',option_key: 'slab' },
+};
+
+// Staged-inactive: images whose manifest INTENT has no live choice field to bind to
+// (exterior has no 'corners' field; fence has no 'post_caps' and 'gates' is a NUMBER
+// field; roof has no 'ridge' field). Bound active=false so they're staged, not rendered —
+// they go live if/when those fields are added per THE PICTURE RULE.
+const STAGED = {
+  'ext_corner_mitered.png':  { project_type: 'exterior', field_key: 'corners',   option_key: 'mitered' },
+  'ext_corner_post.png':     { project_type: 'exterior', field_key: 'corners',   option_key: 'post' },
+  'fence_cap_solar.png':     { project_type: 'fence',    field_key: 'post_caps', option_key: 'solar' },
+  'fence_cap_wood.png':      { project_type: 'fence',    field_key: 'post_caps', option_key: 'wood' },
+  'fence_gate_single.png':   { project_type: 'fence',    field_key: 'gates',     option_key: 'single' },
+  'fence_gate_double.png':   { project_type: 'fence',    field_key: 'gates',     option_key: 'double' },
+  'roof_ridge_standard.png': { project_type: 'roof',     field_key: 'ridge',     option_key: 'standard' },
+  'roof_ridge_vent.png':     { project_type: 'roof',     field_key: 'ridge',     option_key: 'vent' },
+};
+
 const mgmt = (path, method, body) => new Promise((res, rej) => {
   const b = body ? JSON.stringify(body) : null;
   const r = https.request({ hostname: 'api.supabase.com', path, method, headers: { Authorization: `Bearer ${PAT}`, ...(b ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(b) } : {}) } },
@@ -63,50 +95,60 @@ const rows = await sql("SELECT project_type, field_key, options FROM scope_check
 const byType = {};
 for (const r of rows) { (byType[r.project_type] ||= []).push({ field_key: r.field_key, options: r.options || [] }); }
 
-function matchImage(stem) {
+function matchImage(filename) {
+  if (ALIAS[filename]) return { ...ALIAS[filename], active: true };
+  if (STAGED[filename]) return { ...STAGED[filename], active: false }; // manifest intent, no live field yet
+  const stem = filename.replace(/\.png$/, '');
   const us = stem.indexOf('_');
   const prefix = stem.slice(0, us), body = stem.slice(us + 1);
   if (prefix === 'univ') {
-    for (const f of UNIV_FIELDS) if (body.startsWith(f + '_')) return { project_type: null, field_key: f, option_key: body.slice(f.length + 1) };
+    for (const f of UNIV_FIELDS) if (body.startsWith(f + '_')) return { project_type: null, field_key: f, option_key: body.slice(f.length + 1), active: true };
     return null;
   }
   const pt = PREFIX_PT[prefix];
   if (!pt) return null;
   const fields = byType[pt] || [];
-  for (const F of fields) for (const o of F.options) if (body === `${F.field_key}_${o}`) return { project_type: pt, field_key: F.field_key, option_key: o };
+  for (const F of fields) for (const o of F.options) if (body === `${F.field_key}_${o}`) return { project_type: pt, field_key: F.field_key, option_key: o, active: true };
   const cands = [];
-  for (const F of fields) for (const o of F.options) if (body.endsWith(`_${o}`)) cands.push({ project_type: pt, field_key: F.field_key, option_key: o });
+  for (const F of fields) for (const o of F.options) if (body.endsWith(`_${o}`)) cands.push({ project_type: pt, field_key: F.field_key, option_key: o, active: true });
   return cands.length === 1 ? cands[0] : null; // unique option-suffix, else orphan
 }
 
-// ── 4. upload + resolve bindings ───────────────────────────────────────────────
+// ── 4. upload (skip objects already present) + resolve bindings ────────────────
 const files = readdirSync(FOLDER).filter((f) => f.endsWith('.png') && statSync(join(FOLDER, f)).isFile());
+const present = new Set((await sql(`SELECT name FROM storage.objects WHERE bucket_id='${BUCKET}'`)).map((r) => r.name));
 const bindings = [], orphans = [];
-let uploaded = 0, uploadFail = 0;
+let uploaded = 0, alreadyThere = 0, uploadFail = 0;
 for (const f of files) {
-  const buf = readFileSync(join(FOLDER, f));
-  const up = await uploadObject(serviceKey, f, buf);
-  if (up.status >= 200 && up.status < 300) uploaded++;
-  else { uploadFail++; console.log(`  upload FAILED ${f}: HTTP ${up.status} ${up.body.slice(0, 100)}`); continue; }
-  const m = matchImage(f.replace(/\.png$/, ''));
+  if (present.has(f)) { alreadyThere++; }
+  else {
+    const up = await uploadObject(serviceKey, f, readFileSync(join(FOLDER, f)));
+    if (up.status >= 200 && up.status < 300) uploaded++;
+    else { uploadFail++; console.log(`  upload FAILED ${f}: HTTP ${up.status} ${up.body.slice(0, 100)}`); continue; }
+  }
+  const m = matchImage(f);
   if (m) bindings.push({ ...m, storage_path: f });
   else orphans.push(f);
 }
-console.log(`Uploaded ${uploaded}/${files.length} to ${BUCKET}${uploadFail ? ` (${uploadFail} failed)` : ''}.`);
+console.log(`Objects: ${uploaded} uploaded, ${alreadyThere} already present${uploadFail ? `, ${uploadFail} failed` : ''} (of ${files.length}).`);
 
-// ── 5. upsert bindings ─────────────────────────────────────────────────────────
+// ── 5. upsert bindings (active flag per row) ───────────────────────────────────
 if (bindings.length) {
   const esc = (s) => s.replace(/'/g, "''");
-  const vals = bindings.map((b) => `(${b.project_type ? `'${esc(b.project_type)}'` : 'NULL'}, '${esc(b.field_key)}', '${esc(b.option_key)}', '${esc(b.storage_path)}', true)`).join(',\n');
-  await sql(`INSERT INTO scope_option_images (project_type, field_key, option_key, storage_path, active) VALUES\n${vals}\nON CONFLICT (project_type, field_key, option_key) DO UPDATE SET storage_path=EXCLUDED.storage_path, active=true;`);
+  const vals = bindings.map((b) => `(${b.project_type ? `'${esc(b.project_type)}'` : 'NULL'}, '${esc(b.field_key)}', '${esc(b.option_key)}', '${esc(b.storage_path)}', ${b.active ? 'true' : 'false'})`).join(',\n');
+  await sql(`INSERT INTO scope_option_images (project_type, field_key, option_key, storage_path, active) VALUES\n${vals}\nON CONFLICT (project_type, field_key, option_key) DO UPDATE SET storage_path=EXCLUDED.storage_path, active=EXCLUDED.active;`);
 }
 
 // ── report ──────────────────────────────────────────────────────────────────────
 const objCount = JSON.parse((await mgmt(`/v1/projects/${REF}/database/query`, 'POST', { query: `SELECT count(*) n FROM storage.objects WHERE bucket_id='${BUCKET}'` })).body)[0].n;
 const rowCount = (await sql('SELECT count(*) n FROM scope_option_images'))[0].n;
+const activeCount = (await sql('SELECT count(*) n FROM scope_option_images WHERE active=true'))[0].n;
+const staged = bindings.filter((b) => !b.active);
 console.log(`\n── SUMMARY ──`);
 console.log(`bucket objects: ${objCount}`);
-console.log(`binding rows:   ${rowCount} (${bindings.length} upserted this run)`);
-console.log(`orphans (uploaded, no confident binding): ${orphans.length}`);
+console.log(`binding rows:   ${rowCount} total (${activeCount} active) · ${bindings.length} upserted this run`);
+console.log(`staged-inactive — awaiting field (bound to manifest intent, not rendered): ${staged.length}`);
+staged.sort((a, b) => a.storage_path.localeCompare(b.storage_path)).forEach((b) => console.log(`  - ${b.storage_path}  →  ${b.project_type}.${b.field_key}.${b.option_key} (no live field)`));
+console.log(`orphans (uploaded, no binding at all): ${orphans.length}`);
 orphans.sort().forEach((o) => console.log(`  - ${o}`));
 process.exit(uploadFail ? 1 : 0);
