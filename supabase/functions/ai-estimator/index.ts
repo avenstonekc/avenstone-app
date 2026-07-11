@@ -234,6 +234,50 @@ REQUIRED SCOPE FIELDS (priority order):
 ${fieldLines}`;
 }
 
+// SCOPE_TO_ESTIMATE Phase A — map the internal AnswerRecord[] to the persisted
+// job_scope_answers shape the frontend upserts. Pure; no persistence here.
+// - option_key: for a choice field, the option matching the value (space/underscore-
+//   insensitive); null for free-text/number fields.
+// - source: AnswerRecord.source → job_scope_answers.source vocab. 'typed' → 'rep_typed'
+//   (rep conversation; ScopeOptionCards picks arrive as chat text and are indistinguishable
+//   from typed here, so they fold into rep_typed — see Phase A report). 'measured' stays.
+//   photo/plan/assumed → 'extracted'.
+// - trade: null in Phase A. ScopeField carries no adds_trades, so per-answer trade
+//   derivation is Phase D's job. room_id is stamped frontend-side (Phase A default room).
+interface ScopeAnswerOut {
+  field_key: string;
+  option_key: string | null;
+  value: string;
+  trade: string | null;
+  source: "rep_typed" | "rep_card" | "measured" | "extracted" | "client_selected";
+}
+
+function mapAnswerSource(s: AnswerRecord["source"]): ScopeAnswerOut["source"] {
+  if (s === "measured") return "measured";
+  if (s === "photo" || s === "plan" || s === "assumed") return "extracted";
+  return "rep_typed";
+}
+
+// Match key ignoring case and space/underscore differences ("Curbless Shower" ≡ "curbless_shower").
+function normOptKey(s: unknown): string {
+  return (s ?? "").toString().toLowerCase().replace(/[\s_]+/g, "").trim();
+}
+
+function toScopeAnswerPayload(answers: AnswerRecord[], fields: ScopeField[]): ScopeAnswerOut[] {
+  const byKey = new Map<string, ScopeField>();
+  for (const f of fields) byKey.set(f.field_key.toLowerCase(), f);
+  return answers.map((a) => {
+    const field = byKey.get(a.field_key.toLowerCase());
+    const valStr = a.value == null ? "" : String(a.value);
+    let optionKey: string | null = null;
+    if (field && field.field_type === "choice" && Array.isArray(field.options)) {
+      const match = (field.options as unknown[]).find((o) => normOptKey(o) === normOptKey(valStr));
+      optionKey = match != null ? String(match) : null;
+    }
+    return { field_key: a.field_key, option_key: optionKey, value: valStr, trade: null, source: mapAnswerSource(a.source) };
+  });
+}
+
 // One interview turn. Deterministic gate; AI does NL extraction + phrasing only.
 async function handleScopeInterview(
   messages: Array<{ role: string; content: unknown }>,
@@ -294,7 +338,7 @@ async function handleScopeInterview(
     return ok({
       scope_complete: true,
       content: "Got your scope from the on-site session — putting your estimate together now.",
-      answers: sessionAnswers,
+      answers: toScopeAnswerPayload(sessionAnswers, requiredFields),
       open_field_keys: [],
       fired_modules: fired.map((m) => m.module_key),
     });
@@ -346,7 +390,7 @@ async function handleScopeInterview(
   return ok({
     scope_complete: complete,
     content,
-    answers,
+    answers: toScopeAnswerPayload(answers, requiredFields),
     open_field_keys: stillOpen.map((f) => f.field_key),
     fired_modules: fired.map((m) => m.module_key),
   });
