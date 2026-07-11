@@ -173,7 +173,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 #### SELECTIONS_ARC — `docs/arcs/`
 
-**Net: 0 of 7 phases live.** No tables (`selection_templates`, `selection_requests`, `job_selections`), no generator, no UI, no edge functions.
+**Net: client-facing selections flow SHIPPED via SCOPE_TO_ESTIMATE Phase C (2026-07-11) — on a different substrate than this arc's original 7-phase plan.** Shipped: client soft-pick Selections tab (option cards), PM confirm surface, "N of M locked" Demo gate (enforced at contract→in_progress), realtime. Built on `job_scope_answers` + `scope_checklists.is_selection` (see SCOPE_TO_ESTIMATE below) — NOT the originally-envisioned `selection_templates`/`selection_requests`/`job_selections` tables, which were never built and are superseded by the one-answer-store design. SCOPE_TO_ESTIMATE is the vehicle. **Remains unbuilt vs the old 7-phase row (confirmed against blueprint parked list):** versioned pick history (shipped design is upsert/re-pick — no version stack), SELECTIONS Phase 7 vigilance rules + Aven read tool (parked, §7), visualize render = CLIENT_VISION_RENDER / SCE Phase E (parked stub, §7).
 
 **Product flow (owner-locked 2026-07-11):** Selections open the moment the **Contract phase completes** — the Model B lifecycle event fires the selections window. **Three delivery modes, ONE build:** Zoom walkthrough, homeowner self-serve, or in-person — the *same selections screen*; the mode is a scheduling preference, not a feature. The **PM dashboard gates Demo on selections completion** ("N of M locked"). Four open product questions with recorded leans → see KALIN_QUEUE item (b).
 
@@ -294,9 +294,18 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Net: 0 of 5+ versions live.** No tables, no helpers, no components in production. This is a different feature from SELECTIONS_ARC: MATERIAL_SELECTION = client self-service AI product catalog (chat-driven HD/Lowes browsing). SELECTIONS_ARC = PM-driven trade selections (tile color, paint color, confirm-by workflow). Both are unbuilt; both land in Block 5. Schema coordination needed at build time (both touch `job_selections`-family tables).
 
-#### SCOPE_TO_ESTIMATE — the seam arc — **BLUEPRINT LOCKED**
+#### SCOPE_TO_ESTIMATE — the seam arc — **A/B/C SHIPPED, D/E remain**
 
-**Status: BLUEPRINT LOCKED 2026-07-11 — full spec in `docs/arcs/SCOPE_TO_ESTIMATE_BLUEPRINT.md`.** This arc owns the **handoff seam** the SCE and ESTIMATOR arcs meet at but neither owns end-to-end: scope interview → **persisted** scope answers → `adds_trades` consumption → estimator scope lines → priced draft. One answer store (`job_scope_answers`) serves four consumers — interview persistence (SCE P2), photo intake (SCE P3), SELECTIONS, SUB_WORK_PACKET. Phases: A Foundation (persist answers + `job_rooms` + re-trigger pass) → B read-back pre-fill → C SELECTIONS (client soft-pick → PM confirm, "N of M locked" gates Demo) → D SUB_WORK_PACKET (needs `trade_taxonomy` expansion) → E CLIENT_VISION_RENDER (not scheduled here).
+**Status: Phases A / B / C1 / C2 SHIPPED + live-verified 2026-07-11; D/E not started. Full spec in `docs/arcs/SCOPE_TO_ESTIMATE_BLUEPRINT.md`.** This arc owns the **handoff seam** the SCE and ESTIMATOR arcs meet at but neither owns end-to-end: scope interview → **persisted** scope answers → `adds_trades` consumption → estimator scope lines → priced draft. One answer store (`job_scope_answers`) serves four consumers — interview persistence (SCE P2), photo intake (SCE P3), SELECTIONS, SUB_WORK_PACKET.
+
+**Phase status (all 2026-07-11, commit hashes git-log-verified):**
+- **A — Foundation SHIPPED** (`7c6b661`/`93fea8e`/`a8356b5`/`4a15e2d`/`fdc268b`/`24005fd`): `job_rooms` + `job_scope_answers` migrations; persist `data.answers` at EstimateTab (upsert, staff path) + default-room creation; re-trigger pass over answer values + option labels (closes the measured/card/extracted-can't-fire gap). Answers stop evaporating.
+- **B — Read-back pre-fill SHIPPED** (`0dc164e`/`13b045c`/`4aa2e54`/`26fb53d`): interview start/resume loads confirmed+proposed answers into preAnswered; resume skips already-answered fields (cards + AI context).
+- **C1 — SELECTIONS opens SHIPPED** (`1fad496`/`2cbe743`/`fd19a67`/`6ae030c`/`93618c1`): `jobs.selections_opened_at` stamp (signing hook + lazy `ensure_selections_open()`); client vet-gate RLS (INSERT forced `source='client_selected'`+`status='proposed'`, no confirmed-row writes) + Phase-A staff policies role-scoped; net-new client Selections tab (reuses ScopeOptionCards) + soft-picks.
+- **C2 — PM confirm + gate SHIPPED** (`de65319`/`ddb6ec2`/`1984d64`/`101d9fb`/`0ec19b5`/`8ac5352`/`1a798a2`): `scope_checklists.is_selection` flag + seed (5 day-one trades' choice fields); PM confirm/override surface; selections "N of M locked" gate at contract→in_progress (phaseGates.js — Demo is a schedule-driven trade phase with no interactive gate point); realtime on selections; `client_selected` prefill carrier.
+- **D — SUB_WORK_PACKET** (needs `trade_taxonomy` Siding/Deck/Fence/Gutter/Window expansion — prereq) — **NOT STARTED.** **E — CLIENT_VISION_RENDER** — **NOT STARTED** (parked stub, §7).
+
+> **Known debt (agent-gate divergence, logged 2026-07-11):** the selections lock (`checkSelectionsConfirmed`, contract→in_progress) is enforced in `phaseGates.js` (UI path via PhaseAdvanceCard) only. The `advance_phase` copies in `ai-master-agent` + `ai-field-agent` do NOT mirror it — the agent can advance a job past the lock. Real enforcement hole; scoped out of C2 (touched phaseGates.js only). Sync the two edge fns when next touching agent `advance_phase` (rides with Phase D or a standalone 1-prompt slice). Documented in `phaseGates.js` header + CLAUDE_MEMORY.
 
 **Known seams it inherits (audit-proven — do not assume these are wired):** (1) scope answers are **in-memory only** — there is no `job_scope_answers` store; `makeAnswerRecord` produces records that live only in the request/response, so nothing persists an answer's value/source/confidence. (2) `scope_checklists.adds_trades` / `scope_modules.adds_trades` are **seeded but consumed by nothing** — the deterministic engine reads fields, never the trades. (3) the gap protocol (`GapBatchAsk`/`applyGapRates`) assumes scope lines **arrive priced-ready** — it reconciles rates, not scope-to-line translation.
 
@@ -323,6 +332,10 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | Spine handoff chain — client intake | **MISSING.** AiIntakeWizard is LiDAR scanner only. No project-type-adaptive intake form exists anywhere. |
 | Spine handoff chain — role-aware brief | **GENERIC ONLY.** HomeScr shows same todos + schedule + weather for all roles. |
 | Spine handoff chain — PM→Sub brief | **MISSING.** SubPortal shows jobs and pricing; no formal PM-provided pre-job brief. |
+| `job_rooms` table | **LIVE (SCOPE_TO_ESTIMATE Phase A, 2026-07-11).** Migration `20260711120000`. `id UUID PK, tenant_id, job_id TEXT FK→jobs, label, source CHECK(typed\|scan), scan_room_id, created_at`; idx (tenant_id, job_id). Staff-only RLS at birth; client SELECT added in C1. |
+| `job_scope_answers` table | **LIVE (SCOPE_TO_ESTIMATE Phase A, 2026-07-11).** Migration `20260711120100`. The one answer store; `room_id UUID FK→job_rooms, field_key, option_key, value, trade, source CHECK(rep_typed\|rep_card\|measured\|extracted\|client_selected), status DEFAULT 'proposed' CHECK(proposed\|confirmed), confirmed_by/at`; UNIQUE NULLS NOT DISTINCT (tenant_id, job_id, room_id, field_key). Vet-gate client RLS added C1/C2. |
+| `jobs.selections_opened_at` | **LIVE (SCOPE_TO_ESTIMATE Phase C1, 2026-07-11).** Migration `20260711130000`. TIMESTAMPTZ; when set, client portal surfaces the Selections tab. Stamped on signing (record-signature-evidence) or lazily via `ensure_selections_open()` on portal load. |
+| `scope_checklists.is_selection` | **LIVE (SCOPE_TO_ESTIMATE Phase C2, 2026-07-11).** Migration `20260711140000`. BOOLEAN NOT NULL DEFAULT false; client Selections tab + Demo gate filter on `audience='rep_client' AND is_selection=true`. Seeded for the 5 day-one trades' choice fields. |
 
 ---
 
@@ -629,6 +642,8 @@ Global build order. Running prompt totals. Every docs/arcs/ arc mapped to where 
 | 51 | Bounded autopilot execution | B6 | 3 | ~143-146 | GOD_AGENT autopilot (AVENSTONE_VISION north star) |
 
 **Grand total: ~162-165 Sonnet prompts** across 55 sub-steps in 6 blocks. _(Sequence table base reflects original arc rows only; Block 1 extras FUZZY_JOB_RESOLVER +3, DRAW_PDF_POLISH +3, SUB_NAME_RESOLVER +1 and Block 2 FLIP_FINANCIAL_MODEL +12 are noted in block text but not as sequence rows. Row 10.5 SCOPE_CAPTURE_ENGINE updated to ~10-13 prompts per blueprint approval; all downstream running totals shifted accordingly.)_
+
+> **Annotation (2026-07-11 — no renumber, no total recompute):** Rows 40–43 (SELECTIONS Phases 1–6 = B5.7–B5.10) — the **client-facing portion shipped early** via SCOPE_TO_ESTIMATE Phase C (client soft-pick tab, PM confirm, "N of M locked" Demo gate at contract→in_progress, realtime) on the `job_scope_answers` + `scope_checklists.is_selection` substrate, NOT the `selection_templates`/`selection_requests`/`job_selections` tables these rows assumed. Rows are left in place and unrenumbered per doc-sync scope; what remains of them is versioned pick history (row 42's "versioned" clause) + visualize render (row 43 = CLIENT_VISION_RENDER, parked §7). Prompt counts and running totals unchanged — these rows were never executed as written.
 
 ---
 
