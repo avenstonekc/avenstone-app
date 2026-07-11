@@ -315,7 +315,19 @@ async function handleScopeInterview(
           : ""
     )
     .join("\n");
-  const fired = detectTriggers(repText, modules);
+  // SCOPE_TO_ESTIMATE Phase A — re-trigger pass. detectTriggers historically saw only rep
+  // chat text, so on-site/measured answers (prefilled_answers, never typed into chat) could
+  // not fire trigger modules — the audit's Q3 gap. Widen the trigger input to the UNION of
+  // rep text + prefilled answer values + their humanized labels. Card picks and AI-extracted
+  // answers already reach detectTriggers via rep chat text; this adds the session-captured
+  // ones. detectTriggers stays pure — same function, wider input.
+  const prefillTriggerText = prefilledAnswers && typeof prefilledAnswers === "object"
+    ? Object.entries(prefilledAnswers)
+        .flatMap(([k, v]) => { const s = String(v ?? ""); return [k, s, s.replace(/_/g, " ")]; })
+        .join("\n")
+    : "";
+  const triggerText = [repText, prefillTriggerText].filter(Boolean).join("\n");
+  const fired = detectTriggers(triggerText, modules);
   const requiredFields = collectRequiredFields(baseFields, fired);
 
   // SCOPE_CAPTURE_ENGINE P2: fold session pre-answers (from the on-site consultation)
