@@ -2569,6 +2569,21 @@ export async function sbUpsertScopeAnswers(jobId, answers) {
   }
 }
 
+// SCOPE_TO_ESTIMATE Phase B — read stored scope answers for a job (staff RLS path).
+// Returns BOTH proposed and confirmed rows; the interview prefill applies precedence.
+// { ok, error, data:[{ field_key, value, option_key, source, status, room_id }] }.
+export async function sbLoadScopeAnswers(jobId) {
+  try {
+    const { data, error } = await sb.from('job_scope_answers')
+      .select('field_key, value, option_key, source, status, room_id')
+      .eq('tenant_id', AV_TENANT).eq('job_id', jobId);
+    if (error) return { ok: false, error: error.message, data: [] };
+    return { ok: true, error: null, data: data || [] };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbLoadScopeAnswers failed', data: [] };
+  }
+}
+
 export const sbSaveJobRoomScope = async ({
   jobId, roomId, roomLabel, roomType, scopeTag, customTrades, notes,
   scopeDetails, tenantId, userId,

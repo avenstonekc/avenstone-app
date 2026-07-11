@@ -258,6 +258,23 @@ function mapAnswerSource(s: AnswerRecord["source"]): ScopeAnswerOut["source"] {
   return "rep_typed";
 }
 
+// SCOPE_TO_ESTIMATE Phase B — inverse of mapAnswerSource, for stored answers fed back into the
+// interview via prefilled_answers. Maps the job_scope_answers db source vocab → AnswerRecord
+// source so a stored answer round-trips to the SAME db source through toScopeAnswerPayload
+// (measured→measured, rep_typed→typed→rep_typed, extracted→assumed→extracted) instead of being
+// blanket-relabeled 'measured'. NOTE: rep_card/client_selected have no distinct AnswerRecord
+// carrier (→ typed / measured); neither exists in the store during Phase A/B (card picks persist
+// as rep_typed; client_selected is Phase C) — revisit here if Phase C introduces them.
+function dbSourceToRecord(s: unknown): AnswerRecord["source"] {
+  switch (s) {
+    case "rep_typed": return "typed";
+    case "rep_card":  return "typed";
+    case "extracted": return "assumed";
+    case "measured":  return "measured";
+    default:          return "measured";
+  }
+}
+
 // Match key ignoring case and space/underscore differences ("Curbless Shower" ≡ "curbless_shower").
 function normOptKey(s: unknown): string {
   return (s ?? "").toString().toLowerCase().replace(/[\s_]+/g, "").trim();
@@ -323,7 +340,7 @@ async function handleScopeInterview(
   // ones. detectTriggers stays pure — same function, wider input.
   const prefillTriggerText = prefilledAnswers && typeof prefilledAnswers === "object"
     ? Object.entries(prefilledAnswers)
-        .flatMap(([k, v]) => { const s = String(v ?? ""); return [k, s, s.replace(/_/g, " ")]; })
+        .flatMap(([k, raw]) => { const v = raw != null && typeof raw === "object" ? (raw as { value?: unknown }).value : raw; const s = String(v ?? ""); return [k, s, s.replace(/_/g, " ")]; })
         .join("\n")
     : "";
   const triggerText = [repText, prefillTriggerText].filter(Boolean).join("\n");
@@ -335,11 +352,21 @@ async function handleScopeInterview(
   // count — free-form measurement keys are ignored. These are 'measured'-sourced and
   // let the interview skip whatever the site visit already captured.
   const requiredKeys = new Set(requiredFields.map((f) => f.field_key.toLowerCase()));
+  // Phase B: prefilled_answers entries may be a scalar (legacy session field → 'measured') or
+  // { value, source } where source is the job_scope_answers db vocab. Preserve the source by
+  // mapping db source → AnswerRecord source (dbSourceToRecord) so it round-trips unchanged
+  // rather than being blanket-relabeled 'measured'.
   const sessionAnswers: AnswerRecord[] =
     prefilledAnswers && typeof prefilledAnswers === "object"
       ? Object.entries(prefilledAnswers)
-          .filter(([k, v]) => requiredKeys.has(String(k).toLowerCase()) && v != null && String(v).trim() !== "")
-          .map(([k, v]) => makeAnswerRecord(k, v, 0.9, "measured"))
+          .map(([k, raw]) => {
+            const isObj = raw != null && typeof raw === "object";
+            const value = isObj ? (raw as { value?: unknown }).value : raw;
+            const dbSrc = isObj ? (raw as { source?: unknown }).source : "measured";
+            return { k, value, src: dbSourceToRecord(dbSrc) };
+          })
+          .filter((e) => requiredKeys.has(String(e.k).toLowerCase()) && e.value != null && String(e.value).trim() !== "")
+          .map((e) => makeAnswerRecord(e.k, e.value, 0.9, e.src))
       : [];
   const sessionKeys = new Set(sessionAnswers.map((a) => a.field_key));
 

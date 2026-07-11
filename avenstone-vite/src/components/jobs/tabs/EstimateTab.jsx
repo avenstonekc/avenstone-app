@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers } from '../../../lib/supabase';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
@@ -363,6 +363,35 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     const apiMessages = newMessages.map(({ role, content }) => ({ role, content }));
     // Route to scope-interview mode while an interview is active and not yet complete.
     const mode = modeOverride || (scopeInterviewActive && !scopeComplete ? 'scope_interview' : undefined);
+    // SCOPE_TO_ESTIMATE Phase B — read-back pre-fill. On start AND resume (this is the shared
+    // injection point for both), load the persisted answers and merge them with the session's
+    // on-site measured fields, sent as prefilled_answers so the interview skips already-answered
+    // fields. Precedence: store 'confirmed' wins over session prefill; session prefill (fresher
+    // measurement) wins over store 'proposed'. Source is preserved per answer via the {value,
+    // source} shape — a stored 'measured' stays 'measured' on round-trip (the edge maps db
+    // source -> record source, not a blanket 'measured' relabel).
+    let prefillPayload = null;
+    if (mode === 'scope_interview') {
+      const sessionFields = sessionPrefill?.measuredFields || {};
+      let storeRows = [];
+      try { const r = await sbLoadScopeAnswers(job.id); if (r.ok) storeRows = r.data; } catch { /* soft — degrade to session-only prefill */ }
+      const merged = {};
+      // Store first; sort so 'confirmed' lands last and wins on a duplicate field_key across rooms.
+      for (const a of [...storeRows].sort((x, y) => (x.status === 'confirmed' ? 1 : 0) - (y.status === 'confirmed' ? 1 : 0))) {
+        const v = a.value ?? a.option_key;
+        if (!a.field_key || v == null || String(v).trim() === '') continue;
+        merged[a.field_key] = { value: v, source: a.source || 'rep_typed', _confirmed: a.status === 'confirmed' };
+      }
+      // Session measured fields win UNLESS the store row is confirmed.
+      for (const [k, v] of Object.entries(sessionFields)) {
+        if (v == null || String(v).trim() === '') continue;
+        if (merged[k]?._confirmed) continue;
+        merged[k] = { value: v, source: 'measured' };
+      }
+      const clean = {};
+      for (const [k, e] of Object.entries(merged)) clean[k] = { value: e.value, source: e.source };
+      if (Object.keys(clean).length) prefillPayload = clean;
+    }
     let reply;
     let completedNow = false;
     try {
@@ -376,9 +405,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           ...(mode === 'scope_interview' ? {
             mode: 'scope_interview',
             project_type: resolveProjectType(),
-            // P2: forward on-site captured fields so the interview skips them.
-            ...(sessionPrefill?.measuredFields && Object.keys(sessionPrefill.measuredFields).length
-              ? { prefilled_answers: sessionPrefill.measuredFields } : {}),
+            // Phase B: store + session merged, source-aware prefill (built above).
+            ...(prefillPayload ? { prefilled_answers: prefillPayload } : {}),
           } : {}),
         }),
       });
