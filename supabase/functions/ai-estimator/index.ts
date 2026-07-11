@@ -205,9 +205,10 @@ function buildInterviewSystemPrompt(fields: ScopeField[], projectType: string, p
     return `- ${f.field_key} [${f.field_type}${opts}]${tag} — ${f.question}`;
   }).join("\n");
 
-  // SCOPE_CAPTURE_ENGINE P2: fields the on-site consultation already captured. The
-  // deterministic gate treats these as answered; telling the model keeps it from
-  // re-asking them (it may briefly confirm instead).
+  // Fields already answered — from the on-site consultation (SCE P2) OR read back from the
+  // persisted store on interview resume (SCE Phase B). The deterministic gate already treats
+  // these as answered; telling the model keeps it from re-asking them (it may confirm or
+  // reference them instead).
   const preLines = preAnswered.length
     ? preAnswered.map((a) => `- ${a.field_key} = ${String(a.value)}`).join("\n")
     : "(none)";
@@ -217,7 +218,7 @@ You are GATHERING SCOPE for a ${projectType} remodel BEFORE any pricing. Do NOT 
 
 You are given the REQUIRED SCOPE FIELDS (priority order, most important first), any fields ALREADY CAPTURED on-site, and the conversation so far. Each turn:
 1. Read the whole conversation. Decide which REQUIRED SCOPE FIELDS are already answered by what the rep/homeowner said. Map free text onto a field's options when it is a choice. Only mark a field answered when the conversation actually gives that answer — never guess.
-2. Treat every field under ALREADY CAPTURED ON-SITE as known — do NOT ask about it again. You may acknowledge it briefly, but never re-interrogate it.
+2. Treat every field under ALREADY ANSWERED as known — do NOT ask about it again. You may acknowledge or reference it briefly (e.g. "you picked curbless earlier"), but never re-interrogate it.
 3. Write ONE short, friendly, conversational message asking ONLY the fields still unanswered, most important first. Group related questions naturally; do not interrogate one-by-one or restate answered fields. If nothing remains, give a one-line confirmation.
 
 Output ONLY valid JSON — no prose, no markdown fences. Start with { and end with }:
@@ -227,7 +228,7 @@ Output ONLY valid JSON — no prose, no markdown fences. Start with { and end wi
   "all_answered": true | false
 }
 
-ALREADY CAPTURED ON-SITE (do NOT ask again):
+ALREADY ANSWERED (do NOT ask again — you may reference these):
 ${preLines}
 
 REQUIRED SCOPE FIELDS (priority order):
