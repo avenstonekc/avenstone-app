@@ -4856,6 +4856,7 @@ export type Database = {
           field_key: string
           field_type: string
           id: string
+          is_selection: boolean
           money_risk_rank: number
           options: Json | null
           project_type: string
@@ -4871,6 +4872,7 @@ export type Database = {
           field_key: string
           field_type: string
           id?: string
+          is_selection?: boolean
           money_risk_rank?: number
           options?: Json | null
           project_type: string
@@ -4886,6 +4888,7 @@ export type Database = {
           field_key?: string
           field_type?: string
           id?: string
+          is_selection?: boolean
           money_risk_rank?: number
           options?: Json | null
           project_type?: string
