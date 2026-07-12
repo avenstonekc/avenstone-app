@@ -561,11 +561,23 @@ async function handleScopePlan(
     origin: f.origin,
   }));
 
+  // ESTIMATE_CONFIGURATOR S2 — also emit persist-ready answers (option_key + server-derived trade)
+  // for the answers the configurator sent, so it persists via the existing sbUpsertScopeAnswers
+  // path WITHOUT stamping trade client-side. source 'card' → job_scope_answers 'rep_card' (a
+  // structured tap from a known option vocab, not freeform extraction). deriveTrade reads
+  // scope_option_trades (Phase D) — the SAME map the chat-interview path uses.
+  const optIndex = buildOptionTradeIndex(await loadOptionTrades(tenantId, projectType));
+  const answerRecords = answers
+    .filter((a) => a.value != null && String(a.value).trim() !== "")
+    .map((a) => makeAnswerRecord(String(a.field_key), a.value, 1, "card"));
+  const persistAnswers = toScopeAnswerPayload(answerRecords, requiredFields, optIndex);
+
   return ok({
     fields,
     open_field_keys: open.map((f) => f.field_key),
     fired_modules: fired.map((m) => m.module_key),
     scope_complete: open.length === 0,
+    answers: persistAnswers,
   });
 }
 
