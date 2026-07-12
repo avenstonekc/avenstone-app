@@ -2523,6 +2523,28 @@ export async function sbLoadScopeOptionData(projectType, opts = {}) {
   return { fields, images };
 }
 
+// ESTIMATE_CONFIGURATOR S1/S2 — deterministic scope plan (NO LLM). Given project_type + the
+// answers so far, returns the ordered required-field list (base checklist + trigger-fired
+// modules), which fields are still open, scope_complete, and (S2) persist-ready `answers` with
+// server-derived trade (deriveTrade / scope_option_trades, source rep_card). The tap-through
+// configurator re-calls this after each answer to unlock follow-ups instantly.
+// answers arg: [{ field_key, value }]. Returns
+// { ok, error, data:{ fields, open_field_keys, fired_modules, scope_complete, answers } }.
+export async function sbScopePlan(projectType, answers) {
+  try {
+    const res = await fetch(AI_ESTIMATOR_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
+      body: JSON.stringify({ mode: 'scope_plan', tenant_id: AV_TENANT, project_type: projectType, answers: answers || [] }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) return { ok: false, error: data.error || `HTTP ${res.status}`, data: null };
+    return { ok: true, error: null, data };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbScopePlan failed', data: null };
+  }
+}
+
 // SCOPE_TO_ESTIMATE Phase A — ensure exactly one interview default room per job.
 // Idempotent: returns the job's existing (earliest) room if present, else inserts one
 // labeled by project type (source='typed'). Multi-room granularity is a later refinement;
