@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { sbScopePlan, sbLoadScopeOptionData } from '../../../lib/supabase';
+import { sbScopePlan, sbLoadScopeOptionData, sbLoadScopeAnswers } from '../../../lib/supabase';
 
 // ESTIMATE_CONFIGURATOR S2 — tap-through scope configurator. One question per screen; cards where
 // option images exist, big controls where they don't; a chip strip to jump back; re-fetches the
@@ -11,7 +11,7 @@ import { sbScopePlan, sbLoadScopeOptionData } from '../../../lib/supabase';
 
 const humanize = (s) => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
 
-export default function ScopeConfigurator({ projectType, persistAnswers, onComplete, onSkip }) {
+export default function ScopeConfigurator({ jobId, projectType, persistAnswers, onComplete, onSkip }) {
   const [plan, setPlan]         = useState(null);   // { fields, open_field_keys, scope_complete, answers }
   const [answers, setAnswers]   = useState({});     // { field_key: value }
   const [images, setImages]     = useState({});     // { field_key: { option_key: url } }
@@ -29,16 +29,29 @@ export default function ScopeConfigurator({ projectType, persistAnswers, onCompl
     let alive = true;
     (async () => {
       setLoading(true);
-      const res = await sbScopePlan(projectType, []);
+      // Hydrate from persisted answers (resume) so we don't re-ask what's already captured.
+      const seed = {};
+      if (jobId) {
+        try {
+          const stored = await sbLoadScopeAnswers(jobId);
+          if (stored.ok) for (const a of (stored.data || [])) {
+            const v = a.option_key ?? a.value;
+            if (v != null && String(v).trim() !== '') seed[a.field_key] = v;
+          }
+        } catch { /* start fresh on failure */ }
+      }
+      const arr = Object.entries(seed).map(([field_key, value]) => ({ field_key, value }));
+      const res = await sbScopePlan(projectType, arr);
       if (!alive) return;
       setLoading(false);
       if (!res.ok) { setError(res.error || 'Could not load scope plan'); return; }
+      setAnswers(seed);
       setPlan(res.data);
       setActive(res.data.open_field_keys?.[0] || res.data.fields?.[0]?.field_key || null);
-      if (res.data.scope_complete) onComplete?.({});
+      if (res.data.scope_complete) onComplete?.(seed);
     })();
     return () => { alive = false; };
-  }, [projectType]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectType, jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fieldByKey = {};
   (plan?.fields || []).forEach(f => { fieldByKey[f.field_key] = f; });
