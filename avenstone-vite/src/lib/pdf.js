@@ -488,6 +488,11 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
   const W = 612, M = 48, CW = W - M * 2;
   const SAFE_BOTTOM = 728;
   const fmt = n => `$${Math.round(Number(n || 0)).toLocaleString()}`;
+  // Sanitize ALL dynamic text to WinAnsi (matches buildContractPDF). A non-WinAnsi glyph in an
+  // AI-generated description mis-measures under splitTextToSize → text overflows its column and
+  // overprints the price. Route every dynamic doc.text + splitTextToSize through this.
+  const T = (s, x, y, opts) => doc.text(_winAnsi(String(s ?? '')), x, y, opts);
+  const wrap = (s, w) => doc.splitTextToSize(_winAnsi(String(s ?? '')), w);
 
   const chkPage = (y, h = 16) => { if (y + h > SAFE_BOTTOM) { doc.addPage(); return M + 8; } return y; };
 
@@ -510,10 +515,10 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
   // ── Job block ───────────────────────────────────────────────────────────────
   let y = 100;
   doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(...navy);
-  doc.text(job.address || '', M, y); y += 18;
+  T(job.address || '', M, y); y += 18;
   if (job.client_name) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray);
-    doc.text(`Client: ${job.client_name}`, M, y); y += 14;
+    T(`Client: ${job.client_name}`, M, y); y += 14;
   }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...gray);
   doc.text(`Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, M, y);
@@ -522,7 +527,8 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
 
   // ── Flags callout ───────────────────────────────────────────────────────────
   if (flags && flags.length) {
-    const flagLines = flags.map(f => doc.splitTextToSize(`⚠  ${f}`, CW - 16));
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); // measure under the render font
+    const flagLines = flags.map(f => wrap(`⚠  ${f}`, CW - 16));
     const boxH = 14 + flagLines.reduce((s, ls) => s + ls.length * 10, 0) + 8;
     doc.setFillColor(254, 243, 199); doc.setDrawColor(...gold); doc.setLineWidth(1);
     doc.rect(M, y, CW, boxH, 'FD');
@@ -573,13 +579,17 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
       doc.setFillColor(232, 226, 210);
       doc.rect(M, y - 2, CW, 16, 'F');
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
-      doc.text(trade, M + 4, y + 10);
+      T(trade, M + 4, y + 10);
       y += 16;
 
       tItems.forEach(li => {
         const price = clientPrice(li);
         const isAllowance = /allowance/i.test(li.description || '');
-        const descLines = doc.splitTextToSize(li.description || '', 316);
+        // Measure UNDER THE SAME FONT we render with. Otherwise the wrap width is computed against
+        // whatever font the previous row left set (bold trade header, or the italic-7 allowance
+        // caption) → the description overflows the 316pt column and overprints QTY/PRICE.
+        doc.setFont('helvetica', isAllowance ? 'italic' : 'normal'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81);
+        const descLines = wrap(li.description || '', 316);
         const rowH = Math.max(14, descLines.length * 10 + 6) + (isAllowance ? 10 : 0);
 
         y = chkPage(y, rowH);
@@ -591,14 +601,14 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
 
         const qtyStr = [li.quantity != null ? String(li.quantity) : '', li.unit || ''].filter(Boolean).join(' ');
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...gray);
-        doc.text(qtyStr, M + 330, y + 8);
+        T(qtyStr, M + 330, y + 8);
 
         doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...navy);
-        doc.text(fmt(price), W - M, y + 8, { align: 'right' });
+        T(fmt(price), W - M, y + 8, { align: 'right' });
 
         if (isAllowance) {
           doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.setTextColor(146, 100, 14);
-          doc.text('(allowance)', W - M, y + 18, { align: 'right' });
+          T('(allowance)', W - M, y + 18, { align: 'right' });
         }
 
         y += rowH;
@@ -608,9 +618,9 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
       // Trade subtotal
       y = chkPage(y, 16);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...gray);
-      doc.text(`${trade} subtotal`, M + 4, y + 8);
+      T(`${trade} subtotal`, M + 4, y + 8);
       doc.setTextColor(...navy);
-      doc.text(fmt(tradeSub), W - M, y + 8, { align: 'right' });
+      T(fmt(tradeSub), W - M, y + 8, { align: 'right' });
       doc.setDrawColor(220, 215, 200); doc.setLineWidth(0.5); doc.line(M, y + 13, W - M, y + 13);
       y += 18;
     });
@@ -653,11 +663,11 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
     doc.text('POSSIBLE CHANGE ORDERS — DISCLOSED UP FRONT', M, y); y += 12;
     doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
     const subhead = "Construction sometimes uncovers conditions we can't see until demo begins. We disclose these now so there are no surprises later. If any of these conditions are encountered, a change order will be issued at the disclosed range.";
-    const subLines = doc.splitTextToSize(subhead, CW);
+    const subLines = wrap(subhead, CW);
     doc.text(subLines, M, y); y += subLines.length * 10 + 8;
 
     includedMoments.forEach((m, i) => {
-      const estH = 36 + (m.how_to_present ? Math.ceil(doc.splitTextToSize(m.how_to_present, CW - 100).length * 10) : 0);
+      const estH = 36 + (m.how_to_present ? Math.ceil(wrap(m.how_to_present, CW - 100).length * 10) : 0);
       y = chkPage(y, estH);
       if (i > 0) { doc.setDrawColor(232, 228, 220); doc.setLineWidth(0.5); doc.line(M, y - 4, W - M, y - 4); }
 
@@ -666,19 +676,19 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
       const likeLbl = (m.likelihood || 'medium').charAt(0).toUpperCase() + (m.likelihood || 'medium').slice(1);
 
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
-      doc.text(m.condition || '', M, y, { maxWidth: CW - 100 });
+      T(m.condition || '', M, y, { maxWidth: CW - 100 });
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...likeColor);
-      doc.text(`${likeLbl} likelihood`, W - M, y, { align: 'right' });
+      T(`${likeLbl} likelihood`, W - M, y, { align: 'right' });
       y += 12;
 
       const lo = Number(m.estimated_cost_low || 0), hi = Number(m.estimated_cost_high || 0);
       if (lo || hi) {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(55, 65, 81);
-        doc.text(`Estimated cost if encountered: $${lo.toLocaleString()} – $${hi.toLocaleString()}`, M, y); y += 11;
+        T(`Estimated cost if encountered: $${lo.toLocaleString()} - $${hi.toLocaleString()}`, M, y); y += 11;
       }
       if (m.how_to_present) {
         doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
-        const lines = doc.splitTextToSize(m.how_to_present, CW);
+        const lines = wrap(m.how_to_present, CW);
         doc.text(lines, M, y); y += lines.length * 10;
       }
       y += 10;
@@ -694,7 +704,7 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
     schedule.forEach(ps => {
       y = chkPage(y, 14);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...navy);
-      doc.text(ps.milestone || '', M, y);
+      T(ps.milestone || '', M, y);
       doc.setTextColor(...gray);
       doc.text(ps.timing || '', W / 2, y, { align: 'center' });
       doc.setFont('helvetica', 'bold'); doc.setTextColor(...gold);
