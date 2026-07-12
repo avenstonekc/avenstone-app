@@ -1,11 +1,12 @@
-import { useState, useEffect, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers } from '../../../lib/supabase';
+import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor } from '../../../lib/supabase';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
 import { Ic, f$, ll, ls } from '../../../lib/utils';
 import { buildProposalPDF } from '../../../lib/pdf';
+import { computeSanityFlags } from '../../../lib/priceSanity';
 import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
 import StructuredEstimate from './StructuredEstimate';
@@ -105,6 +106,13 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [propOhShit, setPropOhShit] = useState([]);
   const [propOhShitExpanded, setPropOhShitExpanded] = useState(false);
   const [propReady, setPropReady] = useState(false);
+
+  // Phase 1b — pre-send price sanity guard. Rate-book rows (for the outlier bound) + ack flag.
+  const [rateBookRows, setRateBookRows] = useState([]);
+  const [sanityAck, setSanityAck] = useState(false);
+  useEffect(() => { sbLoadRateBookLabor().then(r => { if (r.ok) setRateBookRows(r.data); }); }, []);
+  // A change to the line items invalidates a prior acknowledgement.
+  useEffect(() => { setSanityAck(false); }, [lineItems]);
 
   // B1.6: seed markup and pm_fee from bid_model_config tenant default.
   // Fires on mount; only overwrites if the job-level values aren't already set.
@@ -685,6 +693,18 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setEstCommitting(false);
   };
 
+  // Phase 1b — client price of a line (markup applied), matching the proposal PDF. Feeds the guard.
+  const clientPriceOf = (li) => {
+    const cost = Number(li.total_cost ?? 0);
+    const rate = markupRateForCategory(li.category, { laborPct: Number(job.labor_markup_pct || 0), materialPct: Number(job.material_markup_pct || 0), categoryConfig });
+    return cost * (1 + rate / 100);
+  };
+  const sanityFlags = useMemo(
+    () => computeSanityFlags(lineItems, clientPriceOf, rateBookRows),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lineItems, rateBookRows, categoryConfig, job.labor_markup_pct, job.material_markup_pct],
+  );
+
   const _buildProposalDoc = () => {
     const lp = Number(job.labor_markup_pct || 0);
     const mp = Number(job.material_markup_pct || 0);
@@ -714,6 +734,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const sendEstimateToClient = async () => {
     if (!job.client_email) { setEstSaveMsg('No client email on this job'); return; }
     if (!lineItems.length) { setEstSaveMsg('No line items — run the estimator first'); return; }
+    // Phase 1b — price sanity guard. Block the client-facing send until flagged lines are
+    // corrected or explicitly acknowledged. A guard, not an auto-correct — the human decides.
+    if (sanityFlags.length && !sanityAck) {
+      setEstSaveMsg(`${sanityFlags.length} line(s) look mispriced — review the price check below and acknowledge or fix before sending`);
+      return;
+    }
     const isManager = profile?.role === 'owner' || profile?.role === 'project_manager';
     setEstSendingClient(true); setEstSaveMsg('');
     try {
@@ -985,6 +1011,23 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
             <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setSessionPrefill(null); setEstimateScopeOrigin(null); setShowRaw(false); setScopeInterviewActive(false); setScopeComplete(false); setForceDraftedIncomplete(false); }}>Reset</button>
           </div>
+          {/* Phase 1b — price sanity guard. Blocks Send to Client until flagged lines are fixed or acknowledged. */}
+          {sanityFlags.length > 0 && (
+            <div style={{ margin: '4px 0 8px', border: '1px solid var(--amber-border-soft, #FCD34D)', background: 'var(--amber-bg-soft, #FEF3C7)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--amber-text-strong, #92400E)', marginBottom: 6 }}>
+                ⚠ Price check — {sanityFlags.length} line(s) look mispriced (a client should not see these as-is)
+              </div>
+              {sanityFlags.map((fl, i) => (
+                <div key={fl.id ?? i} style={{ fontSize: 11, color: 'var(--amber-text-strong, #92400E)', padding: '2px 0' }}>
+                  <span style={{ fontWeight: 600 }}>{fl.description || '(line)'}</span> — {fl.reasons.join('; ')}
+                </div>
+              ))}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: 'var(--amber-text-strong, #92400E)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={sanityAck} onChange={e => setSanityAck(e.target.checked)} />
+                I reviewed these — send anyway
+              </label>
+            </div>
+          )}
           {pricedScope?.length > 0 && (
             <>
               <StructuredEstimate lines={pricedScope} />
