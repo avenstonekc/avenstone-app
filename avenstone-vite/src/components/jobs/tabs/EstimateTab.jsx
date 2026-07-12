@@ -10,7 +10,7 @@ import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
 import StructuredEstimate from './StructuredEstimate';
 import GapBatchAsk from './GapBatchAsk';
-import ScopeOptionCards from './ScopeOptionCards';
+import ScopeConfigurator from './ScopeConfigurator';
 import { deriveProjectSf } from '../../../lib/deriveProjectSf';
 
 const TakeoffWizard = lazy(() => import('./TakeoffWizard'));
@@ -483,16 +483,27 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${interviewSf ? `Square Footage: ${interviewSf} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
     const pt = resolveProjectType();
     if (pt) {
-      // SCOPE_CAPTURE_ENGINE P1B: gather scope (checklist + trigger modules) BEFORE pricing.
+      // ESTIMATE_CONFIGURATOR S2: the tap-through configurator drives scope capture (deterministic,
+      // no LLM turn here). Seed the conversation with the scope prompt so the UNCHANGED pricing path
+      // still has context; the configurator persists structured answers + hands off on complete.
       setScopeInterviewActive(true);
       setScopeComplete(false);
       setForceDraftedIncomplete(false);
-      // SCE 4B: load the option-image cards for this project type (non-blocking).
-      sbLoadScopeOptionData(pt).then(setScopeOptData).catch(() => {});
-      await sendEstimatorMessage(prompt, estFile || null, 'scope_interview');
+      setEstMessages([{ role: 'user', content: prompt }]);
     } else {
       await sendEstimatorMessage(prompt, estFile || null);
     }
+  };
+
+  // ESTIMATE_CONFIGURATOR S2 — configurator finished. Inject a scope summary into the conversation
+  // so the UNCHANGED pricing path prices from the captured answers, then flip scopeComplete (the
+  // [scopeComplete] effect runs pricing). Answers are already persisted + trade-derived server-side.
+  const handleConfiguratorComplete = (answersMap) => {
+    const summary = Object.entries(answersMap || {})
+      .map(([k, v]) => `- ${k.replace(/_/g, ' ')}: ${String(v).replace(/_/g, ' ')}`).join('\n');
+    setEstMessages(prev => [...prev, { role: 'assistant', content: summary ? `Scope captured:\n${summary}` : 'Scope captured.' }]);
+    setScopeInterviewActive(false);
+    setScopeComplete(true);
   };
 
   // Soft gate (blueprint Decision C / Kalin fork 3): the rep may force a draft past open
@@ -1036,12 +1047,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             </div>
           )}
           {scopeInterviewActive && !scopeComplete && (
-            <ScopeOptionCards
-              openFieldKeys={scopeOpenFields}
-              fields={scopeOptData.fields}
-              images={scopeOptData.images}
-              disabled={estLoading}
-              onPick={(f, opt) => sendEstimatorMessage(opt.replace(/_/g, ' '))}
+            <ScopeConfigurator
+              jobId={job.id}
+              projectType={resolveProjectType()}
+              persistAnswers={persistScopeAnswers}
+              onComplete={handleConfiguratorComplete}
+              onSkip={forceDraftAnyway}
             />
           )}
           {scopeSaveError && (
@@ -1050,12 +1061,9 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
               <button onClick={() => setScopeSaveError(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--red-text-strong)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
             </div>
           )}
-          {scopeInterviewActive && !scopeComplete && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--amber-text-strong)', background: 'var(--amber-bg-soft)', border: '1px solid var(--amber-border-soft)', borderRadius: 6, padding: '8px 12px' }}>
-              <span>📋 Gathering scope — tap an option below or answer in the box for an accurate estimate.</span>
-              <button className="btn btn-ghost" style={{ fontSize: 11, minHeight: 32, marginLeft: 'auto' }} onClick={forceDraftAnyway} disabled={estLoading}>Draft anyway →</button>
-            </div>
-          )}
+          {/* Chat input — hidden while the configurator is capturing scope (it IS the input);
+              returns for follow-ups on the priced estimate. */}
+          {(!scopeInterviewActive || scopeComplete) && (
           <div style={{ display: 'flex', gap: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
               <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEstFile(f); setEstFileName(f.name); } }} />
@@ -1064,6 +1072,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <input className="finp" style={{ flex: 1, margin: 0 }} value={estInput} onChange={e => setEstInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendEstimatorMessage()} placeholder="Ask a follow-up — adjust scope, change materials, add a trade…" disabled={estLoading} />
             <button className="btn btn-navy" onClick={() => sendEstimatorMessage()} disabled={estLoading || (!estInput.trim() && !estFile)}>Send</button>
           </div>
+          )}
         </div>
       )}
     </div>
