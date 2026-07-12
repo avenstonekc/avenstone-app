@@ -493,6 +493,13 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
   // overprints the price. Route every dynamic doc.text + splitTextToSize through this.
   const T = (s, x, y, opts) => doc.text(_winAnsi(String(s ?? '')), x, y, opts);
   const wrap = (s, w) => doc.splitTextToSize(_winAnsi(String(s ?? '')), w);
+  // Normalize AI-assigned trade names to consistent Title Case for section headers ("materials"
+  // and "TILE & WATERPROOFING" both render clean); known acronyms stay uppercase.
+  const HEADER_ACRONYMS = new Set(['HVAC', 'PM', 'GC', 'MR', 'LVP', 'LVT', 'ADA', 'MDF', 'PVC']);
+  const titleCaseHeader = (s) => String(s || '').split(/\s+/).map(w => {
+    const up = w.toUpperCase();
+    return HEADER_ACRONYMS.has(up) ? up : (w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  }).join(' ');
 
   const chkPage = (y, h = 16) => { if (y + h > SAFE_BOTTOM) { doc.addPage(); return M + 8; } return y; };
 
@@ -579,7 +586,7 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
       doc.setFillColor(232, 226, 210);
       doc.rect(M, y - 2, CW, 16, 'F');
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
-      T(trade, M + 4, y + 10);
+      T(titleCaseHeader(trade), M + 4, y + 10);
       y += 16;
 
       tItems.forEach(li => {
@@ -618,7 +625,7 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
       // Trade subtotal
       y = chkPage(y, 16);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...gray);
-      T(`${trade} subtotal`, M + 4, y + 8);
+      T(`${titleCaseHeader(trade)} subtotal`, M + 4, y + 8);
       doc.setTextColor(...navy);
       T(fmt(tradeSub), W - M, y + 8, { align: 'right' });
       doc.setDrawColor(220, 215, 200); doc.setLineWidth(0.5); doc.line(M, y + 13, W - M, y + 13);
