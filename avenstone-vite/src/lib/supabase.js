@@ -2833,6 +2833,100 @@ export async function sbEstimateStackCounts(jobId) {
   return out;
 }
 
+// ── PROPOSAL_STATE — record-only proposal lifecycle ──────────────────────────
+// Rows exist so Reset is honest about sent vs draft. Forward-only (pre-table PDFs unowned).
+
+// Load a job's proposal rows, newest version first.
+export async function sbLoadProposals(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: [] };
+  try {
+    const { data, error } = await sb.from('proposals')
+      .select('id, status, version, sent_at, pdf_path, total, superseded_by, created_at')
+      .eq('tenant_id', AV_TENANT).eq('job_id', jobId)
+      .order('version', { ascending: false });
+    if (error) return { ok: false, error: error.message, data: [] };
+    return { ok: true, error: null, data: data || [] };
+  } catch (e) { return { ok: false, error: e?.message || 'sbLoadProposals failed', data: [] }; }
+}
+
+// DRAFT moment (build/save a proposal PDF): if an unsent draft exists, UPDATE it (don't stack
+// drafts); else INSERT a new draft at version = max(version)+1. Returns { ok, data: row }.
+export async function sbUpsertProposalDraft(jobId, { pdfPath = null, total = null } = {}) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+  try {
+    const { data: rows, error: selErr } = await sb.from('proposals')
+      .select('id, version, status').eq('tenant_id', AV_TENANT).eq('job_id', jobId);
+    if (selErr) return { ok: false, error: selErr.message, data: null };
+    const draft = (rows || []).find(p => p.status === 'draft');
+    if (draft) {
+      const { data, error } = await sb.from('proposals')
+        .update({ pdf_path: pdfPath, total }).eq('id', draft.id).select().single();
+      if (error) return { ok: false, error: error.message, data: null };
+      return { ok: true, error: null, data };
+    }
+    const nextVersion = (rows || []).reduce((m, p) => Math.max(m, Number(p.version) || 0), 0) + 1;
+    const { data, error } = await sb.from('proposals')
+      .insert({ tenant_id: AV_TENANT, job_id: jobId, status: 'draft', version: nextVersion, pdf_path: pdfPath, total, created_by: AV_USER_ID || null })
+      .select().single();
+    if (error) return { ok: false, error: error.message, data: null };
+    return { ok: true, error: null, data };
+  } catch (e) { return { ok: false, error: e?.message || 'sbUpsertProposalDraft failed', data: null }; }
+}
+
+// SEND moment (sbSendEstimateEmail succeeded): flip the job's current draft → sent (sent_at=now).
+// No draft (legacy send path) → create-as-sent. Any PRIOR sent row → superseded, superseded_by =
+// the newly sent row. (Sending supersedes; drafting doesn't.) Returns { ok, data: sentRow }.
+export async function sbMarkProposalSent(jobId, { pdfPath = null, total = null } = {}) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: null };
+  const nowIso = new Date().toISOString();
+  try {
+    const { data: rows, error: selErr } = await sb.from('proposals')
+      .select('id, version, status').eq('tenant_id', AV_TENANT).eq('job_id', jobId);
+    if (selErr) return { ok: false, error: selErr.message, data: null };
+    const all = rows || [];
+    const draft = all.find(p => p.status === 'draft');
+    let sentRow;
+    if (draft) {
+      const { data, error } = await sb.from('proposals')
+        .update({ status: 'sent', sent_at: nowIso, ...(pdfPath ? { pdf_path: pdfPath } : {}), ...(total != null ? { total } : {}) })
+        .eq('id', draft.id).select().single();
+      if (error) return { ok: false, error: error.message, data: null };
+      sentRow = data;
+    } else {
+      const nextVersion = all.reduce((m, p) => Math.max(m, Number(p.version) || 0), 0) + 1;
+      const { data, error } = await sb.from('proposals')
+        .insert({ tenant_id: AV_TENANT, job_id: jobId, status: 'sent', version: nextVersion, sent_at: nowIso, pdf_path: pdfPath, total, created_by: AV_USER_ID || null })
+        .select().single();
+      if (error) return { ok: false, error: error.message, data: null };
+      sentRow = data;
+    }
+    const priorSent = all.filter(p => p.status === 'sent' && p.id !== sentRow.id);
+    if (priorSent.length) {
+      await sb.from('proposals').update({ status: 'superseded', superseded_by: sentRow.id })
+        .eq('tenant_id', AV_TENANT).eq('job_id', jobId).in('id', priorSent.map(p => p.id));
+    }
+    return { ok: true, error: null, data: sentRow };
+  } catch (e) { return { ok: false, error: e?.message || 'sbMarkProposalSent failed', data: null }; }
+}
+
+// RESET_SCOPE integration: delete DRAFT proposals; mark SENT proposals superseded (NEVER deleted —
+// a sent proposal is a real client artifact). Returns { ok, data:{ draftsDeleted, sentSuperseded } }.
+export async function sbResetProposals(jobId) {
+  const out = { draftsDeleted: 0, sentSuperseded: 0 };
+  if (!jobId) return { ok: false, error: 'jobId required', data: out };
+  try {
+    const del = await sb.from('proposals').delete()
+      .eq('tenant_id', AV_TENANT).eq('job_id', jobId).eq('status', 'draft').select('id');
+    if (del.error) return { ok: false, error: del.error.message, data: out };
+    out.draftsDeleted = (del.data || []).length;
+    const sup = await sb.from('proposals').update({ status: 'superseded' })
+      .eq('tenant_id', AV_TENANT).eq('job_id', jobId).eq('status', 'sent').select('id');
+    if (sup.error) return { ok: false, error: sup.error.message, data: out };
+    out.sentSuperseded = (sup.data || []).length;
+    return { ok: true, error: null, data: out };
+  } catch (e) { return { ok: false, error: e?.message || 'sbResetProposals failed', data: out }; }
+}
+
 // SCOPE_TO_ESTIMATE Phase D — assemble a per-sub work packet: CONFIRMED job_scope_answers for a
 // job, joined room × option × bound image (scope_option_images), filtered to one trade. Trade-NULL
 // confirmed answers are NOT dropped — they go to the `unassigned` bucket so the packet can flag

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
 import { isScanArtifact, artifactToScanParams, SCAN_ARTIFACT_VERSION } from '../../../lib/scanArtifact';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
@@ -434,15 +434,16 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setResetOpts({ scope: true, measured: false, client: false });
     let scopeCount = 0, measuredCount = 0, clientCount = 0;
     try {
-      const [ans, stack] = await Promise.all([sbLoadScopeAnswers(job.id), sbEstimateStackCounts(job.id)]);
+      const [ans, stack, props] = await Promise.all([sbLoadScopeAnswers(job.id), sbEstimateStackCounts(job.id), sbLoadProposals(job.id)]);
       for (const a of (ans.ok ? ans.data : [])) {
         if (a.source === 'client_selected' || a.status === 'confirmed') clientCount++;
         else if (a.source === 'measured') measuredCount++;
         else scopeCount++;
       }
-      setResetDlg({ scopeCount, measuredCount, clientCount, ...stack });
+      const proposals = (props.ok ? props.data : []).filter(p => p.status === 'draft' || p.status === 'sent');
+      setResetDlg({ scopeCount, measuredCount, clientCount, ...stack, proposals });
     } catch {
-      setResetDlg({ scopeCount, measuredCount, clientCount, aiLines: 0, takeoffLines: 0, roomScopes: 0, hasDraft: false });
+      setResetDlg({ scopeCount, measuredCount, clientCount, aiLines: 0, takeoffLines: 0, roomScopes: 0, hasDraft: false, proposals: [] });
     }
   };
 
@@ -456,24 +457,29 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     let answersCleared = 0;
     const parts = [];
     try {
-      const [ansRes, liRes, rsRes] = await Promise.all([
+      const [ansRes, liRes, rsRes, propRes] = await Promise.all([
         sbClearScopeAnswers(job.id, { includeScope: true, includeMeasured: resetOpts.measured, includeClientConfirmed: resetOpts.client }),
         sbClearCommittedLineItems(job.id),
         sbClearJobRoomScopes(job.id),
+        sbResetProposals(job.id),
       ]);
       await sbClearEstimateDraft(job.id);
       answersCleared = ansRes.ok ? (ansRes.data?.cleared || 0) : 0;
       const aiN = liRes.ok ? (liRes.data?.ai || 0) : 0;
       const tkN = liRes.ok ? (liRes.data?.takeoff || 0) : 0;
       const rsN = rsRes.ok ? (rsRes.data?.cleared || 0) : 0;
+      const draftsDel = propRes.ok ? (propRes.data?.draftsDeleted || 0) : 0;
+      const sentSup = propRes.ok ? (propRes.data?.sentSuperseded || 0) : 0;
       if (answersCleared) parts.push(`${answersCleared} scope answer${answersCleared === 1 ? '' : 's'}`);
       if (aiN + tkN) parts.push(`${aiN + tkN} line item${aiN + tkN === 1 ? '' : 's'} (${aiN} ai · ${tkN} takeoff)`);
       if (rsN) parts.push(`${rsN} takeoff scope tag${rsN === 1 ? '' : 's'}`);
       parts.push('estimate draft');
+      if (draftsDel) parts.push(`${draftsDel} proposal draft${draftsDel === 1 ? '' : 's'} deleted`);
+      if (sentSup) parts.push(`${sentSup} sent proposal${sentSup === 1 ? '' : 's'} superseded`);
       if (resetOpts.measured) parts.push('scan measurements');
       if (resetOpts.client) parts.push('client selections');
       // Breadcrumb so a wiped stack is traceable.
-      sbNote(job.id, `Estimate reset — cleared ${parts.join(', ')}. (Proposals untouched — no send-state.)`, profile?.full_name || 'Staff').catch(() => {});
+      sbNote(job.id, `Estimate reset — cleared ${parts.join(', ')}.`, profile?.full_name || 'Staff').catch(() => {});
     } catch { /* fall through to local reset regardless */ }
     resetLocalEstimateState();
     setResetBusy(false);
@@ -995,6 +1001,15 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     });
   };
 
+  // PROPOSAL_STATE — client-price total of the current proposal (matches the Proposal preview math).
+  const computeProposalTotal = () => {
+    const lp = Number(job.labor_markup_pct || 0);
+    const mp = Number(job.material_markup_pct || 0);
+    const clientSub = lineItems.reduce((s, li) =>
+      s + Number(li.total_cost ?? 0) * (1 + markupRateForCategory(li.category, { laborPct: lp, materialPct: mp, categoryConfig }) / 100), 0);
+    return clientSub + Number(propPmFee || 0);
+  };
+
   const saveEstimatePDF = async () => {
     if (!lineItems.length) { setEstSaveMsg('No line items — run the estimator first'); return; }
     setEstSaving(true); setEstSaveMsg('');
@@ -1003,6 +1018,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const file = new File([blob], `Proposal — ${job.address}.pdf`, { type: 'application/pdf' });
       const r = await sbUploadDoc(job.id, file, 'proposal');
       if (r.doc && setDocs) setDocs(p => [r.doc, ...p]);
+      // PROPOSAL_STATE draft moment — record/refresh the draft row (don't stack drafts).
+      sbUpsertProposalDraft(job.id, { pdfPath: r.doc?.storage_path ?? null, total: computeProposalTotal() }).catch(() => {});
       setEstSaveMsg(r.doc ? 'Saved to Documents' : 'Save failed — try again');
     } catch (e) { setEstSaveMsg('Save failed — try again'); }
     setEstSaving(false); setTimeout(() => setEstSaveMsg(''), 3000);
@@ -1038,7 +1055,9 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       const blob = _buildProposalDoc().output('blob');
       await sbSendEstimateEmail(job, blob);
       const file = new File([blob], `Proposal — ${job.address}.pdf`, { type: 'application/pdf' });
-      await sbUploadDoc(job.id, file, 'proposal');
+      const upl = await sbUploadDoc(job.id, file, 'proposal');
+      // PROPOSAL_STATE send moment — flip the draft to sent (or create-as-sent); supersedes prior sent.
+      sbMarkProposalSent(job.id, { pdfPath: upl.doc?.storage_path ?? null, total: computeProposalTotal() }).catch(() => {});
       // Model B Phase 2 — proposal SENT: Lead complete + Proposal in_progress. Only on the
       // real send path (the gated-approval branch above returns early). Never block the send.
       await sbSeedJobPhases(job.id, AV_TENANT);
@@ -1778,9 +1797,17 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
                 </label>
               )}
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text-subtle)', margin: '0 0 16px', fontStyle: 'italic' }}>
-              Proposals are not touched — there's no send-state to tell a sent proposal from a draft.
-            </p>
+            {(resetDlg.proposals?.length > 0) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16, borderTop: `1px solid ${BORDER}`, paddingTop: 12 }}>
+                {resetDlg.proposals.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: p.status === 'sent' ? '#92400E' : NAV }}>
+                    {p.status === 'sent'
+                      ? <span>⚠ Proposal v{p.version} sent to client{p.sent_at ? ` on ${new Date(p.sent_at).toLocaleDateString()}` : ''} — marked <strong>superseded</strong>, not deleted.</span>
+                      : <span>Proposal v{p.version} (draft) — <strong>deleted</strong>.</span>}
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" disabled={resetBusy} onClick={() => setResetDlg(null)}>Cancel</button>
               <button className="btn btn-navy" disabled={resetBusy} onClick={confirmReset}>{resetBusy ? 'Clearing…' : 'Start fresh'}</button>
