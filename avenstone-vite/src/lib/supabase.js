@@ -2043,9 +2043,10 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode,
   } catch (normEx) {
     console.warn('[normalize-scan] inline normalize threw:', normEx);
   }
-  // TAKEOFF_BRIDGE Phase 1 — create-or-link a job_rooms row per scan room (idempotent; non-fatal).
+  // TAKEOFF_BRIDGE Phase 1 + 5 — create-or-link a job_rooms row per scan room, and write scan-derived
+  // dimensions as measured/proposed answers (idempotent; non-fatal).
   try {
-    const lr = await sbLinkScanRoomsToJobRooms(jobId, data.id, rooms);
+    const lr = await sbLinkScanRoomsToJobRooms(jobId, data.id, rooms, heightMeters);
     if (!lr.ok) console.warn('[scan-room-link] failed:', lr.error);
   } catch (linkEx) { console.warn('[scan-room-link] threw:', linkEx); }
   // Attach normalized_geometry to in-memory record so callers (e.g. sbCreateFloorPlan) can copy it
@@ -2061,9 +2062,11 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode,
 // creates its own row (duplicate labels are legitimately separate rooms). A scan-linked interview
 // room keeps its original source (the link is scan_room_id, not a re-origin).
 // Returns { ok, error, data:{ linked, created } }.
-export async function sbLinkScanRoomsToJobRooms(jobId, scanId, rooms) {
+export async function sbLinkScanRoomsToJobRooms(jobId, scanId, rooms, heightMeters = null) {
   try {
     if (!jobId || !scanId || !Array.isArray(rooms) || !rooms.length) return { ok: true, error: null, data: { linked: 0, created: 0 } };
+    // Phase 5 — scan ceiling height → inches (for the wall_height_in measured answer).
+    const wallHeightIn = heightMeters ? Math.round(Number(heightMeters) * 3.28084 * 12) : 0;
     const { data: existing, error: selErr } = await sb.from('job_rooms')
       .select('id, label, scan_room_id').eq('tenant_id', AV_TENANT).eq('job_id', jobId);
     if (selErr) return { ok: false, error: selErr.message, data: null };
@@ -2076,16 +2079,27 @@ export async function sbLinkScanRoomsToJobRooms(jobId, scanId, rooms) {
       const label = rooms[idx]?.name || `Room ${idx + 1}`;
       const roomId = `${scanId}_${idx}`;
       const match = byLabel.get(norm(label));
+      let jrId = null;
       if (match && !usedThisPass.has(match.id)) {
         usedThisPass.add(match.id);
         const { error: upErr } = await sb.from('job_rooms').update({ scan_room_id: roomId })
           .eq('id', match.id).eq('tenant_id', AV_TENANT);
-        if (!upErr) linked++;
+        if (!upErr) { linked++; jrId = match.id; }
       } else {
         const { data: ins, error: insErr } = await sb.from('job_rooms')
           .insert({ tenant_id: AV_TENANT, job_id: jobId, label, source: 'scan', scan_room_id: roomId })
           .select('id').single();
-        if (!insErr && ins) { usedThisPass.add(ins.id); created++; }
+        if (!insErr && ins) { usedThisPass.add(ins.id); created++; jrId = ins.id; }
+      }
+      // Phase 5 — write scan-derived DIMENSIONS as measured/proposed answers on the linked room so
+      // the configurator pre-fills (and stops re-asking) them. Dimensions ONLY — never finish/
+      // selection answers. Idempotent: sbUpsertScopeAnswers upserts on (tenant,job,room,field).
+      if (jrId) {
+        const dims = [];
+        const sqft = Number(rooms[idx]?.sqft) || 0;
+        if (sqft > 0)        dims.push({ room_id: jrId, field_key: 'floor_sf',       value: String(Math.round(sqft)), source: 'measured' });
+        if (wallHeightIn > 0) dims.push({ room_id: jrId, field_key: 'wall_height_in', value: String(wallHeightIn),     source: 'measured' });
+        if (dims.length) { try { await sbUpsertScopeAnswers(jobId, dims); } catch (_) { /* non-fatal */ } }
       }
     }
     return { ok: true, error: null, data: { linked, created } };
