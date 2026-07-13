@@ -2395,6 +2395,14 @@ KEY DECISIONS (locked):
 - COORDINATION (parallel window rebasing supabase.js + EstimateTab.jsx): I touched NO supabase.js and NO EstimateTab.jsx regions — those files are clean for the rebuild. My only planned supabase.js edit is a NEW export `sbBuildSubWorkPacket` near the other scope helpers (~line 2553, next to sbUpsertScopeAnswers/sbLoadScopeAnswers), which is HELD; add it after the map lands to avoid a collision.
 - BUILD: npm run build passes on every landed commit; edge deploy green. Migrations verified via information_schema (both columns present/nullable, room_id FK delete_rule=SET NULL) + row-count (trade_taxonomy 48 canonical, 5 new visible).
 
+[LOG — 2026-07-13] — ESTIMATE_INTEGRITY Fix 5 SHIPPED — every money number declares itself
+
+- AUDIT (report-before-relabel): board claim "30%/$1200 HARDCODED in ai-estimator, B1.6 unbuilt" is STALE. B1.6 IS built — markup_pct/pm_fee load from bid_model_config 'default' row (fail-loud if missing, line ~1188: "Silent fallback to 30/1200 is explicitly rejected"), or a rep override (body param). NOT hardcoded. Line rates = COST (rate_book labor / material tier / KC anchor, no markup baked in). FACE subtotal (StructuredEstimate `grand`) = sum of costs = YOUR COST. Markdown TOTAL = cost + markup + pm_fee = CLIENT PRICE.
+- GAP: the Build-tab FACE showed ONLY "Subtotal (cost)" — no client price → owner couldn't tell the $14.4k was cost vs client. (Line items sub-view ALREADY dual-labels Your Cost/Client Price; Proposal ALREADY has Hard Cost/Markup/PM Fee/GRAND TOTAL — both fine.)
+- FIX (commits 564d988 estimator + 63a6044 frontend): estimator returns applied_markup_pct + applied_pm_fee + financial_model so the FACE reconciles with THIS draft. StructuredEstimate footer now shows "Your cost", "+ Markup N% (<source>) · PM fee", and "Client price" (gold); flip shows "Total cost basis" only. Source named from EstimateTab provenance: job override (default_markup_pct/labor_markup_pct) → "this job's rate", else "Bid Config default" — never "hardcoded" (it isn't). pricedMeta captured from the response; cleared on Start fresh. Markdown summary relabeled "Your cost (subtotal)" / "Client price (TOTAL)" — no naked total on the estimate path.
+- NOTE: since markup is genuinely config-driven, there is no hardcoded lie to flag; the source label states config vs job. If bid_model_config default row is missing the estimator fails loud (existing behavior) — the FACE never invents a rate.
+- VERIFY: build green; edge deploy fired (run 29285239942). Live FACE reconciliation (cost × (1+markup) + pm = client price shown) is Kalin's browser seat.
+
 [LOG — 2026-07-13] — ESTIMATE_INTEGRITY SHIPPED — stale-answer reset + 4 pricing-output bugs
 
 - ROOT CAUSE (Kalin repro): re-scoped sandbox job priced union of old+new answers ($14.4k) because the answer store (job_scope_answers) has no session boundary and the Build "Reset" cleared ONLY local chat state (predated Phase A store).
