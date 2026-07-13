@@ -178,7 +178,7 @@ async function loadScopeConfig(
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const [clRes, modRes] = await Promise.all([
     sb.from("scope_checklists")
-      .select("tenant_id, project_type, field_key, question, field_type, options, money_risk_rank, adds_trades, active, is_selection")
+      .select("tenant_id, project_type, field_key, question, field_type, options, money_risk_rank, adds_trades, active, is_selection, option_labels")
       .eq("project_type", projectType)
       .eq("active", true)
       .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`),
@@ -578,9 +578,14 @@ async function handleScopePlan(
   const baseFields = assembleChecklist(projectType, checklist);
   if (baseFields.length === 0) return ok({ fields: [], open_field_keys: [], fired_modules: [], scope_complete: true });
 
-  // is_selection lives on scope_checklists (read-only here); map by field_key for the payload.
+  // is_selection + option_labels live on scope_checklists (read-only here); map by field_key.
   const isSel = new Map<string, boolean>();
-  for (const r of checklist) isSel.set(String(r.field_key).toLowerCase(), !!(r as { is_selection?: boolean }).is_selection);
+  const optLabels = new Map<string, unknown>();
+  for (const r of checklist) {
+    isSel.set(String(r.field_key).toLowerCase(), !!(r as { is_selection?: boolean }).is_selection);
+    const ol = (r as { option_labels?: unknown }).option_labels;
+    if (ol) optLabels.set(String(r.field_key).toLowerCase(), ol);
+  }
 
   const answers = Array.isArray(answersIn)
     ? (answersIn as Array<{ field_key?: unknown; value?: unknown }>).filter((a) => a && typeof a.field_key === "string")
@@ -608,6 +613,7 @@ async function handleScopePlan(
     question: f.question,
     field_type: f.field_type,
     options: Array.isArray(f.options) ? f.options : [],
+    option_labels: optLabels.get(f.field_key.toLowerCase()) ?? null,
     is_selection: isSel.get(f.field_key.toLowerCase()) ?? false,
     money_risk_rank: f.money_risk_rank,
     origin: f.origin,

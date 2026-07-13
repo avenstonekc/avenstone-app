@@ -101,6 +101,8 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
   const opts = Array.isArray(activeField?.options) ? activeField.options : [];
   const fieldImgs = activeField ? (images[activeField.field_key] || {}) : {};
   const hasCards = activeField?.field_type === 'choice' && opts.some(o => fieldImgs[o]);
+  // Phase 4a — display label from data (option_labels), falling back to humanize(key).
+  const labelOf = (o) => activeField?.option_labels?.[o] || humanize(o);
 
   const chipStyle = (state) => ({
     padding: '5px 10px', borderRadius: 'var(--r-full)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
@@ -124,7 +126,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
           const state = f.field_key === activeKey ? 'active' : done ? 'done' : 'todo';
           return (
             <button key={f.field_key} style={{ ...chipStyle(state), flex: 'none' }} onClick={() => setActive(f.field_key)} title={f.question}>
-              {humanize(f.field_key)}{done ? `: ${humanize(String(answers[f.field_key]))}` : ''}
+              {humanize(f.field_key)}{done ? `: ${f.option_labels?.[answers[f.field_key]] || humanize(String(answers[f.field_key]))}` : ''}
             </button>
           );
         })}
@@ -152,9 +154,9 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
                   <button key={o} onClick={() => answerField(activeField.field_key, o)} disabled={loading}
                     style={{ border: `2px solid ${selected ? 'var(--navy-900)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'var(--card-bg)', textAlign: 'left' }}>
                     {fieldImgs[o]
-                      ? <img src={fieldImgs[o]} alt={humanize(o)} style={{ width: '100%', height: 96, objectFit: 'cover', display: 'block' }} />
+                      ? <img src={fieldImgs[o]} alt={labelOf(o)} style={{ width: '100%', height: 96, objectFit: 'cover', display: 'block' }} />
                       : <div style={{ width: '100%', height: 96, background: 'var(--neutral-bg, #F1EFEA)' }} />}
-                    <div style={{ padding: '8px 10px', fontSize: 13, fontWeight: 600, color: selected ? 'var(--navy-900)' : 'var(--text-primary)' }}>{humanize(o)}</div>
+                    <div style={{ padding: '8px 10px', fontSize: 13, fontWeight: 600, color: selected ? 'var(--navy-900)' : 'var(--text-primary)' }}>{labelOf(o)}</div>
                   </button>
                 );
               })}
@@ -166,7 +168,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {opts.map(o => (
                 <button key={o} onClick={() => answerField(activeField.field_key, o)} disabled={loading} style={bigBtn(answers[activeField.field_key] === o)}>
-                  {humanize(o)}
+                  {labelOf(o)}
                 </button>
               ))}
             </div>
