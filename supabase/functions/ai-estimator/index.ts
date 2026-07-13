@@ -1082,8 +1082,8 @@ function formatEstimate(
 
   // Summary footer: flip shows cost basis only; cost_plus/fixed_bid show markup breakdown.
   const summaryFooter = financialModel === "flip"
-    ? `Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}\n**TOTAL COST BASIS: ${fmtMoney(subtotal)}**`
-    : `Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}\n**Subtotal: ${fmtMoney(subtotal)}**\nMarkup (${markupPct}%): ${fmtMoney(markup)}\nProject Management: ${fmtMoney(pmFee)}\n**TOTAL: ${fmtMoney(total)}**`;
+    ? `Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}\n**TOTAL COST BASIS: ${fmtMoney(subtotal)}** _(no markup — flip)_`
+    : `Labor: ${fmtMoney(laborTotal)} · Materials: ${fmtMoney(matTotal)} · General: ${fmtMoney(generalTotal)}\n**Your cost (subtotal): ${fmtMoney(subtotal)}**\nMarkup (${markupPct}%): ${fmtMoney(markup)}\nProject Management: ${fmtMoney(pmFee)}\n**Client price (TOTAL): ${fmtMoney(total)}**`;
 
   let out = preamble + `**Pricing Tier: ${tierLabel}** · Finish: **${finishLabel}**\n${body}
 ---
@@ -1253,7 +1253,16 @@ Deno.serve(async (req) => {
 
     // 3c: include priced_scope so EstimateTab can commit with exact source_labels
     // without a second AI EXTRACT_JSON_FOR_PROPOSAL round-trip.
-    return ok({ content, priced_scope: pricedLines, ...(scopeResult.truncated ? { truncated: true } : {}) });
+    // Fix 5: return the markup/PM fee ACTUALLY applied so the FACE can show the client price
+    // that reconciles with this draft (flip forces both to 0 above).
+    return ok({
+      content,
+      priced_scope: pricedLines,
+      applied_markup_pct: markupPct,
+      applied_pm_fee: pmFeeVal,
+      financial_model: financialModel,
+      ...(scopeResult.truncated ? { truncated: true } : {}),
+    });
   } catch (e) {
     console.error("ai-estimator error:", e);
     return fail(String(e));
