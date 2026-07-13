@@ -23,7 +23,7 @@ const prettySource = (s) => (s || '').replace(/^pricing[_-]/, '').replace(/_/g, 
  *   setGapRates — setter
  *   onApply     — apply entered rates to pricedScope (deterministic, no AI)
  */
-export default function GapBatchAsk({ gaps, gapRates, setGapRates, onApply }) {
+export default function GapBatchAsk({ gaps, gapRates, setGapRates, gapModes = {}, setGapModes = () => {}, onApply }) {
   const mob = isMob();
   const withAnchor = gaps.filter(g => g.regional_rate != null).length;
   const unset = gaps.filter(g => {
@@ -52,11 +52,23 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, onApply }) {
       {gaps.map((g, i) => {
         const rate     = gapRates[g.gap_key] ?? '';
         const rateNum  = parseFloat(rate);
-        const hasAnchor = g.regional_rate != null;
+        const isLS     = (gapModes[g.gap_key] || 'unit') === 'ls';   // Phase 5 — lump-sum mode
+        const hasAnchor = g.regional_rate != null && !isLS;          // KC anchors are per-unit only
         const accepted = hasAnchor && !isNaN(rateNum) && Math.abs(rateNum - Number(g.regional_rate)) < 0.005;
         const liveAmt = (!isNaN(rateNum) && rateNum > 0)
-          ? `= ${f$(Math.round(rateNum * g.quantity * 100) / 100)}`
+          ? `= ${f$(Math.round((isLS ? rateNum : rateNum * g.quantity) * 100) / 100)}`  // LS: the entered value IS the total
           : '';
+        // Per-gap $/unit ↔ LS toggle.
+        const modeToggle = (
+          <div style={{ display: 'inline-flex', border: `1px solid ${BORDER}`, borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
+            {[['unit', '$/unit'], ['ls', 'LS']].map(([m, lbl]) => (
+              <button key={m} type="button" onClick={() => setGapModes(p => ({ ...p, [g.gap_key]: m }))}
+                style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', minHeight: 26, cursor: 'pointer', border: 'none',
+                  background: (isLS ? 'ls' : 'unit') === m ? NAV : 'var(--card-bg)',
+                  color: (isLS ? 'ls' : 'unit') === m ? '#fff' : 'var(--text-subtle)' }}>{lbl}</button>
+            ))}
+          </div>
+        );
         const fallback = hasAnchor
           ? `est. ${f$(Math.round(g.regional_rate * g.quantity * 100) / 100)}`
           : 'TBD';
@@ -68,7 +80,12 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, onApply }) {
             display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
             padding: '4px 0 2px', marginTop: 4,
           }}>
-            {hasAnchor ? (
+            {modeToggle}
+            {isLS ? (
+              <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                Flat lump sum — one price for the whole line (kept out of rate-book learning).
+              </span>
+            ) : hasAnchor ? (
               <>
                 <button
                   type="button"
@@ -109,12 +126,12 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, onApply }) {
                 {catLabel && <span style={{ fontSize: 10, color: 'var(--text-subtle)', marginLeft: 6 }}>{catLabel}</span>}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>$/unit</span>
+                <span style={{ fontSize: 12, color: 'var(--text-subtle)', whiteSpace: 'nowrap' }}>{isLS ? 'LS $' : '$/unit'}</span>
                 <input
                   type="number" min="0" step="0.01"
                   value={rate}
                   onChange={e => setGapRates(p => ({ ...p, [g.gap_key]: e.target.value }))}
-                  placeholder={hasAnchor ? String(g.regional_rate) : '—'}
+                  placeholder={isLS ? 'total $' : (hasAnchor ? String(g.regional_rate) : '—')}
                   style={{ flex: 1, fontSize: 16, padding: '6px 8px', border: `1px solid ${BORDER}`, borderRadius: 4, minHeight: 36 }}
                 />
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
@@ -148,7 +165,7 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, onApply }) {
                 type="number" min="0" step="0.01"
                 value={rate}
                 onChange={e => setGapRates(p => ({ ...p, [g.gap_key]: e.target.value }))}
-                placeholder={hasAnchor ? String(g.regional_rate) : '$/unit'}
+                placeholder={isLS ? '$ total' : (hasAnchor ? String(g.regional_rate) : '$/unit')}
                 style={{ fontSize: 16, padding: '6px 8px', border: `1px solid ${BORDER}`, borderRadius: 4, textAlign: 'right', minHeight: 36 }}
               />
               <span style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'right' }}>
