@@ -733,6 +733,20 @@ Trim/baseboard: +10% | Insulation batt: +8% | Framing lumber: +10%
 
 BATHROOM RULES: use moisture_resistant (not hang/combined) for any wet-area drywall.
 
+EXISTING-CONDITIONS / DEMO DISCIPLINE (critical — do not invent existing conditions):
+A demo, tearout, or removal line requires a STATED existing condition. The scope may include
+existing_* facts (e.g. existing_tub_shower, existing_wall_finish, existing_floor_finish,
+existing_vanity, existing_countertop, existing_flooring, existing_backsplash, existing_finish).
+- Emit a removal line ONLY when a stated fact establishes that surface/fixture exists
+  (existing_wall_finish=tile → "Remove existing wall tile"). If a fact says it does NOT exist
+  (existing_tub_shower=none, existing_wall_finish=painted_drywall), DO NOT emit that removal line.
+- If NO fact is stated for a surface you would otherwise demo, DO NOT price it as fact. Either omit
+  the line, or — if removal is genuinely likely — emit it as an EXPLICIT ASSUMPTION: begin the
+  description with "ASSUMED — confirm on site: " AND add the same item to "flags". Never silently
+  price an unverified existing condition.
+- UNIVERSAL consequences of the chosen scope (debris haul-away, dumpster, floor/surface protection
+  on a gut) may be inferred without an existing_* fact — those follow from the work itself.
+
 ${vocabSection}
 ${referenceBlock}
 SCOPE JSON SCHEMA:
