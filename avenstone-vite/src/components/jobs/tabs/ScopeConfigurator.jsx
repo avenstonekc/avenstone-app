@@ -138,12 +138,18 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
 
       {activeField ? (
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: 20, boxShadow: 'var(--shadow-xs)' }}>
-          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', marginBottom: activeField.helper ? 6 : 16 }}>
             {activeField.question}
             {activeField.origin && activeField.origin !== 'base' && (
               <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: 'var(--gold, #C9A84C)', textTransform: 'uppercase' }}>added</span>
             )}
           </div>
+          {/* Phase 4c — unobtrusive "what's this?" helper, expertise inline. */}
+          {activeField.helper && (
+            <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginBottom: 16, lineHeight: 1.4, display: 'flex', gap: 6 }}>
+              <span style={{ flexShrink: 0, fontWeight: 700 }}>ⓘ</span><span>{activeField.helper}</span>
+            </div>
+          )}
 
           {/* Choice + images → cards */}
           {hasCards && (
