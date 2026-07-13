@@ -2395,6 +2395,16 @@ KEY DECISIONS (locked):
 - COORDINATION (parallel window rebasing supabase.js + EstimateTab.jsx): I touched NO supabase.js and NO EstimateTab.jsx regions — those files are clean for the rebuild. My only planned supabase.js edit is a NEW export `sbBuildSubWorkPacket` near the other scope helpers (~line 2553, next to sbUpsertScopeAnswers/sbLoadScopeAnswers), which is HELD; add it after the map lands to avoid a collision.
 - BUILD: npm run build passes on every landed commit; edge deploy green. Migrations verified via information_schema (both columns present/nullable, room_id FK delete_rule=SET NULL) + row-count (trade_taxonomy 48 canonical, 5 new visible).
 
+[LOG — 2026-07-13] — UPLOAD_PICKER follow-up — attach-from-job Photos section (thumbnail multi-select)
+
+- ASK: the estimate "Attach from this job" list only offered floor-plan scans; the job's PHOTOS must be attachable from the same affordance.
+- AUDIT: job photos' source of truth = `job_files` (bucket `job-photos` PUBLIC); the legacy `photos` table is WRITE-DEAD (sbPhoto comment "slice 8/12: dual-write bridge dropped"). Loaded via sbLoadJobFiles (newest-first, `*`). No exclusions — rep-facing internal surface; `client_visible` exists but we include everything.
+- HELPER sbLoadJobPhotos(jobId) (commit prior to faa039a): filters job_files to images (mime image/* or img extension incl heic/heif), resolves a fetchable URL per image via EXISTING paths only — getPublicUrl for job-photos (public), sbSignJobFileUrl (7-day) for any private bucket. Returns [{id,name,url,mime_type,created_at}].
+- FIX (commit faa039a EstimateTab): attach-from-job panel now TWO sections — "Scans & floor plans" (existing) + "Photos" (newest-first thumbnail grid, multi-select, one "Attach N photos" btn). Each picked photo: fetch(url)→blob→File→estFiles, rides the estimator call as an image block (same chips/remove). "Show all" past 12; no search/filter this pass. toggleJobPlans now loads plans+photos in parallel.
+- DOWNSCALE: oversized photos (>4.5MB) are re-encoded via canvas (longest edge ~1600px → JPEG q0.85) rather than rejected — estimator VISION context, not archival. Bonus: on iOS WKWebView (Safari decodes HEIC) this transparently transcodes HEIC→JPEG. addEstFiles still applies the final per-file gate.
+- GOTCHA: a missing named import (sbLoadJobPhotos) does NOT fail `npm run build` (JS, no type-check) — it's a runtime ReferenceError. Caught by grep-verifying the import line, not the build. Always confirm new helper imports explicitly.
+- KNOWN LIMIT: HEIC photos only transcode where the browser can decode them (iOS/Safari yes, desktop Chrome no) — on-device is the field surface, acceptable; flagged.
+
 [LOG — 2026-07-13] — UPLOAD_PICKER SHIPPED — estimate photos/plans attach: multi-file, full iOS picker, attach-from-job scans
 
 - SURFACE (audit): the broken "upload photos and plans" area = EstimateTab Build sub-tab "Floor Plan / Photos" attach (two inputs: the intake-form dashed box + the follow-up chat paperclip). BOTH were single-file (`e.target.files?.[0]` → single `estFile`) with `accept=".pdf,image/*"`. The mounted Files tab (FilesTab→FileUploadFlow) was ALREADY multi+pdf+full-picker; DocsTab is unmounted (Phase 3 removal). So the estimate attach was the sole single-file photos/plans surface = Kalin's repro.
