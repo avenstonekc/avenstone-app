@@ -770,6 +770,22 @@ existing_vanity, existing_countertop, existing_flooring, existing_backsplash, ex
   price an unverified existing condition.
 - UNIVERSAL consequences of the chosen scope (debris haul-away, dumpster, floor/surface protection
   on a gut) may be inferred without an existing_* fact — those follow from the work itself.
+- ESTIMATED / AVERAGED quantities are assumptions too: if you did not get a number from a measurement
+  or a stated dimension (e.g. "3 walls × 40 SF avg" you invented), begin that description with
+  "ASSUMED — confirm on site: " AND add it to "flags". A number you made up is not a fact.
+
+NO OVERLAPPING LINES (do not double-bill): a lump line that STATES its inclusions must NOT coexist
+with separate itemized lines for those same inclusions. Example: a "$1,650 full gut — includes tile
+surround removal + fixture disconnects" lump CANNOT also have a separate "tile surround demo" line or
+a "fixture disconnect" line — that bills the same work twice. Choose ONE: a single lump OR itemized
+parts, never both. Haul-away/dumpster is separate work (not an inclusion of demo labor) unless the
+lump explicitly says it includes disposal.
+
+SCOPE ADHERENCE (stay inside what was asked): price ONLY the work the user stated. Do NOT silently add
+items beyond the request (repaint, GFCI/outlet upgrades, new vanity light, mirror, accessories the
+user didn't ask for). If such an item is genuinely worth recommending, set "outside_scope": true on
+that line — code renders it in a separate "Recommended — outside requested scope" group that is NOT in
+the total. Default is to omit it. Never mix outside-scope work into the priced lines.
 
 ${vocabSection}
 ${referenceBlock}
@@ -821,7 +837,8 @@ Output exactly:
   "flags": ["..."],
   "subtotal": <sum of all amounts, no markup>
 }
-Include ALL priced lines. amounts are plain numbers. subtotal = sum of line amounts only (not markup or PM fee).`;
+Include ALL priced lines. amounts are plain numbers. subtotal = sum of line amounts only (not markup or PM fee).
+EXCLUDE any line under a "RECOMMENDED — OUTSIDE REQUESTED SCOPE" heading — those are not part of the estimate; do not put them in line_items and do not add them to subtotal.`;
 
 // ── Material pricing ──────────────────────────────────────────────────────────
 
@@ -1011,40 +1028,47 @@ function formatEstimate(
   }[tier];
   const finishLabel = { low: "Budget", mid: "Mid-grade", high: "Premium" }[finishTier];
 
-  // Group by trade, preserving line order
-  const tradeOrder: string[] = [];
-  const byTrade = new Map<string, PricedLine[]>();
-  for (const line of pricedLines) {
-    const key = line.trade || "General";
-    if (!byTrade.has(key)) { byTrade.set(key, []); tradeOrder.push(key); }
-    byTrade.get(key)!.push(line);
-  }
-
-  let laborTotal = 0, matTotal = 0, generalTotal = 0;
   const citedItems: string[] = [];   // gap lines grounded in a KC anchor
   const noAnchorItems: string[] = []; // gap lines with no reference coverage — rep must enter
-  let body = "";
 
-  for (const trade of tradeOrder) {
-    const lines = byTrade.get(trade)!;
-    body += `\n**${trade.toUpperCase()}**\n`;
+  // Render a set of lines grouped by trade (order-preserving). Fix 3: reused for the priced body
+  // AND the separated "outside requested scope" group so both share formatting; only the priced
+  // body's amounts feed the total.
+  const renderGroups = (lines: PricedLine[]) => {
+    const tradeOrder: string[] = [];
+    const byTrade = new Map<string, PricedLine[]>();
     for (const line of lines) {
-      const amt = line.amount ?? 0;
-      if (line.category === "labor") laborTotal += amt;
-      else if (line.category === "materials") matTotal += amt;
-      else generalTotal += amt;
-      if (line.source_label === "regional_avg") {
-        (line.anchor_source ? citedItems : noAnchorItems).push(line.line_item);
-      }
-
-      const fixedUnit = ["EA", "LS", "room", "load", "sq"].includes(line.unit);
-      const rateStr = line.unit_price != null
-        ? (fixedUnit ? fmtMoney(line.unit_price) : `${fmtMoney(line.unit_price)}/${line.unit}`)
-        : "TBD";
-
-      body += `- ${line.description} | ${line.quantity} ${line.unit} | ${rateStr} | **${fmtMoney(line.amount)}** | ${line.source_badge}\n`;
+      const key = line.trade || "General";
+      if (!byTrade.has(key)) { byTrade.set(key, []); tradeOrder.push(key); }
+      byTrade.get(key)!.push(line);
     }
-  }
+    let labor = 0, mat = 0, general = 0, b = "";
+    for (const trade of tradeOrder) {
+      b += `\n**${trade.toUpperCase()}**\n`;
+      for (const line of byTrade.get(trade)!) {
+        const amt = line.amount ?? 0;
+        if (line.category === "labor") labor += amt;
+        else if (line.category === "materials") mat += amt;
+        else general += amt;
+        if (line.source_label === "regional_avg") {
+          (line.anchor_source ? citedItems : noAnchorItems).push(line.line_item);
+        }
+        const fixedUnit = ["EA", "LS", "room", "load", "sq"].includes(line.unit);
+        const rateStr = line.unit_price != null
+          ? (fixedUnit ? fmtMoney(line.unit_price) : `${fmtMoney(line.unit_price)}/${line.unit}`)
+          : "TBD";
+        b += `- ${line.description} | ${line.quantity} ${line.unit} | ${rateStr} | **${fmtMoney(line.amount)}** | ${line.source_badge}\n`;
+      }
+    }
+    return { body: b, labor, mat, general };
+  };
+
+  // Fix 3: outside-scope lines never enter the priced total — they render in a separate group.
+  const inScopeLines = pricedLines.filter((l) => !l.outside_scope);
+  const outScopeLines = pricedLines.filter((l) => l.outside_scope);
+  const main = renderGroups(inScopeLines);
+  const body = main.body;
+  const laborTotal = main.labor, matTotal = main.mat, generalTotal = main.general;
 
   const subtotal = laborTotal + matTotal + generalTotal;
   const markup = Math.round(subtotal * (markupPct / 100));
@@ -1064,6 +1088,13 @@ function formatEstimate(
   let out = preamble + `**Pricing Tier: ${tierLabel}** · Finish: **${finishLabel}**\n${body}
 ---
 ${summaryFooter}`;
+
+  // Fix 3 — recommended items beyond the requested scope, explicitly separated and NOT in the total.
+  if (outScopeLines.length > 0) {
+    const rec = renderGroups(outScopeLines);
+    const recSubtotal = rec.labor + rec.mat + rec.general;
+    out += `\n\n---\n**RECOMMENDED — OUTSIDE REQUESTED SCOPE** _(not included in the total above)_\n${rec.body}\n_Recommended subtotal: ${fmtMoney(recSubtotal)} — add to scope only if the client approves._`;
+  }
 
   if (citedItems.length > 0) {
     out += `\n\n> ⚡ **KC Avg (cited)** — grounded in Avenstone's KC pricing reference, not yet in the Rate Book: ${[...new Set(citedItems)].join(", ")}. Confirm or override, then add to the Rate Book to vet.`;
