@@ -71,6 +71,9 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [gapRates, setGapRates] = useState({});
   // Phase 5 — per-gap pricing mode: 'unit' ($/SF, $/EA…) or 'ls' (flat lump sum). Default 'unit'.
   const [gapModes, setGapModes] = useState({});
+  // Phase 6a — true when this estimate ran through the tap-through configurator. On this path the
+  // chat transcript / raw prompt is NEVER rendered; completion lands on the polished breakdown.
+  const [configuratorPath, setConfiguratorPath] = useState(false);
   // B2.3 learn loop: labor gaps the rep just applied — offered for Rate Book save
   const [learnCandidates, setLearnCandidates] = useState([]);
   const [learnSaveState, setLearnSaveState] = useState(''); // '' | 'saving' | 'saved' | 'error'
@@ -499,8 +502,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       setScopeInterviewActive(true);
       setScopeComplete(false);
       setForceDraftedIncomplete(false);
+      setConfiguratorPath(true); // Phase 6a — hide chat/prompt, land on the breakdown
       setEstMessages([{ role: 'user', content: prompt }]);
     } else {
+      setConfiguratorPath(false);
       await sendEstimatorMessage(prompt, estFile || null);
     }
   };
@@ -619,7 +624,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         setEstCommitMsg(`${result.data.inserted_count} line items committed`);
         setTimeout(() => setEstCommitMsg(''), 6000);
         setEstCommitting(false);
-        return;
+        return { ok: true, items: refreshed || [] }; // Phase 6b — Proposal folds this in
       }
       // ── Fallback: EXTRACT_JSON_FOR_PROPOSAL (pre-3b-2 conversations) ──────────
       // Sanitize history (same pattern as send — strip UI-only fields)
@@ -695,11 +700,14 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       setLineItemsLoaded(true);
       setEstCommitMsg(`${result.data.inserted_count} line items committed`);
       setTimeout(() => setEstCommitMsg(''), 6000);
+      setEstCommitting(false);
+      return { ok: true, items: refreshed || [] };
     } catch (e) {
       console.error('commitEstimateFromChat error:', e);
       setEstCommitMsg('Commit failed — try again.');
     }
     setEstCommitting(false);
+    return { ok: false };
   };
 
   // Phase 1b — client price of a line (markup applied), matching the proposal PDF. Feeds the guard.
@@ -784,12 +792,19 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const openProposal = async () => {
     setSub('proposal');
     if (propReady) return;
-    if (!lineItems.length) {
-      setPropErr('Commit to Line Items first — run the estimator, then click Commit to Line Items.');
-      return;
-    }
     setPropLoading(true); setPropErr('');
     try {
+      // Phase 6b — Proposal performs the commit itself (all side effects) when there's an
+      // uncommitted priced draft, then builds the proposal. Reload committed rows to avoid racing
+      // the async lineItems state. A commit failure surfaces here and blocks the proposal.
+      let items = (await sbLoadEstimateLineItems(job.id)) || [];
+      if (!items.length && pricedScope?.length) {
+        const r = await commitEstimateFromChat();
+        if (!r?.ok) { setPropErr('Could not create line items — ' + (estCommitMsg || 'commit failed') + '. Nothing was sent.'); setPropLoading(false); return; }
+        items = r.items?.length ? r.items : ((await sbLoadEstimateLineItems(job.id)) || []);
+      }
+      if (!items.length) { setPropErr('No line items yet — run the estimator first.'); setPropLoading(false); return; }
+      setLineItems(items);
       const moments = await sbLoadOhShitMoments(job.id);
       setPropOhShit(moments);
       if (moments.length) setPropOhShitExpanded(true);
@@ -798,7 +813,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       // Populate preview list from DB rows — map to {trade, description, qty_label, amount (client price), category}
       const lp = Number(job.labor_markup_pct || 0);
       const mp = Number(job.material_markup_pct || 0);
-      const previewItems = lineItems.map(li => {
+      const previewItems = items.map(li => {
         const cost = Number(li.total_cost ?? 0);
         const rate = markupRateForCategory(li.category, { laborPct: lp, materialPct: mp, categoryConfig });
         return {
@@ -1010,15 +1025,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             )}
             {estSaveMsg && <span style={{ fontSize: 11, color: 'var(--green-dot)', fontWeight: 600 }}>{estSaveMsg}</span>}
             {estCommitMsg && <span style={{ fontSize: 11, color: lineItems.length > 0 ? 'var(--green-dot)' : 'var(--red-text)', fontWeight: 600 }}>{estCommitMsg}</span>}
-            {estMessages.some(m => m.role === 'assistant') && !scopeInterviewActive && (
-              <button className="btn btn-navy" style={{ fontSize: 11 }} onClick={commitEstimateFromChat} disabled={estCommitting}>
-                {estCommitting ? 'Committing…' : 'Commit to Line Items'}
-              </button>
-            )}
+            {/* Phase 6b — "Commit to Line Items" collapsed into "Proposal →" (it performs the commit
+                with all side effects, then proceeds; a commit failure surfaces on the proposal view). */}
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={saveEstimatePDF} disabled={estSaving || lineItems.length === 0}>{estSaving ? 'Saving…' : 'Save PDF'}</button>
             <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={sendEstimateToClient} disabled={estSendingClient}>{estSendingClient ? 'Sending…' : 'Send to Client'}</button>
-            <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal}>Proposal →</button>
-            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setSessionPrefill(null); setEstimateScopeOrigin(null); setShowRaw(false); setScopeInterviewActive(false); setScopeComplete(false); setForceDraftedIncomplete(false); }}>Reset</button>
+            <button className="btn btn-gold" style={{ fontSize: 11 }} onClick={openProposal} disabled={estCommitting || (!pricedScope?.length && !lineItems.length)}>{estCommitting ? 'Committing…' : 'Proposal →'}</button>
+            <button className="btn btn-ghost" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={() => { setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' }); setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]); setLearnSaveState(''); setSessionPrefill(null); setEstimateScopeOrigin(null); setShowRaw(false); setScopeInterviewActive(false); setScopeComplete(false); setForceDraftedIncomplete(false); setConfiguratorPath(false); }}>Reset</button>
           </div>
           {/* Phase 1b — price sanity guard. Blocks Send to Client until flagged lines are fixed or acknowledged. */}
           {sanityFlags.length > 0 && (
@@ -1065,15 +1077,25 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
                   )}
                 </div>
               )}
-              <button
-                onClick={() => setShowRaw(r => !r)}
-                style={{ fontSize: 11, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}
-              >
-                {showRaw ? '▲ Hide raw' : '▼ View raw estimate'}
-              </button>
+              {/* Phase 6a — the raw transcript toggle is a chat-path affordance; hidden on the configurator path. */}
+              {!configuratorPath && (
+                <button
+                  onClick={() => setShowRaw(r => !r)}
+                  style={{ fontSize: 11, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}
+                >
+                  {showRaw ? '▲ Hide raw' : '▼ View raw estimate'}
+                </button>
+              )}
             </>
           )}
-          {(!pricedScope?.length || showRaw) && (
+          {/* Phase 6a — configurator path: clean loading state while pricing runs; never the prompt/chat. */}
+          {configuratorPath && scopeComplete && !pricedScope?.length && (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
+              <div style={{ fontWeight: 600, color: 'var(--navy-900)', marginBottom: 4 }}>Building your estimate…</div>
+              <div style={{ fontSize: 12 }}>Pricing your scope against the rate book.</div>
+            </div>
+          )}
+          {!configuratorPath && (!pricedScope?.length || showRaw) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 480, overflowY: 'auto' }}>
             {estMessages.map((m, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
