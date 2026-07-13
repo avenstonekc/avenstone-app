@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { sbGetJobLidarScans, sbUploadDoc, sbUpdateScanOverrides, sbLoadFloorPlansForJob } from '../../../lib/supabase';
 import { buildFloorPlanPDF } from '../../../lib/pdf';
+import { buildScanArtifact, shareOrDownloadFile } from '../../../lib/scanArtifact';
 import AiIntakeWizard from '../../ai/AiIntakeWizard';
 import FloorPlanCanvas from '../../ai/FloorPlanCanvas';
 import FloorPlanEditorScr from '../../floorPlan/FloorPlanEditorScr';
@@ -14,6 +15,7 @@ export default function FloorPlanTab({ job, profile }) {
   const [editingPlanId, setEditingPlanId] = useState(null);
   const [exportingId, setExportingId] = useState(null);
   const [exportedIds, setExportedIds] = useState(new Set());
+  const [exportingJsonId, setExportingJsonId] = useState(null);
 
   const loadScans = async () => {
     setLoading(true);
@@ -56,6 +58,20 @@ export default function FloorPlanTab({ job, profile }) {
       setExportedIds(prev => new Set(prev).add(scan.id));
     } finally {
       setExportingId(null);
+    }
+  };
+
+  // SCAN_INGEST v2 — export the scan's own JSON (the portable artifact + import contract),
+  // alongside the human-readable PDF. Share sheet on device, download on desktop.
+  const handleExportJson = async (scan) => {
+    setExportingJsonId(scan.id);
+    try {
+      const artifact = buildScanArtifact(scan);
+      const date = new Date(scan.created_at || scan.scanned_at).toISOString().slice(0, 10);
+      const file = new File([JSON.stringify(artifact, null, 2)], `avenstone-scan-${date}.json`, { type: 'application/json' });
+      await shareOrDownloadFile(file);
+    } finally {
+      setExportingJsonId(null);
     }
   };
 
@@ -180,7 +196,16 @@ export default function FloorPlanTab({ job, profile }) {
                 {rooms.length > 0 && (
                   <>
                     <FloorPlanCanvas rooms={rooms} compact={rooms.length < 3} />
-                    <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                    <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: '12px', padding: '4px 12px', height: '28px' }}
+                        disabled={exportingJsonId === scan.id}
+                        onClick={() => handleExportJson(scan)}
+                        title="Export the scan data as a file you can re-import into any job"
+                      >
+                        {exportingJsonId === scan.id ? 'Exporting…' : 'Export data'}
+                      </button>
                       {exportedIds.has(scan.id) ? (
                         <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: '600', display: 'flex', alignItems: 'center' }}>
                           ✓ Saved to Documents
