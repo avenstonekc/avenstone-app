@@ -246,6 +246,13 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
                   </div>
                 </div>
 
+                {/* TAKEOFF_BRIDGE Phase 4 — synthetic (answer-derived) room marker; never silent. */}
+                {room._synthetic && (
+                  <div style={{ background: WARN_BG, borderBottom: `1px solid ${WARN_BORDER}`, padding: '6px 14px', fontSize: 11, color: '#92400E', lineHeight: 1.4 }}>
+                    ⓘ Dimensions from interview answers (no scan for this room){room._approx ? ' — perimeter/wall SF approximated from floor area (verify)' : ''}. Materials only; labor is on the estimate.
+                  </div>
+                )}
+
                 {/* Labor section header */}
                 <div style={{ display: 'grid', gridTemplateColumns: '24px 2fr 60px 80px 80px 80px', padding: '5px 14px', gap: 8, background: '#F8F7F5', borderBottom: `1px solid ${BORDER}`, alignItems: 'center' }}>
                   <div />

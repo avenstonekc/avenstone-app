@@ -243,7 +243,69 @@ function roomMetrics(room) {
   };
 }
 
-// ── Main export ────────────────────────────────────────────────────────────────
+// ── TAKEOFF_BRIDGE Phase 4 — synthetic rooms from the answer store ──────────────
+// When no scan covers a room, build a synthetic room from job_rooms + job_scope_answers so takeoff
+// runs interview-only. Dimensions from answers: floor_sf→areaSf, wall_height_in→height; perimeter
+// is a stated SQUARE-ROOM APPROXIMATION (4×√floorSf) marked approximate (never silent); wall SF =
+// perimeter × height. Answers map into the scope_detail schema keys (audit's (2)⇄(3) table) so the
+// existing computed shower SF + fixture lines run. Per-room: a room already covered by a scan is
+// skipped (scan metrics win). Materials-only is enforced at commit (acceptTakeoffDraft).
+function labelMatchesType(label, roomType) {
+  const l = (label || '').toLowerCase();
+  switch (roomType) {
+    case 'bathroom': return l.includes('bath');
+    case 'kitchen':  return l.includes('kitchen');
+    case 'bedroom':  return l.includes('bedroom');
+    case 'basement': return l.includes('basement');
+    case 'refresh':  return true;
+    default:         return false;
+  }
+}
+
+async function loadSyntheticRooms(jobId, roomType, coveredScanRoomIds) {
+  const [jrRes, ansRes] = await Promise.all([
+    sb.from('job_rooms').select('id, label, scan_room_id').eq('job_id', jobId),
+    sb.from('job_scope_answers').select('room_id, field_key, value, option_key').eq('job_id', jobId),
+  ]);
+  const jobRooms = jrRes.data || [];
+  const ansByRoom = {};
+  for (const a of (ansRes.data || [])) {
+    const v = a.value != null ? a.value : a.option_key;
+    (ansByRoom[a.room_id] ||= {})[a.field_key] = v;
+  }
+  const out = [];
+  for (const jr of jobRooms) {
+    if (!labelMatchesType(jr.label, roomType)) continue;
+    if (jr.scan_room_id && coveredScanRoomIds.has(jr.scan_room_id)) continue; // scan wins for this room
+    const ans = ansByRoom[jr.id] || {};
+    const floorSf = Number(ans.floor_sf) || 0;
+    const heightFt = (Number(ans.wall_height_in) || 96) / 12;
+    const perimeterLf = floorSf > 0 ? Math.round(4 * Math.sqrt(floorSf) * 100) / 100 : 0; // square-room approx
+    const wallAreaSf = Math.round(perimeterLf * heightFt * 100) / 100;
+    // Map answers → scope_detail schema keys (the (2)⇄(3) table). The schema's computed/subtract
+    // passes then derive shower_wall_sf/shower_floor_sf and net floor_tile_sf.
+    const sd = {};
+    if (floorSf > 0) sd.floor_tile_sf = floorSf; // schema subtract nets out shower_floor_sf
+    if (ans.shower_width_in)       sd.shower_width_in = Number(ans.shower_width_in);
+    if (ans.shower_length_in)      sd.shower_length_in = Number(ans.shower_length_in);
+    if (ans.shower_wall_height_in) sd.shower_wall_height_in = Number(ans.shower_wall_height_in);
+    if (ans.tub_shower_config)     sd.shower_type = ans.tub_shower_config === 'tub_only' ? 'tub_only' : 'shower_only';
+    if (ans.vanity_size_in && ans.vanity_size_in !== 'custom') sd.vanity_width = Number(ans.vanity_size_in);
+    if (ans.countertop)            sd.vanity_top = ans.countertop;
+    if (ans.vanity_config)         sd.sink_count = ans.vanity_config === 'double' ? 2 : (ans.vanity_config === 'none' ? 0 : 1);
+    if (ans.toilet)                sd.toilet_type = ans.toilet;
+    if (ans.shower_glass)          sd.shower_door_type = ans.shower_glass;
+    out.push({
+      roomId: `answer_${jr.id}`, roomLabel: jr.label, floor: 0, floorLabel: floorLabel(0),
+      captureMode: null, areaSf: floorSf, wallAreaSf, perimeterLf, height: heightFt, doors: 0, windows: 0,
+      _synthetic: true, _approx: perimeterLf > 0, _scopeDetails: sd,
+      // Bathroom synthetic rooms use the full_remodel schema/subset so the computed shower SF +
+      // fixture lines run. Other types: unscoped (all trades) — materials-only filters at commit.
+      _scopeTag: roomType === 'bathroom' ? 'full_remodel' : null,
+    });
+  }
+  return out;
+}
 
 /**
  * @typedef {Object} TakeoffDraft
@@ -315,9 +377,15 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     });
   }
 
-  const matchedRooms = roomIds
+  const matchedScanRooms = roomIds
     ? allRooms.filter(r => roomIds.includes(r.roomId))
     : allRooms.filter(r => roomMatchesType(r, roomType));
+
+  // TAKEOFF_BRIDGE Phase 4 — scan-optional: add synthetic rooms from the answer store for matching
+  // rooms not already covered by a scan (per-room; scan metrics win where a scan exists).
+  const coveredScanRoomIds = new Set(matchedScanRooms.map(r => r.roomId));
+  const syntheticRooms = await loadSyntheticRooms(jobId, roomType, coveredScanRoomIds);
+  const matchedRooms = [...matchedScanRooms, ...syntheticRooms];
 
   if (!matchedRooms.length) {
     return emptyDraft(jobId, roomType);
@@ -349,8 +417,19 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     }
   }
 
-  // Annotate each matched room with its saved scope metadata.
+  // Annotate each matched room with its saved scope metadata (synthetic rooms carry their own,
+  // answer-derived — no job_room_scopes row).
   const rooms = matchedRooms.map(room => {
+    if (room._synthetic) {
+      const subset = room._scopeTag ? subsetByTag[room._scopeTag] : null;
+      return {
+        ...room,
+        scope_tag:     room._scopeTag ?? null,
+        scope_label:   subset?.label ?? 'From interview answers',
+        scope_missing: false,
+        scope_details: room._scopeDetails ?? {},
+      };
+    }
     const scopeRow = scopeByRoomId[room.roomId];
     const subset   = scopeRow ? subsetByTag[scopeRow.scope_tag] : null;
     return {
@@ -462,18 +541,21 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     // Resolve allowed trades for this room from its saved scope row.
     // null allowedTrades = no filter (all trades emitted — default when unscoped).
     let allowedTrades = null;
-    const scopeRow = scopeByRoomId[room.roomId];
+    const scopeRow = scopeByRoomId[room.roomId]; // undefined for synthetic (answer-derived) rooms
 
-    // Resolve scope_details with schema defaults + subtract logic
-    const schemaKey      = scopeRow ? `${scopeRow.room_type}::${scopeRow.scope_tag}` : null;
-    const schemaEntry    = schemaKey ? schemaByKey[schemaKey] : null;
-    const resolvedDets   = resolveDetails(schemaEntry?.schema ?? null, scopeRow?.scope_details ?? {}, room);
+    // Resolve scope_details with schema defaults + subtract. Use the room's ANNOTATED scope_tag /
+    // scope_details so synthetic rooms (which carry their own, answer-derived) flow the same as scan
+    // rooms. Synthetic bathroom rooms use the roomType + full_remodel schema.
+    const stRoomType   = scopeRow?.room_type ?? roomType;
+    const schemaKey    = room.scope_tag ? `${stRoomType}::${room.scope_tag}` : null;
+    const schemaEntry  = schemaKey ? schemaByKey[schemaKey] : null;
+    const resolvedDets = resolveDetails(schemaEntry?.schema ?? null, room.scope_details ?? {}, room);
 
-    if (scopeRow) {
-      if (scopeRow.scope_tag === 'custom') {
-        allowedTrades = new Set(scopeRow.custom_trades ?? []);
+    if (room.scope_tag) {
+      if (room.scope_tag === 'custom') {
+        allowedTrades = new Set(scopeRow?.custom_trades ?? []);
       } else {
-        const subset = subsetByTag[scopeRow.scope_tag];
+        const subset = subsetByTag[room.scope_tag];
         if (subset) {
           const trades = subset.trades ?? [];
           if (!trades.includes('__all__')) {
@@ -779,6 +861,13 @@ export async function buildTakeoffDraft({ jobId, roomType, roomIds }) {
     if (scopeRow) {
       scopeDetailsResolved.push({ roomId: room.roomId, scopeTag: scopeRow.scope_tag, resolved: resolvedDets });
     }
+  }
+
+  // TAKEOFF_BRIDGE Phase 4c — OWNERSHIP: synthetic (answer-path) rooms contribute MATERIALS only;
+  // the estimator owns labor. Drop synthetic-room labor lines so takeoff builds the materials list
+  // and never re-prices labor the estimator already priced. Scan rooms keep full labor+materials.
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (String(lines[i].roomId).startsWith('answer_') && lines[i].category === 'labor') lines.splice(i, 1);
   }
 
   // 7. Summary
