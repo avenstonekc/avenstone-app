@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf } from '../../../lib/supabase';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
@@ -44,8 +44,14 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [estForm, setEstForm] = useState({ scope: '', rooms: '', special: '' });
   const [sessionPrefill, setSessionPrefill] = useState(null); // P1A: set when drafted from a consultation session
   const [estimateScopeOrigin, setEstimateScopeOrigin] = useState(null); // persisted scope_origin from job_estimates
-  const [estFile, setEstFile] = useState(null);
-  const [estFileName, setEstFileName] = useState('');
+  // UPLOAD_PICKER — multi-file attach (photos + plans). estFiles feeds the estimator
+  // as N image/document content blocks; nothing lands in a bucket (ephemeral AI context).
+  const [estFiles, setEstFiles] = useState([]); // File[]
+  const [attachError, setAttachError] = useState(null); // per-file reject surfacing
+  const [jobPlans, setJobPlans] = useState(null); // saved floor_plans for this job (attach-from-job)
+  const [jobPlansOpen, setJobPlansOpen] = useState(false);
+  const [jobPlansBusy, setJobPlansBusy] = useState(false);
+  const [jobPlanFetchId, setJobPlanFetchId] = useState(null); // row currently being pulled
   const [estSaving, setEstSaving] = useState(false);
   const [estSendingClient, setEstSendingClient] = useState(false);
   const [estSaveMsg, setEstSaveMsg] = useState('');
@@ -333,6 +339,52 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     r.readAsDataURL(file);
   });
 
+  // UPLOAD_PICKER — validate + append files from any source (picker, or attach-from-job).
+  // Per-file rejects are surfaced (copies the batch-failure spirit of NotesPhotosTab: keep
+  // the good ones, name the bad ones). 4.5MB cap keeps each within the estimator's vision limit.
+  const MAX_ATTACH_MB = 4.5;
+  const addEstFiles = (fileList) => {
+    const incoming = Array.from(fileList || []).filter(Boolean);
+    if (!incoming.length) return;
+    const good = []; const errs = [];
+    for (const f of incoming) {
+      const type = f.type || '';
+      const isImg = type.startsWith('image/');
+      const isPdf = type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+      if (!isImg && !isPdf) { errs.push(`${f.name || 'file'}: not an image or PDF`); continue; }
+      if (f.size > MAX_ATTACH_MB * 1024 * 1024) { errs.push(`${f.name || 'file'}: too large (max ${MAX_ATTACH_MB}MB)`); continue; }
+      good.push(f);
+    }
+    if (good.length) setEstFiles(prev => [...prev, ...good]);
+    setAttachError(errs.length ? errs.join(' · ') : null);
+  };
+
+  const removeEstFile = (idx) => setEstFiles(prev => prev.filter((_, i) => i !== idx));
+
+  // Attach-from-job — list the job's saved floor plans, then pull the app's own stored PDF
+  // straight into the attach set (no export/re-import). Generated-on-scan PDFs live in floor_plans.
+  const toggleJobPlans = async () => {
+    const next = !jobPlansOpen;
+    setJobPlansOpen(next);
+    if (next && jobPlans === null) {
+      setJobPlansBusy(true);
+      const res = await sbLoadFloorPlansForJob(job.id);
+      setJobPlans(res.ok ? res.data : []);
+      if (!res.ok) setAttachError(`Couldn't load this job's floor plans: ${res.error}`);
+      setJobPlansBusy(false);
+    }
+  };
+  const attachJobPlan = async (fp) => {
+    setJobPlanFetchId(fp.id);
+    setAttachError(null);
+    const res = await sbFetchFloorPlanPdf(fp);
+    setJobPlanFetchId(null);
+    if (!res.ok) { setAttachError(`Couldn't attach ${fp.name}: ${res.error}`); return; }
+    const file = new File([res.blob], res.filename, { type: 'application/pdf' });
+    addEstFiles([file]);
+    setJobPlansOpen(false);
+  };
+
   // Run the UNCHANGED pricing path with the current conversation + a final user nudge.
   // Fired by the [scopeComplete] effect once the scope interview is satisfied/forced.
   // The conversation already carries the confirmed scope answers, so the priced draft
@@ -369,24 +421,30 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
 
   const sendEstimatorMessage = async (msgOverride, fileOverride, modeOverride) => {
     const text = msgOverride || estInput.trim();
-    if ((!text && !fileOverride && !estFile) || estLoading) return;
+    // UPLOAD_PICKER — attach set: an explicit override (single File or File[]) wins; else estFiles.
+    const filesToUse = fileOverride
+      ? (Array.isArray(fileOverride) ? fileOverride : [fileOverride])
+      : estFiles;
+    if ((!text && !filesToUse.length) || estLoading) return;
     let userContent;
-    const fileToUse = fileOverride || estFile;
-    if (fileToUse) {
-      const b64 = await readFileAsBase64(fileToUse);
-      const mediaType = fileToUse.type || 'application/pdf';
-      const isImage = mediaType.startsWith('image/');
-      userContent = [
-        ...(text ? [{ type: 'text', text }] : []),
-        isImage
+    if (filesToUse.length) {
+      const blocks = [];
+      for (const f of filesToUse) {
+        const b64 = await readFileAsBase64(f);
+        const mediaType = f.type || 'application/pdf';
+        const isImage = mediaType.startsWith('image/');
+        blocks.push(isImage
           ? { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } }
-          : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
-      ];
+          : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
+      }
+      userContent = [...(text ? [{ type: 'text', text }] : []), ...blocks];
     } else { userContent = text; }
     const newMessages = [...estMessages, { role: 'user', content: userContent }];
-    const displayMessages = [...estMessages, { role: 'user', content: text || (estFileName || '[File attached]'), _hasFile: !!fileToUse, _fileName: fileToUse?.name }];
+    const fileLabel = filesToUse.length === 1 ? filesToUse[0].name
+      : filesToUse.length ? `${filesToUse.length} files attached` : '';
+    const displayMessages = [...estMessages, { role: 'user', content: text || fileLabel || '[File attached]', _hasFile: filesToUse.length > 0, _fileName: fileLabel }];
     setEstMessages(displayMessages);
-    setEstInput(''); setEstFile(null); setEstFileName('');
+    setEstInput(''); setEstFiles([]); setAttachError(null);
     setEstLoading(true);
     // Strip UI-only metadata fields before sending — _hasFile/_fileName are display state only
     const apiMessages = newMessages.map(({ role, content }) => ({ role, content }));
@@ -522,7 +580,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       setEstMessages([{ role: 'user', content: prompt }]);
     } else {
       setConfiguratorPath(false);
-      await sendEstimatorMessage(prompt, estFile || null);
+      await sendEstimatorMessage(prompt, estFiles.length ? estFiles : null);
     }
   };
 
@@ -1016,13 +1074,50 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
 
           <div className="fg"><label className="flbl">Special Notes</label><textarea className="finp fta" rows={2} value={estForm.special} onChange={e => setEstForm(p => ({ ...p, special: e.target.value }))} placeholder="High-end finishes, specific products, client requests, existing conditions…" /></div>
           <div className="fg">
-            <label className="flbl">Floor Plan / Photos <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>(optional — PDF or image)</span></label>
+            <label className="flbl">Floor Plan / Photos <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>(optional — PDFs or images, attach several)</span></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: CREAM, border: `1px dashed ${GOLD}`, borderRadius: 4, padding: '10px 14px', cursor: 'pointer' }}>
-              <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEstFile(f); setEstFileName(f.name); } }} />
+              {/* accept image/*,.pdf + NO capture → iOS presents the full sheet incl. "Choose Files" */}
+              <input type="file" accept="image/*,.pdf" multiple style={{ display: 'none' }} onChange={e => { addEstFiles(e.target.files); e.target.value = ''; }} />
               <span style={{ width: 16, height: 16, color: GOLD }}>{Ic.plus}</span>
-              <span style={{ fontSize: 13, color: estFileName ? NAV : 'var(--text-subtle)' }}>{estFileName || 'Attach floor plan or photo'}</span>
-              {estFileName && <button onClick={e => { e.preventDefault(); setEstFile(null); setEstFileName(''); }} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 16 }}>×</button>}
+              <span style={{ fontSize: 13, color: 'var(--text-subtle)' }}>Attach floor plans or photos</span>
             </label>
+            {/* Attach from this job — the app's own saved floor-plan scans, no export/re-import */}
+            <button type="button" onClick={toggleJobPlans} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, background: 'transparent', border: 'none', color: NAV, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+              <span style={{ width: 14, height: 14, color: GOLD }}>{Ic.folder}</span>
+              Attach from this job’s scans
+            </button>
+            {jobPlansOpen && (
+              <div style={{ marginTop: 6, border: `1px solid ${BORDER}`, borderRadius: 6, background: '#fff', overflow: 'hidden' }}>
+                {jobPlansBusy ? (
+                  <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-subtle)' }}>Loading floor plans…</div>
+                ) : (jobPlans && jobPlans.length) ? jobPlans.map(fp => (
+                  <div key={fp.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: `1px solid ${BORDER}` }}>
+                    <span style={{ width: 15, height: 15, color: GOLD, flexShrink: 0 }}>{Ic.doc}</span>
+                    <span style={{ flex: 1, fontSize: 12, color: NAV, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fp.name}</span>
+                    <button type="button" disabled={jobPlanFetchId === fp.id} onClick={() => attachJobPlan(fp)} style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 5, padding: '4px 10px', fontSize: 12, fontWeight: 600, color: NAV, cursor: 'pointer' }}>{jobPlanFetchId === fp.id ? 'Attaching…' : 'Attach'}</button>
+                  </div>
+                )) : (
+                  <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-subtle)' }}>No saved floor plans on this job yet — scan a room from the Scanner tab.</div>
+                )}
+              </div>
+            )}
+            {estFiles.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                {estFiles.map((f, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: NAV, background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 5, padding: '5px 10px' }}>
+                    <span style={{ width: 14, height: 14, color: GOLD, flexShrink: 0 }}>{Ic.doc}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                    <button type="button" onClick={() => removeEstFile(i)} style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {attachError && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12, color: 'var(--red-text-strong)', background: 'var(--red-bg)', border: '1px solid var(--red-text)', borderRadius: 6, padding: '6px 10px' }}>
+                <span>⚠ {attachError}</span>
+                <button type="button" onClick={() => setAttachError(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--red-text-strong)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+              </div>
+            )}
           </div>
           {(() => { const canGen = !!(estForm.scope.trim() && Number(interviewSf) > 0); return (
           <button className={`btn ${canGen ? 'btn-navy' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={startEstimate} disabled={!canGen || estLoading}>
@@ -1138,12 +1233,6 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             )}
           </div>
           )}
-          {estFileName && (
-            <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '6px 10px', fontSize: 12, color: NAV, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: GOLD }}>{Ic.folder}</span>{estFileName}
-              <button onClick={() => { setEstFile(null); setEstFileName(''); }} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
-            </div>
-          )}
           {scopeInterviewActive && !scopeComplete && (
             <ScopeConfigurator
               jobId={job.id}
@@ -1162,13 +1251,31 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           {/* Chat input — hidden while the configurator is capturing scope (it IS the input);
               returns for follow-ups on the priced estimate. */}
           {(!scopeInterviewActive || scopeComplete) && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
-              <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { setEstFile(f); setEstFileName(f.name); } }} />
-              <span style={{ width: 16, height: 16, color: 'var(--text-subtle)' }}>{Ic.plus}</span>
-            </label>
-            <input className="finp" style={{ flex: 1, margin: 0 }} value={estInput} onChange={e => setEstInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendEstimatorMessage()} placeholder="Ask a follow-up — adjust scope, change materials, add a trade…" disabled={estLoading} />
-            <button className="btn btn-navy" onClick={() => sendEstimatorMessage()} disabled={estLoading || (!estInput.trim() && !estFile)}>Send</button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {estFiles.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {estFiles.map((f, i) => (
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: NAV, background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 5, padding: '4px 8px', maxWidth: 220 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                    <button type="button" onClick={() => removeEstFile(i)} style={{ background: 'transparent', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {attachError && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--red-text-strong)', background: 'var(--red-bg)', border: '1px solid var(--red-text)', borderRadius: 6, padding: '6px 10px' }}>
+                <span>⚠ {attachError}</span>
+                <button type="button" onClick={() => setAttachError(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--red-text-strong)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
+                <input type="file" accept="image/*,.pdf" multiple style={{ display: 'none' }} onChange={e => { addEstFiles(e.target.files); e.target.value = ''; }} />
+                <span style={{ width: 16, height: 16, color: 'var(--text-subtle)' }}>{Ic.plus}</span>
+              </label>
+              <input className="finp" style={{ flex: 1, margin: 0 }} value={estInput} onChange={e => setEstInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendEstimatorMessage()} placeholder="Ask a follow-up — adjust scope, change materials, add a trade…" disabled={estLoading} />
+              <button className="btn btn-navy" onClick={() => sendEstimatorMessage()} disabled={estLoading || (!estInput.trim() && !estFiles.length)}>Send</button>
+            </div>
           </div>
           )}
         </div>
