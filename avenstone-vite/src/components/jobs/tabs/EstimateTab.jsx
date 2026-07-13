@@ -69,6 +69,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
 
   // Gap batch-ask: keyed by gap_key → entered rate string (pre-filled from regional_rate)
   const [gapRates, setGapRates] = useState({});
+  // Phase 5 — per-gap pricing mode: 'unit' ($/SF, $/EA…) or 'ls' (flat lump sum). Default 'unit'.
+  const [gapModes, setGapModes] = useState({});
   // B2.3 learn loop: labor gaps the rep just applied — offered for Rate Book save
   const [learnCandidates, setLearnCandidates] = useState([]);
   const [learnSaveState, setLearnSaveState] = useState(''); // '' | 'saving' | 'saved' | 'error'
@@ -533,22 +535,29 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     const mutated = pricedScope.map(line => {
       if (line.source_label !== 'regional_avg' || !line.gap_key) return line;
       const entered = gapRates[line.gap_key];
-      const rate = parseFloat(entered);
-      if (!entered || isNaN(rate) || rate <= 0) return line; // leave as TBD
+      const val = parseFloat(entered);
+      if (!entered || isNaN(val) || val <= 0) return line; // leave as TBD
+      // Phase 5 — LUMP SUM: the entered value IS the whole line total. Shape matches the existing
+      // LS render (quantity=1, unit='LS', unit_price=lump). rate_provenance='lump_sum' is an
+      // EXPLICIT marker; and an LS gap is NEVER pushed to learnCandidates → it can't reach
+      // sbInsertRateBookLabor and pollute per-unit rate learning (the Rate Book guard).
+      if (gapModes[line.gap_key] === 'ls') {
+        return { ...line, quantity: 1, unit: 'LS', unit_price: val, amount: Math.round(val * 100) / 100, source_label: 'user_entered', rate_provenance: 'lump_sum' };
+      }
       // S7 provenance — derived from the entered value vs the cited KC anchor.
       // No anchor → rep_entered. Anchor + same number (numeric) → accepted. Else → override.
       const anchor = line.regional_rate;
       const rate_provenance = (anchor == null)
         ? 'rep_entered'
-        : (Math.abs(rate - Number(anchor)) < 0.005 ? 'rep_accepted_anchor' : 'rep_override');
+        : (Math.abs(val - Number(anchor)) < 0.005 ? 'rep_accepted_anchor' : 'rep_override');
       // B2.3 learn hook — collect filled labor gaps for the save offer (no persist here).
       // S8: carry the provenance tag so the rate_book write records how the rate was set.
       if (line.category === 'labor') {
-        candidates.push({ gap_key: line.gap_key, trade: line.trade, line_item: line.line_item, unit: line.unit, rate, source: rate_provenance });
+        candidates.push({ gap_key: line.gap_key, trade: line.trade, line_item: line.line_item, unit: line.unit, rate: val, source: rate_provenance });
       }
       // source_label stays 'user_entered' for the pricing/badge layer (unchanged readers);
       // rate_provenance is the new carrier that survives to commit (S9).
-      return { ...line, unit_price: rate, amount: Math.round(rate * line.quantity * 100) / 100, source_label: 'user_entered', rate_provenance };
+      return { ...line, unit_price: val, amount: Math.round(val * line.quantity * 100) / 100, source_label: 'user_entered', rate_provenance };
     });
     setPricedScope(mutated);
     setLearnCandidates(candidates);
@@ -1034,7 +1043,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
               {(() => {
                 const gaps = pricedScope.filter(l => l.source_label === 'regional_avg' && l.gap_key);
                 return gaps.length > 0
-                  ? <GapBatchAsk gaps={gaps} gapRates={gapRates} setGapRates={setGapRates} onApply={applyGapRates} />
+                  ? <GapBatchAsk gaps={gaps} gapRates={gapRates} setGapRates={setGapRates} gapModes={gapModes} setGapModes={setGapModes} onApply={applyGapRates} />
                   : null;
               })()}
               {learnCandidates.length > 0 && (
