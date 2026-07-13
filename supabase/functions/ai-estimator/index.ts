@@ -742,6 +742,11 @@ Trim/baseboard: +10% | Insulation batt: +8% | Framing lumber: +10%
 
 BATHROOM RULES: use moisture_resistant (not hang/combined) for any wet-area drywall.
 
+CUSTOM SIZING → ALLOWANCE (do not guess a price): when a size/spec is 'custom' or left unstated for
+a priced item (e.g. vanity_size_in=custom, a custom vanity top), emit that line as an ALLOWANCE:
+begin the description with "ALLOWANCE — pending bid: " and add the item to "flags". Never invent a
+firm price for a custom-sized item — it is bid on site.
+
 EXISTING-CONDITIONS / DEMO DISCIPLINE (critical — do not invent existing conditions):
 A demo, tearout, or removal line requires a STATED existing condition. The scope may include
 existing_* facts (e.g. existing_tub_shower, existing_wall_finish, existing_floor_finish,
