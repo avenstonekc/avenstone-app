@@ -633,6 +633,9 @@ async function handleScopePlan(
     fired_modules: fired.map((m) => m.module_key),
     scope_complete: open.length === 0,
     answers: persistAnswers,
+    // Phase 3 — field_keys hidden by the current answers, so the configurator can delete any
+    // orphaned persisted answer (e.g. shower_entry answered, then tub_shower_config→combo).
+    suppressed: [...suppressed],
   });
 }
 

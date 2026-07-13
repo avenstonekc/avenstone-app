@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { sbScopePlan, sbLoadScopeOptionData, sbLoadScopeAnswers } from '../../../lib/supabase';
+import { sbScopePlan, sbLoadScopeOptionData, sbLoadScopeAnswers, sbDeleteScopeAnswers } from '../../../lib/supabase';
 
 // ESTIMATE_CONFIGURATOR S2 — tap-through scope configurator. One question per screen; cards where
 // option images exist, big controls where they don't; a chip strip to jump back; re-fetches the
@@ -69,10 +69,21 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
     if (!res.ok) { setError(res.error || 'Could not update scope'); return; }
     setError(null);
     setPlan(res.data);
+    // Phase 3 — orphan cleanup: any answered field this change now suppresses is removed locally
+    // AND deleted from the store (e.g. answer shower_entry, then flip tub_shower_config to combo).
+    const supp = new Set((res.data.suppressed || []).map(k => String(k).toLowerCase()));
+    const orphans = Object.keys(next).filter(k => supp.has(k.toLowerCase()));
+    let effective = next;
+    if (orphans.length) {
+      effective = { ...next };
+      orphans.forEach(k => delete effective[k]);
+      setAnswers(effective);
+      if (jobId) sbDeleteScopeAnswers(jobId, orphans);
+    }
     // Persist just the field we answered — server-derived answer (option_key + trade, rep_card).
     const persisted = (res.data.answers || []).find(a => a.field_key === fieldKey);
     if (persisted && persistAnswers) persistAnswers([persisted]);
-    if (res.data.scope_complete) { onComplete?.(next); setActive(null); return; }
+    if (res.data.scope_complete) { onComplete?.(effective); setActive(null); return; }
     const open = res.data.open_field_keys || [];
     // Advance to the next still-open field (prefer one after the one just answered).
     setActive(open.find(k => k !== fieldKey) || open[0] || null);

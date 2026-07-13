@@ -8,6 +8,7 @@ import { markLifecyclePhases } from './lifecycle.js';
 import { getTemplateItems } from './siteVisitTemplates.js';
 import { captureTradeActualsForJob } from './tradeActuals.js';
 import { normalizeFloorPlan } from './floorPlan/normalize.js';
+import { computeSuppressedFieldKeys } from './scopeSuppress.js';
 import { markupRateForCategory, normalizeCategoryKey, DEFAULT_CATEGORY_CONFIG } from './markupConfig.js';
 import { canonicalizeTrade } from './tradeUtils.js';
 
@@ -2614,6 +2615,37 @@ export async function sbLoadScopeAnswers(jobId) {
   }
 }
 
+// CONFIGURATOR_POLISH Phase 3 — load suppression rows (platform + tenant) for a project type.
+export async function sbLoadSuppressions(projectType) {
+  try {
+    if (!projectType) return { ok: true, error: null, data: [] };
+    const { data, error } = await sb.from('scope_option_suppressions')
+      .select('gate_field_key, gate_option_key, suppressed_field_key')
+      .eq('active', true).eq('project_type', String(projectType).toLowerCase())
+      .or(`tenant_id.is.null,tenant_id.eq.${AV_TENANT}`);
+    if (error) return { ok: false, error: error.message, data: [] };
+    return { ok: true, error: null, data: data || [] };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbLoadSuppressions failed', data: [] };
+  }
+}
+
+// CONFIGURATOR_POLISH Phase 3 — delete job_scope_answers rows for the given field_keys on a job
+// (orphan cleanup when a gate answer changes and suppresses fields). Staff RLS. { ok, error, data }.
+export async function sbDeleteScopeAnswers(jobId, fieldKeys) {
+  try {
+    const keys = (fieldKeys || []).filter(Boolean);
+    if (!jobId || !keys.length) return { ok: true, error: null, data: [] };
+    const { data, error } = await sb.from('job_scope_answers')
+      .delete().eq('tenant_id', AV_TENANT).eq('job_id', jobId).in('field_key', keys)
+      .select('id');
+    if (error) return { ok: false, error: error.message, data: null };
+    return { ok: true, error: null, data: data || [] };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbDeleteScopeAnswers failed', data: null };
+  }
+}
+
 // SCOPE_TO_ESTIMATE Phase D — assemble a per-sub work packet: CONFIRMED job_scope_answers for a
 // job, joined room × option × bound image (scope_option_images), filtered to one trade. Trade-NULL
 // confirmed answers are NOT dropped — they go to the `unassigned` bucket so the packet can flag
@@ -2656,10 +2688,16 @@ export async function sbBuildSubWorkPacket(jobId, trade) {
     }
     const imgFor = (pt, fk, ok) => (ok == null ? null : (images[imgKey(pt, fk, ok)] ?? null));
 
+    // Phase 3 defensive layer — exclude answers whose field is suppressed under the current
+    // answers (a gate answer changed and orphaned this row). Belt to the configurator's braces.
+    const suppRowsArr = await Promise.all(projectTypes.map(pt => sbLoadSuppressions(pt)));
+    const suppressed = computeSuppressedFieldKeys(answers, suppRowsArr.flatMap(r => (r.ok ? r.data : [])));
+
     // Group trade-matched picks by room; collect trade-NULL picks into the Unassigned bucket.
     const tradeRooms = new Map();
     const unassigned = [];
     for (const a of answers) {
+      if (suppressed.has(String(a.field_key).toLowerCase())) continue; // suppressed → not in any packet
       const room = roomById.get(a.room_id);
       const roomLabel = room?.label || 'Room';
       const pt = roomLabel.toLowerCase();
