@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos } from '../../../lib/supabase';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
@@ -52,6 +52,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [jobPlansOpen, setJobPlansOpen] = useState(false);
   const [jobPlansBusy, setJobPlansBusy] = useState(false);
   const [jobPlanFetchId, setJobPlanFetchId] = useState(null); // row currently being pulled
+  const [jobPhotos, setJobPhotos] = useState(null); // job image files (attach-from-job Photos section)
+  const [photoSel, setPhotoSel] = useState(() => new Set()); // selected photo ids
+  const [photoAttachBusy, setPhotoAttachBusy] = useState(false);
+  const [photoShowAll, setPhotoShowAll] = useState(false);
   const [estSaving, setEstSaving] = useState(false);
   const [estSendingClient, setEstSendingClient] = useState(false);
   const [estSaveMsg, setEstSaveMsg] = useState('');
@@ -361,16 +365,47 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
 
   const removeEstFile = (idx) => setEstFiles(prev => prev.filter((_, i) => i !== idx));
 
-  // Attach-from-job — list the job's saved floor plans, then pull the app's own stored PDF
-  // straight into the attach set (no export/re-import). Generated-on-scan PDFs live in floor_plans.
+  // Downscale an oversized image blob rather than reject it — these are estimator VISION
+  // context, not archival copies. Canvas re-encode to JPEG with the longest edge capped at
+  // ~1600px. On iOS WKWebView this also transparently transcodes HEIC (Safari can decode it).
+  const DOWNSCALE_MAX_EDGE = 1600;
+  const downscaleImageBlob = (blob, filename) => new Promise((resolve) => {
+    try {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(blob);
+      img.onload = () => {
+        const longest = Math.max(img.width, img.height);
+        const scale = longest > DOWNSCALE_MAX_EDGE ? DOWNSCALE_MAX_EDGE / longest : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((out) => {
+          URL.revokeObjectURL(objUrl);
+          const base = (filename || 'photo').replace(/\.(heic|heif|png|gif|webp)$/i, '.jpg');
+          resolve(out ? new File([out], /\.jpe?g$/i.test(base) ? base : `${base}.jpg`, { type: 'image/jpeg' }) : null);
+        }, 'image/jpeg', 0.85);
+      };
+      img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(null); };
+      img.src = objUrl;
+    } catch { resolve(null); }
+  });
+
+  // Attach-from-job — one panel, two sections: saved floor plans (stored PDFs) + the job's
+  // photos. Both pull into estFiles the same way (fetch → File → chips). No export/re-import.
   const toggleJobPlans = async () => {
     const next = !jobPlansOpen;
     setJobPlansOpen(next);
     if (next && jobPlans === null) {
       setJobPlansBusy(true);
-      const res = await sbLoadFloorPlansForJob(job.id);
-      setJobPlans(res.ok ? res.data : []);
-      if (!res.ok) setAttachError(`Couldn't load this job's floor plans: ${res.error}`);
+      const [planRes, photoRes] = await Promise.all([
+        sbLoadFloorPlansForJob(job.id),
+        sbLoadJobPhotos(job.id),
+      ]);
+      setJobPlans(planRes.ok ? planRes.data : []);
+      setJobPhotos(photoRes.ok ? photoRes.data : []);
+      if (!planRes.ok) setAttachError(`Couldn't load this job's floor plans: ${planRes.error}`);
+      else if (!photoRes.ok) setAttachError(`Couldn't load this job's photos: ${photoRes.error}`);
       setJobPlansBusy(false);
     }
   };
@@ -383,6 +418,38 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     const file = new File([res.blob], res.filename, { type: 'application/pdf' });
     addEstFiles([file]);
     setJobPlansOpen(false);
+  };
+
+  const togglePhotoSel = (id) => setPhotoSel(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  // Fetch each selected photo → File (downscale if over the vision cap) → estFiles.
+  const attachSelectedPhotos = async () => {
+    if (!photoSel.size) return;
+    setPhotoAttachBusy(true);
+    setAttachError(null);
+    const picked = (jobPhotos || []).filter(p => photoSel.has(p.id));
+    const files = []; const errs = [];
+    for (const p of picked) {
+      try {
+        const resp = await fetch(p.url);
+        if (!resp.ok) { errs.push(`${p.name}: fetch failed`); continue; }
+        let blob = await resp.blob();
+        let file = new File([blob], p.name, { type: blob.type || p.mime_type || 'image/jpeg' });
+        if (file.size > MAX_ATTACH_MB * 1024 * 1024) {
+          const scaled = await downscaleImageBlob(blob, p.name);
+          if (scaled) file = scaled;
+        }
+        files.push(file);
+      } catch (e) { errs.push(`${p.name}: ${e?.message || 'error'}`); }
+    }
+    if (files.length) addEstFiles(files); // addEstFiles applies the final per-file validation
+    if (errs.length) setAttachError(errs.join(' · '));
+    setPhotoSel(new Set());
+    setPhotoAttachBusy(false);
+    if (files.length) setJobPlansOpen(false);
   };
 
   // Run the UNCHANGED pricing path with the current conversation + a final user nudge.
@@ -1081,23 +1148,58 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
               <span style={{ width: 16, height: 16, color: GOLD }}>{Ic.plus}</span>
               <span style={{ fontSize: 13, color: 'var(--text-subtle)' }}>Attach floor plans or photos</span>
             </label>
-            {/* Attach from this job — the app's own saved floor-plan scans, no export/re-import */}
+            {/* Attach from this job — the app's own saved scans AND photos, no export/re-import */}
             <button type="button" onClick={toggleJobPlans} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, background: 'transparent', border: 'none', color: NAV, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
               <span style={{ width: 14, height: 14, color: GOLD }}>{Ic.folder}</span>
-              Attach from this job’s scans
+              Attach from this job
             </button>
             {jobPlansOpen && (
               <div style={{ marginTop: 6, border: `1px solid ${BORDER}`, borderRadius: 6, background: '#fff', overflow: 'hidden' }}>
                 {jobPlansBusy ? (
-                  <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-subtle)' }}>Loading floor plans…</div>
-                ) : (jobPlans && jobPlans.length) ? jobPlans.map(fp => (
-                  <div key={fp.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: `1px solid ${BORDER}` }}>
-                    <span style={{ width: 15, height: 15, color: GOLD, flexShrink: 0 }}>{Ic.doc}</span>
-                    <span style={{ flex: 1, fontSize: 12, color: NAV, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fp.name}</span>
-                    <button type="button" disabled={jobPlanFetchId === fp.id} onClick={() => attachJobPlan(fp)} style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 5, padding: '4px 10px', fontSize: 12, fontWeight: 600, color: NAV, cursor: 'pointer' }}>{jobPlanFetchId === fp.id ? 'Attaching…' : 'Attach'}</button>
-                  </div>
-                )) : (
-                  <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-subtle)' }}>No saved floor plans on this job yet — scan a room from the Scanner tab.</div>
+                  <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-subtle)' }}>Loading…</div>
+                ) : (
+                  <>
+                    {/* Section: Scans & floor plans */}
+                    <div style={{ padding: '7px 12px', fontSize: 11, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-subtle)', background: CREAM, borderBottom: `1px solid ${BORDER}` }}>Scans & floor plans</div>
+                    {(jobPlans && jobPlans.length) ? jobPlans.map(fp => (
+                      <div key={fp.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: `1px solid ${BORDER}` }}>
+                        <span style={{ width: 15, height: 15, color: GOLD, flexShrink: 0 }}>{Ic.doc}</span>
+                        <span style={{ flex: 1, fontSize: 12, color: NAV, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fp.name}</span>
+                        <button type="button" disabled={jobPlanFetchId === fp.id} onClick={() => attachJobPlan(fp)} style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 5, padding: '4px 10px', fontSize: 12, fontWeight: 600, color: NAV, cursor: 'pointer' }}>{jobPlanFetchId === fp.id ? 'Attaching…' : 'Attach'}</button>
+                      </div>
+                    )) : (
+                      <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-subtle)', borderBottom: `1px solid ${BORDER}` }}>No saved floor plans yet — scan a room from the Scanner tab.</div>
+                    )}
+
+                    {/* Section: Photos — thumbnail grid, multi-select */}
+                    <div style={{ padding: '7px 12px', fontSize: 11, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--text-subtle)', background: CREAM, borderBottom: `1px solid ${BORDER}` }}>Photos</div>
+                    {(jobPhotos && jobPhotos.length) ? (
+                      <div style={{ padding: 10 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8 }}>
+                          {(photoShowAll ? jobPhotos : jobPhotos.slice(0, 12)).map(p => {
+                            const sel = photoSel.has(p.id);
+                            return (
+                              <button key={p.id} type="button" onClick={() => togglePhotoSel(p.id)} title={p.name}
+                                style={{ position: 'relative', padding: 0, border: sel ? `2px solid ${GOLD}` : `1px solid ${BORDER}`, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', aspectRatio: '1', background: CREAM }}>
+                                <img src={p.url} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: sel ? 0.85 : 1 }} />
+                                {sel && <span style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: '50%', background: GOLD, color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✓</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {jobPhotos.length > 12 && !photoShowAll && (
+                          <button type="button" onClick={() => setPhotoShowAll(true)} style={{ marginTop: 8, background: 'transparent', border: 'none', color: NAV, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>Show all {jobPhotos.length} photos</button>
+                        )}
+                        {photoSel.size > 0 && (
+                          <button type="button" disabled={photoAttachBusy} onClick={attachSelectedPhotos} className="btn btn-navy" style={{ marginTop: 10, width: '100%', fontSize: 13 }}>
+                            {photoAttachBusy ? 'Attaching…' : `Attach ${photoSel.size} photo${photoSel.size > 1 ? 's' : ''}`}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-subtle)' }}>No photos on this job yet.</div>
+                    )}
+                  </>
                 )}
               </div>
             )}
