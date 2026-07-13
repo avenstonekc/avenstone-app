@@ -4213,6 +4213,63 @@ export type Database = {
           },
         ]
       }
+      proposals: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          job_id: string
+          pdf_path: string | null
+          sent_at: string | null
+          status: string
+          superseded_by: string | null
+          tenant_id: string
+          total: number | null
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          job_id: string
+          pdf_path?: string | null
+          sent_at?: string | null
+          status?: string
+          superseded_by?: string | null
+          tenant_id: string
+          total?: number | null
+          version: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          job_id?: string
+          pdf_path?: string | null
+          sent_at?: string | null
+          status?: string
+          superseded_by?: string | null
+          tenant_id?: string
+          total?: number | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proposals_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proposals_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "proposals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       push_subscriptions: {
         Row: {
           apns_token: string | null
@@ -4868,9 +4925,11 @@ export type Database = {
           created_at: string
           field_key: string
           field_type: string
+          helper: string | null
           id: string
           is_selection: boolean
           money_risk_rank: number
+          option_labels: Json | null
           options: Json | null
           project_type: string
           question: string
@@ -4884,9 +4943,11 @@ export type Database = {
           created_at?: string
           field_key: string
           field_type: string
+          helper?: string | null
           id?: string
           is_selection?: boolean
           money_risk_rank?: number
+          option_labels?: Json | null
           options?: Json | null
           project_type: string
           question: string
@@ -4900,9 +4961,11 @@ export type Database = {
           created_at?: string
           field_key?: string
           field_type?: string
+          helper?: string | null
           id?: string
           is_selection?: boolean
           money_risk_rank?: number
+          option_labels?: Json | null
           options?: Json | null
           project_type?: string
           question?: string
@@ -5045,6 +5108,47 @@ export type Database = {
           storage_path?: string
         }
         Relationships: []
+      }
+      scope_option_suppressions: {
+        Row: {
+          active: boolean
+          created_at: string
+          gate_field_key: string
+          gate_option_key: string
+          id: string
+          project_type: string
+          suppressed_field_key: string
+          tenant_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          gate_field_key: string
+          gate_option_key: string
+          id?: string
+          project_type: string
+          suppressed_field_key: string
+          tenant_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          gate_field_key?: string
+          gate_option_key?: string
+          id?: string
+          project_type?: string
+          suppressed_field_key?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scope_option_suppressions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scope_option_trades: {
         Row: {
