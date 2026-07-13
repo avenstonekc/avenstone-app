@@ -2043,9 +2043,56 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode,
   } catch (normEx) {
     console.warn('[normalize-scan] inline normalize threw:', normEx);
   }
+  // TAKEOFF_BRIDGE Phase 1 — create-or-link a job_rooms row per scan room (idempotent; non-fatal).
+  try {
+    const lr = await sbLinkScanRoomsToJobRooms(jobId, data.id, rooms);
+    if (!lr.ok) console.warn('[scan-room-link] failed:', lr.error);
+  } catch (linkEx) { console.warn('[scan-room-link] threw:', linkEx); }
   // Attach normalized_geometry to in-memory record so callers (e.g. sbCreateFloorPlan) can copy it
   return { ok: true, error: null, data: normGeom ? { ...data, normalized_geometry: normGeom } : data };
 };
+
+// TAKEOFF_BRIDGE Phase 1 — create-or-link a job_rooms row per scan room, so the scan pipeline and
+// the answer store (job_rooms) share one room identity. Idempotent by CASE-INSENSITIVE LABEL:
+// a re-saved scan gets a new scan.id (→ new "${scanId}_${idx}" roomId), so we match on label and
+// UPDATE the existing room's scan_room_id instead of duplicating; a scan room whose label matches
+// an interview default room LINKS that row (no second "Bathroom"). Forward-only.
+// Edge cases: two scan rooms with the SAME label in one save → the first links/creates, the second
+// creates its own row (duplicate labels are legitimately separate rooms). A scan-linked interview
+// room keeps its original source (the link is scan_room_id, not a re-origin).
+// Returns { ok, error, data:{ linked, created } }.
+export async function sbLinkScanRoomsToJobRooms(jobId, scanId, rooms) {
+  try {
+    if (!jobId || !scanId || !Array.isArray(rooms) || !rooms.length) return { ok: true, error: null, data: { linked: 0, created: 0 } };
+    const { data: existing, error: selErr } = await sb.from('job_rooms')
+      .select('id, label, scan_room_id').eq('tenant_id', AV_TENANT).eq('job_id', jobId);
+    if (selErr) return { ok: false, error: selErr.message, data: null };
+    const norm = s => String(s || '').trim().toLowerCase();
+    const byLabel = new Map(); // norm(label) → existing job_rooms row (first wins)
+    for (const r of (existing || [])) if (!byLabel.has(norm(r.label))) byLabel.set(norm(r.label), r);
+    const usedThisPass = new Set(); // job_rooms ids already linked this save → don't link two scan rooms to one
+    let linked = 0, created = 0;
+    for (let idx = 0; idx < rooms.length; idx++) {
+      const label = rooms[idx]?.name || `Room ${idx + 1}`;
+      const roomId = `${scanId}_${idx}`;
+      const match = byLabel.get(norm(label));
+      if (match && !usedThisPass.has(match.id)) {
+        usedThisPass.add(match.id);
+        const { error: upErr } = await sb.from('job_rooms').update({ scan_room_id: roomId })
+          .eq('id', match.id).eq('tenant_id', AV_TENANT);
+        if (!upErr) linked++;
+      } else {
+        const { data: ins, error: insErr } = await sb.from('job_rooms')
+          .insert({ tenant_id: AV_TENANT, job_id: jobId, label, source: 'scan', scan_room_id: roomId })
+          .select('id').single();
+        if (!insErr && ins) { usedThisPass.add(ins.id); created++; }
+      }
+    }
+    return { ok: true, error: null, data: { linked, created } };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbLinkScanRoomsToJobRooms failed', data: null };
+  }
+}
 export const sbGetJobLidarScans = async jobId => {
   const { data } = await sb.from('job_lidar_scans').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
   return data || [];
