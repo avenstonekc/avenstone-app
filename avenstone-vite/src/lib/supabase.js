@@ -6219,6 +6219,36 @@ export async function sbLoadJobFiles(jobId, { category = null, subcategory = nul
 }
 
 /**
+ * Load a job's PHOTOS (images only) for the estimate attach-from-job picker.
+ * Source of truth is job_files (the legacy `photos` table is write-dead). Photos land
+ * in the public `job-photos` bucket; a stray image could sit in job-files/job-documents.
+ * Resolves a fetchable URL per image using EXISTING access paths only — getPublicUrl for
+ * the public bucket, sbSignJobFileUrl (7-day signed) otherwise. Newest first.
+ * Rep-facing internal surface → no client_visible filter (include everything).
+ * @returns {Promise<{ok, data: Array<{id,name,url,mime_type,created_at}>, error?}>}
+ */
+export async function sbLoadJobPhotos(jobId, { limit = 60 } = {}) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: [] };
+  const res = await sbLoadJobFiles(jobId, { limit: 200 });
+  if (!res.ok) return { ok: false, error: res.error, data: [] };
+  const imgs = (res.data || []).filter(f =>
+    (f.mime_type || '').startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(f.name || '')
+  ).slice(0, limit);
+  const out = [];
+  for (const f of imgs) {
+    let url = null;
+    if (f.storage_bucket === 'job-photos') {
+      url = sb.storage.from('job-photos').getPublicUrl(f.storage_path).data?.publicUrl || null;
+    } else {
+      const s = await sbSignJobFileUrl(f.id);
+      if (s.ok) url = s.url;
+    }
+    if (url) out.push({ id: f.id, name: f.name || 'Photo', url, mime_type: f.mime_type || 'image/jpeg', created_at: f.created_at });
+  }
+  return { ok: true, data: out };
+}
+
+/**
  * Search files for a job across name, category, subcategory, mime_type,
  * and receipt metadata (vendor, description, notes, amount) from job_transactions.
  * Returns { ok, data, error } — data items may include _receipt_meta for receipt files.
