@@ -105,11 +105,16 @@ export default function StructuredEstimate({ lines, loading, error }) {
     );
   }
 
+  // ESTIMATE_INTEGRITY Fix 3 — outside-scope lines render in a separate section, never in the subtotal.
+  const inScope  = lines.filter(l => !l.outside_scope);
+  const outScope = lines.filter(l => l.outside_scope);
+
   const groups = { labor: [], materials: [], allowances: [], general: [] };
-  for (const line of lines) groups[classify(line)].push(line);
+  for (const line of inScope) groups[classify(line)].push(line);
 
   const secTotal = sec => sec.reduce((s, l) => l.amount != null ? s + Number(l.amount) : s, 0);
   const grand    = Object.values(groups).reduce((s, sec) => s + secTotal(sec), 0);
+  const recTotal = secTotal(outScope);
 
   return (
     <div style={{ border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden' }}>
@@ -161,6 +166,25 @@ export default function StructuredEstimate({ lines, loading, error }) {
         </span>
         <span style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>{f$(grand)}</span>
       </div>
+
+      {/* Fix 3 — recommended items beyond the requested scope: shown, separated, NOT in the subtotal */}
+      {outScope.length > 0 && (
+        <>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            background: 'var(--warning-bg, #FEF3C7)', padding: '5px 12px', borderTop: `1px solid ${BORDER}`,
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#92400E', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+              Recommended — outside requested scope
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#92400E' }}>{f$(recTotal)}</span>
+          </div>
+          {outScope.map((line, i) => <LineRow key={`rec-${i}`} line={line} mob={mob} />)}
+          <div style={{ padding: '6px 12px', borderTop: `1px solid ${BORDER}`, background: 'var(--card-bg)', fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>
+            Not included in the subtotal above — add to scope only if the client approves.
+          </div>
+        </>
+      )}
     </div>
   );
 }

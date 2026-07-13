@@ -838,7 +838,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           line.category === 'materials' ? 'materials'
           : (line.category === 'general' && line.line_item === 'permit') ? 'permit'
           : 'labor';
-        const items = pricedScope.map(line => ({
+        // ESTIMATE_INTEGRITY Fix 3 — outside-scope (recommended) lines never enter the committed total.
+        const items = pricedScope.filter(line => !line.outside_scope).map(line => ({
           source: 'ai',
           trade: line.trade || 'GENERAL',
           category: resolveCategory(line),
