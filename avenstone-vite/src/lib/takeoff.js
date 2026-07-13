@@ -289,6 +289,15 @@ async function loadSyntheticRooms(jobId, roomType, coveredScanRoomIds) {
     if (ans.shower_width_in)       sd.shower_width_in = Number(ans.shower_width_in);
     if (ans.shower_length_in)      sd.shower_length_in = Number(ans.shower_length_in);
     if (ans.shower_wall_height_in) sd.shower_wall_height_in = Number(ans.shower_wall_height_in);
+    // 4d — tile_height (categorical) → shower wall-tile height inches, FALLBACK when the precise
+    // shower_wall_height_in dimension wasn't captured. Templates consume shower_wall_height_in →
+    // shower_wall_sf. ceiling→full ceiling height; standard≈84 (standard shower tile); wainscot≈48
+    // (half-wall). (The dispatch's ~48"/~42" are room-wainscot heights; takeoff consumes the SHOWER
+    // wall, so realistic shower heights are used — stated in the report.)
+    if (!sd.shower_wall_height_in && ans.tile_height) {
+      sd.shower_wall_height_in = ans.tile_height === 'ceiling' ? (Number(ans.wall_height_in) || 96)
+        : ans.tile_height === 'wainscot' ? 48 : 84;
+    }
     if (ans.tub_shower_config)     sd.shower_type = ans.tub_shower_config === 'tub_only' ? 'tub_only' : 'shower_only';
     if (ans.vanity_size_in && ans.vanity_size_in !== 'custom') sd.vanity_width = Number(ans.vanity_size_in);
     if (ans.countertop)            sd.vanity_top = ans.countertop;
