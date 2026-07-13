@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts } from '../../../lib/supabase';
 import { isScanArtifact, artifactToScanParams, SCAN_ARTIFACT_VERSION } from '../../../lib/scanArtifact';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
@@ -417,53 +417,68 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setPendingScanImport(null);
   };
 
-  // ESTIMATE_INTEGRITY Fix 1 — reset local chat/interview state (the pre-answer-store behavior).
+  // ESTIMATE_INTEGRITY Fix 1 / RESET_SCOPE — reset local chat/interview + committed views.
   const resetLocalEstimateState = () => {
     setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' });
     setInterviewTier('mid'); setPricedScope(null); setPricedMeta(null); setGapRates({}); setLearnCandidates([]);
     setLearnSaveState(''); setSessionPrefill(null); setEstimateScopeOrigin(null); setShowRaw(false);
     setScopeInterviewActive(false); setScopeComplete(false); setForceDraftedIncomplete(false);
     setConfiguratorPath(false);
+    // RESET_SCOPE — drop the committed line-item + proposal views so the cleared DB is reflected.
+    setLineItems([]); setLineItemsLoaded(false); setPropLineItems([]); setPropReady(false);
   };
 
-  // Open the "Start fresh" dialog — load current answer-store counts so the confirm states
-  // exactly what will be cleared vs protected.
+  // Open the "Start fresh" dialog — load the full estimate-stack counts so the confirm states
+  // exactly what will be cleared vs protected, in plain rows.
   const openResetDialog = async () => {
     setResetOpts({ scope: true, measured: false, client: false });
     let scopeCount = 0, measuredCount = 0, clientCount = 0;
     try {
-      const r = await sbLoadScopeAnswers(job.id);
-      for (const a of (r.ok ? r.data : [])) {
+      const [ans, stack] = await Promise.all([sbLoadScopeAnswers(job.id), sbEstimateStackCounts(job.id)]);
+      for (const a of (ans.ok ? ans.data : [])) {
         if (a.source === 'client_selected' || a.status === 'confirmed') clientCount++;
         else if (a.source === 'measured') measuredCount++;
         else scopeCount++;
       }
-    } catch { /* dialog still opens; counts default 0 */ }
-    setResetDlg({ scopeCount, measuredCount, clientCount });
+      setResetDlg({ scopeCount, measuredCount, clientCount, ...stack });
+    } catch {
+      setResetDlg({ scopeCount, measuredCount, clientCount, aiLines: 0, takeoffLines: 0, roomScopes: 0, hasDraft: false });
+    }
   };
 
+  // RESET_SCOPE — "this estimate never happened": clear the whole draft stack. Scope answers,
+  // committed line items (both ai:% + takeoff:%), takeoff scope tags, and the job_estimates draft
+  // always go (that IS the reset). Scan measurements stay unless ticked; client selections are
+  // protected behind the extra tick. Proposals are NOT touched — no send-state exists to tell a
+  // sent proposal from a draft (reported; a Kalin decision).
   const confirmReset = async () => {
     setResetBusy(true);
-    let cleared = 0;
+    let answersCleared = 0;
+    const parts = [];
     try {
-      const res = await sbClearScopeAnswers(job.id, {
-        includeScope: resetOpts.scope,
-        includeMeasured: resetOpts.measured,
-        includeClientConfirmed: resetOpts.client,
-      });
-      cleared = res.ok ? (res.data?.cleared || 0) : 0;
-      // Breadcrumb so a wiped store is traceable.
-      if (cleared > 0) {
-        const parts = [`cleared ${cleared} scope answer${cleared === 1 ? '' : 's'}`];
-        if (resetOpts.measured) parts.push('incl. scan measurements');
-        if (resetOpts.client) parts.push('incl. client selections');
-        sbNote(job.id, `Estimate reset — ${parts.join(', ')}.`, profile?.full_name || 'Staff').catch(() => {});
-      }
+      const [ansRes, liRes, rsRes] = await Promise.all([
+        sbClearScopeAnswers(job.id, { includeScope: true, includeMeasured: resetOpts.measured, includeClientConfirmed: resetOpts.client }),
+        sbClearCommittedLineItems(job.id),
+        sbClearJobRoomScopes(job.id),
+      ]);
+      await sbClearEstimateDraft(job.id);
+      answersCleared = ansRes.ok ? (ansRes.data?.cleared || 0) : 0;
+      const aiN = liRes.ok ? (liRes.data?.ai || 0) : 0;
+      const tkN = liRes.ok ? (liRes.data?.takeoff || 0) : 0;
+      const rsN = rsRes.ok ? (rsRes.data?.cleared || 0) : 0;
+      if (answersCleared) parts.push(`${answersCleared} scope answer${answersCleared === 1 ? '' : 's'}`);
+      if (aiN + tkN) parts.push(`${aiN + tkN} line item${aiN + tkN === 1 ? '' : 's'} (${aiN} ai · ${tkN} takeoff)`);
+      if (rsN) parts.push(`${rsN} takeoff scope tag${rsN === 1 ? '' : 's'}`);
+      parts.push('estimate draft');
+      if (resetOpts.measured) parts.push('scan measurements');
+      if (resetOpts.client) parts.push('client selections');
+      // Breadcrumb so a wiped stack is traceable.
+      sbNote(job.id, `Estimate reset — cleared ${parts.join(', ')}. (Proposals untouched — no send-state.)`, profile?.full_name || 'Staff').catch(() => {});
     } catch { /* fall through to local reset regardless */ }
     resetLocalEstimateState();
     setResetBusy(false);
     setResetDlg(null);
-    if (cleared > 0) setScanImportMsg(`Started fresh — ${cleared} stored answer${cleared === 1 ? '' : 's'} cleared. The interview will ask from zero.`);
+    setScanImportMsg(`Started fresh — cleared ${parts.join(', ') || 'the estimate draft'}. The interview will ask from zero.`);
   };
 
   // Downscale an oversized image blob rather than reject it — these are estimator VISION
@@ -1740,29 +1755,32 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         <div className="overlay" onClick={() => !resetBusy && setResetDlg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(10,31,68,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 16 }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 22, maxWidth: 440, width: '100%', boxShadow: '0 10px 40px rgba(10,31,68,0.3)' }}>
             <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 19, color: NAV, margin: '0 0 6px' }}>Start fresh estimate?</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-subtle)', margin: '0 0 14px' }}>
-              This clears the interview and the job's stored scope answers so a re-scope doesn't price the old scope. Nothing else on the job is touched.
+            <p style={{ fontSize: 13, color: 'var(--text-subtle)', margin: '0 0 12px' }}>
+              This makes it as if the estimate never happened — the whole draft stack is cleared so a re-scope can't inherit the old numbers.
             </p>
-            {(resetDlg.scopeCount + resetDlg.measuredCount + resetDlg.clientCount === 0) ? (
-              <p style={{ fontSize: 13, color: NAV, margin: '0 0 16px' }}>No stored scope answers on this job — this just resets the chat/interview.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: NAV, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={resetOpts.scope} onChange={e => setResetOpts(p => ({ ...p, scope: e.target.checked }))} style={{ marginTop: 2 }} />
-                  <span>Clear scope answers <strong>({resetDlg.scopeCount})</strong> — the interview/configurator picks.</span>
+            {/* Plain rows: what always clears */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, fontSize: 13, color: NAV }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Scope answers (interview/configurator)</span><strong>{resetDlg.scopeCount}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Committed line items (ai + takeoff)</span><strong>{resetDlg.aiLines + resetDlg.takeoffLines}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Takeoff scope tags</span><strong>{resetDlg.roomScopes}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Estimate chat draft</span><strong>{resetDlg.hasDraft ? 'yes' : '—'}</strong></div>
+            </div>
+            {/* Toggles: measurements (off) + protected client selections (extra tick) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12, borderTop: `1px solid ${BORDER}`, paddingTop: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: resetDlg.measuredCount ? NAV : 'var(--text-subtle)', cursor: resetDlg.measuredCount ? 'pointer' : 'default' }}>
+                <input type="checkbox" disabled={!resetDlg.measuredCount} checked={resetOpts.measured} onChange={e => setResetOpts(p => ({ ...p, measured: e.target.checked }))} style={{ marginTop: 2 }} />
+                <span>Also clear scan measurements <strong>({resetDlg.measuredCount})</strong> — floor SF / heights. Usually still true; off by default.</span>
+              </label>
+              {resetDlg.clientCount > 0 && (
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: '#92400E', background: 'var(--warning-bg, #FEF3C7)', border: '1px solid #FCD34D', borderRadius: 6, padding: '8px 10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={resetOpts.client} onChange={e => setResetOpts(p => ({ ...p, client: e.target.checked }))} style={{ marginTop: 2 }} />
+                  <span>⚠ Also clear <strong>{resetDlg.clientCount}</strong> confirmed client selection{resetDlg.clientCount === 1 ? '' : 's'} — the homeowner's own picks. Tick only if you mean to discard them.</span>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: resetDlg.measuredCount ? NAV : 'var(--text-subtle)', cursor: resetDlg.measuredCount ? 'pointer' : 'default' }}>
-                  <input type="checkbox" disabled={!resetDlg.measuredCount} checked={resetOpts.measured} onChange={e => setResetOpts(p => ({ ...p, measured: e.target.checked }))} style={{ marginTop: 2 }} />
-                  <span>Clear scan measurements <strong>({resetDlg.measuredCount})</strong> — floor SF / heights from scans. Usually still true; leave off unless the space changed.</span>
-                </label>
-                {resetDlg.clientCount > 0 && (
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: '#92400E', background: 'var(--warning-bg, #FEF3C7)', border: '1px solid #FCD34D', borderRadius: 6, padding: '8px 10px', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={resetOpts.client} onChange={e => setResetOpts(p => ({ ...p, client: e.target.checked }))} style={{ marginTop: 2 }} />
-                    <span>⚠ Also clear <strong>{resetDlg.clientCount}</strong> confirmed client selection{resetDlg.clientCount === 1 ? '' : 's'} — the homeowner's own picks. Off by default; tick only if you mean to discard them.</span>
-                  </label>
-                )}
-              </div>
-            )}
+              )}
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-subtle)', margin: '0 0 16px', fontStyle: 'italic' }}>
+              Proposals are not touched — there's no send-state to tell a sent proposal from a draft.
+            </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" disabled={resetBusy} onClick={() => setResetDlg(null)}>Cancel</button>
               <button className="btn btn-navy" disabled={resetBusy} onClick={confirmReset}>{resetBusy ? 'Clearing…' : 'Start fresh'}</button>
