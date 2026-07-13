@@ -254,6 +254,45 @@ function deriveTrade(field: ScopeField | undefined, optionKey: string | null, id
   return Array.isArray(at) && at.length === 1 ? at[0] : null;
 }
 
+// CONFIGURATOR_POLISH Phase 3 — field suppression. "when gate_field = gate_option, hide
+// suppressed_field" (scope_option_suppressions). GOVERNING RULE: wrongly suppressing loses money
+// silently, so the seed is conservative and this only ever HIDES a field the current answers make
+// moot. Read by both scope_plan and scope_interview.
+interface SuppressionRow {
+  gate_field_key: string;
+  gate_option_key: string;
+  suppressed_field_key: string;
+}
+
+async function loadSuppressions(tenantId: string, projectType: string): Promise<SuppressionRow[]> {
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const { data, error } = await sb
+    .from("scope_option_suppressions")
+    .select("gate_field_key, gate_option_key, suppressed_field_key")
+    .eq("active", true)
+    .eq("project_type", projectType)
+    .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
+  if (error) console.error("ai-estimator scope_option_suppressions:", error.message);
+  return (data ?? []) as SuppressionRow[];
+}
+
+// Set of field_keys (lower) to hide, given the answers so far. Values compared normalized
+// (number fields: the digit; choice: option key). answers: [{ field_key, value }].
+function computeSuppressedSet(answers: Array<{ field_key?: unknown; value?: unknown }>, rows: SuppressionRow[]): Set<string> {
+  const answered = new Map<string, string>();
+  for (const a of (answers || [])) {
+    if (a && typeof a.field_key === "string" && a.value != null && String(a.value).trim() !== "") {
+      answered.set(a.field_key.toLowerCase(), normOptKey(a.value));
+    }
+  }
+  const out = new Set<string>();
+  for (const r of rows) {
+    const v = answered.get(r.gate_field_key.toLowerCase());
+    if (v != null && v === normOptKey(r.gate_option_key)) out.add(r.suppressed_field_key.toLowerCase());
+  }
+  return out;
+}
+
 // The AI's bounded job: extract which required fields the conversation already answered,
 // and phrase the still-open ones conversationally. It does NOT decide completion (the
 // edge fn recomputes openQuestions deterministically from the AI's answered set).
@@ -425,7 +464,15 @@ async function handleScopeInterview(
     : "";
   const triggerText = [repText, prefillTriggerText].filter(Boolean).join("\n");
   const fired = detectTriggers(triggerText, modules);
-  const requiredFields = collectRequiredFields(baseFields, fired);
+  // Phase 3 — honor suppression here too (from the answers known at prompt-build time) so the
+  // interview never asks a field the current answers make moot.
+  const suppressedInt = computeSuppressedSet(
+    prefilledAnswers && typeof prefilledAnswers === "object"
+      ? Object.entries(prefilledAnswers).map(([k, raw]) => ({ field_key: k, value: raw != null && typeof raw === "object" ? (raw as { value?: unknown }).value : raw }))
+      : [],
+    await loadSuppressions(tenantId, projectType),
+  );
+  const requiredFields = collectRequiredFields(baseFields, fired).filter((f) => !suppressedInt.has(f.field_key.toLowerCase()));
 
   // SCOPE_CAPTURE_ENGINE P2: fold session pre-answers (from the on-site consultation)
   // into the answered set BEFORE the AI turn. Only keys matching a real required field
@@ -544,7 +591,12 @@ async function handleScopePlan(
     .flatMap((a) => { const s = String(a.value ?? ""); return [String(a.field_key), s, s.replace(/_/g, " ")]; })
     .join("\n");
   const fired = detectTriggers(triggerText, modules);
-  const requiredFields = collectRequiredFields(baseFields, fired);
+  const allRequired = collectRequiredFields(baseFields, fired);
+
+  // Phase 3 — hide fields the current answers make moot (scope_option_suppressions). Filter here so
+  // both the field list AND completion (open.length) ignore suppressed fields.
+  const suppressed = computeSuppressedSet(answers, await loadSuppressions(tenantId, projectType));
+  const requiredFields = allRequired.filter((f) => !suppressed.has(f.field_key.toLowerCase()));
 
   const answeredKeys = new Set(
     answers.filter((a) => a.value != null && String(a.value).trim() !== "").map((a) => String(a.field_key).toLowerCase()),
@@ -570,7 +622,10 @@ async function handleScopePlan(
   const answerRecords = answers
     .filter((a) => a.value != null && String(a.value).trim() !== "")
     .map((a) => makeAnswerRecord(String(a.field_key), a.value, 1, "card"));
-  const persistAnswers = toScopeAnswerPayload(answerRecords, requiredFields, optIndex);
+  // Exclude answers for now-suppressed fields — they must not be re-persisted (the orphan-delete
+  // in the configurator removes any already-stored ones).
+  const persistAnswers = toScopeAnswerPayload(answerRecords, requiredFields, optIndex)
+    .filter((a) => !suppressed.has(a.field_key.toLowerCase()));
 
   return ok({
     fields,
