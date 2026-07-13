@@ -107,6 +107,8 @@ function roomMatchesType(room, roomType) {
       return label.includes('bath');
     case 'kitchen':
       return label.includes('kitchen');
+    case 'bedroom':
+      return label.includes('bedroom'); // TAKEOFF_BRIDGE Phase 4 — paint verification vehicle
     case 'basement':
       return label.includes('basement') || room.floor === -1;
     case 'exterior':

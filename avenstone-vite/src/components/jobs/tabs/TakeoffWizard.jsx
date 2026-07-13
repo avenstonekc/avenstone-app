@@ -14,6 +14,7 @@ const WARN_BORDER = '#FCD34D';
 const ROOM_TYPES = [
   { id: 'bathroom', lb: 'Bathroom' },
   { id: 'kitchen',  lb: 'Kitchen' },
+  { id: 'bedroom',  lb: 'Bedroom' },
   { id: 'basement', lb: 'Basement' },
   { id: 'refresh',  lb: 'Whole House' },
   { id: 'exterior', lb: 'Exterior' },
