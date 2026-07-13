@@ -2769,6 +2769,70 @@ export async function sbClearScopeAnswers(jobId, { includeScope = true, includeM
   }
 }
 
+// RESET_SCOPE — clear the job's COMMITTED estimate line items on BOTH write paths. Mirrors the
+// commitEstimate.js scoped-delete patterns exactly (notes LIKE 'ai:%' and 'takeoff:%') — manual
+// rows (null notes) and consultation rows (null notes) are never matched. Returns {ai, takeoff}.
+export async function sbClearCommittedLineItems(jobId) {
+  const out = { ai: 0, takeoff: 0 };
+  if (!jobId) return { ok: false, error: 'jobId required', data: out };
+  try {
+    const aiRes = await sb.from('estimate_line_items').delete().eq('job_id', jobId).like('notes', 'ai:%').select('id');
+    if (aiRes.error) return { ok: false, error: aiRes.error.message, data: out };
+    out.ai = (aiRes.data || []).length;
+    const tkRes = await sb.from('estimate_line_items').delete().eq('job_id', jobId).like('notes', 'takeoff:%').select('id');
+    if (tkRes.error) return { ok: false, error: tkRes.error.message, data: out };
+    out.takeoff = (tkRes.data || []).length;
+    return { ok: true, error: null, data: out };
+  } catch (e) { return { ok: false, error: e?.message || 'sbClearCommittedLineItems failed', data: out }; }
+}
+
+// RESET_SCOPE — clear the job's takeoff scope tags + scope_details (job_room_scopes rows).
+export async function sbClearJobRoomScopes(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: { cleared: 0 } };
+  try {
+    const { data, error } = await sb.from('job_room_scopes').delete().eq('job_id', jobId).select('id');
+    if (error) return { ok: false, error: error.message, data: { cleared: 0 } };
+    return { ok: true, error: null, data: { cleared: (data || []).length } };
+  } catch (e) { return { ok: false, error: e?.message || 'sbClearJobRoomScopes failed', data: { cleared: 0 } }; }
+}
+
+// RESET_SCOPE — clear the job_estimates DRAFT (chat messages, manager-approval state, scope_origin)
+// so the reloaded Build view starts empty. Preserves estimate_data — it may hold a contract_snapshot,
+// a downstream/protected artifact well past "unsent draft". Returns { ok, error }.
+export async function sbClearEstimateDraft(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required' };
+  try {
+    const { error } = await sb.from('job_estimates')
+      .update({ messages: [], approval_status: null, approval_meta: null, scope_origin: null, updated_at: new Date().toISOString() })
+      .eq('tenant_id', AV_TENANT).eq('job_id', jobId);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, error: null };
+  } catch (e) { return { ok: false, error: e?.message || 'sbClearEstimateDraft failed' }; }
+}
+
+// RESET_SCOPE — counts for the reset dialog so it can state exactly what will be cleared,
+// in plain rows. Non-fatal: any failure yields zeros. { aiLines, takeoffLines, roomScopes, hasDraft }.
+export async function sbEstimateStackCounts(jobId) {
+  const out = { aiLines: 0, takeoffLines: 0, roomScopes: 0, hasDraft: false };
+  if (!jobId) return out;
+  try {
+    const [liRes, rsRes, estRes] = await Promise.all([
+      sb.from('estimate_line_items').select('notes').eq('job_id', jobId),
+      sb.from('job_room_scopes').select('id').eq('job_id', jobId),
+      sb.from('job_estimates').select('messages').eq('job_id', jobId).maybeSingle(),
+    ]);
+    for (const li of (liRes.data || [])) {
+      const n = li.notes || '';
+      if (n.startsWith('ai:')) out.aiLines++;
+      else if (n.startsWith('takeoff:')) out.takeoffLines++;
+    }
+    out.roomScopes = (rsRes.data || []).length;
+    const msgs = estRes.data?.messages;
+    out.hasDraft = Array.isArray(msgs) ? msgs.length > 0 : !!msgs;
+  } catch { /* zeros */ }
+  return out;
+}
+
 // SCOPE_TO_ESTIMATE Phase D — assemble a per-sub work packet: CONFIRMED job_scope_answers for a
 // job, joined room × option × bound image (scope_option_images), filtered to one trade. Trade-NULL
 // confirmed answers are NOT dropped — they go to the `unassigned` bucket so the packet can flag
