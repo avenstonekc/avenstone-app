@@ -264,14 +264,27 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // may carry an on-site measured SF — that takes precedence over scan derivation. Read
   // the prefill synchronously here (before the default-tab effect's async .then clears it).
   useEffect(() => {
-    const pf = ll(`av_estimate_prefill_${job.id}`, null);
-    const sessionSf = pf && Number(pf.sf) > 0 ? Number(pf.sf) : 0;
-    deriveProjectSf(sb, job.id, job).then(({ sf, source, roomCount }) => {
+    (async () => {
+      // TAKEOFF_BRIDGE Phase 3 — a persisted floor_sf answer (the dimension the rep entered) is the
+      // authoritative SF; it becomes the home for what interviewSf approximated. Prefer it over
+      // scan/job/session derivation. Sum across rooms for the whole-job SF.
+      try {
+        const ans = await sbLoadScopeAnswers(job.id);
+        if (ans.ok) {
+          const floorSfSum = (ans.data || [])
+            .filter(a => a.field_key === 'floor_sf' && a.value != null && String(a.value).trim() !== '')
+            .reduce((s, a) => s + (Number(a.value) || 0), 0);
+          if (floorSfSum > 0) { setInterviewSf(String(floorSfSum)); setInterviewSfSource('answer'); return; }
+        }
+      } catch (_) { /* fall through to scan/job derivation */ }
+      const pf = ll(`av_estimate_prefill_${job.id}`, null);
+      const sessionSf = pf && Number(pf.sf) > 0 ? Number(pf.sf) : 0;
+      const { sf, source, roomCount } = await deriveProjectSf(sb, job.id, job);
       setInterviewSfRoomCount(roomCount || 0);
       if (sessionSf > 0) { setInterviewSf(String(sessionSf)); setInterviewSfSource('session'); return; }
       setInterviewSfSource(source);
       if (sf > 0) setInterviewSf(String(sf));
-    });
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
 
