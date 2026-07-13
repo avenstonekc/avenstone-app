@@ -2395,6 +2395,10 @@ KEY DECISIONS (locked):
 - COORDINATION (parallel window rebasing supabase.js + EstimateTab.jsx): I touched NO supabase.js and NO EstimateTab.jsx regions — those files are clean for the rebuild. My only planned supabase.js edit is a NEW export `sbBuildSubWorkPacket` near the other scope helpers (~line 2553, next to sbUpsertScopeAnswers/sbLoadScopeAnswers), which is HELD; add it after the map lands to avoid a collision.
 - BUILD: npm run build passes on every landed commit; edge deploy green. Migrations verified via information_schema (both columns present/nullable, room_id FK delete_rule=SET NULL) + row-count (trade_taxonomy 48 canonical, 5 new visible).
 
+[LOG — 2026-07-12] — CONFIGURATOR_POLISH Phase 4a SHIPPED (option display labels as data)
+
+- scope_checklists.option_labels JSONB (option_key→label), nullable/non-breaking (commit f45ec02). Fixes the "Standard Mr" class: seeded labels for every option key that title-cases badly across bathroom/kitchen/basement/deck/roof/exterior/fence (MR, LVP, PT, PVC, OTR, R-panel, 3-tab, board-on-board, etc.); good-humanizing keys left null. scope_plan returns each field's option_labels (loadScopeConfig select + handleScopePlan map); ScopeConfigurator renders option_labels[key] on cards/buttons/chips, else humanize(key) (commit dd5847a). LIVE: drywall_wet_area option_labels.standard_mr = "Standard MR (moisture-resistant)".
+
 [LOG — 2026-07-12] — CONFIGURATOR_POLISH Phase 3 SHIPPED (suppression + existing-conditions + orphan handling)
 
 - SUPPRESSION TABLE (commit d870f87): scope_option_suppressions — sibling binding table (project_type, gate_field_key, gate_option_key) ⇒ suppressed_field_key; public-read/owner-write; platform+tenant. 19 signed-off rows (bathroom tub_only/combo shower fields, shower_entry curb/curbless→curb_type/threshold_heights, vanity_count=0; kitchen paint_existing→cabinet_style + backsplash_extent=none→backsplash_layout; roof standing_seam→shingle_grade). Added 'none' option to kitchen backsplash_extent (sanctioned vocab add, no binding conflict). GOVERNING RULE: borderline=KEEP (wrong suppression loses money silently).
