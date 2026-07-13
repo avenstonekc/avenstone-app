@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan } from '../../../lib/supabase';
+import { isScanArtifact, artifactToScanParams, SCAN_ARTIFACT_VERSION } from '../../../lib/scanArtifact';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
@@ -56,6 +57,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [photoSel, setPhotoSel] = useState(() => new Set()); // selected photo ids
   const [photoAttachBusy, setPhotoAttachBusy] = useState(false);
   const [photoShowAll, setPhotoShowAll] = useState(false);
+  // SCAN_INGEST v2 — an uploaded avenstone-scan JSON is data, not a picture: it triggers an
+  // import confirm instead of riding the vision call.
+  const [pendingScanImport, setPendingScanImport] = useState(null); // { artifact, filename }
+  const [scanImporting, setScanImporting] = useState(false);
+  const [scanImportMsg, setScanImportMsg] = useState(null);
   const [estSaving, setEstSaving] = useState(false);
   const [estSendingClient, setEstSendingClient] = useState(false);
   const [estSaveMsg, setEstSaveMsg] = useState('');
@@ -364,6 +370,47 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   };
 
   const removeEstFile = (idx) => setEstFiles(prev => prev.filter((_, i) => i !== idx));
+
+  // SCAN_INGEST v2 — the file-picker entry point. An avenstone-scan JSON is intercepted and
+  // routed to the import confirm (it's data, not vision context); everything else flows to
+  // addEstFiles unchanged. attach-from-job paths never produce JSON, so they call addEstFiles
+  // directly and skip this hop.
+  const handleUploadInput = async (fileList) => {
+    const incoming = Array.from(fileList || []).filter(Boolean);
+    if (!incoming.length) return;
+    const passthrough = [];
+    const errs = [];
+    for (const f of incoming) {
+      const looksJson = /\.json$/i.test(f.name || '') || (f.type || '') === 'application/json';
+      if (!looksJson) { passthrough.push(f); continue; }
+      try {
+        const parsed = JSON.parse(await f.text());
+        if (isScanArtifact(parsed)) {
+          if ((parsed.version || 1) > SCAN_ARTIFACT_VERSION) { errs.push(`${f.name}: newer scan format (v${parsed.version}) — update the app`); continue; }
+          setPendingScanImport({ artifact: parsed, filename: f.name });
+        } else {
+          errs.push(`${f.name}: not an Avenstone scan file`);
+        }
+      } catch { errs.push(`${f.name}: invalid JSON`); }
+    }
+    if (passthrough.length) addEstFiles(passthrough);
+    if (errs.length) setAttachError(errs.join(' · '));
+  };
+
+  // Import the pending scan into THIS job — re-stamps the target job and runs the full
+  // sbSaveJobLidarScan bridge (normalize + room link + measured answers + takeoff visibility).
+  const confirmImportScan = async () => {
+    if (!pendingScanImport) return;
+    setScanImporting(true);
+    setAttachError(null);
+    const params = artifactToScanParams(pendingScanImport.artifact, job.id);
+    const res = await sbSaveJobLidarScan(params);
+    setScanImporting(false);
+    if (!res.ok) { setAttachError(`Scan import failed: ${res.error}`); return; }
+    const n = params.rooms.length;
+    setScanImportMsg(`Scan imported — ${n} room${n === 1 ? '' : 's'} added to this job. Open the Scanner or Takeoff tab to see it.`);
+    setPendingScanImport(null);
+  };
 
   // Downscale an oversized image blob rather than reject it — these are estimator VISION
   // context, not archival copies. Canvas re-encode to JPEG with the longest edge capped at
@@ -1144,7 +1191,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <label className="flbl">Floor Plan / Photos <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>(optional — PDFs or images, attach several)</span></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: CREAM, border: `1px dashed ${GOLD}`, borderRadius: 4, padding: '10px 14px', cursor: 'pointer' }}>
               {/* accept image/*,.pdf + NO capture → iOS presents the full sheet incl. "Choose Files" */}
-              <input type="file" accept="image/*,.pdf" multiple style={{ display: 'none' }} onChange={e => { addEstFiles(e.target.files); e.target.value = ''; }} />
+              <input type="file" accept="image/*,.pdf,.json,application/json" multiple style={{ display: 'none' }} onChange={e => { handleUploadInput(e.target.files); e.target.value = ''; }} />
               <span style={{ width: 16, height: 16, color: GOLD }}>{Ic.plus}</span>
               <span style={{ fontSize: 13, color: 'var(--text-subtle)' }}>Attach floor plans or photos</span>
             </label>
@@ -1372,7 +1419,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             )}
             <div style={{ display: 'flex', gap: 8 }}>
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 4, cursor: 'pointer', flexShrink: 0 }}>
-                <input type="file" accept="image/*,.pdf" multiple style={{ display: 'none' }} onChange={e => { addEstFiles(e.target.files); e.target.value = ''; }} />
+                <input type="file" accept="image/*,.pdf,.json,application/json" multiple style={{ display: 'none' }} onChange={e => { handleUploadInput(e.target.files); e.target.value = ''; }} />
                 <span style={{ width: 16, height: 16, color: 'var(--text-subtle)' }}>{Ic.plus}</span>
               </label>
               <input className="finp" style={{ flex: 1, margin: 0 }} value={estInput} onChange={e => setEstInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendEstimatorMessage()} placeholder="Ask a follow-up — adjust scope, change materials, add a trade…" disabled={estLoading} />
@@ -1601,6 +1648,30 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
 
   return (
     <div>
+      {/* SCAN_INGEST v2 — import confirm for an uploaded avenstone-scan JSON */}
+      {pendingScanImport && (
+        <div className="overlay" onClick={() => !scanImporting && setPendingScanImport(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(10,31,68,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 16 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 22, maxWidth: 420, width: '100%', boxShadow: '0 10px 40px rgba(10,31,68,0.3)' }}>
+            <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 19, color: NAV, margin: '0 0 8px' }}>Import this scan?</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-subtle)', margin: '0 0 6px' }}>
+              <strong style={{ color: NAV }}>{pendingScanImport.filename}</strong>
+            </p>
+            <p style={{ fontSize: 13, color: NAV, margin: '0 0 18px' }}>
+              {(pendingScanImport.artifact?.scan?.rooms || []).length} room{(pendingScanImport.artifact?.scan?.rooms || []).length === 1 ? '' : 's'} will be added to <strong>{job.name || 'this job'}</strong> — same as a fresh capture (rooms, dimensions, and takeoff visibility). This scan file won’t be sent to the estimator.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" disabled={scanImporting} onClick={() => setPendingScanImport(null)}>Cancel</button>
+              <button className="btn btn-navy" disabled={scanImporting} onClick={confirmImportScan}>{scanImporting ? 'Importing…' : 'Import to this job'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {scanImportMsg && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--green-text, #065F46)', background: 'var(--green-bg, #D1FAE5)', border: '1px solid #6EE7B7', borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
+          <span>✓ {scanImportMsg}</span>
+          <button onClick={() => setScanImportMsg(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
       {/* Sub-tab bar */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: `2px solid ${BORDER}` }}>
         {SUB_TABS.map(t => (
