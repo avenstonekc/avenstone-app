@@ -41,6 +41,9 @@ interface ScopeLine {
   line_item: string;
   unit: string;
   quantity: number;
+  base_quantity?: number | null; // Fix 2: net measurement before waste; code computes quantity from this
+  waste_pct?: number | null;     // Fix 2: waste % from the fixed table (0 if none); code applies it
+  outside_scope?: boolean;       // Fix 3: line is beyond the user's stated scope (rendered separately, not in total)
   description: string;
   category: "labor" | "materials" | "general";
   regional_rate?: number | null; // AI-supplied fallback for gaps + general lines
@@ -739,9 +742,13 @@ DEMO/TEAROUT · FRAMING · INSULATION · DRYWALL · TILE & WATERPROOFING · FLOO
 PLUMBING · VANITY & FIXTURES · ELECTRICAL · HVAC · CABINETS & COUNTERTOPS
 PAINT · ROOFING · SIDING/EXTERIOR · WINDOWS/DOORS · CONCRETE · GENERAL
 
-WASTE — apply to quantities, show math in description:
-Tile (floor or wall/shower): +15% | Drywall: +10% | LVP/hardwood: +12%
-Trim/baseboard: +10% | Insulation batt: +8% | Framing lumber: +10%
+WASTE — you DECLARE it, code APPLIES it (do NOT do the multiplication yourself):
+For every SF or LF line, set "base_quantity" to the NET measurement and "waste_pct" to the table
+value below (0 if none). Code computes the final quantity = base_quantity × (1 + waste_pct/100) and
+appends the waste math to the description. Do NOT put waste math in the description yourself and do
+NOT pre-inflate base_quantity — that double-applies. Fixed-count units (EA/LS/room/load/sq): waste_pct 0.
+Tile (floor or wall/shower): 15 | Drywall: 10 | LVP/hardwood: 12
+Trim/baseboard: 10 | Insulation batt: 8 | Framing lumber: 10
 
 BATHROOM RULES: use moisture_resistant (not hang/combined) for any wet-area drywall.
 
@@ -774,8 +781,10 @@ SCOPE JSON SCHEMA:
       "trade": "<exact trade string from LABOR VOCABULARY>",
       "line_item": "<exact line_item or material category>",
       "unit": "<SF|LF|EA|LS|sq|room|load>",
-      "quantity": <number, waste-adjusted>,
-      "description": "<specific, show waste math>",
+      "base_quantity": <net measurement BEFORE waste>,
+      "waste_pct": <0 unless an SF/LF line in the waste table, then its value>,
+      "outside_scope": <true ONLY if this line is beyond the user's stated scope; omit otherwise>,
+      "description": "<ONE calculation, format '<what> — <basis>: <qty math>'. No waste math (code adds it). Never two calculations in one description.>",
       "category": "labor" | "materials" | "general",
       "regional_rate": <number|null>,  // null for matched labor vocab AND for uncited gaps; a cited KC-reference number otherwise
       "anchor_source": <string|null>   // the KC REGIONAL PRICING REFERENCE category cited (e.g. "pricing_tile"); null when uncited/matched
@@ -783,6 +792,8 @@ SCOPE JSON SCHEMA:
   ],
   "flags": ["<missing info, assumptions, unknowns>"]
 }
+LINE DESCRIPTIONS: exactly ONE calculation per line, format "<what> — <basis>: <qty math>"
+(e.g. "Floor tile — 12×11.5 room: 138 SF"). Never jam two calculations into one description.
 
 RULES:
 - Labor vocab match → regional_rate: null, anchor_source: null. EXACT trade/line_item/unit from vocabulary.
@@ -854,6 +865,53 @@ function buildGapLine(line: ScopeLine): PricedLine {
     anchor_source: anchorSrc,
     gap_key: `${line.trade}::${line.line_item}::${line.unit}`,
   };
+}
+
+// ── Deterministic waste (ESTIMATE_INTEGRITY Fix 2) ────────────────────────────
+// Waste is applied in CODE, never narrated by the model. The model emits base_quantity (net
+// measurement) + waste_pct (from the fixed table); we compute the final quantity so a line's qty
+// always reflects the waste it claims — no more "138 SF net; +15% waste = 138 SF". Waste applies
+// to area/length units only (SF/LF); fixed-count units (EA/LS/room/load/sq) never take waste.
+// waste_pct is clamped to [0,25] as a guard against a runaway model value.
+const WASTE_UNITS = new Set(["SF", "LF"]);
+function applyWasteDeterministic(lines: ScopeLine[]): ScopeLine[] {
+  return lines.map((line) => {
+    const unit = String(line.unit || "").toUpperCase();
+    let pct = typeof line.waste_pct === "number" && Number.isFinite(line.waste_pct) ? line.waste_pct : 0;
+    if (pct < 0) pct = 0;
+    if (pct > 25) pct = 25;
+    const base = typeof line.base_quantity === "number" && Number.isFinite(line.base_quantity) ? line.base_quantity : null;
+    // No base declared → fall back to the model's quantity (coerced to a number so pricing never sees NaN).
+    if (base == null) {
+      const q = typeof line.quantity === "number" && Number.isFinite(line.quantity) ? line.quantity : 0;
+      return { ...line, quantity: q, waste_pct: WASTE_UNITS.has(unit) ? pct : 0 };
+    }
+    const applies = WASTE_UNITS.has(unit) && pct > 0;
+    const qty = applies ? Math.round(base * (1 + pct / 100) * 10) / 10 : Math.round(base * 10) / 10;
+    // Code is the sole author of the waste math — append it so the description can't contradict qty.
+    const description = applies ? `${line.description} · +${pct}% waste → ${qty} ${unit}` : line.description;
+    return { ...line, base_quantity: base, waste_pct: applies ? pct : 0, quantity: qty, description };
+  });
+}
+
+// Reconcile guard (Fix 2, second half): flags any priced line where qty × rate ≠ amount, or where
+// a "+N% waste" stated in the description disagrees with the applied waste_pct. Surfaced in the
+// draft like the Phase-1 sanity guard so a bad line is visible, not silent.
+function reconcileFlags(lines: PricedLine[]): string[] {
+  const out: string[] = [];
+  for (const l of lines) {
+    if (l.unit_price != null && l.amount != null) {
+      const expect = Math.round(l.unit_price * l.quantity * 100) / 100;
+      if (Math.abs(expect - l.amount) > 0.05) out.push(`${l.line_item} (qty×rate=${fmtMoney(expect)} ≠ ${fmtMoney(l.amount)})`);
+    }
+    const m = String(l.description).match(/\+\s*(\d+(?:\.\d+)?)\s*%\s*waste/i);
+    if (m) {
+      const stated = parseFloat(m[1]);
+      const applied = typeof l.waste_pct === "number" ? l.waste_pct : 0;
+      if (Math.abs(stated - applied) > 0.01) out.push(`${l.line_item} (states +${stated}% waste, applied +${applied}%)`);
+    }
+  }
+  return out;
 }
 
 // ── Pricing orchestrator ──────────────────────────────────────────────────────
@@ -1016,6 +1074,10 @@ ${summaryFooter}`;
   if (pricedLines.some((l) => l.source_label === "labor_rate" && !l.vetted)) {
     out += "\n> ○ **Rate Book*** = seeded rate, not yet vetted by Kalin. Review in Rate Book → Labor Rates.";
   }
+  const mathFlags = reconcileFlags(pricedLines);
+  if (mathFlags.length > 0) {
+    out += `\n\n> ⚠ **Check math**: ${[...new Set(mathFlags)].join(" · ")}. A line's quantity, rate, and amount don't reconcile — review before committing.`;
+  }
   if (scope.flags.length > 0) {
     out += `\n\n**Flags:** ${scope.flags.join(" · ")}`;
   }
@@ -1153,8 +1215,9 @@ Deno.serve(async (req) => {
       return ok({ content: scopeResult.text, parse_error: true });
     }
 
-    // Price and format
-    const pricedLines = priceScopeLines(scope.lines, rateBook, projectSf, finishTier, bidConfig.supply_model, bidConfig.allowance);
+    // Apply waste deterministically (Fix 2) BEFORE pricing, then price and format.
+    const wastedLines = applyWasteDeterministic(scope.lines);
+    const pricedLines = priceScopeLines(wastedLines, rateBook, projectSf, finishTier, bidConfig.supply_model, bidConfig.allowance);
     const content = formatEstimate(scope, pricedLines, projectSf, finishTier, markupPct, pmFeeVal, financialModel);
 
     // 3c: include priced_scope so EstimateTab can commit with exact source_labels
