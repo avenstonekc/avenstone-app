@@ -22,6 +22,8 @@ export interface ChecklistRow {
   money_risk_rank: number;
   adds_trades: string[] | null;
   active: boolean;
+  helper?: string | null;        // Phase 4c: one-line "what's this?" definition
+  option_labels?: unknown;       // Phase 4a: { option_key: label }
 }
 
 export interface ModuleField {
@@ -29,6 +31,8 @@ export interface ModuleField {
   question: string;
   field_type: string;
   options?: unknown;
+  helper?: string | null;        // Phase 4c
+  option_labels?: unknown;       // Phase 4a/4d (module fields carry labels/tier copy in JSONB)
 }
 
 export interface ModuleRow {
@@ -53,6 +57,8 @@ export interface ScopeField {
   // answer emitter can derive per-answer trade. Lossy by design (null on many fields, multi on
   // some) — the option-conditional cases resolve via the scope_option_trades map, not this.
   adds_trades: string[] | null;
+  helper?: string | null;        // Phase 4c
+  option_labels?: unknown;       // Phase 4a/4d
 }
 
 // Answer record â€” Phase 1 only ever produces source:'typed'. The source/confidence
@@ -98,6 +104,8 @@ export function assembleChecklist(projectType: string, checklistRows: ChecklistR
       money_risk_rank: r.money_risk_rank ?? 99,
       origin: "base",
       adds_trades: r.adds_trades ?? null,
+      helper: r.helper ?? null,
+      option_labels: r.option_labels ?? null,
     }));
 }
 
@@ -141,6 +149,8 @@ export function collectRequiredFields(baseFields: ScopeField[], firedModules: Mo
         // Module-added field inherits its module's trade hint (module fields have no per-field
         // adds_trades of their own).
         adds_trades: m.adds_trades ?? null,
+        helper: f.helper ?? null,
+        option_labels: f.option_labels ?? null,
       });
     }
   }

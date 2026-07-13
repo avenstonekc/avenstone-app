@@ -178,7 +178,7 @@ async function loadScopeConfig(
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const [clRes, modRes] = await Promise.all([
     sb.from("scope_checklists")
-      .select("tenant_id, project_type, field_key, question, field_type, options, money_risk_rank, adds_trades, active, is_selection, option_labels")
+      .select("tenant_id, project_type, field_key, question, field_type, options, money_risk_rank, adds_trades, active, is_selection, option_labels, helper")
       .eq("project_type", projectType)
       .eq("active", true)
       .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`),
@@ -613,7 +613,10 @@ async function handleScopePlan(
     question: f.question,
     field_type: f.field_type,
     options: Array.isArray(f.options) ? f.options : [],
-    option_labels: optLabels.get(f.field_key.toLowerCase()) ?? null,
+    // Phase 4a/4c/4d: labels + helper now ride on ScopeField (base from columns, module from the
+    // adds_fields JSONB). Fall back to the checklist-column map for base fields.
+    option_labels: f.option_labels ?? optLabels.get(f.field_key.toLowerCase()) ?? null,
+    helper: f.helper ?? null,
     is_selection: isSel.get(f.field_key.toLowerCase()) ?? false,
     money_risk_rank: f.money_risk_rank,
     origin: f.origin,
