@@ -2736,6 +2736,39 @@ export async function sbDeleteScopeAnswers(jobId, fieldKeys) {
   }
 }
 
+// ESTIMATE_INTEGRITY Fix 1 — "Start fresh": clear a job's scope answers with protection so a
+// re-scoped job doesn't price the union of old + new answers. MEASURED (scan dimensions) are kept
+// unless includeMeasured (they usually stay true across re-scopes); CLIENT_SELECTED / CONFIRMED
+// rows (homeowner picks) are kept unless includeClientConfirmed — they never vanish silently.
+// Deletes by id so the protection is exact. Staff RLS (job_scope_answers_staff_all FOR ALL).
+// Returns { ok, error, data: { cleared, keptMeasured, keptClientConfirmed } }.
+export async function sbClearScopeAnswers(jobId, { includeScope = true, includeMeasured = false, includeClientConfirmed = false } = {}) {
+  try {
+    if (!jobId) return { ok: false, error: 'jobId required', data: null };
+    const { data: rows, error: selErr } = await sb.from('job_scope_answers')
+      .select('id, source, status').eq('tenant_id', AV_TENANT).eq('job_id', jobId);
+    if (selErr) return { ok: false, error: selErr.message, data: null };
+    const isMeasured = r => r.source === 'measured';
+    const isClientConfirmed = r => r.source === 'client_selected' || r.status === 'confirmed';
+    let keptMeasured = 0, keptClientConfirmed = 0;
+    const ids = [];
+    for (const r of (rows || [])) {
+      // client picks win protection precedence over measured
+      if (isClientConfirmed(r) && !includeClientConfirmed) { keptClientConfirmed++; continue; }
+      if (isMeasured(r) && !includeMeasured) { keptMeasured++; continue; }
+      if (!includeScope) continue; // scope clear not requested — leave everything else too
+      ids.push(r.id);
+    }
+    if (!ids.length) return { ok: true, error: null, data: { cleared: 0, keptMeasured, keptClientConfirmed } };
+    const { data: del, error: delErr } = await sb.from('job_scope_answers')
+      .delete().eq('tenant_id', AV_TENANT).eq('job_id', jobId).in('id', ids).select('id');
+    if (delErr) return { ok: false, error: delErr.message, data: null };
+    return { ok: true, error: null, data: { cleared: (del || []).length, keptMeasured, keptClientConfirmed } };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbClearScopeAnswers failed', data: null };
+  }
+}
+
 // SCOPE_TO_ESTIMATE Phase D — assemble a per-sub work packet: CONFIRMED job_scope_answers for a
 // job, joined room × option × bound image (scope_option_images), filtered to one trade. Trade-NULL
 // confirmed answers are NOT dropped — they go to the `unassigned` bucket so the packet can flag
