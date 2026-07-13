@@ -77,7 +77,7 @@ function LineRow({ line, mob }) {
   );
 }
 
-export default function StructuredEstimate({ lines, loading, error }) {
+export default function StructuredEstimate({ lines, loading, error, markupPct = 0, pmFee = 0, financialModel = 'fixed_bid', markupSource = '' }) {
   const mob = isMob();
 
   if (loading) {
@@ -115,6 +115,12 @@ export default function StructuredEstimate({ lines, loading, error }) {
   const secTotal = sec => sec.reduce((s, l) => l.amount != null ? s + Number(l.amount) : s, 0);
   const grand    = Object.values(groups).reduce((s, sec) => s + secTotal(sec), 0);
   const recTotal = secTotal(outScope);
+
+  // ESTIMATE_INTEGRITY Fix 5 — every money number declares itself. grand is YOUR COST (sum of
+  // rate-book/anchor costs, no markup). Client price applies the markup + PM fee actually used.
+  const isFlip      = financialModel === 'flip';
+  const markupAmt   = grand * (Number(markupPct) || 0) / 100;
+  const clientPrice = grand + markupAmt + (Number(pmFee) || 0);
 
   return (
     <div style={{ border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden' }}>
@@ -157,14 +163,28 @@ export default function StructuredEstimate({ lines, loading, error }) {
         );
       })}
 
-      <div style={{
-        background: NAV, padding: '10px 12px',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
-          Subtotal (cost)
-        </span>
-        <span style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>{f$(grand)}</span>
+      {/* Fix 5 — cost vs client price, both explicitly labeled with the markup source named */}
+      <div style={{ background: NAV, padding: '10px 12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
+            {isFlip ? 'Total cost basis' : 'Your cost'}
+          </span>
+          <span style={{ fontSize: isFlip ? 16 : 14, fontWeight: isFlip ? 800 : 700, color: isFlip ? GOLD : '#fff' }}>{f$(grand)}</span>
+        </div>
+        {!isFlip && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>
+                + Markup {Number(markupPct) || 0}%{markupSource ? ` (${markupSource})` : ''} · PM fee {f$(Number(pmFee) || 0)}
+              </span>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>+{f$(markupAmt + (Number(pmFee) || 0))}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: GOLD }}>Client price</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>{f$(clientPrice)}</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Fix 3 — recommended items beyond the requested scope: shown, separated, NOT in the subtotal */}

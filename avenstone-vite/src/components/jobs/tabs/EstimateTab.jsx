@@ -72,6 +72,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [estCommitting, setEstCommitting] = useState(false);
   const [estCommitMsg, setEstCommitMsg] = useState('');
   const [pricedScope, setPricedScope] = useState(null); // 3c: priced lines from 3b-2 engine
+  const [pricedMeta, setPricedMeta]   = useState(null); // Fix 5: markup/pm_fee ACTUALLY applied to this draft
   const [showRaw, setShowRaw]         = useState(false); // toggle raw chat when FACE is present
 
   // Interview pricing inputs — seeded from job overrides then bid_model_config tenant defaults
@@ -419,7 +420,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // ESTIMATE_INTEGRITY Fix 1 — reset local chat/interview state (the pre-answer-store behavior).
   const resetLocalEstimateState = () => {
     setEstMessages([]); setEstStarted(false); setEstForm({ scope: '', rooms: '', special: '' });
-    setInterviewTier('mid'); setPricedScope(null); setGapRates({}); setLearnCandidates([]);
+    setInterviewTier('mid'); setPricedScope(null); setPricedMeta(null); setGapRates({}); setLearnCandidates([]);
     setLearnSaveState(''); setSessionPrefill(null); setEstimateScopeOrigin(null); setShowRaw(false);
     setScopeInterviewActive(false); setScopeComplete(false); setForceDraftedIncomplete(false);
     setConfiguratorPath(false);
@@ -575,6 +576,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
         if (data.priced_scope?.length) setPricedScope(data.priced_scope); // 3c
+        if (data.priced_scope?.length) setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || (job.financial_model || 'fixed_bid') }); // Fix 5
       }
     } catch (e) {
       console.error('ai-estimator pricing error:', e);
@@ -688,6 +690,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
         if (data.priced_scope?.length) setPricedScope(data.priced_scope); // 3c
+        if (data.priced_scope?.length) setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || (job.financial_model || 'fixed_bid') }); // Fix 5
       }
     } catch (e) {
       console.error('ai-estimator fetch/parse error:', e);
@@ -1373,7 +1376,13 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           )}
           {pricedScope?.length > 0 && (
             <>
-              <StructuredEstimate lines={pricedScope} />
+              <StructuredEstimate
+                lines={pricedScope}
+                markupPct={pricedMeta?.markupPct ?? 0}
+                pmFee={pricedMeta?.pmFee ?? 0}
+                financialModel={pricedMeta?.financialModel}
+                markupSource={(Number(job.default_markup_pct) > 0 || Number(job.labor_markup_pct) > 0) ? "this job's rate" : 'Bid Config default'}
+              />
               {(() => {
                 const gaps = pricedScope.filter(l => l.source_label === 'regional_avg' && l.gap_key);
                 return gaps.length > 0
