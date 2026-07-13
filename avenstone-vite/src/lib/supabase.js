@@ -2093,6 +2093,35 @@ export async function sbLinkScanRoomsToJobRooms(jobId, scanId, rooms) {
     return { ok: false, error: e?.message || 'sbLinkScanRoomsToJobRooms failed', data: null };
   }
 }
+
+// TAKEOFF_BRIDGE Phase 2 — summarize committed estimate_line_items by WRITE PATH (notes prefix:
+// 'ai:%' = estimator draft, 'takeoff:%' = takeoff commit). The two paths scoped-delete disjointly
+// (commitEstimate.js) so they coexist — this lets each surface an overlap warning before the same
+// scope is double-priced. { ok, error, data:{ ai:{count,trades[]}, takeoff:{count,trades[]} } }.
+export async function sbCommittedLineSummary(jobId) {
+  try {
+    const { data, error } = await sb.from('estimate_line_items')
+      .select('trade, notes').eq('tenant_id', AV_TENANT).eq('job_id', jobId);
+    if (error) return { ok: false, error: error.message, data: null };
+    const acc = { ai: { count: 0, trades: new Set() }, takeoff: { count: 0, trades: new Set() } };
+    for (const li of (data || [])) {
+      const n = li.notes || '';
+      const bucket = n.startsWith('ai:') ? 'ai' : n.startsWith('takeoff:') ? 'takeoff' : null;
+      if (!bucket) continue;
+      acc[bucket].count++;
+      if (li.trade) acc[bucket].trades.add(li.trade);
+    }
+    return {
+      ok: true, error: null,
+      data: {
+        ai: { count: acc.ai.count, trades: [...acc.ai.trades] },
+        takeoff: { count: acc.takeoff.count, trades: [...acc.takeoff.trades] },
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbCommittedLineSummary failed', data: null };
+  }
+}
 export const sbGetJobLidarScans = async jobId => {
   const { data } = await sb.from('job_lidar_scans').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
   return data || [];

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary } from '../../../lib/supabase';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
 import { sbCommitEstimate } from '../../../lib/commitEstimate';
@@ -74,6 +74,9 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // Phase 6a — true when this estimate ran through the tap-through configurator. On this path the
   // chat transcript / raw prompt is NEVER rendered; completion lands on the polished breakdown.
   const [configuratorPath, setConfiguratorPath] = useState(false);
+  // TAKEOFF_BRIDGE Phase 2 — {count, trades[]} of existing takeoff:% lines, for the double-count warning.
+  const [takeoffOverlap, setTakeoffOverlap] = useState(null);
+  useEffect(() => { sbCommittedLineSummary(job.id).then(r => { if (r.ok) setTakeoffOverlap(r.data.takeoff.count > 0 ? r.data.takeoff : null); }); }, [job.id]);
   // B2.3 learn loop: labor gaps the rep just applied — offered for Rate Book save
   const [learnCandidates, setLearnCandidates] = useState([]);
   const [learnSaveState, setLearnSaveState] = useState(''); // '' | 'saving' | 'saved' | 'error'
@@ -1047,6 +1050,14 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
                 <input type="checkbox" checked={sanityAck} onChange={e => setSanityAck(e.target.checked)} />
                 I reviewed these — send anyway
               </label>
+            </div>
+          )}
+          {/* TAKEOFF_BRIDGE Phase 2 — double-count awareness (warn, don't block). */}
+          {takeoffOverlap && pricedScope?.length > 0 && (
+            <div style={{ margin: '4px 0 8px', border: '1px solid var(--amber-border-soft, #FCD34D)', background: 'var(--amber-bg-soft, #FEF3C7)', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: 'var(--amber-text-strong, #92400E)', lineHeight: 1.5 }}>
+              <strong>⚠ Double-price warning.</strong> This job already has {takeoffOverlap.count} takeoff-priced line{takeoffOverlap.count !== 1 ? 's' : ''}
+              {takeoffOverlap.trades.length > 0 && <> covering <strong>{takeoffOverlap.trades.join(', ')}</strong></>}.
+              {' '}Committing this estimator draft for the same scope will double-price it.
             </div>
           )}
           {pricedScope?.length > 0 && (

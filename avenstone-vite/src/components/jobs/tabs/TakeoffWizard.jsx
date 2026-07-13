@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { sbBuildTakeoffDraft, sbLoadCustomTakeoffLines, AV_TENANT, AV_USER_ID } from '../../../lib/supabase';
+import { sbBuildTakeoffDraft, sbLoadCustomTakeoffLines, sbCommittedLineSummary, AV_TENANT, AV_USER_ID } from '../../../lib/supabase';
 import { acceptTakeoffDraft } from '../../../lib/takeoff';
 import { f$ } from '../../../lib/utils';
 import AddCustomLineModal from './takeoff/AddCustomLineModal';
@@ -28,6 +28,7 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
   const [excluded,           setExcluded]           = useState(() => new Set());
   const [collapsed,          setCollapsed]          = useState(() => new Set());
   const [customLines,        setCustomLines]        = useState([]);
+  const [aiOverlap,          setAiOverlap]          = useState(null); // Phase 2 — {count, trades[]} of estimator lines
   const [addCustomModalRoom, setAddCustomModalRoom] = useState(null); // roomId | null
   const [saving,             setSaving]             = useState(false);
   const [saveResult,         setSaveResult]         = useState(null);
@@ -63,12 +64,15 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
     setError(null);
     setLoading(true);
     try {
-      const [d, restored] = await Promise.all([
+      const [d, restored, summary] = await Promise.all([
         sbBuildTakeoffDraft({ jobId: job.id, roomType }),
         sbLoadCustomTakeoffLines(job.id, roomType),
+        sbCommittedLineSummary(job.id),
       ]);
       setDraft(d);
       if (restored.length) setCustomLines(restored);
+      // Phase 2 — double-count awareness: warn if the estimator already committed lines for this job.
+      setAiOverlap(summary.ok && summary.data.ai.count > 0 ? summary.data.ai : null);
     } catch (e) {
       setError(e.message || 'Failed to build takeoff draft');
     }
@@ -161,6 +165,15 @@ export default function TakeoffWizard({ job, setSub, onAccepted }) {
           </button>
         ))}
       </div>
+
+      {/* Phase 2 — double-count awareness (warn, don't block). */}
+      {aiOverlap && selectedType && (
+        <div style={{ background: WARN_BG, border: `1px solid ${WARN_BORDER}`, borderRadius: 6, padding: '10px 14px', margin: '0 0 12px', fontSize: 12.5, color: '#92400E', lineHeight: 1.5 }}>
+          <strong>⚠ Double-price warning.</strong> This job already has {aiOverlap.count} estimator-priced line{aiOverlap.count !== 1 ? 's' : ''}
+          {aiOverlap.trades.length > 0 && <> covering <strong>{aiOverlap.trades.join(', ')}</strong></>}.
+          {' '}Committing takeoff lines for the same scope will double-price it — exclude overlapping trades or discard the estimator draft first.
+        </div>
+      )}
 
       {/* Idle */}
       {!selectedType && (
