@@ -5950,6 +5950,27 @@ export async function sbLoadFloorPlansForJob(jobId) {
 }
 
 /**
+ * Fetch a saved floor plan's stored PDF as a Blob, straight from the private
+ * `floor-plans` bucket (no signed-URL round-trip — download() streams the bytes).
+ * Lets the estimate "attach from this job" affordance pull the app's own scan PDF
+ * without an export/re-import. `fp` is a row from sbLoadFloorPlansForJob.
+ * @returns {Promise<{ok, blob?, filename?, error?}>}
+ */
+export async function sbFetchFloorPlanPdf(fp) {
+  if (!fp?.id) return { ok: false, error: 'floor plan required' };
+  const ver = fp.current_pdf_version || 1;
+  const path = `${AV_TENANT}/${fp.id}/v${ver}.pdf`;
+  try {
+    const { data, error } = await sb.storage.from('floor-plans').download(path);
+    if (error) return { ok: false, error: error.message };
+    const base = (fp.name || 'Floor Plan').replace(/[\\/:*?"<>|]+/g, '-').trim();
+    return { ok: true, blob: data, filename: `${base}.pdf` };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+/**
  * Replace layout_overrides for a floor plan. Does NOT regenerate PDF —
  * caller triggers sbRegenerateFloorPlanPdf separately to write a new version.
  */
