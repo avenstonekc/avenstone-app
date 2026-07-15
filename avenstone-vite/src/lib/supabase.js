@@ -2736,11 +2736,14 @@ export async function sbDeleteScopeAnswers(jobId, fieldKeys) {
   }
 }
 
-// ESTIMATE_INTEGRITY Fix 1 — "Start fresh": clear a job's scope answers with protection so a
-// re-scoped job doesn't price the union of old + new answers. MEASURED (scan dimensions) are kept
-// unless includeMeasured (they usually stay true across re-scopes); CLIENT_SELECTED / CONFIRMED
-// rows (homeowner picks) are kept unless includeClientConfirmed — they never vanish silently.
-// Deletes by id so the protection is exact. Staff RLS (job_scope_answers_staff_all FOR ALL).
+// ESTIMATE_INTEGRITY Fix 1 / RESET_FAILURE — "Start fresh": clear a job's scope answers with
+// protection so a re-scoped job doesn't price the union of old + new answers. MEASURED (scan
+// dimensions) kept unless includeMeasured. PROTECTION IS SOURCE-BASED: only genuine CLIENT picks
+// (source='client_selected') are protected — a rep's OWN confirmed selections (source='rep_card'/
+// 'rep_typed', status='confirmed') are part of THIS estimate and must clear (RESET_FAILURE found
+// status='confirmed' was over-protecting rep cards, leaving stale scope after a reset).
+// Deletes by id so the protection is exact. SILENT-DENY GUARD: if fewer rows delete than were
+// targeted (RLS 0-row deny), return ok:false — a reset that can't clear must NOT report success.
 // Returns { ok, error, data: { cleared, keptMeasured, keptClientConfirmed } }.
 export async function sbClearScopeAnswers(jobId, { includeScope = true, includeMeasured = false, includeClientConfirmed = false } = {}) {
   try {
@@ -2749,12 +2752,12 @@ export async function sbClearScopeAnswers(jobId, { includeScope = true, includeM
       .select('id, source, status').eq('tenant_id', AV_TENANT).eq('job_id', jobId);
     if (selErr) return { ok: false, error: selErr.message, data: null };
     const isMeasured = r => r.source === 'measured';
-    const isClientConfirmed = r => r.source === 'client_selected' || r.status === 'confirmed';
+    const isClientPick = r => r.source === 'client_selected'; // client's own pick (any status)
     let keptMeasured = 0, keptClientConfirmed = 0;
     const ids = [];
     for (const r of (rows || [])) {
       // client picks win protection precedence over measured
-      if (isClientConfirmed(r) && !includeClientConfirmed) { keptClientConfirmed++; continue; }
+      if (isClientPick(r) && !includeClientConfirmed) { keptClientConfirmed++; continue; }
       if (isMeasured(r) && !includeMeasured) { keptMeasured++; continue; }
       if (!includeScope) continue; // scope clear not requested — leave everything else too
       ids.push(r.id);
@@ -2763,7 +2766,11 @@ export async function sbClearScopeAnswers(jobId, { includeScope = true, includeM
     const { data: del, error: delErr } = await sb.from('job_scope_answers')
       .delete().eq('tenant_id', AV_TENANT).eq('job_id', jobId).in('id', ids).select('id');
     if (delErr) return { ok: false, error: delErr.message, data: null };
-    return { ok: true, error: null, data: { cleared: (del || []).length, keptMeasured, keptClientConfirmed } };
+    const cleared = (del || []).length;
+    if (cleared < ids.length) {
+      return { ok: false, error: `scope answers: ${cleared}/${ids.length} deleted (RLS denied ${ids.length - cleared})`, data: { cleared, keptMeasured, keptClientConfirmed } };
+    }
+    return { ok: true, error: null, data: { cleared, keptMeasured, keptClientConfirmed } };
   } catch (e) {
     return { ok: false, error: e?.message || 'sbClearScopeAnswers failed', data: null };
   }
@@ -2776,12 +2783,17 @@ export async function sbClearCommittedLineItems(jobId) {
   const out = { ai: 0, takeoff: 0 };
   if (!jobId) return { ok: false, error: 'jobId required', data: out };
   try {
+    // RESET_FAILURE silent-deny guard: pre-count matching rows, compare to deleted.
+    const { count: pre } = await sb.from('estimate_line_items')
+      .select('id', { count: 'exact', head: true }).eq('job_id', jobId).or('notes.like.ai:%,notes.like.takeoff:%');
     const aiRes = await sb.from('estimate_line_items').delete().eq('job_id', jobId).like('notes', 'ai:%').select('id');
     if (aiRes.error) return { ok: false, error: aiRes.error.message, data: out };
     out.ai = (aiRes.data || []).length;
     const tkRes = await sb.from('estimate_line_items').delete().eq('job_id', jobId).like('notes', 'takeoff:%').select('id');
     if (tkRes.error) return { ok: false, error: tkRes.error.message, data: out };
     out.takeoff = (tkRes.data || []).length;
+    const deleted = out.ai + out.takeoff;
+    if ((pre || 0) > deleted) return { ok: false, error: `line items: ${deleted}/${pre} deleted (RLS denied ${pre - deleted})`, data: out };
     return { ok: true, error: null, data: out };
   } catch (e) { return { ok: false, error: e?.message || 'sbClearCommittedLineItems failed', data: out }; }
 }
@@ -2790,9 +2802,13 @@ export async function sbClearCommittedLineItems(jobId) {
 export async function sbClearJobRoomScopes(jobId) {
   if (!jobId) return { ok: false, error: 'jobId required', data: { cleared: 0 } };
   try {
+    const { count: pre } = await sb.from('job_room_scopes')
+      .select('id', { count: 'exact', head: true }).eq('job_id', jobId);
     const { data, error } = await sb.from('job_room_scopes').delete().eq('job_id', jobId).select('id');
     if (error) return { ok: false, error: error.message, data: { cleared: 0 } };
-    return { ok: true, error: null, data: { cleared: (data || []).length } };
+    const cleared = (data || []).length;
+    if ((pre || 0) > cleared) return { ok: false, error: `takeoff scopes: ${cleared}/${pre} deleted (RLS denied ${pre - cleared})`, data: { cleared } };
+    return { ok: true, error: null, data: { cleared } };
   } catch (e) { return { ok: false, error: e?.message || 'sbClearJobRoomScopes failed', data: { cleared: 0 } }; }
 }
 
