@@ -7,7 +7,7 @@ import LineItemModal from './financials/LineItemModal';
 import SubInvoicesSection from './financials/SubInvoicesSection';
 import ComposeDrawScr from './ComposeDrawScr';
 import PaymentScheduleTab from './PaymentScheduleTab';
-import { sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo, sbMarkTransactionsPaid } from '../../../lib/supabase';
+import { sb, AV_TENANT, sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadClientActualSpend, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo, sbMarkTransactionsPaid } from '../../../lib/supabase';
 import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
 import { f$, isMob } from '../../../lib/utils';
 
@@ -50,6 +50,9 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   const [sub, setSub] = useState('ledger');
   const [txs, setTxs] = useState([]);
   const [summary, setSummary] = useState(null);
+  // Cost-plus receivable view — SAME helper the client portal + draw composer read,
+  // so the Ledger's Billable/Client Owes cards can never diverge from what the client sees.
+  const [clientSpend, setClientSpend] = useState(null);
   const [loading, setLoading] = useState(false);
   const [filterDir, setFilterDir] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -119,12 +122,17 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
 
   const loadLedger = async () => {
     setLoading(true);
-    const [data, sum] = await Promise.all([
+    const [data, sum, cs] = await Promise.all([
       sbLoadJobTransactions(job.id),
       sbLoadJobFinancialSummary(job.id, { contractValue: job.contract_value, coTotal: job.co_total, costPlus: job.cost_plus, financialModel: job.financial_model }),
+      // Cost-plus only: the client-portal receivable helper (Billable to Date / Client Owes).
+      model === 'cost_plus'
+        ? sbLoadClientActualSpend(sb, job.id, job.tenant_id || AV_TENANT)
+        : Promise.resolve(null),
     ]);
     setTxs(data);
     setSummary(sum);
+    setClientSpend(cs?.ok ? cs.data : null);
     setLoading(false);
     // Agent draw poke — draw modes only (cost_plus + flip), owner/PM only, fires once per mount
     if (isDrawMode && sum && !drawPokedRef.current) {
@@ -538,6 +546,18 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
               { lb: 'Settled',   v: f$(summary.paid_out ?? summary.total_out ?? 0), c: 'var(--text-muted)',                                               note: 'paid costs' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
               ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
+              // Receivable cards — cost_plus only. The 22% markup + PM fee only materialize
+              // as a client receivable here; read straight from sbLoadClientActualSpend so
+              // these match the client portal to the penny (no independent FinancialsTab calc).
+              ...(clientSpend ? [
+                { lb: 'Billable to Date', v: f$(clientSpend.firm_projected_total), c: 'var(--navy-900)', note: 'cost + markup, PM fee in total' },
+                {
+                  lb: 'Client Owes',
+                  v: clientSpend.remaining_balance < 0 ? `Client credit ${f$(Math.abs(clientSpend.remaining_balance))}` : f$(clientSpend.remaining_balance),
+                  c: clientSpend.remaining_balance < 0 ? 'var(--green-dot)' : clientSpend.remaining_balance > 0 ? 'var(--gold-500)' : 'var(--text-subtle)',
+                  note: 'billable less received',
+                },
+              ] : []),
             ];
             // Flip stat cards — flip language, no bucket/client-money fields.
             const flipStats = [
