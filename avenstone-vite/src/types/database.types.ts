@@ -3076,6 +3076,7 @@ export type Database = {
       job_transactions: {
         Row: {
           amount: number
+          billing_treatment: string
           change_order_id: string | null
           client_email: string | null
           cost_item_id: string | null
@@ -3125,6 +3126,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          billing_treatment?: string
           change_order_id?: string | null
           client_email?: string | null
           cost_item_id?: string | null
@@ -3174,6 +3176,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          billing_treatment?: string
           change_order_id?: string | null
           client_email?: string | null
           cost_item_id?: string | null
