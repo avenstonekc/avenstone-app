@@ -66,6 +66,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [resetDlg, setResetDlg] = useState(null); // { scopeCount, measuredCount, clientCount } | null
   const [resetOpts, setResetOpts] = useState({ scope: true, measured: false, client: false });
   const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState(null); // RESET_FAILURE — post-reset verification failure
   const [estSaving, setEstSaving] = useState(false);
   const [estSendingClient, setEstSendingClient] = useState(false);
   const [estSaveMsg, setEstSaveMsg] = useState('');
@@ -426,17 +427,23 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setConfiguratorPath(false);
     // RESET_SCOPE — drop the committed line-item + proposal views so the cleared DB is reflected.
     setLineItems([]); setLineItemsLoaded(false); setPropLineItems([]); setPropReady(false);
+    // RESET_FAILURE — the one-shot resume guard must reset too, or a re-started interview reuses
+    // the pre-reset resume decision (stale state the reset didn't touch).
+    setResumeChecked(false);
   };
 
   // Open the "Start fresh" dialog — load the full estimate-stack counts so the confirm states
   // exactly what will be cleared vs protected, in plain rows.
   const openResetDialog = async () => {
     setResetOpts({ scope: true, measured: false, client: false });
+    setResetError(null);
     let scopeCount = 0, measuredCount = 0, clientCount = 0;
     try {
       const [ans, stack, props] = await Promise.all([sbLoadScopeAnswers(job.id), sbEstimateStackCounts(job.id), sbLoadProposals(job.id)]);
       for (const a of (ans.ok ? ans.data : [])) {
-        if (a.source === 'client_selected' || a.status === 'confirmed') clientCount++;
+        // Protection is source-based: only the client's own picks are protected. Rep confirmed
+        // selections (rep_card/rep_typed) count as clearable scope (RESET_FAILURE fix).
+        if (a.source === 'client_selected') clientCount++;
         else if (a.source === 'measured') measuredCount++;
         else scopeCount++;
       }
@@ -456,6 +463,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setResetBusy(true);
     let answersCleared = 0;
     const parts = [];
+    const failures = [];
     try {
       const [ansRes, liRes, rsRes, propRes] = await Promise.all([
         sbClearScopeAnswers(job.id, { includeScope: true, includeMeasured: resetOpts.measured, includeClientConfirmed: resetOpts.client }),
@@ -463,7 +471,13 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         sbClearJobRoomScopes(job.id),
         sbResetProposals(job.id),
       ]);
-      await sbClearEstimateDraft(job.id);
+      const draftRes = await sbClearEstimateDraft(job.id);
+      // Collect helper-level failures (silent RLS deny surfaces as ok:false now).
+      if (!ansRes.ok) failures.push(ansRes.error || 'scope answers delete failed');
+      if (!liRes.ok) failures.push(liRes.error || 'line items delete failed');
+      if (!rsRes.ok) failures.push(rsRes.error || 'takeoff scope delete failed');
+      if (!propRes.ok) failures.push(propRes.error || 'proposal reset failed');
+      if (!draftRes.ok) failures.push(draftRes.error || 'estimate draft clear failed');
       answersCleared = ansRes.ok ? (ansRes.data?.cleared || 0) : 0;
       const aiN = liRes.ok ? (liRes.data?.ai || 0) : 0;
       const tkN = liRes.ok ? (liRes.data?.takeoff || 0) : 0;
@@ -478,13 +492,35 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       if (sentSup) parts.push(`${sentSup} sent proposal${sentSup === 1 ? '' : 's'} superseded`);
       if (resetOpts.measured) parts.push('scan measurements');
       if (resetOpts.client) parts.push('client selections');
-      // Breadcrumb so a wiped stack is traceable.
-      sbNote(job.id, `Estimate reset — cleared ${parts.join(', ')}.`, profile?.full_name || 'Staff').catch(() => {});
-    } catch { /* fall through to local reset regardless */ }
+
+      // POST-RESET VERIFICATION (RESET_FAILURE) — re-query and prove the stack is actually clear.
+      // Reset must be incapable of reporting success while rows survive. Anything that should be
+      // zero but isn't = a hard failure the user sees; nothing is claimed cleared.
+      const [postStack, postAns] = await Promise.all([sbEstimateStackCounts(job.id), sbLoadScopeAnswers(job.id)]);
+      const survivingScope = (postAns.ok ? postAns.data : []).filter(a => {
+        if (a.source === 'client_selected') return resetOpts.client;   // gone only if clearing client picks
+        if (a.source === 'measured') return resetOpts.measured;        // gone only if clearing measurements
+        return true;                                                   // every other scope answer must be gone
+      }).length;
+      if (survivingScope > 0) failures.push(`${survivingScope} scope answer(s) survived`);
+      if ((postStack.aiLines + postStack.takeoffLines) > 0) failures.push(`${postStack.aiLines + postStack.takeoffLines} line item(s) survived`);
+      if (postStack.roomScopes > 0) failures.push(`${postStack.roomScopes} takeoff scope tag(s) survived`);
+    } catch (e) {
+      failures.push(e?.message || 'reset threw');
+    }
+
+    if (failures.length) {
+      // DO NOT reset local state or claim success — surface the failure IN the dialog so the store
+      // is never silently believed clean (the reset-lied-twice fix: it cannot lie a third time).
+      setResetBusy(false);
+      setResetError(`Reset did NOT fully clear — ${failures.join('; ')}. The store is unchanged; do not re-interview. Re-check permissions/RLS and try again.`);
+      return;
+    }
+    sbNote(job.id, `Estimate reset — cleared ${parts.join(', ')}. Verified empty.`, profile?.full_name || 'Staff').catch(() => {});
     resetLocalEstimateState();
     setResetBusy(false);
     setResetDlg(null);
-    setScanImportMsg(`Started fresh — cleared ${parts.join(', ') || 'the estimate draft'}. The interview will ask from zero.`);
+    setScanImportMsg(`Started fresh — cleared ${parts.join(', ') || 'the estimate draft'} (verified). The interview will ask from zero.`);
   };
 
   // Downscale an oversized image blob rather than reject it — these are estimator VISION
@@ -1808,9 +1844,14 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
                 ))}
               </div>
             )}
+            {resetError && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: 'var(--red-text-strong)', background: 'var(--red-bg)', border: '1px solid var(--red-text)', borderRadius: 6, padding: '8px 10px', marginBottom: 12 }}>
+                <span>⛔ {resetError}</span>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" disabled={resetBusy} onClick={() => setResetDlg(null)}>Cancel</button>
-              <button className="btn btn-navy" disabled={resetBusy} onClick={confirmReset}>{resetBusy ? 'Clearing…' : 'Start fresh'}</button>
+              <button className="btn btn-navy" disabled={resetBusy} onClick={confirmReset}>{resetBusy ? 'Verifying…' : (resetError ? 'Retry' : 'Start fresh')}</button>
             </div>
           </div>
         </div>
