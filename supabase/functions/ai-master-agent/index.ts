@@ -707,6 +707,10 @@ const TOOLS = [
           enum: ["material_purchase", "fuel", "permit", "sub_payout", "vendor_payment", "commission", "other_expense", "equipment_rental", "labor"],
           description: "Expense category. Omit when unknown — the missing-field card collects it from the user.",
         },
+        receipt_path: {
+          type: "string",
+          description: "Storage path in the job-receipts bucket of a receipt already uploaded by the client (PDF receipts from chat). When a user message contains a [RECEIPT PDF EXTRACTED: … storage_path=X] or [RECEIPT PDF ATTACHED … receipt_path=X] line, pass X here so the receipt links to the transaction. Do NOT pass this for photo receipts — those attach automatically.",
+        },
       },
       required: ["job_id", "amount", "description"],
     },
@@ -1549,6 +1553,17 @@ async function executeTool(
           } catch (e) {
             receiptError = String(e);
           }
+        } else if (input.receipt_path) {
+          // PDF (or other) receipt already uploaded client-side via sbUploadReceipt and
+          // routed through the ai-extract-sub-invoice {bucket,path} extractor. Bind the
+          // storage path directly — identical linkage to TransactionModal's receipt_url.
+          try {
+            receiptPath = String(input.receipt_path);
+            const { error: updErr } = await sb.from("job_transactions").update({ receipt_url: receiptPath }).eq("id", txId);
+            if (updErr) receiptError = updErr.message;
+          } catch (e) {
+            receiptError = String(e);
+          }
         }
 
         // Best-effort dual-write: receipt file → job_files so it appears in FilesTab
@@ -1561,7 +1576,7 @@ async function executeTool(
               name: `Receipt - ${String((input as any).vendor || input.description || "expense")}`,
               storage_path: receiptPath,
               storage_bucket: "job-receipts",
-              mime_type: (input as any).image_mime ? String((input as any).image_mime) : "image/jpeg",
+              mime_type: (input as any).image_mime ? String((input as any).image_mime) : (receiptPath.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
               category: "Receipts",
               subcategory: null,
               client_visible: false,
@@ -2587,6 +2602,13 @@ When the user attaches an image of a receipt, extract: vendor name, total amount
 - Call log_receipt directly with the extracted fields once you've matched the job. The pending_action confirmation card surfaces automatically — the user reviews and confirms via the card. Do NOT ask the user to confirm via text first.
 - The confirmation card description should lead with the matched job address (the most prominent field), then vendor, amount, and PO. Example: "Log $142.37 expense at 123 Test Flow Dr — Home Depot (PO 26-002)."
 - If the user's text message conflicts with what you read on the receipt, the user's text wins.
+
+RECEIPT FROM PDF (Aven chat):
+When the user's message contains a "[RECEIPT PDF EXTRACTED: …]" line, the client already uploaded the PDF to the job-receipts bucket and extracted its fields (vendor, amount, date, desc, storage_path). There is NO image to read — use those values as the receipt fields.
+- Resolve the job exactly as for photo receipts (context job if set; otherwise the PO/ask rule above).
+- Call log_receipt with the extracted vendor/amount/description (and a type inferred from the vendor rules above) AND set receipt_path=<the storage_path value from the line> so the PDF links to the transaction. The confirmation card surfaces automatically.
+- If the line instead says "[RECEIPT PDF ATTACHED — auto-extraction failed …]", ask the user once for vendor, amount, and date, then call log_receipt with those fields plus receipt_path=<the value in that line>.
+- Never put the PDF's storage_path in the description; it goes only in receipt_path.
 
 SCHEDULING
 When the user says things like "schedule [sub/event] for [day]" or "add [event] to [job]'s calendar", use create_schedule_item.

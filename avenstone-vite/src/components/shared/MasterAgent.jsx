@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbLinkBugToTodo, SUBMIT_BUG_REPORT_URL } from '../../lib/supabase';
+import { sb, AI_MASTER_URL, ANON_KEY, captureFailedIntent, sbLinkBugToTodo, SUBMIT_BUG_REPORT_URL, sbUploadReceipt, sbExtractReceipt } from '../../lib/supabase';
 import MasterAgentErrorCard from './MasterAgentErrorCard';
 import { pushBreadcrumb, getSnapshot } from '../../lib/bugContext';
 import { Ic, f$ } from '../../lib/utils';
@@ -490,6 +490,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const [attaching, setAttaching] = useState(false);
   const [libraryAttachments, setLibraryAttachments] = useState([]); // [{ base64, mime, preview }]
   const [attachingLibrary, setAttachingLibrary] = useState(false);
+  const [pdfReceipt, setPdfReceipt] = useState(null); // { path, fileName, fields, extractError } — PDF routed via storage, never inline vision
   const [attachErr, setAttachErr] = useState('');
   const [toast, setToast] = useState('');
   const [bugMode, setBugMode] = useState(false);
@@ -753,7 +754,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const sendMessage = async (text) => {
     const trimmed = (text || input).trim();
     if (loading) return;
-    if (!trimmed && !attachment && !libraryAttachments.length) return;
+    if (!trimmed && !attachment && !libraryAttachments.length && !pdfReceipt) return;
     TextToSpeech.stop().catch(() => {});
     stopVoiceConfirm();
     if (pendingConfirm) setPendingConfirm(null);
@@ -775,23 +776,45 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
       ...(attachment ? [attachment] : []),
       ...libraryAttachments,
     ];
+
+    // A PDF receipt is routed via storage, not inline vision. Inject a structured line
+    // so the agent's log_receipt flow reads the extracted fields and binds the storage
+    // path (receipt_path). The PDF bytes are never placed in the message content.
+    let effectiveText = trimmed;
+    if (pdfReceipt) {
+      const f = pdfReceipt.fields || {};
+      const kv = [
+        f.vendor && `vendor=${f.vendor}`,
+        f.amount && `amount=${f.amount}`,
+        f.date && `date=${f.date}`,
+        f.description && `desc=${f.description}`,
+        `storage_path=${pdfReceipt.path}`,
+        `bucket=job-receipts`,
+      ].filter(Boolean).join(', ');
+      const block = pdfReceipt.extractError
+        ? `[RECEIPT PDF ATTACHED — auto-extraction failed; ask me for vendor/amount/date, then call log_receipt with receipt_path=${pdfReceipt.path}]`
+        : `[RECEIPT PDF EXTRACTED: ${kv}]`;
+      effectiveText = trimmed ? `${trimmed}\n\n${block}` : block;
+    }
+
     const messageContent = allImages.length > 0
       ? [
           ...allImages.map(a => ({ type: 'image', source: { type: 'base64', media_type: a.mime, data: a.base64 } })),
-          ...(trimmed ? [{ type: 'text', text: trimmed }] : []),
+          ...(effectiveText ? [{ type: 'text', text: effectiveText }] : []),
         ]
-      : trimmed;
+      : effectiveText;
 
     const userMsg = { role: 'user', content: messageContent };
     const newHistory = [...conversationHistory, userMsg];
 
     const imageCount = allImages.length;
-    const displayText = trimmed || (imageCount > 1 ? `[${imageCount} images attached]` : imageCount === 1 ? '[image attached]' : '');
+    const displayText = trimmed || (pdfReceipt ? '[PDF receipt attached]' : imageCount > 1 ? `[${imageCount} images attached]` : imageCount === 1 ? '[image attached]' : '');
     setMessages((prev) => [...prev, { type: 'user', text: displayText, image: allImages[0]?.preview || null }]);
     setConversationHistory(newHistory);
     setInput('');
     setAttachment(null);
     setLibraryAttachments([]);
+    setPdfReceipt(null);
     setAttachErr('');
 
     await callMaster({
@@ -807,10 +830,58 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
   const onAttachClick = () => fileRef.current?.click();
   const onLibraryClick = () => libraryRef.current?.click();
 
+  const isPdfFile = (file) => !!file && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || ''));
+
+  // PDF receipts do NOT go through inline vision (Anthropic image blocks reject
+  // application/pdf). We upload to the same private bucket TransactionModal uses,
+  // extract via the Haiku {bucket,path} extractor, and inject a structured text
+  // line at send time. The PDF bytes never enter the agent's context window.
+  const handlePdfReceipt = async (file) => {
+    setAttachErr('');
+    setAttaching(true);
+    try {
+      // Scope to the context job when known; otherwise a tenant-scoped pending prefix.
+      // receipt_url is a free-form storage path — the agent binds the resolved job at
+      // confirm time. Reuses sbUploadReceipt's exact path convention (no new bucket).
+      const scope = contextJobId || `pending-${profile?.tenant_id || 'tenant'}`;
+      const up = await sbUploadReceipt(file, scope);
+      if (up.error || !up.path) {
+        setAttachErr(`Could not upload PDF: ${up.error || 'unknown error'}`);
+        return;
+      }
+      // Best-effort extraction — same extractor as the manual receipt flow. Failure
+      // degrades to manual entry; it never blocks the attach and is surfaced in chat.
+      let fields = null;
+      let extractError = false;
+      try {
+        const ex = await sbExtractReceipt('job-receipts', up.path);
+        if (ex.ok && ex.data) {
+          fields = {
+            vendor: ex.data.vendor_name || '',
+            amount: ex.data.amount != null && ex.data.amount !== '' ? String(ex.data.amount) : '',
+            date: ex.data.invoice_date || '',
+            description: ex.data.description || '',
+          };
+        } else {
+          extractError = true;
+        }
+      } catch {
+        extractError = true;
+      }
+      setPdfReceipt({ path: up.path, fileName: file.name, fields, extractError });
+      if (extractError) setAttachErr("Couldn't auto-read that PDF — tell me the vendor, amount, and date and I'll log it.");
+    } catch {
+      setAttachErr('Could not process PDF receipt.');
+    } finally {
+      setAttaching(false);
+    }
+  };
+
   const onFilePicked = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    if (isPdfFile(file)) { await handlePdfReceipt(file); return; }
     setAttachErr('');
     setAttaching(true);
     try {
@@ -833,19 +904,28 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     const files = Array.from(e.target.files || []);
     e.target.value = '';
     if (!files.length) return;
-    setAttachErr('');
-    setAttachingLibrary(true);
-    try {
-      const payloads = await Promise.all(files.map(fileToVisionPayload));
-      const valid = payloads.filter(p => p.base64.length <= 5 * 1024 * 1024 * 1.34);
-      if (valid.length < payloads.length) {
-        setAttachErr(`${payloads.length - valid.length} image(s) too large after compression.`);
+    const imgs = files.filter(f => !isPdfFile(f));
+    const pdfs = files.filter(isPdfFile);
+    if (imgs.length) {
+      setAttachErr('');
+      setAttachingLibrary(true);
+      try {
+        const payloads = await Promise.all(imgs.map(fileToVisionPayload));
+        const valid = payloads.filter(p => p.base64.length <= 5 * 1024 * 1024 * 1.34);
+        if (valid.length < payloads.length) {
+          setAttachErr(`${payloads.length - valid.length} image(s) too large after compression.`);
+        }
+        if (valid.length > 0) setLibraryAttachments(prev => [...prev, ...valid]);
+      } catch {
+        setAttachErr('Could not read image(s). HEIC, JPG, PNG only.');
+      } finally {
+        setAttachingLibrary(false);
       }
-      if (valid.length > 0) setLibraryAttachments(prev => [...prev, ...valid]);
-    } catch {
-      setAttachErr('Could not read image(s). HEIC, JPG, PNG only.');
-    } finally {
-      setAttachingLibrary(false);
+    }
+    // PDF receipts route through storage + extractor (one at a time).
+    if (pdfs.length) {
+      await handlePdfReceipt(pdfs[0]);
+      if (pdfs.length > 1) setAttachErr('Only one PDF receipt can be attached at a time — used the first.');
     }
   };
 
@@ -1135,6 +1215,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
     bugContextRef.current = null;
     setAttachment(null);
     setLibraryAttachments([]);
+    setPdfReceipt(null);
     setAttachErr('');
     setContextJobId(null);
     declinedForJobRef.current = null;
@@ -1562,7 +1643,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
             flexShrink: 0,
           }}
         >
-          {(attachment || attaching || attachingLibrary || libraryAttachments.length > 0 || attachErr || micError || micHint) && (
+          {(attachment || attaching || attachingLibrary || libraryAttachments.length > 0 || pdfReceipt || attachErr || micError || micHint) && (
             <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
               {(attaching || attachingLibrary) && (
                 <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'rgba(247,245,240,0.55)' }}>Processing image…</span>
@@ -1587,6 +1668,17 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
                   >×</button>
                 </div>
               ))}
+              {pdfReceipt && !attaching && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(201,168,76,0.45)', background: 'rgba(255,255,255,0.06)', maxWidth: 220 }}>
+                  <span style={{ width: 16, height: 16, display: 'flex', flexShrink: 0, color: 'var(--gold-500)' }}>{Ic.doc}</span>
+                  <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'rgba(247,245,240,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pdfReceipt.fileName || 'PDF receipt'}</span>
+                  <button
+                    onClick={() => setPdfReceipt(null)}
+                    aria-label="Remove PDF"
+                    style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--navy-900)', border: '1px solid var(--gold-500)', color: 'var(--bg)', fontSize: 11, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}
+                  >×</button>
+                </div>
+              )}
               {attachErr && (
                 <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: '#FCA5A5' }}>{attachErr}</span>
               )}
@@ -1601,7 +1693,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           <input
             ref={fileRef}
             type="file"
-            accept="image/*,.heic,.heif"
+            accept="image/*,.heic,.heif,application/pdf,.pdf"
             capture="environment"
             onChange={onFilePicked}
             style={{ display: 'none' }}
@@ -1609,7 +1701,7 @@ export default function MasterAgent({ profile, pendingAction, clearPendingAction
           <input
             ref={libraryRef}
             type="file"
-            accept="image/*,.heic,.heif"
+            accept="image/*,.heic,.heif,application/pdf,.pdf"
             multiple
             onChange={onLibraryPicked}
             style={{ display: 'none' }}
