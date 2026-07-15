@@ -53,6 +53,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   const [loading, setLoading] = useState(false);
   const [filterDir, setFilterDir] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [search, setSearch] = useState('');
   const [modal, setModal] = useState(null);
   const [lineItems, setLineItems] = useState([]);
   const [budgetLoading, setBudgetLoading] = useState(false);
@@ -101,7 +102,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     if (sub === 'budget') loadBudget();
   }, [sub, job.id]);
 
-  useEffect(() => { setSelectedIds(new Set()); }, [filterDir, filterStatus]);
+  useEffect(() => { setSelectedIds(new Set()); }, [filterDir, filterStatus, search]);
   useEffect(() => { if (sub !== 'sub_invoices') setOpenSubInvoiceOnMount(false); }, [sub]);
   // Reset to ledger if current sub-tab doesn't exist for this billing model
   useEffect(() => {
@@ -226,6 +227,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     }
   };
 
+  const searchQ = search.trim().toLowerCase();
   const filtered = txs.filter(tx => {
     if (!showSynced && tx.qb_synced_at) return false;
     if (filterDir === 'in' && tx.direction !== 'in') return false;
@@ -233,6 +235,20 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
     if (filterStatus === 'pending' && tx.status !== 'pending') return false;
     if (filterStatus === 'paid' && tx.status !== 'paid') return false;
     if (filterStatus === 'lien_due' && !(tx.lien_waiver_required && !tx.lien_waiver_url)) return false;
+    if (searchQ) {
+      // Client-side match over already-loaded rows: payee, description, type, status,
+      // and amount (both raw number and formatted string).
+      const amt = Number(tx.amount || 0);
+      const hay = [
+        tx.payer_or_payee_name,
+        tx.description,
+        tx.type,
+        tx.status,
+        String(tx.amount ?? ''),
+        f$(amt),
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(searchQ)) return false;
+    }
     return true;
   });
 
@@ -629,12 +645,37 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             </div>
           </div>
 
+          {/* Search */}
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search vendor, description, amount, type, status…"
+              className="finp"
+              style={{ width: '100%', boxSizing: 'border-box', paddingRight: search ? 32 : 12 }}
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                style={{ position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)', width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-muted)', fontSize: 12, lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+              >×</button>
+            )}
+          </div>
+
           {/* Transaction list */}
           {loading ? (
             <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)' }}>Loading...</div>
           ) : !filtered.length ? (
             <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-subtle)', fontSize: 13 }}>
-              {filterDir !== 'all' || filterStatus !== 'all' ? 'No transactions match this filter' : 'No transactions yet — tap + Add to record one'}
+              {searchQ ? (
+                <>
+                  No transactions match “{search.trim()}”
+                  {' · '}
+                  <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--amber-text-strong)', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0 }}>Clear search</button>
+                </>
+              ) : (filterDir !== 'all' || filterStatus !== 'all') ? 'No transactions match this filter' : 'No transactions yet — tap + Add to record one'}
             </div>
           ) : (() => {
             const pendingExpenseRows = filtered.filter(r => r.status === 'pending' && r.direction === 'out');
