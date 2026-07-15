@@ -35,6 +35,7 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
     phase:              tx.phase               || '',
     phase_id:           tx.phase_id            || null,
     notes:              tx.notes               || '',
+    billing_treatment:  tx.billing_treatment   || 'standard',
   });
   const [saving,    setSaving]    = useState(false);
   const [err,       setErr]       = useState(null);
@@ -106,6 +107,8 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
       phase_id:            form.phase_id             || null,
       notes:               form.notes                || null,
       receipt_url:         receiptUrl                || null,
+      // billing_treatment only applies to expenses; income rows stay 'standard'
+      billing_treatment:   form.direction === 'out'  ? (form.billing_treatment || 'standard') : 'standard',
     };
     if (isNew) {
       const r = await sbCreateTransaction(payload);
@@ -199,6 +202,16 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
   };
 
   const types      = form.direction === 'in' ? TX_TYPES_IN : TX_TYPES_OUT;
+  // Markup label for the treatment picker — show the job's rate when labor == material,
+  // otherwise stay generic (no hardcoded percentage; trade/tenant configs vary).
+  const _laborPct = Number(job?.labor_markup_pct    ?? job?.default_markup_pct ?? 0);
+  const _matPct   = Number(job?.material_markup_pct ?? job?.default_markup_pct ?? 0);
+  const mkLabel   = _laborPct === _matPct ? `${_matPct}%` : 'markup';
+  const TREATMENT_LABELS = {
+    standard:    `Standard (cost + ${mkLabel})`,
+    no_markup:   'No markup (cost only)',
+    client_paid: 'Client paid directly (collect markup only)',
+  };
   const lienMissing = tx.lien_waiver_required && !lienUrl;
   const inp = { border: '1px solid #E8E4DC', padding: '8px 10px', fontSize: 16, borderRadius: 6, width: '100%', fontFamily: 'inherit', background: 'var(--card-bg)', boxSizing: 'border-box' };
   const lbl = { fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, display: 'block' };
@@ -231,6 +244,8 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
             {[
               ['Direction',    tx.direction === 'in' ? '↑ Income' : '↓ Expense'],
               ['Type',         TYPE_LABELS[tx.type] || tx.type],
+              ...(tx.billing_treatment && tx.billing_treatment !== 'standard'
+                ? [['Treatment', TREATMENT_LABELS[tx.billing_treatment] || tx.billing_treatment]] : []),
               ['Amount',       f$(tx.amount)],
               ['Status',       tx.status],
               ['Date',         tx.date_incurred],
@@ -320,6 +335,18 @@ export default function TransactionModal({ mode: initialMode, tx, job, onClose, 
               <div style={fg}>
                 <label style={lbl}>Due Date</label>
                 <input style={inp} type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+              </div>
+            )}
+
+            {/* Billing treatment — expenses only */}
+            {form.direction === 'out' && (
+              <div style={fg}>
+                <label style={lbl}>Billing Treatment</label>
+                <select style={inp} value={form.billing_treatment} onChange={e => set('billing_treatment', e.target.value)}>
+                  <option value="standard">{TREATMENT_LABELS.standard}</option>
+                  <option value="no_markup">{TREATMENT_LABELS.no_markup}</option>
+                  <option value="client_paid">{TREATMENT_LABELS.client_paid}</option>
+                </select>
               </div>
             )}
 

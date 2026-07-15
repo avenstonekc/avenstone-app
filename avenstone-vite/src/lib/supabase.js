@@ -1642,6 +1642,42 @@ export const sbVoidTransaction = async id => {
   const { data, error } = await sb.from('job_transactions').update({ status: 'void' }).eq('id', id).select().single();
   return { data, error };
 };
+/**
+ * Permanently deletes a VOIDED job_transaction. Owner-only surface (gated in UI).
+ * Hard-blocks with an explanatory message if the row is still referenced by any of
+ * the four FK sources: sub_invoice_payments.transaction_id, sub_invoices.accrual_transaction_id,
+ * change_orders.accrual_transaction_id, draw_line_items.transaction_id.
+ * Deletes scoped by tenant_id + id and verifies exactly one row was removed.
+ * Returns { ok, error }.
+ */
+export const sbDeleteVoidedTransaction = async (id, tenantId) => {
+  if (!id) return { ok: false, error: 'id required' };
+  const tenant = tenantId || AV_TENANT;
+  const { data: row, error: rowErr } = await sb
+    .from('job_transactions').select('id, status').eq('id', id).eq('tenant_id', tenant).single();
+  if (rowErr || !row) return { ok: false, error: 'Transaction not found' };
+  if (row.status !== 'void') return { ok: false, error: 'Only voided transactions can be deleted.' };
+
+  // FK reference guards — any hit hard-blocks with a message naming the referrer(s)
+  const [sip, sacc, cacc, dli] = await Promise.all([
+    sb.from('sub_invoice_payments').select('id', { count: 'exact', head: true }).eq('transaction_id', id),
+    sb.from('sub_invoices').select('id', { count: 'exact', head: true }).eq('accrual_transaction_id', id),
+    sb.from('change_orders').select('id', { count: 'exact', head: true }).eq('accrual_transaction_id', id),
+    sb.from('draw_line_items').select('id', { count: 'exact', head: true }).eq('transaction_id', id),
+  ]);
+  const refs = [];
+  if (sip.count)  refs.push('a sub-invoice payment');
+  if (sacc.count) refs.push('a sub-invoice accrual');
+  if (cacc.count) refs.push('a change-order accrual');
+  if (dli.count)  refs.push('a draw line item');
+  if (refs.length) return { ok: false, error: `Can't delete — this row is still referenced by ${refs.join(', ')}. Unlink it there first.` };
+
+  const { data: deleted, error: delErr } = await sb
+    .from('job_transactions').delete().eq('id', id).eq('tenant_id', tenant).select('id');
+  if (delErr) return { ok: false, error: delErr.message };
+  if (!deleted || deleted.length !== 1) return { ok: false, error: 'Delete did not affect exactly one row — aborted.' };
+  return { ok: true, error: null };
+};
 export const sbUploadReceipt = async (file, jobId) => {
   try {
     const ext = (file.name.split('.').pop() || 'bin').toLowerCase();

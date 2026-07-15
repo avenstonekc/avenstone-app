@@ -7,7 +7,7 @@ import LineItemModal from './financials/LineItemModal';
 import SubInvoicesSection from './financials/SubInvoicesSection';
 import ComposeDrawScr from './ComposeDrawScr';
 import PaymentScheduleTab from './PaymentScheduleTab';
-import { sb, AV_TENANT, sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadClientActualSpend, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo, sbMarkTransactionsPaid } from '../../../lib/supabase';
+import { sb, AV_TENANT, sbLoadJobTransactions, sbLoadJobFinancialSummary, sbLoadClientActualSpend, sbLoadEstimateLineItems, sbLoadQbCategoryMap, sbLoadTransactionsForExport, sbStampQbSynced, sbCompleteTodo, sbMarkTransactionsPaid, sbDeleteVoidedTransaction } from '../../../lib/supabase';
 import { generateQbCsv, downloadCsv } from '../../../lib/qbExport';
 import { f$, isMob } from '../../../lib/utils';
 
@@ -72,6 +72,7 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
   const [catMap, setCatMap] = useState([]);
   const [pendingTodoId, setPendingTodoId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [menuOpenId, setMenuOpenId] = useState(null);
   const [showComposeDraw, setShowComposeDraw] = useState(false);
   const [openSubInvoiceOnMount, setOpenSubInvoiceOnMount] = useState(false);
   const [dismissedDrawNudge, setDismissedDrawNudge] = useState(false);
@@ -170,6 +171,16 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
 
   const lienCount = txs.filter(t => t.lien_waiver_required && !t.lien_waiver_url && t.status !== 'void').length;
   const isManager = ['owner', 'project_manager'].includes(profile?.role);
+  const isOwner = profile?.role === 'owner';
+
+  // Owner-only hard delete of a VOIDED transaction (helper enforces FK guards + void-only).
+  const handleDeleteVoid = async (tx) => {
+    setMenuOpenId(null);
+    if (!window.confirm('Permanently delete this voided transaction? This cannot be undone.')) return;
+    const res = await sbDeleteVoidedTransaction(tx.id, job.tenant_id || AV_TENANT);
+    if (!res.ok) { window.alert(res.error || 'Delete failed'); return; }
+    loadLedger();
+  };
 
   const openQbModal = async () => {
     if (!catMap.length) { const m = await sbLoadQbCategoryMap(); setCatMap(m); }
@@ -540,10 +551,10 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
             // Cost-plus stat cards — cost-ledger language (redesigned B1 session).
             const cpSpent = (summary.paid_out ?? summary.total_out ?? 0) + (summary.pending_out ?? 0);
             const cpStats = [
-              { lb: 'Spent',     v: f$(cpSpent),                                    c: cpSpent > 0 ? 'var(--red-text)' : 'var(--text-subtle)',          note: 'all costs logged' },
+              { lb: 'Total Costs', v: f$(cpSpent),                                  c: cpSpent > 0 ? 'var(--red-text)' : 'var(--text-subtle)',          note: 'paid + unpaid' },
               { lb: 'Received',  v: f$(summary.total_in ?? 0),                      c: (summary.total_in ?? 0) > 0 ? 'var(--green-dot)' : 'var(--text-subtle)', note: 'draws paid back' },
               { lb: 'Next Draw', v: f$(summary.next_draw ?? 0),                     c: (summary.next_draw ?? 0) > 0 ? 'var(--amber-text-strong)' : 'var(--text-subtle)', note: 'pending, not yet drawn' },
-              { lb: 'Settled',   v: f$(summary.paid_out ?? summary.total_out ?? 0), c: 'var(--text-muted)',                                               note: 'paid costs' },
+              { lb: 'Settled',   v: f$(summary.paid_out ?? summary.total_out ?? 0), c: 'var(--text-muted)',                                               note: 'actually paid out' },
               ...(summary.outstanding_pending > 0 ? [{ lb: 'Outstanding', v: f$(summary.outstanding_pending), c: 'var(--amber-text-strong)', note: 'approved sub invoices unpaid' }] : []),
               ...(summary.retainage_held > 0 ? [{ lb: 'Retainage Held', v: f$(summary.retainage_held), c: 'var(--amber-text-strong)', note: 'released at final draw' }] : []),
               // Receivable cards — cost_plus only. The 22% markup + PM fee only materialize
@@ -764,6 +775,8 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-900)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             {TYPE_LABELS[tx.type] || tx.type}
+                            {tx.billing_treatment === 'no_markup' && <span style={{ fontSize: 10, background: 'var(--neutral-bg)', color: 'var(--text-muted)', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>no markup</span>}
+                            {tx.billing_treatment === 'client_paid' && <span style={{ fontSize: 10, background: 'var(--blue-bg)', color: 'var(--blue-text)', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>client-paid</span>}
                             {lienMissing && <span style={{ fontSize: 10, background: 'var(--red-bg)', color: 'var(--red-text-strong)', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>Lien Missing</span>}
                             {tx.receipt_url && <span style={{ fontSize: 11, color: '#3B82F6' }}>📎</span>}
                           </div>
@@ -784,6 +797,23 @@ export default function FinancialsTab({ job, upd, profile, docs, setDocs, pendin
                             </span>
                           )}
                         </div>
+                        {isOwner && tx.status === 'void' && (
+                          <div style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => setMenuOpenId(menuOpenId === tx.id ? null : tx.id)}
+                              title="Actions"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, color: 'var(--text-subtle)', padding: '2px 6px' }}
+                            >⋯</button>
+                            {menuOpenId === tx.id && (
+                              <div style={{ position: 'absolute', right: 0, top: '100%', zIndex: 20, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 16px rgba(10,31,68,0.15)', minWidth: 120 }}>
+                                <button
+                                  onClick={() => handleDeleteVoid(tx)}
+                                  style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 12px', fontSize: 12, color: 'var(--red-text)', fontWeight: 600 }}
+                                >Delete permanently</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
