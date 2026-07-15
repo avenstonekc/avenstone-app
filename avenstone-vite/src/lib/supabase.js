@@ -1477,12 +1477,17 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     ? { float_unreimbursed: 0, markup_earned: 0, outstanding_pending: 0, projected_profit: 0, projected_total_revenue: 0, margin_pct: 0, pm_fee: 0, cost_basis: 0, arv_target: null }
     : {};
   const { data } = await sb.from('job_transactions')
-    .select('direction,amount,status,type,lien_waiver_required,lien_waiver_url,invoice_id,reimbursement_status,created_at')
+    .select('direction,amount,status,type,billing_treatment,lien_waiver_required,lien_waiver_url,invoice_id,reimbursement_status,created_at')
     .eq('job_id', jobId).neq('status', 'void');
   if (!data) return { total_in: 0, total_out: 0, pending_out: 0, lien_waivers_missing: 0, contract_total: 0, client_owes: 0, ...cpFallback };
+  // billing_treatment gate: 'client_paid' rows are client-direct purchases — never a
+  // contractor cash-out, so excluded from every cost/spent/pending sum below. Their
+  // markup is billable and surfaces via client_paid_markup. 'no_markup' rows stay in
+  // the cost sums but contribute zero markup (handled in the markup reducers).
+  const isClientPaid = t => t.billing_treatment === 'client_paid';
   const total_in   = data.filter(t => t.direction === 'in'  && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
-  const total_out  = data.filter(t => t.direction === 'out' && t.status === 'paid'   ).reduce((s, t) => s + Number(t.amount || 0), 0);
-  const pending_out = data.filter(t => t.direction === 'out' && t.status === 'pending').reduce((s, t) => s + Number(t.amount || 0), 0);
+  const total_out  = data.filter(t => t.direction === 'out' && t.status === 'paid'    && !isClientPaid(t)).reduce((s, t) => s + Number(t.amount || 0), 0);
+  const pending_out = data.filter(t => t.direction === 'out' && t.status === 'pending' && !isClientPaid(t)).reduce((s, t) => s + Number(t.amount || 0), 0);
   const lien_waivers_missing = data.filter(t => t.lien_waiver_required && !t.lien_waiver_url).length;
   const contract_total = isDrawMode ? Number(contractValue || 0) : Number(contractValue || 0) + Number(coTotal || 0);
   const client_owes = contract_total - total_in;
@@ -1496,7 +1501,7 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     for (const r of data) {
       const amt = Number(r.amount) || 0;
       if (model === 'cost_plus' && r.direction === 'in' && r.invoice_id === null && r.status === 'paid') bucket += amt;
-      else if (r.direction === 'out' && r.reimbursement_status === 'unreimbursed') unreimbursed += amt;
+      else if (r.direction === 'out' && r.reimbursement_status === 'unreimbursed' && !isClientPaid(r)) unreimbursed += amt;
     }
 
     // Markup earned — sum of markup_amount on line items belonging to paid draws
@@ -1508,9 +1513,9 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
       markup_earned = round2((markupRows || []).reduce((s, r) => s + (Number(r.markup_amount) || 0), 0));
     }
 
-    // Outstanding — pending sub_payout and change_order accrual rows
+    // Outstanding — pending sub_payout and change_order accrual rows (client_paid excluded)
     const outstanding_pending = round2(
-      data.filter(t => t.direction === 'out' && t.status === 'pending' && (t.type === 'sub_payout' || t.type === 'change_order'))
+      data.filter(t => t.direction === 'out' && t.status === 'pending' && (t.type === 'sub_payout' || t.type === 'change_order') && !isClientPaid(t))
           .reduce((s, t) => s + Number(t.amount || 0), 0)
     );
 
@@ -1521,15 +1526,27 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     const pm_fee = Number(jobRow?.pm_fee || 0);
     const categoryConfig = await sbLoadCategoryConfig(jobRow?.tenant_id);
     const total_cost_base = round2(total_out + outstanding_pending);
+    // no_markup rows contribute cost but zero markup; client_paid rows are excluded
+    // from the cost base entirely and their markup is tracked separately below.
+    const rateFor = t => t.billing_treatment === 'no_markup'
+      ? 0
+      : markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig });
 
     const allCostTxns = [
-      ...data.filter(t => t.direction === 'out' && t.status === 'paid'),
-      ...data.filter(t => t.direction === 'out' && t.status === 'pending' && (t.type === 'sub_payout' || t.type === 'change_order')),
+      ...data.filter(t => t.direction === 'out' && t.status === 'paid' && !isClientPaid(t)),
+      ...data.filter(t => t.direction === 'out' && t.status === 'pending' && (t.type === 'sub_payout' || t.type === 'change_order') && !isClientPaid(t)),
     ];
-    const projected_markup = round2(allCostTxns.reduce((sum, t) => {
+    const markup_on_costs = allCostTxns.reduce((sum, t) => sum + (Number(t.amount) || 0) * rateFor(t) / 100, 0);
+
+    // client_paid — client-direct purchases. Cost is NOT reimbursable (excluded above);
+    // only the markup on the amount is billable to the client.
+    const clientPaidTxns = data.filter(t => t.direction === 'out' && isClientPaid(t));
+    const client_paid_total  = round2(clientPaidTxns.reduce((s, t) => s + (Number(t.amount) || 0), 0));
+    const client_paid_markup = round2(clientPaidTxns.reduce((sum, t) => {
       const rate = markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig });
       return sum + (Number(t.amount) || 0) * rate / 100;
     }, 0));
+    const projected_markup = round2(markup_on_costs + client_paid_markup);
     const projected_profit = round2(projected_markup + pm_fee);
     const projected_total_revenue = round2(total_cost_base + projected_profit);
     const margin_pct = projected_total_revenue > 0
@@ -1552,11 +1569,13 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     // pending_out (which also counts already-drawn in_draw rows) and from
     // float_unreimbursed (which also counts paid-status undrawn costs).
     summary.next_draw            = round2(
-      data.filter(t => t.direction === 'out' && t.status === 'pending' && t.reimbursement_status === 'unreimbursed')
+      data.filter(t => t.direction === 'out' && t.status === 'pending' && t.reimbursement_status === 'unreimbursed' && !isClientPaid(t))
           .reduce((s, t) => s + Number(t.amount || 0), 0)
     );
     summary.markup_earned        = markup_earned;
     summary.outstanding_pending  = outstanding_pending;
+    summary.client_paid_total    = client_paid_total;
+    summary.client_paid_markup   = client_paid_markup;
     summary.projected_profit     = projected_profit;
     summary.projected_total_revenue = projected_total_revenue;
     summary.margin_pct           = margin_pct;
@@ -6650,14 +6669,62 @@ export async function sbLoadUnreimbursedExpenses(jobId) {
 
   const { data, error } = await sb
     .from('job_transactions')
-    .select('id, job_id, date_incurred, type, amount, markup_pct, description, draw_number, status, created_at')
+    .select('id, job_id, date_incurred, type, amount, markup_pct, billing_treatment, description, draw_number, status, created_at')
     .eq('job_id', jobId)
     .eq('direction', 'out')
     .eq('reimbursement_status', 'unreimbursed')
+    .neq('billing_treatment', 'client_paid') // client-direct purchases aren't reimbursable expenses
     .order('date_incurred', { ascending: true });
 
   if (error) return { ok: false, error: error.message, data: [] };
-  return { ok: true, error: null, data: data || [] };
+  // no_markup rows are reimbursable at cost — default their draw markup to 0
+  const rows = (data || []).map(r => r.billing_treatment === 'no_markup' ? { ...r, markup_pct: 0 } : r);
+  return { ok: true, error: null, data: rows };
+}
+
+/**
+ * Uncollected markup on client-direct purchases for a cost-plus job.
+ * client_paid rows aren't reimbursable cost, but their markup IS billable. Returns the
+ * client_paid rows whose markup has not yet been pulled into a draw
+ * (reimbursement_status='unreimbursed'). compose_draw flips them to in_draw on link
+ * (bound by transaction_id, with a pre-flight block on already-in_draw ids) so the same
+ * markup can never be collected on two draws.
+ * Returns { ok, error, data: [{ id, date_incurred, description, type, amount, markup_pct, markup_amount }] }.
+ */
+export async function sbLoadUncollectedClientPaidMarkup(jobId) {
+  if (!jobId) return { ok: false, error: 'jobId required', data: [] };
+  const { data: job, error: jobErr } = await sb
+    .from('jobs')
+    .select('labor_markup_pct, material_markup_pct, default_markup_pct, tenant_id')
+    .eq('id', jobId).single();
+  if (jobErr) return { ok: false, error: jobErr.message, data: [] };
+  const { data, error } = await sb
+    .from('job_transactions')
+    .select('id, date_incurred, type, amount, description')
+    .eq('job_id', jobId)
+    .eq('direction', 'out')
+    .eq('billing_treatment', 'client_paid')
+    .eq('reimbursement_status', 'unreimbursed')
+    .neq('status', 'void')
+    .order('date_incurred', { ascending: true });
+  if (error) return { ok: false, error: error.message, data: [] };
+  const laborPct    = Number(job?.labor_markup_pct    ?? job?.default_markup_pct ?? 0);
+  const materialPct = Number(job?.material_markup_pct ?? job?.default_markup_pct ?? 0);
+  const categoryConfig = await sbLoadCategoryConfig(job?.tenant_id);
+  const rows = (data || []).map(t => {
+    const amt = Number(t.amount ?? 0);
+    const pct = markupRateForCategory(t.type, { laborPct, materialPct, categoryConfig });
+    return {
+      id: t.id,
+      date_incurred: t.date_incurred,
+      description: t.description,
+      type: t.type,
+      amount: amt,
+      markup_pct: pct,
+      markup_amount: Math.round(amt * pct / 100 * 100) / 100,
+    };
+  });
+  return { ok: true, error: null, data: rows };
 }
 
 /**
@@ -6871,7 +6938,7 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     // Paid outbound — the ledger rows
     sbClient
       .from('job_transactions')
-      .select('id, date_incurred, payer_or_payee_name, type, description, amount')
+      .select('id, date_incurred, payer_or_payee_name, type, description, amount, billing_treatment')
       .eq('job_id', jobId)
       .eq('tenant_id', tenantId)
       .eq('direction', 'out')
@@ -6880,7 +6947,7 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     // Pending outbound sub_payout/change_order — the accrual rows
     sbClient
       .from('job_transactions')
-      .select('amount, type')
+      .select('amount, type, billing_treatment')
       .eq('job_id', jobId)
       .eq('tenant_id', tenantId)
       .eq('direction', 'out')
@@ -6939,30 +7006,49 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
   let materialSubtotal = 0;
   let laborSubtotal = 0;
   let markupAmount = 0;
+  // client_paid — client-direct purchases: excluded from every cost bucket and from the
+  // contractor cost ledger (transactions[]); only their markup is billable to the client.
+  let clientPaidTotal = 0;
+  let clientPaidMarkup = 0;
 
-  const transactions = txns.map(t => {
-    const amt = Number(t.amount ?? 0);
+  const transactions = [];
+  for (const t of txns) {
+    const amt  = Number(t.amount ?? 0);
+    const rate = markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig });
+    if (t.billing_treatment === 'client_paid') {
+      clientPaidTotal  += amt;
+      clientPaidMarkup += amt * rate / 100;
+      continue; // not a contractor cost — never enters cost_subtotal or the ledger
+    }
     const mode = _cfg[normalizeCategoryKey(t.type)] ?? 'material_rate';
     if (mode === 'labor_rate') laborSubtotal += amt;
     else materialSubtotal += amt; // material_rate and flat both go to material display bucket
-    markupAmount += amt * markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig }) / 100;
-    return {
+    // no_markup rows count as reimbursable cost but contribute zero markup
+    markupAmount += t.billing_treatment === 'no_markup' ? 0 : amt * rate / 100;
+    transactions.push({
       date: t.date_incurred,
       payee: t.payer_or_payee_name || t.description || '—',
       category: t.type,
       amount: amt,
-    };
-  });
+    });
+  }
 
   const costSubtotal = materialSubtotal + laborSubtotal;
   const markedUpTotal = costSubtotal + markupAmount;
 
   // Outstanding = approved-not-yet-paid accrual rows (drawn down by the sub-invoice RPCs)
-  // Split by bucket so firmProjectedTotal uses per-category rates
+  // Split by bucket so firmProjectedTotal uses per-category rates. client_paid excluded
+  // from reimbursable cost; no_markup contributes zero markup.
   let pendingMarkupAmount = 0;
   const outstandingPending = (pendingOutboundResult.data || []).reduce((sum, t) => {
-    const amt = Number(t.amount ?? 0);
-    pendingMarkupAmount += amt * markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig }) / 100;
+    const amt  = Number(t.amount ?? 0);
+    const rate = markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig });
+    if (t.billing_treatment === 'client_paid') {
+      clientPaidTotal  += amt;
+      clientPaidMarkup += amt * rate / 100;
+      return sum; // not reimbursable cost
+    }
+    pendingMarkupAmount += t.billing_treatment === 'no_markup' ? 0 : amt * rate / 100;
     return sum + amt;
   }, 0);
 
@@ -6975,9 +7061,10 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     .reduce((sum, si) => sum + Number(si.amount ?? 0), 0);
 
   const pmFee = Number(j.pm_fee || 0);
-  // firm_projected_total = paid cost + outstanding cost + per-category markup on both + pm_fee
+  // firm_projected_total = paid cost + outstanding cost + per-category markup on both
+  //                        + markup on client-direct purchases + pm_fee
   const totalCostBase = costSubtotal + outstandingPending;
-  const firmProjectedTotal = totalCostBase + markupAmount + pendingMarkupAmount + pmFee;
+  const firmProjectedTotal = totalCostBase + markupAmount + pendingMarkupAmount + clientPaidMarkup + pmFee;
   const remainingBalance = firmProjectedTotal - paidToDate;
 
   return {
@@ -6999,6 +7086,8 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
       paid_to_date: paidToDate,
       outstanding_pending: outstandingPending,
       potential_additional: potentialAdditional,
+      client_paid_total: clientPaidTotal,
+      client_paid_markup: clientPaidMarkup,
       firm_projected_total: firmProjectedTotal,
       remaining_balance: remainingBalance,
     },

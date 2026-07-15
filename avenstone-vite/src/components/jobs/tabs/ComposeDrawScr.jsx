@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { sbLoadUnreimbursedExpenses, sbGetBucketBalance, sbComposeDraw, sbLoadJobDrawTotals, sbLoadPhases } from '../../../lib/supabase';
+import { sbLoadUnreimbursedExpenses, sbGetBucketBalance, sbComposeDraw, sbLoadJobDrawTotals, sbLoadPhases, sbLoadUncollectedClientPaidMarkup } from '../../../lib/supabase';
 import { f$, fD } from '../../../lib/utils';
 
 const NAVY   = 'var(--navy-900)';
@@ -23,6 +23,9 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
   const [expenses, setExpenses]       = useState([]);
+  // Uncollected markup on client-direct purchases — billable %, offered as markup-only lines.
+  const [clientPaidRows, setClientPaidRows]               = useState([]);
+  const [selectedClientPaidIds, setSelectedClientPaidIds] = useState(() => new Set());
   const [balance, setBalance]         = useState({ bucket: 0, unreimbursed: 0, float: 0 });
   const [overrides, setOverrides]     = useState({}); // { [txId]: markupPct }
   const [title, setTitle]             = useState('');
@@ -69,14 +72,18 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
   const load = async () => {
     setLoading(true);
     setError(null);
-    const [expRes, balRes] = await Promise.all([
+    const [expRes, balRes, cpRes] = await Promise.all([
       sbLoadUnreimbursedExpenses(job.id),
       sbGetBucketBalance(job.id),
+      sbLoadUncollectedClientPaidMarkup(job.id),
     ]);
     if (!expRes.ok) { setError(expRes.error); setLoading(false); return; }
     if (!balRes.ok) { setError(balRes.error); setLoading(false); return; }
     setExpenses(expRes.data);
     setSelectedIds(new Set(expRes.data.filter(r => r.status === 'pending').map(r => r.id)));
+    const cpRows = cpRes.ok ? cpRes.data : [];
+    setClientPaidRows(cpRows);
+    setSelectedClientPaidIds(new Set(cpRows.map(r => r.id)));
     setBalance(balRes.data);
     setLoading(false);
   };
@@ -119,8 +126,24 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
         notes:             null,
       });
     }
+    // Markup-only lines for client-direct purchases: base 0, markup billable, bound to
+    // the source transaction_id so compose_draw's in_draw flip blocks double-collection.
+    for (const cp of clientPaidRows) {
+      if (!selectedClientPaidIds.has(cp.id)) continue;
+      items.push({
+        transaction_id:    cp.id,
+        description:       `Markup on client-direct purchase — ${cp.description || TYPE_LABELS[cp.type] || cp.type || 'item'} (${cp.markup_pct}%)`,
+        base_amount:       0,
+        markup_pct:        cp.markup_pct,
+        markup_amount:     cp.markup_amount,
+        total_with_markup: cp.markup_amount,
+        is_forward_looking: false,
+        display_order:     idx++,
+        notes:             'client_paid markup only',
+      });
+    }
     return items;
-  }, [expenses, selectedIds, overrides, forwardLines]);
+  }, [expenses, selectedIds, overrides, forwardLines, clientPaidRows, selectedClientPaidIds]);
 
   const subtotal = useMemo(
     () => round2(lineItems.reduce((s, r) => s + r.total_with_markup, 0)),
@@ -477,6 +500,50 @@ export default function ComposeDrawScr({ job, onClose, onComposed }) {
                 <span style={{ fontWeight: 700 }}>+</span> Add line item
               </button>
             </div>
+
+            {/* ── Section 2b: Markup on client-direct purchases ── */}
+            {clientPaidRows.length > 0 && (
+              <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                  Markup on Client-Direct Purchases ({clientPaidRows.length})
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 10 }}>
+                  Client bought these directly — cost is not reimbursable, only the markup is billable. Collect it here as its own draw line.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {clientPaidRows.map(cp => {
+                    const checked = selectedClientPaidIds.has(cp.id);
+                    return (
+                      <div key={cp.id} style={{
+                        display: 'grid', gridTemplateColumns: '24px 1fr 88px 60px 76px', gap: 6, alignItems: 'center',
+                        padding: '6px 6px', borderRadius: 4,
+                        background: checked ? CREAM : 'var(--surface)', opacity: checked ? 1 : 0.55,
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          aria-label={`Collect markup on ${cp.description || cp.type}`}
+                          onChange={ev => setSelectedClientPaidIds(prev => {
+                            const next = new Set(prev);
+                            if (ev.target.checked) next.add(cp.id); else next.delete(cp.id);
+                            return next;
+                          })}
+                          style={{ width: 14, height: 14, cursor: 'pointer', margin: 0 }}
+                        />
+                        <div style={{ fontSize: 12, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={cp.description || ''}>
+                          {cp.description || TYPE_LABELS[cp.type] || cp.type || '—'}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-subtle)', textAlign: 'right' }} title="Client-paid amount (not billed)">
+                          {f$(cp.amount)} paid
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'right' }}>{cp.markup_pct}%</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: GOLD, textAlign: 'right' }}>{f$(cp.markup_amount)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* ── Section 3: Draw Summary ───────────────────────── */}
             <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 16, marginBottom: 24 }}>
