@@ -27,6 +27,8 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
 | ~~g~~ | ~~**Kalin: did Aguayo's do carpet on `8617 Houston`?**~~ **RESOLVED 2026-07-15** — Aguayo's owner-supplied complete scope sheet (07/14, $33,563.06, "Change Orders Included") has NO carpet line; carpet on this job was Southside ($4,647) + Carlos ($4,500), both raw by Kalin. Aguayo did not do carpet → no missing liability. | ~~2026-07-15~~ |
 | h | **Kalin: $100 discrepancy with Aguayo** — their remainder invoice credits $16,900 received vs $17,000 in checks Kalin wrote. Handle with the sub directly; the books stay at $17,000 paid (correct per the checks). | 2026-07-15 |
 | i | **Kalin: pay Aguayo remainder $16,563.06 when ready** — then log it as an invoice payment on `16ab4bc1` via `add_sub_invoice_payment_with_ledger` (NOT a raw status flip), so accrual `97205011` draws down atomically. | 2026-07-15 |
+| j | **PRICE_DETERMINISM: Countertops has a `scope_option_trades` mapping for bathroom but no `takeoff_template` for `room_type=bathroom`.** Vanity tops currently price under "Cabinets / vanities - Install" via the `scope_detail_schemas` fixture_select path. Decide: (1) is Countertops a separate billable trade, or does it stay merged into Cabinets? (2) if separate, add a `takeoff_template` + `takeoff_unit_costs` rows for Countertops / bathroom. No code change needed until decision. | Blocks PRICE_DETERMINISM P2 trade coverage |
+| k | **PRICE_DETERMINISM: Confirm `takeoff_unit_costs` as the single rate authority for the deterministic pricing path.** The seam audit confirmed ai-estimator uses `rate_book_labor` / `rate_book_material` while the takeoff engine uses `takeoff_unit_costs`. These are separate tables with separate populations. Decide: when configurator scope → deterministic pricing, which table wins? Likely `takeoff_unit_costs` (already drives the wizard) — but Kalin to confirm. | Blocks PRICE_DETERMINISM P3 (price_plan edge mode) |
 
 ### NEXT CODE DISPATCH (priority)
 
@@ -86,6 +88,34 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Net: 6 of 7 phases live** (2, 3, 4, 5, 6, 7 + schema 1.5). **Remaining: Phase 1 only** (rate reconciliation — SYSTEM_PROMPT vs `ai_knowledge` side-by-side; mostly a data task). Phases 4–7 define the guided interview experience.
 **~~Critical finding: markup/pm_fee hardcoded in SYSTEM_PROMPT.~~ RESOLVED** — B1.6 (`ab50638`) made the estimator read `bid_model_config`; the hardcoded 30%/$1,200 are gone (see Phase 4 row).
+
+**DIVERGENCE CORRECTION (2026-07-16 seam audit):** This plan's earlier language implied the estimator's pricing was quantity-deterministic. It is NOT. The LLM call at pricing time freely invents which line items and what quantities to emit — `priceScopeLines` then prices deterministically given THOSE LLM-chosen quantities, but the quantities themselves vary by ~33-108% for identical scope (harness confirmed `tools/price_stability_test.cjs`). Rates are deterministic; quantities are not. The PRICE_DETERMINISM arc below addresses this directly.
+
+---
+
+#### PRICE_DETERMINISM — arc (2026-07-16, active)
+
+**Goal:** same scope of work → same price, every run. LLM demoted from quantity-inventer to perception/narrative; quantity computation is deterministic from geometry + confirmed scope answers.
+
+**Decisions locked (2026-07-16 audit + Kalin discussion):**
+- D1: Route confirmed configurator scope → existing deterministic Takeoff engine (`computePricingLines`) rather than the LLM pricing call. Same scope = identical totals.
+- D2: `pricingCore.js` (pure ESM, zero supabase/browser imports) is the canonical computation surface — callable from edge fn, node harness, and browser alike.
+- D3: The two scope vocabularies (`job_scope_answers` keyed by `scope_checklists` fields vs `scope_details` keyed by `scope_detail_schemas`) are DISJOINT. A translation layer is required before the deterministic engine can consume configurator answers.
+- D4: Tile quantities (the most expensive lines) depend on shower dims not in room-level scan geometry — they must come from scope answers (shower_width_in/length_in/wall_height_in) via the existing `scope_detail_schemas` computed path.
+- D5: `temperature: 0` on the pricing LLM call is necessary but not sufficient for determinism (long structured JSON diverges token-by-token regardless).
+- D6: The price-stability harness (`tools/price_stability_test.cjs`) is the regression gate — must PASS (spread ≤ 8%) after the rewire.
+- D7: `scope_option_trades` and `template_scope_subsets.trades` are two separate scope→trade mechanisms. The deterministic engine uses the latter; the old LLM estimator used the former. Post-rewire, only `template_scope_subsets` is load-bearing.
+
+| Phase | Status | Evidence |
+|-------|--------|----------|
+| Audit — seam audit | **DONE 2026-07-16** | 6-section audit: pricing path, engine inputs, scope→trade gap table, geometry provenance, harness hook, allowance channel |
+| P1 — extract pure pricingCore | **DONE 2026-07-16** | `d1123f6` — `pricingCore.js` (pure ESM); `buildTakeoffDraft` refactored; 24/24 unit tests; sandbox regression (39 lines, all 14 trades, purity PASS) |
+| P2 — translation layer: configurator answers → scope_details | NOT BUILT | Maps `job_scope_answers` (scope_checklists vocab) → `scope_details` (scope_detail_schemas vocab) per room. Covers the 12 key field mismatches + derives scope_tag from answers. |
+| P3 — `price_plan` edge mode | NOT BUILT | New mode in `ai-estimator` (or new edge fn): reads `job_scope_answers` for job_id → translation layer → `computePricingLines` → returns `priced_scope` in same shape as current LLM path. No LLM call. |
+| P4 — EstimateTab wiring | NOT BUILT | On `scopeComplete`, call the `price_plan` mode instead of the LLM pricing path when project_type resolves. Fallback to LLM path for no-project-type jobs. |
+| P5 — harness re-point + PASS | NOT BUILT | Rebuild harness to call the new pricing path; confirm spread ≤ 8% across 6 runs. |
+
+**Dependency:** P2 needs KALIN_QUEUE items j + k resolved.
 
 ---
 
