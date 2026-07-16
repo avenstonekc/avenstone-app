@@ -67,7 +67,7 @@ READING GUIDE (bathroom):
 - "add a new walk-in shower" / "shower in that space" -> tub_shower_config = walkin.
 - "tile from floor to ceiling" / "tile to the ceiling" -> tile_height = ceiling.
 - "keeping/keep the [tile|existing] floor" -> existing_floor_finish = tile (if tile), AND floor_tile = keep_existing (floor not being replaced).
-- "in that space" / fixtures staying put -> layout_change = keep_layout.
+- Layout stays put -> layout_change = keep_layout, HIGH confidence, when the text clearly says fixtures are not moving: "in that space", "in the same space", "same footprint", "same layout", "keep the layout", "not moving anything", "fixtures stay". Treat these as unambiguous layout-stays signals and rate them HIGH, not med.
 - "new toilet" -> toilet = standard (a replacement; do not upgrade the grade unless stated).
 - "new vanity" (singular) -> vanity_config = single (med confidence; do NOT touch existing_vanity).`;
 
