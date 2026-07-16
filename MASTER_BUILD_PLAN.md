@@ -110,8 +110,8 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 |-------|--------|----------|
 | Audit — seam audit | **DONE 2026-07-16** | 6-section audit: pricing path, engine inputs, scope→trade gap table, geometry provenance, harness hook, allowance channel |
 | P1 — extract pure pricingCore | **DONE 2026-07-16** | `d1123f6` — `pricingCore.js` (pure ESM); `buildTakeoffDraft` refactored; 24/24 unit tests; sandbox regression (39 lines, all 14 trades, purity PASS) |
-| P2 — translation layer: configurator answers → scope_details | NOT BUILT | Maps `job_scope_answers` (scope_checklists vocab) → `scope_details` (scope_detail_schemas vocab) per room. Covers the 12 key field mismatches + derives scope_tag from answers. |
-| P3 — `price_plan` edge mode | NOT BUILT | New mode in `ai-estimator` (or new edge fn): reads `job_scope_answers` for job_id → translation layer → `computePricingLines` → returns `priced_scope` in same shape as current LLM path. No LLM call. |
+| P2 — translation layer: configurator answers → scope_details | **DONE 2026-07-16** | `867d1b3` + `5138fd0` + `01587c4` — `scopeTranslation.js` (pure ESM, zero imports): `deriveScopeTag`, `translateAnswers`, `resolveGeometry`; 40/40 unit+integration tests; Countertops bathroom template migration (skip_when_missing=true, 15 templates now); sandbox regression PASS (byte-identical 39 lines / $9,320.84) |
+| P3 — `price_plan` edge mode | **NEXT** | New mode in `ai-estimator` (or new edge fn): reads `job_scope_answers` for job_id → translation layer → `computePricingLines` → returns `priced_scope` in same shape as current LLM path. No LLM call. |
 | P4 — EstimateTab wiring | NOT BUILT | On `scopeComplete`, call the `price_plan` mode instead of the LLM pricing path when project_type resolves. Fallback to LLM path for no-project-type jobs. |
 | P5 — harness re-point + PASS | NOT BUILT | Rebuild harness to call the new pricing path; confirm spread ≤ 8% across 6 runs. |
 
