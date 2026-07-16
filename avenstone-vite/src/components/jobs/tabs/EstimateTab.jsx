@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
 import { isScanArtifact, artifactToScanParams, SCAN_ARTIFACT_VERSION } from '../../../lib/scanArtifact';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
@@ -791,6 +791,39 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     }
   };
 
+  // SCOPE_PREFILL P3 — fire ONCE on configurator entry from a zero-answers state: parse the job's
+  // Scope of Work into pre-answers. HIGH → persisted confirmed (skipped, chip); MED → persisted
+  // proposed (pre-selected for one-tap confirm). Silent degradation: any failure logs (console +
+  // captureFailedIntent) and the configurator runs exactly as today. Re-entry (answers already
+  // present) reads back as before; "Start fresh" clears answers so the next entry re-fires.
+  const runScopePrefill = async (pt) => {
+    try {
+      if (!pt || !job?.id || !job?.scope?.trim()) return;
+      const existing = await sbLoadScopeAnswers(job.id);
+      if (!existing.ok || (existing.data || []).length > 0) return; // only the zero-answers state
+      const res = await sbScopePrefill(job.id, pt);
+      if (!res.ok) {
+        console.error('[scopePrefill]', res.error);
+        captureFailedIntent({ kind: 'scope_prefill', payload: { jobId: job.id, projectType: pt }, jobId: job.id, message: res.error, resumable: false }).catch(() => {});
+        return;
+      }
+      const rows = (res.data.answers || [])
+        .filter(a => a.confidence === 'high' || a.confidence === 'med')
+        .map(a => ({
+          field_key: a.field_key,
+          option_key: a.option_key,
+          value: a.option_key,
+          source: 'scope_prefill',
+          status: a.confidence === 'high' ? 'confirmed' : 'proposed',
+          evidence_phrase: a.evidence_phrase || null,
+        }));
+      if (rows.length) await persistScopeAnswers(rows);
+    } catch (e) {
+      console.error('[scopePrefill]', e);
+      captureFailedIntent({ kind: 'scope_prefill', payload: { jobId: job?.id }, jobId: job?.id, message: e?.message, resumable: false }).catch(() => {});
+    }
+  };
+
   const startEstimate = async () => {
     if (!estForm.scope.trim()) return;
     setEstStarted(true);
@@ -800,6 +833,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       // ESTIMATE_CONFIGURATOR S2: the tap-through configurator drives scope capture (deterministic,
       // no LLM turn here). Seed the conversation with the scope prompt so the UNCHANGED pricing path
       // still has context; the configurator persists structured answers + hands off on complete.
+      await runScopePrefill(pt); // SCOPE_PREFILL P3 — seed answers before the configurator hydrates
       setScopeInterviewActive(true);
       setScopeComplete(false);
       setForceDraftedIncomplete(false);

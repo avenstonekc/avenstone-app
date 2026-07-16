@@ -19,6 +19,10 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [draft, setDraft]       = useState('');     // in-progress number/text input
+  // SCOPE_PREFILL P3 — MED prefills held as pending (shown pre-selected for one-tap confirm, NOT
+  // seeded so the field stays open); prefillMeta carries provenance for the "from your scope" glyph.
+  const [pending, setPending]         = useState({}); // field_key -> { option_key, evidence_phrase }
+  const [prefillMeta, setPrefillMeta] = useState({}); // field_key -> { status, evidence_phrase }
 
   useEffect(() => {
     if (!projectType) return;
@@ -30,13 +34,19 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
     (async () => {
       setLoading(true);
       // Hydrate from persisted answers (resume) so we don't re-ask what's already captured.
-      const seed = {};
+      const seed = {}, pend = {}, meta = {};
       if (jobId) {
         try {
           const stored = await sbLoadScopeAnswers(jobId);
           if (stored.ok) for (const a of (stored.data || [])) {
             const v = a.option_key ?? a.value;
-            if (v != null && String(v).trim() !== '') seed[a.field_key] = v;
+            if (v == null || String(v).trim() === '') continue;
+            if (a.source === 'scope_prefill') meta[a.field_key] = { status: a.status, evidence_phrase: a.evidence_phrase };
+            // MED prefill (proposed): keep OUT of the plan's answered set so it stays an open
+            // question, and hold it pending for a pre-selected one-tap confirm. High prefills and
+            // rep answers seed normally (engine skips + fires unlocks).
+            if (a.source === 'scope_prefill' && a.status === 'proposed') pend[a.field_key] = { option_key: v, evidence_phrase: a.evidence_phrase };
+            else seed[a.field_key] = v;
           }
         } catch { /* start fresh on failure */ }
       }
@@ -46,6 +56,8 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
       setLoading(false);
       if (!res.ok) { setError(res.error || 'Could not load scope plan'); return; }
       setAnswers(seed);
+      setPending(pend);
+      setPrefillMeta(meta);
       setPlan(res.data);
       setActive(res.data.open_field_keys?.[0] || res.data.fields?.[0]?.field_key || null);
       if (res.data.scope_complete) onComplete?.(seed);
@@ -59,8 +71,10 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
 
   const answerField = useCallback(async (fieldKey, value) => {
     if (value == null || String(value).trim() === '') return;
+    const wasPending = pending[fieldKey]; // a MED prefill being confirmed/overridden
     const next = { ...answers, [fieldKey]: value };
     setAnswers(next);
+    if (wasPending) setPending(p => { const n = { ...p }; delete n[fieldKey]; return n; });
     setDraft('');
     setLoading(true);
     const arr = Object.entries(next).map(([field_key, v]) => ({ field_key, value: v }));
@@ -81,13 +95,19 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
       if (jobId) sbDeleteScopeAnswers(jobId, orphans);
     }
     // Persist just the field we answered — server-derived answer (option_key + trade, rep_card).
+    // Confirming a MED prefill flips it to confirmed and keeps the scope-prefill provenance +
+    // evidence; a normal rep answer persists as-is (DB default status 'proposed').
     const persisted = (res.data.answers || []).find(a => a.field_key === fieldKey);
-    if (persisted && persistAnswers) persistAnswers([persisted]);
+    if (persisted && persistAnswers) {
+      persistAnswers([wasPending
+        ? { ...persisted, source: 'scope_prefill', status: 'confirmed', evidence_phrase: wasPending.evidence_phrase }
+        : persisted]);
+    }
     if (res.data.scope_complete) { onComplete?.(effective); setActive(null); return; }
     const open = res.data.open_field_keys || [];
     // Advance to the next still-open field (prefer one after the one just answered).
     setActive(open.find(k => k !== fieldKey) || open[0] || null);
-  }, [answers, projectType, persistAnswers, onComplete]);
+  }, [answers, pending, projectType, persistAnswers, onComplete]);
 
   if (error) return (
     <div style={{ padding: 16, background: 'var(--error-bg, #FEE2E2)', borderRadius: 'var(--r-md)', color: 'var(--error, #B91C1C)', fontSize: 13 }}>
@@ -103,6 +123,10 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
   const hasCards = activeField?.field_type === 'choice' && opts.some(o => fieldImgs[o]);
   // Phase 4a — display label from data (option_labels), falling back to humanize(key).
   const labelOf = (o) => activeField?.option_labels?.[o] || humanize(o);
+  // SCOPE_PREFILL P3 — the active field may be a MED prefill awaiting confirm: pre-select its
+  // parsed option (highlighted) so a single tap on it confirms and advances.
+  const activePending = activeField ? pending[activeField.field_key] : null;
+  const selOf = (o) => (answers[activeField?.field_key] ?? activePending?.option_key) === o;
 
   const chipStyle = (state) => ({
     padding: '5px 10px', borderRadius: 'var(--r-full)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
@@ -124,8 +148,12 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
         {fields.map(f => {
           const done = answers[f.field_key] != null && String(answers[f.field_key]).trim() !== '';
           const state = f.field_key === activeKey ? 'active' : done ? 'done' : 'todo';
+          // A done field that originated from the scope parser gets a subtle glyph — reads as
+          // "already known", not machinery. Tapping still reopens it like any answered pill.
+          const fromScope = done && prefillMeta[f.field_key];
           return (
-            <button key={f.field_key} style={{ ...chipStyle(state), flex: 'none' }} onClick={() => setActive(f.field_key)} title={f.question}>
+            <button key={f.field_key} style={{ ...chipStyle(state), flex: 'none' }} onClick={() => setActive(f.field_key)} title={fromScope ? 'Pre-filled from your scope — tap to change' : f.question}>
+              {fromScope && <span style={{ color: 'var(--gold-500)', marginRight: 4 }}>✦</span>}
               {humanize(f.field_key)}{done ? `: ${f.option_labels?.[answers[f.field_key]] || humanize(String(answers[f.field_key]))}` : ''}
             </button>
           );
@@ -151,11 +179,20 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
             </div>
           )}
 
+          {/* SCOPE_PREFILL P3 — MED prefill: the parsed option is pre-selected below; this line shows
+              the scope wording that justified it. One tap on the highlighted option confirms. */}
+          {activePending && (
+            <div style={{ fontSize: 12, marginBottom: 16, lineHeight: 1.4, display: 'flex', gap: 6, alignItems: 'baseline' }}>
+              <span style={{ color: 'var(--gold-500)', fontWeight: 700, flexShrink: 0 }}>✦ from your scope:</span>
+              <em style={{ color: 'var(--text-secondary)' }}>&ldquo;{activePending.evidence_phrase}&rdquo;</em>
+            </div>
+          )}
+
           {/* Choice + images → cards */}
           {hasCards && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
               {opts.map(o => {
-                const selected = answers[activeField.field_key] === o;
+                const selected = selOf(o);
                 return (
                   <button key={o} onClick={() => answerField(activeField.field_key, o)} disabled={loading}
                     style={{ border: `2px solid ${selected ? 'var(--navy-900)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', padding: 0, overflow: 'hidden', cursor: 'pointer', background: 'var(--card-bg)', textAlign: 'left' }}>
@@ -173,7 +210,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
           {activeField.field_type === 'choice' && !hasCards && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {opts.map(o => (
-                <button key={o} onClick={() => answerField(activeField.field_key, o)} disabled={loading} style={bigBtn(answers[activeField.field_key] === o)}>
+                <button key={o} onClick={() => answerField(activeField.field_key, o)} disabled={loading} style={bigBtn(selOf(o))}>
                   {labelOf(o)}
                 </button>
               ))}
@@ -184,7 +221,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
           {activeField.field_type === 'bool' && (
             <div style={{ display: 'flex', gap: 10 }}>
               {['yes', 'no'].map(o => (
-                <button key={o} onClick={() => answerField(activeField.field_key, o)} disabled={loading} style={{ ...bigBtn(answers[activeField.field_key] === o), textAlign: 'center' }}>
+                <button key={o} onClick={() => answerField(activeField.field_key, o)} disabled={loading} style={{ ...bigBtn(selOf(o)), textAlign: 'center' }}>
                   {humanize(o)}
                 </button>
               ))}
