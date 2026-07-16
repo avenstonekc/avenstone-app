@@ -139,9 +139,14 @@ async function checkSelectionsConfirmed(jobId, sb) {
   if (!applicable.length) return pass;
 
   const { data: confirmedRows } = await sb
-    .from('job_scope_answers').select('field_key')
+    .from('job_scope_answers').select('field_key, source, confirmed_by')
     .eq('job_id', jobId).eq('status', 'confirmed');
-  const confirmed = new Set((confirmedRows || []).map(r => r.field_key));
+  // SCOPE_PREFILL P4b C3 — a scope_prefill AUTO-answer must NOT satisfy the client-selections lock
+  // until a HUMAN confirms it (confirmed_by set, e.g. via PmSelectionsTab). Rep/client picks and
+  // human-confirmed prefills still count; a bare high-confidence auto-fill does not.
+  const confirmed = new Set((confirmedRows || [])
+    .filter(r => r.source !== 'scope_prefill' || r.confirmed_by)
+    .map(r => r.field_key));
   const unconfirmed = applicable.filter(fk => !confirmed.has(fk));
   const lockedN = applicable.length - unconfirmed.length;
 
