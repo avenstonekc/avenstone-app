@@ -41,11 +41,13 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
           if (stored.ok) for (const a of (stored.data || [])) {
             const v = a.option_key ?? a.value;
             if (v == null || String(v).trim() === '') continue;
-            if (a.source === 'scope_prefill') meta[a.field_key] = { status: a.status, evidence_phrase: a.evidence_phrase };
-            // MED prefill (proposed): keep OUT of the plan's answered set so it stays an open
-            // question, and hold it pending for a pre-selected one-tap confirm. High prefills and
-            // rep answers seed normally (engine skips + fires unlocks).
-            if (a.source === 'scope_prefill' && a.status === 'proposed') pend[a.field_key] = { option_key: v, evidence_phrase: a.evidence_phrase };
+            // AI-sourced prefills: 'scope_prefill' (from the text scope) or 'photo' (from vision).
+            const aiPrefill = a.source === 'scope_prefill' || a.source === 'photo';
+            if (aiPrefill) meta[a.field_key] = { status: a.status, evidence_phrase: a.evidence_phrase, source: a.source };
+            // A proposed AI prefill: keep OUT of the plan's answered set so it stays an open question,
+            // and hold it pending for a pre-selected one-tap confirm. Confirmed prefills and rep
+            // answers seed normally (engine skips + fires unlocks).
+            if (aiPrefill && a.status === 'proposed') pend[a.field_key] = { option_key: v, evidence_phrase: a.evidence_phrase, source: a.source };
             else seed[a.field_key] = v;
           }
         } catch { /* start fresh on failure */ }
@@ -100,7 +102,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
     const persisted = (res.data.answers || []).find(a => a.field_key === fieldKey);
     if (persisted && persistAnswers) {
       persistAnswers([wasPending
-        ? { ...persisted, source: 'scope_prefill', status: 'confirmed', evidence_phrase: wasPending.evidence_phrase, confirmed_by: AV_USER_ID } // human confirm — protects from re-parse (P4a)
+        ? { ...persisted, source: wasPending.source || 'scope_prefill', status: 'confirmed', evidence_phrase: wasPending.evidence_phrase, confirmed_by: AV_USER_ID } // human confirm — keeps provenance, protects from re-parse
         : persisted]);
     }
     if (res.data.scope_complete) { onComplete?.(effective); setActive(null); return; }
@@ -152,7 +154,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
           // "already known", not machinery. Tapping still reopens it like any answered pill.
           const fromScope = done && prefillMeta[f.field_key];
           return (
-            <button key={f.field_key} style={{ ...chipStyle(state), flex: 'none' }} onClick={() => setActive(f.field_key)} title={fromScope ? 'Pre-filled from your scope — tap to change' : f.question}>
+            <button key={f.field_key} style={{ ...chipStyle(state), flex: 'none' }} onClick={() => setActive(f.field_key)} title={fromScope ? `Pre-filled from your ${prefillMeta[f.field_key]?.source === 'photo' ? 'photos' : 'scope'} — tap to change` : f.question}>
               {fromScope && <span style={{ color: 'var(--gold-500)', marginRight: 4 }}>✦</span>}
               {humanize(f.field_key)}{done ? `: ${f.option_labels?.[answers[f.field_key]] || humanize(String(answers[f.field_key]))}` : ''}
             </button>
@@ -183,7 +185,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
               the scope wording that justified it. One tap on the highlighted option confirms. */}
           {activePending && (
             <div style={{ fontSize: 12, marginBottom: 16, lineHeight: 1.4, display: 'flex', gap: 6, alignItems: 'baseline' }}>
-              <span style={{ color: 'var(--gold-500)', fontWeight: 700, flexShrink: 0 }}>✦ from your scope:</span>
+              <span style={{ color: 'var(--gold-500)', fontWeight: 700, flexShrink: 0 }}>✦ from your {activePending.source === 'photo' ? 'photos' : 'scope'}:</span>
               <em style={{ color: 'var(--text-secondary)' }}>&ldquo;{activePending.evidence_phrase}&rdquo;</em>
             </div>
           )}

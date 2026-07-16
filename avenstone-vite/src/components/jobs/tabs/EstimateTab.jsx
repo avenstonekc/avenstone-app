@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, sbDeleteScopeAnswers, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, sbScopeVision, sbDeleteScopeAnswers, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
 import { isScanArtifact, artifactToScanParams, SCAN_ARTIFACT_VERSION } from '../../../lib/scanArtifact';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
@@ -54,6 +54,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [jobPlansBusy, setJobPlansBusy] = useState(false);
   const [jobPlanFetchId, setJobPlanFetchId] = useState(null); // row currently being pulled
   const [jobPhotos, setJobPhotos] = useState(null); // job image files (attach-from-job Photos section)
+  const [hasJobPhotos, setHasJobPhotos] = useState(false); // SCOPE_VISION — job has photos (gate + vision trigger)
   const [photoSel, setPhotoSel] = useState(() => new Set()); // selected photo ids
   const [photoAttachBusy, setPhotoAttachBusy] = useState(false);
   const [photoShowAll, setPhotoShowAll] = useState(false);
@@ -236,6 +237,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       { milestone: 'Final Payment — Project Complete', timing: 'Upon completion', amount: bal },
     ]);
   }, [propPmFee, propLineItems, propReady]);
+
+  // SCOPE_VISION — does the job have photos? gates "generate from photos alone" + the vision pass.
+  useEffect(() => {
+    sbLoadJobPhotos(job.id, { limit: 1 }).then(r => setHasJobPhotos(!!(r.ok && (r.data || []).length))).catch(() => {});
+  }, [job.id]);
 
   // Load estimator history on mount
   useEffect(() => {
@@ -846,8 +852,44 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     }
   };
 
+  // SCOPE_VISION P1 — on estimate entry, if the job has photos, have Haiku VIEW them and pre-answer
+  // the EXISTING-condition fields it can SEE (tub/shower, wall/floor finish, vanity, glass) as
+  // source='photo' status='proposed' (rep confirms — photos are interpretive). Gap-fill only: never
+  // overwrites a field text-prefill or a human already answered. Fires once per estimate (skips if
+  // photo answers already exist). Silent degradation.
+  const runScopeVision = async (pt) => {
+    try {
+      if (!pt || !job?.id || !hasJobPhotos) return;
+      const existing = await sbLoadScopeAnswers(job.id);
+      if (!existing.ok) return;
+      const rows0 = existing.data || [];
+      if (rows0.some(r => r.source === 'photo')) return;       // vision already ran (cost guard)
+      const answeredKeys = new Set(rows0.map(r => r.field_key)); // fields text-prefill/human already own
+      const res = await sbScopeVision(job.id, pt);
+      if (!res.ok) {
+        console.error('[scopeVision]', res.error);
+        captureFailedIntent({ kind: 'scope_vision', payload: { jobId: job.id, projectType: pt }, jobId: job.id, message: res.error, resumable: false }).catch(() => {});
+        return;
+      }
+      const rows = (res.data.answers || [])
+        .filter(a => (a.confidence === 'high' || a.confidence === 'med') && !answeredKeys.has(a.field_key))
+        .map(a => ({
+          field_key: a.field_key,
+          option_key: a.option_key,
+          value: a.option_key,
+          source: 'photo',
+          status: 'proposed',                                   // interpretive — rep confirms
+          evidence_phrase: a.evidence_phrase || null,
+        }));
+      if (rows.length) await persistScopeAnswers(rows);
+    } catch (e) {
+      console.error('[scopeVision]', e);
+      captureFailedIntent({ kind: 'scope_vision', payload: { jobId: job?.id }, jobId: job?.id, message: e?.message, resumable: false }).catch(() => {});
+    }
+  };
+
   const startEstimate = async () => {
-    if (!estForm.scope.trim()) return;
+    if (!estForm.scope.trim() && !hasJobPhotos) return; // SCOPE_VISION — photos alone can start
     setEstStarted(true);
     const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${interviewSf ? `Square Footage: ${interviewSf} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
     const pt = resolveProjectType();
@@ -855,7 +897,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       // ESTIMATE_CONFIGURATOR S2: the tap-through configurator drives scope capture (deterministic,
       // no LLM turn here). Seed the conversation with the scope prompt so the UNCHANGED pricing path
       // still has context; the configurator persists structured answers + hands off on complete.
-      await runScopePrefill(pt); // SCOPE_PREFILL P3 — seed answers before the configurator hydrates
+      await runScopePrefill(pt); // SCOPE_PREFILL P3 — seed answers from the TEXT scope
+      await runScopeVision(pt);  // SCOPE_VISION P1 — seed existing conditions from the PHOTOS (gap-fill)
       setScopeInterviewActive(true);
       setScopeComplete(false);
       setForceDraftedIncomplete(false);
@@ -1451,7 +1494,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
               </div>
             )}
           </div>
-          {(() => { const canGen = !!(estForm.scope.trim() && Number(interviewSf) > 0); return (
+          {(() => { const canGen = !!((estForm.scope.trim() || hasJobPhotos) && Number(interviewSf) > 0); return (
           <button className={`btn ${canGen ? 'btn-navy' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={startEstimate} disabled={!canGen || estLoading}>
             {estLoading ? 'Generating…' : 'Generate Estimate'}
           </button>

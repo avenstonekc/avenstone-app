@@ -35,6 +35,7 @@ export const CREATE_CLIENT_LOGIN_URL  = `${FN}/create-client-login`;
 export const PAYMENT_LINK_URL  = `${FN}/create-payment-link`;
 export const AI_ESTIMATOR_URL  = `${FN}/ai-estimator`;
 export const AI_SCOPE_PREFILL_URL = `${FN}/ai-scope-prefill`;
+export const AI_SCOPE_VISION_URL = `${FN}/ai-scope-vision`;
 export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
 export const RECORD_SIGNATURE_EVIDENCE_URL = `${FN}/record-signature-evidence`;
 export const NOTIFY_REALTOR_URL = `${FN}/notify-realtor`;
@@ -2711,6 +2712,27 @@ export async function sbScopePrefill(jobId, projectType) {
     return { ok: true, error: null, data: { answers: Array.isArray(data.answers) ? data.answers : [] } };
   } catch (e) {
     return { ok: false, error: e?.message || 'sbScopePrefill failed', data: null };
+  }
+}
+
+// SCOPE_VISION P1 — call ai-scope-vision (Haiku vision) to pre-answer EXISTING-condition fields the
+// AI can SEE in the job's photos. Needs the USER JWT (fn does getUser + tenant isolation). No writes.
+// Returns { ok, error, data:{ answers:[{ field_key, option_key, confidence, evidence_phrase }], photo_count } }.
+export async function sbScopeVision(jobId, projectType) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return { ok: false, error: 'no session', data: null };
+    const res = await fetch(AI_SCOPE_VISION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ job_id: jobId, project_type: projectType }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) return { ok: false, error: data?.error || `HTTP ${res.status}`, data: null };
+    return { ok: true, error: null, data: { answers: Array.isArray(data.answers) ? data.answers : [], photo_count: data.photo_count || 0 } };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbScopeVision failed', data: null };
   }
 }
 
