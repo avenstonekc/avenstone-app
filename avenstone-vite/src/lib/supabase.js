@@ -34,6 +34,7 @@ export const INVITE_URL        = `${FN}/send-invite`;
 export const CREATE_CLIENT_LOGIN_URL  = `${FN}/create-client-login`;
 export const PAYMENT_LINK_URL  = `${FN}/create-payment-link`;
 export const AI_ESTIMATOR_URL  = `${FN}/ai-estimator`;
+export const AI_SCOPE_PREFILL_URL = `${FN}/ai-scope-prefill`;
 export const CONTRACT_EMAIL_URL = `${FN}/send-contract-email`;
 export const RECORD_SIGNATURE_EVIDENCE_URL = `${FN}/record-signature-evidence`;
 export const NOTIFY_REALTOR_URL = `${FN}/notify-realtor`;
@@ -2691,6 +2692,28 @@ export async function sbScopePlan(projectType, answers) {
   }
 }
 
+// SCOPE_PREFILL P3 — call ai-scope-prefill (Haiku) to extract validated candidate answers from
+// jobs.scope. Needs the USER JWT (the fn does sb.auth.getUser + tenant isolation on the job).
+// Returns { ok, error, data:{ answers:[{ field_key, option_key, confidence, evidence_phrase }] } }.
+// The fn never writes; the caller persists per the confidence policy via sbUpsertScopeAnswers.
+export async function sbScopePrefill(jobId, projectType) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return { ok: false, error: 'no session', data: null };
+    const res = await fetch(AI_SCOPE_PREFILL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ job_id: jobId, project_type: projectType }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) return { ok: false, error: data?.error || `HTTP ${res.status}`, data: null };
+    return { ok: true, error: null, data: { answers: Array.isArray(data.answers) ? data.answers : [] } };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbScopePrefill failed', data: null };
+  }
+}
+
 // SCOPE_TO_ESTIMATE Phase A — ensure exactly one interview default room per job.
 // Idempotent: returns the job's existing (earliest) room if present, else inserts one
 // labeled by project type (source='typed'). Multi-room granularity is a later refinement;
@@ -2722,17 +2745,24 @@ export async function sbUpsertScopeAnswers(jobId, answers) {
   try {
     const rows = (answers || [])
       .filter(a => a && a.field_key)
-      .map(a => ({
-        tenant_id:  AV_TENANT,
-        job_id:     jobId,
-        room_id:    a.room_id ?? null,
-        field_key:  a.field_key,
-        option_key: a.option_key ?? null,
-        value:      a.value ?? null,
-        trade:      a.trade ?? null,
-        source:     a.source || 'rep_typed',
-        updated_at: new Date().toISOString(),
-      }));
+      .map(a => {
+        const row = {
+          tenant_id:  AV_TENANT,
+          job_id:     jobId,
+          room_id:    a.room_id ?? null,
+          field_key:  a.field_key,
+          option_key: a.option_key ?? null,
+          value:      a.value ?? null,
+          trade:      a.trade ?? null,
+          source:     a.source || 'rep_typed',
+          updated_at: new Date().toISOString(),
+        };
+        // SCOPE_PREFILL P3 — status + evidence only ride when the caller supplies them, so
+        // existing writers keep the DB default status ('proposed') and a null evidence_phrase.
+        if (a.status) row.status = a.status;
+        if (a.evidence_phrase !== undefined) row.evidence_phrase = a.evidence_phrase ?? null;
+        return row;
+      });
     if (!rows.length) return { ok: true, error: null, data: [] };
     const { data, error } = await sb.from('job_scope_answers')
       .upsert(rows, { onConflict: 'tenant_id,job_id,room_id,field_key' })
@@ -2751,7 +2781,7 @@ export async function sbUpsertScopeAnswers(jobId, answers) {
 export async function sbLoadScopeAnswers(jobId) {
   try {
     const { data, error } = await sb.from('job_scope_answers')
-      .select('field_key, value, option_key, source, status, room_id')
+      .select('field_key, value, option_key, source, status, room_id, evidence_phrase')
       .eq('tenant_id', AV_TENANT).eq('job_id', jobId);
     if (error) return { ok: false, error: error.message, data: [] };
     return { ok: true, error: null, data: data || [] };

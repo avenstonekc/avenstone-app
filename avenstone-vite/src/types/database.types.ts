@@ -2872,6 +2872,7 @@ export type Database = {
           confirmed_at: string | null
           confirmed_by: string | null
           created_at: string
+          evidence_phrase: string | null
           field_key: string
           id: string
           job_id: string
@@ -2888,6 +2889,7 @@ export type Database = {
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
+          evidence_phrase?: string | null
           field_key: string
           id?: string
           job_id: string
@@ -2904,6 +2906,7 @@ export type Database = {
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
+          evidence_phrase?: string | null
           field_key?: string
           id?: string
           job_id?: string
@@ -6742,6 +6745,10 @@ export type Database = {
           p_title: string
         }
         Returns: Json
+      }
+      compute_phase_pct: {
+        Args: { p_job_id: string; p_status: string }
+        Returns: number
       }
       compute_sub_invoice_status: {
         Args: { p_invoice_id: string }
