@@ -791,16 +791,22 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     }
   };
 
-  // SCOPE_PREFILL P3 — fire ONCE on configurator entry from a zero-answers state: parse the job's
-  // Scope of Work into pre-answers. HIGH → persisted confirmed (skipped, chip); MED → persisted
-  // proposed (pre-selected for one-tap confirm). Silent degradation: any failure logs (console +
-  // captureFailedIntent) and the configurator runs exactly as today. Re-entry (answers already
-  // present) reads back as before; "Start fresh" clears answers so the next entry re-fires.
+  // SCOPE_PREFILL P3/P4a — parse the job's Scope of Work into pre-answers on configurator entry.
+  // HIGH → persisted confirmed (skipped, chip); MED → proposed (pre-selected for one-tap confirm).
+  // P4a COMMIT 1: the parser reads jobs.scope server-side, but the rep types into estForm.scope
+  // (never persisted before P4a — the live bug). Persist the box scope → jobs.scope (AWAITED) BEFORE
+  // parsing so the fn sees the real text; jobs.scope is the canonical last-parsed text. Silent
+  // degradation: any failure logs (console + captureFailedIntent), configurator runs as today.
   const runScopePrefill = async (pt) => {
     try {
-      if (!pt || !job?.id || !job?.scope?.trim()) return;
+      if (!pt || !job?.id) return;
+      const scopeText = (estForm.scope || '').trim();
+      if (!scopeText) return;
+      const scopeChanged = scopeText !== (job.scope || '').trim();
+      // Save → await → parse (order critical). Also update the in-memory prop so the guard is fresh.
+      if (scopeChanged) { await upd({ scope: estForm.scope }); job.scope = estForm.scope; }
       const existing = await sbLoadScopeAnswers(job.id);
-      if (!existing.ok || (existing.data || []).length > 0) return; // only the zero-answers state
+      if (!existing.ok || (existing.data || []).length > 0) return; // zero-answers only (re-parse-on-edit lands in P4a C2)
       const res = await sbScopePrefill(job.id, pt);
       if (!res.ok) {
         console.error('[scopePrefill]', res.error);

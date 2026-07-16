@@ -91,7 +91,7 @@ export default function JobsScr({ jobs, setJobs, onBack, pendingJobId, clearPend
     }
   }, [pendingAction]);
 
-  const upd = (id, ch) => { const u = jobs.map(j => j.id === id ? { ...j, ...ch } : j); setJobs(u); ls('av_j', u); sbUpd(id, ch); };
+  const upd = (id, ch) => { const u = jobs.map(j => j.id === id ? { ...j, ...ch } : j); setJobs(u); ls('av_j', u); return sbUpd(id, ch); }; // returns the DB-write promise so callers can await (SCOPE_PREFILL P4a)
   const add = async () => {
     if (!newA.trim() || saving) return;
     const j = { id: crypto.randomUUID(), address: newA.trim(), status: 'lead', created: new Date().toISOString(), scope: '', sqft: '', photos: [], activity: [], change_orders: [], client_name: '', client_phone: '', client_email: '', assigned_rep: '', assigned_subs: '', contract_value: 0, co_total: 0, target_completion: '', financial_model: newModel, cost_plus: newModel === 'cost_plus', arv: (newModel === 'flip' && newArv.trim()) ? newArv.trim() : null };
