@@ -2869,12 +2869,16 @@ export async function sbClearJobRoomScopes(jobId) {
 
 // RESET_SCOPE — clear the job_estimates DRAFT (chat messages, manager-approval state, scope_origin)
 // so the reloaded Build view starts empty. Preserves estimate_data — it may hold a contract_snapshot,
-// a downstream/protected artifact well past "unsent draft". Returns { ok, error }.
+// a downstream/protected artifact well past "unsent draft".
+// Writes each cleared column back to its COLUMN DEFAULT (not NULL) so a reset row is byte-identical
+// to a never-scoped estimate: scope_origin is NOT NULL DEFAULT 'manual' (nulling it was the reset
+// bug); approval_status DEFAULT 'none' (nulling breaks its CHECK-domain semantics); approval_meta
+// DEFAULT '{}'. Do NOT null defaulted columns here. Returns { ok, error }.
 export async function sbClearEstimateDraft(jobId) {
   if (!jobId) return { ok: false, error: 'jobId required' };
   try {
     const { error } = await sb.from('job_estimates')
-      .update({ messages: [], approval_status: null, approval_meta: null, scope_origin: null, updated_at: new Date().toISOString() })
+      .update({ messages: [], approval_status: 'none', approval_meta: {}, scope_origin: 'manual', updated_at: new Date().toISOString() })
       .eq('tenant_id', AV_TENANT).eq('job_id', jobId);
     if (error) return { ok: false, error: error.message };
     return { ok: true, error: null };
