@@ -21,6 +21,8 @@ import {
   type ScopeField,
   type AnswerRecord,
 } from "../_shared/scopeEngine.ts";
+import { computePricingLines, deriveGeometryFromScan } from "../_shared/pricingCore.ts";
+import { deriveScopeTag, translateAnswers, resolveGeometry } from "../_shared/scopeTranslation.ts";
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -59,10 +61,11 @@ interface ScopeJSON {
 interface PricedLine extends ScopeLine {
   unit_price: number | null;
   amount: number | null;
-  source_label: "labor_rate" | "material_tier" | "regional_avg" | "user_entered" | "client_supplied";
+  source_label: "labor_rate" | "material_tier" | "regional_avg" | "user_entered" | "client_supplied" | "takeoff_formula";
   source_badge: string;
   vetted: boolean;
-  gap_key?: string; // present on regional_avg lines; format: "trade::line_item::unit"
+  gap_key?: string;         // present on regional_avg lines; format: "trade::line_item::unit"
+  rate_provenance?: string; // P3: "takeoff:<unit_cost_id>:geo=<source>" — how the rate+qty was derived
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1142,17 +1145,230 @@ async function callAnthropic(
   return { text: data.content?.[0]?.text ?? "", truncated: data.stop_reason === "max_tokens" };
 }
 
+// ── PRICE_DETERMINISM P3 — deterministic price_plan mode ─────────────────────
+// No LLM call. Loads job_scope_answers + scan geometry → translateAnswers →
+// deriveScopeTag → resolveGeometry → computePricingLines → priced_scope.
+// Response shape is identical to the LLM scope-pricing branch so P4
+// (EstimateTab wiring) can swap paths with no consumer changes.
+//
+// source_label for formula-priced lines: 'takeoff_formula' (new; no DB CHECK).
+// rate_provenance: 'takeoff:<unit_cost_id>:geo=<geo_source>'.
+// Pending-rate lines (no unit_cost row): 'regional_avg' + gap_key so
+// applyGapRates / GapBatchAsk work on them unchanged in P4.
+
+function draftLineToPricedLine(line: Record<string, unknown>, geoSource: string): PricedLine {
+  const lineItem = String(line.materialName ?? line.templateNotes ?? line.trade ?? "");
+  const desc     = lineItem;
+  const qty      = (line.quantity as number) ?? 1;
+  const unit     = String(line.unit ?? "LS");
+  const trade    = String(line.trade ?? "General");
+  const category = String(line.category ?? "labor") as "labor" | "materials" | "general";
+  const baseRate = line.baseRate as number | null;
+  const lineCost = line.lineCost as number | null;
+  const unitCostId = line.unitCostId ?? null;
+
+  const provenance = `takeoff:${unitCostId ?? "none"}:geo=${geoSource}`;
+
+  if (baseRate != null && !line.baseRateMissing) {
+    // Formula-priced: deterministic rate from takeoff_unit_costs
+    return {
+      trade, line_item: lineItem, unit, quantity: qty,
+      base_quantity: null, waste_pct: (line.wastePct as number) ?? 0,
+      outside_scope: false, description: desc,
+      category, regional_rate: null, anchor_source: null,
+      unit_price: baseRate, amount: lineCost,
+      source_label: "takeoff_formula",
+      source_badge: `◈ Formula (${line.unitCostSource ?? "template"})`,
+      vetted: false, rate_provenance: provenance,
+    };
+  }
+
+  // Missing rate → gap line so applyGapRates / GapBatchAsk work in P4
+  return {
+    trade, line_item: lineItem, unit, quantity: qty,
+    base_quantity: null, waste_pct: 0,
+    outside_scope: false, description: desc,
+    category, regional_rate: null, anchor_source: null,
+    unit_price: null, amount: null,
+    source_label: "regional_avg",
+    source_badge: "⚠ Pending rate — add to Takeoff Costs",
+    vetted: false,
+    gap_key: `${trade}::${lineItem}::${unit}`,
+    rate_provenance: `takeoff:pending:geo=${geoSource}`,
+  };
+}
+
+async function handlePricePlan(
+  tenantId: string,
+  jobId: string,
+  projectType: string,
+  finishTier: FinishTier,
+  markupPct: number,
+  pmFeeVal: number,
+  financialModel: string,
+): Promise<Response> {
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+  // Verify job belongs to tenant
+  const { data: jobRow } = await sb.from("jobs").select("id,tenant_id").eq("id", jobId).single();
+  if (!jobRow) return fail("job not found", 404);
+  if (String(jobRow.tenant_id) !== tenantId) return fail("unauthorized", 403);
+
+  const catalogFilter = `tenant_id.is.null,tenant_id.eq.${tenantId}`;
+
+  const [ansRes, scanRes, templatesRes, unitCostsRes, subsetsRes, schemasRes, wasteRes] = await Promise.all([
+    sb.from("job_scope_answers").select("field_key,value,option_key,source,status").eq("job_id", jobId),
+    sb.from("job_lidar_scans").select("id,rooms,height_meters,normalized_geometry")
+      .eq("job_id", jobId).order("created_at", { ascending: false }).limit(1),
+    sb.from("takeoff_templates").select("trade,scope_definition")
+      .eq("room_type", projectType).eq("active", true).or(catalogFilter),
+    sb.from("takeoff_unit_costs").select("*")
+      .eq("room_type", projectType).eq("active", true).or(catalogFilter),
+    sb.from("template_scope_subsets").select("scope_tag,label,trades,tenant_id,room_type"),
+    sb.from("scope_detail_schemas").select("room_type,scope_tag,tenant_id,schema").eq("active", true),
+    sb.from("trade_taxonomy").select("parent_trade,sub_trade,default_waste_pct"),
+  ]);
+
+  // Build flat answers map (annotated with source for resolveGeometry precedence)
+  const answersFlat: Record<string, string> = {};
+  const answersAnnotated: Record<string, { value: string; source: string }> = {};
+  for (const row of (ansRes.data ?? [])) {
+    const v = row.value ?? row.option_key;
+    if (v == null) continue;
+    const k = String(row.field_key), sv = String(v);
+    answersFlat[k] = sv;
+    answersAnnotated[k] = { value: sv, source: row.source ?? "rep_typed" };
+  }
+
+  // Derive geometry from latest scan (or null if no scan)
+  const scan = scanRes.data?.[0] ?? null;
+  const scanGeometry = scan ? deriveGeometryFromScan(scan) : null;
+
+  // Translation chain (pure — no DB)
+  const { scopeDetails, untranslated, flags } = translateAnswers(answersFlat);
+  const scopeTag = deriveScopeTag(answersFlat);
+  // resolveGeometry with annotated answers so source='measured' beats manual
+  const answersForGeo: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(answersAnnotated)) answersForGeo[k] = v;
+  const geo = resolveGeometry({ scanGeometry, answers: answersForGeo });
+
+  // pricingCore room
+  const roomId = scan ? `${scan.id}_0` : `plan_${jobId}`;
+  const room = {
+    roomId, roomLabel: projectType, floor: 0, roomType: projectType,
+    isSynthetic: false, scopeTag, scopeLabel: null, scopeMissing: !scopeTag,
+    scopeDetails, customTrades: [],
+    geometry: {
+      floorSf:     geo.floorSf     ?? 0,
+      wallSf:      geo.wallSf      ?? 0,
+      perimeterLf: geo.perimeterLf ?? 0,
+      ceilingFt:   geo.ceilingFt   ?? 8,
+      doors:       geo.doors       ?? 0,
+      windows:     geo.windows     ?? 0,
+      source:      geo.source,
+    },
+  };
+
+  const { lines, summary } = computePricingLines({
+    rooms:       [room],
+    templates:   templatesRes.data  ?? [],
+    unitCosts:   unitCostsRes.data  ?? [],
+    scopeSubsets: subsetsRes.data   ?? [],
+    schemas:     schemasRes.data    ?? [],
+    wasteRows:   wasteRes.data      ?? [],
+  });
+
+  const geoSource = geo.source ?? "none";
+  const pricedLines: PricedLine[] = (lines as Record<string, unknown>[]).map(l => draftLineToPricedLine(l, geoSource));
+
+  // Summary totals (match formatEstimate structure)
+  const inScope       = pricedLines.filter(l => !l.outside_scope);
+  const laborTotal    = inScope.filter(l => l.category === "labor")    .reduce((s, l) => s + (l.amount ?? 0), 0);
+  const matTotal      = inScope.filter(l => l.category === "materials").reduce((s, l) => s + (l.amount ?? 0), 0);
+  const generalTotal  = inScope.filter(l => l.category === "general")  .reduce((s, l) => s + (l.amount ?? 0), 0);
+  const subtotal      = laborTotal + matTotal + generalTotal;
+  const markup        = Math.round(subtotal * (markupPct / 100));
+  const pmFee         = Math.round(pmFeeVal);
+  const total         = subtotal + markup + pmFee;
+
+  const pendingRateCount = pricedLines.filter(l => l.source_label === "regional_avg").length;
+  const fmtM = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+  // Build allowance flag notes from P2 flags
+  const flagNotes = flags.map((f: { reason: string }) => f.reason);
+  const untranslatedKeys = Object.keys(untranslated);
+
+  // Markdown content (same shape as LLM path so EstimateTab renders it unchanged)
+  const preamble = financialModel === "flip"
+    ? `_Flip renovation — estimating cost basis only. No markup or PM fee applied._\n\n`
+    : `_Running at **${markupPct}%** markup · **${fmtM(pmFeeVal)}** PM fee._\n\n`;
+
+  const tierLabel = { high: "HIGH", mid: "MID", low: "LOW" }[finishTier] ?? "MID";
+  const fmtLines  = pricedLines
+    .filter(l => !l.outside_scope)
+    .map(l => `- ${l.description} | ${l.quantity} ${l.unit} | ${l.unit_price != null ? fmtM(l.unit_price) : "TBD"} | **${l.amount != null ? fmtM(l.amount) : "TBD"}** | ${l.source_badge}`)
+    .join("\n");
+
+  const summaryLine = financialModel === "flip"
+    ? `Labor: ${fmtM(laborTotal)} · Materials: ${fmtM(matTotal)}\n**TOTAL COST BASIS: ${fmtM(subtotal)}**`
+    : `Labor: ${fmtM(laborTotal)} · Materials: ${fmtM(matTotal)}\n**Your cost (subtotal): ${fmtM(subtotal)}**\nMarkup (${markupPct}%): ${fmtM(markup)}\nProject Management: ${fmtM(pmFee)}\n**Client price (TOTAL): ${fmtM(total)}**`;
+
+  let content = `${preamble}**Pricing Tier: ${tierLabel}** · Scope: **${scopeTag}** · Geometry: **${geoSource}**\n\n${fmtLines}\n\n---\n${summaryLine}`;
+
+  if (pendingRateCount > 0) {
+    content += `\n\n> ⚠ **${pendingRateCount} line(s) pending rate** — add unit costs to Takeoff Costs before committing.`;
+  }
+  if (flagNotes.length > 0) {
+    content += `\n\n**Flags:** ${flagNotes.join(" · ")}`;
+  }
+  if (untranslatedKeys.length > 0) {
+    content += `\n\n> ℹ ${untranslatedKeys.length} field(s) not priced (no takeoff destination yet): ${untranslatedKeys.join(", ")}`;
+  }
+
+  console.log(`ai-estimator [price_plan]: job=${jobId} scopeTag=${scopeTag} lines=${lines.length} geo=${geoSource}`);
+
+  return ok({
+    content,
+    priced_scope:       pricedLines,
+    applied_markup_pct: markupPct,
+    applied_pm_fee:     pmFeeVal,
+    financial_model:    financialModel,
+    untranslated_fields: untranslatedKeys,
+    price_plan_meta: {
+      scope_tag:        scopeTag,
+      geometry_source:  geoSource,
+      lines:            lines.length,
+      lines_ready:      (summary as Record<string, unknown>).linesReady,
+      lines_pending:    pendingRateCount,
+    },
+  });
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { messages, tenant_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type, prefilled_answers, client_prefs, answers } = await req.json();
+    const { messages, tenant_id, job_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type, prefilled_answers, client_prefs, answers } = await req.json();
     // ESTIMATE_CONFIGURATOR S1: deterministic plan mode — no messages / no LLM required.
     if (mode === "scope_plan") {
       if (!tenant_id) return fail("tenant_id required", 400);
       return await handleScopePlan(tenant_id, project_type, answers);
+    }
+    // PRICE_DETERMINISM P3: deterministic pricing from scope answers + scan geometry.
+    // No LLM call. Returns priced_scope in identical shape to the LLM scope-pricing branch.
+    if (mode === "price_plan") {
+      if (!tenant_id) return fail("tenant_id required", 400);
+      if (!job_id)    return fail("job_id required", 400);
+      if (!project_type) return fail("project_type required", 400);
+      const bidConfig = await loadBidModelConfig(tenant_id);
+      const resolvedMarkup = typeof markup_pct === "number" && markup_pct >= 0 ? markup_pct : (bidConfig?.markup_pct ?? 30);
+      const resolvedPmFee  = typeof pm_fee     === "number" && pm_fee     >= 0 ? pm_fee     : (bidConfig?.pm_fee     ?? 1200);
+      const resolvedModel  = (financial_model === "flip" || financial_model === "cost_plus" || financial_model === "fixed_bid") ? financial_model : "fixed_bid";
+      const resolvedTier: FinishTier = (["low","mid","high"].includes(finish_tier) ? finish_tier : "mid") as FinishTier;
+      if (resolvedModel === "flip") return fail("flip model not yet supported in price_plan mode", 400);
+      return await handlePricePlan(tenant_id, job_id, project_type, resolvedTier, resolvedMarkup, resolvedPmFee, resolvedModel);
     }
     if (!messages?.length) return fail("no messages", 400);
     if (!tenant_id) return fail("tenant_id required", 400);
