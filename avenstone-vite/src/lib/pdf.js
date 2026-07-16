@@ -995,7 +995,12 @@ const _dedupFeatures = (allDoors, allWindows, allOpenings, floorIndex) => {
     if (Math.hypot(amx - bmx, amz - bmz) > 0.5) return false;
     const aw = segLen(a), bw = segLen(b);
     if (Math.abs(aw - bw) / Math.max(aw, bw, 0.01) > 0.1) return false;
-    return Math.abs(a.nx * b.nx + a.nz * b.nz) >= 0.9;
+    // Zero-normal fallback: when the scan omits directional info (nx=nz=0 on both),
+    // the dot product is always 0 and the normal check can never pass — midpoint+width
+    // match alone is sufficient (mirrors the summary-page bothNoNormal rule at the
+    // door-count dedup). Without this, shared doorways draw their symbol twice.
+    const bothNoNormal = (a.nx === 0 && a.nz === 0) && (b.nx === 0 && b.nz === 0);
+    return bothNoNormal || Math.abs(a.nx * b.nx + a.nz * b.nz) >= 0.9;
   };
   const isDupFeat = (a, b) => {
     const [amx, amz] = midpt(a), [bmx, bmz] = midpt(b);
@@ -1617,15 +1622,40 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     // (features sit on shared walls so typically 3; err toward 6 for visual clarity)
     const FEAT_WALL_T = 7;
 
+    // Match a door to its host wall (midpoint proximity + parallel direction) and
+    // report whether that wall is exterior. Used for slider-vs-bifold symbol choice.
+    const _doorOnExteriorWall = (door) => {
+      const dmx = (door.x1 + door.x2) / 2, dmz = (door.z1 + door.z2) / 2;
+      const dLen = Math.hypot(door.x2 - door.x1, door.z2 - door.z1) || 0.01;
+      const dux = (door.x2 - door.x1) / dLen, duz = (door.z2 - door.z1) / dLen;
+      let best = null, bestDist = 1.0; // ft tolerance
+      for (const seg of allWallSegs) {
+        const sLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
+        if (sLen < 0.5) continue;
+        const sux = (seg.x2 - seg.x1) / sLen, suz = (seg.z2 - seg.z1) / sLen;
+        if (Math.abs(dux * sux + duz * suz) < 0.9) continue; // not parallel
+        let t = ((dmx - seg.x1) * (seg.x2 - seg.x1) + (dmz - seg.z1) * (seg.z2 - seg.z1)) / (sLen * sLen);
+        t = Math.max(0, Math.min(1, t));
+        const dist = Math.hypot(dmx - (seg.x1 + t * (seg.x2 - seg.x1)), dmz - (seg.z1 + t * (seg.z2 - seg.z1)));
+        if (dist < bestDist) { bestDist = dist; best = seg; }
+      }
+      return best ? !best.interior : false;
+    };
+
     for (const door of allDoors) {
       const p1x = oX + door.x1 * scale, p1y = oY + door.z1 * scale;
       const p2x = oX + door.x2 * scale, p2y = oY + door.z2 * scale;
       const dw = Math.hypot(p2x - p1x, p2y - p1y);
       if (dw < 4) continue;
       _eraseGap(doc, p1x, p1y, p2x, p2y, FEAT_WALL_T, FLOOR_TINT);
-      // Door symbol: garage/overhead (≥6ft in garage room), bi-fold (4–6ft), or swing arc (<4ft)
+      // Door symbol: garage/overhead (≥6ft in garage room), sliding glass (wide door),
+      // bi-fold (4–6ft closet-width interior), or swing arc (<4ft)
       const roomName = snappedRooms[door.ri]?.name || '';
       const isGarageDoor = (door.width || 0) >= 6 && /garage/i.test(roomName);
+      // Sliding glass door: ≥5.5 ft anywhere, or ≥5 ft on an exterior wall.
+      // Bi-fold chevrons stay for closet-width interior doors only.
+      const isSlider = !isGarageDoor &&
+        ((door.width || 0) >= 5.5 || ((door.width || 0) >= 5 && _doorOnExteriorWall(door)));
       doc.setDrawColor(...navy); doc.setLineWidth(0.6);
       if (isGarageDoor) {
         // Two parallel horizontal lines spanning the opening (overhead panel symbol)
@@ -1645,6 +1675,18 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
         doc.line(midX + door.nx * arrLen, midY + door.nz * arrLen,
                  midX + door.nx * arrLen * 0.6 - ux * arrLen * 0.4,
                  midY + door.nz * arrLen * 0.6 - uy * arrLen * 0.4);
+      } else if (isSlider) {
+        // Sliding glass door: two overlapping panel lines offset to either side of
+        // the wall centerline — standard architectural slider symbol
+        const ux = (p2x - p1x) / dw, uy = (p2y - p1y) / dw;
+        let pnx = door.nx || 0, pny = door.nz || 0;
+        if (!pnx && !pny) { pnx = -uy; pny = ux; }
+        const off = 1.6, panel = dw * 0.58;
+        doc.setLineWidth(1.1);
+        doc.line(p1x + pnx * off, p1y + pny * off,
+                 p1x + ux * panel + pnx * off, p1y + uy * panel + pny * off);
+        doc.line(p2x - pnx * off, p2y - pny * off,
+                 p2x - ux * panel - pnx * off, p2y - uy * panel - pny * off);
       } else if ((door.width || 0) >= 4) {
         // Bi-fold: two V-chevrons side by side
         const midX = (p1x + p2x) / 2, midY = (p1y + p2y) / 2;
@@ -1841,8 +1883,12 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       labelX = x + w / 2; labelY = y + h / 2;
     }
 
-    // Derive sqft from the final drawn polygon (shoelace) — consistent regardless of bridge/fallback path.
+    // Label sqft source: normalized area_sqft when present — canonical per the
+    // normalized-geometry contract, and matches the Room Details table exactly so
+    // page 1 and page 2 can never disagree. Legacy scans (no normalized data) keep
+    // the drawn-polygon shoelace fallback.
     const sqft = (() => {
+      if (typeof room.area_sqft === 'number' && room.area_sqft > 0) return Math.round(room.area_sqft);
       if (roomPoly && roomPoly.length >= 3) {
         let a = 0;
         for (let i = 0; i < roomPoly.length; i++) {
