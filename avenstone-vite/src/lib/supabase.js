@@ -2736,6 +2736,32 @@ export async function sbScopeVision(jobId, projectType) {
   }
 }
 
+// SCOPE_VISION P2 — scan = MEASURE. Read the job's latest LiDAR scan's canonical normalized_geometry
+// and derive the measurement fields (floor_sf, wall_height_in) deterministically — no AI. Shower-
+// specific dims aren't in room-level geometry, so they stay asked. Returns { ok, data: { floor_sf,
+// wall_height_in, area_sqft } | null }.
+export async function sbLoadScanMeasurements(jobId) {
+  try {
+    if (!jobId) return { ok: false, error: 'jobId required', data: null };
+    const { data } = await sb.from('job_lidar_scans')
+      .select('normalized_geometry, created_at').eq('job_id', jobId)
+      .order('created_at', { ascending: false }).limit(1);
+    const ng = data?.[0]?.normalized_geometry;
+    if (!ng || typeof ng !== 'object') return { ok: true, error: null, data: null };
+    const area = Number(ng?.metadata?.total_area_sqft) ||
+      (Array.isArray(ng?.rooms) ? ng.rooms.reduce((s, r) => s + (Number(r.area_sqft) || 0), 0) : 0);
+    const room0 = Array.isArray(ng?.rooms) ? ng.rooms[0] : null;
+    const heightFt = Number(room0?.height) || 0;
+    return { ok: true, error: null, data: {
+      floor_sf:        area > 0 ? Math.round(area) : null,
+      wall_height_in:  heightFt > 0 ? Math.round(heightFt * 12) : null,
+      area_sqft:       area || 0,
+    } };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbLoadScanMeasurements failed', data: null };
+  }
+}
+
 // SCOPE_TO_ESTIMATE Phase A — ensure exactly one interview default room per job.
 // Idempotent: returns the job's existing (earliest) room if present, else inserts one
 // labeled by project type (source='typed'). Multi-room granularity is a later refinement;

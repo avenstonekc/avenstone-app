@@ -42,8 +42,10 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
             const v = a.option_key ?? a.value;
             if (v == null || String(v).trim() === '') continue;
             // AI-sourced prefills: 'scope_prefill' (from the text scope) or 'photo' (from vision).
+            // 'measured' (from the LiDAR scan) is authoritative + confirmed — it seeds like a rep
+            // answer but carries provenance so the chip reads "from your scan".
             const aiPrefill = a.source === 'scope_prefill' || a.source === 'photo';
-            if (aiPrefill) meta[a.field_key] = { status: a.status, evidence_phrase: a.evidence_phrase, source: a.source };
+            if (aiPrefill || a.source === 'measured') meta[a.field_key] = { status: a.status, evidence_phrase: a.evidence_phrase, source: a.source };
             // A proposed AI prefill: keep OUT of the plan's answered set so it stays an open question,
             // and hold it pending for a pre-selected one-tap confirm. Confirmed prefills and rep
             // answers seed normally (engine skips + fires unlocks).
@@ -70,6 +72,8 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
   const fieldByKey = {};
   (plan?.fields || []).forEach(f => { fieldByKey[f.field_key] = f; });
   const activeField = activeKey ? fieldByKey[activeKey] : null;
+  // Provenance label for the ✦ glyph: where a pre-filled answer came from.
+  const srcLabel = (s) => s === 'photo' ? 'photos' : s === 'measured' ? 'scan' : 'scope';
 
   const answerField = useCallback(async (fieldKey, value) => {
     if (value == null || String(value).trim() === '') return;
@@ -154,7 +158,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
           // "already known", not machinery. Tapping still reopens it like any answered pill.
           const fromScope = done && prefillMeta[f.field_key];
           return (
-            <button key={f.field_key} style={{ ...chipStyle(state), flex: 'none' }} onClick={() => setActive(f.field_key)} title={fromScope ? `Pre-filled from your ${prefillMeta[f.field_key]?.source === 'photo' ? 'photos' : 'scope'} — tap to change` : f.question}>
+            <button key={f.field_key} style={{ ...chipStyle(state), flex: 'none' }} onClick={() => setActive(f.field_key)} title={fromScope ? `Pre-filled from your ${srcLabel(prefillMeta[f.field_key]?.source)} — tap to change` : f.question}>
               {fromScope && <span style={{ color: 'var(--gold-500)', marginRight: 4 }}>✦</span>}
               {humanize(f.field_key)}{done ? `: ${f.option_labels?.[answers[f.field_key]] || humanize(String(answers[f.field_key]))}` : ''}
             </button>
@@ -185,7 +189,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
               the scope wording that justified it. One tap on the highlighted option confirms. */}
           {activePending && (
             <div style={{ fontSize: 12, marginBottom: 16, lineHeight: 1.4, display: 'flex', gap: 6, alignItems: 'baseline' }}>
-              <span style={{ color: 'var(--gold-500)', fontWeight: 700, flexShrink: 0 }}>✦ from your {activePending.source === 'photo' ? 'photos' : 'scope'}:</span>
+              <span style={{ color: 'var(--gold-500)', fontWeight: 700, flexShrink: 0 }}>✦ from your {srcLabel(activePending.source)}:</span>
               <em style={{ color: 'var(--text-secondary)' }}>&ldquo;{activePending.evidence_phrase}&rdquo;</em>
             </div>
           )}

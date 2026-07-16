@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, sbScopeVision, sbDeleteScopeAnswers, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, sbScopeVision, sbLoadScanMeasurements, sbDeleteScopeAnswers, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
 import { isScanArtifact, artifactToScanParams, SCAN_ARTIFACT_VERSION } from '../../../lib/scanArtifact';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
@@ -55,6 +55,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [jobPlanFetchId, setJobPlanFetchId] = useState(null); // row currently being pulled
   const [jobPhotos, setJobPhotos] = useState(null); // job image files (attach-from-job Photos section)
   const [hasJobPhotos, setHasJobPhotos] = useState(false); // SCOPE_VISION — job has photos (gate + vision trigger)
+  const [scanMeas, setScanMeas] = useState(null); // SCOPE_VISION P2 — scan-derived measurements (gate + measure pass)
   const [photoSel, setPhotoSel] = useState(() => new Set()); // selected photo ids
   const [photoAttachBusy, setPhotoAttachBusy] = useState(false);
   const [photoShowAll, setPhotoShowAll] = useState(false);
@@ -242,6 +243,15 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   useEffect(() => {
     sbLoadJobPhotos(job.id, { limit: 1 }).then(r => setHasJobPhotos(!!(r.ok && (r.data || []).length))).catch(() => {});
   }, [job.id]);
+  // SCOPE_VISION P2 — scan-derived measurements (floor_sf, ceiling height). Loaded on mount so a
+  // scan can satisfy the SF gate and pre-fill the SF field; persisted as answers on Generate.
+  useEffect(() => {
+    sbLoadScanMeasurements(job.id).then(r => {
+      const m = r.ok ? r.data : null;
+      setScanMeas(m);
+      if (m?.area_sqft > 0 && !interviewSf) { setInterviewSf(String(m.floor_sf)); setInterviewSfSource('scan'); }
+    }).catch(() => {});
+  }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load estimator history on mount
   useEffect(() => {
@@ -888,8 +898,28 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     }
   };
 
+  // SCOPE_VISION P2 — scan = MEASURE. On estimate entry, persist the scan's floor_sf + ceiling
+  // height as source='measured' status='confirmed' (the scan measured it — skip those questions;
+  // rep can override via the chip). Gap-fill only; never overwrites a human/text answer.
+  const runScanMeasurements = async (pt) => {
+    try {
+      if (!pt || !job?.id || !scanMeas) return;
+      const existing = await sbLoadScopeAnswers(job.id);
+      if (!existing.ok) return;
+      const answeredKeys = new Set((existing.data || []).map(r => r.field_key));
+      const rows = [];
+      if (scanMeas.floor_sf != null && !answeredKeys.has('floor_sf'))
+        rows.push({ field_key: 'floor_sf', value: String(scanMeas.floor_sf), source: 'measured', status: 'confirmed', evidence_phrase: `${scanMeas.floor_sf} sq ft measured by the room scan` });
+      if (scanMeas.wall_height_in != null && !answeredKeys.has('wall_height_in'))
+        rows.push({ field_key: 'wall_height_in', value: String(scanMeas.wall_height_in), source: 'measured', status: 'confirmed', evidence_phrase: `${scanMeas.wall_height_in} in ceiling height from the scan` });
+      if (rows.length) await persistScopeAnswers(rows);
+    } catch (e) {
+      console.error('[scanMeasurements]', e);
+    }
+  };
+
   const startEstimate = async () => {
-    if (!estForm.scope.trim() && !hasJobPhotos) return; // SCOPE_VISION — photos alone can start
+    if (!estForm.scope.trim() && !hasJobPhotos && !scanMeas) return; // SCOPE_VISION — photos/scan alone can start
     setEstStarted(true);
     const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${interviewSf ? `Square Footage: ${interviewSf} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
     const pt = resolveProjectType();
@@ -899,6 +929,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       // still has context; the configurator persists structured answers + hands off on complete.
       await runScopePrefill(pt); // SCOPE_PREFILL P3 — seed answers from the TEXT scope
       await runScopeVision(pt);  // SCOPE_VISION P1 — seed existing conditions from the PHOTOS (gap-fill)
+      await runScanMeasurements(pt); // SCOPE_VISION P2 — seed measurements from the SCAN (floor_sf, height)
       setScopeInterviewActive(true);
       setScopeComplete(false);
       setForceDraftedIncomplete(false);
@@ -1494,7 +1525,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
               </div>
             )}
           </div>
-          {(() => { const canGen = !!((estForm.scope.trim() || hasJobPhotos) && Number(interviewSf) > 0); return (
+          {(() => { const canGen = !!((estForm.scope.trim() || hasJobPhotos || scanMeas) && (Number(interviewSf) > 0 || (scanMeas?.area_sqft || 0) > 0)); return (
           <button className={`btn ${canGen ? 'btn-navy' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={startEstimate} disabled={!canGen || estLoading}>
             {estLoading ? 'Generating…' : 'Generate Estimate'}
           </button>
