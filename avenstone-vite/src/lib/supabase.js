@@ -2761,6 +2761,8 @@ export async function sbUpsertScopeAnswers(jobId, answers) {
         // existing writers keep the DB default status ('proposed') and a null evidence_phrase.
         if (a.status) row.status = a.status;
         if (a.evidence_phrase !== undefined) row.evidence_phrase = a.evidence_phrase ?? null;
+        // confirmed_by marks a HUMAN confirmation (P4a) — protects the row from re-parse overwrite.
+        if (a.confirmed_by !== undefined) row.confirmed_by = a.confirmed_by ?? null;
         return row;
       });
     if (!rows.length) return { ok: true, error: null, data: [] };
@@ -2781,7 +2783,7 @@ export async function sbUpsertScopeAnswers(jobId, answers) {
 export async function sbLoadScopeAnswers(jobId) {
   try {
     const { data, error } = await sb.from('job_scope_answers')
-      .select('field_key, value, option_key, source, status, room_id, evidence_phrase')
+      .select('field_key, value, option_key, source, status, room_id, evidence_phrase, confirmed_by')
       .eq('tenant_id', AV_TENANT).eq('job_id', jobId);
     if (error) return { ok: false, error: error.message, data: [] };
     return { ok: true, error: null, data: data || [] };

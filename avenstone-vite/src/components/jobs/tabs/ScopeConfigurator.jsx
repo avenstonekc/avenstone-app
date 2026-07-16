@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { sbScopePlan, sbLoadScopeOptionData, sbLoadScopeAnswers, sbDeleteScopeAnswers } from '../../../lib/supabase';
+import { sbScopePlan, sbLoadScopeOptionData, sbLoadScopeAnswers, sbDeleteScopeAnswers, AV_USER_ID } from '../../../lib/supabase';
 
 // ESTIMATE_CONFIGURATOR S2 — tap-through scope configurator. One question per screen; cards where
 // option images exist, big controls where they don't; a chip strip to jump back; re-fetches the
@@ -100,7 +100,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
     const persisted = (res.data.answers || []).find(a => a.field_key === fieldKey);
     if (persisted && persistAnswers) {
       persistAnswers([wasPending
-        ? { ...persisted, source: 'scope_prefill', status: 'confirmed', evidence_phrase: wasPending.evidence_phrase }
+        ? { ...persisted, source: 'scope_prefill', status: 'confirmed', evidence_phrase: wasPending.evidence_phrase, confirmed_by: AV_USER_ID } // human confirm — protects from re-parse (P4a)
         : persisted]);
     }
     if (res.data.scope_complete) { onComplete?.(effective); setActive(null); return; }

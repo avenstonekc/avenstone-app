@@ -806,7 +806,15 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       // Save → await → parse (order critical). Also update the in-memory prop so the guard is fresh.
       if (scopeChanged) { await upd({ scope: estForm.scope }); job.scope = estForm.scope; }
       const existing = await sbLoadScopeAnswers(job.id);
-      if (!existing.ok || (existing.data || []).length > 0) return; // zero-answers only (re-parse-on-edit lands in P4a C2)
+      if (!existing.ok) return;
+      const rows0 = existing.data || [];
+      // P4a COMMIT 2 — re-parse when there's something new: an EDITED scope, or no answers yet.
+      // Unchanged scope + answers already present → read-back only (no parser call; API-cost rule).
+      if (!scopeChanged && rows0.length > 0) return;
+      // NEVER overwrite a human answer: protect any field that's human-confirmed (confirmed_by set)
+      // or not scope-prefill-sourced (a rep/client pick). Only stale auto-prefills (source
+      // scope_prefill, confirmed_by null) may be replaced by a re-parse.
+      const protectedKeys = new Set(rows0.filter(r => r.source !== 'scope_prefill' || r.confirmed_by).map(r => r.field_key));
       const res = await sbScopePrefill(job.id, pt);
       if (!res.ok) {
         console.error('[scopePrefill]', res.error);
@@ -814,7 +822,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         return;
       }
       const rows = (res.data.answers || [])
-        .filter(a => a.confidence === 'high' || a.confidence === 'med')
+        .filter(a => (a.confidence === 'high' || a.confidence === 'med') && !protectedKeys.has(a.field_key))
         .map(a => ({
           field_key: a.field_key,
           option_key: a.option_key,
