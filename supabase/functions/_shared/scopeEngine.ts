@@ -68,7 +68,9 @@ export interface AnswerRecord {
   value: unknown;
   // 'client'/'card' (SCE Phase C2) are round-trip carriers for the job_scope_answers db sources
   // client_selected / rep_card, so answers read back into a staff interview don't get relabeled.
-  source: "typed" | "measured" | "photo" | "plan" | "assumed" | "client" | "card";
+  // 'scope_prefill' (SCOPE_PREFILL P2) marks answers extracted from the job's Scope of Work text
+  // by ai-scope-prefill — type only; consumption/persistence is Phase 3.
+  source: "typed" | "measured" | "photo" | "plan" | "assumed" | "client" | "card" | "scope_prefill";
   confidence: number;        // 0..1
 }
 
