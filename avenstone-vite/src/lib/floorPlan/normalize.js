@@ -425,6 +425,9 @@ export function normalizeFloorPlan(rawScan, options = {}) {
         p2: snapToGrid([wx + s.x2, wz + s.z2]),
         room_id: roomId,
         thickness: s.thickness ?? null,
+        // passage (split-room open-plan divide): kept for ring geometry,
+        // skipped by wall STROKE in renderers — no fake wall at the divide
+        ...(s.passage ? { passage: true } : {}),
       }));
       walls.push(...roomWallSegs);
 

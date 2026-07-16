@@ -37,6 +37,14 @@ export function applyOverridesToScan(rawScan, overrides) {
 
   const cloned = JSON.parse(JSON.stringify(rawScan));
 
+  // Stable room ids (split-room support): scanner rooms may lack ids, and
+  // normalizeFloorPlan falls back to `room_${idx}` — which the canvas then uses
+  // as the selection id. Stamp that SAME id here from the pre-deletion index so
+  // deleted_room_ids entries written against canvas ids keep matching even after
+  // other overrides shift array positions. normalize prefers room.id when set,
+  // so stamped ids stay stable from here on.
+  cloned.rooms = (cloned.rooms || []).map((r, idx) => (r.id ? r : { ...r, id: `room_${idx}` }));
+
   // Delete scanner-produced rooms first (Phase 5c-6) — runs before all other overrides
   // so subsequent patches operate on the surviving room set only
   if (Array.isArray(overrides.deleted_room_ids) && overrides.deleted_room_ids.length > 0) {

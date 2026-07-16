@@ -781,7 +781,7 @@ const _processAllRooms = (rooms) => {
   rooms.forEach((room, ri) => {
     const wx = room.worldX || 0, wz = room.worldZ || 0;
     (room.wallSegments || []).forEach(s =>
-      flat.push({ x1: wx+s.x1, z1: wz+s.z1, x2: wx+s.x2, z2: wz+s.z2, ri, t: 'wall' })
+      flat.push({ x1: wx+s.x1, z1: wz+s.z1, x2: wx+s.x2, z2: wz+s.z2, ri, t: 'wall', ...(s.passage ? { passage: true } : {}) })
     );
     (room.doorSegments || []).forEach(s =>
       flat.push({ x1: wx+s.x1, z1: wz+s.z1, x2: wx+s.x2, z2: wz+s.z2,
@@ -850,7 +850,7 @@ const _processAllRooms = (rooms) => {
 
   const byRoom = (type) => rooms.map((_, ri) =>
     normalized.filter(s => s.ri === ri && s.t === type).map(s => {
-      const b = { x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2 };
+      const b = { x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2, ...(s.passage ? { passage: true } : {}) };
       return type === 'door' ? { ...b, nx: s.nx, nz: s.nz, width: s.width, ri: s.ri } : b;
     })
   );
@@ -1495,7 +1495,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
           worldX: 0, worldZ: 0,
           wallSegments: normFloor.walls
             .filter(w => w.room_id === r.id)
-            .map(w => ({ x1: w.p1[0], z1: w.p1[1], x2: w.p2[0], z2: w.p2[1] })),
+            .map(w => ({ x1: w.p1[0], z1: w.p1[1], x2: w.p2[0], z2: w.p2[1], ...(w.passage ? { passage: true } : {}) })),
           doorSegments: normFloor.doors
             .filter(d => d.room_ids?.includes(r.id))
             .map(d => ({ x1: d.p1[0], z1: d.p1[1], x2: d.p2[0], z2: d.p2[1], nx: d.nx || 0, nz: d.nz || 0, width: d.width || 3 })),
@@ -1612,6 +1612,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     // ── Draw walls (poché) ────────────────────────────────────────────────────
     for (const { room, segs } of roomLayouts) {
       segs.forEach((seg, si) => {
+        if (seg.passage) return; // open-plan split divide — geometry only, never stroked
         const thick = 6; // uniform 2x4 wall width (~3.5" at plan scale)
         _drawPoché(doc, oX + seg.x1 * scale, oY + seg.z1 * scale, oX + seg.x2 * scale, oY + seg.z2 * scale, thick);
       });

@@ -4,6 +4,8 @@ import { sbLoadFloorPlan, sbUpdateFloorPlanOverrides, sbRegenerateFloorPlanPdf, 
 import { buildFloorPlanPDF } from '../../lib/pdf';
 import { applyOverridesToScan } from '../../lib/floorPlan/applyOverrides';
 import { parseFootInches } from '../../lib/floorPlan/parseFootInches';
+import { normalizeFloorPlan } from '../../lib/floorPlan/normalize';
+import { splitRoomByLine } from '../../lib/floorPlan/splitRoom';
 import FloorPlanCanvas from './FloorPlanCanvas';
 
 const NAVY  = 'var(--navy-900)';
@@ -55,6 +57,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
   const [pendingNewRoom, setPendingNewRoom] = useState(null); // { polygon, defaultName, name }
   const [dragState, setDragState] = useState(null); // { key, livePos: [x, y] } | null
   const [pendingMerge, setPendingMerge] = useState(null); // { source_room_ids, name, candidate_polygon, source_rooms }
+  const [pendingSplit, setPendingSplit] = useState(null); // { roomId, roomName, cutA, cutB, areas, nameA, nameB, openPassage }
 
   // Send floor plan state (Phase 5e)
   const [sendingVersion, setSendingVersion] = useState(null);
@@ -399,6 +402,103 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     setPendingMerge(null);
   }
 
+  // Split room helpers — mirrors merge's flow: resolve room → geometry op → modal → overrides
+  function resolveRoomForSplit(roomId) {
+    const effectiveScan = applyOverridesToScan(plan.raw_scan, pendingOverrides);
+    const room = (effectiveScan.rooms || []).find(r => r.id === roomId);
+    if (!room) return { room: null, polygon: null };
+    // Prefer the normalized polygon (canonical geometry — what the canvas draws);
+    // fall back to a polygon carried on the room itself (added/merged rooms).
+    let polygon = null;
+    try {
+      const norm = normalizeFloorPlan(effectiveScan);
+      if (norm.ok) {
+        const normRoom = (norm.data.rooms || []).find(r => r.id === roomId);
+        if (normRoom?.polygon?.length >= 3) polygon = normRoom.polygon;
+      }
+    } catch { /* fall through to room.polygon */ }
+    if (!polygon && room.polygon?.length >= 3) polygon = room.polygon;
+    return { room, polygon };
+  }
+
+  function runSplitPreview(cutA, cutB) {
+    const roomId = selection.roomIds[0];
+    if (!roomId) { setMode('select'); setDrawingPolygon([]); return; }
+    const { room, polygon } = resolveRoomForSplit(roomId);
+    if (!room || !polygon) {
+      setSaveError('Could not resolve the selected room for splitting.');
+      setMode('select'); setDrawingPolygon([]);
+      return;
+    }
+    const result = splitRoomByLine(room, polygon, cutA, cutB, { openPassage: true });
+    if (!result.ok) {
+      setSaveError(result.error);
+      setDrawingPolygon([]); // stay in split mode so the user can redraw the cut
+      return;
+    }
+    setSaveError(null);
+    setPendingSplit({
+      roomId,
+      roomName: room.name || roomId,
+      cutA, cutB,
+      areas: result.areas,
+      nameA: room.name || 'Room A',
+      nameB: '',
+      openPassage: true,
+    });
+    setDrawingPolygon([]);
+  }
+
+  function confirmSplit() {
+    if (!pendingSplit) return;
+    const { room, polygon } = resolveRoomForSplit(pendingSplit.roomId);
+    if (!room || !polygon) {
+      setSaveError('Room no longer exists in the scan.');
+      setPendingSplit(null); setMode('select');
+      return;
+    }
+    // Re-run with the user's final openPassage choice (wallSegments depend on it)
+    const result = splitRoomByLine(room, polygon, pendingSplit.cutA, pendingSplit.cutB, {
+      openPassage: pendingSplit.openPassage,
+    });
+    if (!result.ok) {
+      setSaveError(result.error);
+      setPendingSplit(null); setMode('select');
+      return;
+    }
+    const [halfA, halfB] = result.halves;
+    halfA.name = (pendingSplit.nameA || '').trim() || 'Room A';
+    halfB.name = (pendingSplit.nameB || '').trim() || 'Room B';
+
+    let next = { ...pendingOverrides };
+    // Remove the original room — identical routing to deleteSelected
+    const rid = pendingSplit.roomId;
+    if ((next.added_rooms || []).some(r => r.id === rid)) {
+      next.added_rooms = next.added_rooms.filter(r => r.id !== rid);
+    } else if ((next.merged_rooms || []).some(r => r.id === rid)) {
+      next.merged_rooms = next.merged_rooms.filter(r => r.id !== rid);
+    } else {
+      next.deleted_room_ids = [...(next.deleted_room_ids || []), rid];
+    }
+    next.added_rooms = [...(next.added_rooms || []), halfA, halfB];
+    updateOverrides(next);
+    setPendingSplit(null);
+    setSelection({ roomIds: [], wallIds: [] });
+    setMode('select');
+  }
+
+  function cancelSplit() {
+    setPendingSplit(null);
+    setDrawingPolygon([]);
+    setMode('select');
+  }
+
+  // Two cut points placed on the canvas → open the split confirm modal
+  useEffect(() => {
+    if (mode !== 'split-room' || drawingPolygon.length !== 2 || pendingSplit) return;
+    runSplitPreview(drawingPolygon[0], drawingPolygon[1]);
+  }, [mode, drawingPolygon]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Debug: log drawingPolygon changes to confirm add-room state flow
   useEffect(() => {
     if (drawingPolygon.length > 0 || mode === 'add-room') {
@@ -564,7 +664,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
 
       // Cmd-Z / Ctrl-Z = undo (Phase 5c-6)
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
-        if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return;
+        if (pendingNewRoom || pendingMerge || pendingSplit || editingAnnotation || !!lengthInput) return;
         e.preventDefault();
         undo();
         return;
@@ -575,7 +675,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
         ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z')) ||
         ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y'))
       ) {
-        if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return;
+        if (pendingNewRoom || pendingMerge || pendingSplit || editingAnnotation || !!lengthInput) return;
         e.preventDefault();
         redo();
         return;
@@ -583,7 +683,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
 
       // Delete / Backspace = delete selected items (Phase 5c-6)
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return;
+        if (pendingNewRoom || pendingMerge || pendingSplit || editingAnnotation || !!lengthInput) return;
         const selRooms = selection.roomIds?.length || 0;
         const selAnns = selection.annotationIds?.length || 0;
         if (selRooms > 0 || selAnns > 0) {
@@ -596,7 +696,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
       }
 
       // Remaining mode-specific handlers — bail out if modal is up
-      if (pendingNewRoom || pendingMerge || editingAnnotation || !!lengthInput) return;
+      if (pendingNewRoom || pendingMerge || pendingSplit || editingAnnotation || !!lengthInput) return;
       if (mode === 'add-room') {
         if (e.key === 'Escape') {
           setMode('select');
@@ -608,6 +708,11 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
         if (e.key === 'Escape') {
           setDragState(null);
           setMode('select');
+        }
+      } else if (mode === 'split-room') {
+        if (e.key === 'Escape') {
+          setMode('select');
+          setDrawingPolygon([]);
         }
       } else if (mode === 'add-text') {
         if (e.key === 'Escape') setMode('select');
@@ -621,7 +726,7 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, drawingPolygon, pendingNewRoom, pendingMerge, editingAnnotation, lengthInput, selection, pendingOverrides, undo, redo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, drawingPolygon, pendingNewRoom, pendingMerge, pendingSplit, editingAnnotation, lengthInput, selection, pendingOverrides, undo, redo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveOnly = async () => {
     if (!plan || !isDirty) return;
@@ -939,6 +1044,8 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
             ? <>Click canvas to place a text label<br />Double-click label to edit · Esc to cancel</>
             : mode === 'build-walls'
             ? <>Click to set start point · type a length & direction<br />Walls snap to grid · Esc to cancel</>
+            : mode === 'split-room'
+            ? <>Click two points to draw the cut line across the room<br />Esc to cancel</>
             : <>Right-click drag to pan<br />Scroll to zoom · Click to select</>
           }
         </div>
@@ -1073,6 +1180,20 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                     </div>
                   );
                 })()}
+                {selRoomCount === 1 && mode === 'select' && (
+                  <button
+                    onClick={() => { setSaveError(null); setDrawingPolygon([]); setMode('split-room'); }}
+                    style={{
+                      width: '100%', padding: '9px 14px', marginTop: 8,
+                      background: NAVY, color: CREAM,
+                      border: 'none', borderRadius: 8, fontWeight: 700,
+                      fontSize: 13, cursor: 'pointer',
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >
+                    ✂ Split Room
+                  </button>
+                )}
                 {selRoomCount >= 2 && mode === 'select' && (
                   <button
                     onClick={initiateMerge}
@@ -1715,6 +1836,103 @@ export default function FloorPlanEditorScr({ floorPlanId, onBack }) {
                 }}
               >
                 Merge Rooms
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split confirm modal */}
+      {pendingSplit && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2200, fontFamily: "'DM Sans', sans-serif",
+        }}>
+          <div style={{
+            background: '#fff', padding: 28, borderRadius: 12,
+            minWidth: 380, maxWidth: '90vw',
+            boxShadow: '0 8px 40px rgba(10,31,68,0.25)',
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, color: NAVY, fontFamily: "'DM Serif Display', serif", fontSize: 20 }}>
+              Split {pendingSplit.roomName}
+            </h3>
+            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6 }}>
+              First room · {Math.round(pendingSplit.areas[0]).toLocaleString()} sf
+            </label>
+            <input
+              type="text"
+              autoFocus
+              value={pendingSplit.nameA}
+              onChange={(e) => setPendingSplit(s => ({ ...s, nameA: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmSplit();
+                if (e.key === 'Escape') cancelSplit();
+              }}
+              placeholder="e.g. Living Room"
+              style={{
+                width: '100%', padding: '10px 12px', fontSize: 15,
+                border: '1px solid rgba(10,31,68,0.2)', borderRadius: 6,
+                marginBottom: 12, boxSizing: 'border-box',
+                fontFamily: "'DM Sans', sans-serif", outline: 'none',
+              }}
+            />
+            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6 }}>
+              Second room · {Math.round(pendingSplit.areas[1]).toLocaleString()} sf
+            </label>
+            <input
+              type="text"
+              value={pendingSplit.nameB}
+              onChange={(e) => setPendingSplit(s => ({ ...s, nameB: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmSplit();
+                if (e.key === 'Escape') cancelSplit();
+              }}
+              placeholder="e.g. Kitchen · Stairs"
+              style={{
+                width: '100%', padding: '10px 12px', fontSize: 15,
+                border: '1px solid rgba(10,31,68,0.2)', borderRadius: 6,
+                marginBottom: 14, boxSizing: 'border-box',
+                fontFamily: "'DM Sans', sans-serif", outline: 'none',
+              }}
+            />
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
+              padding: '8px 10px', background: 'rgba(10,31,68,0.04)', borderRadius: 6,
+              fontSize: 12, color: NAVY, cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={pendingSplit.openPassage}
+                onChange={(e) => setPendingSplit(s => ({ ...s, openPassage: e.target.checked }))}
+                style={{ cursor: 'pointer', width: 16, height: 16 }}
+              />
+              Open passage — no wall drawn along the split (open floor plan)
+            </label>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 20, padding: '8px 10px', background: 'rgba(10,31,68,0.04)', borderRadius: 6 }}>
+              Each room gets its own square footage. Doors and windows stay with
+              the side they're on. Revert by discarding changes before saving.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={cancelSplit}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: '1px solid rgba(10,31,68,0.2)',
+                  background: '#fff', color: NAVY, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSplit}
+                style={{
+                  padding: '8px 18px', borderRadius: 6, border: 'none',
+                  background: NAVY, color: CREAM, cursor: 'pointer',
+                  fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700,
+                }}
+              >
+                Split Room
               </button>
             </div>
           </div>

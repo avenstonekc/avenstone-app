@@ -460,6 +460,17 @@ export default function FloorPlanCanvas({
       onTextAnnotationsChange({ kind: 'create', x: snapped.x, y: snapped.y });
       return;
     }
+    if (mode === 'split-room') {
+      // Collect exactly two cut-line points; the editor opens the confirm modal
+      // once drawingPolygon reaches length 2.
+      const rect = svgRef.current.getBoundingClientRect();
+      const world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const snapped = snapToGrid(world.x, world.y, 0.5);
+      if (drawingPolygon.length < 2) {
+        onDrawingPolygonChange([...drawingPolygon, [snapped.x, snapped.y]]);
+      }
+      return;
+    }
     if (mode === 'add-room') {
       const rect = svgRef.current.getBoundingClientRect();
       const sx = e.clientX - rect.left;
@@ -488,7 +499,7 @@ export default function FloorPlanCanvas({
   };
 
   const handleRoomClick = (roomId, e) => {
-    if (mode === 'add-room' || mode === 'add-text' || mode === 'build-walls') {
+    if (mode === 'add-room' || mode === 'add-text' || mode === 'build-walls' || mode === 'split-room') {
       // In drawing/build modes, forward to background so placement works on room fills.
       // stopPropagation prevents double-fire from SVG onClick.
       e.stopPropagation();
@@ -505,6 +516,12 @@ export default function FloorPlanCanvas({
   };
 
   const handleWallClick = (wallId, e) => {
+    if (mode === 'split-room') {
+      // Cut lines often start on a wall — forward to background so the point lands.
+      e.stopPropagation();
+      handleBackgroundClick(e);
+      return;
+    }
     if (mode === 'add-room' || mode === 'build-walls') return;
     e.stopPropagation();
     const cur = selection.wallIds || [];
@@ -623,7 +640,9 @@ export default function FloorPlanCanvas({
             <line
               x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
               stroke={strokeColor}
-              strokeWidth={Math.max(2, thicknessPx)}
+              strokeWidth={wall.passage ? 1.5 : Math.max(2, thicknessPx)}
+              strokeDasharray={wall.passage ? '6 5' : undefined}
+              opacity={wall.passage ? 0.35 : 1}
               strokeLinecap="butt"
               pointerEvents="none"
             />
@@ -824,8 +843,8 @@ export default function FloorPlanCanvas({
         </g>
       )}
 
-      {/* Add-room mode: in-progress polygon live preview */}
-      {mode === 'add-room' && drawingPolygon.length > 0 && (
+      {/* Add-room / split-room modes: in-progress point + line live preview */}
+      {(mode === 'add-room' || mode === 'split-room') && drawingPolygon.length > 0 && (
         <g pointerEvents="none">
           {drawingPolygon.length >= 2 && (
             <polyline
