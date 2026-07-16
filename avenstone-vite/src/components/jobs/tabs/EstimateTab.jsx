@@ -1456,6 +1456,15 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             {estLoading ? 'Generating…' : 'Generate Estimate'}
           </button>
           ); })()}
+          {/* P4b C5b — Start fresh stays VISIBLE in the form view (was hidden when !estStarted, so it
+              vanished after a reset and confused the owner). Disabled, with a tooltip, when there's
+              nothing to clear (no committed line items). */}
+          {(() => { const clearable = lineItems.length > 0; return (
+          <button className="btn btn-ghost" style={{ width: '100%', marginTop: 8, fontSize: 11 }} onClick={openResetDialog} disabled={!clearable}
+            title={clearable ? 'Clear this estimate and start over' : 'Nothing to clear yet'}>
+            Start fresh
+          </button>
+          ); })()}
         </div>
       )}
       {estStarted && (

@@ -41,7 +41,9 @@ export default function ProjectDetailHeader({ job }) {
   // Next Milestone is the only non-financial summary retained in the header.
   // Financial KPI tiles (contract value / paid / remaining / flip ARV set) were
   // removed by owner decision — money lives in the Financials tab only.
-  const nextMil = detail?.next_milestone;
+  // P4b C5a — a completed job has no "next" milestone; suppress the card (was showing a stale
+  // overdue item on complete jobs like 999 Test Lane).
+  const nextMil = job?.status === 'complete' ? null : detail?.next_milestone;
   const nextMilLabel = nextMil?.title
     ? (nextMil.title.length > 18 ? nextMil.title.substring(0, 16) + '…' : nextMil.title)
     : '—';
