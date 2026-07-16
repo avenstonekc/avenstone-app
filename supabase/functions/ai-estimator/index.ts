@@ -1121,6 +1121,9 @@ async function callAnthropic(
   system: string,
   messages: Array<{ role: string; content: unknown }>,
   maxTokens: number,
+  temperature = 0, // PRICE STABILITY: deterministic by default — same scope must price the same
+                   // way every run. temperature>0 let the model drift on which lines/quantities it
+                   // emits for identical input, producing drastically different totals for one scope.
 ): Promise<{ text: string; truncated: boolean; error?: string }> {
   const res = await fetch(ANTHROPIC_URL, {
     method: "POST",
@@ -1129,7 +1132,7 @@ async function callAnthropic(
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, system, messages }),
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, temperature, system, messages }),
   });
   const data = await res.json();
   if (!res.ok) return { text: "", truncated: false, error: data.error?.message ?? "AI error" };
