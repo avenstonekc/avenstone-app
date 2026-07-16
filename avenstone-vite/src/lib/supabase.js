@@ -7476,11 +7476,17 @@ export async function sbLoadProjectDetail(jobId, assignedPmId) {
         : Promise.resolve({ data: null }),
     ]);
 
-    // Next milestone: first non-complete inspection or milestone item, prefer future dates
+    // Next milestone: EARLIEST incomplete inspection/milestone by date — past OR future.
+    // (schedRes is ordered by scheduled_date ASC.) The old "first future-dated" pick
+    // silently skipped overdue items and surfaced far-future ones; now an overdue
+    // milestone is surfaced with an is_overdue flag instead of being hidden.
     const milestones = (schedRes.data || []).filter(s =>
       s.status !== 'complete' && (s.is_milestone || s.type === 'inspection' || s.type === 'milestone')
     );
-    const nextMilestone = milestones.find(s => s.scheduled_date >= today) || milestones[0] || null;
+    const nm = milestones[0] || null;
+    const nextMilestone = nm
+      ? { ...nm, is_overdue: !!nm.scheduled_date && nm.scheduled_date < today }
+      : null;
 
     return {
       ok: true, error: null,

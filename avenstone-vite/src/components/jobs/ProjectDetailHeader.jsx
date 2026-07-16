@@ -90,8 +90,12 @@ export default function ProjectDetailHeader({ job }) {
               color: NAVY, fontWeight: 600, lineHeight: 1.1,
             }}>{nextMilLabel}</div>
             {nextMil.scheduled_date && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'DM Sans, sans-serif' }}>
-                {fDateShort(nextMil.scheduled_date)}
+              <div style={{
+                fontSize: 11, marginTop: 2, fontFamily: 'DM Sans, sans-serif',
+                color: nextMil.is_overdue ? 'var(--red-text-strong)' : 'var(--text-muted)',
+                fontWeight: nextMil.is_overdue ? 700 : 400,
+              }}>
+                {fDateShort(nextMil.scheduled_date)}{nextMil.is_overdue ? ' · overdue' : ''}
               </div>
             )}
           </div>
