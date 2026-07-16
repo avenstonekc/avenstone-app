@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { sbLoadProjectDetail } from '../../lib/supabase.js';
-import { f$, isMob } from '../../lib/utils.jsx';
+import { isMob } from '../../lib/utils.jsx';
 
 const NAVY  = 'var(--navy-900)';
 const GOLD  = 'var(--gold-500)';
 const CREAM = 'var(--bg)';
-const WHITE = '#FFFFFF';
 const BORDER = 'var(--border)';
 
 // Phase chip grammar: complete=muted+check, active=gold pill navy text, future=ghost outline
@@ -16,47 +15,10 @@ const PHASE_STYLE = {
   not_started: { bg: 'transparent',     color: 'var(--text-subtle)',         border: 'var(--border)',      check: false },
 };
 
-function fShort(n) {
-  const v = Number(n || 0);
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000)     return `$${(v / 1_000).toFixed(0)}k`;
-  return `$${v}`;
-}
-
 function fDateShort(str) {
   if (!str) return null;
   const d = new Date(str + 'T00:00:00Z');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-}
-
-// ── KPI tile ─────────────────────────────────────────────────────────────────
-function KpiTile({ label, value, sub, mob }) {
-  return (
-    <div style={{
-      background: WHITE, borderRadius: 10,
-      borderLeft: `3px solid ${GOLD}`,
-      padding: mob ? '10px 12px' : '12px 16px',
-      flex: mob ? '0 0 140px' : '1 1 0',
-      minWidth: mob ? 140 : 0,
-      boxShadow: '0 1px 4px rgba(10,31,68,0.06)',
-      border: `1px solid ${BORDER}`,
-      borderLeft: `3px solid ${GOLD}`,
-    }}>
-      <div style={{
-        fontSize: 10, color: 'var(--text-subtle)', fontFamily: 'DM Sans, sans-serif',
-        fontWeight: 600, letterSpacing: '0.08em', marginBottom: 5,
-      }}>{label}</div>
-      <div style={{
-        fontSize: mob ? 17 : 22, fontFamily: 'DM Serif Display, serif',
-        color: NAVY, fontWeight: 400, lineHeight: 1.1,
-      }}>{value}</div>
-      {sub && (
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3, fontFamily: 'DM Sans, sans-serif' }}>
-          {sub}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Main header component ─────────────────────────────────────────────────────
@@ -74,39 +36,15 @@ export default function ProjectDetailHeader({ job }) {
     });
   }, [job?.id, job?.assigned_pm]);
 
-  const model = job?.financial_model || (job?.cost_plus ? 'cost_plus' : 'fixed_bid');
   const pct   = Number(job?.phase_pct_complete || 0);
 
+  // Next Milestone is the only non-financial summary retained in the header.
+  // Financial KPI tiles (contract value / paid / remaining / flip ARV set) were
+  // removed by owner decision — money lives in the Financials tab only.
   const nextMil = detail?.next_milestone;
   const nextMilLabel = nextMil?.title
     ? (nextMil.title.length > 18 ? nextMil.title.substring(0, 16) + '…' : nextMil.title)
     : '—';
-
-  let kpis;
-  if (model === 'flip') {
-    const arv       = job?.arv != null ? Number(job.arv) : null;
-    const costBasis = detail?.cost_basis || 0;
-    const profit    = arv !== null ? arv - costBasis : null;
-    const marginPct = arv !== null && arv > 0 ? Math.round((profit / arv) * 100) : null;
-    const reimbursed = detail?.paid_to_date || 0;
-    kpis = [
-      { label: 'ARV',               value: arv !== null ? fShort(arv) : 'Set ARV',  sub: arv !== null ? 'after-repair value' : 'enter in Info tab' },
-      { label: 'COST BASIS',        value: fShort(costBasis),                        sub: 'expenses paid' },
-      { label: 'PROJECTED PROFIT',  value: profit !== null ? fShort(profit) : '—',   sub: marginPct !== null ? `${marginPct}% of ARV` : 'set ARV to calculate' },
-      { label: 'REIMBURSED',        value: fShort(reimbursed),                       sub: 'draws paid back' },
-    ];
-  } else {
-    const cv        = Number(job?.contract_value || 0) + Number(job?.co_total || 0);
-    const paid      = detail?.paid_to_date || 0;
-    const remaining = Math.max(0, cv - paid);
-    const paidPct   = cv > 0 ? Math.round((paid / cv) * 100) : 0;
-    kpis = [
-      { label: 'CONTRACT VALUE',  value: f$(cv),        sub: null },
-      { label: 'PAID TO DATE',    value: f$(paid),      sub: cv > 0 ? `${paidPct}% collected` : null },
-      { label: 'REMAINING',       value: f$(remaining), sub: null },
-      { label: 'NEXT MILESTONE',  value: nextMilLabel,  sub: nextMil?.scheduled_date ? fDateShort(nextMil.scheduled_date) : null },
-    ];
-  }
 
   const phases   = detail?.phases || [];
   const pmP      = detail?.pm_profile || null;
@@ -137,6 +75,27 @@ export default function ProjectDetailHeader({ job }) {
             }} />
           </div>
         </div>
+        {/* Next Milestone — non-financial; shares the progress row */}
+        {nextMil && (
+          <div style={{
+            flexShrink: 0, textAlign: 'right',
+            borderLeft: `1px solid ${BORDER}`, paddingLeft: mob ? 10 : 14,
+          }}>
+            <div style={{
+              fontSize: 10, color: 'var(--text-subtle)', fontFamily: 'DM Sans, sans-serif',
+              fontWeight: 600, letterSpacing: '0.08em', marginBottom: 3,
+            }}>NEXT MILESTONE</div>
+            <div style={{
+              fontSize: mob ? 14 : 16, fontFamily: 'DM Sans, sans-serif',
+              color: NAVY, fontWeight: 600, lineHeight: 1.1,
+            }}>{nextMilLabel}</div>
+            {nextMil.scheduled_date && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'DM Sans, sans-serif' }}>
+                {fDateShort(nextMil.scheduled_date)}
+              </div>
+            )}
+          </div>
+        )}
         {/* PM contact (right side of progress row on desktop) */}
         {!mob && pmP && (pmP.phone || pmP.email) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -158,19 +117,6 @@ export default function ProjectDetailHeader({ job }) {
             )}
           </div>
         )}
-      </div>
-
-      {/* KPI tiles */}
-      <div style={{
-        display: 'flex', gap: 8,
-        padding: mob ? '10px 14px 8px' : '12px 20px 10px',
-        overflowX: mob ? 'auto' : 'visible',
-        flexWrap: mob ? 'nowrap' : 'nowrap',
-        borderBottom: `1px solid ${BORDER}`,
-      }}>
-        {kpis.map((k, i) => (
-          <KpiTile key={i} label={k.label} value={k.value} sub={k.sub} mob={mob} />
-        ))}
       </div>
 
       {/* Phase strip */}

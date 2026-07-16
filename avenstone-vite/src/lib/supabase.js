@@ -7456,31 +7456,25 @@ export async function sbLoadOwnerDashboard(tenantId) {
 // ── Project Detail enrichment (ROLE_DASHBOARDS_ARC) ─────────────────────────
 // Loads phases, financial KPIs, next milestone, thumbnail, and PM contact for
 // the ProjectDetailHeader. Self-contained; caller passes jobId + assignedPmId.
-// Returns { ok, error, data: { phases, paid_to_date, next_milestone, thumbnail_url, pm_profile } }
+// Returns { ok, error, data: { phases, next_milestone, thumbnail_url, pm_profile } }
+// NOTE: financial fields (paid_to_date, cost_basis) were removed 2026-07-16 when
+// the header's money KPI tiles were stripped — the job_transactions round-trip they
+// required is no longer fetched. Money lives in the Financials tab only.
 export async function sbLoadProjectDetail(jobId, assignedPmId) {
   if (!jobId) return { ok: false, error: 'jobId required', data: null };
   try {
     const today = new Date().toISOString().slice(0, 10);
     const baseQueries = [
       sb.from('job_phases').select('id,phase_name,phase_order,status').eq('job_id', jobId).order('phase_order', { ascending: true }),
-      sb.from('job_transactions').select('direction,status,amount').eq('job_id', jobId),
       sb.from('schedule_items').select('id,title,type,scheduled_date,status,is_milestone').eq('job_id', jobId).neq('status', 'cancelled').order('scheduled_date', { ascending: true }),
       sb.from('photos').select('url').eq('job_id', jobId).order('created_at', { ascending: true }).limit(1),
     ];
-    const [phasesRes, txnsRes, schedRes, photoRes, pmRes] = await Promise.all([
+    const [phasesRes, schedRes, photoRes, pmRes] = await Promise.all([
       ...baseQueries,
       assignedPmId
         ? sb.from('profiles').select('id,full_name,email,phone').eq('id', assignedPmId).single()
         : Promise.resolve({ data: null }),
     ]);
-
-    const paid_to_date = (txnsRes.data || [])
-      .filter(t => t.direction === 'in' && t.status === 'paid')
-      .reduce((s, t) => s + Number(t.amount || 0), 0);
-    // cost_basis: flip-native — total expenses paid out. Same txn query, no extra round-trip.
-    const cost_basis = (txnsRes.data || [])
-      .filter(t => t.direction === 'out' && t.status === 'paid')
-      .reduce((s, t) => s + Number(t.amount || 0), 0);
 
     // Next milestone: first non-complete inspection or milestone item, prefer future dates
     const milestones = (schedRes.data || []).filter(s =>
@@ -7492,8 +7486,6 @@ export async function sbLoadProjectDetail(jobId, assignedPmId) {
       ok: true, error: null,
       data: {
         phases: phasesRes.data || [],
-        paid_to_date,
-        cost_basis,
         next_milestone: nextMilestone,
         thumbnail_url: photoRes.data?.[0]?.url || null,
         pm_profile: pmRes.data || null,
