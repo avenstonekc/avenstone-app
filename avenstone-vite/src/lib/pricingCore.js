@@ -357,7 +357,11 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
       const multiplier = resolveMultiplier(room.floor, costRow?.multipliers ?? {});
       const wastePct   = getWastePct(wasteMap, def.trade);
 
-      // Resolve labor quantity: schema labor_formula wins, falls back to buildQuantity
+      // Resolve labor quantity: schema labor_formula wins, falls back to buildQuantity.
+      // skip_when_missing: when a scope_detail value is absent/zero and the template sets
+      // this flag, skip the entire trade rather than falling back to a lump-sum default.
+      // Used by trades (e.g. Countertops) whose quantity is meaningless without the detail.
+      let skipTrade = false;
       let quantity, quantityPreFilled, quantityNotes;
 
       if (def.laborFormula) {
@@ -368,6 +372,8 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
             quantity          = Math.round(val * 100) / 100;
             quantityPreFilled = true;
             quantityNotes     = `scope: ${lf.scope_detail_key} = ${val.toFixed(1)}`;
+          } else if (lf.skip_when_missing) {
+            skipTrade = true;
           }
         } else if (lf.qty_basis === 'metric') {
           const metricMap = { floor_sf: room.areaSf, wall_sf: room.wallAreaSf, perimeter_lf: room.perimeterLf };
@@ -379,6 +385,8 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
           }
         }
       }
+
+      if (skipTrade) continue;
 
       if (quantity === undefined) {
         ({ quantity, quantityPreFilled, quantityNotes } = buildQuantity({
