@@ -175,7 +175,7 @@ export default function FloorPlanTab({ job, profile }) {
                 <div key={scan.id || i} className="card" style={{ padding: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '16px', color: '#0A1F44' }}>
-                      {formatDate(scan.created_at || scan.scanned_at)}
+                      {scan.scan_name || formatDate(scan.created_at || scan.scanned_at)}
                     </span>
                     <span style={{ fontSize: '12px', color: '#888' }}>Legacy scan · {formatSqft(totalSqft)} sf</span>
                   </div>
@@ -188,8 +188,13 @@ export default function FloorPlanTab({ job, profile }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                   <div>
                     <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '16px', color: '#0A1F44' }}>
-                      {formatDate(scan.created_at || scan.scanned_at)}
+                      {scan.scan_name || formatDate(scan.created_at || scan.scanned_at)}
                     </span>
+                    {scan.scan_name && (
+                      <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
+                        {formatDate(scan.created_at || scan.scanned_at)}
+                      </div>
+                    )}
                     {scan.height_meters == null && (
                       <span style={{ marginLeft: '8px', fontSize: '11px', fontWeight: '600', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         Height missing
