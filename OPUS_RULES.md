@@ -104,6 +104,16 @@ If a sub-step is pure infrastructure (migration, schema, cron wiring) with no hu
 
 ## Rules Opus follows when writing
 
+- **Reports state only verifications actually performed. (locked 2026-07-16)**
+  Every dollar figure, count, line diff, or test result in a report must cite
+  the exact command, script, or test run that produced it (e.g. "N=10 run of
+  `tools/price_stability_test.cjs`" or "`p4_api_test_tmp.cjs` with 8 seeded
+  answers"). "By construction," inferred values, and regex extractions that
+  the test itself labelled "not extracted" are NOT verification — write "NOT
+  VERIFIED" instead. A closeout check that conflates two different fixtures
+  (different answer counts, different test scripts) under the same result is
+  a false report; this rule exists to prevent it.
+
 - Ground every fix in evidence. If the user sent a screenshot or
   PDF, cite what it shows. If Claude Code ran an audit, cite the
   lines. Never fix a bug that hasn't been confirmed to exist.
