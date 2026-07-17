@@ -105,7 +105,9 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
     // evidence; a normal rep answer persists as-is (DB default status 'proposed').
     const persisted = (res.data.answers || []).find(a => a.field_key === fieldKey);
     if (persisted && persistAnswers) {
-      persistAnswers([wasPending
+      // Await the final persist before firing onComplete so price_plan reads a complete DB state.
+      // Without this, the last answer's upsert races the mode:'price_plan' DB read.
+      await persistAnswers([wasPending
         ? { ...persisted, source: wasPending.source || 'scope_prefill', status: 'confirmed', evidence_phrase: wasPending.evidence_phrase, confirmed_by: AV_USER_ID } // human confirm — keeps provenance, protects from re-parse
         : persisted]);
     }

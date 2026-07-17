@@ -76,6 +76,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [estCommitMsg, setEstCommitMsg] = useState('');
   const [pricedScope, setPricedScope] = useState(null); // 3c: priced lines from 3b-2 engine
   const [pricedMeta, setPricedMeta]   = useState(null); // Fix 5: markup/pm_fee ACTUALLY applied to this draft
+  const [untranslatedFields, setUntranslatedFields] = useState([]); // price_plan: fields captured but not yet priced
   const [showRaw, setShowRaw]         = useState(false); // toggle raw chat when FACE is present
 
   // Interview pricing inputs — seeded from job overrides then bid_model_config tenant defaults
@@ -626,30 +627,43 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     if (files.length) setJobPlansOpen(false);
   };
 
-  // Run the UNCHANGED pricing path with the current conversation + a final user nudge.
-  // Fired by the [scopeComplete] effect once the scope interview is satisfied/forced.
-  // The conversation already carries the confirmed scope answers, so the priced draft
-  // reflects them. The PRICING_TRIGGER is sent to the API but not shown as a bubble.
+  // PRICE_DETERMINISM P4: deterministic pricing via mode:'price_plan'.
+  // Reads job_scope_answers + scan geometry from DB — no LLM call.
+  // Fired by the [scopeComplete] effect; persistence race closed (ScopeConfigurator awaits
+  // the final answer upsert before calling onComplete).
+  // "Scope captured" chat message is UX only — not a pricing input any more.
   const runPricing = async () => {
     setEstLoading(true);
-    const apiMessages = [
-      ...estMessages.map(({ role, content }) => ({ role, content })),
-      { role: 'user', content: PRICING_TRIGGER },
-    ];
+    const pt = resolveProjectType();
+    const financialModel = job.financial_model || 'fixed_bid';
     let reply;
     try {
       const res = await fetch(AI_ESTIMATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-        body: JSON.stringify({ messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0, finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0, financial_model: job.financial_model || 'fixed_bid' }),
+        body: JSON.stringify({
+          mode: 'price_plan',
+          tenant_id: AV_TENANT,
+          job_id: job.id,
+          project_type: pt,
+          finish_tier: interviewTier,
+          markup_pct: Number(interviewMarkup) || 0,
+          pm_fee: Number(interviewPmFee) || 0,
+          financial_model: financialModel,
+        }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
-        reply = `Sorry, something went wrong: ${data.error || `HTTP ${res.status}`}`;
+        if (res.status === 400 && data.error === 'scope_empty') {
+          reply = '⚠ No scope answers found — please complete the scope configurator before pricing.';
+        } else {
+          reply = `Sorry, something went wrong: ${data.error || `HTTP ${res.status}`}`;
+        }
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
-        if (data.priced_scope?.length) setPricedScope(data.priced_scope); // 3c
-        if (data.priced_scope?.length) setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || (job.financial_model || 'fixed_bid') }); // Fix 5
+        if (data.priced_scope?.length) setPricedScope(data.priced_scope);
+        if (data.priced_scope?.length) setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || financialModel });
+        setUntranslatedFields(data.untranslated_fields || []);
       }
     } catch (e) {
       console.error('ai-estimator pricing error:', e);
@@ -1592,6 +1606,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
                 financialModel={pricedMeta?.financialModel}
                 markupSource={(Number(job.default_markup_pct) > 0 || Number(job.labor_markup_pct) > 0) ? "this job's rate" : 'Bid Config default'}
               />
+              {untranslatedFields.length > 0 && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 12px', background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12, color: NAV }}>
+                  <span style={{ flexShrink: 0, marginTop: 1 }}>ℹ</span>
+                  <span><strong>Captured but not yet priced:</strong> {untranslatedFields.map(f => f.replace(/_/g, ' ')).join(', ')} — add takeoff mappings to price these fields.</span>
+                </div>
+              )}
               {(() => {
                 const gaps = pricedScope.filter(l => l.source_label === 'regional_avg' && l.gap_key);
                 return gaps.length > 0
