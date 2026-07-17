@@ -523,6 +523,8 @@ npx playwright test tests/portals-e2e.spec.js --grep "Step 1"        # one step
 npx playwright test tests/portals-e2e.spec.js --grep "Desktop"       # desktop only
 ```
 
+**Headed vs headless convention:** Playwright verification walks run **headed by default on local runs** (`headless: false` / `--headed`) so Kalin can watch the flow live. Headless is allowed for bulk/repeat harness runs (e.g. N=10 stability) and any non-local context.
+
 **Test accounts (Playwright e2e):**
 - PM: `test-pm@avenstonekc.com` / `TestPM2026!`
 - Rep: `test-salesrep@avenstonekc.com` / `TestSalesRep2026!`
