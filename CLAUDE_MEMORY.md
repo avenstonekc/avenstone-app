@@ -2763,3 +2763,10 @@ KEY DECISIONS (locked):
 - KEPT: no-project-type LLM path (live case). Follow-up chat Send button (post-pricing conversational adjustments). configuratorPath branch (primary path for cost_plus/fixed_bid + known project type).
 - VERIFIED: price_stability_test.cjs N=2: $10,046.73 both runs, deep-equal PASS. Flip LLM smoke: HTTP 200, 22 lines, $12,382.35, markup=0% pm_fee=0 (correct for flip). Playwright configurator walk (live_price_determinism_p5_test.cjs): 34 rows in DB, 5 UI taps PASS, pricing rendered.
 - TIER 1 STATUS: FULLY DELIVERED (D3 gate fix + plan rewrite + this chat-path partial all complete).
+
+[LOG — 2026-07-17] — Hotfix: flip job pricing route in runPricing — commit `9da1763`
+- BUG: flip jobs with a project type (e.g., bathroom) could not price after PRICE_DETERMINISM P4. The configurator ran and completed, then `runPricing()` fired and posted `mode:'price_plan'` with `financial_model='flip'` → edge fn returned 400 (deliberate P3 guard: no flip contract defined for price_plan). Surfaced by the 2026-07-16 chat-path retirement audit (route map in `62548cf`).
+- FIX: `runPricing()` branches on `financialModel === 'flip'` before calling price_plan. Flip uses the legacy LLM messages path: sends the initial scope user prompt only (NOT the full estMessages including the artificial "Scope captured" assistant turn — that turn confuses the LLM scope→JSON output path). `markup_pct=0`, `pm_fee=0` enforced (flip semantics: profit = ARV − cost_basis).
+- NOTE: the "Scope captured" assistant turn (injected by `handleConfiguratorComplete`) was causing parse failures in the LLM path because the conversation pattern doesn't match the LLM scope JSON format expectation. Clean single-message reliably works.
+- VERIFIED: cost_plus P5 fixture N=2: $10,046.73 both runs PASS. Flip API: HTTP 200, 25 lines, $17,419.12, markup=0%, pm_fee=0, financial_model=flip. PASS.
+- PARKED gate: flip pricing redesign (MASTER_BUILD_PLAN parked item iv / fixed-price CO territory). Remove the flip branch in `runPricing` when price_plan gains flip support.

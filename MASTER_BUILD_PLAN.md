@@ -83,7 +83,7 @@ Last verified: 2026-07-16 (full-code audit, commits verified against git log and
 |-------|--------|----------|
 | S1 — `scope_plan` deterministic mode | **SHIPPED** | `handleScopePlan` in `ai-estimator/index.ts`; no LLM call; returns ordered field list + `scope_complete` flag |
 | S2 — `ScopeConfigurator` component + EstimateTab wiring | **SHIPPED** | `ScopeConfigurator.jsx`; big option cards; progress; persist via Phase-A store; hand-off to `price_plan` pricing path |
-| Remnant — chat-path retirement | **PARTIAL — `62548cf`** | Dead `scope_interview` mode code removed. Full removal blocked: no-project-type jobs + flip jobs require the LLM path. Legacy path labeled; stays until flip pricing redesigned + every job has a project type. |
+| Remnant — chat-path retirement | **PARTIAL — `62548cf` + hotfix `9da1763`** | Dead `scope_interview` mode code removed. Live break fixed: flip jobs with a project type now route to legacy LLM path inside `runPricing` (uses the initial scope prompt only; `markup=0/pm=0`). Full removal still blocked: no-project-type jobs require the LLM path; flip needs redesign before price_plan can handle it (parked item iv). |
 
 **Archive slug:** `estimate-configurator-shipped-2026-07-16` → `CLAUDE_ARCHIVE.md`.
 
