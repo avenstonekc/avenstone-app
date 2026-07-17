@@ -34,6 +34,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
   }
 
   function handleHeightConfirm(heightMeters, heightSource, heightPoints) {
+    if (saving || savedOk) return;
     const hd = { heightMeters, heightSource, heightPoints };
     setHeightData(hd);
     if (jobId) { saveInterior(hd); } else { setStep('save'); }
