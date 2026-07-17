@@ -1240,6 +1240,9 @@ async function handlePricePlan(
     answersAnnotated[k] = { value: sv, source: row.source ?? "rep_typed" };
   }
 
+  // Empty-scope guard: never price a job with zero scope answers (P4 carryover ruling).
+  if (Object.keys(answersFlat).length === 0) return fail("scope_empty", 400);
+
   // Derive geometry from latest scan (or null if no scan)
   const scan = scanRes.data?.[0] ?? null;
   const scanGeometry = scan ? deriveGeometryFromScan(scan) : null;
@@ -1381,6 +1384,11 @@ Deno.serve(async (req) => {
       return await handleScopeInterview(messages, tenant_id, project_type, prefilled_answers, client_prefs);
     }
 
+    // ── DEPRECATED: LLM scope-pricing branch ─────────────────────────────────
+    // EstimateTab no longer calls this path for cost_plus/fixed_bid (PRICE_DETERMINISM P4).
+    // Kept for: (1) flip financial model (not yet in price_plan); (2) price-stability harness
+    // (tools/price_stability_test.cjs) which replays this path until P5 re-points it.
+    // Do NOT delete. Add new pricing work to price_plan (handlePricePlan above).
     const rateBook = await loadRateBook(tenant_id);
 
     // ── EXTRACT_JSON_FOR_PROPOSAL: pass through to AI to extract from formatted markdown ──
