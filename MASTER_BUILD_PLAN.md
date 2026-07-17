@@ -93,7 +93,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 ---
 
-#### PRICE_DETERMINISM — arc (2026-07-16, active)
+#### PRICE_DETERMINISM — arc (2026-07-16, **COMPLETE** — all P1-P5 shipped)
 
 **Goal:** same scope of work → same price, every run. LLM demoted from quantity-inventer to perception/narrative; quantity computation is deterministic from geometry + confirmed scope answers.
 
@@ -113,11 +113,18 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 | P2 — translation layer: configurator answers → scope_details | **DONE 2026-07-16** | `867d1b3` + `5138fd0` + `01587c4` — `scopeTranslation.js` (pure ESM, zero imports): `deriveScopeTag`, `translateAnswers`, `resolveGeometry`; 40/40 unit+integration tests; Countertops bathroom template migration (skip_when_missing=true, 15 templates now); sandbox regression PASS (byte-identical 39 lines / $9,320.84) |
 | P3 — `price_plan` edge mode | **DONE 2026-07-16** | `9b14f26` — new mode in `ai-estimator`; shared pure modules in `_shared/` (computeFns, pricingCore, scopeTranslation) with divergence-guard headers; `handlePricePlan` loads scope answers + scan → translateAnswers → deriveScopeTag → resolveGeometry → computePricingLines → priced_scope; `source_label:'takeoff_formula'`; pending-rate lines → `regional_avg`+gap_key; `untranslated_fields` in response; determinism guard (no LLM, no Date/random). Migration adds Countertops to vanity_swap. 12/12 tests. |
 | P4 — EstimateTab wiring | **DONE 2026-07-16** | `d14304d` + `00401f0` — `runPricing()` POSTs `mode:'price_plan'` (no LLM) for cost_plus/fixed_bid; persistence race closed (ScopeConfigurator awaits final upsert before `onComplete`); 400 `scope_empty` guard in edge fn + user-facing message; `untranslated_fields` notice above GapBatchAsk; LLM branch marked deprecated (kept for flip + harness). Playwright + API verified: Run1=$5,721 Run2=$5,721 DETERMINISM PASS; `scope_empty` guard PASS; Formula lines + untranslated notice rendered. |
-| P5 — harness re-point + PASS | **NEXT** | Rebuild harness to call the new pricing path; confirm spread ≤ 8% across 6 runs. |
+| P5 — harness re-point + PASS | **DONE 2026-07-16** | Harness re-pointed to `mode:'price_plan'` (`--legacy` flag keeps old LLM path). N=10: spread=$0.00, all 10 deep-equal (bit-identical line sets). Perturbation proof (niche=recessed): baseline $9,324.23 / perturbed $9,569.23 (+$245, +2 lines); both 3-run sets internally identical → PASS. Gap(a): 5 fields answered live via configurator tap-through (UI taps→DB persist→price_plan); all 34 rows in DB. Gap(b): 57 rows committed (50 takeoff_formula, 7 regional_avg), rate_provenance='takeoff:<uuid>:geo=scan' all 57, re-commit no duplication (delete-isolation via `notes LIKE 'ai:%'`). **UI commit guard note**: `commitEstimateFromChat` has an early-exit `if (!estMessages.some(m => m.role === 'assistant')) return` — this guards the configurator path because the configurator-path `estMessages` state is set in `handleConfiguratorComplete` but the Proposal→flow reads it via closure; the guard is correct but the UI commit is unreachable without the assistant messages being populated in the same render cycle as the Proposal click. Parked as known observation (workaround: test harness commits via API; production rep commits via Proposal → correctly reads populated estMessages). |
 
 **P2 divergence note (v1 accepted):** The takeoff Wizard uses `buildTakeoffDraft` which reads `job_room_scopes.scope_tag + scope_details` directly. The EstimateTab configurator path uses `job_scope_answers` (scope_checklists vocab) translated by `scopeTranslation.js`. These are two separate flows — a rep who enters scope via the Wizard and one who uses the configurator will price through different vocabulary mappings. This is the accepted v1 divergence; a future arc will unify them via a shared scope-answer store that feeds both.
 
-**Dependency:** P4 depends on P3 (DONE). P5 depends on P4.
+**Dependency:** P4 depends on P3 (DONE). P5 depends on P4 (DONE).
+
+**Parked follow-ups (non-blocking):**
+- (i) Untranslated fields content — heated_floor, shower_glass, ventilation, shower_entry, layout_change need `scopeTranslation.js` entries + takeoff lines before they price. Currently surfaced in the UI notice.
+- (ii) KALIN_QUEUE j — Countertops rates ($/SF + $/sink medians) still owed to fill the existing bathroom vanity_swap template.
+- (iii) rate_book_labor vs takeoff_unit_costs reconciliation — two rate tables, LLM path uses one, deterministic path uses the other. Long-term unification needed.
+- (iv) Legacy LLM scope-pricing branch removal — once flip pricing is redesigned (parked, MODEL_B/fixed-price CO territory). Branch is deprecated but functional.
+- (v) Wizard path lacks translateAnswers — the Takeoff Wizard (buildTakeoffDraft → job_room_scopes) and the configurator path (price_plan → job_scope_answers) are two separate scope→price pipelines. Accepted P2 divergence; unification is a future arc.
 
 ---
 
