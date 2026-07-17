@@ -2795,3 +2795,38 @@ KEY DECISIONS (locked):
   - Pre-existing bug found: captureFailedIntent serialization error (circular JSON with Window) shows red error banner on scope_prefill API failures — not introduced by this work, logged.
 - Plan: TIER 1 complete. TIER 2 resequenced per plan. Item 7 (no-project-type prompt) = picker ships with 039dfb4; manual walk verification still needed.
 - CLAUDE.md: headed convention added by Kalin (Playwright verification walks run headed:false by default on local).
+
+[LOG — 2026-07-17] — SCAN_EXPORT_FIX Slice 1 — JSON polygon area fix + SCAN_TRUST naming/dup-save fix
+Commits on this session (not all committed yet — see close-out commit below):
+- `983c49d`: SCAN_TRUST P1 — scan_name column on job_lidar_scans + contact_lidar_scans; FloorPlanTab shows name as primary label with date sub-label; migration 20260717100000.
+- `7b40145`: Duplicate save guard — handleHeightConfirm in AiIntakeWizard guards with `if (saving || savedOk) return` to prevent double-tap double-insert.
+- SCAN_EXPORT_FIX Slice 1 (this commit): Bug C defect — JSON export used bounding-box sqft (L×W from RoomPlan API) while PDF used true polygon area. Inflation was 2–2.6× (Kitchen 813→402, Laundry 232→117, Living 1739→671, scan total 2784→1190).
+
+Root cause:
+  `buildScanArtifact` passed rooms verbatim from DB; rooms[i].sqft = RoomPlan bounding box.
+  PDF used `_polyAreaFromSegs` on already-processed world-space segments → true polygon area.
+  Raw wallSegments are room-LOCAL and have genuine gaps at doorways, so naive shoelace on them gives garbage.
+
+Fix:
+  - `_shared/roomPolygonArea.js` (NEW): canonical `polyAreaSqftFromSegs` — shoelace on pre-processed
+    wall segments (for pdf.js which receives already-snapped world-space segs). { ok, error, data }.
+  - `pdf.js`: `_polyAreaFromSegs` replaced with thin wrapper delegating to shared module. Zero behavior change.
+  - `scanArtifact.js` v2: `buildScanArtifact` now reads `normalized_geometry.rooms[i].area_sqft`
+    (same pipeline as PDF: world-space translate + 0.1 ft grid snap + exact endpoint matching + polygonAreaSqft).
+    Falls back to stored sqft only if normalized_geometry absent (pre-2026-06 scans).
+    Schema: `sqft` = polygon area; `length`/`width` renamed to `bounding_length`/`bounding_width`.
+    `artifactToScanParams` handles v1/v2 with backward compat.
+  - `tools/test_polygon_area.mjs` (NEW): 17/17 regression assertions. Confirms Kitchen=402, Laundry=117, Living=671, total=1190 from normalizeFloorPlan, and that artifact uses those values not bounding box.
+
+Consumers updated: `artifactToScanParams` (v2 import maps bounding_length/bounding_width → length/width).
+Consumers NOT in scope: `deriveProjectSf.js` (reads room.sqft from DB directly — DB-layer fix, Slice 4+).
+
+IMPORTANT — why raw wallSegments shoelace doesn't work:
+  wallSegments are room-local coordinates. Rooms have openings/doorways that create true polygon gaps
+  > 2.0 ft. The normalizeFloorPlan pipeline (normalize.js) translates to world-space and uses
+  _wallSegsToPolygon with exact endpoint matching (EPS=0.05 ft after 0.1 ft snap) + greedy fallback
+  for genuine gaps. Do NOT attempt to replace normalized_geometry usage with direct shoelace on raw segs.
+
+Data: 12101 Pawnee LN field scan (7 scans, 15 rooms after duplicate cleanup). Duplicate save fixed.
+4 duplicate scans deleted from DB (3×Group A, 1×Group B, 1×Group C). floor_plans records renamed.
+scan_name populated for all 7 remaining Pawnee scans. Combined JSON + 7 PDFs saved to Kalin's Desktop/pawnee-scans/.
