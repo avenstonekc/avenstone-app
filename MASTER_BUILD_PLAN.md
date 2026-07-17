@@ -27,7 +27,7 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
 | ~~g~~ | ~~**Kalin: did Aguayo's do carpet on `8617 Houston`?**~~ **RESOLVED 2026-07-15** — Aguayo's owner-supplied complete scope sheet (07/14, $33,563.06, "Change Orders Included") has NO carpet line; carpet on this job was Southside ($4,647) + Carlos ($4,500), both raw by Kalin. Aguayo did not do carpet → no missing liability. | ~~2026-07-15~~ |
 | h | **Kalin: $100 discrepancy with Aguayo** — their remainder invoice credits $16,900 received vs $17,000 in checks Kalin wrote. Handle with the sub directly; the books stay at $17,000 paid (correct per the checks). | 2026-07-15 |
 | i | **Kalin: pay Aguayo remainder $16,563.06 when ready** — then log it as an invoice payment on `16ab4bc1` via `add_sub_invoice_payment_with_ledger` (NOT a raw status flip), so accrual `97205011` draws down atomically. | 2026-07-15 |
-| j | **PRICE_DETERMINISM: Countertops has a `scope_option_trades` mapping for bathroom but no `takeoff_template` for `room_type=bathroom`.** Vanity tops currently price under "Cabinets / vanities - Install" via the `scope_detail_schemas` fixture_select path. Decide: (1) is Countertops a separate billable trade, or does it stay merged into Cabinets? (2) if separate, add a `takeoff_template` + `takeoff_unit_costs` rows for Countertops / bathroom. No code change needed until decision. | Blocks PRICE_DETERMINISM P2 trade coverage |
+| ~~j~~ | ~~**PRICE_DETERMINISM: Countertops rates owed**~~ **RESOLVED 2026-07-16** — Rates locked at KC vendor midpoints (Sarto E79731 + Euroselect 13774): $85/SF installed all-in (material+fab+install), $135/each sink cutout, $120/job template fee. Migration `20260716200000`: 3 `takeoff_unit_costs` rows (tenant_id=NULL platform defaults) + template restructured (slab removed from materials_formula; template fee added as fixed_qty=1). Verified: Countertops 3 lines all `takeoff_formula` (no pending), N=2 deep-equal $10,046.73. | ~~Blocks PRICE_DETERMINISM P2~~ |
 | ~~k~~ | ~~**PRICE_DETERMINISM: Confirm `takeoff_unit_costs` as the single rate authority for the deterministic pricing path.**~~ **RESOLVED 2026-07-16** — P3+P4 shipped: `price_plan` mode reads `takeoff_unit_costs` exclusively. `rate_book_labor/material` remain the LLM path only (deprecated, harness-only). | ~~Blocks PRICE_DETERMINISM P3~~ |
 
 ### NEXT CODE DISPATCH (priority)
@@ -121,7 +121,7 @@ Verified 2026-06-19 against component files, edge functions, migrations, and hel
 
 **Parked follow-ups (non-blocking):**
 - (i) Untranslated fields content — heated_floor, shower_glass, ventilation, shower_entry, layout_change need `scopeTranslation.js` entries + takeoff lines before they price. Currently surfaced in the UI notice.
-- (ii) KALIN_QUEUE j — Countertops rates ($/SF + $/sink medians) still owed to fill the existing bathroom vanity_swap template.
+- ~~(ii) KALIN_QUEUE j — Countertops rates~~ **CLOSED 2026-07-16** — see KALIN_QUEUE j above.
 - (iii) rate_book_labor vs takeoff_unit_costs reconciliation — two rate tables, LLM path uses one, deterministic path uses the other. Long-term unification needed.
 - (iv) Legacy LLM scope-pricing branch removal — once flip pricing is redesigned (parked, MODEL_B/fixed-price CO territory). Branch is deprecated but functional.
 - (v) Wizard path lacks translateAnswers — the Takeoff Wizard (buildTakeoffDraft → job_room_scopes) and the configurator path (price_plan → job_scope_answers) are two separate scope→price pipelines. Accepted P2 divergence; unification is a future arc.

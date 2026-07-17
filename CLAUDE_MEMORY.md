@@ -2730,3 +2730,13 @@ KEY DECISIONS (locked):
   2. The Playwright walk pre-seeded 34 answers. It printed $4,552.54 as the first dollar value extracted from page text via a broad regex — the test output explicitly said "Total: not extracted." $4,552.54 is a line price, not the subtotal. The 34-answer subtotal from the Playwright walk was NEVER numerically confirmed.
 - Closeout check (2026-07-16): P5 harness priced the same 34-answer fixture at $9,324.23 (57 lines). No UI-vs-direct divergence was found — both paths call the same `handlePricePlan`. The $5,721 vs $9,324 gap is fully explained by answer-set size (8 vs 34 answers → fewer vs more scope details → fewer vs more priced lines).
 - CORRECTED RECORD: P4 verified that price_plan fires correctly and gives identical totals across runs (determinism PASS). The exact 34-answer subtotal was NOT VERIFIED during P4; it was confirmed as $9,324.23 during the P5 harness run.
+
+[LOG — 2026-07-16] — Countertops bathroom rates seeded; KALIN_QUEUE j CLOSED — migration `20260716200000`
+- RATES (locked, midpoint of two real KC vendor estimates — Sarto E79731 + Euroselect 13774):
+  $85.00/SF installed (material + fabrication + installation, all tiers blended for v1).
+  $135.00/each sink cutout (per undermount opening).
+  $120.00/job template / mobilization fee (fixed per engagement).
+- TEMPLATE RESTRUCTURE (same migration): P2's Countertops bathroom template had labor_formula + a separate "Countertop slab" materials entry, both keyed on countertop_sf. Seeding $85 only on the labor row would leave the slab materials line pending. Migration removes "Countertop slab" from materials_formula (the labor rate covers it all-in) and adds "Template / mobilization fee" (fixed_qty=1, qty_basis=fixed). Template now has: labor_formula (countertop_sf, skip_when_missing=true) + 2 materials entries (Countertop sink cutout + Template / mobilization fee).
+- VERIFIED via SELECT: 3 unit_cost rows (Countertops, tenant_id=NULL): labor sf $85, materials each $135 sink cutout, materials lump $120 template fee. Template materials_formula has 2 entries (slab entry gone).
+- PRICE_PLAN RESULT (N=2, 34-answer fixture, single vanity 36in): Countertops 3 lines all takeoff_formula (0 pending): labor 5.5 SF × $85 = $467.50, sink cutout 1 × $135 = $135, template 1 × $120 = $120. Total Countertops = $722.50. New overall subtotal: $10,046.73 (was $9,324.23, delta +$722.50). NOTE: the prompt's expected ~$779.45 slab line was based on 9.17 SF; the actual formula is 36in × 22in ÷ 144 = 5.5 SF → $467.50. Run1 = Run2 = $10,046.73, deep-equal PASS.
+- REMAINING PENDING (pre-existing, unrelated to Countertops): 4 lines — Cleanup haul, Cabinets vanity sink, Plumbing toilet, Plumbing vanity sink standard.
