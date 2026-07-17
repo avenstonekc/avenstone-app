@@ -2770,3 +2770,17 @@ KEY DECISIONS (locked):
 - NOTE: the "Scope captured" assistant turn (injected by `handleConfiguratorComplete`) was causing parse failures in the LLM path because the conversation pattern doesn't match the LLM scope JSON format expectation. Clean single-message reliably works.
 - VERIFIED: cost_plus P5 fixture N=2: $10,046.73 both runs PASS. Flip API: HTTP 200, 25 lines, $17,419.12, markup=0%, pm_fee=0, financial_model=flip. PASS.
 - PARKED gate: flip pricing redesign (MASTER_BUILD_PLAN parked item iv / fixed-price CO territory). Remove the flip branch in `runPricing` when price_plan gains flip support.
+
+[LOG — 2026-07-17] — Session closeout: 2026-07-16/17 full session summary
+- SHIPPED (all commits verified against git log before recording):
+  - PRICE_DETERMINISM arc P1-P5 COMPLETE (d1123f6 through 523fd03) + docs correction (d083de3). Archived.
+  - Countertops rates seeded (ba01fdc): $85/SF installed + $135/ea cutout + $120/job template fee; KALIN_QUEUE j + PRICE_DETERMINISM parked (ii) CLOSED.
+  - D3 gate fix (8303070 + 582ff3d): both ai-master-agent and ai-field-agent selections-gate mirrors made source-aware; 9 unit tests green.
+  - Inventory audit absorbed; MASTER_BUILD_PLAN rewritten (1d3bdc4): tiers locked, duplicates collapsed, orphans adopted, stale entries corrected.
+  - Chat-path dead-code removal (62548cf): PRICING_TRIGGER constant, scopeOpenFields/scopeOptData dead state, sbLoadScopeOptionData import, unreachable scope_interview mode block all removed. Tier 1 delivered.
+  - Flip pricing hotfix (9da1763): runPricing() branches on financial_model='flip' → legacy LLM path (initial scope prompt only; markup=0/pm=0). Injected-assistant-turn JSON poisoning finding documented for future flip redesign.
+  - PATH_CERTAINTY (039dfb4): (1) engine badge chip — every priced draft shows deterministic vs legacy_llm with reason; (2) project-type picker — resolveProjectType()=null now shows inline type chips instead of silently routing legacy; pickedProjectType as third resolver source; no-project-type LLM routing hole CLOSED.
+- TIER 1: COMPLETE (D3 + plan rewrite + chat-path partial + flip hotfix + PATH_CERTAINTY).
+- TIER 2 RESEQUENCED (locked 2026-07-17): (1) Rate reconciliation — one authority, discard rate_book_labor gap-fills, re-enter via Rate Book; (2) Gap-entry sanity rails — $/unit × qty live at entry, anchor-deviation flag, line-total outlier flag (trigger: $250/SF cleanup → $12,250 silent, 55% of estimate); (3) CONFIGURATOR_FIELD_POLISH — number prefill, feet+inches dual input, shower pan trigger, wall/floor tile size fields + option images, bigger image cards, estimate breakdown UX (delete + inline edit), glass/curtain image waived by Kalin; (4) No-project-type prompt; (5) Untranslated fields content; (6) Clean-job re-test AFTER surface stable.
+- OPEN DEBT (recorded, not fixed): Kalin owes scan-first bathroom + bedroom paint scenario runs; redundant question pairs list for suppression table. Flip pricing redesign parked (item iv). adds_trades consumption question open. TestFlight iOS build predates cutover — needs rebuild before phone testing valid. "$5,020.04" 62548cf extraction artifact resolved — cost_plus confirmed $10,046.73.
+- KALIN_QUEUE: b/c/d/h/i unchanged open.

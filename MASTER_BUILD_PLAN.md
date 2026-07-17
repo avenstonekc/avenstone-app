@@ -26,17 +26,27 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
 | ~~j~~ | ~~**Countertops bathroom rates**~~ **RESOLVED 2026-07-16** — $85/SF (all-in, Sarto E79731 + Euroselect 13774 midpoint), $135/ea sink cutout, $120/job template fee. Migration `20260716200000`. N=2 deep-equal $10,046.73. | ~~—~~ |
 | ~~k~~ | ~~**Confirm `takeoff_unit_costs` as single rate authority**~~ **RESOLVED 2026-07-16** — P3+P4 shipped; `price_plan` reads `takeoff_unit_costs` exclusively. | ~~—~~ |
 
-### NEXT CODE DISPATCH — locked sequence (Kalin 2026-07-16)
+### NEXT CODE DISPATCH — locked sequence (Kalin 2026-07-16/17)
 
 **TIER 1 — Hygiene (COMPLETE):**
 1. ~~Agent selections-gate source-awareness (audit D3)~~ **DONE** — `8303070` + `582ff3d`.
 2. ~~Plan rewrite~~ **DONE** — `1d3bdc4`.
-3. ~~ESTIMATE_CONFIGURATOR chat-path retirement~~ **PARTIAL DONE — `62548cf`.** Removed dead code: `PRICING_TRIGGER` constant, `scopeOpenFields`/`scopeOptData` dead state, `sbLoadScopeOptionData` import, entire `scope_interview` mode block inside `sendEstimatorMessage` (was unreachable — Send button gated by `!scopeInterviewActive`). **PARTIAL because:** no-project-type and flip-without-room-type jobs require the LLM path; `price_plan` returns 400 for flip, configurator requires a `scope_checklists` entry. Legacy LLM path labeled and stays until flip pricing is redesigned (parked item iv) and every estimating job has a known project type. **Tier 1 fully delivered.**
+3. ~~ESTIMATE_CONFIGURATOR chat-path retirement~~ **PARTIAL DONE — `62548cf` + `9da1763` + `039dfb4`.** Dead `scope_interview` code removed. Flip hotfix: `runPricing()` branches on `financialModel='flip'` → legacy LLM path (initial scope prompt only; markup=0). PATH_CERTAINTY: engine badge (deterministic vs legacy_llm chip) + project-type picker (resolveProjectType()=null now shows type chips instead of silently falling to LLM). No-project-type case closed as a routing hole; the picker forces type selection. **Tier 1 COMPLETE.**
 
-**TIER 2 — Estimating spine:**
-4. **Untranslated-fields content phase (~2-4)** — `scopeTranslation.js` entries + takeoff lines for the 5 currently-untranslated fields: `heated_floor`, `shower_glass`, `ventilation`, `shower_entry`, `layout_change`. Currently surfaced as "Captured but not yet priced" UI notice.
-5. **Clean-job test run (~1)** — 3 configurator scenarios (full remodel / tile-only / vanity swap), partly Kalin driving UI and partly Playwright. Validates the full scope→price→commit pipeline on real data.
-6. **SCE reset RLS diagnosis (~1)** — dispatch exists. Fire it. Verify scope answer reset correctly enforces RLS (source-scoped delete, not blanket wipe of human answers).
+**TIER 2 — Estimating spine (RESEQUENCED — locked 2026-07-17):**
+4. **Rate reconciliation (parked iii) — one rate authority (~2-3).** `takeoff_unit_costs` is the single source. LOCKED decision: rates Kalin typed via gap-fill into `rate_book_labor` are DISCARDED, not migrated — he re-enters clean via Rate Book after rails ship. Fixes: system re-asking for rates it already has (per-engine gap roulette). Unifies the two-table debt.
+5. **Gap-entry sanity rails (~2-3).** Three layers: (a) unit + live computed line total shown AT entry ($/SF × qty visible while typing); (b) anchor-deviation flag when entry >3-5× regional anchor either direction; (c) line-total outlier flag when one line exceeds a threshold % of draft subtotal. **Trigger incident (2026-07-17 live run):** $250 typed into a per-SF cleanup slot silently became $12,250 (55% of the estimate).
+6. **CONFIGURATOR_FIELD_POLISH (~3-4) — from 2026-07-16/17 live test run:**
+   - (a) Number fields must PREFILL parsed values (dims, vanity width) for one-tap confirm — same pattern choice fields already use. Toilet auto-select behavior approved as-is.
+   - (b) Feet+inches dual input boxes for all dimension fields; store inches.
+   - (c) "shower pan" added to trigger/vocab map + related curb question suppression.
+   - (d) NEW fields: wall tile size + floor tile size (12×24, 12×12, subway, mosaic, Other+type-in); prerequisite for layout-aware waste (parked). Generate new option images per size — current images skew small-format, misleading.
+   - (e) Option card images BIGGER — can't see tile pattern at current size.
+   - (f) Estimate breakdown UX: alternating row shading; DELETE line item; inline edit rate/qty (rep couldn't remove access-panel TBD line during live test).
+   - (g) Shower door glass/curtain image mismatch — **LOGGED, Kalin waived. Do not build.**
+7. **No-project-type prompt (~1).** PATH_CERTAINTY (`039dfb4`) ships the picker UI. Verify it covers all known no-type entry paths; if any gap remains, close it.
+8. **Untranslated-fields content phase (~2-4)** — `scopeTranslation.js` entries + takeoff lines for: `heated_floor`, `shower_glass`, `ventilation`, `shower_entry`, `layout_change`. Currently surfaced as "Captured but not yet priced" UI notice.
+9. **Clean-job scenario re-test (all three) (~1)** — AFTER items 4-8 are stable. Runs full remodel / tile-only / vanity swap through the live configurator and confirms no regressions. Surface must be stable first.
 
 **TIER 3 — Next major arc (locked):**
 7. **SCOPE_RISK B2.4-B2.6 (~7)** — risk knowledge source, estimator integration, "Potential Considerations" in proposal. Gated on SCOPE_CAPTURE_ENGINE Phase 1 (BUILT — gate clear).
