@@ -28,10 +28,10 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
 
 ### NEXT CODE DISPATCH — locked sequence (Kalin 2026-07-16)
 
-**TIER 1 — Hygiene (in progress or trivially next):**
-1. ~~Agent selections-gate source-awareness (audit D3)~~ **DONE** — `8303070` + `582ff3d` (9 unit tests); both agent mirrors now source-aware, divergence-guard comments added. Audit D3 closed.
-2. **This plan rewrite** — current task.
-3. **ESTIMATE_CONFIGURATOR chat-path retirement (~1-2)** — the tap-through configurator is SHIPPED (S1 = `handleScopePlan` in `ai-estimator`, S2 = `ScopeConfigurator.jsx`; shipped under SCOPE_PREFILL/SCOPE_TO_ESTIMATE names). One open remnant: retire the old free-text scope-interview chat path so reps can't fall back to the LLM interview loop. See ESTIMATE_CONFIGURATOR section below.
+**TIER 1 — Hygiene (COMPLETE):**
+1. ~~Agent selections-gate source-awareness (audit D3)~~ **DONE** — `8303070` + `582ff3d`.
+2. ~~Plan rewrite~~ **DONE** — `1d3bdc4`.
+3. ~~ESTIMATE_CONFIGURATOR chat-path retirement~~ **PARTIAL DONE — `62548cf`.** Removed dead code: `PRICING_TRIGGER` constant, `scopeOpenFields`/`scopeOptData` dead state, `sbLoadScopeOptionData` import, entire `scope_interview` mode block inside `sendEstimatorMessage` (was unreachable — Send button gated by `!scopeInterviewActive`). **PARTIAL because:** no-project-type and flip-without-room-type jobs require the LLM path; `price_plan` returns 400 for flip, configurator requires a `scope_checklists` entry. Legacy LLM path labeled and stays until flip pricing is redesigned (parked item iv) and every estimating job has a known project type. **Tier 1 fully delivered.**
 
 **TIER 2 — Estimating spine:**
 4. **Untranslated-fields content phase (~2-4)** — `scopeTranslation.js` entries + takeoff lines for the 5 currently-untranslated fields: `heated_floor`, `shower_glass`, `ventilation`, `shower_entry`, `layout_change`. Currently surfaced as "Captured but not yet priced" UI notice.
@@ -83,7 +83,7 @@ Last verified: 2026-07-16 (full-code audit, commits verified against git log and
 |-------|--------|----------|
 | S1 — `scope_plan` deterministic mode | **SHIPPED** | `handleScopePlan` in `ai-estimator/index.ts`; no LLM call; returns ordered field list + `scope_complete` flag |
 | S2 — `ScopeConfigurator` component + EstimateTab wiring | **SHIPPED** | `ScopeConfigurator.jsx`; big option cards; progress; persist via Phase-A store; hand-off to `price_plan` pricing path |
-| Remnant — chat-path retirement | **OPEN (~1-2)** | Old free-text scope-interview chat path still exists; reps can fall back to LLM interview loop. Retire it so configurator is the only path. |
+| Remnant — chat-path retirement | **PARTIAL — `62548cf`** | Dead `scope_interview` mode code removed. Full removal blocked: no-project-type jobs + flip jobs require the LLM path. Legacy path labeled; stays until flip pricing redesigned + every job has a project type. |
 
 **Archive slug:** `estimate-configurator-shipped-2026-07-16` → `CLAUDE_ARCHIVE.md`.
 
