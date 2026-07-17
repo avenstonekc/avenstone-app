@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbLoadScopeOptionData, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, sbScopeVision, sbLoadScanMeasurements, sbDeleteScopeAnswers, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, sbScopeVision, sbLoadScanMeasurements, sbDeleteScopeAnswers, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
 import { isScanArtifact, artifactToScanParams, SCAN_ARTIFACT_VERSION } from '../../../lib/scanArtifact';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
@@ -24,7 +24,7 @@ const BORDER = 'var(--border)';
 
 // SCOPE_CAPTURE_ENGINE P1B: final nudge that flips the scope-interview into the
 // unchanged pricing path (sent to the API, never shown as a chat bubble).
-const PRICING_TRIGGER = 'All scope questions answered — generate the full priced estimate now.';
+// PRICING_TRIGGER removed — runPricing() now posts mode:'price_plan' (PRICE_DETERMINISM P4).
 
 const SUB_TABS = [
   { id: 'build',    lb: 'Build' },
@@ -112,10 +112,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [scopeComplete, setScopeComplete]                 = useState(false); // interview satisfied → run pricing
   const [forceDraftedIncomplete, setForceDraftedIncomplete] = useState(false); // rep forced a draft past open questions
   const [knownProjectTypes, setKnownProjectTypes]         = useState([]); // distinct project_types seeded in scope_checklists
-  // SCE Phase 4B: option-image cards. openFields = current unanswered fields (from the
-  // interview response); optData = {fields, images} loaded once per project_type.
-  const [scopeOpenFields, setScopeOpenFields]             = useState([]);
-  const [scopeOptData, setScopeOptData]                   = useState({ fields: [], images: {} });
+  // scopeOpenFields / scopeOptData removed — dead state from pre-configurator scope_interview
+  // mode (that mode is unreachable since the Send button is gated by !scopeInterviewActive).
   const [scopeSaveError, setScopeSaveError]               = useState(null); // Phase A: soft persist-failure banner
   const [resumeChecked, setResumeChecked]                 = useState(false); // one-shot resume-interview check
 
@@ -294,7 +292,6 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     sbLoadEstimateLineItems(job.id).then(items => {
       if (items?.length) return; // committed estimate — don't re-gate
       setScopeInterviewActive(true);
-      sbLoadScopeOptionData(pt).then(setScopeOptData).catch(() => {});
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estStarted, scopeProjectType, resumeChecked]);
@@ -704,47 +701,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setEstLoading(true);
     // Strip UI-only metadata fields before sending — _hasFile/_fileName are display state only
     const apiMessages = newMessages.map(({ role, content }) => ({ role, content }));
-    // Route to scope-interview mode while an interview is active and not yet complete.
-    const mode = modeOverride || (scopeInterviewActive && !scopeComplete ? 'scope_interview' : undefined);
-    // SCOPE_TO_ESTIMATE Phase B — read-back pre-fill. On start AND resume (this is the shared
-    // injection point for both), load the persisted answers and merge them with the session's
-    // on-site measured fields, sent as prefilled_answers so the interview skips already-answered
-    // fields. Precedence: store 'confirmed' wins over session prefill; session prefill (fresher
-    // measurement) wins over store 'proposed'. Source is preserved per answer via the {value,
-    // source} shape — a stored 'measured' stays 'measured' on round-trip (the edge maps db
-    // source -> record source, not a blanket 'measured' relabel).
-    let prefillPayload = null;
-    let clientPrefs = null;
-    if (mode === 'scope_interview') {
-      const sessionFields = sessionPrefill?.measuredFields || {};
-      let storeRows = [];
-      try { const r = await sbLoadScopeAnswers(job.id); if (r.ok) storeRows = r.data; } catch { /* soft — degrade to session-only prefill */ }
-      const merged = {};
-      const prefs = [];
-      // Phase C2 SPLIT: a client_selected PROPOSED row is the homeowner's soft-pick — it goes to
-      // client_prefs (CONTEXT ONLY: the AI may reference it but it does NOT count as answered, so
-      // the field stays open and the rep still drives). Everything else — confirmed rows (any
-      // source) and the rep's own proposed measured/rep_typed answers — feeds the gating prefill.
-      // Sort so 'confirmed' lands last and wins on a duplicate field_key across rooms.
-      for (const a of [...storeRows].sort((x, y) => (x.status === 'confirmed' ? 1 : 0) - (y.status === 'confirmed' ? 1 : 0))) {
-        const v = a.value ?? a.option_key;
-        if (!a.field_key || v == null || String(v).trim() === '') continue;
-        if (a.source === 'client_selected' && a.status === 'proposed') { prefs.push({ field_key: a.field_key, value: v }); continue; }
-        merged[a.field_key] = { value: v, source: a.source || 'rep_typed', _confirmed: a.status === 'confirmed' };
-      }
-      // Session measured fields win UNLESS the store row is confirmed.
-      for (const [k, v] of Object.entries(sessionFields)) {
-        if (v == null || String(v).trim() === '') continue;
-        if (merged[k]?._confirmed) continue;
-        merged[k] = { value: v, source: 'measured' };
-      }
-      const clean = {};
-      for (const [k, e] of Object.entries(merged)) clean[k] = { value: e.value, source: e.source };
-      if (Object.keys(clean).length) prefillPayload = clean;
-      if (prefs.length) clientPrefs = prefs;
-    }
+    // LEGACY LLM path — used for: (1) no-project-type jobs (configurator requires a scope_checklist
+    // entry; when resolveProjectType()=null, startEstimate() routes here); (2) flip jobs without a
+    // room type (price_plan returns 400 for flip); (3) follow-up messages after any estimate.
+    // scope_interview mode was removed: it was unreachable (Send button gated by !scopeInterviewActive).
     let reply;
-    let completedNow = false;
     try {
       const res = await fetch(AI_ESTIMATOR_URL, {
         method: 'POST',
@@ -753,14 +714,6 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0,
           finish_tier: interviewTier, markup_pct: Number(interviewMarkup) || 0, pm_fee: Number(interviewPmFee) || 0,
           financial_model: job.financial_model || 'fixed_bid',
-          ...(mode === 'scope_interview' ? {
-            mode: 'scope_interview',
-            project_type: resolveProjectType(),
-            // Phase B: store + session merged, source-aware prefill (built above).
-            ...(prefillPayload ? { prefilled_answers: prefillPayload } : {}),
-            // Phase C2: client soft-picks as non-gating context.
-            ...(clientPrefs ? { client_prefs: clientPrefs } : {}),
-          } : {}),
         }),
       });
       const data = await res.json();
@@ -768,16 +721,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         const detail = data.error || `HTTP ${res.status}`;
         console.error('ai-estimator error:', detail, data);
         reply = `Sorry, something went wrong: ${detail}`;
-      } else if (mode === 'scope_interview') {
-        // Upstream of pricing: render the batched questions; flag completion for the effect.
-        reply = data.content || 'Let me get a few scope details.';
-        if (data.scope_complete) completedNow = true;
-        setScopeOpenFields(data.open_field_keys || []); // SCE 4B: drive the option cards
-        persistScopeAnswers(data.answers); // Phase A: persist answers (soft, non-blocking)
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
-        if (data.priced_scope?.length) setPricedScope(data.priced_scope); // 3c
-        if (data.priced_scope?.length) setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || (job.financial_model || 'fixed_bid') }); // Fix 5
+        if (data.priced_scope?.length) setPricedScope(data.priced_scope);
+        if (data.priced_scope?.length) setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || (job.financial_model || 'fixed_bid') });
       }
     } catch (e) {
       console.error('ai-estimator fetch/parse error:', e);
@@ -786,11 +733,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     const finalDisplay = [...displayMessages, { role: 'assistant', content: reply }];
     setEstMessages(finalDisplay);
     setEstLoading(false);
-    // scope_origin: 'incomplete' when force-drafted; else 'session' on a prefilled
-    // estimate; else undefined (upsert preserves the existing value).
     sbSaveEstimate(job.id, finalDisplay, forceDraftedIncomplete ? 'incomplete' : (sessionPrefill ? 'session' : undefined));
-    // Scope just completed → leave interview; the [scopeComplete] effect runs pricing.
-    if (completedNow) { setScopeComplete(true); setScopeInterviewActive(false); }
   };
 
   // Resolve project_type for the scope interview. Order (blueprint / dispatch):
@@ -950,6 +893,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       setConfiguratorPath(true); // Phase 6a — hide chat/prompt, land on the breakdown
       setEstMessages([{ role: 'user', content: prompt }]);
     } else {
+      // LEGACY LLM PATH — no project type resolved (or flip without room type).
+      // The configurator requires a scope_checklists entry; price_plan requires a project_type.
+      // Without one, we fall through to the LLM scope-and-price flow. This path stays until
+      // price_plan supports flip and until every estimating job has a known project type.
       setConfiguratorPath(false);
       await sendEstimatorMessage(prompt, estFiles.length ? estFiles : null);
     }
