@@ -44,7 +44,7 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
    - (e) Option card images BIGGER — can't see tile pattern at current size.
    - (f) Estimate breakdown UX: alternating row shading; DELETE line item; inline edit rate/qty (rep couldn't remove access-panel TBD line during live test).
    - (g) Shower door glass/curtain image mismatch — **LOGGED, Kalin waived. Do not build.**
-7. **No-project-type prompt (~1).** PATH_CERTAINTY (`039dfb4`) ships the picker UI. Verify it covers all known no-type entry paths; if any gap remains, close it.
+7. ~~**No-project-type prompt (~1).**~~ **SHIPPED `039dfb4`.** Picker UI live: resolveProjectType()=null now shows inline type chips (9 project types, sourced live from scope_checklists). Picker confirmed via React state injection (tools/idx47_test.png). Manual walk still needed to confirm end-to-end from Generate click through engine badge on a job with no prior room scopes — automation SF sync issue blocked automated run. Do that walk from owner seat before marking fully closed.
 8. **Untranslated-fields content phase (~2-4)** — `scopeTranslation.js` entries + takeoff lines for: `heated_floor`, `shower_glass`, `ventilation`, `shower_entry`, `layout_change`. Currently surfaced as "Captured but not yet priced" UI notice.
 9. **Clean-job scenario re-test (all three) (~1)** — AFTER items 4-8 are stable. Runs full remodel / tile-only / vanity swap through the live configurator and confirms no regressions. Surface must be stable first.
 
