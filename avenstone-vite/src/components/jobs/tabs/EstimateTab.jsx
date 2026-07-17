@@ -99,6 +99,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // Phase 6a — true when this estimate ran through the tap-through configurator. On this path the
   // chat transcript / raw prompt is NEVER rendered; completion lands on the polished breakdown.
   const [configuratorPath, setConfiguratorPath] = useState(false);
+  // PATH_CERTAINTY — engine tracer: every priced estimate declares which engine priced it.
+  // engine: 'deterministic'|'legacy_llm'. reason: 'price_plan'|'flip'|'follow_up_chat'|etc.
+  const [engineMeta, setEngineMeta] = useState(null);
+  // PATH_CERTAINTY — project-type picker: shown when Generate is clicked with no resolved type.
+  const [pendingPtPick, setPendingPtPick] = useState(false);
+  const [pickedProjectType, setPickedProjectType] = useState(null); // user override via inline picker
   // TAKEOFF_BRIDGE Phase 2 — {count, trades[]} of existing takeoff:% lines, for the double-count warning.
   const [takeoffOverlap, setTakeoffOverlap] = useState(null);
   useEffect(() => { sbCommittedLineSummary(job.id).then(r => { if (r.ok) setTakeoffOverlap(r.data.takeoff.count > 0 ? r.data.takeoff : null); }); }, [job.id]);
@@ -439,6 +445,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setLearnSaveState(''); setSessionPrefill(null); setEstimateScopeOrigin(null); setShowRaw(false);
     setScopeInterviewActive(false); setScopeComplete(false); setForceDraftedIncomplete(false);
     setConfiguratorPath(false);
+    setEngineMeta(null); setPendingPtPick(false); setPickedProjectType(null);
     // RESET_SCOPE — drop the committed line-item + proposal views so the cleared DB is reflected.
     setLineItems([]); setLineItemsLoaded(false); setPropLineItems([]); setPropReady(false);
     // RESET_FAILURE — the one-shot resume guard must reset too, or a re-started interview reuses
@@ -663,7 +670,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         } else {
           reply = data.content || 'Sorry, something went wrong. Please try again.';
           if (data.priced_scope?.length) setPricedScope(data.priced_scope);
-          if (data.priced_scope?.length) setPricedMeta({ markupPct: 0, pmFee: 0, financialModel: 'flip' });
+          if (data.priced_scope?.length) {
+            setPricedMeta({ markupPct: 0, pmFee: 0, financialModel: 'flip' });
+            setEngineMeta({ engine: 'legacy_llm', reason: 'flip' }); // PATH_CERTAINTY
+          }
         }
       } catch (e) {
         console.error('ai-estimator flip pricing error:', e);
@@ -703,7 +713,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
         if (data.priced_scope?.length) setPricedScope(data.priced_scope);
-        if (data.priced_scope?.length) setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || financialModel });
+        if (data.priced_scope?.length) {
+          setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || financialModel });
+          setEngineMeta({ engine: 'deterministic', reason: 'price_plan' }); // PATH_CERTAINTY
+        }
         setUntranslatedFields(data.untranslated_fields || []);
       }
     } catch (e) {
@@ -745,9 +758,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     setEstLoading(true);
     // Strip UI-only metadata fields before sending — _hasFile/_fileName are display state only
     const apiMessages = newMessages.map(({ role, content }) => ({ role, content }));
-    // LEGACY LLM path — used for: (1) no-project-type jobs (configurator requires a scope_checklist
-    // entry; when resolveProjectType()=null, startEstimate() routes here); (2) flip jobs without a
-    // room type (price_plan returns 400 for flip); (3) follow-up messages after any estimate.
+    // LEGACY LLM path — used for: (1) follow-up messages after any estimate; (2) flip jobs routed
+    // here by runPricing (no-project-type case removed: startEstimate now shows a picker instead).
     // scope_interview mode was removed: it was unreachable (Send button gated by !scopeInterviewActive).
     let reply;
     try {
@@ -768,7 +780,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       } else {
         reply = data.content || 'Sorry, something went wrong. Please try again.';
         if (data.priced_scope?.length) setPricedScope(data.priced_scope);
-        if (data.priced_scope?.length) setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || (job.financial_model || 'fixed_bid') });
+        if (data.priced_scope?.length) {
+          setPricedMeta({ markupPct: Number(data.applied_markup_pct) || 0, pmFee: Number(data.applied_pm_fee) || 0, financialModel: data.financial_model || (job.financial_model || 'fixed_bid') });
+          setEngineMeta({ engine: 'legacy_llm', reason: 'follow_up_chat' }); // PATH_CERTAINTY
+        }
       }
     } catch (e) {
       console.error('ai-estimator fetch/parse error:', e);
@@ -787,7 +802,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const resolveProjectType = () => {
     const rooms = (estForm.rooms || '').toLowerCase();
     const typed = rooms.trim() ? (knownProjectTypes.find(pt => pt && rooms.includes(pt)) || null) : null;
-    return typed || scopeProjectType || null;
+    return typed || scopeProjectType || pickedProjectType || null;
   };
 
   // SCOPE_TO_ESTIMATE Phase A — persist interview answers so they stop evaporating.
@@ -919,31 +934,33 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     }
   };
 
-  const startEstimate = async () => {
+  // PATH_CERTAINTY: startEstimate accepts an optional overridePt so the inline project-type
+  // picker can call it with the rep's selection without a round-trip through React state.
+  const startEstimate = async (overridePt = null) => {
     if (!estForm.scope.trim() && !hasJobPhotos && !scanMeas) return; // SCOPE_VISION — photos/scan alone can start
+    const pt = overridePt || resolveProjectType();
+    if (!pt) {
+      // No project type resolved — show the inline picker instead of silently falling to legacy LLM.
+      // Legacy LLM produces photo-narrated, re-asked-rate estimates that defeat the deterministic engine.
+      setPendingPtPick(true);
+      return;
+    }
+    setPendingPtPick(false);
+    if (overridePt) setPickedProjectType(overridePt); // persist so resolveProjectType stays consistent
+    setEngineMeta(null); // clear previous badge on fresh run
     setEstStarted(true);
     const prompt = `Generate a detailed estimate for the following project:\n\nJob Address: ${job.address}\nScope of Work: ${estForm.scope}\n${estForm.rooms ? `Rooms: ${estForm.rooms}\n` : ''}${interviewSf ? `Square Footage: ${interviewSf} sqft\n` : ''}${estForm.special ? `Special Notes: ${estForm.special}\n` : ''}`;
-    const pt = resolveProjectType();
-    if (pt) {
-      // ESTIMATE_CONFIGURATOR S2: the tap-through configurator drives scope capture (deterministic,
-      // no LLM turn here). Seed the conversation with the scope prompt so the UNCHANGED pricing path
-      // still has context; the configurator persists structured answers + hands off on complete.
-      await runScopePrefill(pt); // SCOPE_PREFILL P3 — seed answers from the TEXT scope
-      await runScopeVision(pt);  // SCOPE_VISION P1 — seed existing conditions from the PHOTOS (gap-fill)
-      await runScanMeasurements(pt); // SCOPE_VISION P2 — seed measurements from the SCAN (floor_sf, height)
-      setScopeInterviewActive(true);
-      setScopeComplete(false);
-      setForceDraftedIncomplete(false);
-      setConfiguratorPath(true); // Phase 6a — hide chat/prompt, land on the breakdown
-      setEstMessages([{ role: 'user', content: prompt }]);
-    } else {
-      // LEGACY LLM PATH — no project type resolved (or flip without room type).
-      // The configurator requires a scope_checklists entry; price_plan requires a project_type.
-      // Without one, we fall through to the LLM scope-and-price flow. This path stays until
-      // price_plan supports flip and until every estimating job has a known project type.
-      setConfiguratorPath(false);
-      await sendEstimatorMessage(prompt, estFiles.length ? estFiles : null);
-    }
+    // ESTIMATE_CONFIGURATOR S2: the tap-through configurator drives scope capture (deterministic,
+    // no LLM turn here). Seed the conversation with the scope prompt so the UNCHANGED pricing path
+    // still has context; the configurator persists structured answers + hands off on complete.
+    await runScopePrefill(pt); // SCOPE_PREFILL P3 — seed answers from the TEXT scope
+    await runScopeVision(pt);  // SCOPE_VISION P1 — seed existing conditions from the PHOTOS (gap-fill)
+    await runScanMeasurements(pt); // SCOPE_VISION P2 — seed measurements from the SCAN (floor_sf, height)
+    setScopeInterviewActive(true);
+    setScopeComplete(false);
+    setForceDraftedIncomplete(false);
+    setConfiguratorPath(true); // Phase 6a — hide chat/prompt, land on the breakdown
+    setEstMessages([{ role: 'user', content: prompt }]);
   };
 
   // ESTIMATE_CONFIGURATOR S2 — configurator finished. Inject a scope summary into the conversation
@@ -1535,6 +1552,22 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             {estLoading ? 'Generating…' : 'Generate Estimate'}
           </button>
           ); })()}
+          {/* PATH_CERTAINTY — inline project-type picker. Shown when Generate is clicked with no
+              resolved project type. Replaces the silent legacy LLM fallback so every typed job
+              lands on the deterministic configurator path. */}
+          {pendingPtPick && (
+            <div style={{ marginTop: 10, padding: '12px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--navy-900)', marginBottom: 8 }}>What type of project is this?</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {knownProjectTypes.map(pt => (
+                  <button key={pt} className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 14px', textTransform: 'capitalize' }}
+                    onClick={() => startEstimate(pt)}>
+                    {pt.charAt(0).toUpperCase() + pt.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {/* P4b C5b — Start fresh stays VISIBLE in the form view (was hidden when !estStarted, so it
               vanished after a reset and confused the owner). Disabled, with a tooltip, when there's
               nothing to clear (no committed line items). */}
@@ -1590,6 +1623,18 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
           )}
           {pricedScope?.length > 0 && (
             <>
+              {/* PATH_CERTAINTY — engine badge: every estimate declares which engine priced it.
+                  Green = deterministic (rate-book formula, no LLM quantity invention).
+                  Amber = legacy LLM (quantities invented by the model — expected only for flip). */}
+              {engineMeta && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 600, letterSpacing: 0.2,
+                  background: engineMeta.engine === 'deterministic' ? 'var(--green-bg, #D1FAE5)' : 'var(--amber-bg-soft, #FEF3C7)',
+                  color: engineMeta.engine === 'deterministic' ? 'var(--green-text, #065F46)' : 'var(--amber-text-strong, #92400E)',
+                  border: `1px solid ${engineMeta.engine === 'deterministic' ? 'var(--green-border, #6EE7B7)' : 'var(--amber-border-soft, #FCD34D)'}` }}>
+                  {engineMeta.engine === 'deterministic' ? '⚡ Deterministic' : '⚠ Legacy LLM'}
+                  <span style={{ fontWeight: 400, opacity: 0.75 }}>· {engineMeta.reason}</span>
+                </div>
+              )}
               <StructuredEstimate
                 lines={pricedScope}
                 markupPct={pricedMeta?.markupPct ?? 0}
