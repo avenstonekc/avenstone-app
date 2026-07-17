@@ -629,10 +629,54 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // Fired by the [scopeComplete] effect; persistence race closed (ScopeConfigurator awaits
   // the final answer upsert before calling onComplete).
   // "Scope captured" chat message is UX only — not a pricing input any more.
+  //
+  // FLIP ROUTING: price_plan returns 400 for flip (no flip contract defined, PRICE_DETERMINISM P3
+  // guard). Flip jobs with a project type still run the configurator for scope capture, but
+  // pricing routes to the legacy LLM messages path (markup=0 semantics preserved by the edge fn).
+  // Remove this branch when flip pricing is redesigned — see MASTER_BUILD_PLAN parked item (iv).
   const runPricing = async () => {
     setEstLoading(true);
     const pt = resolveProjectType();
     const financialModel = job.financial_model || 'fixed_bid';
+
+    // Flip: legacy LLM path — price_plan rejects flip (400 guard in P3).
+    // Use the initial user scope prompt only: the artificial "Scope captured" assistant turn
+    // injected by handleConfiguratorComplete confuses the LLM scope→JSON output path.
+    // A clean single-user-message reliably produces a priced JSON (confirmed by smoke test).
+    if (financialModel === 'flip') {
+      const initialPrompt = estMessages.find(m => m.role === 'user')?.content || '';
+      const apiMessages = [{ role: 'user', content: initialPrompt }];
+      let reply;
+      try {
+        const res = await fetch(AI_ESTIMATOR_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
+          body: JSON.stringify({
+            messages: apiMessages, tenant_id: AV_TENANT, project_sf: Number(interviewSf) || 0,
+            finish_tier: interviewTier, markup_pct: 0, pm_fee: 0,
+            financial_model: 'flip',
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          reply = `Sorry, something went wrong: ${data.error || `HTTP ${res.status}`}`;
+        } else {
+          reply = data.content || 'Sorry, something went wrong. Please try again.';
+          if (data.priced_scope?.length) setPricedScope(data.priced_scope);
+          if (data.priced_scope?.length) setPricedMeta({ markupPct: 0, pmFee: 0, financialModel: 'flip' });
+        }
+      } catch (e) {
+        console.error('ai-estimator flip pricing error:', e);
+        reply = `Sorry, something went wrong: ${e.message || 'network error'}`;
+      }
+      const finalDisplay = [...estMessages, { role: 'assistant', content: reply }];
+      setEstMessages(finalDisplay);
+      setEstLoading(false);
+      sbSaveEstimate(job.id, finalDisplay, forceDraftedIncomplete ? 'incomplete' : (sessionPrefill ? 'session' : undefined));
+      return;
+    }
+
+    // cost_plus / fixed_bid: deterministic price_plan path.
     let reply;
     try {
       const res = await fetch(AI_ESTIMATOR_URL, {
