@@ -1,13 +1,20 @@
 // IMPORTANT: Phase gate logic is duplicated inline in both edge functions
 // (ai-master-agent and ai-field-agent) since Deno can't import frontend code.
 // Any change here must also be applied to those edge fn copies. See:
-// - supabase/functions/ai-master-agent/index.ts
-// - supabase/functions/ai-field-agent/index.ts
+// - supabase/functions/ai-master-agent/index.ts  (checkSelectionsConfirmed mirror ~line 70)
+// - supabase/functions/ai-field-agent/index.ts   (checkSelectionsConfirmed mirror ~line 53)
 //
 // RESOLVED (SCOPE_TO_ESTIMATE Phase D, 2026-07-11): checkSelectionsConfirmed
 // (contract→in_progress) is now mirrored into BOTH edge copies' runGatesForTransition
 // (ai-master-agent + ai-field-agent), so the agent's advance_phase enforces the
 // selections lock the same as the UI path. Keep all three in sync on any change.
+//
+// DIVERGENCE GUARD — SCOPE_PREFILL P4b C3 (2026-07-16): this file is the authoritative
+// source for source-awareness. The critical filter is:
+//   .filter(r => r.source !== 'scope_prefill' || r.confirmed_by)
+// Both agent copies MUST apply this filter AND select 'field_key, source, confirmed_by'.
+// A bare scope_prefill auto-answer must NOT satisfy the lock until confirmed_by is set.
+// Next unification point: B6.1 AVEN_MERGE_ARC (collapses all three copies into one fn).
 //
 // Phase advancement gate definitions for the Anti-Surprise Engine (EXECUTION_ARC Phase 4a).
 //

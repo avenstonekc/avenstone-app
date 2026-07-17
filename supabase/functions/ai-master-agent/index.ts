@@ -71,6 +71,13 @@ async function runGatesForTransition(jobId: string, fromPhase: string, toPhase: 
     // tracked agent-gate divergence: the UI blocked contract→in_progress on unconfirmed selections
     // but the agent path did not. is_selection fields for the job's project type (from the default
     // room label) must all have a confirmed answer; zero applicable → passes.
+    //
+    // DIVERGENCE GUARD — SCOPE_PREFILL P4b C3 (2026-07-16, commit to be tagged here): source-
+    // awareness added to match phaseGates.js (authoritative). A bare scope_prefill auto-answer
+    // (source='scope_prefill', confirmed_by=null) must NOT satisfy this gate — only rep/client
+    // picks or human-confirmed prefills count. Authoritative rule:
+    //   .filter(r => r.source !== 'scope_prefill' || r.confirmed_by)
+    // Mirror in ai-field-agent/index.ts must stay identical. Next unification: B6.1 AVEN_MERGE_ARC.
     checks.push(async () => {
       const pass = { key: "selections_confirmed", label: "Client selections confirmed", passed: true };
       const { data: rooms } = await sb.from("job_rooms").select("label")
@@ -81,9 +88,12 @@ async function runGatesForTransition(jobId: string, fromPhase: string, toPhase: 
         .eq("project_type", pt).eq("is_selection", true).eq("active", true);
       const applicable = [...new Set((fields || []).map((f: any) => f.field_key))];
       if (!applicable.length) return pass;
-      const { data: confirmedRows } = await sb.from("job_scope_answers").select("field_key")
+      const { data: confirmedRows } = await sb.from("job_scope_answers").select("field_key, source, confirmed_by")
         .eq("job_id", jobId).eq("status", "confirmed");
-      const confirmed = new Set((confirmedRows || []).map((r: any) => r.field_key));
+      // C3 rule: scope_prefill auto-answers do not satisfy the lock until a human confirms them.
+      const confirmed = new Set((confirmedRows || [])
+        .filter((r: any) => r.source !== "scope_prefill" || r.confirmed_by)
+        .map((r: any) => r.field_key));
       const unconfirmed = applicable.filter((fk) => !confirmed.has(fk));
       const lockedN = applicable.length - unconfirmed.length;
       return {
