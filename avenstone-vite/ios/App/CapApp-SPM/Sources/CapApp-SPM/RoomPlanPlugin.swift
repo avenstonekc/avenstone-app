@@ -618,24 +618,91 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         isTransitioning = false
         DispatchQueue.main.async {
             guard !self.isCancelling else { return }
-            // Always show picker — user names every room as they go, including the last one
             let roomNum = self.capturedRooms.count
-            self.showRoomPicker(roomNumber: roomNum) { name in
-                self.roomNames.append(name)
-                if self.isFinishing {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        guard !self.isCancelling else { return }
-                        self.processingOverlay.isHidden = false
-                        self.buildStructure()
-                    }
-                } else {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        guard !self.isCancelling else { return }
-                        self.startNextScan()
-                    }
+            // INCOMPLETE_SCAN_WARNING (2026-07-18) — detect a large wall-ring gap at capture time so the
+            // rep can rescan on the spot instead of discovering a hole in the floor-plan PDF later.
+            // Warn-only; the rep decides. Detection is read-only geometry — nothing spatial is mutated.
+            let gapFt = self.largestWallGapFeet(processedResult)
+            if gapFt >= 3.0 {
+                print("[LIDAR_SCAN] room \(roomNum) wall-ring gap ~\(Int(gapFt.rounded()))ft — warning rep")
+                self.showGapWarning(roomNumber: roomNum, gapFeet: gapFt)
+            } else {
+                self.presentRoomPicker(roomNumber: roomNum)
+            }
+        }
+    }
+
+    // Show the room-type picker, then advance: name the room, then either build the final structure
+    // (last room) or start the next scan. Extracted so the normal path and the "Keep Anyway" branch of
+    // the incomplete-scan warning share one flow.
+    private func presentRoomPicker(roomNumber: Int) {
+        showRoomPicker(roomNumber: roomNumber) { name in
+            self.roomNames.append(name)
+            if self.isFinishing {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    guard !self.isCancelling else { return }
+                    self.processingOverlay.isHidden = false
+                    self.buildStructure()
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    guard !self.isCancelling else { return }
+                    self.startNextScan()
                 }
             }
         }
+    }
+
+    // INCOMPLETE_SCAN_WARNING — largest unmatched wall-endpoint distance (in feet). In a closed room
+    // every wall corner is shared, so this is ~0; a missing wall leaves two endpoints with no near
+    // neighbour, and this returns roughly the gap width. Read-only over wall transforms; touches no
+    // emitted geometry (locked spatial-alignment rule, CLAUDE.md). < 3 walls → 0 (too few to judge).
+    private func largestWallGapFeet(_ room: CapturedRoom) -> Float {
+        let walls = room.walls
+        guard walls.count >= 3 else { return 0 }
+        var ends: [(Float, Float)] = []
+        for wall in walls {
+            let t = wall.transform
+            let cx = t.columns.3.x, cz = t.columns.3.z
+            let hw = wall.dimensions.x / 2.0
+            let dx = t.columns.0.x, dz = t.columns.0.z
+            ends.append((cx + dx*hw, cz + dz*hw))
+            ends.append((cx - dx*hw, cz - dz*hw))
+        }
+        var maxGap: Float = 0
+        for (i, e) in ends.enumerated() {
+            let ownWall = i / 2
+            var nearest: Float = .greatestFiniteMagnitude
+            for (k, o) in ends.enumerated() {
+                guard k / 2 != ownWall else { continue }
+                let d = ((e.0 - o.0)*(e.0 - o.0) + (e.1 - o.1)*(e.1 - o.1)).squareRoot()
+                if d < nearest { nearest = d }
+            }
+            if nearest != .greatestFiniteMagnitude && nearest > maxGap { maxGap = nearest }
+        }
+        return maxGap * 3.28084 // meters → feet
+    }
+
+    // INCOMPLETE_SCAN_WARNING — non-blocking alert at room finish. Rescan discards this room and
+    // re-runs capture (startNextScan re-runs the session; the pauseARSession:false lifecycle is
+    // untouched); Keep proceeds to the room picker. The rep is closest to ground truth — they decide.
+    private func showGapWarning(roomNumber: Int, gapFeet: Float) {
+        let alert = UIAlertController(
+            title: "Possible Incomplete Scan",
+            message: "Room \(roomNumber) has about a \(Int(gapFeet.rounded()))-ft gap in its walls — a missing wall or an open doorway. Rescan now for a cleaner floor plan, or keep it if that gap is an opening.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Rescan Room", style: .default) { _ in
+            guard !self.isCancelling else { return }
+            if !self.capturedRooms.isEmpty { self.capturedRooms.removeLast() }
+            self.isFinishing = false
+            self.startNextScan()
+        })
+        alert.addAction(UIAlertAction(title: "Keep Anyway", style: .cancel) { _ in
+            guard !self.isCancelling else { return }
+            self.presentRoomPicker(roomNumber: roomNumber)
+        })
+        present(alert, animated: true)
     }
 
     // MARK: - Room picker
