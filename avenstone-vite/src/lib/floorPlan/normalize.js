@@ -460,6 +460,25 @@ export function normalizeFloorPlan(rawScan, options = {}) {
         });
       });
 
+      // Fixtures/objects → world-space center, orientation preserved.
+      // Coords are room-local feet (same convention as wallSegments); translate by
+      // room origin so they share the walls' world frame. rotationY is left as-is —
+      // it is a world-XZ heading and rotates with the room during render (pdf.js
+      // _processAllRooms transforms it as a direction vector alongside the walls).
+      const roomObjects = (room.objects || [])
+        .filter(o => o && typeof o.x === 'number' && typeof o.z === 'number')
+        .map((o, i) => ({
+          id: o.id || `obj_${roomIdx}_${i}`,
+          category: o.category || 'unknown',
+          center: snapToGrid([wx + o.x, wz + o.z]),
+          width: o.width ?? null,
+          depth: o.depth ?? null,
+          height: o.height ?? null,
+          rotationY: typeof o.rotationY === 'number' ? o.rotationY : 0,
+          confidence: o.confidence || null,
+          room_id: roomId,
+        }));
+
       // Room polygon from wall segments (world-space)
       const wallSegsWorld = (room.wallSegments || []).map(s => ({
         x1: wx + s.x1, z1: wz + s.z1,
@@ -481,6 +500,7 @@ export function normalizeFloorPlan(rawScan, options = {}) {
         worldZ: wz,
         height: room.height ?? null,
         floor: room.floor ?? 0,
+        ...(roomObjects.length ? { objects: roomObjects } : {}),
         ...(ringNeedsReview ? { needs_review: true } : {}),
       });
     });

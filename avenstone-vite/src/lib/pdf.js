@@ -772,6 +772,19 @@ const _processAllRooms = (rooms) => {
     (room.openingSegments || []).forEach(s =>
       flat.push({ x1: wx+s.x1, z1: wz+s.z1, x2: wx+s.x2, z2: wz+s.z2, ri, t: 'opening' })
     );
+    // Fixtures/objects: center rides as a degenerate point (x1==x2, z1==z2) so it
+    // flows through the exact rot → origin-shift → portrait-swap math the walls get.
+    // Orientation is carried as a forward unit vector (Swift rotationY = atan2(x,z),
+    // so forward = (sin, cos)) and transformed like a door normal — this is what
+    // survives the portrait axis-swap without flipping the fixture.
+    (room.objects || []).forEach(o => {
+      if (typeof o.x !== 'number' || typeof o.z !== 'number') return;
+      const ry = typeof o.rotationY === 'number' ? o.rotationY : 0;
+      flat.push({ x1: wx+o.x, z1: wz+o.z, x2: wx+o.x, z2: wz+o.z,
+                  fx: Math.sin(ry), fz: Math.cos(ry),
+                  ow: o.width || 0, od: o.depth || 0, oh: o.height || 0,
+                  category: o.category || 'unknown', ri, t: 'object' });
+    });
   });
 
   const walls = flat.filter(s => s.t === 'wall');
@@ -789,6 +802,7 @@ const _processAllRooms = (rooms) => {
     const [x1, z1] = rot(s.x1, s.z1), [x2, z2] = rot(s.x2, s.z2);
     const out = { ...s, x1, z1, x2, z2 };
     if (s.t === 'door') { out.nx = s.nx * ca - s.nz * sa; out.nz = s.nx * sa + s.nz * ca; }
+    if (s.t === 'object') { out.fx = s.fx * ca - s.fz * sa; out.fz = s.fx * sa + s.fz * ca; }
     return out;
   });
 
@@ -803,6 +817,7 @@ const _processAllRooms = (rooms) => {
     normalized = normalized.map(s => {
       const out = { ...s, x1: s.z1, z1: tw-s.x1, x2: s.z2, z2: tw-s.x2 };
       if (s.t === 'door') { out.nx = s.nz; out.nz = -s.nx; }
+      if (s.t === 'object') { out.fx = s.fz; out.fz = -s.fx; }
       return out;
     });
     [tw, th] = [th, tw];
@@ -829,12 +844,13 @@ const _processAllRooms = (rooms) => {
 
   const byRoom = (type) => rooms.map((_, ri) =>
     normalized.filter(s => s.ri === ri && s.t === type).map(s => {
+      if (type === 'object') return { x: s.x1, z: s.z1, fx: s.fx, fz: s.fz, w: s.ow, d: s.od, h: s.oh, category: s.category };
       const b = { x1: s.x1, z1: s.z1, x2: s.x2, z2: s.z2, ...(s.passage ? { passage: true } : {}) };
       return type === 'door' ? { ...b, nx: s.nx, nz: s.nz, width: s.width, ri: s.ri } : b;
     })
   );
 
-  return { roomSegs: byRoom('wall'), roomDoors: byRoom('door'), roomWindows: byRoom('window'), roomOpenings: byRoom('opening'), trueW: tw, trueH: th };
+  return { roomSegs: byRoom('wall'), roomDoors: byRoom('door'), roomWindows: byRoom('window'), roomOpenings: byRoom('opening'), roomObjects: byRoom('object'), trueW: tw, trueH: th };
 };
 
 // Returns rotation transform alongside segs so callers can transform other coordinates.
@@ -869,6 +885,73 @@ const _processWalls = (wallSegs) => {
   return { segs, trueWidth: tw, trueHeight: th, transform: { angle, minX, minZ } };
 };
 
+// ─── Fixture / object symbols ────────────────────────────────────────────────
+// Draws a RoomPlan-captured object as a light schematic symbol. cx/cy = center in
+// PDF points; wPt/dPt = footprint width(right)/depth(forward) in points; (fx,fz) =
+// forward unit vector already in PDF space (x→x, z→y). Right axis is forward turned
+// −90° = (fz,−fx), so the whole glyph rides the same rotation the walls got.
+// Returns true if it drew, false if skipped. Symbols are symmetric about the forward
+// axis, so any residual mirror from the portrait swap is invisible.
+const _drawFixture = (doc, cx, cy, wPt, dPt, fx, fz, category, navy) => {
+  // Default forward if orientation missing; normalize defensively.
+  let ffx = (typeof fx === 'number') ? fx : 0, ffz = (typeof fz === 'number') ? fz : 1;
+  const fmag = Math.hypot(ffx, ffz) || 1; ffx /= fmag; ffz /= fmag;
+  const rx = ffz, rz = -ffx; // right = forward rotated −90°
+  // Legibility floor so real-but-tiny footprints still read as a symbol.
+  const hw = Math.max(wPt, 6) / 2, hd = Math.max(dPt, 6) / 2;
+  if (hw < 2 && hd < 2) return false;
+  const fix = [96, 108, 132]; // muted slate — secondary to navy walls
+
+  const P = (u, v) => [cx + u * rx + v * ffx, cy + u * rz + v * ffz];
+  const L = (u1, v1, u2, v2) => { const a = P(u1, v1), b = P(u2, v2); doc.line(a[0], a[1], b[0], b[1]); };
+  const box = (uMin, uMax, vMin, vMax) => { L(uMin, vMin, uMax, vMin); L(uMax, vMin, uMax, vMax); L(uMax, vMax, uMin, vMax); L(uMin, vMax, uMin, vMin); };
+  const oval = (cu, cv, a, b, steps = 24) => {
+    let prev = P(cu + a, cv);
+    for (let i = 1; i <= steps; i++) {
+      const t = (i / steps) * Math.PI * 2;
+      const p = P(cu + a * Math.cos(t), cv + b * Math.sin(t));
+      doc.line(prev[0], prev[1], p[0], p[1]); prev = p;
+    }
+  };
+
+  doc.setDrawColor(...fix); doc.setLineWidth(0.5);
+  const cat = category || 'unknown';
+
+  if (cat === 'toilet') {
+    const tank = hd * 0.32;                 // tank at back (−v)
+    box(-hw, hw, -hd, -hd + tank);
+    oval(0, (-hd + tank + hd) / 2 + hd * 0.1, hw * 0.72, (hd - tank) * 0.46); // bowl toward front
+  } else if (cat === 'bathtub') {
+    box(-hw, hw, -hd, hd);
+    oval(0, hd * 0.08, hw * 0.7, hd * 0.72); // inner basin
+  } else if (cat === 'sink') {
+    box(-hw, hw, -hd, hd);
+    oval(0, 0, hw * 0.62, hd * 0.6);
+    doc.setFillColor(...fix); const c = P(0, hd * 0.62); doc.circle(c[0], c[1], 0.8, 'F'); // faucet
+  } else if (cat === 'stove' || cat === 'oven') {
+    box(-hw, hw, -hd, hd);
+    const bu = hw * 0.42, bv = hd * 0.42, r = Math.min(hw, hd) * 0.26;
+    for (const su of [-bu, bu]) for (const sv of [-bv, bv]) oval(su, sv, r, r, 14);
+  } else if (cat === 'refrigerator') {
+    box(-hw, hw, -hd, hd);
+    L(-hw, hd * 0.05, hw, hd * 0.05);        // door split
+    const h = P(hw * 0.7, hd * 0.05); doc.setFillColor(...fix); doc.circle(h[0], h[1], 0.8, 'F');
+  } else if (cat === 'dishwasher') {
+    box(-hw, hw, -hd, hd);
+    box(-hw * 0.72, hw * 0.72, -hd * 0.55, hd * 0.72);
+    L(-hw * 0.5, -hd * 0.78, hw * 0.5, -hd * 0.78); // control panel
+  } else if (cat === 'washerDryer') {
+    box(-hw, hw, -hd, hd);
+    oval(0, hd * 0.05, Math.min(hw, hd) * 0.6, Math.min(hw, hd) * 0.6, 18); // drum
+  } else if (cat === 'storage') {
+    box(-hw, hw, -hd, hd);
+    L(-hw, -hd, hw, hd); L(-hw, hd, hw, -hd);  // X = cabinetry/storage
+  } else {
+    box(-hw, hw, -hd, hd); // generic footprint
+  }
+  return true;
+};
+
 const _drawArc = (doc, cx, cy, r, startAngle, sweepAngle, steps = 10) => {
   const da = sweepAngle / steps;
   let px = cx + r * Math.cos(startAngle), py = cy + r * Math.sin(startAngle);
@@ -894,6 +977,10 @@ const _snapToOrtho = (rooms) => {
     doorSegments:    (r.doorSegments    || []).map(s => ({ ...s })),
     windowSegments:  (r.windowSegments  || []).map(s => ({ ...s })),
     openingSegments: (r.openingSegments || []).map(s => ({ ...s })),
+    // Fixtures are not ortho-snapped, but must survive the clone so the draw
+    // pipeline (_processAllRooms) can transform + render them. Dropping them here
+    // was one of the four sites that silently discarded objects before rendering.
+    objects:         (r.objects         || []).map(o => ({ ...o })),
   }));
 
   // Angle snap pass — walls only
@@ -1481,6 +1568,12 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
           windowSegments: normFloor.windows
             .filter(w => w.room_id === r.id)
             .map(w => ({ x1: w.p1[0], z1: w.p1[1], x2: w.p2[0], z2: w.p2[1] })),
+          // Fixtures: normalized centers are already world-space, so worldX/Z=0 above
+          // means _processAllRooms rotates them in lockstep with the walls.
+          objects: (r.objects || []).map(o => ({
+            category: o.category, x: o.center[0], z: o.center[1],
+            rotationY: o.rotationY, width: o.width, depth: o.depth, height: o.height,
+          })),
         }));
     } else {
       console.log(`[LIDAR_PDF_STAGE] snapping to ortho (${drawableRooms.length} rooms)`);
@@ -1489,7 +1582,7 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
     console.log('[LIDAR_PDF_STAGE] processing all rooms');
     const processed = _processAllRooms(snappedRooms);
     if (!processed) return;
-    const { roomSegs, roomDoors, roomWindows, roomOpenings, trueW, trueH } = processed;
+    const { roomSegs, roomDoors, roomWindows, roomOpenings, roomObjects, trueW, trueH } = processed;
 
     scale = Math.min(availW / trueW, availH / trueH);
     const drawW = trueW * scale, drawH = trueH * scale;
@@ -1717,6 +1810,20 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
       const p2x = oX + op.x2 * scale, p2y = oY + op.z2 * scale;
       if (Math.hypot(p2x - p1x, p2y - p1y) < 3) continue;
       _eraseGap(doc, p1x, p1y, p2x, p2y, FEAT_WALL_T, FLOOR_TINT);
+    }
+
+    // ── Fixtures (toilet, tub, sink, stove, fridge, …) ────────────────────────
+    // RoomPlan-captured objects, drawn as light architectural symbols oriented by
+    // their forward vector. Purely informational — no wall erase, no dim impact.
+    {
+      let fixtureCount = 0;
+      (roomObjects || []).forEach(objs => {
+        (objs || []).forEach(o => {
+          if (_drawFixture(doc, oX + o.x * scale, oY + o.z * scale,
+                           (o.w || 0) * scale, (o.d || 0) * scale, o.fx, o.fz, o.category, navy)) fixtureCount++;
+        });
+      });
+      if (fixtureCount) console.log(`[LIDAR_PDF_STAGE] drew ${fixtureCount} fixture(s)`);
     }
 
     // ── Chain dimension lines — top / bottom / right edges (left omitted: title column) ───
