@@ -259,7 +259,7 @@ See `docs/arcs/MODEL_B_LIFECYCLE.md`.
 
 #### SCOPE_RISK_ARC
 
-**Net: 2 of 3 phases live (B2.4 + B2.5 SHIPPED 2026-07-18).** B2.4 = `scope_risks` library + draft seed. B2.5 = `ScopeRiskReview` (deterministic match, rep keeps before draft → oh_shit_moments). B2.6 (proposal "Potential Considerations" reframe) next — has a wording STOP for Kalin. Gate clear.
+**Net: 3 of 3 phases live — SCOPE_RISK COMPLETE 2026-07-18.** B2.4 = `scope_risks` library + draft seed. B2.5 = `ScopeRiskReview` (deterministic match, rep keeps before draft → oh_shit_moments). B2.6 = proposal "Potential Considerations" (reframed, wording Kalin-approved, cost ranges shown). Next arc: AVEN_MERGE B6.1.
 
 ---
 
@@ -484,7 +484,7 @@ All 22 prompts shipped. See arc inventory above. **No remaining items in Block 1
 | SCOPE_CAPTURE_ENGINE | Blueprint-approved 2026-06-25; one engine, four role faces. See detail below. | ~10-13 | PARTIAL (P1A/P1B/P2/SCOPE_PREFILL P3-P4 + CONSULTATION_MODE slices 1-4 SHIPPED; P3 vision + P4 Client INTAKE open) |
 | B2.4 — Scope Risk Phase 1 | **`scope_risks` library** — playbook_items audited as the WRONG substrate (2026-07-18: it's a photo/doc checklist; `risk_note` is internal estimator metadata). New table keyed to project_type + optional field_key + trade full-path (trigger `project`/`answer`/`trade`, client-facing `consideration`, likelihood, optional cost range, `is_draft`). Draft platform seed (17 rows). | 2 | **SHIPPED 2026-07-18** |
 | B2.5 — Scope Risk Phase 2 | Deterministic risk suggestions (scope_risks match + consultation risk_flags), rep reviews before draft in `ScopeRiskReview` (Build sub-tab); keep/edit/dismiss, nothing auto-attaches. Kept → oh_shit_moments (risk_key-tagged). Zero model calls. | 2 | **SHIPPED 2026-07-18** |
-| B2.6 — Scope Risk Phase 3 | "Potential Considerations" in estimate/proposal. | 3 | NOT-BUILT |
+| B2.6 — Scope Risk Phase 3 | **"Potential Considerations"** on the proposal PDF — reframed from the old "POSSIBLE CHANGE ORDERS" section (trust tone, no alarm/legal). Wording Kalin-approved 2026-07-18; cost ranges SHOWN on the client proposal (his call). House style encoded in the compose-recap risk prompt. | 3 | **SHIPPED 2026-07-18** |
 | FLIP_FINANCIAL_MODEL | 6 phases. | 12 | **SHIPPED COMPLETE 2026-06-25** |
 
 **SCOPE_CAPTURE_ENGINE detail:**

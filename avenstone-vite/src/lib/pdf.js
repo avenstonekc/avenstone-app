@@ -483,6 +483,7 @@ const LIKELIHOOD_ORDER = { high: 3, medium: 2, low: 1 };
 export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
   laborPct = 0, materialPct = 0, categoryConfig = null,
   pmFee = 0, proposalNum = '001', schedule = [], flags = [],
+  showRiskCosts = true,   // SCOPE_RISK B2.6 — Kalin approved cost ranges on the client proposal (2026-07-18)
 } = {}) => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const navy = [10, 31, 68], gold = [201, 168, 76], gray = [107, 114, 128];
@@ -659,7 +660,9 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
   doc.text(fmt(grandTotal), W - M - 4, y + 16, { align: 'right' });
   y += 34;
 
-  // ── Disclosed change-order risks ────────────────────────────────────────────
+  // ── Potential Considerations (SCOPE_RISK B2.6 — reframed from the old "POSSIBLE CHANGE
+  //    ORDERS" section). Trust-building heads-up, not legal disclaimers or alarm bells. Cost
+  //    ranges are OPTIONAL (showRiskCosts) — Kalin's call whether they read to the client. ──
   const includedMoments = (ohShitMoments || [])
     .filter(m => m.included_in_proposal)
     .sort((a, b) => (LIKELIHOOD_ORDER[b.likelihood] || 0) - (LIKELIHOOD_ORDER[a.likelihood] || 0) || (b.estimated_cost_high || 0) - (a.estimated_cost_high || 0));
@@ -668,36 +671,33 @@ export const buildProposalPDF = (job, lineItems, ohShitMoments = [], {
     y = chkPage(y, 60);
     doc.setDrawColor(...gold); doc.setLineWidth(1); doc.line(M, y, W - M, y); y += 14;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...navy);
-    doc.text('POSSIBLE CHANGE ORDERS — DISCLOSED UP FRONT', M, y); y += 12;
-    doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
-    const subhead = "Construction sometimes uncovers conditions we can't see until demo begins. We disclose these now so there are no surprises later. If any of these conditions are encountered, a change order will be issued at the disclosed range.";
+    doc.text('POTENTIAL CONSIDERATIONS', M, y); y += 12;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...gray);
+    const subhead = "Every home holds a few things we can't see until the work begins. In the spirit of no surprises, here are a handful that could come up on a project like yours — and how we'd handle them. None of these are part of your price today; we're simply flagging them so nothing catches either of us off guard.";
     const subLines = wrap(subhead, CW);
-    doc.text(subLines, M, y); y += subLines.length * 10 + 8;
+    doc.text(subLines, M, y); y += subLines.length * 10 + 10;
 
     includedMoments.forEach((m, i) => {
-      const estH = 36 + (m.how_to_present ? Math.ceil(wrap(m.how_to_present, CW - 100).length * 10) : 0);
+      const bodyText = m.how_to_present || m.condition || '';
+      const hasTitle = !!(m.how_to_present && m.condition);
+      const estH = 24 + Math.ceil(wrap(bodyText, CW).length * 10.5);
       y = chkPage(y, estH);
-      if (i > 0) { doc.setDrawColor(232, 228, 220); doc.setLineWidth(0.5); doc.line(M, y - 4, W - M, y - 4); }
+      if (i > 0) { doc.setDrawColor(232, 228, 220); doc.setLineWidth(0.5); doc.line(M, y - 6, W - M, y - 6); }
 
-      const likeCfg = { high: [185, 28, 28], low: [21, 128, 61], medium: [146, 64, 14] };
-      const likeColor = likeCfg[m.likelihood] || likeCfg.medium;
-      const likeLbl = (m.likelihood || 'medium').charAt(0).toUpperCase() + (m.likelihood || 'medium').slice(1);
-
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
-      T(m.condition || '', M, y, { maxWidth: CW - 100 });
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...likeColor);
-      T(`${likeLbl} likelihood`, W - M, y, { align: 'right' });
-      y += 12;
-
-      const lo = Number(m.estimated_cost_low || 0), hi = Number(m.estimated_cost_high || 0);
-      if (lo || hi) {
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(55, 65, 81);
-        T(`Estimated cost if encountered: $${lo.toLocaleString()} - $${hi.toLocaleString()}`, M, y); y += 11;
+      if (hasTitle) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...navy);
+        T(m.condition, M, y); y += 12;
       }
-      if (m.how_to_present) {
-        doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
-        const lines = wrap(m.how_to_present, CW);
-        doc.text(lines, M, y); y += lines.length * 10;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(55, 65, 81);
+      const lines = wrap(bodyText, CW);
+      doc.text(lines, M, y); y += lines.length * 10.5;
+
+      if (showRiskCosts) {
+        const lo = Number(m.estimated_cost_low || 0), hi = Number(m.estimated_cost_high || 0);
+        if (lo || hi) {
+          doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...gray);
+          T(`If we do encounter this, the typical range is $${lo.toLocaleString()}–$${hi.toLocaleString()}.`, M, y); y += 11;
+        }
       }
       y += 10;
     });

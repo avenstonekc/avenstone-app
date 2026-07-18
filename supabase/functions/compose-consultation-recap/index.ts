@@ -40,7 +40,7 @@ HARD RULES:
 You also do three extraction/analysis jobs:
 - MEASUREMENTS: pull any measurement the rep spoke aloud (dimensions, square footage, counts, lengths) and group them by trade using the canonical trade names given. Only real numbers stated in the transcript.
 - PHOTO CAPTIONS: for each photo you're given its "context" (the words spoken around the moment it was taken). Turn that into a short caption of what the photo shows.
-- RISKS ("oh_shit_moments"): 3-5 unexpected conditions likely to surface on THIS job and cause a change order. This list is INTERNAL (never shown to the client, never on the recap), so it MAY include a rough cost range. The dollars-forbidden rule above applies ONLY to summary/discussed_items/scope_basis/open_items.
+- RISKS ("oh_shit_moments"): 3-5 unexpected conditions likely to surface on THIS job. These become the proposal's "Potential Considerations" (client-facing), so write "how_to_present" in Avenstone's approved house style: a plain-language, reassuring heads-up that names what could come up AND how we'd handle it — never alarm bells, never legal disclaimers. Model the tone on: "Once the existing wall tile comes down, we occasionally find moisture behind it. If we do, repairing it keeps your new tile from failing early." "condition" is a short 3-5 word heading (e.g. "Moisture behind existing tile"). Cost ranges are allowed on these (the client proposal shows them). The dollars-forbidden rule applies ONLY to summary/discussed_items/scope_basis/open_items.
 
 Return ONLY valid JSON, no markdown:
 {
