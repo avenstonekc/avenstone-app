@@ -2830,3 +2830,38 @@ IMPORTANT — why raw wallSegments shoelace doesn't work:
 Data: 12101 Pawnee LN field scan (7 scans, 15 rooms after duplicate cleanup). Duplicate save fixed.
 4 duplicate scans deleted from DB (3×Group A, 1×Group B, 1×Group C). floor_plans records renamed.
 scan_name populated for all 7 remaining Pawnee scans. Combined JSON + 7 PDFs saved to Kalin's Desktop/pawnee-scans/.
+
+[LOG - 2026-07-17] - PAWNEE_ESTIMATE (Cowork cloud session — estimate build, 12101 Pawnee Ln, Leawood KS)
+- Action: Client purchase-contingent reno estimate built from the authoritative external scope (NOT from scan JSON — bounding-box inflation known, see SCAN_EXPORT_FIX). Every line priced through a faithful port of `_shared/rateBook.ts` resolveRate (exact→alias→gap) + material tier collapse + bid_model_config default (30% / $1,200 PM, fixed_bid). project_sf=5,814 → tier LOW; finish mid. 66 lines across 19 areas.
+- Result: cost subtotal $107,419.92 (labor $53,921.27 / materials $38,098.65 / general+allowance $15,400) → client total $140,845.92 (PDF line-rounded $140,845.91). Sanity band $104k–159k pre-margin retail: cost subtotal sits 3.3% ABOVE band-low (expected below — delta driven by 16 gap lines priced at KC-retail regional anchors, not book-cost), client total inside band.
+- Gaps (GapBatchAsk candidates, 16): wallpaper removal (flat + at-height/scaffold), wallpaper border removal LF, bar demo w/ structural columns, plumbing cap supply/drain, range hood vented, soaker tub supply, french door frame/install, T&G infill SF, sand/stain match, stair carpet per-flight, bulk Decora device swap, drainage dry-creek, garage floor grind+polyaspartic.
+- Flags: (1) Electrical outlet_switch $90–160/EA is service-call pricing — alias "outlet" would price the 200-device Decora swap at $25,000 vs $4.5–7k KC anchor (4× wild). Treated as distinct line_item `decora_device_swap_bulk` → gap at $28.75/EA. Book needs a bulk-swap rate. (2) Master-bath cluster (vanity tops/shower/skim+paint) prices 30–60% below KC anchors on book rates — cutout/fab and heavy-skim rates missing. (3) bath_floor_tile $1,680 vs $2,400–3,500 anchor. (4) door_garage mid $1,600/EA vs $2–3.3k anchor.
+- Deliverable: branded PDF (DM Serif/DM Sans, navy/gold, exclusions + conditions printed) delivered to Kalin.
+- Files: no repo code changes. Estimate engine run + PDF live in Cowork session workspace (pawnee/).
+- Open: (1) Cloud sandbox cannot reach Supabase (egress allowlist) and Chrome extension was not connected — job INSERT ("12101 Pawnee Ln", tenant explicit, fixed_bid), estimate_line_items insert, live rate-book/bid_model_config verification, and Playwright estimate-view walk are PENDING a live-DB pass. Rate source was repo migrations (seed + corrections + countertops) — any GapBatchAsk/rep-added live rows not reflected. (2) KALIN_QUEUE l/m/n added (master bath site measure, VCT asbestos test, fixed_bid confirmation).
+
+[LOG -- 2026-07-17] -- PAWNEE_ESTIMATE: 12101 Pawnee Ln purchase-contingent reno estimate built
+Job: 7e0e357b-a0c4-47dd-89c7-f8a7c4e8c342 (updated financial_model=fixed_bid)
+Estimate: 605f7085-7607-4247-967c-5fc9e1fb23da (41 line items, source=manual)
+
+Hard cost: $131,886 | 30% markup: $39,566 | PM fee: $1,200 | Grand total: $172,652
+Sanity band $104k--$159k pre-margin: IN BAND (hard cost $131,886).
+
+Rate resolution:
+  - BOOK (labor_rate): flooring demo at remove_existing_flooring mid $1.43/SF; LED panels at fixture_standard mid $175/EA; hardwood demo at $1.43/SF; outlets noted as wrong scope for outlet_switch rate.
+  - GAP (regional_avg, 37 of 41 lines): carpet supply+install ($5.27/SF derived from anchor), tile install, shower rebuild, soaker tub, range hood, gas line, quartz vanity tops, wallpaper removal, exterior paint, garage doors, drainage, polyaspartic floor, all LS labor estimates anchored per dispatch ranges.
+
+Gap flags:
+  1. Carpet supply+install -- no rate_book entry; $5.27/SF derived from dispatch anchor $11.2k--14.9k / 2478 SF.
+  2. Electrical device swap (200 outlets/switches) -- outlet_switch book rate ($90--160/EA) is for NEW CIRCUIT ADD, not device replacement. Used anchor mid $5,750 LS. Rate book needs a device_swap entry.
+  3. Garage doors (3 units) -- garage_door_opener_install rate is OPENER ONLY; door units not in book. Used anchor mid $8,001.
+  4. All LS gap lines: bar demo, appliances, basement bath, bath-to-storage conversion, wallpaper, range hood, gas line, laundry paint, master bath (all 5 lines), master bedroom, dining paint, BR4, office door/infill/stain, all upper floor LS, entry, stairs, exterior paint, drainage, polyaspartic.
+
+Files:
+  - estimate DB: estimate_line_items WHERE estimate_id='605f7085...' (41 rows)
+  - PDF: Desktop/pawnee-scans/Pawnee_Estimate_12101.pdf (3 pages)
+  - Builder script: tools/build_pawnee_estimate.mjs
+  - PDF generator: tools/pawnee_estimate_pdf.mjs
+  - Playwright walk: tools/pawnee_estimate_walk.cjs
+
+KALIN_QUEUE added: l (master bath site measure), m (VCT asbestos test), n (fixed_bid model confirm).
