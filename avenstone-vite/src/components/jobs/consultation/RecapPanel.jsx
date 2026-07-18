@@ -6,6 +6,7 @@ import {
 } from '../../../lib/supabase';
 import { buildRecapPDF } from '../../../lib/recapPdf';
 import { isMob } from '../../../lib/utils';
+import { Capacitor } from '@capacitor/core';
 
 const NAV = 'var(--navy-900)';
 const BORDER = 'var(--border)';
@@ -126,7 +127,21 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
     try {
       const doc = await buildDoc();
       const base = isSub ? `Sub Walkthrough${trades ? ' — ' + trades : ''}` : 'Consultation Recap';
-      doc.save(`${base} — ${job.address || 'Project'}.pdf`);
+      const filename = `${base} — ${job.address || 'Project'}.pdf`;
+      if (Capacitor.isNativePlatform()) {
+        // FIX 3 — iOS WKWebView can't do a blob download (doc.save silently no-ops). Write the PDF to
+        // the cache dir and hand it to the native share sheet (Save to Files, Mail, AirDrop…). Needs
+        // @capacitor/share + @capacitor/filesystem and a native rebuild (cap sync + Codemagic) to work
+        // on device; the isNativePlatform() guard leaves desktop/web on the unchanged doc.save path.
+        const b64 = doc.output('datauristring').split(',')[1];
+        const safeName = filename.replace(/[/\\:*?"<>|]/g, '-'); // filesystem-safe (trades can contain '/')
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+        const { Share } = await import('@capacitor/share');
+        const w = await Filesystem.writeFile({ path: safeName, data: b64, directory: Directory.Cache });
+        await Share.share({ title: filename, url: w.uri });
+      } else {
+        doc.save(filename); // desktop browser — unchanged
+      }
     } catch (e) { setErr(`PDF failed: ${e.message}`); }
     setBusy(false);
   };
