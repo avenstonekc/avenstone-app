@@ -2683,12 +2683,12 @@ export async function sbLoadScopeOptionData(projectType, opts = {}) {
 // configurator re-calls this after each answer to unlock follow-ups instantly.
 // answers arg: [{ field_key, value }]. Returns
 // { ok, error, data:{ fields, open_field_keys, fired_modules, scope_complete, answers } }.
-export async function sbScopePlan(projectType, answers) {
+export async function sbScopePlan(projectType, answers, scopeNotes) {
   try {
     const res = await fetch(AI_ESTIMATOR_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON_KEY}` },
-      body: JSON.stringify({ mode: 'scope_plan', tenant_id: AV_TENANT, project_type: projectType, answers: answers || [] }),
+      body: JSON.stringify({ mode: 'scope_plan', tenant_id: AV_TENANT, project_type: projectType, answers: answers || [], scope_notes: scopeNotes || '' }),
     });
     const data = await res.json();
     if (!res.ok || data.error) return { ok: false, error: data.error || `HTTP ${res.status}`, data: null };
@@ -3278,6 +3278,36 @@ export const sbSaveJobRoomScope = async ({
 // row), and only writes the scope_details JSONB — scope_tag/custom_trades/notes are left untouched so a
 // rep's scope choice is never overwritten. Idempotent (skips rows already carrying the same note) and
 // non-fatal. Room identity is `${scan.id}_${idx}`, matching sbLoadJobScanRooms / job_room_scopes.room_id.
+// SCAN_SCOPE_CAPTURE Slice 4 — collect a job's per-room scan scope notes as context for the
+// deterministic scope_plan trigger detection. Reads job_lidar_scans.rooms[i].scope_note (canonical
+// source — present whether or not the room has been scope-tagged yet). Returns { ok, error, data:{
+// notes:[{ roomId, roomLabel, note }], text } } where `text` (e.g. "Bathroom: move the toilet") is
+// ready to hand to sbScopePlan as scope_notes. De-dups identical room+note across re-saved scans.
+export const sbLoadJobScopeNotes = async (jobId) => {
+  try {
+    if (!jobId) return { ok: true, error: null, data: { notes: [], text: '' } };
+    const { data: scans, error } = await sb.from('job_lidar_scans')
+      .select('id, rooms').eq('job_id', jobId).eq('tenant_id', AV_TENANT)
+      .order('created_at', { ascending: false }).limit(5);
+    if (error) return { ok: false, error: error.message, data: null };
+    const seen = new Set(); const notes = [];
+    for (const scan of (scans || [])) {
+      (scan.rooms || []).forEach((room, idx) => {
+        const note = String(room?.scope_note || '').trim();
+        if (!note) return;
+        const label = room?.name || `Room ${idx + 1}`;
+        const key = `${label.toLowerCase()}::${note.toLowerCase()}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        notes.push({ roomId: `${scan.id}_${idx}`, roomLabel: label, note });
+      });
+    }
+    return { ok: true, error: null, data: { notes, text: notes.map(n => `${n.roomLabel}: ${n.note}`).join('\n') } };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbLoadJobScopeNotes failed', data: null };
+  }
+};
+
 export const sbSyncScanScopeNotes = async (jobId) => {
   try {
     if (!jobId) return { ok: true, error: null, data: { updated: 0 } };

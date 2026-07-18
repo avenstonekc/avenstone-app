@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { sbScopePlan, sbLoadScopeOptionData, sbLoadScopeAnswers, sbDeleteScopeAnswers, AV_USER_ID } from '../../../lib/supabase';
+import { sbScopePlan, sbLoadScopeOptionData, sbLoadScopeAnswers, sbDeleteScopeAnswers, sbLoadJobScopeNotes, AV_USER_ID } from '../../../lib/supabase';
 
 // ESTIMATE_CONFIGURATOR S2 — tap-through scope configurator. One question per screen; cards where
 // option images exist, big controls where they don't; a chip strip to jump back; re-fetches the
@@ -23,6 +23,9 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
   // seeded so the field stays open); prefillMeta carries provenance for the "from your scope" glyph.
   const [pending, setPending]         = useState({}); // field_key -> { option_key, evidence_phrase }
   const [prefillMeta, setPrefillMeta] = useState({}); // field_key -> { status, evidence_phrase }
+  // SCAN_SCOPE_CAPTURE Slice 4 — per-room scope notes captured at scan time, fed into every scope_plan
+  // call as trigger context so free-text scope (e.g. "move the toilet") unlocks the right modules.
+  const [scopeNotes, setScopeNotes]   = useState('');
 
   useEffect(() => {
     if (!projectType) return;
@@ -35,7 +38,10 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
       setLoading(true);
       // Hydrate from persisted answers (resume) so we don't re-ask what's already captured.
       const seed = {}, pend = {}, meta = {};
+      let notesText = '';
       if (jobId) {
+        // Load scan scope notes first so the very first plan call already carries trigger context.
+        try { const sn = await sbLoadJobScopeNotes(jobId); if (sn.ok) notesText = sn.data.text; } catch { /* non-fatal */ }
         try {
           const stored = await sbLoadScopeAnswers(jobId);
           if (stored.ok) for (const a of (stored.data || [])) {
@@ -55,10 +61,11 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
         } catch { /* start fresh on failure */ }
       }
       const arr = Object.entries(seed).map(([field_key, value]) => ({ field_key, value }));
-      const res = await sbScopePlan(projectType, arr);
+      const res = await sbScopePlan(projectType, arr, notesText);
       if (!alive) return;
       setLoading(false);
       if (!res.ok) { setError(res.error || 'Could not load scope plan'); return; }
+      setScopeNotes(notesText);
       setAnswers(seed);
       setPending(pend);
       setPrefillMeta(meta);
@@ -84,7 +91,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
     setDraft('');
     setLoading(true);
     const arr = Object.entries(next).map(([field_key, v]) => ({ field_key, value: v }));
-    const res = await sbScopePlan(projectType, arr);
+    const res = await sbScopePlan(projectType, arr, scopeNotes);
     setLoading(false);
     if (!res.ok) { setError(res.error || 'Could not update scope'); return; }
     setError(null);
@@ -115,7 +122,7 @@ export default function ScopeConfigurator({ jobId, projectType, persistAnswers, 
     const open = res.data.open_field_keys || [];
     // Advance to the next still-open field (prefer one after the one just answered).
     setActive(open.find(k => k !== fieldKey) || open[0] || null);
-  }, [answers, pending, projectType, persistAnswers, onComplete]);
+  }, [answers, pending, projectType, persistAnswers, onComplete, scopeNotes]);
 
   if (error) return (
     <div style={{ padding: 16, background: 'var(--error-bg, #FEE2E2)', borderRadius: 'var(--r-md)', color: 'var(--error, #B91C1C)', fontSize: 13 }}>

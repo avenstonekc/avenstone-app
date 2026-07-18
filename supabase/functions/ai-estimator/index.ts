@@ -576,6 +576,7 @@ async function handleScopePlan(
   tenantId: string,
   rawProjectType: string | undefined,
   answersIn: unknown,
+  scopeNotesIn?: unknown,
 ): Promise<Response> {
   const projectType = typeof rawProjectType === "string" ? rawProjectType.trim().toLowerCase() : undefined;
   if (!projectType) return ok({ fields: [], open_field_keys: [], fired_modules: [], scope_complete: true });
@@ -598,9 +599,14 @@ async function handleScopePlan(
     : [];
 
   // Fire modules from the answer values + humanized labels (same union as the re-trigger pass).
-  const triggerText = answers
+  const answerTriggerText = answers
     .flatMap((a) => { const s = String(a.value ?? ""); return [String(a.field_key), s, s.replace(/_/g, " ")]; })
     .join("\n");
+  // SCAN_SCOPE_CAPTURE Slice 4 — per-room scope notes captured at scan time feed the SAME deterministic
+  // trigger detection (scope_modules.trigger_phrases) as answers, so free-text like "move the toilet"
+  // unlocks the right follow-up modules. Context only — this is the no-LLM path, so zero new API cost.
+  const scopeNotes = typeof scopeNotesIn === "string" ? scopeNotesIn.trim() : "";
+  const triggerText = scopeNotes ? `${answerTriggerText}\n${scopeNotes}` : answerTriggerText;
   const fired = detectTriggers(triggerText, modules);
   const allRequired = collectRequiredFields(baseFields, fired);
 
@@ -1353,11 +1359,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { messages, tenant_id, job_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type, prefilled_answers, client_prefs, answers } = await req.json();
+    const { messages, tenant_id, job_id, project_sf, finish_tier, markup_pct, pm_fee, financial_model, mode, project_type, prefilled_answers, client_prefs, answers, scope_notes } = await req.json();
     // ESTIMATE_CONFIGURATOR S1: deterministic plan mode — no messages / no LLM required.
     if (mode === "scope_plan") {
       if (!tenant_id) return fail("tenant_id required", 400);
-      return await handleScopePlan(tenant_id, project_type, answers);
+      return await handleScopePlan(tenant_id, project_type, answers, scope_notes);
     }
     // PRICE_DETERMINISM P3: deterministic pricing from scope answers + scan geometry.
     // No LLM call. Returns priced_scope in identical shape to the LLM scope-pricing branch.
