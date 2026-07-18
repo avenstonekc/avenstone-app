@@ -1533,10 +1533,20 @@ const _renderFloorPage = (doc, floor, job, floorNum, totalFloors, pageNum, total
   const DL = 168, DR = 704, DT = 82, DB = 558;
   const availW = DR - DL, availH = DB - DT;
 
-  const worldMode = floor.rooms.some(r => r.worldX !== undefined && r.worldX !== null);
+  // SINGLE_ROOM_PARITY (2026-07-18) — normalized_geometry is the canonical world-space render source
+  // (CLAUDE.md). A single-room scan normalizes fine (normalizeFloorPlan defaults worldX=0), but its raw
+  // rooms may lack worldX, so gating worldMode on raw worldX alone dropped it into the legacy packing
+  // path — no glyphs/dims/floor-tint/fixtures. Gate on normFloor presence too: whenever normalize
+  // succeeded we take the world-space path (which reads normFloor, not raw worldX). The legacy packing
+  // path REMAINS the fallback for scans normalize can't place (no positions / normalize failure →
+  // normFloor null AND no raw worldX), e.g. an unpositioned multi-room scan.
+  const worldMode = !!normFloor || floor.rooms.some(r => r.worldX !== undefined && r.worldX !== null);
   const drawableRooms = worldMode ? floor.rooms.filter(r => (r.wallSegments || []).length >= 3) : floor.rooms;
 
-  if (!drawableRooms.length) {
+  // In normalized mode the render source is normFloor (world-space), not raw wallSegments — so test
+  // "nothing to draw" against normFloor's rooms-with-walls, and never bail early when it can still render.
+  const normHasWalls = !!normFloor && (normFloor.rooms || []).some(r => (normFloor.walls || []).some(w => w.room_id === r.id));
+  if (normFloor ? !normHasWalls : !drawableRooms.length) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(150, 150, 150);
     doc.text('No scan data available for this floor.', W / 2, (DT + DB) / 2, { align: 'center' });
     return;
