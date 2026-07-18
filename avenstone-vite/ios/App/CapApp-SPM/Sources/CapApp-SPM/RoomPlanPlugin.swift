@@ -805,7 +805,12 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
         guard !roomNames.isEmpty, !structure.rooms.isEmpty else { return [:] }
         let m2ft2: Float = 10.764
 
-        let capturedAreas: [Float] = capturedRooms.map { room in
+        // NAMES-ONLY re-association. LOCKED SPATIAL-ALIGNMENT RULE (CLAUDE.md): this must never read
+        // or write worldX/worldZ or any emitted geometry. It only decides which captured NAME maps to
+        // which rebuilt room. The centroids below are derived read-only from wall transforms purely to
+        // break area ties — no position/geometry value that leaves this function is touched.
+        // Bounding box → (area in sf, center) in one pass, for a captured or rebuilt room.
+        func bbox(_ room: CapturedRoom) -> (area: Float, cx: Float, cz: Float) {
             var minX: Float = .greatestFiniteMagnitude, maxX: Float = -.greatestFiniteMagnitude
             var minZ: Float = .greatestFiniteMagnitude, maxZ: Float = -.greatestFiniteMagnitude
             for wall in room.walls {
@@ -818,42 +823,51 @@ class ContinuousRoomScanViewController: UIViewController, RoomCaptureViewDelegat
                 minZ = min(minZ, cz + dz*hw, cz - dz*hw)
                 maxZ = max(maxZ, cz + dz*hw, cz - dz*hw)
             }
-            if minX == .greatestFiniteMagnitude { return 0 }
-            return (maxX - minX) * (maxZ - minZ) * m2ft2
+            if minX == .greatestFiniteMagnitude { return (0, 0, 0) }
+            return ((maxX - minX) * (maxZ - minZ) * m2ft2, (minX + maxX) / 2, (minZ + maxZ) / 2)
         }
 
-        let rebuiltAreas: [Float] = structure.rooms.map { room in
-            var minX: Float = .greatestFiniteMagnitude, maxX: Float = -.greatestFiniteMagnitude
-            var minZ: Float = .greatestFiniteMagnitude, maxZ: Float = -.greatestFiniteMagnitude
-            for wall in room.walls {
-                let t = wall.transform
-                let cx = t.columns.3.x, cz = t.columns.3.z
-                let hw = wall.dimensions.x / 2.0
-                let dx = t.columns.0.x, dz = t.columns.0.z
-                minX = min(minX, cx + dx*hw, cx - dx*hw)
-                maxX = max(maxX, cx + dx*hw, cx - dx*hw)
-                minZ = min(minZ, cz + dz*hw, cz - dz*hw)
-                maxZ = max(maxZ, cz + dz*hw, cz - dz*hw)
-            }
-            if minX == .greatestFiniteMagnitude { return 0 }
-            return (maxX - minX) * (maxZ - minZ) * m2ft2
-        }
+        let capturedInfo = capturedRooms.map(bbox)
+        let rebuiltInfo = structure.rooms.map(bbox)
+
+        // Area stays the PRIMARY match. Failure mode being fixed: two rebuilt rooms of near-identical
+        // area could swap names under pure area-greedy (rebuilt[0] grabs the globally-closest area,
+        // which is not necessarily its own physical room). Fix: when several unused captured rooms tie
+        // on area (within areaTolSf of the best delta), pick the one whose centroid is nearest the
+        // rebuilt room — the same physical room. Only near-ties are affected; a lone best match is
+        // chosen exactly as before.
+        let areaTolSf: Float = 20.0
 
         var nameMap: [Int: (String, Int)] = [:]
         var usedCap = Set<Int>()
 
-        for (j, rebArea) in rebuiltAreas.enumerated() {
-            var bestI = -1
+        for (j, reb) in rebuiltInfo.enumerated() {
+            // Smallest area delta among still-unused captured rooms.
             var bestDelta: Float = .greatestFiniteMagnitude
-            for (i, capArea) in capturedAreas.enumerated() {
+            for (i, cap) in capturedInfo.enumerated() {
                 guard !usedCap.contains(i), i < roomNames.count else { continue }
-                let delta = abs(capArea - rebArea)
-                if delta < bestDelta { bestDelta = delta; bestI = i }
+                let delta = abs(cap.area - reb.area)
+                if delta < bestDelta { bestDelta = delta }
+            }
+            if bestDelta == .greatestFiniteMagnitude { continue } // no unused captured rooms remain
+
+            // Among captured rooms whose area delta is within the tie band, choose the nearest centroid.
+            // The best-area room is always inside the band, so a non-tie collapses to the old behavior.
+            var bestI = -1
+            var bestDist: Float = .greatestFiniteMagnitude
+            var tiedCount = 0
+            for (i, cap) in capturedInfo.enumerated() {
+                guard !usedCap.contains(i), i < roomNames.count else { continue }
+                guard abs(cap.area - reb.area) <= bestDelta + areaTolSf else { continue }
+                tiedCount += 1
+                let d = (reb.cx - cap.cx)*(reb.cx - cap.cx) + (reb.cz - cap.cz)*(reb.cz - cap.cz)
+                if d < bestDist { bestDist = d; bestI = i }
             }
             if bestI >= 0 {
                 nameMap[j] = (roomNames[bestI], bestI)
                 usedCap.insert(bestI)
-                print("[LIDAR_NAME] rebuilt[\(j)] (area \(Int(rebArea))sf) → captured[\(bestI)] '\(roomNames[bestI])' (area \(Int(capturedAreas[bestI]))sf, delta \(Int(bestDelta))sf)")
+                let tb = tiedCount > 1 ? " [centroid tiebreak over \(tiedCount) area-ties]" : ""
+                print("[LIDAR_NAME] rebuilt[\(j)] (area \(Int(reb.area))sf) → captured[\(bestI)] '\(roomNames[bestI])' (area \(Int(capturedInfo[bestI].area))sf)\(tb)")
             }
         }
         return nameMap
