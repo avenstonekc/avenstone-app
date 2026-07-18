@@ -711,6 +711,7 @@ export type Database = {
           job_id: string | null
           scope_notes: string | null
           session_id: string | null
+          source: string
           tenant_id: string
           trade: string
         }
@@ -722,6 +723,7 @@ export type Database = {
           job_id?: string | null
           scope_notes?: string | null
           session_id?: string | null
+          source?: string
           tenant_id?: string
           trade: string
         }
@@ -733,6 +735,7 @@ export type Database = {
           job_id?: string | null
           scope_notes?: string | null
           session_id?: string | null
+          source?: string
           tenant_id?: string
           trade?: string
         }
@@ -765,6 +768,7 @@ export type Database = {
           sort: number
           storage_path: string
           tenant_id: string
+          transcript_context: string | null
         }
         Insert: {
           caption?: string | null
@@ -777,6 +781,7 @@ export type Database = {
           sort?: number
           storage_path: string
           tenant_id?: string
+          transcript_context?: string | null
         }
         Update: {
           caption?: string | null
@@ -789,10 +794,67 @@ export type Database = {
           sort?: number
           storage_path?: string
           tenant_id?: string
+          transcript_context?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "consultation_photos_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "consultation_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consultation_recaps: {
+        Row: {
+          created_at: string
+          discussed_items: Json
+          id: string
+          job_id: string | null
+          open_items: Json
+          pdf_path: string | null
+          scope_basis: Json
+          sent_at: string | null
+          session_id: string | null
+          status: string
+          summary: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          discussed_items?: Json
+          id?: string
+          job_id?: string | null
+          open_items?: Json
+          pdf_path?: string | null
+          scope_basis?: Json
+          sent_at?: string | null
+          session_id?: string | null
+          status?: string
+          summary?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          discussed_items?: Json
+          id?: string
+          job_id?: string | null
+          open_items?: Json
+          pdf_path?: string | null
+          scope_basis?: Json
+          sent_at?: string | null
+          session_id?: string | null
+          status?: string
+          summary?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consultation_recaps_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "consultation_sessions"

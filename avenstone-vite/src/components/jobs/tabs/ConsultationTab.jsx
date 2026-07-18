@@ -5,6 +5,7 @@ import { Ic, f$, isMob, ls } from '../../../lib/utils';
 import GapResolutionModal from '../consultation/GapResolutionModal';
 import MeasurePanel from '../consultation/MeasurePanel';
 import AmbientPanel from '../consultation/AmbientPanel';
+import RecapPanel from '../consultation/RecapPanel';
 
 const NAV = 'var(--navy-900)';
 const GOLD = 'var(--gold-500)';
@@ -649,6 +650,9 @@ export default function ConsultationTab({ job, profile, setTab }) {
             </div>
           </div>
         )}
+
+        {/* Client recap — scope-only branded PDF, emailed to the client */}
+        {sessionIdRef.current && <RecapPanel job={job} sessionId={sessionIdRef.current} />}
 
         {/* Draft estimate from session → Estimate tab (Rate Book) */}
         <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10 }}>

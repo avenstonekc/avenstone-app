@@ -1,0 +1,217 @@
+// CONSULTATION_MODE Slice 3 — recap composition.
+// ONE user-triggered Sonnet call per recap (max_tokens 4096). It does three things in a
+// single pass over the session:
+//   (1) extracts spoken-inline MEASUREMENTS from the ambient transcript → consultation_
+//       measurements (source 'inline', confirmed_by_rep=false — the rep confirms them),
+//   (2) composes the SCOPE-ONLY recap (summary, discussed items, scope basis, open items) —
+//       ZERO dollars anywhere,
+//   (3) captions each photo from the words spoken at shutter time (transcript_context) —
+//       speech-derived, no vision call (that's Phase 3).
+// Cost: this is the only new call in the whole arc and it's user-triggered. No audio retained.
+
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const ERROR_LOGGER_URL = `${SUPABASE_URL}/functions/v1/ai-error-logger`;
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, content-type",
+};
+
+function logAIError(payload: Record<string, unknown>) {
+  fetch(ERROR_LOGGER_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}` },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}
+
+const SYSTEM = `You are Avenstone's field recap writer. A sales rep just walked a job with a homeowner. From the session data you write a CLIENT-FACING recap of the SCOPE that was discussed — "here's what my bid will be based on."
+
+HARD RULES:
+- SCOPE ONLY. Never mention, imply, or estimate any price, cost, dollar figure, rate, budget number, or total. Zero dollars anywhere.
+- Only state what the transcript/data actually supports. Do not invent scope.
+- Plain, warm, professional homeowner language. No construction jargon dumps.
+
+You also do two extraction jobs:
+- MEASUREMENTS: pull any measurement the rep spoke aloud (dimensions, square footage, counts, lengths) and group them by trade using the canonical trade names given. Only real numbers stated in the transcript.
+- PHOTO CAPTIONS: for each photo you're given its "context" (the words spoken around the moment it was taken). Turn that into a short caption of what the photo shows.
+
+Return ONLY valid JSON, no markdown:
+{
+  "summary": "2-4 sentence plain-language scope summary. No prices.",
+  "discussed_items": ["short scope bullet", ...],
+  "scope_basis": ["what the bid will be based on", ...],
+  "open_items": ["still to confirm before finalizing", ...],
+  "measurements": [ { "trade": "<canonical trade or plain trade name>", "fields": { "key": "value" }, "note": "optional" } ],
+  "photo_captions": [ { "index": 0, "caption": "short caption" } ]
+}`;
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  try {
+    const { session_id, job_id } = await req.json();
+    if (!session_id || !job_id) {
+      return new Response(JSON.stringify({ error: "Missing session_id or job_id" }), {
+        status: 400, headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    const [sessionRes, extractionRes, measRes, photosRes, jobRes] = await Promise.all([
+      sb.from("consultation_sessions").select("id, job_id, tenant_id, raw_transcript").eq("id", session_id).single(),
+      sb.from("consultation_extractions").select("*").eq("session_id", session_id).maybeSingle(),
+      sb.from("consultation_measurements").select("*").eq("session_id", session_id),
+      sb.from("consultation_photos").select("id, sort, captured_at, caption, caption_source, transcript_context").eq("session_id", session_id).order("sort").order("captured_at"),
+      sb.from("jobs").select("address, scope, client_name").eq("id", job_id).single(),
+    ]);
+
+    const session = sessionRes.data;
+    if (!session) {
+      return new Response(JSON.stringify({ error: "Session not found" }), {
+        status: 404, headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+    const extraction = extractionRes.data as Record<string, unknown> | null;
+    const existingMeasurements = (measRes.data || []) as Record<string, unknown>[];
+    const photos = (photosRes.data || []) as Record<string, unknown>[];
+    const job = jobRes.data as Record<string, unknown> | null;
+
+    // Canonical trade strings for measurement grouping.
+    let canonicalTrades: string[] = [];
+    try {
+      const { data } = await sb
+        .from("trade_taxonomy")
+        .select("parent_trade, sub_trade, tenant_trade_visibility!inner(active)")
+        .eq("tenant_trade_visibility.tenant_id", session.tenant_id)
+        .eq("tenant_trade_visibility.active", true);
+      canonicalTrades = (data || []).map((r: Record<string, unknown>) =>
+        r.sub_trade ? `${r.parent_trade} - ${r.sub_trade}` : String(r.parent_trade));
+    } catch { /* ignore */ }
+
+    const photoBlock = photos.length
+      ? photos.map((p, i) => `  [${i}] context: ${p.transcript_context || "(none)"}`).join("\n")
+      : "  (none)";
+
+    const userContent = `JOB: ${job?.address || "Unknown"}${job?.client_name ? ` — client ${job.client_name}` : ""}
+EXISTING TYPED SCOPE: ${job?.scope || "(none)"}
+
+AMBIENT TRANSCRIPT:
+${session.raw_transcript || "(no transcript captured)"}
+
+EXTRACTED SIGNALS:
+- scope hints: ${(extraction?.scope_hints as string[] || []).join("; ") || "(none)"}
+- client concerns: ${(extraction?.client_concerns as string[] || []).join("; ") || "(none)"}
+- risk flags: ${(extraction?.risk_flags as string[] || []).join("; ") || "(none)"}
+- timeline: ${extraction?.timeline || "(none)"}
+
+MEASUREMENTS ALREADY CAPTURED (measure mode — do not re-list these, only ADD spoken ones from the transcript):
+${existingMeasurements.filter((m) => m.source !== "inline").map((m) => `- ${m.trade}: ${JSON.stringify(m.fields)}`).join("\n") || "  (none)"}
+
+CANONICAL TRADES (use these names when grouping measurements): ${canonicalTrades.join(", ") || "(none)"}
+
+PHOTOS (caption each by index):
+${photoBlock}`;
+
+    const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 4096,
+        system: SYSTEM,
+        messages: [{ role: "user", content: userContent }],
+      }),
+    });
+
+    const aiJson = await aiRes.json();
+    const rawText = aiJson.content?.[0]?.text || "{}";
+    let out: Record<string, unknown>;
+    try {
+      const cleaned = rawText.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+      out = JSON.parse(cleaned);
+    } catch {
+      logAIError({
+        function_name: "compose-consultation-recap",
+        error_type: "invalid_json",
+        error_message: "Recap composer returned invalid JSON",
+        ai_raw_response: rawText,
+        session_id,
+        job_id,
+        tenant_id: session.tenant_id,
+      });
+      return new Response(JSON.stringify({ error: "Recap composer returned invalid JSON", raw: rawText }), {
+        status: 500, headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    const arr = (v: unknown) => (Array.isArray(v) ? v : []);
+
+    // (1) Persist spoken-inline measurements — source 'inline', unconfirmed. Merge into the
+    // existing inline row per trade; never touch measure-mode rows or flip their confirm flag.
+    const inlineOut = arr(out.measurements) as Record<string, unknown>[];
+    for (const m of inlineOut) {
+      const trade = String(m.trade || "").trim();
+      const fields = (m.fields && typeof m.fields === "object") ? m.fields as Record<string, unknown> : {};
+      if (!trade || !Object.keys(fields).length) continue;
+      const existingInline = existingMeasurements.find((e) => e.trade === trade && e.source === "inline");
+      if (existingInline) {
+        await sb.from("consultation_measurements")
+          .update({ fields: { ...(existingInline.fields as Record<string, unknown> || {}), ...fields }, scope_notes: m.note || existingInline.scope_notes || null })
+          .eq("id", existingInline.id);
+      } else {
+        await sb.from("consultation_measurements").insert({
+          session_id, job_id, tenant_id: session.tenant_id,
+          trade, fields, source: "inline", confirmed_by_rep: false, scope_notes: m.note || null,
+        });
+      }
+    }
+
+    // (3) Caption photos where the rep hasn't manually captioned them.
+    const caps = arr(out.photo_captions) as Record<string, unknown>[];
+    for (const c of caps) {
+      const idx = Number(c.index);
+      const caption = String(c.caption || "").trim();
+      const photo = photos[idx];
+      if (!photo || !caption) continue;
+      if (photo.caption && photo.caption_source === "manual") continue; // never overwrite a rep edit
+      await sb.from("consultation_photos").update({ caption, caption_source: "speech" }).eq("id", photo.id);
+    }
+
+    // (2) Upsert the scope-only recap draft.
+    const recapRow = {
+      session_id, job_id, tenant_id: session.tenant_id,
+      summary: String(out.summary || ""),
+      discussed_items: arr(out.discussed_items),
+      scope_basis: arr(out.scope_basis),
+      open_items: arr(out.open_items),
+      status: "draft",
+      updated_at: new Date().toISOString(),
+    };
+    await sb.from("consultation_recaps").upsert(recapRow, { onConflict: "session_id" });
+
+    // Return the fresh state for the rep review screen.
+    const [{ data: recap }, { data: freshMeas }, { data: freshPhotos }] = await Promise.all([
+      sb.from("consultation_recaps").select("*").eq("session_id", session_id).maybeSingle(),
+      sb.from("consultation_measurements").select("*").eq("session_id", session_id),
+      sb.from("consultation_photos").select("*").eq("session_id", session_id).order("sort").order("captured_at"),
+    ]);
+
+    return new Response(JSON.stringify({ ok: true, recap, measurements: freshMeas || [], photos: freshPhotos || [] }), {
+      headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    logAIError({ function_name: "compose-consultation-recap", error_type: "unhandled_exception", error_message: String(e) });
+    return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { ...CORS, "Content-Type": "application/json" } });
+  }
+});

@@ -46,6 +46,8 @@ export const AI_COMPANION_URL           = `${FN}/ai-companion`;
 export const AI_HOME_URL                = `${FN}/ai-home-companion`;
 export const PROCESS_TRANSCRIPT_URL     = `${FN}/process-transcript`;
 export const GENERATE_ESTIMATE_URL      = `${FN}/generate-estimate-from-session`;
+export const COMPOSE_RECAP_URL          = `${FN}/compose-consultation-recap`;
+export const SEND_RECAP_EMAIL_URL       = `${FN}/send-recap-email`;
 export const AI_ERROR_LOGGER_URL        = `${FN}/ai-error-logger`;
 export const AI_FIELD_AGENT_URL         = `${FN}/ai-field-agent`;
 export const MEASURE_GUIDE_URL          = `${FN}/measure-guide`;
@@ -2641,7 +2643,7 @@ export const sbLoadJobRoomScopes = async (jobId) => {
 // Uploads to the private job-documents bucket (path only; RLS on consultation_photos
 // gates access). Caption is NULL at capture — matched from the transcript at recap
 // time (slice 3). No caption UI here per the locked flow.
-export const sbUploadConsultationPhoto = async ({ jobId, sessionId, file, sort = 0 }) => {
+export const sbUploadConsultationPhoto = async ({ jobId, sessionId, file, sort = 0, transcriptContext = null }) => {
   try {
     if (!file) return { error: 'No file' };
     const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase();
@@ -2654,6 +2656,7 @@ export const sbUploadConsultationPhoto = async ({ jobId, sessionId, file, sort =
       job_id: jobId,
       storage_path: path,
       sort,
+      transcript_context: transcriptContext ? String(transcriptContext).slice(-280) : null,
     }).select().single();
     if (ie) { sb.storage.from('job-documents').remove([path]).catch(() => {}); return { error: ie.message }; }
     return { data };
@@ -2723,6 +2726,72 @@ export const sbLoadConsultationPhotos = async (sessionId) => {
     const { data: sig } = await sb.storage.from('job-documents').createSignedUrl(r.storage_path, 3600);
     return { ...r, url: sig?.signedUrl || null };
   }));
+};
+
+// CONSULTATION_MODE Slice 3 — recap. One user-triggered Sonnet call composes the scope-only
+// recap, extracts spoken-inline measurements, and captions photos. Returns fresh recap +
+// measurements + photos for the rep review screen.
+export const sbComposeRecap = async (sessionId, jobId) => {
+  try {
+    const res = await fetch(COMPOSE_RECAP_URL, {
+      method: 'POST', headers: authHeader(),
+      body: JSON.stringify({ session_id: sessionId, job_id: jobId }),
+    });
+    if (!res.ok) return { error: await res.text() };
+    return await res.json();
+  } catch (e) { return { error: String(e?.message || e) }; }
+};
+
+export const sbLoadRecap = async (sessionId) => {
+  const { data } = await sb.from('consultation_recaps').select('*').eq('session_id', sessionId).maybeSingle();
+  return data || null;
+};
+
+// Rep edits before send — summary + the three bullet lists.
+export const sbUpdateRecap = async (recapId, patch) => {
+  const { error } = await sb.from('consultation_recaps')
+    .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', recapId);
+  return { error: error?.message || null };
+};
+
+// Rep confirms a measurement (inline or measure-mode) — confirmed_by_rep stays honest.
+export const sbConfirmMeasurement = async (id, confirmed) => {
+  const { error } = await sb.from('consultation_measurements')
+    .update({ confirmed_by_rep: !!confirmed }).eq('id', id);
+  return { error: error?.message || null };
+};
+
+// Rep edits a photo caption → caption_source flips to 'manual' (recap never overwrites it).
+export const sbUpdatePhotoCaption = async (id, caption) => {
+  const { error } = await sb.from('consultation_photos')
+    .update({ caption, caption_source: 'manual' }).eq('id', id);
+  return { error: error?.message || null };
+};
+
+// Build the recap PDF client-side, upload to the private bucket, email it, mark sent.
+export const sbSendRecap = async ({ recap, job, measurements, photos, pdfBase64 }) => {
+  try {
+    const to = job?.client_email;
+    if (!to) return { error: 'No client email on this job.' };
+    // Persist the PDF privately for the record.
+    let pdfPath = null;
+    if (pdfBase64) {
+      const bin = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
+      pdfPath = `consultation/${job.id}/recap_${Date.now()}.pdf`;
+      await sb.storage.from('job-documents').upload(pdfPath, bin, { contentType: 'application/pdf', upsert: false }).catch(() => {});
+    }
+    const res = await fetch(SEND_RECAP_EMAIL_URL, {
+      method: 'POST', headers: authHeader(),
+      body: JSON.stringify({ to, client_name: job.client_name, job_address: job.address, pdf_base64: pdfBase64 }),
+    });
+    if (!res.ok) return { error: await res.text() };
+    if (recap?.id) {
+      await sb.from('consultation_recaps')
+        .update({ status: 'sent', sent_at: new Date().toISOString(), pdf_path: pdfPath })
+        .eq('id', recap.id);
+    }
+    return { ok: true };
+  } catch (e) { return { error: String(e?.message || e) }; }
 };
 
 // SCE Phase 4B — scope-interview option cards. Returns the project type's choice

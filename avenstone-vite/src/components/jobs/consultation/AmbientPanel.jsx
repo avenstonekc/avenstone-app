@@ -49,6 +49,7 @@ export default function AmbientPanel({
   const transcriptRef = useRef('');
   const fileInputRef = useRef(null);
   const prefixRef = useRef('avenstone');
+  const livePartialRef = useRef('');
   const lastCmdRef = useRef({ cmd: '', ts: 0 });
   const voiceOnRef = useRef(true);
   const needsRef = useRef([]);
@@ -122,6 +123,7 @@ export default function AmbientPanel({
   };
 
   const handlePartial = (text) => {
+    livePartialRef.current = text || '';
     const t = (text || '').toLowerCase();
     const prefix = prefixRef.current;
     if (!t.includes(prefix)) return;
@@ -168,7 +170,10 @@ export default function AmbientPanel({
     setPhotoBusy(true);
     setPhotoMsg('');
     const sid = getSessionId?.() || sessionId;
-    const res = await sbUploadConsultationPhoto({ jobId, sessionId: sid, file, sort: photoCount });
+    // Shutter-time context: the words spoken around the moment the photo was taken →
+    // the recap turns this into a speech-derived caption (no vision call).
+    const shutterContext = `${transcriptRef.current} ${livePartialRef.current}`.trim();
+    const res = await sbUploadConsultationPhoto({ jobId, sessionId: sid, file, sort: photoCount, transcriptContext: shutterContext });
     setPhotoBusy(false);
     if (res.error) { setPhotoMsg(`Photo failed: ${res.error}`); }
     else { setPhotoCount((n) => n + 1); setPhotoMsg('Photo captured'); setTimeout(() => setPhotoMsg(''), 2500); }
