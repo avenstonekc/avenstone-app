@@ -22,9 +22,13 @@ const dataUrl = (url) => new Promise((resolve) => {
     .catch(() => resolve(null));
 });
 
-export async function buildRecapPDF({ job = {}, recap = {}, measurements = [], photos = [] }) {
+export async function buildRecapPDF({ job = {}, recap = {}, measurements = [], photos = [], sessionType = 'client_walk', tradeScope = [], recipientName = null }) {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   let y = 100;
+
+  // WALKTHROUGH_TYPES — a sub walk relabels the document as a trade work order (still no dollars).
+  const isSub = sessionType === 'sub_walk';
+  const trades = (Array.isArray(tradeScope) ? tradeScope : []).filter(Boolean).join(', ');
 
   const ensure = (needed = 0) => { if (y + needed > 730) { doc.addPage(); y = 60; } };
 
@@ -49,15 +53,20 @@ export async function buildRecapPDF({ job = {}, recap = {}, measurements = [], p
   doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...GOLD);
   doc.text('AVENSTONE GROUP', M, 34);
   doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(...GOLD);
-  doc.text('Consultation Recap', M, 50);
+  doc.text(isSub ? 'Sub Walkthrough — Scope of Work' : 'Consultation Recap', M, 50);
   doc.setTextColor(200, 200, 200); doc.setFontSize(9);
   doc.text('avenstonekc.com · Kansas City, MO', W - M, 34, { align: 'right' });
 
   // ── Job / client / date ──
   doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY);
   doc.text(job.address || '', M, y); y += 16;
-  if (job.client_name) { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...GRAY); doc.text(`Client: ${job.client_name}`, M, y); y += 14; }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...GRAY);
+  if (isSub) {
+    if (trades) { doc.text(`Trade(s): ${trades}`, M, y); y += 14; }
+    if (recipientName) { doc.text(`Prepared for: ${recipientName}`, M, y); y += 14; }
+  } else if (job.client_name) {
+    doc.text(`Client: ${job.client_name}`, M, y); y += 14;
+  }
   doc.text(`Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, M, y); y += 20;
 
   // ── Summary ──
@@ -68,10 +77,10 @@ export async function buildRecapPDF({ job = {}, recap = {}, measurements = [], p
   }
 
   // ── What we discussed ──
-  if ((recap.discussed_items || []).length) { heading('What we discussed'); bullets(recap.discussed_items); }
+  if ((recap.discussed_items || []).length) { heading(isSub ? 'Scope of work' : 'What we discussed'); bullets(recap.discussed_items); }
 
-  // ── Scope basis ──
-  if ((recap.scope_basis || []).length) { heading('What your bid will be based on'); bullets(recap.scope_basis); }
+  // ── Scope basis / site conditions ──
+  if ((recap.scope_basis || []).length) { heading(isSub ? 'Site conditions & access' : 'What your bid will be based on'); bullets(recap.scope_basis); }
 
   // ── Measurements ──
   const withFields = (measurements || []).filter((m) => m && m.fields && Object.keys(m.fields).length);
@@ -112,7 +121,7 @@ export async function buildRecapPDF({ job = {}, recap = {}, measurements = [], p
   }
 
   // ── Still to confirm ──
-  if ((recap.open_items || []).length) { heading('Still to confirm'); bullets(recap.open_items); }
+  if ((recap.open_items || []).length) { heading(isSub ? 'Open questions' : 'Still to confirm'); bullets(recap.open_items); }
 
   // ── Footer on every page ──
   const pages = doc.getNumberOfPages();

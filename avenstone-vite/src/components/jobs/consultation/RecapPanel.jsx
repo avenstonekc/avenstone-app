@@ -10,13 +10,17 @@ const NAV = 'var(--navy-900)';
 const BORDER = 'var(--border)';
 
 // CONSULTATION_MODE Slice 3 — rep reviews + edits the scope-only recap, confirms
-// measurements, tweaks captions, then generates the branded PDF and emails the client.
-export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComposed }) {
+// measurements, tweaks captions, then generates the branded PDF and emails it.
+// WALKTHROUGH_TYPES — sessionType forks the tone, labels, and recipient (client vs sub).
+export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComposed, sessionType = 'client_walk', tradeScope = [] }) {
   const mob = isMob();
+  const isSub = sessionType === 'sub_walk';
+  const trades = (Array.isArray(tradeScope) ? tradeScope : []).filter(Boolean).join(', ');
   const [busy, setBusy] = useState(false);
   const [composed, setComposed] = useState(false);
   const [err, setErr] = useState('');
   const [sent, setSent] = useState(false);
+  const [recipient, setRecipient] = useState(null);
 
   const [recap, setRecap] = useState(null);
   const [summary, setSummary] = useState('');
@@ -34,6 +38,7 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
     const res = await sbComposeRecap(sessionId, job.id, unresolvedGaps);
     if (res.error) { setErr(`Compose failed: ${res.error}`); setBusy(false); return; }
     onComposed?.(res.oh_shit_moments || []);
+    if (res.recipient) setRecipient(res.recipient);
     const r = res.recap || {};
     setRecap(r);
     setSummary(r.summary || '');
@@ -75,6 +80,9 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
       recap: { summary, discussed_items: linesToArr(discussed), scope_basis: linesToArr(basis), open_items: linesToArr(open) },
       measurements,
       photos,
+      sessionType,
+      tradeScope,
+      recipientName: recipient?.name || null,
     });
   };
 
@@ -82,18 +90,25 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
     setBusy(true); setErr('');
     try {
       const doc = await buildDoc();
-      doc.save(`Consultation Recap — ${job.address || 'Project'}.pdf`);
+      const base = isSub ? `Sub Walkthrough${trades ? ' — ' + trades : ''}` : 'Consultation Recap';
+      doc.save(`${base} — ${job.address || 'Project'}.pdf`);
     } catch (e) { setErr(`PDF failed: ${e.message}`); }
     setBusy(false);
   };
 
-  const sendToClient = async () => {
-    if (!job.client_email) { setErr('No client email on this job — add one in the Info tab first.'); return; }
+  const sendRecap = async () => {
+    const toEmail = isSub ? recipient?.email : job.client_email;
+    if (!toEmail) {
+      setErr(isSub
+        ? 'No email for the selected sub — pick the sub on the session, or use Download / attach to a bid.'
+        : 'No client email on this job — add one in the Info tab first.');
+      return;
+    }
     setBusy(true); setErr('');
     try {
       const doc = await buildDoc();
       const b64 = doc.output('datauristring').split(',')[1];
-      const res = await sbSendRecap({ recap, job, measurements, photos, pdfBase64: b64, sessionId });
+      const res = await sbSendRecap({ recap, job, measurements, photos, pdfBase64: b64, sessionId, sessionType, tradeScope, recipient });
       if (res.error) { setErr(`Send failed: ${res.error}`); }
       else setSent(true);
     } catch (e) { setErr(`Send failed: ${e.message}`); }
@@ -107,10 +122,13 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
   if (!composed) {
     return (
       <div style={box}>
-        <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: NAV, marginBottom: 6 }}>Client recap</div>
+        <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: NAV, marginBottom: 6 }}>
+          {isSub ? `Sub walkthrough recap${trades ? ` — ${trades}` : ''}` : 'Client recap'}
+        </div>
         <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 14 }}>
-          Compose a scope-only recap of this visit — discussed items, photos with captions, measurements,
-          and what the bid is based on. You review and edit before it emails to the client. No prices.
+          {isSub
+            ? `Compose the work-order scope for ${trades || 'this trade'} — scope of work, photos with captions, measurements, and site conditions. You review and edit before it emails to the sub. No prices (the sub's number comes from them).`
+            : 'Compose a scope-only recap of this visit — discussed items, photos with captions, measurements, and what the bid is based on. You review and edit before it emails to the client. No prices.'}
         </div>
         {err && <div style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{err}</div>}
         <button className="btn btn-gold" style={{ minHeight: 48, fontSize: 15 }} disabled={busy} onClick={compose}>
@@ -132,15 +150,15 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
           <textarea style={ta} value={summary} onChange={(e) => setSummary(e.target.value)} />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <div style={label}>What we discussed (one per line)</div>
+          <div style={label}>{isSub ? 'Scope of work (one per line)' : 'What we discussed (one per line)'}</div>
           <textarea style={ta} value={discussed} onChange={(e) => setDiscussed(e.target.value)} />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <div style={label}>What the bid is based on (one per line)</div>
+          <div style={label}>{isSub ? 'Site conditions & access (one per line)' : 'What the bid is based on (one per line)'}</div>
           <textarea style={ta} value={basis} onChange={(e) => setBasis(e.target.value)} />
         </div>
         <div>
-          <div style={label}>Still to confirm (one per line)</div>
+          <div style={label}>{isSub ? 'Open questions (one per line)' : 'Still to confirm (one per line)'}</div>
           <textarea style={ta} value={open} onChange={(e) => setOpen(e.target.value)} />
         </div>
       </div>
@@ -187,11 +205,11 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
       )}
 
       {err && <div style={{ color: '#EF4444', fontSize: 13 }}>{err}</div>}
-      {sent && <div style={{ color: '#15803d', fontSize: 14, fontWeight: 600 }}>✓ Recap emailed to {job.client_email}</div>}
+      {sent && <div style={{ color: '#15803d', fontSize: 14, fontWeight: 600 }}>✓ Recap emailed to {isSub ? (recipient?.email || 'the sub') : job.client_email}</div>}
 
       <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10 }}>
-        <button className="btn btn-gold" style={{ flex: 1, minHeight: 48, fontSize: 15 }} disabled={busy || sent} onClick={sendToClient}>
-          {sent ? '✓ Sent' : busy ? 'Working…' : 'Generate PDF & Email to Client →'}
+        <button className="btn btn-gold" style={{ flex: 1, minHeight: 48, fontSize: 15 }} disabled={busy || sent} onClick={sendRecap}>
+          {sent ? '✓ Sent' : busy ? 'Working…' : `Generate PDF & Email to ${isSub ? 'Sub' : 'Client'} →`}
         </button>
         <button className="btn btn-ghost" style={{ minWidth: mob ? 'auto' : 140, minHeight: 48 }} disabled={busy} onClick={downloadPdf}>
           Download PDF

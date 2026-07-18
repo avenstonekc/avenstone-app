@@ -30,7 +30,7 @@ function logAIError(payload: Record<string, unknown>) {
   }).catch(() => {});
 }
 
-const SYSTEM = `You are Avenstone's field recap writer. A sales rep just walked a job with a homeowner. From the session data you write a CLIENT-FACING recap of the SCOPE that was discussed — "here's what my bid will be based on."
+const SYSTEM_CLIENT = `You are Avenstone's field recap writer. A sales rep just walked a job with a homeowner. From the session data you write a CLIENT-FACING recap of the SCOPE that was discussed — "here's what my bid will be based on."
 
 HARD RULES:
 - SCOPE ONLY. Never mention, imply, or estimate any price, cost, dollar figure, rate, budget number, or total. Zero dollars anywhere.
@@ -53,6 +53,38 @@ Return ONLY valid JSON, no markdown:
   "oh_shit_moments": [ { "condition": "what might be found", "likelihood": "low|medium|high", "estimated_cost_low": 500, "estimated_cost_high": 1500, "how_to_present": "one sentence for the homeowner" } ]
 }`;
 
+// WALKTHROUGH_TYPES — sub walk fork. Same single call, same JSON shape, work-order tone.
+// The four scope keys carry sub-facing meaning: discussed_items = scope of work, scope_basis =
+// site conditions & access, open_items = open questions. Still ZERO dollars (sub prices it).
+const SYSTEM_SUB = (trades: string) => `You are Avenstone's field scope writer. A project manager just walked a job site to scope work for a subcontractor. From the session data you write a SUB-FACING work order for the trade(s): ${trades || "the sub's trade"}. It tells the sub exactly what work is in scope so they can put a number on it.
+
+HARD RULES:
+- SCOPE ONLY. Never mention, imply, or estimate any price, cost, dollar figure, rate, budget, or total. The sub's pricing comes FROM the sub — zero dollars anywhere in the recap text.
+- Only state what the transcript/data actually supports. Do not invent scope.
+- Plain, direct trade language — a work order, not a sales pitch. Cover the selected trade(s) only; ignore scope that belongs to other trades.
+
+Put the content in these keys:
+- summary: 2-4 sentences — the work-order overview for this trade.
+- discussed_items: the specific scope-of-work items for this trade (what the sub will do).
+- scope_basis: site conditions, substrate, existing conditions, and access/staging notes the sub needs to bid accurately.
+- open_items: open questions for the sub / things to confirm on their own site visit.
+
+You also do these extraction jobs:
+- MEASUREMENTS: pull any measurement spoken aloud (dimensions, square footage, counts, lengths) and group them by trade using the canonical trade names given. Only real numbers stated in the transcript.
+- PHOTO CAPTIONS: for each photo you're given its "context" (words spoken when it was taken). Turn that into a short caption of what the photo shows.
+- RISKS ("oh_shit_moments"): 3-5 site conditions for THIS trade that could change the work. INTERNAL only (never on the sub recap), so it MAY include a rough cost range. The dollars-forbidden rule applies ONLY to summary/discussed_items/scope_basis/open_items.
+
+Return ONLY valid JSON, no markdown:
+{
+  "summary": "2-4 sentence work-order overview. No prices.",
+  "discussed_items": ["scope-of-work item for this trade", ...],
+  "scope_basis": ["site condition / access note", ...],
+  "open_items": ["open question for the sub", ...],
+  "measurements": [ { "trade": "<canonical trade or plain trade name>", "fields": { "key": "value" }, "note": "optional" } ],
+  "photo_captions": [ { "index": 0, "caption": "short caption" } ],
+  "oh_shit_moments": [ { "condition": "what might be found", "likelihood": "low|medium|high", "estimated_cost_low": 500, "estimated_cost_high": 1500, "how_to_present": "one sentence, internal" } ]
+}`;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -67,7 +99,7 @@ Deno.serve(async (req) => {
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     const [sessionRes, extractionRes, measRes, photosRes, jobRes] = await Promise.all([
-      sb.from("consultation_sessions").select("id, job_id, tenant_id, raw_transcript").eq("id", session_id).single(),
+      sb.from("consultation_sessions").select("id, job_id, tenant_id, raw_transcript, session_type, trade_scope, walk_sub_id").eq("id", session_id).single(),
       sb.from("consultation_extractions").select("*").eq("session_id", session_id).maybeSingle(),
       sb.from("consultation_measurements").select("*").eq("session_id", session_id),
       sb.from("consultation_photos").select("id, sort, captured_at, caption, caption_source, transcript_context").eq("session_id", session_id).order("sort").order("captured_at"),
@@ -85,6 +117,21 @@ Deno.serve(async (req) => {
     const photos = (photosRes.data || []) as Record<string, unknown>[];
     const job = jobRes.data as Record<string, unknown> | null;
 
+    // WALKTHROUGH_TYPES — fork tone + recipient by session audience.
+    const isSub = session.session_type === "sub_walk";
+    const tradeList = Array.isArray(session.trade_scope) ? (session.trade_scope as string[]).filter(Boolean) : [];
+    const tradesStr = tradeList.join(", ");
+    const SYSTEM = isSub ? SYSTEM_SUB(tradesStr) : SYSTEM_CLIENT;
+
+    // Sub recaps go to the walked sub (not the client). Resolve here so the client always
+    // has a recipient even when reopening a past session.
+    let recipient: { email: string | null; name: string | null } | null = null;
+    if (isSub && session.walk_sub_id) {
+      const { data: subProfile } = await sb
+        .from("profiles").select("email, full_name").eq("id", session.walk_sub_id).maybeSingle();
+      if (subProfile) recipient = { email: subProfile.email ?? null, name: subProfile.full_name ?? null };
+    }
+
     // Canonical trade strings for measurement grouping.
     let canonicalTrades: string[] = [];
     try {
@@ -101,7 +148,7 @@ Deno.serve(async (req) => {
       ? photos.map((p, i) => `  [${i}] context: ${p.transcript_context || "(none)"}`).join("\n")
       : "  (none)";
 
-    const userContent = `JOB: ${job?.address || "Unknown"}${job?.client_name ? ` — client ${job.client_name}` : ""}
+    const userContent = `${isSub ? `SUB WALK — write the work order for these trade(s) ONLY: ${tradesStr || "(unspecified)"}\n` : ""}JOB: ${job?.address || "Unknown"}${job?.client_name ? ` — client ${job.client_name}` : ""}
 EXISTING TYPED SCOPE: ${job?.scope || "(none)"}
 
 AMBIENT TRANSCRIPT:
@@ -237,7 +284,10 @@ ${photoBlock}`;
       sb.from("oh_shit_moments").select("*").eq("session_id", session_id),
     ]);
 
-    return new Response(JSON.stringify({ ok: true, recap, measurements: freshMeas || [], photos: freshPhotos || [], oh_shit_moments: ohRows || [] }), {
+    return new Response(JSON.stringify({
+      ok: true, recap, measurements: freshMeas || [], photos: freshPhotos || [], oh_shit_moments: ohRows || [],
+      session_type: session.session_type || "client_walk", trade_scope: tradeList, recipient,
+    }), {
       headers: { ...CORS, "Content-Type": "application/json" },
     });
   } catch (e) {

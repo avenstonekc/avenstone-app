@@ -2863,20 +2863,24 @@ export const sbUpdatePhotoCaption = async (id, caption) => {
 };
 
 // Build the recap PDF client-side, upload to the private bucket, email it, mark sent.
-export const sbSendRecap = async ({ recap, job, measurements, photos, pdfBase64, sessionId }) => {
+// WALKTHROUGH_TYPES — sessionType forks the recipient (sub vs client), the email tone, and the
+// Documents-tab label/visibility. Sub recaps go to the sub and stay internal (not client_visible).
+export const sbSendRecap = async ({ recap, job, measurements, photos, pdfBase64, sessionId, sessionType = 'client_walk', tradeScope = [], recipient = null }) => {
   try {
-    const to = job?.client_email;
-    if (!to) return { error: 'No client email on this job.' };
+    const isSub = sessionType === 'sub_walk';
+    const trades = (Array.isArray(tradeScope) ? tradeScope : []).filter(Boolean).join(', ');
+    const to = isSub ? recipient?.email : job?.client_email;
+    if (!to) return { error: isSub ? 'No email for the selected sub — pick the sub on the session, or download / attach to a bid.' : 'No client email on this job.' };
     // Persist the PDF privately for the record.
     let pdfPath = null;
     if (pdfBase64) {
       const bin = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
-      pdfPath = `consultation/${job.id}/recap_${Date.now()}.pdf`;
+      pdfPath = `consultation/${job.id}/${isSub ? 'sub_recap' : 'recap'}_${Date.now()}.pdf`;
       await sb.storage.from('job-documents').upload(pdfPath, bin, { contentType: 'application/pdf', upsert: false }).catch(() => {});
     }
     const res = await fetch(SEND_RECAP_EMAIL_URL, {
       method: 'POST', headers: authHeader(),
-      body: JSON.stringify({ to, client_name: job.client_name, job_address: job.address, pdf_base64: pdfBase64 }),
+      body: JSON.stringify({ to, client_name: isSub ? recipient?.name : job.client_name, job_address: job.address, pdf_base64: pdfBase64, variant: isSub ? 'sub' : 'client', trades }),
     });
     if (!res.ok) return { error: await res.text() };
     if (recap?.id) {
@@ -2901,13 +2905,16 @@ export const sbSendRecap = async ({ recap, job, measurements, photos, pdfBase64,
           tenant_id: AV_TENANT,
           job_id: job.id,
           uploaded_by_id: user?.id || AV_USER_ID || null,
-          name: `Consultation Recap${job.address ? ' — ' + job.address : ''}`,
+          name: isSub
+            ? `Sub Walkthrough${trades ? ' — ' + trades : ''}${job.address ? ' — ' + job.address : ''}`
+            : `Consultation Recap${job.address ? ' — ' + job.address : ''}`,
           storage_path: pdfPath,
           storage_bucket: 'job-documents',
           mime_type: 'application/pdf',
           category: 'Documents',
-          subcategory: null,
-          client_visible: true,
+          subcategory: isSub ? 'Sub Walkthrough' : null,
+          // Sub scope is internal/sub-facing — not shown to the homeowner. Client recap stays visible.
+          client_visible: !isSub,
           related_entity_type: 'consultation_session',
           related_entity_id: sessionId,
           lifecycle_status: 'active',

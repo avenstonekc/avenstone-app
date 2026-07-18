@@ -746,6 +746,8 @@ export default function ConsultationTab({ job, profile, setTab }) {
             sessionId={sessionIdRef.current}
             unresolvedGaps={unresolvedGaps}
             onComposed={handleRecapComposed}
+            sessionType={walkType}
+            tradeScope={selectedTrades}
           />
         )}
 

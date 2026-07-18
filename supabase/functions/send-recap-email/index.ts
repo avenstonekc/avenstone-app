@@ -12,20 +12,31 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { to, client_name, job_address, html, pdf_base64 } = await req.json();
+    const { to, client_name, job_address, html, pdf_base64, variant = "client", trades = "" } = await req.json();
     if (!to || !pdf_base64) return new Response("missing fields", { status: 400 });
 
     const label = job_address || "Your Project";
+    // WALKTHROUGH_TYPES — sub variant is a work-order tone to the sub; client is unchanged.
+    const isSub = variant === "sub";
+    const subject = isSub
+      ? `Walkthrough Scope${trades ? ` — ${trades}` : ""} — ${label}`
+      : `Your Consultation Recap — ${label}`;
+    const defaultHtml = isSub
+      ? `<p>Hi${client_name ? ` ${client_name}` : ""},</p><p>Attached is the scope from our walkthrough${trades ? ` for ${trades}` : ""} at ${label}. It covers the work, site conditions, measurements, and photos so you can put a number on it. No pricing from our side — send us your bid when you're ready, and flag anything unclear.</p><p>— Avenstone Group</p>`
+      : `<p>Hi${client_name ? ` ${client_name}` : ""},</p><p>Thanks for walking through the project with us. Attached is a recap of what we discussed — the scope our bid will be based on. Please review it and let us know if we missed anything.</p><p>— Avenstone Group</p>`;
+    const filename = isSub
+      ? `Sub Walkthrough${trades ? ` — ${trades}` : ""} — ${label}.pdf`
+      : `Consultation Recap — ${label}.pdf`;
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: FROM,
         to,
-        subject: `Your Consultation Recap — ${label}`,
-        html: html || `<p>Hi${client_name ? ` ${client_name}` : ""},</p><p>Thanks for walking through the project with us. Attached is a recap of what we discussed — the scope our bid will be based on. Please review it and let us know if we missed anything.</p><p>— Avenstone Group</p>`,
+        subject,
+        html: html || defaultHtml,
         attachments: [{
-          filename: `Consultation Recap — ${label}.pdf`,
+          filename,
           content: pdf_base64,
         }],
       }),
