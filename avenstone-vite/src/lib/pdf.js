@@ -2194,6 +2194,70 @@ const _renderSummaryPage = (doc, floors, job, pageNum, totalPages, logoDataUrl, 
   doc.text(now, W - M, 788, { align: 'right' });
 };
 
+// SCAN_SCOPE_CAPTURE Slice 3 — per-room scope-of-work page. Lists each room carrying a scope_note
+// (the caller skips this page entirely when none exist). Portrait, style-matched to the summary page:
+// navy header band + gold accent, navy footer, helvetica. Reads room.name + room.scope_note off the
+// post-override rooms (applyEditOverrides spreads both through). Overflows to extra portrait pages if
+// the notes are long; each scope page gets its own footer.
+const _renderScopePage = (doc, floors, job, pageNum, totalPages, logoDataUrl) => {
+  const W = 612;
+  const navy = [10, 31, 68], gold = [201, 168, 76];
+  const M = 48;
+  const CW = W - M * 2;
+
+  const drawHeader = () => {
+    doc.setFillColor(...navy); doc.rect(0, 0, W, 52, 'F');
+    doc.setFillColor(...gold); doc.rect(0, 52, W, 3, 'F');
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, 'JPEG', M, 6, 40, 40);
+    } else {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...gold);
+      doc.text('AVENSTONE GROUP', M, 22);
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(200, 200, 200);
+    doc.text('SCOPE OF WORK', M, 50);
+    doc.setFontSize(8); doc.setTextColor(180, 180, 180);
+    doc.text(job.address || '', W - M, 22, { align: 'right' });
+  };
+
+  const drawFooter = (pn) => {
+    const now = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    doc.setFillColor(...navy); doc.rect(0, 772, W, 40, 'F');
+    doc.setFontSize(8); doc.setTextColor(...gold); doc.setFont('helvetica', 'bold');
+    doc.text('AVENSTONE GROUP LLC', M, 788);
+    doc.setTextColor(180, 180, 180); doc.setFont('helvetica', 'normal');
+    doc.text(`Page ${pn} of ${totalPages}`, W / 2, 788, { align: 'center' });
+    doc.text(now, W - M, 788, { align: 'right' });
+  };
+
+  drawHeader();
+  let curPage = pageNum;
+  let y = 82;
+
+  const roomsWithNotes = floors.flatMap(f => f.rooms).filter(r => String(r?.scope_note || '').trim());
+  for (const room of roomsWithNotes) {
+    const noteLines = doc.splitTextToSize(String(room.scope_note).trim(), CW);
+    const blockH = 32 + noteLines.length * 13;
+    if (y + blockH > 760) {
+      drawFooter(curPage);
+      doc.addPage('letter', 'portrait');
+      curPage++;
+      drawHeader();
+      y = 82;
+    }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...navy);
+    doc.text(room.name || '—', M, y);
+    y += 6;
+    doc.setDrawColor(...gold); doc.setLineWidth(0.5); doc.line(M, y, M + 40, y);
+    y += 12;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(55, 65, 81);
+    noteLines.forEach(line => { doc.text(line, M, y); y += 13; });
+    y += 14;
+  }
+
+  drawFooter(curPage);
+};
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
 export const buildFloorPlanPDF = async (rawScan, job) => {
   try {
@@ -2260,8 +2324,10 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
     console.log('[LIDAR_PDF_STAGE] grouping rooms by floor');
     const floors = _groupByFloor(rooms);
     const totalFloors = floors.length;
-    const totalPages = totalFloors + 1;
-    console.log(`[LIDAR_PDF_STAGE] ${totalFloors} floor(s), ${rooms.length} room(s)`);
+    // SCAN_SCOPE_CAPTURE Slice 3 — a scope-of-work page is appended only when a room carries a note.
+    const hasScopePage = floors.flatMap(f => f.rooms).some(r => String(r?.scope_note || '').trim());
+    const totalPages = totalFloors + 1 + (hasScopePage ? 1 : 0);
+    console.log(`[LIDAR_PDF_STAGE] ${totalFloors} floor(s), ${rooms.length} room(s), scopePage=${hasScopePage}`);
 
     const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
     console.log('[LIDAR_PDF_STAGE] jsPDF doc created');
@@ -2276,7 +2342,14 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
 
     console.log('[LIDAR_PDF_STAGE] rendering summary page');
     doc.addPage('letter', 'portrait');
-    _renderSummaryPage(doc, floors, job, totalPages, totalPages, logoDataUrl, normalizedData);
+    const summaryPageNum = totalFloors + 1;
+    _renderSummaryPage(doc, floors, job, summaryPageNum, totalPages, logoDataUrl, normalizedData);
+
+    if (hasScopePage) {
+      console.log('[LIDAR_PDF_STAGE] rendering scope-of-work page');
+      doc.addPage('letter', 'portrait');
+      _renderScopePage(doc, floors, job, summaryPageNum + 1, totalPages, logoDataUrl);
+    }
 
     console.log('[LIDAR_PDF_STAGE] buildFloorPlanPDF complete');
     return doc;
