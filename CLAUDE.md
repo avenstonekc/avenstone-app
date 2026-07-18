@@ -619,13 +619,22 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 `normalized_geometry JSONB` is stored on both `job_lidar_scans` and `floor_plans`. Shape:
 ```
 {
-  rooms: [{ id, name, type, polygon, centroid, area_sqft, worldX, worldZ, height, floor }],
+  rooms: [{ id, name, type, polygon, centroid, area_sqft, worldX, worldZ, height, floor,
+            objects?: [{ id, category, center:[x,z], width, depth, height, rotationY, confidence, room_id }] }],
   walls: [{ id, p1:[x,z], p2:[x,z], room_id, classification, adjoining_room_ids, thickness_ft }],
   doors: [{ id, p1, p2, midpoint, width, nx, nz, room_ids[] }],
   windows: [{ id, p1, p2, midpoint, width, room_id }],
   metadata: { total_area_sqft, room_count, normalize_version }
 }
 ```
+**Fixtures/objects (FIXTURE_RENDER, 2026-07-18):** `rooms[i].objects` carries RoomPlan-captured
+fixtures (toilet, bathtub, sink, stove, oven, refrigerator, dishwasher, washerDryer, storage). `center`
+is world-space feet (room-local Swift coords + worldX/worldZ). `rotationY` is a world-XZ heading
+(Swift `atan2(x,z)`) — pdf.js `_processAllRooms` carries it as a forward unit vector and transforms it
+like a door normal so it survives rotation + the portrait axis-swap. Key is `objects` on the room, NOT a
+top-level array. Absent when a room has no captured fixtures. `pdf.js _drawFixture` renders each as a
+muted schematic symbol (no wall erase, no dim/area impact). The non-normalized `_snapToOrtho` fallback
+also passes objects through — both render paths converge at `_processAllRooms`.
 **Primary/fallback contract:**
 - `pdf.js buildFloorPlanPDF`: calls `normalizeFloorPlan(scan)` (post-override) → if ok, uses normalized geometry as primary render source (skips `_snapToOrtho`, uses Shoelace `area_sqft` for SF labels and summary). Falls back to legacy raw path (unchanged) if normalize fails.
 - `sbSaveJobLidarScan`: inline normalize fires post-INSERT (fire-and-safe), attaches result to in-memory return value so the caller has it without waiting for the async DB update.

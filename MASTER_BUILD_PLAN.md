@@ -25,6 +25,9 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
 | i | **Kalin: pay Aguayo remainder $16,563.06** — log via `add_sub_invoice_payment_with_ledger`. | 2026-07-15 |
 | ~~j~~ | ~~**Countertops bathroom rates**~~ **RESOLVED 2026-07-16** — $85/SF (all-in, Sarto E79731 + Euroselect 13774 midpoint), $135/ea sink cutout, $120/job template fee. Migration `20260716200000`. N=2 deep-equal $10,046.73. | ~~—~~ |
 | ~~k~~ | ~~**Confirm `takeoff_unit_costs` as single rate authority**~~ **RESOLVED 2026-07-16** — P3+P4 shipped; `price_plan` reads `takeoff_unit_costs` exclusively. | ~~—~~ |
+| l | **Master bath site measurement (12101 Pawnee Ln)** — ~160 SF floor is an assumption; scanner lost the room to mirror walls | Blocks final PAWNEE_ESTIMATE quantities (floor tile, skim/paint SF) | 2026-07-17 |
+| m | **Basement VCT asbestos test result (12101 Pawnee Ln)** — test VCT/mastic before demo; positive = abatement change order | Blocks basement flooring demo start; base price excludes abatement | 2026-07-17 |
+| n | **Confirm `fixed_bid` financial model for 12101 Pawnee Ln** — estimate built at bid_model_config default 30% / $1,200 PM | Blocks job creation + proposal send | 2026-07-17 |
 
 ### NEXT CODE DISPATCH — locked sequence (Kalin 2026-07-16/17)
 
@@ -36,6 +39,12 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
 **TIER 2 — Estimating spine (RESEQUENCED — locked 2026-07-17):**
 4. **Rate reconciliation (parked iii) — one rate authority (~2-3).** `takeoff_unit_costs` is the single source. LOCKED decision: rates Kalin typed via gap-fill into `rate_book_labor` are DISCARDED, not migrated — he re-enters clean via Rate Book after rails ship. Fixes: system re-asking for rates it already has (per-engine gap roulette). Unifies the two-table debt.
 5. **Gap-entry sanity rails (~2-3).** Three layers: (a) unit + live computed line total shown AT entry ($/SF × qty visible while typing); (b) anchor-deviation flag when entry >3-5× regional anchor either direction; (c) line-total outlier flag when one line exceeds a threshold % of draft subtotal. **Trigger incident (2026-07-17 live run):** $250 typed into a per-SF cleanup slot silently became $12,250 (55% of the estimate).
+5a. **SCAN_TRUST (~3-4) — locked 2026-07-17 (Kalin + Opus):** Three-feature arc addressing real-world scan quality failures from 12101 Pawnee LN field run.
+   - **Scan naming:** `scan_name TEXT` column on `job_lidar_scans` + `contact_lidar_scans` (migration). Wizard name-entry step before scanning. FloorPlanTab shows name. `floor_plans` auto-name uses scan_name.
+   - **Room notes:** `room.notes` in existing rooms JSONB (no migration). Textarea in ResultPhase post-scan. Notes visible per-room in scan history. **Notes feed scope_prefill parse path** — read alongside description box as scoped per-room context; a room note on "Basement" becomes AI context for basement takeoff lines.
+   - **SCAN_TRUST bad-scan detection:** Auto-flag band (per-room): ceiling height outside 6–14 ft; door count for bathroom = 0 OR > 4; single room > 2,500 sf (open-space collapse); wall_sf (perimeter × 8 normalized) outside 0.5–3.5× floor_sf; floor area < 5 sf. Flagged rooms shown expanded in FloorPlanTab with per-flag reason chip. "Mark as bad" toggle per scan. **Flagged scans are excluded from resolveGeometry until confirmed-good or overridden with manual dims (source='manual', D4 precedence).** A flag that still prices is decoration — enforced in resolveGeometry gate.
+   - **Duplicate-save guard:** wizard debounces save call; duplicate detection on load (identical rooms + timestamp < 30s apart → collapse to one card with "(saved X times)" indicator).
+   - **Thresholds:** Tuned against 12101 Pawnee LN ground-truth (Kalin confirm/deny session 2026-07-17). Living Room 18.06 ft height → height-flag catches it. Bathroom 6-door → door-count flag catches it. Basement 4,209 sf single room → large-room-collapse flag catches it.
 6. **CONFIGURATOR_FIELD_POLISH (~3-4) — from 2026-07-16/17 live test run:**
    - (a) Number fields must PREFILL parsed values (dims, vanity width) for one-tap confirm — same pattern choice fields already use. Toilet auto-select behavior approved as-is.
    - (b) Feet+inches dual input boxes for all dimension fields; store inches.
