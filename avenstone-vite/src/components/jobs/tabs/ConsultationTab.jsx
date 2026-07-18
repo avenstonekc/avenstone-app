@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, sbToggleOhShitProposal, sbRunGapAnalysis, sbCreateCOFromOhShit, sbLoadJobRoomScopes } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbToggleOhShitProposal, sbRunGapAnalysis, sbCreateCOFromOhShit, sbLoadJobRoomScopes, sbLoadEngagementsForJob } from '../../../lib/supabase';
 import { sessionToEstimatePrefill } from '../../../lib/sessionToEstimatePrefill';
 import { Ic, f$, isMob, ls } from '../../../lib/utils';
 import GapResolutionModal from '../consultation/GapResolutionModal';
@@ -89,6 +89,12 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const [showGapModal, setShowGapModal] = useState(false);
   const [unresolvedGaps, setUnresolvedGaps] = useState([]);
 
+  // WALKTHROUGH_TYPES — session audience picker (client walk default vs sub walk)
+  const [walkType, setWalkType] = useState('client_walk');
+  const [engagements, setEngagements] = useState([]);
+  const [selectedTrades, setSelectedTrades] = useState([]);
+  const [selectedSubId, setSelectedSubId] = useState('');
+
   const sessionIdRef = useRef(null);
 
   // Keep sessionIdRef in sync
@@ -99,8 +105,16 @@ export default function ConsultationTab({ job, profile, setTab }) {
   // Load past sessions + scans on mount
   useEffect(() => {
     loadSessions();
+    loadEngagements();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);
+
+  // WALKTHROUGH_TYPES — engaged subs/trades power the sub-walk trade + sub pickers
+  const loadEngagements = async () => {
+    if (!job?.id) return;
+    const res = await sbLoadEngagementsForJob(job.id);
+    if (res?.ok) setEngagements(res.data || []);
+  };
 
   const loadSessions = async () => {
     if (!job?.id) return;
@@ -118,21 +132,25 @@ export default function ConsultationTab({ job, profile, setTab }) {
   };
 
   // ─── Start Session ─────────────────────────────────────────────────────────
+  // WALKTHROUGH_TYPES — the insert carries the audience type + trade scope. Client
+  // walk stores type only; sub walk also stores the trade full-path(s) and (optionally)
+  // the specific engaged sub. Consumed by the coach (Slice 2) and recap (Slice 3).
 
   const startSession = async () => {
     setErr('');
     try {
-      const userId = AV_USER_ID || profile?.id;
-      const tenantId = AV_TENANT || profile?.tenant_id;
-
+      const isSub = walkType === 'sub_walk';
       const { data, error } = await sb
         .from('consultation_sessions')
         .insert({
           job_id: job.id,
-          started_by: userId,
-          tenant_id: tenantId,
+          started_by: AV_USER_ID || profile?.id,
+          tenant_id: AV_TENANT || profile?.tenant_id,
           status: 'active',
           started_at: new Date().toISOString(),
+          session_type: walkType,
+          trade_scope: isSub && selectedTrades.length ? selectedTrades : null,
+          walk_sub_id: isSub && selectedSubId ? selectedSubId : null,
         })
         .select()
         .single();
@@ -156,16 +174,18 @@ export default function ConsultationTab({ job, profile, setTab }) {
 
   const ensureSession = async () => {
     if (sessionIdRef.current) return sessionIdRef.current;
-    const userId = AV_USER_ID || profile?.id;
-    const tenantId = AV_TENANT || profile?.tenant_id;
+    const isSub = walkType === 'sub_walk';
     const { data, error } = await sb
       .from('consultation_sessions')
       .insert({
         job_id: job.id,
-        started_by: userId,
-        tenant_id: tenantId,
+        started_by: AV_USER_ID || profile?.id,
+        tenant_id: AV_TENANT || profile?.tenant_id,
         status: 'active',
         started_at: new Date().toISOString(),
+        session_type: walkType,
+        trade_scope: isSub && selectedTrades.length ? selectedTrades : null,
+        walk_sub_id: isSub && selectedSubId ? selectedSubId : null,
       })
       .select()
       .single();
@@ -353,13 +373,114 @@ export default function ConsultationTab({ job, profile, setTab }) {
 
   // ─── Idle Phase ────────────────────────────────────────────────────────────
 
-  const renderIdle = () => (
+  const renderIdle = () => {
+    // WALKTHROUGH_TYPES — derive the sub-walk pickers from the job's engaged subs
+    const engagedTrades = [...new Set(engagements.map((e) => e.trade).filter(Boolean))];
+    const subsForTrades = engagements.filter(
+      (e) => !selectedTrades.length || selectedTrades.includes(e.trade)
+    );
+    const subOptions = [
+      ...new Map(subsForTrades.filter((e) => e.sub?.id).map((e) => [e.sub.id, e.sub])).values(),
+    ];
+    const subWalkReady = walkType === 'client_walk' || selectedTrades.length > 0;
+
+    return (
     <div>
+      {/* WALKTHROUGH_TYPES — pick the audience for this walk before starting */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+          Walkthrough type
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[
+            { key: 'client_walk', label: 'Client Walkthrough', sub: 'Homeowner recap' },
+            { key: 'sub_walk', label: 'Sub Walkthrough', sub: 'Trade scope for a sub' },
+          ].map((opt) => {
+            const on = walkType === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={() => {
+                  setWalkType(opt.key);
+                  if (opt.key === 'client_walk') { setSelectedTrades([]); setSelectedSubId(''); }
+                }}
+                style={{
+                  flex: 1, textAlign: 'left', cursor: 'pointer',
+                  border: `2px solid ${on ? GOLD : BORDER}`,
+                  background: on ? 'rgba(201,168,76,0.10)' : '#fff',
+                  borderRadius: 10, padding: '10px 14px',
+                }}
+              >
+                <div style={{ fontFamily: 'DM Sans, sans-serif', fontWeight: 700, fontSize: 14, color: NAV }}>{opt.label}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{opt.sub}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {walkType === 'sub_walk' && (
+          <div style={{ marginTop: 12, padding: '12px 14px', border: `1px solid ${BORDER}`, borderRadius: 10, background: '#fff' }}>
+            {engagedTrades.length === 0 ? (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                No subs engaged on this job yet. Engage a sub in the <strong>Subs</strong> tab first, or run a client walkthrough.
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8 }}>
+                  Which trade(s) is this walk for?
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {engagedTrades.map((tr) => {
+                    const on = selectedTrades.includes(tr);
+                    return (
+                      <button
+                        key={tr}
+                        onClick={() => setSelectedTrades(on ? selectedTrades.filter((t) => t !== tr) : [...selectedTrades, tr])}
+                        style={{
+                          cursor: 'pointer', borderRadius: 20, fontSize: 13, fontWeight: 600, padding: '5px 12px',
+                          border: `1px solid ${on ? GOLD : BORDER}`,
+                          background: on ? GOLD : '#fff',
+                          color: on ? NAV : 'var(--text-secondary)',
+                        }}
+                      >
+                        {on ? '✓ ' : ''}{tr}
+                      </button>
+                    );
+                  })}
+                </div>
+                {subOptions.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 6 }}>
+                      Sub (optional)
+                    </div>
+                    <select
+                      value={selectedSubId}
+                      onChange={(e) => setSelectedSubId(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 14, fontFamily: 'DM Sans, sans-serif', background: '#fff', color: NAV }}
+                    >
+                      <option value="">— Not specified —</option>
+                      {subOptions.map((s) => (
+                        <option key={s.id} value={s.id}>{s.full_name || s.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {!subWalkReady && (
+                  <div style={{ fontSize: 12, color: 'var(--amber-text-strong)', marginTop: 10 }}>
+                    Pick at least one trade to start a sub walk.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10, marginBottom: 28 }}>
-        <button className="btn btn-gold" style={{ flex: 1, fontSize: 16, padding: '16px 0' }} onClick={startSession}>
-          Start Consultation + Listen
+        <button className="btn btn-gold" style={{ flex: 1, fontSize: 16, padding: '16px 0', opacity: subWalkReady ? 1 : 0.5 }} onClick={startSession} disabled={!subWalkReady}>
+          {walkType === 'sub_walk' ? 'Start Sub Walk + Listen' : 'Start Consultation + Listen'}
         </button>
-        <button className="btn btn-navy" style={{ flex: 1, fontSize: 16, padding: '16px 0' }} onClick={startMeasuring}>
+        <button className="btn btn-navy" style={{ flex: 1, fontSize: 16, padding: '16px 0', opacity: subWalkReady ? 1 : 0.5 }} onClick={startMeasuring} disabled={!subWalkReady}>
           Jump to Measuring
         </button>
       </div>
@@ -383,13 +504,20 @@ export default function ConsultationTab({ job, profile, setTab }) {
                   transition: 'background 0.15s',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 14, color: NAV, fontWeight: 600 }}>
                     {new Date(s.created_at).toLocaleDateString('en-US', {
                       month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
                     })}
                   </span>
-                  <StatusBadge status={s.status} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {s.session_type === 'sub_walk' && (
+                      <span style={{ padding: '2px 8px', borderRadius: 20, background: '#EDE9FE', color: '#5B21B6', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        Sub Walk{s.trade_scope?.length ? ` · ${s.trade_scope.join(', ')}` : ''}
+                      </span>
+                    )}
+                    <StatusBadge status={s.status} />
+                  </div>
                 </div>
                 {viewSession === s.id && (
                   <div style={{ marginTop: 12 }}>
@@ -427,7 +555,8 @@ export default function ConsultationTab({ job, profile, setTab }) {
         Floor plan scanning has moved to the <strong>Scanner</strong> tab.
       </div>
     </div>
-  );
+    );
+  };
 
   // ─── Complete / Result Phase ───────────────────────────────────────────────
 

@@ -869,10 +869,13 @@ export type Database = {
           id: string
           job_id: string | null
           raw_transcript: string | null
+          session_type: string
           started_at: string | null
           started_by: string | null
           status: string | null
           tenant_id: string
+          trade_scope: string[] | null
+          walk_sub_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -880,10 +883,13 @@ export type Database = {
           id?: string
           job_id?: string | null
           raw_transcript?: string | null
+          session_type?: string
           started_at?: string | null
           started_by?: string | null
           status?: string | null
           tenant_id?: string
+          trade_scope?: string[] | null
+          walk_sub_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -891,10 +897,13 @@ export type Database = {
           id?: string
           job_id?: string | null
           raw_transcript?: string | null
+          session_type?: string
           started_at?: string | null
           started_by?: string | null
           status?: string | null
           tenant_id?: string
+          trade_scope?: string[] | null
+          walk_sub_id?: string | null
         }
         Relationships: [
           {
