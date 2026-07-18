@@ -5321,6 +5321,63 @@ export type Database = {
           },
         ]
       }
+      scope_risks: {
+        Row: {
+          active: boolean
+          consideration: string
+          cost_high: number | null
+          cost_low: number | null
+          created_at: string
+          field_key: string | null
+          id: string
+          internal_note: string | null
+          is_draft: boolean
+          likelihood: string
+          project_type: string
+          risk_key: string
+          tenant_id: string | null
+          trade: string | null
+          trigger_type: string
+          trigger_values: string[]
+        }
+        Insert: {
+          active?: boolean
+          consideration: string
+          cost_high?: number | null
+          cost_low?: number | null
+          created_at?: string
+          field_key?: string | null
+          id?: string
+          internal_note?: string | null
+          is_draft?: boolean
+          likelihood?: string
+          project_type: string
+          risk_key: string
+          tenant_id?: string | null
+          trade?: string | null
+          trigger_type?: string
+          trigger_values?: string[]
+        }
+        Update: {
+          active?: boolean
+          consideration?: string
+          cost_high?: number | null
+          cost_low?: number | null
+          created_at?: string
+          field_key?: string | null
+          id?: string
+          internal_note?: string | null
+          is_draft?: boolean
+          likelihood?: string
+          project_type?: string
+          risk_key?: string
+          tenant_id?: string | null
+          trade?: string | null
+          trigger_type?: string
+          trigger_values?: string[]
+        }
+        Relationships: []
+      }
       sequence_enrollments: {
         Row: {
           completed_at: string | null

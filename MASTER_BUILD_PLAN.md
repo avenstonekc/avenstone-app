@@ -259,7 +259,7 @@ See `docs/arcs/MODEL_B_LIFECYCLE.md`.
 
 #### SCOPE_RISK_ARC
 
-**Net: 0 of 3 phases live.** Blueprint only. Gate clear (ESTIMATOR Phase 3 BUILT). Next arc on the locked sequence (Tier 3 above).
+**Net: 1 of 3 phases live (B2.4 SHIPPED 2026-07-18).** B2.4 = `scope_risks` library + draft seed (playbook_items was the wrong substrate — see the B2.4 row). B2.5 (estimator suggests risks, rep reviews) + B2.6 (proposal "Potential Considerations" reframe) next. Gate clear (ESTIMATOR Phase 3 BUILT).
 
 ---
 
@@ -482,7 +482,7 @@ All 22 prompts shipped. See arc inventory above. **No remaining items in Block 1
 | B2.2 — Batch unknowns | Surface gaps as GapBatchAsk batch (after-draft sequencing). | 2 | **SHIPPED** |
 | B2.3 — Learn loop | Save gap rates to rate_book_labor on rep opt-in. | 2 | **SHIPPED 2026-06-25** |
 | SCOPE_CAPTURE_ENGINE | Blueprint-approved 2026-06-25; one engine, four role faces. See detail below. | ~10-13 | PARTIAL (P1A/P1B/P2/SCOPE_PREFILL P3-P4 + CONSULTATION_MODE slices 1-4 SHIPPED; P3 vision + P4 Client INTAKE open) |
-| B2.4 — Scope Risk Phase 1 | Extend `tenant_playbook_items` with `is_scope_risk`; seed KC library. | 2 | NOT-BUILT |
+| B2.4 — Scope Risk Phase 1 | **`scope_risks` library** — playbook_items audited as the WRONG substrate (2026-07-18: it's a photo/doc checklist; `risk_note` is internal estimator metadata). New table keyed to project_type + optional field_key + trade full-path (trigger `project`/`answer`/`trade`, client-facing `consideration`, likelihood, optional cost range, `is_draft`). Draft platform seed (17 rows). | 2 | **SHIPPED 2026-07-18** |
 | B2.5 — Scope Risk Phase 2 | ai-estimator suggests risks; rep reviews before draft. | 2 | NOT-BUILT |
 | B2.6 — Scope Risk Phase 3 | "Potential Considerations" in estimate/proposal. | 3 | NOT-BUILT |
 | FLIP_FINANCIAL_MODEL | 6 phases. | 12 | **SHIPPED COMPLETE 2026-06-25** |
