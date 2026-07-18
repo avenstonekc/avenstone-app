@@ -26,6 +26,7 @@ export default function AmbientPanel({
   jobId,
   sessionId,
   getSessionId,
+  tradeScope = null,
   onTranscriptUpdate,
   onExtractionUpdate,
   onStartMeasuring,
@@ -57,8 +58,8 @@ export default function AmbientPanel({
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
 
   const needs = useMemo(
-    () => buildNeedsList({ fields: checklist.fields, modules: checklist.modules, answers, firedModules }),
-    [checklist, answers, firedModules],
+    () => buildNeedsList({ fields: checklist.fields, modules: checklist.modules, answers, firedModules, tradeScope }),
+    [checklist, answers, firedModules, tradeScope],
   );
   useEffect(() => { needsRef.current = needs; }, [needs]);
 

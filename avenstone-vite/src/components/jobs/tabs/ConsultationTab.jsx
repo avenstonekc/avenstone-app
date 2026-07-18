@@ -858,6 +858,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
             jobId={job.id}
             sessionId={sessionId}
             getSessionId={() => sessionIdRef.current}
+            tradeScope={walkType === 'sub_walk' ? selectedTrades : null}
             onTranscriptUpdate={setTranscript}
             onExtractionUpdate={setExtraction}
             onStartMeasuring={startMeasuring}

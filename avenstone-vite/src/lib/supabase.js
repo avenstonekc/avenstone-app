@@ -2682,7 +2682,7 @@ export const sbLoadConsultationChecklist = async (jobId) => {
   if (!projectTypes.length) return { fields: [], modules: [], projectTypes: [] };
   const [chk, mod] = await Promise.all([
     sb.from('scope_checklists')
-      .select('field_key, question, field_type, evidence_type, money_risk_rank, tenant_id')
+      .select('field_key, question, field_type, evidence_type, money_risk_rank, adds_trades, tenant_id')
       .in('project_type', projectTypes).eq('active', true)
       .or(`tenant_id.eq.${AV_TENANT},tenant_id.is.null`),
     sb.from('scope_modules')
