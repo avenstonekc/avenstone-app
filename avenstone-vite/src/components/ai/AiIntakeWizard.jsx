@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import LidarScanner from './LidarScanner';
+import RoomScopeCard from './RoomScopeCard';
 import HeightCaptureStep from './HeightCaptureStep';
 import { sb, AV_TENANT, sbSaveLidarScan, sbSaveJobLidarScan, sbUploadDoc, sbCreateFloorPlan } from '../../lib/supabase';
 import { stampGPS } from '../../lib/gps';
@@ -12,7 +13,7 @@ const BORDER = 'var(--border)';
 
 export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, job }) {
   const [rooms, setRooms] = useState([]);
-  const [step, setStep] = useState('scan'); // 'scan' | 'height' | 'save'
+  const [step, setStep] = useState('scan'); // 'scan' | 'roomScope' | 'height' | 'save'
   const [contacts, setContacts] = useState([]);
   const [contactSearch, setContactSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -30,7 +31,7 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
 
   function handleScanDone() {
     if (rooms.length === 0) { onClose(); return; }
-    setStep('height');
+    setStep('roomScope');
   }
 
   function handleHeightConfirm(heightMeters, heightSource, heightPoints) {
@@ -131,10 +132,10 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
       }}>
         <div>
           <h2 style={{ fontFamily: '"DM Serif Display", serif', fontSize: 20, margin: 0, lineHeight: 1.1 }}>
-            {step === 'save' ? 'Save Floor Plan' : step === 'height' ? 'Capture Height' : 'Room Scanner'}
+            {step === 'save' ? 'Save Floor Plan' : step === 'height' ? 'Capture Height' : step === 'roomScope' ? 'Name Rooms & Scope' : 'Room Scanner'}
           </h2>
           <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
-            {step === 'save' ? 'Attach scan to a contact' : step === 'height' ? 'Required for paint, drywall, and siding estimates' : 'Scan rooms with LiDAR to capture real dimensions'}
+            {step === 'save' ? 'Attach scan to a contact' : step === 'height' ? 'Required for paint, drywall, and siding estimates' : step === 'roomScope' ? 'Label each room and add scope of work' : 'Scan rooms with LiDAR to capture real dimensions'}
           </div>
         </div>
         <button
@@ -152,6 +153,15 @@ export default function AiIntakeWizard({ profile, onClose, onJobCreated, jobId, 
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 14px', WebkitOverflowScrolling: 'touch' }}>
         {step === 'scan' && (
           <LidarScanner rooms={rooms} onRoomsChange={setRooms} onDone={handleScanDone} />
+        )}
+
+        {step === 'roomScope' && (
+          <RoomScopeCard
+            rooms={rooms}
+            onChange={setRooms}
+            onConfirm={() => setStep('height')}
+            onBack={() => setStep('scan')}
+          />
         )}
 
         {step === 'height' && (
