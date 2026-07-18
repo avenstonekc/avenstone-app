@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   sbComposeRecap, sbUpdateRecap, sbConfirmMeasurement, sbUpdatePhotoCaption,
   sbSendRecap, sbLoadConsultationPhotos, sbAttachRecapToBid,
-  sbLoadRecap, sbLoadConsultationMeasurements,
+  sbLoadRecap, sbLoadConsultationMeasurements, sbUpd,
 } from '../../../lib/supabase';
 import { buildRecapPDF } from '../../../lib/recapPdf';
 import { isMob } from '../../../lib/utils';
@@ -33,6 +33,10 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
   const [measurements, setMeasurements] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [prevSentAt, setPrevSentAt] = useState(null);
+  // FIX 2 — inline client-email capture at send when the job has none (never a dead stop).
+  const [emailPrompt, setEmailPrompt] = useState(false);
+  const [emailInput, setEmailInput] = useState('');
+  const [localClientEmail, setLocalClientEmail] = useState(null);
 
   const linesToArr = (s) => s.split('\n').map((x) => x.trim()).filter(Boolean);
   const arrToLines = (a) => (a || []).join('\n');
@@ -127,23 +131,42 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
     setBusy(false);
   };
 
-  const sendRecap = async () => {
-    const toEmail = isSub ? recipient?.email : job.client_email;
-    if (!toEmail) {
-      setErr(isSub
-        ? 'No email for the selected sub — pick the sub on the session, or use Download / attach to a bid.'
-        : 'No client email on this job — add one in the Info tab first.');
-      return;
-    }
+  const doSend = async (toEmail) => {
     setBusy(true); setErr('');
     try {
       const doc = await buildDoc();
       const b64 = doc.output('datauristring').split(',')[1];
-      const res = await sbSendRecap({ recap, job, measurements, photos, pdfBase64: b64, sessionId, sessionType, tradeScope, recipient });
+      // Override client_email so the send uses the just-entered address even before the job prop refreshes.
+      const res = await sbSendRecap({ recap, job: { ...job, client_email: toEmail }, measurements, photos, pdfBase64: b64, sessionId, sessionType, tradeScope, recipient });
       if (res.error) { setErr(`Send failed: ${res.error}`); }
       else setSent(true);
     } catch (e) { setErr(`Send failed: ${e.message}`); }
     setBusy(false);
+  };
+
+  const sendRecap = async () => {
+    if (isSub) {
+      if (!recipient?.email) {
+        setErr('No email for the selected sub — pick the sub on the session, or use Download / attach to a bid.');
+        return;
+      }
+      return doSend(recipient.email);
+    }
+    // FIX 2 — client walk with no email: prompt inline instead of a dead stop.
+    const toEmail = localClientEmail || job.client_email;
+    if (!toEmail) { setEmailInput(''); setEmailPrompt(true); setErr(''); return; }
+    return doSend(toEmail);
+  };
+
+  // FIX 2 — save the entered email onto the job (so it's entered once), then send.
+  const saveEmailAndSend = async () => {
+    const em = emailInput.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { setErr('Enter a valid email address.'); return; }
+    setErr('');
+    try { await sbUpd(job.id, { client_email: em }); } catch { /* non-fatal — still send */ }
+    setLocalClientEmail(em);
+    setEmailPrompt(false);
+    await doSend(em);
   };
 
   // WALKTHROUGH_TYPES — one action: build the same PDF and attach it to the sub's bid (engagement),
@@ -258,7 +281,25 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
           Previously sent{typeof prevSentAt === 'string' ? ` ${new Date(prevSentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''} — edit and resend, or download, anytime.
         </div>
       )}
-      {sent && <div style={{ color: '#15803d', fontSize: 14, fontWeight: 600 }}>✓ Recap emailed to {isSub ? (recipient?.email || 'the sub') : job.client_email}</div>}
+      {sent && <div style={{ color: '#15803d', fontSize: 14, fontWeight: 600 }}>✓ Recap emailed to {isSub ? (recipient?.email || 'the sub') : (localClientEmail || job.client_email)}</div>}
+
+      {emailPrompt && !isSub && (
+        <div style={box}>
+          <div style={{ ...label, marginBottom: 6 }}>No client email on this job — add one to send</div>
+          <div style={{ display: 'flex', gap: 8, flexDirection: mob ? 'column' : 'row' }}>
+            <input
+              className="finp" type="email" inputMode="email" autoFocus
+              style={{ flex: 1, fontSize: 16 }} placeholder="client@email.com"
+              value={emailInput} onChange={(e) => setEmailInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveEmailAndSend(); }}
+            />
+            <button className="btn btn-gold" style={{ minHeight: 44 }} disabled={busy} onClick={saveEmailAndSend}>
+              {busy ? 'Saving…' : 'Save & Send'}
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Saved to the job — you only enter it once.</div>
+        </div>
+      )}
       {attachMsg && <div style={{ color: '#15803d', fontSize: 14, fontWeight: 600 }}>{attachMsg}</div>}
 
       <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10 }}>
