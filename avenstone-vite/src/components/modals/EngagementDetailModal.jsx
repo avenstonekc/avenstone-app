@@ -22,6 +22,7 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
   const [eng, setEng] = useState(null);
 
   const [mode, setMode] = useState('view');
+  const [scopeDocs, setScopeDocs] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
   const [form, setForm] = useState({ totalAmount: '', terms: '', startDate: '', endDate: '' });
@@ -59,9 +60,10 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
       const json = await res.json();
       if (!res.ok || json.error) { setErr(json.error || 'Failed to load engagement'); return; }
       // fn returns { ok, data: { engagement, currentBid } }
-      const { engagement, currentBid } = json.data;
+      const { engagement, currentBid, scopeDocuments } = json.data;
       const fetched = { ...engagement, current_bid: currentBid || null };
       setEng(fetched);
+      setScopeDocs(Array.isArray(scopeDocuments) ? scopeDocuments : []);
       const savedLines = Array.isArray(currentBid?.line_items) ? currentBid.line_items : [];
       setLineItems(savedLines);
       setEarliestStartDate(currentBid?.earliest_start_date ?? '');
@@ -79,7 +81,7 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
 
   useEffect(() => {
     if (!isOpen || !engagementId) return;
-    setLoading(true); setErr(''); setEng(null); setMode('view'); setFormError(null); setLineItems([]); setEarliestStartDate(''); setAvailabilityNotes('');
+    setLoading(true); setErr(''); setEng(null); setMode('view'); setFormError(null); setLineItems([]); setEarliestStartDate(''); setAvailabilityNotes(''); setScopeDocs([]);
     refetchModalData().finally(() => setLoading(false));
   }, [isOpen, engagementId]);
 
@@ -175,6 +177,28 @@ export default function EngagementDetailModal({ isOpen, onClose, engagementId, o
             <div style={{ background: 'var(--bg)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Scope</div>
               <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{eng.scope_description}</div>
+            </div>
+          )}
+
+          {/* Walkthrough scope documents — the sub bids from these (signed URLs, private bucket) */}
+          {scopeDocs.length > 0 && (
+            <div style={{ background: 'rgba(201,168,76,0.08)', border: `1px solid ${GOLD}55`, borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Walkthrough scope — bid from this</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {scopeDocs.map(d => (
+                  <a
+                    key={d.id}
+                    href={d.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--blue-link)', fontWeight: 600, textDecoration: 'none' }}
+                  >
+                    <span aria-hidden>📄</span>
+                    <span>{d.name || 'Walkthrough scope'}</span>
+                    <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>· open PDF</span>
+                  </a>
+                ))}
+              </div>
             </div>
           )}
 

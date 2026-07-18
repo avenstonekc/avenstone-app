@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   sbComposeRecap, sbUpdateRecap, sbConfirmMeasurement, sbUpdatePhotoCaption,
-  sbSendRecap, sbLoadConsultationPhotos,
+  sbSendRecap, sbLoadConsultationPhotos, sbAttachRecapToBid,
 } from '../../../lib/supabase';
 import { buildRecapPDF } from '../../../lib/recapPdf';
 import { isMob } from '../../../lib/utils';
@@ -21,6 +21,8 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
   const [err, setErr] = useState('');
   const [sent, setSent] = useState(false);
   const [recipient, setRecipient] = useState(null);
+  const [attaching, setAttaching] = useState(false);
+  const [attachMsg, setAttachMsg] = useState('');
 
   const [recap, setRecap] = useState(null);
   const [summary, setSummary] = useState('');
@@ -115,6 +117,23 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
     setBusy(false);
   };
 
+  // WALKTHROUGH_TYPES — one action: build the same PDF and attach it to the sub's bid (engagement),
+  // creating the bid request if none exists. The sub then bids from the walkthrough in SubPortal.
+  const attachToBid = async () => {
+    if (!recipient?.id) { setErr('Pick the sub on the session to attach this to a bid.'); return; }
+    setAttaching(true); setErr(''); setAttachMsg('');
+    try {
+      const doc = await buildDoc();
+      const b64 = doc.output('datauristring').split(',')[1];
+      const res = await sbAttachRecapToBid({ job, tradeScope, subId: recipient.id, pdfBase64: b64 });
+      if (res.error) { setErr(`Attach failed: ${res.error}`); }
+      else setAttachMsg(res.created
+        ? '✓ Bid request created and walkthrough attached — the sub can bid from it in their portal.'
+        : '✓ Walkthrough attached to the sub’s bid — visible in their portal.');
+    } catch (e) { setErr(`Attach failed: ${e.message}`); }
+    setAttaching(false);
+  };
+
   const box = { background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 12, padding: mob ? '14px 16px' : '18px 22px' };
   const label = { fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700, marginBottom: 6 };
   const ta = { width: '100%', minHeight: 64, fontSize: 16, padding: 10, border: `1px solid ${BORDER}`, borderRadius: 8, fontFamily: 'DM Sans, sans-serif', lineHeight: 1.5, resize: 'vertical' };
@@ -206,11 +225,17 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
 
       {err && <div style={{ color: '#EF4444', fontSize: 13 }}>{err}</div>}
       {sent && <div style={{ color: '#15803d', fontSize: 14, fontWeight: 600 }}>✓ Recap emailed to {isSub ? (recipient?.email || 'the sub') : job.client_email}</div>}
+      {attachMsg && <div style={{ color: '#15803d', fontSize: 14, fontWeight: 600 }}>{attachMsg}</div>}
 
       <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10 }}>
         <button className="btn btn-gold" style={{ flex: 1, minHeight: 48, fontSize: 15 }} disabled={busy || sent} onClick={sendRecap}>
           {sent ? '✓ Sent' : busy ? 'Working…' : `Generate PDF & Email to ${isSub ? 'Sub' : 'Client'} →`}
         </button>
+        {isSub && (
+          <button className="btn btn-navy" style={{ flex: 1, minHeight: 48, fontSize: 15 }} disabled={busy || attaching} onClick={attachToBid}>
+            {attaching ? 'Attaching…' : 'Attach to Sub’s Bid →'}
+          </button>
+        )}
         <button className="btn btn-ghost" style={{ minWidth: mob ? 'auto' : 140, minHeight: 48 }} disabled={busy} onClick={downloadPdf}>
           Download PDF
         </button>

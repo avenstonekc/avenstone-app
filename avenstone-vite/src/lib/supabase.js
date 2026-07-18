@@ -2925,6 +2925,76 @@ export const sbSendRecap = async ({ recap, job, measurements, photos, pdfBase64,
   } catch (e) { return { error: String(e?.message || e) }; }
 };
 
+// WALKTHROUGH_TYPES Slice 4 — attach a sub-walk recap to the sub's bid so they bid from the walk.
+// Finds the live engagement for (job, sub, primary trade); if none exists, creates one
+// (sub_drafted, invited) — create-and-attach in one action. The PDF lands in the private
+// bid-quotes bucket, is registered as a job_files row keyed to the engagement, and its id is
+// added to engagement.shared_doc_ids so view-engagement can hand the sub a signed URL. Re-attach
+// prunes the prior walk doc for this engagement so nothing stacks.
+export const sbAttachRecapToBid = async ({ job, tradeScope = [], subId, pdfBase64 }) => {
+  try {
+    if (!job?.id) return { error: 'Missing job.' };
+    if (!subId) return { error: 'No sub selected on this walk — pick the sub on the session to attach.' };
+    if (!pdfBase64) return { error: 'No PDF to attach.' };
+    const trades = (Array.isArray(tradeScope) ? tradeScope : []).filter(Boolean);
+    const trade = trades[0];
+    if (!trade) return { error: 'No trade on this walk.' };
+
+    // Existing live engagement for (job, sub, primary trade) → attach; else create-and-attach.
+    let engagementId = null; let created = false;
+    const look = await sbLoadEngagementByIds({ jobId: job.id, subId, trade });
+    if (look.ok && look.data.length) engagementId = look.data[0].id;
+    if (!engagementId) {
+      const cr = await sbCreateEngagement({
+        jobId: job.id, subId, trade, bidType: 'sub_drafted',
+        scopeDescription: `Scope from the on-site walkthrough — ${trades.join(', ')}`,
+      });
+      if (!cr.ok) return { error: cr.error };
+      engagementId = cr.data.id; created = true;
+    }
+
+    // Upload the recap PDF to the private bid-quotes bucket.
+    const bin = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
+    const path = `${job.id}/${engagementId}/sub_walk_${Date.now()}.pdf`;
+    const up = await sb.storage.from('bid-quotes').upload(path, bin, { contentType: 'application/pdf', upsert: false });
+    if (up.error) return { error: up.error.message || 'Upload failed' };
+
+    // Prune any prior walk doc for this engagement (avoid stacking on re-attach).
+    const { data: priorDocs } = await sb.from('job_files').select('id')
+      .eq('related_entity_type', 'job_sub_engagement')
+      .eq('related_entity_id', engagementId)
+      .eq('subcategory', 'Sub Walkthrough');
+    const priorIds = (priorDocs || []).map((d) => d.id);
+    if (priorIds.length) await sb.from('job_files').delete().in('id', priorIds);
+
+    const { data: { user } } = await sb.auth.getUser();
+    const { data: jf, error: jfErr } = await sb.from('job_files').insert({
+      tenant_id: AV_TENANT,
+      job_id: job.id,
+      uploaded_by_id: user?.id || AV_USER_ID || null,
+      name: `Sub Walkthrough${trades.length ? ' — ' + trades.join(', ') : ''}`,
+      storage_path: path,
+      storage_bucket: 'bid-quotes',
+      mime_type: 'application/pdf',
+      category: 'Documents',
+      subcategory: 'Sub Walkthrough',
+      client_visible: false,
+      related_entity_type: 'job_sub_engagement',
+      related_entity_id: engagementId,
+      lifecycle_status: 'active',
+    }).select().single();
+    if (jfErr) return { error: jfErr.message };
+
+    // Point the engagement at the doc (dedupe + drop pruned ids).
+    const { data: eng } = await sb.from('job_sub_engagements').select('shared_doc_ids').eq('id', engagementId).single();
+    const ids = (Array.isArray(eng?.shared_doc_ids) ? eng.shared_doc_ids : []).filter((id) => !priorIds.includes(id));
+    if (!ids.includes(jf.id)) ids.push(jf.id);
+    await sb.from('job_sub_engagements').update({ shared_doc_ids: ids, updated_at: new Date().toISOString() }).eq('id', engagementId);
+
+    return { ok: true, engagementId, created };
+  } catch (e) { return { error: String(e?.message || e) }; }
+};
+
 // SCE Phase 4B — scope-interview option cards. Returns the project type's choice
 // fields (question + options, money/risk order) and a field_key→option_key→public URL
 // image map (scope_option_images bucket). project_type-specific image beats the univ_

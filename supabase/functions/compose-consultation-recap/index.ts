@@ -125,11 +125,11 @@ Deno.serve(async (req) => {
 
     // Sub recaps go to the walked sub (not the client). Resolve here so the client always
     // has a recipient even when reopening a past session.
-    let recipient: { email: string | null; name: string | null } | null = null;
+    let recipient: { id: string | null; email: string | null; name: string | null } | null = null;
     if (isSub && session.walk_sub_id) {
       const { data: subProfile } = await sb
-        .from("profiles").select("email, full_name").eq("id", session.walk_sub_id).maybeSingle();
-      if (subProfile) recipient = { email: subProfile.email ?? null, name: subProfile.full_name ?? null };
+        .from("profiles").select("id, email, full_name").eq("id", session.walk_sub_id).maybeSingle();
+      if (subProfile) recipient = { id: subProfile.id ?? null, email: subProfile.email ?? null, name: subProfile.full_name ?? null };
     }
 
     // Canonical trade strings for measurement grouping.

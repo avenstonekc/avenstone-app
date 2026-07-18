@@ -64,8 +64,25 @@ Deno.serve(async (req) => {
       .eq("is_current", true)
       .maybeSingle();
 
-    // 6. Return engagement + current bid
-    return json({ ok: true, data: { engagement, currentBid: currentBid || null } }, 200);
+    // WALKTHROUGH_TYPES — resolve shared scope docs (e.g. the sub-walk recap) to signed URLs so
+    // the sub can open them. Service-role signs, so the sub never needs storage RLS on the bucket.
+    let scopeDocuments: Array<{ id: string; name: string; subcategory: string | null; url: string }> = [];
+    const docIds: string[] = Array.isArray(engagement.shared_doc_ids) ? engagement.shared_doc_ids : [];
+    if (docIds.length) {
+      const { data: files } = await sb
+        .from("job_files")
+        .select("id, name, storage_bucket, storage_path, subcategory")
+        .in("id", docIds)
+        .eq("lifecycle_status", "active");
+      const signed = await Promise.all((files || []).map(async (f: Record<string, any>) => {
+        const { data: sig } = await sb.storage.from(f.storage_bucket || "bid-quotes").createSignedUrl(f.storage_path, 3600);
+        return sig?.signedUrl ? { id: f.id, name: f.name, subcategory: f.subcategory ?? null, url: sig.signedUrl } : null;
+      }));
+      scopeDocuments = signed.filter((d): d is { id: string; name: string; subcategory: string | null; url: string } => !!d);
+    }
+
+    // 6. Return engagement + current bid + scope documents
+    return json({ ok: true, data: { engagement, currentBid: currentBid || null, scopeDocuments } }, 200);
 
   } catch (err) {
     console.error("[view-engagement] error:", err);
