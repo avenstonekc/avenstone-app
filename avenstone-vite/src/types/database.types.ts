@@ -747,6 +747,53 @@ export type Database = {
           },
         ]
       }
+      consultation_photos: {
+        Row: {
+          caption: string | null
+          caption_source: string
+          captured_at: string
+          created_at: string
+          id: string
+          job_id: string | null
+          session_id: string | null
+          sort: number
+          storage_path: string
+          tenant_id: string
+        }
+        Insert: {
+          caption?: string | null
+          caption_source?: string
+          captured_at?: string
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          session_id?: string | null
+          sort?: number
+          storage_path: string
+          tenant_id?: string
+        }
+        Update: {
+          caption?: string | null
+          caption_source?: string
+          captured_at?: string
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          session_id?: string | null
+          sort?: number
+          storage_path?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consultation_photos_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "consultation_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       consultation_sessions: {
         Row: {
           created_at: string | null
@@ -818,6 +865,7 @@ export type Database = {
           quality_score: number | null
           room_count: number | null
           rooms: Json
+          scan_name: string | null
           tenant_id: string
           total_sqft: number | null
         }
@@ -840,6 +888,7 @@ export type Database = {
           quality_score?: number | null
           room_count?: number | null
           rooms?: Json
+          scan_name?: string | null
           tenant_id: string
           total_sqft?: number | null
         }
@@ -862,6 +911,7 @@ export type Database = {
           quality_score?: number | null
           room_count?: number | null
           rooms?: Json
+          scan_name?: string | null
           tenant_id?: string
           total_sqft?: number | null
         }
@@ -2342,6 +2392,7 @@ export type Database = {
           quality_score: number | null
           room_count: number | null
           rooms: Json
+          scan_name: string | null
           tenant_id: string
           total_sqft: number | null
         }
@@ -2365,6 +2416,7 @@ export type Database = {
           quality_score?: number | null
           room_count?: number | null
           rooms?: Json
+          scan_name?: string | null
           tenant_id: string
           total_sqft?: number | null
         }
@@ -2388,6 +2440,7 @@ export type Database = {
           quality_score?: number | null
           room_count?: number | null
           rooms?: Json
+          scan_name?: string | null
           tenant_id?: string
           total_sqft?: number | null
         }
@@ -4929,6 +4982,7 @@ export type Database = {
           adds_trades: string[] | null
           audience: string | null
           created_at: string
+          evidence_type: string
           field_key: string
           field_type: string
           helper: string | null
@@ -4947,6 +5001,7 @@ export type Database = {
           adds_trades?: string[] | null
           audience?: string | null
           created_at?: string
+          evidence_type?: string
           field_key: string
           field_type: string
           helper?: string | null
@@ -4965,6 +5020,7 @@ export type Database = {
           adds_trades?: string[] | null
           audience?: string | null
           created_at?: string
+          evidence_type?: string
           field_key?: string
           field_type?: string
           helper?: string | null

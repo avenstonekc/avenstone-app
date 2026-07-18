@@ -2637,6 +2637,42 @@ export const sbLoadJobRoomScopes = async (jobId) => {
   return data || [];
 };
 
+// CONSULTATION_MODE Slice 1 — in-flow photo capture during an ambient session.
+// Uploads to the private job-documents bucket (path only; RLS on consultation_photos
+// gates access). Caption is NULL at capture — matched from the transcript at recap
+// time (slice 3). No caption UI here per the locked flow.
+export const sbUploadConsultationPhoto = async ({ jobId, sessionId, file, sort = 0 }) => {
+  try {
+    if (!file) return { error: 'No file' };
+    const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase();
+    const path = `consultation/${jobId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: ue } = await sb.storage.from('job-documents').upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
+    if (ue) return { error: ue.message || 'Upload failed' };
+    const { data, error: ie } = await sb.from('consultation_photos').insert({
+      tenant_id: AV_TENANT,
+      session_id: sessionId || null,
+      job_id: jobId,
+      storage_path: path,
+      sort,
+    }).select().single();
+    if (ie) { sb.storage.from('job-documents').remove([path]).catch(() => {}); return { error: ie.message }; }
+    return { data };
+  } catch (e) {
+    return { error: String(e?.message || e) };
+  }
+};
+
+// Load a session's photos with fresh signed URLs (private bucket → must sign).
+export const sbLoadConsultationPhotos = async (sessionId) => {
+  if (!sessionId) return [];
+  const { data } = await sb.from('consultation_photos').select('*').eq('session_id', sessionId).order('sort').order('captured_at');
+  const rows = data || [];
+  return Promise.all(rows.map(async (r) => {
+    const { data: sig } = await sb.storage.from('job-documents').createSignedUrl(r.storage_path, 3600);
+    return { ...r, url: sig?.signedUrl || null };
+  }));
+};
+
 // SCE Phase 4B — scope-interview option cards. Returns the project type's choice
 // fields (question + options, money/risk order) and a field_key→option_key→public URL
 // image map (scope_option_images bucket). project_type-specific image beats the univ_
