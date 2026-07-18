@@ -31,6 +31,7 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
   const [discussed, setDiscussed] = useState('');
   const [basis, setBasis] = useState('');
   const [open, setOpen] = useState('');
+  const [needsConfirm, setNeedsConfirm] = useState(''); // Item 3 — uncertain scope items to resolve before send
   const [measurements, setMeasurements] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [prevSentAt, setPrevSentAt] = useState(null);
@@ -56,6 +57,7 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
       setDiscussed(arrToLines(existing.discussed_items));
       setBasis(arrToLines(existing.scope_basis));
       setOpen(arrToLines(existing.open_items));
+      setNeedsConfirm(arrToLines(existing.needs_confirm));
       setPrevSentAt(existing.status === 'sent' ? (existing.sent_at || true) : null);
       const [ms, ph] = await Promise.all([
         sbLoadConsultationMeasurements(sessionId),
@@ -81,6 +83,7 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
     setDiscussed(arrToLines(r.discussed_items));
     setBasis(arrToLines(r.scope_basis));
     setOpen(arrToLines(r.open_items));
+    setNeedsConfirm(arrToLines(r.needs_confirm));
     setMeasurements(res.measurements || []);
     // Sign photo URLs for preview + PDF (compose returns rows without signed URLs).
     setPhotos(await sbLoadConsultationPhotos(sessionId));
@@ -95,6 +98,7 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
       discussed_items: linesToArr(discussed),
       scope_basis: linesToArr(basis),
       open_items: linesToArr(open),
+      needs_confirm: linesToArr(needsConfirm),
     });
   };
 
@@ -226,6 +230,20 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Item 3 — uncertain scope items the composer wouldn't state confidently (direction/detail
+          the evidence didn't resolve). Highlighted so the rep resolves them before send — an
+          uncertain flag beats a confident error on a client doc. Not on the PDF. */}
+      {needsConfirm.trim() && (
+        <div style={{ background: '#FFFBEB', border: '1px solid #F59E0B', borderRadius: 12, padding: mob ? '14px 16px' : '16px 20px' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#92400E', marginBottom: 6 }}>
+            ⚠ Confirm before sending
+          </div>
+          <div style={{ fontSize: 12, color: '#92400E', marginBottom: 8, lineHeight: 1.5 }}>
+            The recap couldn’t resolve the direction or a detail on these from what was said. Fix the scope above, then clear each line here.
+          </div>
+          <textarea style={{ ...ta, background: '#fff', borderColor: '#F59E0B' }} value={needsConfirm} onChange={(e) => setNeedsConfirm(e.target.value)} />
+        </div>
+      )}
       <div style={box}>
         <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: NAV, marginBottom: 12 }}>
           Review recap <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>— edit anything, then send</span>

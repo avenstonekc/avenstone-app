@@ -812,6 +812,7 @@ export type Database = {
           discussed_items: Json
           id: string
           job_id: string | null
+          needs_confirm: Json
           open_items: Json
           pdf_path: string | null
           scope_basis: Json
@@ -827,6 +828,7 @@ export type Database = {
           discussed_items?: Json
           id?: string
           job_id?: string | null
+          needs_confirm?: Json
           open_items?: Json
           pdf_path?: string | null
           scope_basis?: Json
@@ -842,6 +844,7 @@ export type Database = {
           discussed_items?: Json
           id?: string
           job_id?: string | null
+          needs_confirm?: Json
           open_items?: Json
           pdf_path?: string | null
           scope_basis?: Json

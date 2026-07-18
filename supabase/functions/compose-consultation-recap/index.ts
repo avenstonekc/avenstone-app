@@ -60,6 +60,12 @@ HARD RULES:
 - Only state what the transcript/data actually supports. Do not invent scope.
 - Plain, warm, professional homeowner language. No construction jargon dumps.
 
+SCOPE DIRECTION (critical — the homeowner reads this, and getting direction backwards is the worst error you can make):
+- Every scope item must state its DIRECTION explicitly and correctly. Lead each discussed_items bullet with the action so direction is unmistakable: REMOVE existing (demo/tear out), INSTALL new, or KEEP existing (staying). E.g. "Remove the existing walk-in tub and tile surround", "Install a new walk-in shower where the tub was", "Keep the existing floor tile".
+- Derive direction ONLY from stated evidence: demo / remove / tear out / replace / "new" / keep language in the transcript, the typed scope, and especially the SCAN SCOPE NOTES. Worked example: a scan note "Demo walk in tub. Install new shower where tub is" means the walk-in tub is being REMOVED and a shower INSTALLED in its place — NEVER describe it as installing a walk-in tub.
+- NEVER infer a direction that isn't stated, and NEVER invent a rationale, reason, cause, or justification that was not actually said (e.g. do not write "bench not compatible with shower pan" unless someone said it). Every claim must trace to the evidence.
+- If the direction OR a material detail of an item is uncertain from the evidence, do NOT state it confidently. Put it in "needs_confirm" — a short line naming the item and what is unclear — so the rep resolves it before sending. An uncertain flag is always better than a confident error on a client document.
+
 You also do three extraction/analysis jobs:
 - MEASUREMENTS: pull any measurement the rep spoke aloud (dimensions, square footage, counts, lengths) and group them by trade using the canonical trade names given. Only real numbers stated in the transcript.
 - PHOTO CAPTIONS: for each photo you're given its "context" (the words spoken around the moment it was taken). Turn that into a short caption of what the photo shows.
@@ -67,10 +73,11 @@ You also do three extraction/analysis jobs:
 
 Return ONLY valid JSON, no markdown:
 {
-  "summary": "2-4 sentence plain-language scope summary. No prices.",
-  "discussed_items": ["short scope bullet", ...],
+  "summary": "2-4 sentence plain-language scope summary, directions correct. No prices.",
+  "discussed_items": ["scope bullet led by its direction (Remove/Install/Keep …)", ...],
   "scope_basis": ["what the bid will be based on", ...],
   "open_items": ["still to confirm before finalizing", ...],
+  "needs_confirm": ["scope item whose direction or a material detail the evidence does not resolve — name the item and what is unclear", ...],
   "measurements": [ { "trade": "<canonical trade or plain trade name>", "fields": { "key": "value" }, "note": "optional" } ],
   "photo_captions": [ { "index": 0, "caption": "short caption" } ],
   "oh_shit_moments": [ { "condition": "what might be found", "likelihood": "low|medium|high", "estimated_cost_low": 500, "estimated_cost_high": 1500, "how_to_present": "one sentence for the homeowner" } ]
@@ -86,6 +93,12 @@ HARD RULES:
 - Only state what the transcript/data actually supports. Do not invent scope.
 - Plain, direct trade language — a work order, not a sales pitch. Cover the selected trade(s) only; ignore scope that belongs to other trades.
 
+SCOPE DIRECTION (critical — a wrong direction makes the sub bid the wrong work):
+- Every scope-of-work item must state its DIRECTION explicitly: REMOVE existing (demo/tear out), INSTALL new, or KEEP existing. Lead each bullet with the action.
+- Derive direction ONLY from stated evidence: demo / remove / tear out / replace / "new" / keep language in the transcript, the typed scope, and especially the SCAN SCOPE NOTES. E.g. "Demo walk in tub. Install new shower where tub is" = REMOVE the tub, INSTALL a shower in its place — never the reverse.
+- NEVER infer an unstated direction and NEVER invent a rationale or reason that was not said. Every claim traces to the evidence.
+- If the direction or a material detail is uncertain, put it in "needs_confirm" instead of stating it — the PM resolves it before sending.
+
 Put the content in these keys:
 - summary: 2-4 sentences — the work-order overview for this trade.
 - discussed_items: the specific scope-of-work items for this trade (what the sub will do).
@@ -99,10 +112,11 @@ You also do these extraction jobs:
 
 Return ONLY valid JSON, no markdown:
 {
-  "summary": "2-4 sentence work-order overview. No prices.",
-  "discussed_items": ["scope-of-work item for this trade", ...],
+  "summary": "2-4 sentence work-order overview, directions correct. No prices.",
+  "discussed_items": ["scope-of-work item for this trade, led by its direction (Remove/Install/Keep …)", ...],
   "scope_basis": ["site condition / access note", ...],
   "open_items": ["open question for the sub", ...],
+  "needs_confirm": ["scope item whose direction or a material detail the evidence does not resolve — name the item and what is unclear", ...],
   "measurements": [ { "trade": "<canonical trade or plain trade name>", "fields": { "key": "value" }, "note": "optional" } ],
   "photo_captions": [ { "index": 0, "caption": "short caption" } ],
   "oh_shit_moments": [ { "condition": "what might be found", "likelihood": "low|medium|high", "estimated_cost_low": 500, "estimated_cost_high": 1500, "how_to_present": "one sentence, internal" } ]
@@ -167,12 +181,33 @@ Deno.serve(async (req) => {
         r.sub_trade ? `${r.parent_trade} - ${r.sub_trade}` : String(r.parent_trade));
     } catch { /* ignore */ }
 
+    // Item 3 — scan scope notes are the rep's per-room intent captured AT the scan; the strongest
+    // direction evidence ("Demo walk in tub. Install new shower where tub is" → remove tub, install shower).
+    const scanNotes: string[] = [];
+    try {
+      const { data: scans } = await sb.from("job_lidar_scans")
+        .select("rooms").eq("job_id", job_id).order("created_at", { ascending: false }).limit(3);
+      const seen = new Set<string>();
+      for (const s of (scans || []) as Record<string, unknown>[]) {
+        for (const r of ((s.rooms as Record<string, unknown>[]) || [])) {
+          const note = String(r.scope_note || "").trim();
+          if (note && !seen.has(note.toLowerCase())) {
+            seen.add(note.toLowerCase());
+            scanNotes.push(`${String(r.name || "Room")}: ${note}`);
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
     const photoBlock = photos.length
       ? photos.map((p, i) => `  [${i}] context: ${p.transcript_context || "(none)"}`).join("\n")
       : "  (none)";
 
     const userContent = `${isSub ? `SUB WALK — write the work order for these trade(s) ONLY: ${tradesStr || "(unspecified)"}\n` : ""}JOB: ${job?.address || "Unknown"}${job?.client_name ? ` — client ${job.client_name}` : ""}
 EXISTING TYPED SCOPE: ${job?.scope || "(none)"}
+
+SCAN SCOPE NOTES (rep's per-room notes at scan time — STRONGEST direction evidence: what is removed vs installed vs kept):
+${scanNotes.length ? scanNotes.map((n) => `- ${n}`).join("\n") : "- (none)"}
 
 AMBIENT TRANSCRIPT:
 ${session.raw_transcript || "(no transcript captured)"}
@@ -281,6 +316,7 @@ ${photoBlock}`;
       discussed_items: arr(out.discussed_items),
       scope_basis: arr(out.scope_basis),
       open_items: arr(out.open_items),
+      needs_confirm: arr(out.needs_confirm),
       status: "draft",
       updated_at: new Date().toISOString(),
     };
