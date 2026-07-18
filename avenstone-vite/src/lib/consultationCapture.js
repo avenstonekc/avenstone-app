@@ -34,7 +34,7 @@ export function isNativeCapture() {
 //   onPartial(text)  — the live in-progress hypothesis (resets each restart cycle)
 //   onError(message) — a non-fatal error surfaced for UI; 'not-allowed' is fatal
 //   onStateChange(bool) — listening true/false
-export function createCaptureController({ onSegment, onPartial, onError, onStateChange } = {}) {
+export function createCaptureController({ onSegment, onPartial, onError, onStateChange, contextualStrings = [] } = {}) {
   let running = false;
   let paused = false;
   let cycleTimer = null;
@@ -73,7 +73,9 @@ export function createCaptureController({ onSegment, onPartial, onError, onState
         cycleNative(ERROR_RETRY_MS);
       });
       listeners = [partial, err];
-      await SpeechRecognition.start({ language: 'en-US', partialResults: true, popup: false });
+      // Item 2 — bias the recognizer toward construction/trade vocab (native reads contextualStrings
+      // via the Avenstone patch to @capgo/capacitor-speech-recognition; ignored on web).
+      await SpeechRecognition.start({ language: 'en-US', partialResults: true, popup: false, contextualStrings });
     } catch (e) {
       try { onError?.(String(e?.message || e)); } catch {}
     }

@@ -1,0 +1,33 @@
+diff --git a/node_modules/@capgo/capacitor-speech-recognition/ios/Sources/SpeechRecognitionPlugin/SpeechRecognitionPlugin.swift b/node_modules/@capgo/capacitor-speech-recognition/ios/Sources/SpeechRecognitionPlugin/SpeechRecognitionPlugin.swift
+index e5ea706..aae7bfa 100644
+--- a/node_modules/@capgo/capacitor-speech-recognition/ios/Sources/SpeechRecognitionPlugin/SpeechRecognitionPlugin.swift
++++ b/node_modules/@capgo/capacitor-speech-recognition/ios/Sources/SpeechRecognitionPlugin/SpeechRecognitionPlugin.swift
+@@ -96,7 +96,8 @@ public final class SpeechRecognitionPlugin: CAPPlugin, CAPBridgedPlugin {
+             partialResults: call.getBool("partialResults") ?? false,
+             addPunctuation: call.getBool("addPunctuation") ?? false,
+             useOnDeviceRecognition: call.getBool("useOnDeviceRecognition") ?? false,
+-            continuousPTT: call.getBool("continuousPTT") ?? false
++            continuousPTT: call.getBool("continuousPTT") ?? false,
++            contextualStrings: call.getArray("contextualStrings", String.self) ?? []
+         )
+ 
+         if options.continuousPTT && !options.partialResults {
+@@ -325,6 +326,10 @@ public final class SpeechRecognitionPlugin: CAPPlugin, CAPBridgedPlugin {
+         if #available(iOS 16.0, *) {
+             recognitionRequest.addsPunctuation = options.addPunctuation
+         }
++        // Avenstone patch (Item 2) — bias recognition toward construction/trade vocab.
++        if !options.contextualStrings.isEmpty {
++            recognitionRequest.contextualStrings = options.contextualStrings
++        }
+         self.recognitionRequest = recognitionRequest
+ 
+         let inputNode = audioEngine.inputNode
+@@ -844,4 +849,7 @@ private struct RecognitionOptions {
+     let addPunctuation: Bool
+     let useOnDeviceRecognition: Bool
+     let continuousPTT: Bool
++    // Avenstone patch (CONSULTATION_RECAP_QUALITY Item 2) — SFSpeechRecognizer contextualStrings
++    // pass-through: biases recognition toward construction vocab so trade jargon transcribes right.
++    let contextualStrings: [String]
+ }

@@ -12,7 +12,8 @@
     "audit:master-agent": "node ../tools/audit_master_agent.js",
     "audit:hex": "node ../tools/audit_hex.js",
     "migrate": "node ../tools/apply_migration.js",
-    "gen:types": "node ../tools/gen_types.js"
+    "gen:types": "node ../tools/gen_types.js",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.0",
@@ -44,6 +45,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
     "opentype.js": "^2.0.0",
+    "patch-package": "^8.0.1",
     "sharp": "^0.35.0",
     "vite": "^8.0.4"
   }

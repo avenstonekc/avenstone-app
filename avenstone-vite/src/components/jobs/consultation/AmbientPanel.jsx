@@ -7,6 +7,7 @@ import {
 import { isMob } from '../../../lib/utils';
 import { createCaptureController, isNativeCapture } from '../../../lib/consultationCapture';
 import { buildNeedsList, needsListSpeech, evidenceStyle } from '../../../lib/consultationCoach';
+import { buildContextualStrings } from '../../../lib/consultationVocab';
 
 const NAV = 'var(--navy-900)';
 const BORDER = 'var(--border)';
@@ -138,6 +139,8 @@ export default function AmbientPanel({
   // Mount: build the platform-adaptive capture controller and start it.
   useEffect(() => {
     const controller = createCaptureController({
+      // Item 2 — construction/trade vocab + tenant hot-word prefix bias the recognizer (native only).
+      contextualStrings: buildContextualStrings(prefixRef.current),
       onSegment: (seg) => {
         transcriptRef.current = (transcriptRef.current + ' ' + seg).trim();
         setLocalTranscript(transcriptRef.current);
