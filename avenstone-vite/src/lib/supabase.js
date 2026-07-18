@@ -45,7 +45,9 @@ export const AI_PM_URL                  = `${FN}/ai-project-manager`;
 export const AI_COMPANION_URL           = `${FN}/ai-companion`;
 export const AI_HOME_URL                = `${FN}/ai-home-companion`;
 export const PROCESS_TRANSCRIPT_URL     = `${FN}/process-transcript`;
-export const GENERATE_ESTIMATE_URL      = `${FN}/generate-estimate-from-session`;
+// generate-estimate-from-session RETIRED (CONSULTATION_MODE Slice 4) — invented pricing +
+// dead cost-plus hardcode. Pricing = Rate Book estimator via prefill; risk capture folded
+// into compose-consultation-recap.
 export const COMPOSE_RECAP_URL          = `${FN}/compose-consultation-recap`;
 export const SEND_RECAP_EMAIL_URL       = `${FN}/send-recap-email`;
 export const AI_ERROR_LOGGER_URL        = `${FN}/ai-error-logger`;
@@ -2731,11 +2733,11 @@ export const sbLoadConsultationPhotos = async (sessionId) => {
 // CONSULTATION_MODE Slice 3 — recap. One user-triggered Sonnet call composes the scope-only
 // recap, extracts spoken-inline measurements, and captions photos. Returns fresh recap +
 // measurements + photos for the rep review screen.
-export const sbComposeRecap = async (sessionId, jobId) => {
+export const sbComposeRecap = async (sessionId, jobId, unresolvedGaps = []) => {
   try {
     const res = await fetch(COMPOSE_RECAP_URL, {
       method: 'POST', headers: authHeader(),
-      body: JSON.stringify({ session_id: sessionId, job_id: jobId }),
+      body: JSON.stringify({ session_id: sessionId, job_id: jobId, unresolved_gaps: unresolvedGaps }),
     });
     if (!res.ok) return { error: await res.text() };
     return await res.json();

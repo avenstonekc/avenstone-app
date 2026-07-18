@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, GENERATE_ESTIMATE_URL, sbLoadOhShitMoments, sbToggleOhShitProposal, sbRunGapAnalysis, sbCreateCOFromOhShit, sbLoadJobRoomScopes } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbToggleOhShitProposal, sbRunGapAnalysis, sbCreateCOFromOhShit, sbLoadJobRoomScopes } from '../../../lib/supabase';
 import { sessionToEstimatePrefill } from '../../../lib/sessionToEstimatePrefill';
 import { Ic, f$, isMob, ls } from '../../../lib/utils';
 import GapResolutionModal from '../consultation/GapResolutionModal';
@@ -72,7 +72,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const [transcript, setTranscript] = useState('');
   const [extraction, setExtraction] = useState(null);
   const [measurements, setMeasurements] = useState([]);
-  const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState(null);
   const [ohShitToggled, setOhShitToggled] = useState({});
   const [ohShitDbRows, setOhShitDbRows] = useState([]);
@@ -88,6 +87,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const [gapRunning, setGapRunning] = useState(false);
   const [gapAnalysis, setGapAnalysis] = useState(null);
   const [showGapModal, setShowGapModal] = useState(false);
+  const [unresolvedGaps, setUnresolvedGaps] = useState([]);
 
   const sessionIdRef = useRef(null);
 
@@ -116,11 +116,6 @@ export default function ConsultationTab({ job, profile, setTab }) {
       console.error('Failed to load sessions:', e);
     }
   };
-
-  const getHeaders = () => ({
-    Authorization: `Bearer ${ANON_KEY}`,
-    'Content-Type': 'application/json',
-  });
 
   // ─── Start Session ─────────────────────────────────────────────────────────
 
@@ -202,11 +197,11 @@ export default function ConsultationTab({ job, profile, setTab }) {
         setGapAnalysis(res);
         setShowGapModal(true);
       } else {
-        generateEstimate([]);
+        finishToComplete([]);
       }
     } catch (e) {
-      console.error('Gap analyzer failed, proceeding to estimate:', e);
-      generateEstimate([]);
+      console.error('Gap analyzer failed, proceeding:', e);
+      finishToComplete([]);
     } finally {
       setGapRunning(false);
     }
@@ -239,42 +234,26 @@ export default function ConsultationTab({ job, profile, setTab }) {
     }
   };
 
-  // ─── Generate Estimate ─────────────────────────────────────────────────────
+  // ─── Session captured → complete phase ─────────────────────────────────────
+  // The old generate-estimate-from-session path (invented pricing + a dead cost-plus
+  // hardcode) is RETIRED. Risk capture (oh_shit_moments) now rides the user-triggered
+  // recap compose call (compose-consultation-recap), which also absorbs unresolved gaps.
+  // Pricing lives only in the Rate Book estimator via the session→estimate prefill.
 
-  const generateEstimate = async (unresolvedGaps = []) => {
-    setGenerating(true);
-    setErr('');
-    try {
-      const headers = getHeaders();
-      const res = await fetch(GENERATE_ESTIMATE_URL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ session_id: sessionIdRef.current, job_id: job.id, unresolved_gaps: unresolvedGaps }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json();
-      setResult(json);
+  const finishToComplete = (gaps = []) => {
+    setUnresolvedGaps(gaps);
+    setResult({ captured: true });
+    loadSessions();
+  };
 
-      if (json.oh_shit_moments?.length) {
-        // Fetch DB rows (with IDs) so toggles can persist
-        const dbRows = await sbLoadOhShitMoments(job.id);
-        const sessionRows = dbRows.filter(r => r.session_id === sessionIdRef.current);
-        setOhShitDbRows(sessionRows);
-        const defaults = {};
-        json.oh_shit_moments.forEach((m, i) => {
-          const dbRow = sessionRows.find(r => r.condition === (m.condition || m.issue || m.title)) || sessionRows[i];
-          const key = dbRow?.id ?? i;
-          defaults[key] = dbRow ? dbRow.included_in_proposal : true;
-        });
-        setOhShitToggled(defaults);
-      }
-
-      await loadSessions();
-    } catch (e) {
-      setErr(`Generate failed: ${e.message}`);
-    } finally {
-      setGenerating(false);
-    }
+  // Called after the rep composes the recap — the compose fn returns this session's
+  // oh_shit rows (with IDs) so the toggles + CO conversion persist.
+  const handleRecapComposed = (rows) => {
+    const sessionRows = rows || [];
+    setOhShitDbRows(sessionRows);
+    const defaults = {};
+    sessionRows.forEach((r) => { defaults[r.id] = r.included_in_proposal; });
+    setOhShitToggled(defaults);
   };
 
   // ─── Convert oh-shit moment to a pending change order ─────────────────────
@@ -474,37 +453,16 @@ export default function ConsultationTab({ job, profile, setTab }) {
       );
     }
 
-    if (generating) {
-      return (
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 22, color: NAV, marginBottom: 12 }}>
-            Generating Estimate…
-          </div>
-          <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-            AI is analyzing session data, measuring takeoffs, and flagging risks.
-          </div>
-          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: '50%',
-              border: `4px solid ${BORDER}`,
-              borderTopColor: GOLD,
-              animation: 'spin 0.8s linear infinite',
-            }} />
-          </div>
-        </div>
-      );
-    }
-
     if (!result) {
       return (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <div style={{ color: 'var(--text-muted)', marginBottom: 16 }}>No result yet.</div>
-          <button className="btn btn-navy" onClick={generateEstimate}>Retry Generate</button>
+          <button className="btn btn-navy" onClick={() => finishToComplete([])}>Continue</button>
         </div>
       );
     }
 
-    const ohShitMoments = result.oh_shit_moments || [];
+    const ohShitMoments = ohShitDbRows;
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -533,7 +491,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
             </div>
             <div>
               {ohShitMoments.map((m, i) => {
-                const dbRow = ohShitDbRows.find(r => r.condition === (m.condition || m.issue || m.title)) || ohShitDbRows[i];
+                const dbRow = m;
                 const key = dbRow?.id ?? i;
                 const included = !!ohShitToggled[key];
                 return (
@@ -651,8 +609,16 @@ export default function ConsultationTab({ job, profile, setTab }) {
           </div>
         )}
 
-        {/* Client recap — scope-only branded PDF, emailed to the client */}
-        {sessionIdRef.current && <RecapPanel job={job} sessionId={sessionIdRef.current} />}
+        {/* Client recap — scope-only branded PDF, emailed to the client. Composing it also
+            runs risk capture (oh_shit_moments), absorbing the retired generate-estimate path. */}
+        {sessionIdRef.current && (
+          <RecapPanel
+            job={job}
+            sessionId={sessionIdRef.current}
+            unresolvedGaps={unresolvedGaps}
+            onComposed={handleRecapComposed}
+          />
+        )}
 
         {/* Draft estimate from session → Estimate tab (Rate Book) */}
         <div style={{ display: 'flex', flexDirection: mob ? 'column' : 'row', gap: 10 }}>
@@ -787,9 +753,9 @@ export default function ConsultationTab({ job, profile, setTab }) {
       <GapResolutionModal
         open={showGapModal && gapAnalysis?.gaps?.length > 0}
         gaps={gapAnalysis?.gaps || []}
-        busy={generating}
+        busy={false}
         onClose={() => setShowGapModal(false)}
-        onGenerate={generateEstimate}
+        onGenerate={(gaps) => { setShowGapModal(false); finishToComplete(gaps || []); }}
       />
 
     </>

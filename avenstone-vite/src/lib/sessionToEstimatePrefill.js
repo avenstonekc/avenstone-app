@@ -30,6 +30,11 @@ export function sessionToEstimatePrefill({
 } = {}) {
   const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
   const ext = extraction || {};
+  // CONSULTATION_MODE Slice 4 (Decision D): ambient-detected checklist answers are
+  // pre-answers too. Fold them into measuredFields so the desk scope-interview skips
+  // what the visit already established (source 'measured' server-side).
+  const checklistAnswers = (ext.checklist_answers && typeof ext.checklist_answers === 'object' && !Array.isArray(ext.checklist_answers))
+    ? ext.checklist_answers : {};
 
   // ── scope ──────────────────────────────────────────────────────────────────
   const scopeParts = [];
@@ -61,6 +66,11 @@ export function sessionToEstimatePrefill({
   // Flatten every measurement row's `fields` JSONB into one {key: value} map. The
   // edge interview keeps only keys that match a seeded checklist field_key.
   const measuredFields = {};
+  // Ambient-detected checklist answers first (measured-mode numbers below can refine them).
+  for (const [k, v] of Object.entries(checklistAnswers)) {
+    if (v == null || String(v).trim() === '') continue;
+    measuredFields[k] = v;
+  }
   for (const m of measurements) {
     const f = m && m.fields;
     if (!f || typeof f !== 'object' || Array.isArray(f)) continue;

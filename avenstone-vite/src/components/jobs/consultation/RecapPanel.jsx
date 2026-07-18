@@ -11,7 +11,7 @@ const BORDER = 'var(--border)';
 
 // CONSULTATION_MODE Slice 3 — rep reviews + edits the scope-only recap, confirms
 // measurements, tweaks captions, then generates the branded PDF and emails the client.
-export default function RecapPanel({ job, sessionId }) {
+export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComposed }) {
   const mob = isMob();
   const [busy, setBusy] = useState(false);
   const [composed, setComposed] = useState(false);
@@ -31,8 +31,9 @@ export default function RecapPanel({ job, sessionId }) {
 
   const compose = async () => {
     setBusy(true); setErr('');
-    const res = await sbComposeRecap(sessionId, job.id);
+    const res = await sbComposeRecap(sessionId, job.id, unresolvedGaps);
     if (res.error) { setErr(`Compose failed: ${res.error}`); setBusy(false); return; }
+    onComposed?.(res.oh_shit_moments || []);
     const r = res.recap || {};
     setRecap(r);
     setSummary(r.summary || '');

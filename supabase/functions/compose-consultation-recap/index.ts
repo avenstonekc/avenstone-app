@@ -37,9 +37,10 @@ HARD RULES:
 - Only state what the transcript/data actually supports. Do not invent scope.
 - Plain, warm, professional homeowner language. No construction jargon dumps.
 
-You also do two extraction jobs:
+You also do three extraction/analysis jobs:
 - MEASUREMENTS: pull any measurement the rep spoke aloud (dimensions, square footage, counts, lengths) and group them by trade using the canonical trade names given. Only real numbers stated in the transcript.
 - PHOTO CAPTIONS: for each photo you're given its "context" (the words spoken around the moment it was taken). Turn that into a short caption of what the photo shows.
+- RISKS ("oh_shit_moments"): 3-5 unexpected conditions likely to surface on THIS job and cause a change order. This list is INTERNAL (never shown to the client, never on the recap), so it MAY include a rough cost range. The dollars-forbidden rule above applies ONLY to summary/discussed_items/scope_basis/open_items.
 
 Return ONLY valid JSON, no markdown:
 {
@@ -48,14 +49,15 @@ Return ONLY valid JSON, no markdown:
   "scope_basis": ["what the bid will be based on", ...],
   "open_items": ["still to confirm before finalizing", ...],
   "measurements": [ { "trade": "<canonical trade or plain trade name>", "fields": { "key": "value" }, "note": "optional" } ],
-  "photo_captions": [ { "index": 0, "caption": "short caption" } ]
+  "photo_captions": [ { "index": 0, "caption": "short caption" } ],
+  "oh_shit_moments": [ { "condition": "what might be found", "likelihood": "low|medium|high", "estimated_cost_low": 500, "estimated_cost_high": 1500, "how_to_present": "one sentence for the homeowner" } ]
 }`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { session_id, job_id } = await req.json();
+    const { session_id, job_id, unresolved_gaps = [] } = await req.json();
     if (!session_id || !job_id) {
       return new Response(JSON.stringify({ error: "Missing session_id or job_id" }), {
         status: 400, headers: { ...CORS, "Content-Type": "application/json" },
@@ -200,14 +202,42 @@ ${photoBlock}`;
     };
     await sb.from("consultation_recaps").upsert(recapRow, { onConflict: "session_id" });
 
+    // Risk capture (absorbed from the retired generate-estimate-from-session). Fresh oh_shit
+    // rows per compose: clear this session's prior rows, then insert the AI risks + any
+    // unresolved gaps from the gap analyzer. Internal risk list — never on the client recap.
+    const gapSeverityToLikelihood: Record<string, string> = { blocker: "high", strong: "medium", nice_to_have: "low" };
+    const ohShit = (arr(out.oh_shit_moments) as Record<string, unknown>[]).map((m) => ({
+      condition: m.condition, likelihood: m.likelihood || "medium",
+      estimated_cost_low: m.estimated_cost_low ?? null, estimated_cost_high: m.estimated_cost_high ?? null,
+      how_to_present: m.how_to_present || "",
+    }));
+    for (const g of arr(unresolved_gaps) as Record<string, unknown>[]) {
+      ohShit.push({
+        condition: g.title || g.description || "Unresolved gap",
+        likelihood: gapSeverityToLikelihood[g.severity as string] || "medium",
+        estimated_cost_low: null, estimated_cost_high: null,
+        how_to_present: g.suggested_action || g.description || "",
+      });
+    }
+    await sb.from("oh_shit_moments").delete().eq("session_id", session_id);
+    if (ohShit.length) {
+      await sb.from("oh_shit_moments").insert(ohShit.map((m) => ({
+        session_id, job_id, tenant_id: session.tenant_id,
+        condition: m.condition, likelihood: m.likelihood,
+        estimated_cost_low: m.estimated_cost_low, estimated_cost_high: m.estimated_cost_high,
+        how_to_present: m.how_to_present, included_in_proposal: false,
+      })));
+    }
+
     // Return the fresh state for the rep review screen.
-    const [{ data: recap }, { data: freshMeas }, { data: freshPhotos }] = await Promise.all([
+    const [{ data: recap }, { data: freshMeas }, { data: freshPhotos }, { data: ohRows }] = await Promise.all([
       sb.from("consultation_recaps").select("*").eq("session_id", session_id).maybeSingle(),
       sb.from("consultation_measurements").select("*").eq("session_id", session_id),
       sb.from("consultation_photos").select("*").eq("session_id", session_id).order("sort").order("captured_at"),
+      sb.from("oh_shit_moments").select("*").eq("session_id", session_id),
     ]);
 
-    return new Response(JSON.stringify({ ok: true, recap, measurements: freshMeas || [], photos: freshPhotos || [] }), {
+    return new Response(JSON.stringify({ ok: true, recap, measurements: freshMeas || [], photos: freshPhotos || [], oh_shit_moments: ohRows || [] }), {
       headers: { ...CORS, "Content-Type": "application/json" },
     });
   } catch (e) {
