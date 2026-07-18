@@ -3901,6 +3901,7 @@ export type Database = {
           included_in_proposal: boolean | null
           job_id: string | null
           likelihood: string | null
+          risk_key: string | null
           session_id: string | null
           tenant_id: string
         }
@@ -3915,6 +3916,7 @@ export type Database = {
           included_in_proposal?: boolean | null
           job_id?: string | null
           likelihood?: string | null
+          risk_key?: string | null
           session_id?: string | null
           tenant_id?: string
         }
@@ -3929,6 +3931,7 @@ export type Database = {
           included_in_proposal?: boolean | null
           job_id?: string | null
           likelihood?: string | null
+          risk_key?: string | null
           session_id?: string | null
           tenant_id?: string
         }
@@ -5336,6 +5339,7 @@ export type Database = {
           project_type: string
           risk_key: string
           tenant_id: string | null
+          title: string | null
           trade: string | null
           trigger_type: string
           trigger_values: string[]
@@ -5354,6 +5358,7 @@ export type Database = {
           project_type: string
           risk_key: string
           tenant_id?: string | null
+          title?: string | null
           trade?: string | null
           trigger_type?: string
           trigger_values?: string[]
@@ -5372,6 +5377,7 @@ export type Database = {
           project_type?: string
           risk_key?: string
           tenant_id?: string | null
+          title?: string | null
           trade?: string | null
           trigger_type?: string
           trigger_values?: string[]

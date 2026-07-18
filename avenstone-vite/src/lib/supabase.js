@@ -2706,6 +2706,98 @@ export const sbLoadConsultationChecklist = async (jobId) => {
   };
 };
 
+// SCOPE_RISK B2.5 — assemble scope-risk candidates for a job (DETERMINISTIC, no model call).
+// Sources: (a) scope_risks library rows whose trigger fires for this job, (b) consultation
+// risk_flags from the job's sessions. Dedups against risks already kept (oh_shit_moments with
+// a risk_key). Returns { candidates, kept } — nothing is written; the rep keeps explicitly.
+const _slugRisk = (s) => 'flag:' + String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40);
+
+export const sbAssembleScopeRisks = async (jobId) => {
+  try {
+    const [scopes, ansRes, extractions, kept] = await Promise.all([
+      sbLoadJobRoomScopes(jobId),
+      sbLoadScopeAnswers(jobId),
+      sb.from('consultation_extractions').select('risk_flags').eq('job_id', jobId),
+      sb.from('oh_shit_moments').select('*').eq('job_id', jobId).not('risk_key', 'is', null),
+    ]);
+    const projectTypes = [...new Set((scopes || [])
+      .filter((s) => s.scope_tag !== 'not_in_scope')
+      .map((s) => String(s.room_type || '').toLowerCase()).filter(Boolean))];
+    if (!projectTypes.length) return { candidates: [], kept: kept.data || [] };
+
+    // answered map: field_key → Set of answer tokens (option_key + value)
+    const answered = {};
+    for (const a of (ansRes.data || [])) {
+      const set = answered[a.field_key] || (answered[a.field_key] = new Set());
+      if (a.option_key) set.add(String(a.option_key));
+      if (a.value) set.add(String(a.value));
+    }
+
+    const { data: lib } = await sb.from('scope_risks')
+      .select('*').eq('active', true).in('project_type', projectTypes)
+      .or(`tenant_id.eq.${AV_TENANT},tenant_id.is.null`);
+    // dedupe by risk_key, tenant beats platform-null
+    const libMap = new Map();
+    for (const r of (lib || [])) {
+      const ex = libMap.get(r.risk_key);
+      if (!ex || (ex.tenant_id == null && r.tenant_id != null)) libMap.set(r.risk_key, r);
+    }
+
+    const keptKeys = new Set((kept.data || []).map((k) => k.risk_key));
+    const candidates = [];
+    for (const r of libMap.values()) {
+      if (keptKeys.has(r.risk_key)) continue;
+      let fires = false;
+      if (r.trigger_type === 'project') fires = true;
+      else if (r.trigger_type === 'answer') {
+        const set = answered[r.field_key];
+        fires = !!set && (r.trigger_values || []).some((v) => set.has(String(v)));
+      }
+      // 'trade' triggers: deferred (no seed rows) — skip in v1.
+      if (fires) candidates.push({
+        risk_key: r.risk_key, source: 'library', is_draft: r.is_draft,
+        title: r.title || r.risk_key, consideration: r.consideration,
+        likelihood: r.likelihood, cost_low: r.cost_low, cost_high: r.cost_high,
+        internal_note: r.internal_note,
+      });
+    }
+
+    // Consultation risk_flags → freeform candidates (dedup by slug).
+    const flags = [...new Set((extractions.data || []).flatMap((e) => e.risk_flags || []).filter(Boolean))];
+    for (const f of flags) {
+      const key = _slugRisk(f);
+      if (keptKeys.has(key)) continue;
+      candidates.push({
+        risk_key: key, source: 'session', is_draft: false,
+        title: 'From the consultation', consideration: f,
+        likelihood: 'medium', cost_low: null, cost_high: null, internal_note: null,
+      });
+    }
+
+    return { candidates, kept: kept.data || [] };
+  } catch (e) {
+    return { candidates: [], kept: [], error: String(e?.message || e) };
+  }
+};
+
+// Rep keeps a risk → job-scoped oh_shit_moments row (reuses the proposal + CO pipeline).
+// condition=title, how_to_present=consideration (rendered by the reframed proposal section).
+// included_in_proposal defaults true (kept = intended to disclose; still toggleable there).
+export const sbKeepScopeRisk = async (jobId, cand) => {
+  const { data, error } = await sb.from('oh_shit_moments').insert({
+    tenant_id: AV_TENANT, job_id: jobId, session_id: null, risk_key: cand.risk_key,
+    condition: cand.title, how_to_present: cand.consideration, likelihood: cand.likelihood || 'medium',
+    estimated_cost_low: cand.cost_low ?? null, estimated_cost_high: cand.cost_high ?? null,
+    included_in_proposal: true,
+  }).select().single();
+  return { data, error: error?.message || null };
+};
+
+export const sbRemoveKeptRisk = async (id) => {
+  const { error } = await sb.from('oh_shit_moments').delete().eq('id', id);
+  return { error: error?.message || null };
+};
+
 // Hot-word prefix from tenant config (company name's first word), default 'avenstone'.
 // Cached for the session. Multi-tenant: never hardcode the brand.
 let _hotwordPrefix = null;

@@ -10,6 +10,7 @@ import { buildProposalPDF } from '../../../lib/pdf';
 import { computeSanityFlags } from '../../../lib/priceSanity';
 import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
+import ScopeRiskReview from '../estimate/ScopeRiskReview';
 import StructuredEstimate from './StructuredEstimate';
 import GapBatchAsk from './GapBatchAsk';
 import ScopeConfigurator from './ScopeConfigurator';
@@ -1361,6 +1362,8 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // ── Sub-view: Build ─────────────────────────────────────────────────────────
   const renderBuild = () => (
     <div>
+      {/* SCOPE_RISK B2.5 — suggested risks the rep reviews before finalizing (kept → proposal) */}
+      <ScopeRiskReview job={job} />
       {!estStarted && (
         <div>
           <div style={{ background: NAV, borderRadius: 8, padding: 14, marginBottom: 16 }}>
