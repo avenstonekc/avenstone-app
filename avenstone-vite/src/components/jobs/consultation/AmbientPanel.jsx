@@ -1,10 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
-import { ANON_KEY, PROCESS_TRANSCRIPT_URL, sbUploadConsultationPhoto } from '../../../lib/supabase';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
+import {
+  ANON_KEY, PROCESS_TRANSCRIPT_URL,
+  sbUploadConsultationPhoto, sbLoadConsultationChecklist, sbGetHotwordPrefix,
+} from '../../../lib/supabase';
 import { isMob } from '../../../lib/utils';
 import { createCaptureController, isNativeCapture } from '../../../lib/consultationCapture';
+import { buildNeedsList, needsListSpeech, evidenceStyle } from '../../../lib/consultationCoach';
 
 const NAV = 'var(--navy-900)';
 const BORDER = 'var(--border)';
+const CMD_DEBOUNCE_MS = 5000;
 
 function PulseRecording() {
   return (
@@ -33,19 +39,56 @@ export default function AmbientPanel({
   const [photoMsg, setPhotoMsg] = useState('');
   const [pocket, setPocket] = useState(false);
   const [micErr, setMicErr] = useState('');
+  const [voiceOn, setVoiceOn] = useState(true);
+  const [answers, setAnswers] = useState({});
+  const [firedModules, setFiredModules] = useState([]);
+  const [checklist, setChecklist] = useState({ fields: [], modules: [] });
+  const [ending, setEnding] = useState(false);
 
   const controllerRef = useRef(null);
   const transcriptRef = useRef('');
   const fileInputRef = useRef(null);
+  const prefixRef = useRef('avenstone');
+  const lastCmdRef = useRef({ cmd: '', ts: 0 });
+  const voiceOnRef = useRef(true);
+  const needsRef = useRef([]);
+
+  useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
+
+  const needs = useMemo(
+    () => buildNeedsList({ fields: checklist.fields, modules: checklist.modules, answers, firedModules }),
+    [checklist, answers, firedModules],
+  );
+  useEffect(() => { needsRef.current = needs; }, [needs]);
 
   const getHeaders = () => ({
     Authorization: `Bearer ${ANON_KEY}`,
     'Content-Type': 'application/json',
   });
 
-  // Flush ONE finalized segment (the delta) — never the whole growing transcript.
-  // process-transcript merges arrays server-side, so per-segment posts accumulate
-  // the extraction in the DB while keeping each call tiny (~45s of speech).
+  // Load the coach checklist + hot-word prefix once.
+  useEffect(() => {
+    let alive = true;
+    sbLoadConsultationChecklist(jobId).then((c) => { if (alive) setChecklist(c); }).catch(() => {});
+    sbGetHotwordPrefix().then((p) => { prefixRef.current = p; }).catch(() => {});
+    return () => { alive = false; };
+  }, [jobId]);
+
+  // ── TTS with interleave: pause recognition → speak → resume (audio-session isolation
+  //    is already solved by the TTS plugin; we still pause capture so we don't transcribe
+  //    our own voice). Voice-out is on-demand + end-gate ONLY — never auto-interjects. ──
+  const speak = async (text) => {
+    if (!voiceOnRef.current || !text) return;
+    const c = controllerRef.current;
+    const wasRunning = c?.running?.();
+    try { c?.pause?.(); } catch {}
+    try {
+      await TextToSpeech.speak({ text, lang: 'en-US', rate: 1.0, category: 'playback' });
+    } catch {}
+    if (wasRunning && !ending) { try { await c?.resume?.(); } catch {} }
+  };
+
+  // Flush ONE finalized segment (the delta) and fold the coach state forward.
   const flushSegment = (seg) => {
     if (!seg || seg.trim().length < 2) return;
     const sid = getSessionId?.() || sessionId;
@@ -57,10 +100,36 @@ export default function AmbientPanel({
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
-        const ext = json?.extraction || json?.extracted;
-        if (ext) onExtractionUpdate?.(ext);
+        const ext = json?.extraction;
+        if (!ext) return;
+        onExtractionUpdate?.(ext);
+        if (ext.checklist_answers && typeof ext.checklist_answers === 'object') setAnswers(ext.checklist_answers);
+        if (Array.isArray(ext.fired_modules)) setFiredModules(ext.fired_modules);
       })
       .catch(() => {});
+  };
+
+  // ── Hot-word matcher on the live partial stream. Requires the tenant prefix so normal
+  //    client conversation can't trip it. Debounced per command. ──────────────────────
+  const fireCommand = (cmd) => {
+    const now = Date.now();
+    if (lastCmdRef.current.cmd === cmd && now - lastCmdRef.current.ts < CMD_DEBOUNCE_MS) return;
+    lastCmdRef.current = { cmd, ts: now };
+    if (cmd === 'measure') finishTo(onStartMeasuring);
+    else if (cmd === 'ambient') controllerRef.current?.resume?.();
+    else if (cmd === 'missing') speak(needsListSpeech(needsRef.current));
+    else if (cmd === 'end') handleEnd();
+  };
+
+  const handlePartial = (text) => {
+    const t = (text || '').toLowerCase();
+    const prefix = prefixRef.current;
+    if (!t.includes(prefix)) return;
+    const after = t.slice(t.lastIndexOf(prefix) + prefix.length);
+    if (/\bwhat('?s| is| am i| are we)?\b.*\bmissing\b|\bmissing\b/.test(after)) fireCommand('missing');
+    else if (/\bend (the )?session\b|\bwrap up\b|\bwe'?re done\b/.test(after)) fireCommand('end');
+    else if (/\bmeasure\b/.test(after)) fireCommand('measure');
+    else if (/\bambient\b|\blisten\b|\bkeep listening\b/.test(after)) fireCommand('ambient');
   };
 
   // Mount: build the platform-adaptive capture controller and start it.
@@ -72,7 +141,7 @@ export default function AmbientPanel({
         onTranscriptUpdate?.(transcriptRef.current);
         flushSegment(seg);
       },
-      onPartial: () => { /* hot-word matching hooks in here in slice 2 */ },
+      onPartial: handlePartial,
       onError: (msg) => {
         if (msg === 'not-allowed') setMicErr('Microphone/speech access denied — enable it in Settings.');
         setIsRecording(false);
@@ -81,7 +150,7 @@ export default function AmbientPanel({
     });
     controllerRef.current = controller;
     controller.start();
-    return () => { controller.stop(); };
+    return () => { controller.stop(); TextToSpeech.stop().catch(() => {}); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -108,6 +177,18 @@ export default function AmbientPanel({
   const finishTo = (cb) => {
     controllerRef.current?.stop();  // finalizes + flushes the tail segment
     cb?.();
+  };
+
+  // End-of-session gate: speak the open needs-list before leaving, THEN end.
+  const handleEnd = async () => {
+    if (ending) return;
+    setEnding(true);
+    const items = needsRef.current;
+    if (items.length && voiceOnRef.current) {
+      controllerRef.current?.pause?.();
+      try { await TextToSpeech.speak({ text: `Before you leave the driveway — ${needsListSpeech(items)}`, lang: 'en-US', rate: 1.0, category: 'playback' }); } catch {}
+    }
+    finishTo(onEnd);
   };
 
   // ── Pocket mode: near-black low-power overlay so the rep can pocket the phone
@@ -141,18 +222,29 @@ export default function AmbientPanel({
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         {isRecording && <PulseRecording />}
         <span style={{ fontFamily: 'DM Serif Display, serif', fontSize: 20, color: NAV }}>
           {isRecording ? 'Ambient Recording Active' : 'Session Paused'}
         </span>
-        <button
-          className="btn btn-ghost"
-          style={{ marginLeft: 'auto', fontSize: 16, minHeight: 44 }}
-          onClick={toggleMic}
-        >
-          {isRecording ? 'Pause Mic' : 'Resume Mic'}
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 16, minHeight: 44 }}
+            onClick={() => setVoiceOn((v) => { const n = !v; if (!n) TextToSpeech.stop().catch(() => {}); return n; })}
+            title="Voice replies"
+          >
+            {voiceOn ? '🔊 Voice' : '🔇 Muted'}
+          </button>
+          <button className="btn btn-ghost" style={{ fontSize: 16, minHeight: 44 }} onClick={toggleMic}>
+            {isRecording ? 'Pause Mic' : 'Resume Mic'}
+          </button>
+        </div>
+      </div>
+
+      {/* Hot-word hint */}
+      <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 12 }}>
+        Say “<strong style={{ color: '#C9A84C', textTransform: 'capitalize' }}>{prefixRef.current}</strong>, what am I missing?” · “{prefixRef.current}, measure” · “{prefixRef.current}, end session”
       </div>
 
       {/* Live transcript */}
@@ -170,6 +262,37 @@ export default function AmbientPanel({
             : <span style={{ color: '#D1D5DB', fontStyle: 'italic' }}>Listening for conversation…</span>}
         </div>
       </div>
+
+      {/* Live needs-list (quiet running panel) */}
+      {needs.length > 0 && (
+        <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 11, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>
+              Still to cover ({needs.length})
+            </span>
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: 13, padding: '4px 10px', minHeight: 32 }}
+              onClick={() => speak(needsListSpeech(needs))}
+            >
+              🔊 Read
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
+            {needs.slice(0, 12).map((it) => {
+              const s = evidenceStyle(it.evidence_type);
+              return (
+                <div key={it.field_key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: 0.4, padding: '2px 7px', borderRadius: 6, background: s.bg, color: s.color }}>
+                    {s.badge}
+                  </span>
+                  <span style={{ fontSize: 13, color: '#374151', lineHeight: 1.4 }}>{it.question}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* In-flow capture row: photo + pocket. Big touch targets, one-handed. */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
@@ -207,8 +330,8 @@ export default function AmbientPanel({
         <button className="btn btn-navy" style={{ flex: 1, minHeight: 48 }} onClick={() => finishTo(onStartMeasuring)}>
           Start Measuring
         </button>
-        <button className="btn btn-ghost" style={{ flex: 1, minHeight: 48 }} onClick={() => finishTo(onEnd)}>
-          End Session
+        <button className="btn btn-ghost" style={{ flex: 1, minHeight: 48 }} disabled={ending} onClick={handleEnd}>
+          {ending ? 'Wrapping up…' : 'End Session'}
         </button>
       </div>
     </div>

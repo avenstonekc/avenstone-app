@@ -613,9 +613,11 @@ export type Database = {
         Row: {
           action_items: string[] | null
           budget_signals: string | null
+          checklist_answers: Json
           client_concerns: string[] | null
           decision_makers: string[] | null
           extracted_at: string | null
+          fired_modules: string[]
           id: string
           job_id: string | null
           risk_flags: string[] | null
@@ -627,9 +629,11 @@ export type Database = {
         Insert: {
           action_items?: string[] | null
           budget_signals?: string | null
+          checklist_answers?: Json
           client_concerns?: string[] | null
           decision_makers?: string[] | null
           extracted_at?: string | null
+          fired_modules?: string[]
           id?: string
           job_id?: string | null
           risk_flags?: string[] | null
@@ -641,9 +645,11 @@ export type Database = {
         Update: {
           action_items?: string[] | null
           budget_signals?: string | null
+          checklist_answers?: Json
           client_concerns?: string[] | null
           decision_makers?: string[] | null
           extracted_at?: string | null
+          fired_modules?: string[]
           id?: string
           job_id?: string | null
           risk_flags?: string[] | null

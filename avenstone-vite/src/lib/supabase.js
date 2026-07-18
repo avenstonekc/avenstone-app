@@ -2662,6 +2662,58 @@ export const sbUploadConsultationPhoto = async ({ jobId, sessionId, file, sort =
   }
 };
 
+// CONSULTATION_MODE Slice 2 — assemble the live-coach checklist for a job. Project types
+// come from the job's scoped rooms (job_room_scopes.room_type). Returns base checklist
+// fields (with evidence_type + money_risk_rank) and the module defs (for fired-module
+// expansion). Deduped by key, tenant row beats platform-null.
+export const sbLoadConsultationChecklist = async (jobId) => {
+  const scopes = await sbLoadJobRoomScopes(jobId);
+  const projectTypes = [...new Set(
+    (scopes || [])
+      .filter((s) => s.scope_tag !== 'not_in_scope')
+      .map((s) => String(s.room_type || '').toLowerCase())
+      .filter(Boolean)
+  )];
+  if (!projectTypes.length) return { fields: [], modules: [], projectTypes: [] };
+  const [chk, mod] = await Promise.all([
+    sb.from('scope_checklists')
+      .select('field_key, question, field_type, evidence_type, money_risk_rank, tenant_id')
+      .in('project_type', projectTypes).eq('active', true)
+      .or(`tenant_id.eq.${AV_TENANT},tenant_id.is.null`),
+    sb.from('scope_modules')
+      .select('module_key, label, adds_fields, tenant_id')
+      .eq('active', true)
+      .or(`tenant_id.eq.${AV_TENANT},tenant_id.is.null`),
+  ]);
+  const pick = (rows, keyName) => {
+    const m = new Map();
+    for (const r of (rows || [])) {
+      const k = r[keyName];
+      const ex = m.get(k);
+      if (!ex || (ex.tenant_id == null && r.tenant_id != null)) m.set(k, r);
+    }
+    return [...m.values()];
+  };
+  return {
+    fields: pick(chk.data, 'field_key'),
+    modules: pick(mod.data, 'module_key'),
+    projectTypes,
+  };
+};
+
+// Hot-word prefix from tenant config (company name's first word), default 'avenstone'.
+// Cached for the session. Multi-tenant: never hardcode the brand.
+let _hotwordPrefix = null;
+export const sbGetHotwordPrefix = async () => {
+  if (_hotwordPrefix) return _hotwordPrefix;
+  try {
+    const { data } = await sb.from('tenants').select('name').eq('id', AV_TENANT).maybeSingle();
+    const first = String(data?.name || '').trim().split(/\s+/)[0];
+    _hotwordPrefix = (first || 'Avenstone').toLowerCase();
+  } catch { _hotwordPrefix = 'avenstone'; }
+  return _hotwordPrefix;
+};
+
 // Load a session's photos with fresh signed URLs (private bucket → must sign).
 export const sbLoadConsultationPhotos = async (sessionId) => {
   if (!sessionId) return [];

@@ -32,7 +32,7 @@ function logAIError(payload: {
   }).catch(() => {/* swallow — logger must never break the main flow */});
 }
 
-const AMBIENT_SYSTEM = `You are an AI assistant listening to a sales consultation between a contractor rep and a homeowner. Extract and return JSON with exactly these fields (only include fields where you have actual evidence from the transcript):
+const AMBIENT_SYSTEM = `You are an AI assistant listening to a sales consultation between a contractor rep and a homeowner. Extract and return JSON with these fields (only include values where you have actual evidence from the transcript):
 {
   "client_concerns": [],
   "scope_hints": [],
@@ -40,8 +40,11 @@ const AMBIENT_SYSTEM = `You are an AI assistant listening to a sales consultatio
   "decision_makers": [],
   "timeline": "",
   "risk_flags": [],
-  "action_items": []
+  "action_items": [],
+  "checklist_answers": {},
+  "fired_modules": []
 }
+"checklist_answers" and "fired_modules" are populated only per the SCOPE CAPTURE instructions below (if present); otherwise leave them empty.
 Return only valid JSON. No explanation, no markdown.`;
 
 const MEASURE_SYSTEM = `You are Avenstone AI — an expert construction estimating assistant embedded in a contractor's field app. A sales rep is on-site at a client's home collecting information for an estimate. You have full memory of everything said in this conversation.
@@ -99,6 +102,83 @@ async function loadCanonicalTradeStrings(sb: ReturnType<typeof createClient>, te
   } catch {
     return [];
   }
+}
+
+// CONSULTATION_MODE Slice 2 — load the session's scope context so the ambient Haiku can
+// ALSO detect checklist-field answers + module triggers in the SAME call (no new model call).
+// Project types come from the job's scanned/scoped rooms (job_room_scopes.room_type).
+// alreadyAnswered field_keys are excluded to keep the prompt shrinking as the session fills in.
+async function loadScopeContext(
+  sb: ReturnType<typeof createClient>,
+  jobId: string,
+  tenantId: string,
+  alreadyAnswered: string[],
+): Promise<{ fields: Array<Record<string, unknown>>; modules: Array<Record<string, unknown>> }> {
+  try {
+    const { data: scopes } = await sb
+      .from("job_room_scopes")
+      .select("room_type")
+      .eq("job_id", jobId)
+      .neq("scope_tag", "not_in_scope");
+    const projectTypes = [...new Set((scopes || [])
+      .map((r: Record<string, unknown>) => String(r.room_type || "").toLowerCase())
+      .filter(Boolean))];
+    if (!projectTypes.length) return { fields: [], modules: [] };
+
+    const [chkRes, modRes] = await Promise.all([
+      sb.from("scope_checklists")
+        .select("field_key, question, field_type, options, evidence_type, tenant_id, money_risk_rank")
+        .in("project_type", projectTypes).eq("active", true)
+        .or(`tenant_id.eq.${tenantId},tenant_id.is.null`),
+      sb.from("scope_modules")
+        .select("module_key, trigger_phrases, tenant_id")
+        .eq("active", true)
+        .or(`tenant_id.eq.${tenantId},tenant_id.is.null`),
+    ]);
+
+    // Dedupe by key, tenant row beats platform-null. Drop answered fields.
+    const answered = new Set(alreadyAnswered);
+    const fmap = new Map<string, Record<string, unknown>>();
+    for (const r of (chkRes.data || []) as Record<string, unknown>[]) {
+      const k = String(r.field_key);
+      if (answered.has(k)) continue;
+      const ex = fmap.get(k);
+      if (!ex || (ex.tenant_id == null && r.tenant_id != null)) fmap.set(k, r);
+    }
+    const mmap = new Map<string, Record<string, unknown>>();
+    for (const r of (modRes.data || []) as Record<string, unknown>[]) {
+      const k = String(r.module_key);
+      const ex = mmap.get(k);
+      if (!ex || (ex.tenant_id == null && r.tenant_id != null)) mmap.set(k, r);
+    }
+    return { fields: [...fmap.values()], modules: [...mmap.values()] };
+  } catch {
+    return { fields: [], modules: [] };
+  }
+}
+
+function buildChecklistPromptSection(
+  fields: Array<Record<string, unknown>>,
+  modules: Array<Record<string, unknown>>,
+): string {
+  if (!fields.length && !modules.length) return "";
+  const lines: string[] = ["", "SCOPE CAPTURE (only when the transcript CLEARLY answers something — never guess):"];
+  if (fields.length) {
+    lines.push("Checklist fields — return answers in \"checklist_answers\" as {field_key: value}. bool→true/false, choice→one option key, number→the number, text→a short string. Omit any field not clearly answered.");
+    for (const f of fields) {
+      const opts = Array.isArray(f.options) && (f.options as unknown[]).length
+        ? ` options: ${(f.options as unknown[]).join("|")}` : "";
+      lines.push(`- ${f.field_key} [${f.field_type}]: ${f.question}${opts}`);
+    }
+  }
+  if (modules.length) {
+    lines.push("Expansion modules — if the conversation mentions any of a module's concepts, add its module_key to \"fired_modules\":");
+    for (const m of modules) {
+      const phrases = Array.isArray(m.trigger_phrases) ? (m.trigger_phrases as unknown[]).join(", ") : "";
+      lines.push(`- ${m.module_key}: ${phrases}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 // Load tenant-specific learnings to inject into the AI prompt
@@ -208,6 +288,21 @@ Deno.serve(async (req) => {
     }
 
     if (mode === "ambient") {
+      // Load existing extraction FIRST so we can (a) merge and (b) shrink the checklist
+      // prompt to only unanswered fields.
+      const { data: existing } = await sb
+        .from("consultation_extractions")
+        .select("*")
+        .eq("session_id", session_id)
+        .maybeSingle();
+
+      const priorAnswers = (existing?.checklist_answers && typeof existing.checklist_answers === "object")
+        ? existing.checklist_answers as Record<string, unknown> : {};
+      const { fields, modules } = await loadScopeContext(
+        sb, session.job_id as string, session.tenant_id as string, Object.keys(priorAnswers),
+      );
+      const ambientSystem = AMBIENT_SYSTEM + buildChecklistPromptSection(fields, modules);
+
       // Ambient mode: single-shot extraction, no history needed
       const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -219,7 +314,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 2048,
-          system: AMBIENT_SYSTEM,
+          system: ambientSystem,
           messages: [{ role: "user", content: transcript_chunk || "" }],
         }),
       });
@@ -246,14 +341,22 @@ Deno.serve(async (req) => {
         });
       }
 
-      const { data: existing } = await sb
-        .from("consultation_extractions")
-        .select("*")
-        .eq("session_id", session_id)
-        .maybeSingle();
-
       const mergeArr = (a: string[] | null, b: unknown) =>
         [...new Set([...(a || []), ...((Array.isArray(b) ? b : []) as string[])])];
+
+      // Merge checklist answers (new detections win) and fired modules (union). Only keep
+      // answers whose field_key is a real field for this session's project types.
+      const validKeys = new Set(fields.map((f) => String(f.field_key)));
+      // Prior keys are always valid (they came from a real field earlier).
+      Object.keys(priorAnswers).forEach((k) => validKeys.add(k));
+      const newAnswers = (extracted.checklist_answers && typeof extracted.checklist_answers === "object")
+        ? extracted.checklist_answers as Record<string, unknown> : {};
+      const mergedAnswers = { ...priorAnswers };
+      for (const [k, v] of Object.entries(newAnswers)) {
+        if (v == null || String(v).trim() === "") continue;
+        if (validKeys.has(k)) mergedAnswers[k] = v;
+      }
+      const mergedModules = mergeArr(existing?.fired_modules, extracted.fired_modules);
 
       const row = {
         session_id,
@@ -266,6 +369,8 @@ Deno.serve(async (req) => {
         timeline: extracted.timeline || existing?.timeline || null,
         risk_flags: mergeArr(existing?.risk_flags, extracted.risk_flags),
         action_items: mergeArr(existing?.action_items, extracted.action_items),
+        checklist_answers: mergedAnswers,
+        fired_modules: mergedModules,
         extracted_at: new Date().toISOString(),
       };
 
@@ -281,7 +386,7 @@ Deno.serve(async (req) => {
           : transcript_chunk,
       }).eq("id", session_id);
 
-      return new Response(JSON.stringify({ ok: true, extracted }), {
+      return new Response(JSON.stringify({ ok: true, extracted, extraction: row }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
