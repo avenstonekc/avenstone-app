@@ -22,6 +22,29 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
+// CONSULTATION_RECAP_QUALITY Item 1 — spoken caption override. After a photo fires, if the next
+// utterance begins with "caption" (or "Avenstone, caption"), the words that follow ARE the caption,
+// verbatim — overriding the shutter-window AI caption. Deterministic, no model call. The photo's
+// transcript_context (words at shutter time) anchors the photo's position in the full transcript;
+// the text right after that anchor is the "next utterance".
+function spokenCaptionFor(rawTranscript: string, context: string): string | null {
+  if (!rawTranscript || !context) return null;
+  const fullLower = rawTranscript.toLowerCase();
+  const ctxWords = context.toLowerCase().replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (!ctxWords.length) return null;
+  const anchor = ctxWords.slice(-6).join(" "); // last few words of shutter context = the locator
+  const pos = fullLower.lastIndexOf(anchor);
+  if (pos === -1) return null;
+  const afterOrig = rawTranscript.slice(pos + anchor.length); // original casing for a verbatim caption
+  const m = afterOrig.match(/^[\s,.:;-]*(?:avenstone[\s,]+)?caption[\s,:.-]+(.+)$/i);
+  if (!m) return null;
+  let cap = m[1].trim();
+  const stop = cap.toLowerCase().search(/\b(avenstone|caption)\b/); // cut at the next spoken command
+  if (stop > 0) cap = cap.slice(0, stop).trim();
+  cap = cap.split(/\s+/).slice(0, 30).join(" ").replace(/[\s,.;:-]+$/, "").trim();
+  return cap || null;
+}
+
 function logAIError(payload: Record<string, unknown>) {
   fetch(ERROR_LOGGER_URL, {
     method: "POST",
@@ -226,13 +249,27 @@ ${photoBlock}`;
       }
     }
 
-    // (3) Caption photos where the rep hasn't manually captioned them.
+    // (3a) Item 1 — spoken caption override. A verbatim "caption ..." command right after the photo
+    // wins over the AI shutter caption (but never over a rep's manual edit).
+    const spokenHandled = new Set<number>();
+    const rawTx = String(session.raw_transcript || "");
+    for (let i = 0; i < photos.length; i++) {
+      const p = photos[i];
+      if (p.caption && p.caption_source === "manual") continue; // never override a rep edit
+      const spoken = spokenCaptionFor(rawTx, String(p.transcript_context || ""));
+      if (spoken) {
+        await sb.from("consultation_photos").update({ caption: spoken, caption_source: "spoken" }).eq("id", p.id);
+        spokenHandled.add(i);
+      }
+    }
+
+    // (3b) Caption the rest from the shutter-window transcript (AI), skipping spoken + manual.
     const caps = arr(out.photo_captions) as Record<string, unknown>[];
     for (const c of caps) {
       const idx = Number(c.index);
       const caption = String(c.caption || "").trim();
       const photo = photos[idx];
-      if (!photo || !caption) continue;
+      if (!photo || !caption || spokenHandled.has(idx)) continue;
       if (photo.caption && photo.caption_source === "manual") continue; // never overwrite a rep edit
       await sb.from("consultation_photos").update({ caption, caption_source: "speech" }).eq("id", photo.id);
     }

@@ -274,18 +274,26 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
         <div style={box}>
           <div style={{ ...label, marginBottom: 10 }}>Photos — captions from what you said</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {photos.map((p) => (
-              <div key={p.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                {p.url && <img src={p.url} alt="" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, flexShrink: 0, border: `1px solid ${BORDER}` }} />}
-                <input
-                  className="finp"
-                  style={{ flex: 1 }}
-                  placeholder="Caption…"
-                  defaultValue={p.caption || ''}
-                  onBlur={(e) => editCaption(p, e.target.value)}
-                />
-              </div>
-            ))}
+            {photos.map((p) => {
+              // Item 1 — provenance: spoken = verbatim "caption …" command, speech = AI from shutter
+              // audio, manual = rep edit. A badge so the rep trusts (or fixes) each one.
+              const src = { spoken: { t: 'SPOKEN', bg: '#DBEAFE', c: '#1E40AF' }, speech: { t: 'AUTO', bg: '#F3F4F6', c: '#6B7280' }, manual: { t: 'EDITED', bg: '#D1FAE5', c: '#065F46' } }[p.caption_source] || null;
+              return (
+                <div key={p.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  {p.url && <img src={p.url} alt="" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, flexShrink: 0, border: `1px solid ${BORDER}` }} />}
+                  <div style={{ flex: 1 }}>
+                    {src && <div style={{ display: 'inline-block', fontSize: 10, fontWeight: 700, letterSpacing: 0.5, padding: '2px 7px', borderRadius: 5, background: src.bg, color: src.c, marginBottom: 5 }}>{src.t}</div>}
+                    <input
+                      className="finp"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                      placeholder="Caption…"
+                      defaultValue={p.caption || ''}
+                      onBlur={(e) => editCaption(p, e.target.value)}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
