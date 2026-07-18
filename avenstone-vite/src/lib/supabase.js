@@ -2681,9 +2681,13 @@ export const sbLoadConsultationChecklist = async (jobId) => {
   )];
   if (!projectTypes.length) return { fields: [], modules: [], projectTypes: [] };
   const [chk, mod] = await Promise.all([
+    // CONSULTATION_FIELD_FIXES FIX 4 — the walk coach/needs-list/end-gate only ask WALK-stage fields
+    // (existing conditions, demo intent, access, measurements, big scope forks). walk_stage=true gates
+    // it. Estimator-stage fields (selections, finishes, niches, permits, detail forks) stay out of the
+    // walk — the scope configurator (ai-estimator loadScopeConfig) still loads the full set unfiltered.
     sb.from('scope_checklists')
       .select('field_key, question, field_type, evidence_type, money_risk_rank, adds_trades, tenant_id')
-      .in('project_type', projectTypes).eq('active', true)
+      .in('project_type', projectTypes).eq('active', true).eq('walk_stage', true)
       .or(`tenant_id.eq.${AV_TENANT},tenant_id.is.null`),
     sb.from('scope_modules')
       .select('module_key, label, adds_fields, tenant_id')

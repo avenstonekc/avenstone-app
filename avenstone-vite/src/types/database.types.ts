@@ -5075,6 +5075,7 @@ export type Database = {
           question: string
           risk_note: string | null
           tenant_id: string | null
+          walk_stage: boolean
         }
         Insert: {
           active?: boolean
@@ -5094,6 +5095,7 @@ export type Database = {
           question: string
           risk_note?: string | null
           tenant_id?: string | null
+          walk_stage?: boolean
         }
         Update: {
           active?: boolean
@@ -5113,6 +5115,7 @@ export type Database = {
           question?: string
           risk_note?: string | null
           tenant_id?: string | null
+          walk_stage?: boolean
         }
         Relationships: []
       }
