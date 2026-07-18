@@ -2771,7 +2771,7 @@ export const sbUpdatePhotoCaption = async (id, caption) => {
 };
 
 // Build the recap PDF client-side, upload to the private bucket, email it, mark sent.
-export const sbSendRecap = async ({ recap, job, measurements, photos, pdfBase64 }) => {
+export const sbSendRecap = async ({ recap, job, measurements, photos, pdfBase64, sessionId }) => {
   try {
     const to = job?.client_email;
     if (!to) return { error: 'No client email on this job.' };
@@ -2791,6 +2791,36 @@ export const sbSendRecap = async ({ recap, job, measurements, photos, pdfBase64 
       await sb.from('consultation_recaps')
         .update({ status: 'sent', sent_at: new Date().toISOString(), pdf_path: pdfPath })
         .eq('id', recap.id);
+    }
+    // Surface the recap in the job's Documents tab (job_files). Keyed to the consultation session
+    // so a re-send/regenerate updates the single row in place rather than stacking duplicates
+    // (delete-then-insert, mirroring sbUpsertReceiptJobFile). The transcript stays DB-only and
+    // consultation photos stay session-scoped — neither writes job_files, so nothing else from
+    // the consultation leaks onto this surface. client_visible: true — same PDF already emailed.
+    if (sessionId && pdfPath) {
+      try {
+        const { data: { user } } = await sb.auth.getUser();
+        await sb.from('job_files')
+          .delete()
+          .eq('related_entity_type', 'consultation_session')
+          .eq('related_entity_id', sessionId)
+          .eq('category', 'Documents');
+        await sb.from('job_files').insert({
+          tenant_id: AV_TENANT,
+          job_id: job.id,
+          uploaded_by_id: user?.id || AV_USER_ID || null,
+          name: `Consultation Recap${job.address ? ' — ' + job.address : ''}`,
+          storage_path: pdfPath,
+          storage_bucket: 'job-documents',
+          mime_type: 'application/pdf',
+          category: 'Documents',
+          subcategory: null,
+          client_visible: true,
+          related_entity_type: 'consultation_session',
+          related_entity_id: sessionId,
+          lifecycle_status: 'active',
+        });
+      } catch (_) { /* non-fatal — email already sent */ }
     }
     return { ok: true };
   } catch (e) { return { error: String(e?.message || e) }; }

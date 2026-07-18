@@ -93,7 +93,7 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
     try {
       const doc = await buildDoc();
       const b64 = doc.output('datauristring').split(',')[1];
-      const res = await sbSendRecap({ recap, job, measurements, photos, pdfBase64: b64 });
+      const res = await sbSendRecap({ recap, job, measurements, photos, pdfBase64: b64, sessionId });
       if (res.error) { setErr(`Send failed: ${res.error}`); }
       else setSent(true);
     } catch (e) { setErr(`Send failed: ${e.message}`); }
