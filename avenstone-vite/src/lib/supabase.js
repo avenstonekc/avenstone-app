@@ -2852,6 +2852,14 @@ export const sbUpdateRecap = async (recapId, patch) => {
   return { error: error?.message || null };
 };
 
+// Load a session's measurements (for reopening a completed session's recap — CONSULTATION_FIELD_FIXES
+// FIX 1). Compose returns these live; reopen has to fetch them.
+export const sbLoadConsultationMeasurements = async (sessionId) => {
+  const { data } = await sb.from('consultation_measurements')
+    .select('*').eq('session_id', sessionId).order('created_at', { ascending: true });
+  return data || [];
+};
+
 // Rep confirms a measurement (inline or measure-mode) — confirmed_by_rep stays honest.
 export const sbConfirmMeasurement = async (id, confirmed) => {
   const { error } = await sb.from('consultation_measurements')

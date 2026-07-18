@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   sbComposeRecap, sbUpdateRecap, sbConfirmMeasurement, sbUpdatePhotoCaption,
   sbSendRecap, sbLoadConsultationPhotos, sbAttachRecapToBid,
+  sbLoadRecap, sbLoadConsultationMeasurements,
 } from '../../../lib/supabase';
 import { buildRecapPDF } from '../../../lib/recapPdf';
 import { isMob } from '../../../lib/utils';
@@ -31,9 +32,37 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
   const [open, setOpen] = useState('');
   const [measurements, setMeasurements] = useState([]);
   const [photos, setPhotos] = useState([]);
+  const [prevSentAt, setPrevSentAt] = useState(null);
 
   const linesToArr = (s) => s.split('\n').map((x) => x.trim()).filter(Boolean);
   const arrToLines = (a) => (a || []).join('\n');
+
+  // CONSULTATION_FIELD_FIXES FIX 1 — reopening a completed session must land on its EXISTING recap,
+  // not a blank compose. On mount, load any saved recap for this session and prefill the editor
+  // (measurements + photos too). If none exists (session never composed), fall through to the compose
+  // button. Idempotent for the live flow: a fresh session has no recap yet, so compose still shows.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const existing = await sbLoadRecap(sessionId);
+      if (!alive || !existing) return;
+      setRecap(existing);
+      setSummary(existing.summary || '');
+      setDiscussed(arrToLines(existing.discussed_items));
+      setBasis(arrToLines(existing.scope_basis));
+      setOpen(arrToLines(existing.open_items));
+      setPrevSentAt(existing.status === 'sent' ? (existing.sent_at || true) : null);
+      const [ms, ph] = await Promise.all([
+        sbLoadConsultationMeasurements(sessionId),
+        sbLoadConsultationPhotos(sessionId),
+      ]);
+      if (!alive) return;
+      setMeasurements(ms);
+      setPhotos(ph);
+      setComposed(true); // show the review/send UI directly — resend allowed (sent starts false)
+    })();
+    return () => { alive = false; };
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const compose = async () => {
     setBusy(true); setErr('');
@@ -224,6 +253,11 @@ export default function RecapPanel({ job, sessionId, unresolvedGaps = [], onComp
       )}
 
       {err && <div style={{ color: '#EF4444', fontSize: 13 }}>{err}</div>}
+      {prevSentAt && !sent && (
+        <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          Previously sent{typeof prevSentAt === 'string' ? ` ${new Date(prevSentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''} — edit and resend, or download, anytime.
+        </div>
+      )}
       {sent && <div style={{ color: '#15803d', fontSize: 14, fontWeight: 600 }}>✓ Recap emailed to {isSub ? (recipient?.email || 'the sub') : job.client_email}</div>}
       {attachMsg && <div style={{ color: '#15803d', fontSize: 14, fontWeight: 600 }}>{attachMsg}</div>}
 

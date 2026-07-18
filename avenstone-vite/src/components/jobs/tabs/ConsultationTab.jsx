@@ -81,6 +81,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
   const [convertMsgs, setConvertMsgs] = useState({});
   const [sessions, setSessions] = useState([]);
   const [viewSession, setViewSession] = useState(null);
+  const [reopenSession, setReopenSession] = useState(null); // FIX 1 — reopen a past session's recap
   const [err, setErr] = useState('');
   const [savingEstimate, setSavingEstimate] = useState(false);
   const [estimateSaved, setEstimateSaved] = useState(false);
@@ -521,6 +522,15 @@ export default function ConsultationTab({ job, profile, setTab }) {
                 </div>
                 {viewSession === s.id && (
                   <div style={{ marginTop: 12 }}>
+                    {/* FIX 1 — a completed session is no longer a locked door: reopen its recap to
+                        view/compose, edit captions + measurements, download, and send/resend. */}
+                    <button
+                      className="btn btn-gold"
+                      style={{ width: '100%', minHeight: 44, fontSize: 14, marginBottom: 12 }}
+                      onClick={(e) => { e.stopPropagation(); setReopenSession(s); }}
+                    >
+                      {s.session_type === 'sub_walk' ? 'Open work order — view / send →' : 'Open recap — view / send →'}
+                    </button>
                     {s.extractions?.[0] && (
                       <>
                         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -853,6 +863,33 @@ export default function ConsultationTab({ job, profile, setTab }) {
           </div>
         )}
 
+        {/* FIX 1 — reopened past session: focused recap detail view (view/compose, edit, download,
+            send/resend). Overrides the phase content so the rep can always come back to a session. */}
+        {reopenSession ? (
+          <div>
+            <button
+              className="btn btn-ghost"
+              style={{ marginBottom: 14, minHeight: 40 }}
+              onClick={() => { setReopenSession(null); loadSessions(); }}
+            >
+              ← Back to sessions
+            </button>
+            <div style={{ fontFamily: 'DM Serif Display, serif', fontSize: 18, color: NAV, marginBottom: 4 }}>
+              {reopenSession.session_type === 'sub_walk' ? 'Sub walkthrough' : 'Consultation'} — {new Date(reopenSession.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+              Reopen to view the recap, edit captions and measurements, download the PDF, or {reopenSession.session_type === 'sub_walk' ? 'send it to the sub' : 'send/resend it to the client'}.
+            </div>
+            <RecapPanel
+              job={job}
+              sessionId={reopenSession.id}
+              unresolvedGaps={[]}
+              onComposed={handleRecapComposed}
+              sessionType={reopenSession.session_type || 'client_walk'}
+              tradeScope={reopenSession.trade_scope || []}
+            />
+          </div>
+        ) : (<>
         {/* Phase content */}
         {phase === 'idle' && renderIdle()}
         {phase === 'ambient' && (
@@ -880,6 +917,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
           />
         )}
         {phase === 'complete' && renderComplete()}
+        </>)}
       </div>
 
       <GapResolutionModal
