@@ -2106,6 +2106,11 @@ export const sbSaveJobLidarScan = async ({ jobId, rooms, totalSqft, captureMode,
     const lr = await sbLinkScanRoomsToJobRooms(jobId, data.id, rooms, heightMeters);
     if (!lr.ok) console.warn('[scan-room-link] failed:', lr.error);
   } catch (linkEx) { console.warn('[scan-room-link] threw:', linkEx); }
+  // SCAN_SCOPE_CAPTURE Slice 2 — merge captured scope notes into any existing job_room_scopes rows (non-fatal).
+  try {
+    const sn = await sbSyncScanScopeNotes(jobId);
+    if (!sn.ok) console.warn('[scan-scope-note-sync] failed:', sn.error);
+  } catch (syncEx) { console.warn('[scan-scope-note-sync] threw:', syncEx); }
   // Attach normalized_geometry to in-memory record so callers (e.g. sbCreateFloorPlan) can copy it
   return { ok: true, error: null, data: normGeom ? { ...data, normalized_geometry: normGeom } : data };
 };
@@ -3261,7 +3266,50 @@ export const sbSaveJobRoomScope = async ({
     captureFailedIntent({ kind: 'room_scope_save', payload: { roomId, scopeTag }, jobId: jobId || null, message: error.message, resumable: false }).catch(() => {});
     return { ok: false, error: error.message, data: null };
   }
+  // SCAN_SCOPE_CAPTURE Slice 2 — a freshly-created/updated scope row can now receive its captured scan
+  // note; sync merges it into scope_details (additive, non-fatal, fire-and-safe).
+  sbSyncScanScopeNotes(jobId).catch(() => {});
   return { ok: true, error: null, data };
+};
+
+// SCAN_SCOPE_CAPTURE Slice 2 — merge each room's scan scope_note (from job_lidar_scans.rooms[i].scope_note)
+// into job_room_scopes.scope_details.scan_note. ADDITIVE + non-destructive: only updates rooms that
+// ALREADY have a scope row (scope_tag is NOT NULL and carries takeoff meaning, so we never fabricate a
+// row), and only writes the scope_details JSONB — scope_tag/custom_trades/notes are left untouched so a
+// rep's scope choice is never overwritten. Idempotent (skips rows already carrying the same note) and
+// non-fatal. Room identity is `${scan.id}_${idx}`, matching sbLoadJobScanRooms / job_room_scopes.room_id.
+export const sbSyncScanScopeNotes = async (jobId) => {
+  try {
+    if (!jobId) return { ok: true, error: null, data: { updated: 0 } };
+    const { data: scans } = await sb.from('job_lidar_scans')
+      .select('id, rooms').eq('job_id', jobId).eq('tenant_id', AV_TENANT)
+      .order('created_at', { ascending: false }).limit(5);
+    const noteByRoom = new Map(); // roomId -> scope_note (most-recent scan wins)
+    for (const scan of (scans || [])) {
+      (scan.rooms || []).forEach((room, idx) => {
+        const note = String(room?.scope_note || '').trim();
+        const roomId = `${scan.id}_${idx}`;
+        if (note && !noteByRoom.has(roomId)) noteByRoom.set(roomId, note);
+      });
+    }
+    if (!noteByRoom.size) return { ok: true, error: null, data: { updated: 0 } };
+    const { data: rows } = await sb.from('job_room_scopes')
+      .select('id, room_id, scope_details').eq('job_id', jobId).eq('tenant_id', AV_TENANT);
+    let updated = 0;
+    for (const row of (rows || [])) {
+      const note = noteByRoom.get(row.room_id);
+      if (!note) continue;
+      const details = (row.scope_details && typeof row.scope_details === 'object') ? row.scope_details : {};
+      if (details.scan_note === note) continue; // already synced
+      const { error: upErr } = await sb.from('job_room_scopes')
+        .update({ scope_details: { ...details, scan_note: note }, updated_at: new Date().toISOString() })
+        .eq('id', row.id).eq('tenant_id', AV_TENANT);
+      if (!upErr) updated++;
+    }
+    return { ok: true, error: null, data: { updated } };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'sbSyncScanScopeNotes failed', data: null };
+  }
 };
 
 export const sbDeleteJobRoomScope = async (id) => {
