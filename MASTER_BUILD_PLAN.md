@@ -492,6 +492,7 @@ All 22 prompts shipped. See arc inventory above. **No remaining items in Block 1
 - P1B — checklist/module tables + scope-interview mode: **SHIPPED + LIVE-TESTED 2026-06-26** (full seed P1B 2026-07-10: 9 project types, 15 modules, 37 conflict rules)
 - SCOPE_PREFILL (sub-arc): P2/P3/P4a/P4b all **SHIPPED 2026-07-16** — Haiku fn, configurator consumption, re-parse-on-edit, stale-cleanup, layout_change HIGH phrasing, selections-gate source-awareness
 - SCOPE_VISION P1-P2: **SHIPPED 2026-07-16** (see arc above)
+- SCAN_SCOPE_CAPTURE (sub-arc): **SHIPPED 2026-07-18** — scan-time room naming (quick-pick chips + auto-number + custom name) and per-room scope-of-work capture. Notes ride the scan JSON (`rooms[i].scope_note`), merge into `job_room_scopes.scope_details.scan_note` for scoped rooms (additive, never clobbers scope_tag), print on a floor-plan-PDF scope page, and feed the deterministic `scope_plan` trigger detection (zero new model calls). Slices: card (`6649ba7`), persistence (`2a5c202`), PDF page (`5c0a862`), estimator wiring (`9ffc949`). **Replaces the room-naming mini-map sub-task in CLAUDE.md priority #1** — naming per room at capture time in scan order eliminates the room-name-backwards bug without a mini-map.
 - P3 — vision reconciliation (~2-3 prompts): **OPEN**
 - P4 — Client INTAKE role-instance absorbed from B5.1-B5.3 (~3-4 prompts): **OPEN** (entry criteria: P3 ships first)
 

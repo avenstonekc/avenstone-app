@@ -612,7 +612,7 @@ That's the rule. Kalin runs Opus directly inside Claude Code. **Cost ratio Opus 
 
 1. **Floor plan PDF — match MagicPlan output, pull dimensions cleanly.** This is the visible field deliverable. Sub-tasks:
    - **Fixture/object rendering** — Swift serializes `room.objects` (toilet, bathtub, sink, stove, oven, refrigerator, dishwasher, washerDryer, storage). PDF needs `_drawFixture` reinstated with rotation transform from `_processAllRooms`.
-   - **Room-name-backwards UX bug** — StructureBuilder returns rooms in spatial order, not scan order. Naming modal shows them in the rebuilt order so what Kalin types ends up on the wrong room. Fix: render a thumbnail/centroid mini-map per room in the naming list so the rep can see which room they're labeling.
+   - **Room-name-backwards UX bug — ADDRESSED by SCAN_SCOPE_CAPTURE (2026-07-18), mini-map sub-task RETIRED.** Root cause: StructureBuilder returns rooms in spatial order, not scan order, so names typed after the scan land on the wrong room. Fix shipped: the post-scan RoomScopeCard names each room at capture time in scan order (the returned rooms array is already re-sorted to scan order via `scanIndex`), eliminating the mismatch without a mini-map. Residual native risk only: `matchNamesByArea` (RoomPlanPlugin.swift) can still mis-pair two similar-area rooms — a Swift-side concern, not the JS naming flow.
    - **Single-room PDF parity** — chain dims and label collision logic only run in worldMode. Single-room scans use the older per-seg path. Bring to parity once multi-room is solid.
 
 **Normalized geometry — canonical render source (Stage 2 shipped 2026-05-31):**
