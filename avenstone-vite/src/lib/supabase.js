@@ -51,9 +51,9 @@ export const PROCESS_TRANSCRIPT_URL     = `${FN}/process-transcript`;
 export const COMPOSE_RECAP_URL          = `${FN}/compose-consultation-recap`;
 export const SEND_RECAP_EMAIL_URL       = `${FN}/send-recap-email`;
 export const AI_ERROR_LOGGER_URL        = `${FN}/ai-error-logger`;
-export const AI_FIELD_AGENT_URL         = `${FN}/ai-field-agent`;
+export const AI_FIELD_AGENT_URL         = `${FN}/ai-agent?surface=field`;   // AVEN_MERGE_ARC B6.1 cutover (was ai-field-agent). Revert this line to roll back.
 export const MEASURE_GUIDE_URL          = `${FN}/measure-guide`;
-export const AI_MASTER_URL              = `${FN}/ai-master-agent`;
+export const AI_MASTER_URL              = `${FN}/ai-agent?surface=master`;  // AVEN_MERGE_ARC B6.1 cutover (was ai-master-agent). Revert this line to roll back.
 export const ADDRESS_AUTOCOMPLETE_URL   = `${FN}/address-autocomplete`;
 export const GET_CONTRACTOR_PROFILE_URL = `${FN}/get-contractor-profile`;
 export const GET_JOB_STATUS_URL         = `${FN}/get-job-status`;
