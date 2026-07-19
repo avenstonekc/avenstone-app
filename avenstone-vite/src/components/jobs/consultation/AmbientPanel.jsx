@@ -8,6 +8,11 @@ import { isMob } from '../../../lib/utils';
 import { createCaptureController, isNativeCapture } from '../../../lib/consultationCapture';
 import { buildNeedsList, needsListSpeech, evidenceStyle } from '../../../lib/consultationCoach';
 import { buildContextualStrings } from '../../../lib/consultationVocab';
+import { createScreenWake } from '../../../lib/screenWake';
+
+// A background/visibility blip shorter than this isn't treated as a capture gap (brief app
+// switch, notification-shade peek). Longer = the phone was likely locked → mark the gap.
+const GAP_MIN_MS = 2500;
 
 const NAV = 'var(--navy-900)';
 const BORDER = 'var(--border)';
@@ -46,6 +51,8 @@ export default function AmbientPanel({
   const [firedModules, setFiredModules] = useState([]);
   const [checklist, setChecklist] = useState({ fields: [], modules: [] });
   const [ending, setEnding] = useState(false);
+  const [capturePaused, setCapturePaused] = useState(false); // gap banner after a screen lock
+  const [showPocketHint, setShowPocketHint] = useState(true);
 
   const controllerRef = useRef(null);
   const transcriptRef = useRef('');
@@ -55,6 +62,8 @@ export default function AmbientPanel({
   const lastCmdRef = useRef({ cmd: '', ts: 0 });
   const voiceOnRef = useRef(true);
   const needsRef = useRef([]);
+  const wakeRef = useRef(null);       // screen wake-lock handle (keep phone from auto-locking)
+  const hiddenAtRef = useRef(0);      // when the page went hidden mid-recording (gap start)
 
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
 
@@ -167,6 +176,59 @@ export default function AmbientPanel({
     else c.resume();
   };
 
+  // ── FIX 1: keep-awake + capture-gap safety net ───────────────────────────────
+  // Primary defense is the wake lock (phone never auto-locks). If the rep manually locks
+  // anyway, iOS suspends the app + kills recognition; visibilitychange catches the return,
+  // marks the gap honestly in the transcript, and prompts an explicit resume.
+  const hh = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  const insertGapMarker = (startTs, endTs) => {
+    const mins = Math.max(1, Math.round((endTs - startTs) / 60000));
+    const marker = `[CAPTURE GAP ${hh(startTs)}–${hh(endTs)} (~${mins} min): screen locked/backgrounded — conversation NOT captured]`;
+    transcriptRef.current = (transcriptRef.current + '\n' + marker + '\n').trim();
+    setLocalTranscript(transcriptRef.current);
+    onTranscriptUpdate?.(transcriptRef.current);
+    flushSegment(marker); // persists to raw_transcript so the recap composer sees the gap
+  };
+
+  const resumeCapture = async () => {
+    setCapturePaused(false);
+    try { await wakeRef.current?.acquire?.(); } catch {}
+    const c = controllerRef.current;
+    if (c) { try { c.stop(); } catch {} try { await c.start(); } catch {} }
+  };
+
+  useEffect(() => {
+    const wake = createScreenWake();
+    wakeRef.current = wake;
+    wake.acquire();
+
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') {
+        // Only arm a gap if we were actively recording when we lost the foreground.
+        if (controllerRef.current?.running?.()) hiddenAtRef.current = Date.now();
+      } else {
+        // Back in foreground — the OS drops the wake lock on hide, so re-acquire.
+        wake.acquire();
+        const start = hiddenAtRef.current;
+        hiddenAtRef.current = 0;
+        if (start && Date.now() - start >= GAP_MIN_MS) {
+          // Recognition almost certainly died while backgrounded — stop cleanly, mark the
+          // gap, and surface an explicit resume (never silently drop conversation).
+          try { controllerRef.current?.stop?.(); } catch {}
+          insertGapMarker(start, Date.now());
+          setCapturePaused(true);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      wake.release();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handlePhoto = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -228,6 +290,26 @@ export default function AmbientPanel({
       {micErr && (
         <div style={{ background: 'var(--red-bg)', border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 14px', marginBottom: 12, color: 'var(--red-text-strong)', fontSize: 13 }}>
           {micErr}
+        </div>
+      )}
+
+      {/* FIX 1 — capture-gap recovery banner: shown after the screen was locked mid-session */}
+      {capturePaused && (
+        <div style={{ background: '#FEF3C7', border: '1px solid var(--amber-border)', borderRadius: 8, padding: '12px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ color: 'var(--amber-text-strong)', fontSize: 13, flex: 1, lineHeight: 1.5 }}>
+            <strong>Capture paused</strong> while the screen was off — a gap was marked in the transcript so the recap won't guess what was said. Resume when you're ready.
+          </span>
+          <button className="btn btn-gold" style={{ minHeight: 44, fontSize: 15 }} onClick={resumeCapture}>
+            Resume capture
+          </button>
+        </div>
+      )}
+
+      {/* FIX 1 — hands-free hint: tap 🌙 so the screen stays on (dim) and capture survives */}
+      {showPocketHint && !capturePaused && (
+        <div style={{ background: 'rgba(201,168,76,0.10)', border: '1px solid rgba(201,168,76,0.35)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#6b5a1f' }}>
+          <span style={{ flex: 1, lineHeight: 1.5 }}>Going hands-free? Tap <strong>🌙 Pocket</strong> — the screen stays on (dimmed) so capture keeps running. Avoid locking the phone.</span>
+          <button onClick={() => setShowPocketHint(false)} style={{ background: 'none', border: 'none', color: '#6b5a1f', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
         </div>
       )}
 
