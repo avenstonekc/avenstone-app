@@ -64,6 +64,7 @@ SCOPE DIRECTION (critical — the homeowner reads this, and getting direction ba
 - Every scope item must state its DIRECTION explicitly and correctly. Lead each discussed_items bullet with the action so direction is unmistakable: REMOVE existing (demo/tear out), INSTALL new, or KEEP existing (staying). E.g. "Remove the existing walk-in tub and tile surround", "Install a new walk-in shower where the tub was", "Keep the existing floor tile".
 - Derive direction ONLY from stated evidence: demo / remove / tear out / replace / "new" / keep language in the transcript, the typed scope, and especially the SCAN SCOPE NOTES. Worked example: a scan note "Demo walk in tub. Install new shower where tub is" means the walk-in tub is being REMOVED and a shower INSTALLED in its place — NEVER describe it as installing a walk-in tub.
 - NEVER infer a direction that isn't stated, and NEVER invent a rationale, reason, cause, or justification that was not actually said (e.g. do not write "bench not compatible with shower pan" unless someone said it). Every claim must trace to the evidence.
+- GROUNDING: if a detail is not grounded in the transcript or the scan/scope notes, it does NOT appear in summary/discussed_items/scope_basis/open_items AT ALL — not even softly framed. Never write "considered but set aside", "may include", "possibly", or a hedge for something that wasn't said. If you think something was considered or is possible but it isn't in the evidence, put it in "needs_confirm" for the rep — never on the recap.
 - If the direction OR a material detail of an item is uncertain from the evidence, do NOT state it confidently. Put it in "needs_confirm" — a short line naming the item and what is unclear — so the rep resolves it before sending. An uncertain flag is always better than a confident error on a client document.
 
 You also do three extraction/analysis jobs:
@@ -97,6 +98,7 @@ SCOPE DIRECTION (critical — a wrong direction makes the sub bid the wrong work
 - Every scope-of-work item must state its DIRECTION explicitly: REMOVE existing (demo/tear out), INSTALL new, or KEEP existing. Lead each bullet with the action.
 - Derive direction ONLY from stated evidence: demo / remove / tear out / replace / "new" / keep language in the transcript, the typed scope, and especially the SCAN SCOPE NOTES. E.g. "Demo walk in tub. Install new shower where tub is" = REMOVE the tub, INSTALL a shower in its place — never the reverse.
 - NEVER infer an unstated direction and NEVER invent a rationale or reason that was not said. Every claim traces to the evidence.
+- GROUNDING: anything not grounded in the transcript or the scan/scope notes does NOT appear in summary/discussed_items/scope_basis/open_items at all — not even softly framed ("considered but set aside", "may include", hedges). If you think something was considered or possible but it isn't in the evidence, put it in "needs_confirm" — never on the work order.
 - If the direction or a material detail is uncertain, put it in "needs_confirm" instead of stating it — the PM resolves it before sending.
 
 Put the content in these keys:
