@@ -14,6 +14,8 @@ import { fmtMoney, amountToWords } from "../_shared/agentFormat.ts";
 // AGENT_DOCS — the document engine (create_document): renders a branded PDF, hits the books for
 // invoices (invoices table), saves to job-documents + job_files, returns a signed chat link.
 import { createDocument } from "../_shared/agentDocs.ts";
+// AGENT_DOCS Slice 4 — send_document: emails a job document (or the estimate) to a given address.
+import { sendDocument } from "../_shared/agentSend.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -106,6 +108,7 @@ const CONFIRM_TOOLS = new Set([
   "compose_draw",
   "send_client_portal",
   "create_document",
+  "send_document",
 ]);
 
 // ── REQUIRED_FIELDS registry (Phase 4) ───────────────────────────────────────
@@ -153,14 +156,24 @@ const SCHEDULE_ITEM_TYPE_OPTIONS: CardOption[] = [
 // never offers an unimplemented type). Kept as a const so the tool schema + card options stay in sync.
 const DOC_TYPE_OPTIONS: CardOption[] = [
   { value: "invoice", label: "Invoice" },
+  { value: "delivery_acceptance", label: "Delivery acceptance" },
+  { value: "damage_waiver", label: "Damage waiver / release" },
+  { value: "material_receipt", label: "Material receipt" },
+  { value: "lien_waiver", label: "Lien waiver" },
+  { value: "letter", label: "Letter" },
 ];
 
 const REQUIRED_FIELDS: Record<string, FieldSpec[]> = {
+  // Only job + doc_type are universally required; type-specific fields (amount for invoices,
+  // body for letters, description for forms) are validated in the executor so a letter isn't
+  // asked for an amount and vice-versa.
   create_document: [
     { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
     { field: "doc_type", type: "select", label: "Document type", options: DOC_TYPE_OPTIONS },
-    { field: "amount", type: "text", label: "Amount ($)" },
-    { field: "description", type: "text", label: "What is this for?" },
+  ],
+  send_document: [
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+    { field: "to_email", type: "text", label: "Send to (email address)" },
   ],
   log_payment: [
     { field: "amount", type: "text", label: "Amount ($)" },
@@ -823,18 +836,50 @@ const TOOLS = [
   },
   {
     name: "create_document",
-    description: "Generate a document from chat and save it to the job's Documents. Use when the user says 'make an invoice', 'create an invoice for $X for so-and-so', 'save an invoice to this job'. For doc_type 'invoice' this ALSO records a receivable on the books (the invoices ledger) — it is not just a PDF. A branded letterhead PDF is produced and linked back in chat. Confirmation required. Owner/PM only.",
+    description: "Generate a document from chat and save it to the job's Documents (a branded letterhead PDF, linked back in chat). Confirmation required. Owner/PM only. Doc types:\n" +
+      "- 'invoice': records a receivable on the books (the invoices ledger) AND makes a PDF — not just a PDF. Needs amount + description; optional bill_to, due_date.\n" +
+      "- 'delivery_acceptance' / 'damage_waiver' / 'material_receipt': template forms filled from the fields you pass — do NOT compose prose. Put what it covers in 'description'; put the other party (who received / who acknowledges) in 'party'; 'amount' optional (e.g. a material receipt total).\n" +
+      "- 'letter': a generic business letter on company letterhead. YOU compose the full letter body and pass it as 'body' (write the complete letter — greeting, paragraphs, closing intent — as it should appear; the signature block is added automatically). Optional 'recipient_name' for the addressee line. The body is shown to the user on the confirm card before it is saved, so write it in full.\n" +
+      "- 'lien_waiver': a statutory mechanic's-lien waiver from attorney-approved templates (no prose to compose). REQUIRES 'state' (MO or KS), 'claimant' (the sub/vendor releasing rights), and 'amount' (the payment it covers). 'conditional' (default true) becomes effective only when payment clears; 'unconditional' (conditional=false) releases rights EVEN IF UNPAID — for unconditional you MUST first ask the user to confirm payment was actually received and set 'payment_received' true. 'final' (default false) releases all remaining rights vs a progress payment. Optional 'through_date', 'exceptions' (disputed/retained items), and 'sub_invoice_id' / 'transaction_id' to auto-fill the amount and link the waiver to that payment.",
     input_schema: {
       type: "object",
       properties: {
-        job_id:      { type: "string", description: "Job ID. Use active job context if available." },
-        doc_type:    { type: "string", enum: ["invoice"], description: "The kind of document. Currently only 'invoice'." },
-        amount:      { type: "number", description: "Invoice amount in dollars (the total due)." },
-        description: { type: "string", description: "What the invoice is for, e.g. 'Deposit — kitchen remodel'." },
-        bill_to:     { type: "string", description: "Who to bill. Defaults to the job's client name if omitted." },
-        due_date:    { type: "string", description: "Optional due date, YYYY-MM-DD." },
+        job_id:          { type: "string", description: "Job ID. Use active job context if available." },
+        doc_type:        { type: "string", enum: ["invoice", "delivery_acceptance", "damage_waiver", "material_receipt", "lien_waiver", "letter"], description: "The kind of document to generate." },
+        amount:          { type: "number", description: "Invoice total due (invoice), the payment the waiver covers (lien_waiver), or an optional material-receipt amount. Omit for letters and other forms." },
+        description:     { type: "string", description: "Invoice: what it's for. Forms (delivery/damage/material): what the form covers, e.g. '12 sheets 5/8\" drywall received in good condition'. Omit for letters and lien waivers." },
+        bill_to:         { type: "string", description: "Invoice only: who to bill. Defaults to the job's client name." },
+        due_date:        { type: "string", description: "Invoice only: optional due date, YYYY-MM-DD." },
+        party:           { type: "string", description: "Forms only: the other party — who received the delivery / who acknowledges the waiver / who the materials came from." },
+        body:            { type: "string", description: "Letter only: the full composed letter body, written out as it should appear on the page." },
+        recipient_name:  { type: "string", description: "Letter only: optional addressee line (e.g. 'Mr. James Reed')." },
+        state:           { type: "string", enum: ["MO", "KS"], description: "Lien waiver only: the state whose statutory form applies (Missouri or Kansas)." },
+        conditional:     { type: "boolean", description: "Lien waiver only: true (default) = conditional (effective only when payment clears); false = unconditional (releases rights even if unpaid — requires payment_received)." },
+        final:           { type: "boolean", description: "Lien waiver only: true = final (releases all remaining rights); false (default) = progress/partial." },
+        claimant:        { type: "string", description: "Lien waiver only: the sub or vendor legal name releasing lien rights." },
+        through_date:    { type: "string", description: "Lien waiver only: optional — labor/materials are covered through this date (YYYY-MM-DD)." },
+        exceptions:      { type: "string", description: "Lien waiver only: optional disputed/retained items excluded from the release." },
+        payment_received:{ type: "boolean", description: "Lien waiver only: set true ONLY after confirming with the user that the unconditional payment was actually received. Required for unconditional waivers." },
+        sub_invoice_id:  { type: "string", description: "Lien waiver only: optional sub invoice this waiver releases — auto-fills amount/claimant and links the file." },
+        transaction_id:  { type: "string", description: "Lien waiver only: optional job transaction this waiver releases — links the waiver to that payment." },
       },
-      required: ["job_id", "doc_type", "amount", "description"],
+      required: ["job_id", "doc_type"],
+    },
+  },
+  {
+    name: "send_document",
+    description: "Email a document that lives on a job — an invoice, lien waiver, letter, delivery/material form, or the estimate — to an email address. Use when the user says 'email that invoice to john@...', 'send the estimate to the client', 'send the waiver to the sub'. The recipient gets a secure 7-day link. Confirmation required (the address is shown for review). Owner/PM only. Identify the document by document_id when you have it, otherwise pass document_kind and I'll use the most recent matching one on the job.",
+    input_schema: {
+      type: "object",
+      properties: {
+        to_email:      { type: "string", description: "The recipient's email address, exactly as it should be sent to." },
+        job_id:        { type: "string", description: "The job the document belongs to. Use active job context if available." },
+        document_id:   { type: "string", description: "The specific document's file id, if known (e.g. the one just created)." },
+        document_kind: { type: "string", enum: ["invoice", "estimate", "lien_waiver", "letter", "delivery_acceptance", "damage_waiver", "material_receipt"], description: "Which kind of document to send when you don't have a document_id — the most recent matching one on the job is used." },
+        recipient_name:{ type: "string", description: "Optional name for the email greeting." },
+        message:       { type: "string", description: "Optional short cover note to include in the email body." },
+      },
+      required: ["to_email", "job_id"],
     },
   },
 ];
@@ -2114,11 +2159,40 @@ async function executeTool(
           description: input.description ? String(input.description) : undefined,
           billTo: input.bill_to ? String(input.bill_to) : undefined,
           dueDate: input.due_date ? String(input.due_date) : undefined,
+          body: input.body ? String(input.body) : undefined,
+          party: input.party ? String(input.party) : undefined,
+          recipientName: input.recipient_name ? String(input.recipient_name) : undefined,
+          state: input.state ? String(input.state) : undefined,
+          conditional: input.conditional != null ? Boolean(input.conditional) : undefined,
+          final: input.final != null ? Boolean(input.final) : undefined,
+          claimant: input.claimant ? String(input.claimant) : undefined,
+          throughDate: input.through_date ? String(input.through_date) : undefined,
+          exceptions: input.exceptions ? String(input.exceptions) : undefined,
+          paymentReceived: input.payment_received != null ? Boolean(input.payment_received) : undefined,
+          subInvoiceId: input.sub_invoice_id ? String(input.sub_invoice_id) : undefined,
+          transactionId: input.transaction_id ? String(input.transaction_id) : undefined,
         });
         if (!docRes.ok) return { error: docRes.error || "Document generation failed." };
         // Invoice hit the books; surface the receivable + the signed link back in chat.
         const link = docRes.signedUrl ? ` View it here: ${docRes.signedUrl}` : "";
         return { success: `${docRes.summary}${link}` };
+      }
+
+      case "send_document": {
+        if (userRole !== "owner" && userRole !== "project_manager") {
+          return { error: "Owner or PM role required to email documents." };
+        }
+        const sendRes = await sendDocument(sb, {
+          tenantId,
+          jobId: input.job_id ? String(input.job_id) : undefined,
+          documentId: input.document_id ? String(input.document_id) : undefined,
+          documentKind: input.document_kind ? String(input.document_kind) : undefined,
+          toEmail: String(input.to_email || ""),
+          toName: input.recipient_name ? String(input.recipient_name) : undefined,
+          message: input.message ? String(input.message) : undefined,
+        });
+        if (!sendRes.ok) return { error: sendRes.error || "Send failed." };
+        return { success: sendRes.summary };
       }
 
       case "record_deposit": {
@@ -2439,7 +2513,8 @@ function describeConfirmAction(tool: string, input: any): string {
       return cpBits.join(" · ") + ".";
     }
     case "create_document": {
-      if (String(input.doc_type) === "invoice") {
+      const dt = String(input.doc_type || "document");
+      if (dt === "invoice") {
         const dBits: string[] = [`Create invoice for ${fmtMoney(input.amount)} (${amountToWords(input.amount)})`];
         if (input.description) dBits.push(String(input.description));
         dBits.push(`bill to ${String(input.bill_to || "the client")}`);
@@ -2448,7 +2523,56 @@ function describeConfirmAction(tool: string, input: any): string {
         dBits.push("records a receivable on the books + saves a PDF to Documents");
         return dBits.join(" · ") + ".";
       }
-      return `Create a ${String(input.doc_type || "document")} and save it to Documents.`;
+      if (dt === "letter") {
+        // Preview the full composed body before it is saved — the rep vets the words on the card.
+        const body = String(input.body || "").trim();
+        const to = input.recipient_name ? ` to ${String(input.recipient_name)}` : "";
+        return `Save this letter${to} to Documents:\n\n"${body}"`;
+      }
+      if (dt === "lien_waiver") {
+        const isUncond = input.conditional === false;
+        const isFinal = input.final === true;
+        const kind = `${isUncond ? "UNCONDITIONAL" : "conditional"} ${isFinal ? "final" : "progress"}`;
+        const wBits: string[] = [`Generate a ${String(input.state || "?")} ${kind} lien waiver`];
+        if (input.claimant) wBits.push(`claimant ${String(input.claimant)}`);
+        if (input.amount != null) wBits.push(`for ${fmtMoney(input.amount)} (${amountToWords(input.amount)})`);
+        if (input.through_date) wBits.push(`through ${String(input.through_date)}`);
+        if (input.exceptions) wBits.push(`excludes ${String(input.exceptions)}`);
+        wBits.push("saves a PDF to Documents");
+        let out = wBits.join(" · ") + ".";
+        if (isUncond) {
+          // Highest-risk form: it releases lien rights even if unpaid. Force the payment read-back onto the card.
+          out += input.payment_received === true
+            ? `\n\n⚠️ UNCONDITIONAL — releases lien rights permanently. You have confirmed payment of ${fmtMoney(input.amount)} was RECEIVED.`
+            : `\n\n⚠️ UNCONDITIONAL — releases lien rights EVEN IF UNPAID. Has ${fmtMoney(input.amount)} actually been received? This will not generate until you confirm payment.`;
+        }
+        return out;
+      }
+      const formLabel: Record<string, string> = {
+        delivery_acceptance: "delivery acceptance form",
+        damage_waiver: "damage waiver / release",
+        material_receipt: "material receipt",
+      };
+      const fBits: string[] = [`Create a ${formLabel[dt] || dt}`];
+      if (input.description) fBits.push(String(input.description));
+      if (input.party) fBits.push(`party: ${String(input.party)}`);
+      if (input.amount != null) fBits.push(fmtMoney(input.amount));
+      if (input._job_address) fBits.push(`on ${String(input._job_address)}`);
+      fBits.push("saves a PDF to Documents");
+      return fBits.join(" · ") + ".";
+    }
+    case "send_document": {
+      // The recipient address renders VERBATIM — the rep vets exactly where it goes before send.
+      const kindLabel: Record<string, string> = {
+        invoice: "the invoice", estimate: "the estimate", lien_waiver: "the lien waiver",
+        letter: "the letter", delivery_acceptance: "the delivery acceptance form",
+        damage_waiver: "the damage waiver", material_receipt: "the material receipt",
+      };
+      const what = input.document_id ? "the selected document" : (kindLabel[String(input.document_kind)] || "the document");
+      const sBits = [`Email ${what} to ${String(input.to_email || "?")}`];
+      if (input.recipient_name) sBits.push(`(${String(input.recipient_name)})`);
+      sBits.push("as a secure 7-day link");
+      return sBits.join(" ") + ".";
     }
     default:
       return "Perform this action.";

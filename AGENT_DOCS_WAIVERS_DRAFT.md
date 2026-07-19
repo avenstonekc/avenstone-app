@@ -1,6 +1,6 @@
-# AGENT_DOCS Slice 2 — Lien Waiver Templates (DRAFT — attorney review required before first real use)
+# AGENT_DOCS Slice 2 — Lien Waiver Templates
 
-**Status:** DRAFT for Kalin + attorney review. NOT wired into `create_document` yet. Ship only after Kalin's go.
+**Status:** ✅ SHIPPED 2026-07-19. **Attorney reviewed the MO + KS text and signed off 2026-07-18 — no redlines.** This file is retained as the provenance record of the exact language that was reviewed. The blessed text is now seeded as data in `supabase/migrations/20260718230000_waiver_templates.sql` (`waiver_templates` table, 8 rows) and rendered by `_shared/agentDocs.ts` `createWaiver` via the `create_document` doc_type `lien_waiver`. Unconditional variants carry the hard payment-received gate + amount read-back as designed below. To revise the language, edit `waiver_templates` (owner-editable, no code change).
 **Design:** templates live as DATA (a `waiver_templates` seed / config), keyed by `(state, conditional|unconditional, partial|final)` — editable without code. `create_document` doc_type `lien_waiver` takes a `state` param (MO | KS) + `conditional` + `final` + auto-fill fields. Zero model calls (template fill in code).
 
 > ⚠️ **LEGAL FLAG (read this).** Lien-waiver language is statutory and state-specific. **Avenstone works both sides of the KS/MO line**, so a single form is wrong. Key differences I'm aware of (NOT legal advice — your attorney must confirm and bless the exact wording before any waiver is sent to a real sub or client):
