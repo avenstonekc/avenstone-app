@@ -580,7 +580,7 @@ All 22 prompts shipped. See arc inventory above. **No remaining items in Block 1
 
 | Sub-step | What it does | Prompts | Status |
 |----------|-------------|---------|--------|
-| B6.1 — AVEN_MERGE_ARC | Merge ai-master-agent + ai-field-agent → one edge fn. Blueprint: AVEN_MERGE_ARC.md. Behavior-preserving v1. **IN PROGRESS**: Slice 1 (shared modules — 6 drift blocks → _shared) SHIPPED `02608d3` (deploy green + live smoke both fns 200). Next: Slice 2 (merged fn on new `ai-agent` slug), Slice 3 (URL cutover, alone), Slice 4 (restore field money read-back). | 5 | IN-PROGRESS |
+| B6.1 — AVEN_MERGE_ARC | Merge ai-master-agent + ai-field-agent → one edge fn (`ai-agent`, surface-dispatched). Blueprint: AVEN_MERGE_ARC.md. Behavior-preserving v1. **SHIPPED 2026-07-18**: Slice 1 shared modules `02608d3`; Slice 2 merged fn `f738034` (+query-param `3d72fe4`); Slice 3 URL cutover `aef8709` (alone); legacy fns deprecated `69bed71`; Slice 4 field money read-back `345a4a5`. Live-verified: master confirm card verbatim-identical (incl amountToWords), field money read-back restored, routing/default-deny, audit:schema no new drift. Rollback = revert `aef8709`. Follow-ups (tracked, not blocking): converge the 5 dual executors; cache the field surface; delete legacy slugs once field-stable. | 5 | SHIPPED |
 | B6.2 — Scheduling Intelligence MVA (Phases 1-4) | Duration_days, predecessor_ids, resource model, lead-time enforcement. | 11 | NOT-BUILT |
 | B6.3 — AGENT_INTELLIGENCE: actor_memory layer | actor_memory table; per-actor pattern detection; sub scorecards. | 3 | NOT-BUILT |
 | B6.4 — Trust ladder: eligibility + graduation | ≥20 decisions + ≥85% approval → graduation proposal surface. | 3 | NOT-BUILT |

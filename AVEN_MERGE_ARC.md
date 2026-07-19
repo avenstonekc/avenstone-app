@@ -1,6 +1,6 @@
 # AVEN_MERGE_ARC — B6.1: merge ai-master-agent + ai-field-agent
 
-**Status:** BLUEPRINT — awaiting Kalin's go before Phase C. Behavior-preserving v1.
+**Status:** v1 SHIPPED 2026-07-18 (all 4 slices live + verified). Rollback = revert cutover `aef8709`. Behavior-preserving v1.
 **Owner model:** Opus (design) → Sonnet (execute per slice).
 **Rollback lever:** old fns stay deployed + untouched; merged fn ships to a NEW slug; cutover = repoint 2 URL exports; rollback = one-line revert.
 
