@@ -769,7 +769,7 @@ export default function ConsultationTab({ job, profile, setTab }) {
             onClick={draftEstimateFromSession}
             disabled={savingEstimate || estimateSaved}
           >
-            {estimateSaved ? '✓ Opening Estimate tab…' : savingEstimate ? 'Drafting…' : 'Draft Estimate from Session →'}
+            {estimateSaved ? '✓ Opening Estimate tab…' : savingEstimate ? 'Drafting…' : 'Draft estimate from this session'}
           </button>
           <button
             className="btn btn-ghost"
