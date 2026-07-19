@@ -11,6 +11,9 @@ import { captureTradeActualsForJob } from "../_shared/tradeActuals.ts";
 import { PHASE_LABELS, getNextPhase, runGatesForTransition } from "../_shared/agentPhaseGates.ts";
 import { notifyTenantStaff } from "../_shared/agentNotify.ts";
 import { fmtMoney, amountToWords } from "../_shared/agentFormat.ts";
+// AGENT_DOCS — the document engine (create_document): renders a branded PDF, hits the books for
+// invoices (invoices table), saves to job-documents + job_files, returns a signed chat link.
+import { createDocument } from "../_shared/agentDocs.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -102,6 +105,7 @@ const CONFIRM_TOOLS = new Set([
   "record_deposit",
   "compose_draw",
   "send_client_portal",
+  "create_document",
 ]);
 
 // ── REQUIRED_FIELDS registry (Phase 4) ───────────────────────────────────────
@@ -145,7 +149,19 @@ const SCHEDULE_ITEM_TYPE_OPTIONS: CardOption[] = [
   { value: "delay", label: "Delay" },
 ];
 
+// AGENT_DOCS — doc types the agent can generate. v1: invoice only (more added per slice so the model
+// never offers an unimplemented type). Kept as a const so the tool schema + card options stay in sync.
+const DOC_TYPE_OPTIONS: CardOption[] = [
+  { value: "invoice", label: "Invoice" },
+];
+
 const REQUIRED_FIELDS: Record<string, FieldSpec[]> = {
+  create_document: [
+    { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
+    { field: "doc_type", type: "select", label: "Document type", options: DOC_TYPE_OPTIONS },
+    { field: "amount", type: "text", label: "Amount ($)" },
+    { field: "description", type: "text", label: "What is this for?" },
+  ],
   log_payment: [
     { field: "amount", type: "text", label: "Amount ($)" },
     { field: "job_id", type: "select", label: "Job", dynamic_options: "active_jobs" },
@@ -803,6 +819,22 @@ const TOOLS = [
         apply_bucket: { type: "boolean", description: "Whether to offset the draw by existing bucket credit. Defaults to true." },
       },
       required: ["job_id"],
+    },
+  },
+  {
+    name: "create_document",
+    description: "Generate a document from chat and save it to the job's Documents. Use when the user says 'make an invoice', 'create an invoice for $X for so-and-so', 'save an invoice to this job'. For doc_type 'invoice' this ALSO records a receivable on the books (the invoices ledger) — it is not just a PDF. A branded letterhead PDF is produced and linked back in chat. Confirmation required. Owner/PM only.",
+    input_schema: {
+      type: "object",
+      properties: {
+        job_id:      { type: "string", description: "Job ID. Use active job context if available." },
+        doc_type:    { type: "string", enum: ["invoice"], description: "The kind of document. Currently only 'invoice'." },
+        amount:      { type: "number", description: "Invoice amount in dollars (the total due)." },
+        description: { type: "string", description: "What the invoice is for, e.g. 'Deposit — kitchen remodel'." },
+        bill_to:     { type: "string", description: "Who to bill. Defaults to the job's client name if omitted." },
+        due_date:    { type: "string", description: "Optional due date, YYYY-MM-DD." },
+      },
+      required: ["job_id", "doc_type", "amount", "description"],
     },
   },
 ];
@@ -2070,6 +2102,25 @@ async function executeTool(
         return { success: cfBits.join(" · ") };
       }
 
+      case "create_document": {
+        if (userRole !== "owner" && userRole !== "project_manager") {
+          return { error: "Owner or PM role required to generate documents." };
+        }
+        const docRes = await createDocument(sb, {
+          tenantId, userId,
+          jobId: String(input.job_id || ""),
+          docType: String(input.doc_type || ""),
+          amount: input.amount != null ? Number(input.amount) : undefined,
+          description: input.description ? String(input.description) : undefined,
+          billTo: input.bill_to ? String(input.bill_to) : undefined,
+          dueDate: input.due_date ? String(input.due_date) : undefined,
+        });
+        if (!docRes.ok) return { error: docRes.error || "Document generation failed." };
+        // Invoice hit the books; surface the receivable + the signed link back in chat.
+        const link = docRes.signedUrl ? ` View it here: ${docRes.signedUrl}` : "";
+        return { success: `${docRes.summary}${link}` };
+      }
+
       case "record_deposit": {
         if (!["owner", "project_manager"].includes(userRole)) {
           return { error: "Only owner or project manager can record client deposits." };
@@ -2386,6 +2437,18 @@ function describeConfirmAction(tool: string, input: any): string {
       cpBits.push(`email: ${String(input.email || "")}`);
       cpBits.push("A set-password link will be emailed to the client.");
       return cpBits.join(" · ") + ".";
+    }
+    case "create_document": {
+      if (String(input.doc_type) === "invoice") {
+        const dBits: string[] = [`Create invoice for ${fmtMoney(input.amount)} (${amountToWords(input.amount)})`];
+        if (input.description) dBits.push(String(input.description));
+        dBits.push(`bill to ${String(input.bill_to || "the client")}`);
+        if (input._job_address) dBits.push(`on ${String(input._job_address)}`);
+        if (input.due_date) dBits.push(`due ${String(input.due_date)}`);
+        dBits.push("records a receivable on the books + saves a PDF to Documents");
+        return dBits.join(" · ") + ".";
+      }
+      return `Create a ${String(input.doc_type || "document")} and save it to Documents.`;
     }
     default:
       return "Perform this action.";
