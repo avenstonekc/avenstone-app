@@ -2,124 +2,20 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { checkAndAutoInvoice } from '../_shared/autoInvoice.ts';
 import { captureTradeActualsForJob } from '../_shared/tradeActuals.ts';
+// AVEN_MERGE_ARC B6.1 Slice 1 — phase/gate/notify/money are now shared (were duplicated in
+// ai-master-agent). notify keeps its local name via the import alias so call sites are untouched.
+import { PHASE_LABELS, getNextPhase, runGatesForTransition } from '../_shared/agentPhaseGates.ts';
+import { notifyTenantStaff as notify } from '../_shared/agentNotify.ts';
+import { fmtMoney } from '../_shared/agentFormat.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Canonical phase model — mirrored from src/lib/phaseGates.js ──────────────
-// IMPORTANT: this gate logic is a port of avenstone-vite/src/lib/phaseGates.js.
-// Both copies must stay in sync. Same comment in ai-master-agent/index.ts.
-// Edge fn can't import frontend code; keep this in sync if PHASE_ORDER ever changes.
-const PHASE_ORDER = ['lead', 'proposal', 'contract', 'in_progress', 'final_touches', 'complete'];
-const PHASE_LABELS: Record<string, string> = {
-  lead: 'Lead', proposal: 'Proposal', contract: 'Contract',
-  in_progress: 'In Progress', final_touches: 'Final Touches', complete: 'Complete',
-};
-const MANUAL_ONLY = new Set(['proposal→contract', 'final_touches→complete']);
+// [AVEN_MERGE_ARC Slice 1] moved to _shared — see imports above.
 
-function getNextPhase(current: string): string | null {
-  const idx = PHASE_ORDER.indexOf(current);
-  if (idx < 0 || idx >= PHASE_ORDER.length - 1) return null;
-  return PHASE_ORDER[idx + 1];
-}
-
-async function runGatesForTransition(jobId: string, fromPhase: string, toPhase: string, sb: any) {
-  const key = `${fromPhase}→${toPhase}`;
-  if (MANUAL_ONLY.has(key)) {
-    return { gates: [], allPassed: false, requiresOverride: true };
-  }
-  const checks: Array<() => Promise<{ key: string; label: string; passed: boolean }>> = [];
-  if (key === 'lead→proposal') {
-    checks.push(async () => {
-      const { count } = await sb.from('job_room_scopes').select('*', { count: 'exact', head: true }).eq('job_id', jobId);
-      return { key: 'scope_tagged', label: 'Scope tagged on at least one room', passed: (count ?? 0) > 0 };
-    });
-    checks.push(async () => {
-      const { count } = await sb.from('consultation_sessions').select('*', { count: 'exact', head: true }).eq('job_id', jobId);
-      return { key: 'consultation_logged', label: 'Consultation session logged', passed: (count ?? 0) > 0 };
-    });
-  } else if (key === 'contract→in_progress') {
-    checks.push(async () => {
-      const { data } = await sb.from('jobs').select('contract_signed').eq('id', jobId).single();
-      return { key: 'contract_signed', label: 'Contract signed', passed: !!data?.contract_signed };
-    });
-    checks.push(async () => {
-      const { count } = await sb.from('job_transactions').select('*', { count: 'exact', head: true })
-        .eq('job_id', jobId).in('type', ['client_payment', 'client_deposit']).eq('direction', 'in').eq('status', 'paid');
-      return { key: 'deposit_paid', label: 'Client payment received', passed: (count ?? 0) > 0 };
-    });
-    // SCOPE_TO_ESTIMATE Phase D — mirror of checkSelectionsConfirmed (phaseGates.js). Closes the
-    // tracked agent-gate divergence: the UI blocked contract→in_progress on unconfirmed selections
-    // but the agent path did not. is_selection fields for the job's project type (from the default
-    // room label) must all have a confirmed answer; zero applicable → passes.
-    //
-    // DIVERGENCE GUARD — SCOPE_PREFILL P4b C3 (2026-07-16, commit to be tagged here): source-
-    // awareness added to match phaseGates.js (authoritative). A bare scope_prefill auto-answer
-    // (source='scope_prefill', confirmed_by=null) must NOT satisfy this gate — only rep/client
-    // picks or human-confirmed prefills count. Authoritative rule:
-    //   .filter(r => r.source !== 'scope_prefill' || r.confirmed_by)
-    // Mirror in ai-master-agent/index.ts must stay identical. Next unification: B6.1 AVEN_MERGE_ARC.
-    checks.push(async () => {
-      const pass = { key: 'selections_confirmed', label: 'Client selections confirmed', passed: true };
-      const { data: rooms } = await sb.from('job_rooms').select('label')
-        .eq('job_id', jobId).order('created_at', { ascending: true }).limit(1);
-      const pt = (rooms?.[0]?.label || '').toLowerCase();
-      if (!pt) return pass;
-      const { data: fields } = await sb.from('scope_checklists').select('field_key')
-        .eq('project_type', pt).eq('is_selection', true).eq('active', true);
-      const applicable = [...new Set((fields || []).map((f: any) => f.field_key))];
-      if (!applicable.length) return pass;
-      const { data: confirmedRows } = await sb.from('job_scope_answers').select('field_key, source, confirmed_by')
-        .eq('job_id', jobId).eq('status', 'confirmed');
-      // C3 rule: scope_prefill auto-answers do not satisfy the lock until a human confirms them.
-      const confirmed = new Set((confirmedRows || [])
-        .filter((r: any) => r.source !== 'scope_prefill' || r.confirmed_by)
-        .map((r: any) => r.field_key));
-      const unconfirmed = applicable.filter((fk) => !confirmed.has(fk));
-      const lockedN = applicable.length - unconfirmed.length;
-      return {
-        key: 'selections_confirmed',
-        label: unconfirmed.length
-          ? `Client selections locked (${lockedN} of ${applicable.length}) — unconfirmed: ${unconfirmed.join(', ')}`
-          : `Client selections locked (${applicable.length} of ${applicable.length})`,
-        passed: unconfirmed.length === 0,
-      };
-    });
-  } else if (key === 'in_progress→final_touches') {
-    checks.push(async () => {
-      const { count } = await sb.from('schedule_items').select('*', { count: 'exact', head: true })
-        .eq('job_id', jobId).eq('type', 'sub_start').neq('status', 'complete').neq('status', 'cancelled');
-      return { key: 'all_sub_starts_complete', label: 'All sub start schedule items complete', passed: (count ?? 0) === 0 };
-    });
-  } else {
-    return { gates: [], allPassed: true, requiresOverride: false };
-  }
-  const gates = await Promise.all(checks.map(fn => fn()));
-  const allPassed = gates.every(g => g.passed);
-  return { gates, allPassed, requiresOverride: !allPassed };
-}
-
-// ── Notification helper — mirrors sbNotify in src/lib/supabase.js ────────────
-async function notify(sb: any, tenant_id: string, exclude_id: string, payload: {
-  type: string; title: string; body: string; jobId?: string;
-}) {
-  try {
-    const { data } = await sb.from('profiles').select('id')
-      .eq('tenant_id', tenant_id)
-      .in('role', ['owner', 'project_manager', 'sales_rep']);
-    const targets = (data || []).map((p: any) => p.id).filter((id: string) => id !== exclude_id);
-    if (!targets.length) return;
-    await sb.from('notifications').insert(
-      targets.map((uid: string) => ({
-        tenant_id, user_id: uid, job_id: payload.jobId ?? null,
-        type: payload.type, title: payload.title, body: payload.body,
-        read: false, email_sent: false, sms_sent: false,
-      })),
-    );
-  } catch (e) { console.error('[ai-field-agent notify]', e); }
-}
+// [AVEN_MERGE_ARC Slice 1] moved to _shared — see imports above.
 
 // ── Tool definitions — v1 verb roster + 2 carryovers ─────────────────────────
 const TOOLS = [
@@ -254,11 +150,7 @@ RULES — follow exactly:
 8. Currency formatting: ALWAYS write dollar amounts with two decimal places. "$542.50" not "$542.5". "$1,000.00" not "$1000". Applies to all text responses and any reference to a monetary value.`;
 }
 
-// Always two decimal places for currency (accounting convention). Do NOT switch
-// back to plain toLocaleString() — it strips trailing zeros.
-function fmtMoney(n: unknown): string {
-  return `$${Number(n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+// [AVEN_MERGE_ARC Slice 1] moved to _shared — see imports above.
 
 // ── Human-readable confirmation descriptions (money verbs only) ──────────────
 function describeAction(tool: string, input: any): string {

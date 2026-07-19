@@ -2,6 +2,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { checkAndAutoInvoice } from "../_shared/autoInvoice.ts";
 import { captureTradeActualsForJob } from "../_shared/tradeActuals.ts";
+// AVEN_MERGE_ARC B6.1 Slice 1 — the phase/gate/notify/money blocks these agents shared are now the
+// single source of truth in _shared (they were duplicated byte-for-byte in ai-field-agent).
+import { PHASE_LABELS, getNextPhase, runGatesForTransition } from "../_shared/agentPhaseGates.ts";
+import { notifyTenantStaff } from "../_shared/agentNotify.ts";
+import { fmtMoney, amountToWords } from "../_shared/agentFormat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -26,116 +31,9 @@ function canonicalizeTrade(trade: string): string {
 }
 
 // ── Canonical phase model — mirrored from src/lib/phaseGates.js ──────────────
-// IMPORTANT: this gate logic is a port of avenstone-vite/src/lib/phaseGates.js.
-// Both copies must stay in sync. Same comment in ai-field-agent/index.ts.
-// Edge fn can't import frontend code; keep this in sync if PHASE_ORDER ever changes.
-const PHASE_ORDER = ["lead", "proposal", "contract", "in_progress", "final_touches", "complete"];
-const PHASE_LABELS: Record<string, string> = {
-  lead: "Lead", proposal: "Proposal", contract: "Contract",
-  in_progress: "In Progress", final_touches: "Final Touches", complete: "Complete",
-};
-const MANUAL_ONLY_PHASES = new Set(["proposal→contract", "final_touches→complete"]);
+// [AVEN_MERGE_ARC Slice 1] moved to _shared — see imports above.
 
-function getNextPhase(current: string): string | null {
-  const idx = PHASE_ORDER.indexOf(current);
-  if (idx < 0 || idx >= PHASE_ORDER.length - 1) return null;
-  return PHASE_ORDER[idx + 1];
-}
-
-async function runGatesForTransition(jobId: string, fromPhase: string, toPhase: string, sb: any) {
-  const key = `${fromPhase}→${toPhase}`;
-  if (MANUAL_ONLY_PHASES.has(key)) {
-    return { gates: [], allPassed: false, requiresOverride: true };
-  }
-  const checks: Array<() => Promise<{ key: string; label: string; passed: boolean }>> = [];
-  if (key === "lead→proposal") {
-    checks.push(async () => {
-      const { count } = await sb.from("job_room_scopes").select("*", { count: "exact", head: true }).eq("job_id", jobId);
-      return { key: "scope_tagged", label: "Scope tagged on at least one room", passed: (count ?? 0) > 0 };
-    });
-    checks.push(async () => {
-      const { count } = await sb.from("consultation_sessions").select("*", { count: "exact", head: true }).eq("job_id", jobId);
-      return { key: "consultation_logged", label: "Consultation session logged", passed: (count ?? 0) > 0 };
-    });
-  } else if (key === "contract→in_progress") {
-    checks.push(async () => {
-      const { data } = await sb.from("jobs").select("contract_signed").eq("id", jobId).single();
-      return { key: "contract_signed", label: "Contract signed", passed: !!data?.contract_signed };
-    });
-    checks.push(async () => {
-      const { count } = await sb.from("job_transactions").select("*", { count: "exact", head: true })
-        .eq("job_id", jobId).in("type", ["client_payment", "client_deposit"]).eq("direction", "in").eq("status", "paid");
-      return { key: "deposit_paid", label: "Client payment received", passed: (count ?? 0) > 0 };
-    });
-    // SCOPE_TO_ESTIMATE Phase D — mirror of checkSelectionsConfirmed (phaseGates.js). Closes the
-    // tracked agent-gate divergence: the UI blocked contract→in_progress on unconfirmed selections
-    // but the agent path did not. is_selection fields for the job's project type (from the default
-    // room label) must all have a confirmed answer; zero applicable → passes.
-    //
-    // DIVERGENCE GUARD — SCOPE_PREFILL P4b C3 (2026-07-16, commit to be tagged here): source-
-    // awareness added to match phaseGates.js (authoritative). A bare scope_prefill auto-answer
-    // (source='scope_prefill', confirmed_by=null) must NOT satisfy this gate — only rep/client
-    // picks or human-confirmed prefills count. Authoritative rule:
-    //   .filter(r => r.source !== 'scope_prefill' || r.confirmed_by)
-    // Mirror in ai-field-agent/index.ts must stay identical. Next unification: B6.1 AVEN_MERGE_ARC.
-    checks.push(async () => {
-      const pass = { key: "selections_confirmed", label: "Client selections confirmed", passed: true };
-      const { data: rooms } = await sb.from("job_rooms").select("label")
-        .eq("job_id", jobId).order("created_at", { ascending: true }).limit(1);
-      const pt = (rooms?.[0]?.label || "").toLowerCase();
-      if (!pt) return pass;
-      const { data: fields } = await sb.from("scope_checklists").select("field_key")
-        .eq("project_type", pt).eq("is_selection", true).eq("active", true);
-      const applicable = [...new Set((fields || []).map((f: any) => f.field_key))];
-      if (!applicable.length) return pass;
-      const { data: confirmedRows } = await sb.from("job_scope_answers").select("field_key, source, confirmed_by")
-        .eq("job_id", jobId).eq("status", "confirmed");
-      // C3 rule: scope_prefill auto-answers do not satisfy the lock until a human confirms them.
-      const confirmed = new Set((confirmedRows || [])
-        .filter((r: any) => r.source !== "scope_prefill" || r.confirmed_by)
-        .map((r: any) => r.field_key));
-      const unconfirmed = applicable.filter((fk) => !confirmed.has(fk));
-      const lockedN = applicable.length - unconfirmed.length;
-      return {
-        key: "selections_confirmed",
-        label: unconfirmed.length
-          ? `Client selections locked (${lockedN} of ${applicable.length}) — unconfirmed: ${unconfirmed.join(", ")}`
-          : `Client selections locked (${applicable.length} of ${applicable.length})`,
-        passed: unconfirmed.length === 0,
-      };
-    });
-  } else if (key === "in_progress→final_touches") {
-    checks.push(async () => {
-      const { count } = await sb.from("schedule_items").select("*", { count: "exact", head: true })
-        .eq("job_id", jobId).eq("type", "sub_start").neq("status", "complete").neq("status", "cancelled");
-      return { key: "all_sub_starts_complete", label: "All sub start schedule items complete", passed: (count ?? 0) === 0 };
-    });
-  } else {
-    return { gates: [], allPassed: true, requiresOverride: false };
-  }
-  const gates = await Promise.all(checks.map((fn) => fn()));
-  const allPassed = gates.every((g) => g.passed);
-  return { gates, allPassed, requiresOverride: !allPassed };
-}
-
-// ── Notification helper — mirrors sbNotify in src/lib/supabase.js ────────────
-async function notifyTenantStaff(sb: any, tenantId: string, excludeId: string, payload: {
-  type: string; title: string; body: string; jobId?: string;
-}) {
-  try {
-    const { data } = await sb.from("profiles").select("id")
-      .eq("tenant_id", tenantId).in("role", ["owner", "project_manager", "sales_rep"]);
-    const targets = (data || []).map((p: any) => p.id).filter((id: string) => id !== excludeId);
-    if (!targets.length) return;
-    await sb.from("notifications").insert(
-      targets.map((uid: string) => ({
-        tenant_id: tenantId, user_id: uid, job_id: payload.jobId ?? null,
-        type: payload.type, title: payload.title, body: payload.body,
-        read: false, email_sent: false, sms_sent: false,
-      })),
-    );
-  } catch (e) { console.error("[ai-master-agent notify]", e); }
-}
+// [AVEN_MERGE_ARC Slice 1] moved to _shared — see imports above.
 
 // ─── Agent Card types ─────────────────────────────────────────────────────────
 //
@@ -2381,52 +2279,7 @@ function extractLatestUserFile(
 // Always two decimal places for currency (accounting convention). Do NOT switch
 // back to plain toLocaleString() — it strips trailing zeros ($542.5 instead of
 // $542.50) and breaks both confirmation cards and inline replies.
-function fmtMoney(n: unknown): string {
-  return `$${Number(n ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-// Currency words — VOICE_AGENT money-safety read-back. Ported from the retired
-// avenstone-vite/src/lib/labelParser.js (deleted in ee5e3c0). Confirm cards for
-// money verbs render the digit form AND the spelled-out form so a misheard or
-// fat-fingered amount surfaces before the row is written.
-const _ONES = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
-const _TEENS = ["ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
-const _TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
-
-function _under1000(n: number): string {
-  let out = "";
-  if (n >= 100) {
-    out += _ONES[Math.floor(n / 100)] + " hundred";
-    n %= 100;
-    if (n > 0) out += " ";
-  }
-  if (n >= 20) {
-    out += _TENS[Math.floor(n / 10)];
-    if (n % 10 > 0) out += "-" + _ONES[n % 10];
-  } else if (n >= 10) {
-    out += _TEENS[n - 10];
-  } else if (n > 0) {
-    out += _ONES[n];
-  }
-  return out;
-}
-
-function amountToWords(amt: unknown): string {
-  const num = Number(amt);
-  if (amt == null || Number.isNaN(num)) return "";
-  const n = Math.floor(Math.abs(num));
-  const cents = Math.round((Math.abs(num) - n) * 100);
-  if (n === 0 && cents === 0) return "zero dollars";
-  const parts: string[] = [];
-  if (n >= 1_000_000) parts.push(_under1000(Math.floor(n / 1_000_000)) + " million");
-  if ((n % 1_000_000) >= 1_000) parts.push(_under1000(Math.floor((n % 1_000_000) / 1_000)) + " thousand");
-  if (n % 1_000 > 0) parts.push(_under1000(n % 1_000));
-  let words = parts.join(" ").replace(/\s+/g, " ").trim();
-  if (!words) words = "zero";
-  words += n === 1 ? " dollar" : " dollars";
-  if (cents > 0) words += " and " + (cents < 10 ? "oh " : "") + _under1000(cents) + (cents === 1 ? " cent" : " cents");
-  return words;
-}
+// [AVEN_MERGE_ARC Slice 1] moved to _shared — see imports above.
 
 function describeConfirmAction(tool: string, input: any): string {
   switch (tool) {
