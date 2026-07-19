@@ -1,4 +1,8 @@
 
+// DEPRECATED — superseded by the merged `ai-agent` fn (AVEN_MERGE_ARC B6.1 cutover, commit aef8709;
+// the live master surface is ai-agent/masterCore.ts, a verbatim copy of this file). This slug stays
+// DEPLOYED + UNTOUCHED as the rollback target until field-stable — do NOT add features here; make
+// changes in ai-agent/masterCore.ts. Removal is a later cleanup once the merge is field-proven.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { checkAndAutoInvoice } from "../_shared/autoInvoice.ts";
 import { captureTradeActualsForJob } from "../_shared/tradeActuals.ts";
