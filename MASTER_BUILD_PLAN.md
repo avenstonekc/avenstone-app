@@ -580,7 +580,7 @@ All 22 prompts shipped. See arc inventory above. **No remaining items in Block 1
 
 | Sub-step | What it does | Prompts | Status |
 |----------|-------------|---------|--------|
-| B6.1 — AVEN_MERGE_ARC | Merge ai-master-agent + ai-field-agent → one edge fn. D3 evidence (three drifted gate copies) is grounds for promotion: on-deck after SCOPE_RISK. | 5 | NOT-BUILT |
+| B6.1 — AVEN_MERGE_ARC | Merge ai-master-agent + ai-field-agent → one edge fn. Blueprint: AVEN_MERGE_ARC.md. Behavior-preserving v1. **IN PROGRESS**: Slice 1 (shared modules — 6 drift blocks → _shared) SHIPPED `02608d3` (deploy green + live smoke both fns 200). Next: Slice 2 (merged fn on new `ai-agent` slug), Slice 3 (URL cutover, alone), Slice 4 (restore field money read-back). | 5 | IN-PROGRESS |
 | B6.2 — Scheduling Intelligence MVA (Phases 1-4) | Duration_days, predecessor_ids, resource model, lead-time enforcement. | 11 | NOT-BUILT |
 | B6.3 — AGENT_INTELLIGENCE: actor_memory layer | actor_memory table; per-actor pattern detection; sub scorecards. | 3 | NOT-BUILT |
 | B6.4 — Trust ladder: eligibility + graduation | ≥20 decisions + ≥85% approval → graduation proposal surface. | 3 | NOT-BUILT |
