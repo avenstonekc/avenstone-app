@@ -10,7 +10,7 @@ import { captureTradeActualsForJob } from '../_shared/tradeActuals.ts';
 // ai-master-agent). notify keeps its local name via the import alias so call sites are untouched.
 import { PHASE_LABELS, getNextPhase, runGatesForTransition } from '../_shared/agentPhaseGates.ts';
 import { notifyTenantStaff as notify } from '../_shared/agentNotify.ts';
-import { fmtMoney } from '../_shared/agentFormat.ts';
+import { fmtMoney, amountToWords } from '../_shared/agentFormat.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -159,12 +159,15 @@ RULES — follow exactly:
 // ── Human-readable confirmation descriptions (money verbs only) ──────────────
 function describeAction(tool: string, input: any): string {
   switch (tool) {
+    // AVEN_MERGE_ARC B6.1 Slice 4 — money read-back restored on the field surface (the locked
+    // VOICE_AGENT money-safety rule): the confirm card shows the digit form AND the spelled-out form
+    // (shared amountToWords) so a misheard/fat-fingered amount surfaces before the row writes.
     case 'log_payment':
-      return `Log ${fmtMoney(input.amount)} client payment${input.description ? ` — ${input.description}` : ''}.`;
+      return `Log ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) client payment${input.description ? ` — ${input.description}` : ''}.`;
     case 'log_receipt':
-      return `Log ${fmtMoney(input.amount)} expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ''}.`;
+      return `Log ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) expense — ${input.description}${input.vendor ? ` (${input.vendor})` : ''}.`;
     case 'submit_change_order':
-      return `Submit ${fmtMoney(input.amount)} change order — ${input.description}.`;
+      return `Submit ${fmtMoney(input.amount)} (${amountToWords(input.amount)}) change order — ${input.description}.`;
     default:
       return 'Perform this action.';
   }
