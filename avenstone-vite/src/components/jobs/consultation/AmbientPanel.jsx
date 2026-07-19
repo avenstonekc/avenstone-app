@@ -6,7 +6,7 @@ import {
 } from '../../../lib/supabase';
 import { isMob } from '../../../lib/utils';
 import { createCaptureController, isNativeCapture } from '../../../lib/consultationCapture';
-import { buildNeedsList, needsListSpeech, evidenceStyle } from '../../../lib/consultationCoach';
+import { buildNeedsList, needsListSpeech, evidenceStyle, groupNeedsByRoom } from '../../../lib/consultationCoach';
 import { buildContextualStrings } from '../../../lib/consultationVocab';
 import { createScreenWake } from '../../../lib/screenWake';
 
@@ -49,7 +49,7 @@ export default function AmbientPanel({
   const [voiceOn, setVoiceOn] = useState(true);
   const [answers, setAnswers] = useState({});
   const [firedModules, setFiredModules] = useState([]);
-  const [checklist, setChecklist] = useState({ fields: [], modules: [] });
+  const [checklist, setChecklist] = useState({ rooms: [], fieldsByType: {}, modules: [] });
   const [ending, setEnding] = useState(false);
   const [capturePaused, setCapturePaused] = useState(false); // gap banner after a screen lock
   const [showPocketHint, setShowPocketHint] = useState(true);
@@ -67,9 +67,22 @@ export default function AmbientPanel({
 
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
 
+  // FIX 2 — which room(s) is the rep talking about right now? Match room labels/types against the
+  // recent transcript so those rooms' items float to the top of the coach.
+  const detectedRoomKeys = useMemo(() => {
+    const t = (localTranscript || '').toLowerCase().slice(-600);
+    const hits = new Set();
+    (checklist.rooms || []).forEach((r) => {
+      const lab = (r.room_label || '').toLowerCase();
+      const typ = (r.project_type || '').toLowerCase();
+      if ((lab && t.includes(lab)) || (typ && t.includes(typ))) hits.add(r.room_key);
+    });
+    return hits;
+  }, [localTranscript, checklist.rooms]);
+
   const needs = useMemo(
-    () => buildNeedsList({ fields: checklist.fields, modules: checklist.modules, answers, firedModules, tradeScope }),
-    [checklist, answers, firedModules, tradeScope],
+    () => buildNeedsList({ rooms: checklist.rooms, fieldsByType: checklist.fieldsByType, modules: checklist.modules, answers, firedModules, tradeScope, detectedRoomKeys }),
+    [checklist, answers, firedModules, tradeScope, detectedRoomKeys],
   );
   useEffect(() => { needsRef.current = needs; }, [needs]);
 
@@ -369,18 +382,28 @@ export default function AmbientPanel({
               🔊 Read
             </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
-            {needs.slice(0, 12).map((it) => {
-              const s = evidenceStyle(it.evidence_type);
-              return (
-                <div key={it.field_key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: 0.4, padding: '2px 7px', borderRadius: 6, background: s.bg, color: s.color }}>
-                    {s.badge}
-                  </span>
-                  <span style={{ fontSize: 13, color: '#374151', lineHeight: 1.4 }}>{it.question}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 280, overflowY: 'auto' }}>
+            {groupNeedsByRoom(needs).map((group) => (
+              <div key={group.room_key}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: group.detected ? '#C9A84C' : '#6B7280', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, letterSpacing: 0.3 }}>
+                  {group.room_label}
+                  {group.detected && <span style={{ fontSize: 9, fontWeight: 700, color: '#92400E', background: '#FEF3C7', borderRadius: 5, padding: '1px 6px' }}>MENTIONED NOW</span>}
                 </div>
-              );
-            })}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {group.items.map((it) => {
+                    const s = evidenceStyle(it.evidence_type);
+                    return (
+                      <div key={group.room_key + it.field_key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: 0.4, padding: '2px 7px', borderRadius: 6, background: s.bg, color: s.color }}>
+                          {s.badge}
+                        </span>
+                        <span style={{ fontSize: 13, color: '#374151', lineHeight: 1.4 }}>{it.question}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

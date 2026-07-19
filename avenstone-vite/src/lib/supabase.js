@@ -2673,20 +2673,18 @@ export const sbUploadConsultationPhoto = async ({ jobId, sessionId, file, sort =
 // expansion). Deduped by key, tenant row beats platform-null.
 export const sbLoadConsultationChecklist = async (jobId) => {
   const scopes = await sbLoadJobRoomScopes(jobId);
-  const projectTypes = [...new Set(
-    (scopes || [])
-      .filter((s) => s.scope_tag !== 'not_in_scope')
-      .map((s) => String(s.room_type || '').toLowerCase())
-      .filter(Boolean)
-  )];
-  if (!projectTypes.length) return { fields: [], modules: [], projectTypes: [] };
+  // CONSULTATION_POCKET_FALLBACK FIX 2 — keep each in-scope ROOM INSTANCE (not just its type) so
+  // the coach can label items by room ("Bedroom 1 — flooring") instead of collapsing rooms.
+  const inScope = (scopes || []).filter((s) => s.scope_tag !== 'not_in_scope' && String(s.room_type || '').trim());
+  const projectTypes = [...new Set(inScope.map((s) => String(s.room_type).toLowerCase()))];
+  if (!projectTypes.length) return { rooms: [], fieldsByType: {}, modules: [], projectTypes: [] };
   const [chk, mod] = await Promise.all([
     // CONSULTATION_FIELD_FIXES FIX 4 — the walk coach/needs-list/end-gate only ask WALK-stage fields
     // (existing conditions, demo intent, access, measurements, big scope forks). walk_stage=true gates
     // it. Estimator-stage fields (selections, finishes, niches, permits, detail forks) stay out of the
     // walk — the scope configurator (ai-estimator loadScopeConfig) still loads the full set unfiltered.
     sb.from('scope_checklists')
-      .select('field_key, question, field_type, evidence_type, money_risk_rank, adds_trades, tenant_id')
+      .select('project_type, field_key, question, field_type, evidence_type, money_risk_rank, adds_trades, tenant_id')
       .in('project_type', projectTypes).eq('active', true).eq('walk_stage', true)
       .or(`tenant_id.eq.${AV_TENANT},tenant_id.is.null`),
     sb.from('scope_modules')
@@ -2703,8 +2701,31 @@ export const sbLoadConsultationChecklist = async (jobId) => {
     }
     return [...m.values()];
   };
+  // Fields grouped by project_type, deduped by field_key WITHIN a type (tenant beats platform-null).
+  const fieldsByType = {};
+  const perType = {};
+  for (const r of (chk.data || [])) {
+    const pt = String(r.project_type || '').toLowerCase();
+    if (!pt) continue;
+    const m = perType[pt] || (perType[pt] = new Map());
+    const ex = m.get(r.field_key);
+    if (!ex || (ex.tenant_id == null && r.tenant_id != null)) m.set(r.field_key, r);
+  }
+  for (const pt of Object.keys(perType)) fieldsByType[pt] = [...perType[pt].values()];
+  // Room instances with a display label; disambiguate duplicate labels (two unnamed "Bedroom" → 1/2).
+  const titleCase = (s) => String(s || '').replace(/(^|\s|-)\S/g, (m) => m.toUpperCase());
+  const rooms = inScope.map((s) => ({
+    room_key: s.id,
+    room_label: (s.room_label && s.room_label.trim()) || titleCase(s.room_type),
+    project_type: String(s.room_type).toLowerCase(),
+  }));
+  const dup = {};
+  rooms.forEach((r) => { dup[r.room_label] = (dup[r.room_label] || 0) + 1; });
+  const seenN = {};
+  rooms.forEach((r) => { if (dup[r.room_label] > 1) { seenN[r.room_label] = (seenN[r.room_label] || 0) + 1; r.room_label = `${r.room_label} ${seenN[r.room_label]}`; } });
   return {
-    fields: pick(chk.data, 'field_key'),
+    rooms,
+    fieldsByType,
     modules: pick(mod.data, 'module_key'),
     projectTypes,
   };
