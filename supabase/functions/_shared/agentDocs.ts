@@ -62,10 +62,11 @@ async function createInvoice(sb: any, p: any): Promise<CreateDocResult> {
   }).select("id").single();
   if (invErr) return { ok: false, error: `Invoice write failed: ${invErr.message}` };
 
-  await sb.from("invoice_line_items").insert({
+  const { error: liErr } = await sb.from("invoice_line_items").insert({
     tenant_id: tenantId, invoice_id: invoice.id, description,
     quantity: 1, unit_price: amount, line_total: amount, source_type: "manual", display_order: 0,
-  }).catch((e: any) => console.warn("[agentDocs] line item insert:", e?.message));
+  });
+  if (liErr) console.warn("[agentDocs] line item insert:", liErr.message); // non-fatal — total already on the invoice
 
   // (2) Render the branded letterhead PDF.
   const blocks: DocBlock[] = [
@@ -92,7 +93,7 @@ async function createInvoice(sb: any, p: any): Promise<CreateDocResult> {
   }).select("id").single();
   if (jfErr) { await sb.storage.from("job-documents").remove([path]).catch(() => {}); return { ok: false, error: `Document row failed: ${jfErr.message}` }; }
 
-  await sb.from("invoices").update({ pdf_url: path }).eq("id", invoice.id).catch(() => {});
+  await sb.from("invoices").update({ pdf_url: path }).eq("id", invoice.id); // discoverable from invoice detail
 
   const { data: signed } = await sb.storage.from("job-documents").createSignedUrl(path, 60 * 60 * 24 * 7);
   return {
