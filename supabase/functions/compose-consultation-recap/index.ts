@@ -22,11 +22,16 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
-// CONSULTATION_RECAP_QUALITY Item 1 — spoken caption override. After a photo fires, if the next
-// utterance begins with "caption" (or "Avenstone, caption"), the words that follow ARE the caption,
-// verbatim — overriding the shutter-window AI caption. Deterministic, no model call. The photo's
-// transcript_context (words at shutter time) anchors the photo's position in the full transcript;
-// the text right after that anchor is the "next utterance".
+// CONSULTATION_RECAP_QUALITY Item 1 — spoken caption override. After a photo fires, a spoken
+// "caption" command becomes the photo's caption verbatim, overriding the shutter-window AI caption.
+// Deterministic, no model call. The photo's transcript_context (words at shutter time) anchors the
+// photo's position in the full transcript. Two forms, both handled here:
+//   FORWARD  — "caption <text>" / "Avenstone, caption <text>": the words AFTER the command are the
+//              caption. Natural when the rep names the shot as they take it.
+//   RETRO    — "caption that" / "caption that to the picture" (a command with NO content): the rep
+//              described the thing first, THEN said "caption that". The caption is the utterance
+//              spoken IMMEDIATELY BEFORE the command. Signal: the word right after "caption" is the
+//              demonstrative "that" — no forward caption naturally starts with "that".
 function spokenCaptionFor(rawTranscript: string, context: string): string | null {
   if (!rawTranscript || !context) return null;
   const fullLower = rawTranscript.toLowerCase();
@@ -35,7 +40,33 @@ function spokenCaptionFor(rawTranscript: string, context: string): string | null
   const anchor = ctxWords.slice(-6).join(" "); // last few words of shutter context = the locator
   const pos = fullLower.lastIndexOf(anchor);
   if (pos === -1) return null;
-  const afterOrig = rawTranscript.slice(pos + anchor.length); // original casing for a verbatim caption
+  const anchorEnd = pos + anchor.length;
+  const afterOrig = rawTranscript.slice(anchorEnd); // original casing for a verbatim caption
+
+  // RETRO form — a "caption that" command anywhere after the shutter. The caption is the utterance
+  // spoken just before it (which may sit before the shutter anchor, if the rep described-then-shot).
+  const retroRe = /(?:avenstone[\s,]+)?caption\s+that\b(?:\s+to\s+the\s+(?:picture|photo|image|pic|shot))?/i;
+  const retroM = afterOrig.match(retroRe);
+  if (retroM) {
+    // Everything spoken up to the command = the shutter context (anchor incl.) + words after the
+    // anchor but before the command. The immediately-preceding utterance is the tail of that.
+    // Drop trailing punctuation FIRST — the sentence-ender that sits right before the command
+    // belongs to the utterance, it's not a boundary to cut at.
+    let cap = (rawTranscript.slice(0, anchorEnd) + afterOrig.slice(0, retroM.index)).replace(/[\s,.:;!?-]+$/, "").trim();
+    const lc = cap.toLowerCase();
+    // Isolate the trailing utterance: text after the last sentence-ender or prior command keyword.
+    let cut = -1;
+    for (const p of [".", "?", "!"]) cut = Math.max(cut, cap.lastIndexOf(p));
+    const av = lc.lastIndexOf("avenstone"); if (av >= 0 && av + 9 > cut) cut = av + 9;
+    const cp = lc.lastIndexOf("caption");   if (cp >= 0 && cp + 7 > cut) cut = cp + 7;
+    if (cut > 0) cap = cap.slice(cut);
+    cap = cap.replace(/^[\s,.:;-]+/, "").replace(/[\s,.:;-]+$/, "").trim();
+    cap = cap.replace(/^(?:and|then|so|okay|ok|now|uh|um|alright|well)[\s,]+/i, ""); // strip a leading discourse filler
+    cap = cap.split(/\s+/).slice(-30).join(" ").trim();
+    return cap || null;
+  }
+
+  // FORWARD form — "caption <text>" at the start of the utterance right after the photo.
   const m = afterOrig.match(/^[\s,.:;-]*(?:avenstone[\s,]+)?caption[\s,:.-]+(.+)$/i);
   if (!m) return null;
   let cap = m[1].trim();
