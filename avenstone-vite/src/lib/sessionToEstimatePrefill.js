@@ -20,6 +20,37 @@
 //
 // Output: { scope, rooms, special, measuredTrades, measuredFields, sf, sessionId, sessionDate, sourced:true }
 
+// Pull a positive number out of a raw value ("10", "10 ft", 10 → 10). NaN/empty → 0.
+const _num = (v) => {
+  if (v == null) return 0;
+  const n = Number(String(v).replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+// Best-effort floor area (sf) from ONE measurement row. Precedence:
+//   1. an explicit total the rep stated (total_sf / floor_sf / sqft / area…),
+//   2. a width × length dimension pair,
+//   3. an "AxB" / "A by B" dimension phrase anywhere in the fields or the spoken note.
+// Returns 0 when the row states no area — so the caller falls back to scan-derived SF.
+function areaFromMeasurement(fields, note) {
+  const f = (fields && typeof fields === 'object' && !Array.isArray(fields)) ? fields : {};
+  for (const k of ['total_sf', 'floor_sf', 'sqft', 'sf', 'area', 'area_sqft', 'square_feet', 'square_footage']) {
+    const n = _num(f[k]);
+    if (n > 0) return n;
+  }
+  const w = _num(f.width ?? f.w ?? f.width_ft ?? f.room_width);
+  const l = _num(f.length ?? f.l ?? f.length_ft ?? f.room_length ?? f.depth);
+  if (w > 0 && l > 0) return w * l;
+  const hay = [note, ...Object.values(f)].filter(Boolean).map(String).join(' ');
+  const m = hay.match(/(\d+(?:\.\d+)?)\s*(?:x|by|×|')\s*(\d+(?:\.\d+)?)/i);
+  if (m) {
+    const a = parseFloat(m[1]);
+    const b = parseFloat(m[2]);
+    if (a > 0 && b > 0) return a * b;
+  }
+  return 0;
+}
+
 export function sessionToEstimatePrefill({
   extraction = null,
   measurements = [],
@@ -60,6 +91,9 @@ export function sessionToEstimatePrefill({
   if (risks.length) specialParts.push(`Risks flagged on-site: ${risks.join(', ')}`);
   if (ext.budget_signals) specialParts.push(`Budget signals: ${ext.budget_signals}`);
   if (ext.timeline) specialParts.push(`Timeline: ${ext.timeline}`);
+  // Session-first: the rep's spoken per-trade notes are on-site facts, not scan data — carry them.
+  const measureNotes = [...new Set(arr(measurements.map((m) => m && m.scope_notes)))];
+  if (measureNotes.length) specialParts.push(`On-site notes: ${measureNotes.join('; ')}`);
   const special = specialParts.join('\n');
 
   // ── measured fields (structured pre-answers) ─────────────────────────────────
@@ -81,16 +115,15 @@ export function sessionToEstimatePrefill({
   }
 
   // ── measured SF (interviewSf pre-fill) ───────────────────────────────────────
-  // Prefer an explicit total; else the largest single floor area found. Never sums
-  // across rows — several trades measuring the same room would double-count. 0 = no
-  // measured SF, so EstimateTab falls back to its scan-derived SF (deriveProjectSf).
+  // Per row: an explicit total, else a width×length pair, else an "AxB" phrase spoken in the
+  // note. Take the LARGEST single floor area — never sum across rows (several trades, or a
+  // shower inside its bathroom, would double-count). 0 = the session stated no area, so
+  // EstimateTab falls back to its scan-derived SF. This is the SESSION-FIRST source: whenever
+  // it's > 0 it wins over the scan total downstream.
   const sfCandidates = [];
   for (const m of measurements) {
-    const f = (m && m.fields) || {};
-    for (const key of ['total_sf', 'floor_sf', 'sqft', 'sf']) {
-      const n = Number(f[key]);
-      if (Number.isFinite(n) && n > 0) sfCandidates.push(n);
-    }
+    const a = areaFromMeasurement(m && m.fields, m && m.scope_notes);
+    if (a > 0) sfCandidates.push(a);
   }
   const sf = sfCandidates.length ? Math.max(...sfCandidates) : 0;
 

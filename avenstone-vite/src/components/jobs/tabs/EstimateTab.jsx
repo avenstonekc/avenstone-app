@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment, lazy, Suspense } from 'react';
 import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSeedJobPhases, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, sbScopeVision, sbLoadScanMeasurements, sbDeleteScopeAnswers, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
 import { isScanArtifact, artifactToScanParams, SCAN_ARTIFACT_VERSION } from '../../../lib/scanArtifact';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
@@ -83,7 +83,7 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // Interview pricing inputs — seeded from job overrides then bid_model_config tenant defaults
   // Precedence: job.default_markup_pct > job.labor_markup_pct > bid_model_config 'default'
   const [interviewSf, setInterviewSf]               = useState('');
-  const [interviewSfSource, setInterviewSfSource]   = useState(null); // 'scope'|'job'|'none'|null
+  const [interviewSfSource, setInterviewSfSource]   = useState(null); // 'answer'|'session'|'scope'|'job'|'scan'|'none'|null
   const [interviewSfRoomCount, setInterviewSfRoomCount] = useState(0);
   const [interviewTier, setInterviewTier]           = useState('mid');
   const [interviewMarkup, setInterviewMarkup]       = useState(() =>
@@ -176,6 +176,19 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
 
+  // CONSULTATION_POLISH FIX 1 — read the session prefill ONCE, synchronously, before any async
+  // mount effect can race to clear it. Every consumer (estForm seed, SF precedence, history guard)
+  // reads this ref, so the session's on-site facts are session-first and can't be clobbered by the
+  // job/scan load order. Keyed on job.id so a job switch re-reads.
+  const prefillRef = useRef({ jobId: undefined, val: null });
+  if (prefillRef.current.jobId !== job.id) {
+    prefillRef.current = { jobId: job.id, val: ll(`av_estimate_prefill_${job.id}`, null) };
+  }
+  // One-shot: drop the stored prefill after this mount so it doesn't re-apply over later rep edits.
+  useEffect(() => {
+    if (prefillRef.current.val) ls(`av_estimate_prefill_${job.id}`, null);
+  }, [job.id]);
+
   // Default tab: items (if line items exist) → scope (if scope rows exist) → build
   useEffect(() => {
     Promise.all([
@@ -196,11 +209,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
       } else {
         // P1A: a consultation session may have drafted a prefill (scope/rooms/special).
         // Apply it only when no estimate exists yet — feeds the interview, doesn't clobber.
-        const prefill = ll(`av_estimate_prefill_${job.id}`, null);
+        const prefill = prefillRef.current.val;
         if (prefill) {
           setEstForm({ scope: prefill.scope || '', rooms: prefill.rooms || '', special: prefill.special || '' });
           setSessionPrefill(prefill);
-          ls(`av_estimate_prefill_${job.id}`, null); // one-shot — clear after applying
           setSub('build');
         } else if (scopes?.length) {
           setSub('scope');
@@ -250,12 +262,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     sbLoadJobPhotos(job.id, { limit: 1 }).then(r => setHasJobPhotos(!!(r.ok && (r.data || []).length))).catch(() => {});
   }, [job.id]);
   // SCOPE_VISION P2 — scan-derived measurements (floor_sf, ceiling height). Loaded on mount so a
-  // scan can satisfy the SF gate and pre-fill the SF field; persisted as answers on Generate.
+  // scan can satisfy the SF gate. FIX 1: SF is NO LONGER set here — the whole-scan total is only a
+  // last-resort fallback and was racing ahead of the session/scoped SF. The SF-precedence effect
+  // below owns interviewSf and folds this scan total in as the final fallback.
   useEffect(() => {
     sbLoadScanMeasurements(job.id).then(r => {
-      const m = r.ok ? r.data : null;
-      setScanMeas(m);
-      if (m?.area_sqft > 0 && !interviewSf) { setInterviewSf(String(m.floor_sf)); setInterviewSfSource('scan'); }
+      setScanMeas(r.ok ? r.data : null);
     }).catch(() => {});
   }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -268,6 +280,9 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
         setEstStarted(true);
         return;
       }
+      // FIX 1 — a session prefill owns estForm (session-first). Don't overwrite its scope/rooms/
+      // notes with the empty job-derived seed just because this load resolved after it.
+      if (prefillRef.current.val) return;
       const jobDocs = docs || [];
       const measureDoc = jobDocs.find(d => d.file_type === 'measurements');
       const transcriptDoc = jobDocs.find(d => d.file_type === 'transcript');
@@ -303,14 +318,16 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estStarted, scopeProjectType, resumeChecked]);
 
-  // Derive project SF from scoped rooms on mount. P2: a completed consultation session
-  // may carry an on-site measured SF — that takes precedence over scan derivation. Read
-  // the prefill synchronously here (before the default-tab effect's async .then clears it).
+  // FIX 1 — single SF authority. Session-first precedence, scan total is the LAST fallback (never
+  // an override). Order:
+  //   1. persisted floor_sf answer (rep-entered dimension)  → 'answer'
+  //   2. this session's measured SF (consultation prefill)  → 'session'   ← beats the scan
+  //   3. scoped-room derivation (only the rooms tagged)     → 'scope'/'job'
+  //   4. whole-scan normalized total (fallback only)        → 'scan'
   useEffect(() => {
     (async () => {
       // TAKEOFF_BRIDGE Phase 3 — a persisted floor_sf answer (the dimension the rep entered) is the
-      // authoritative SF; it becomes the home for what interviewSf approximated. Prefer it over
-      // scan/job/session derivation. Sum across rooms for the whole-job SF.
+      // authoritative SF; it becomes the home for what interviewSf approximated. Sum across rooms.
       try {
         const ans = await sbLoadScopeAnswers(job.id);
         if (ans.ok) {
@@ -319,14 +336,23 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             .reduce((s, a) => s + (Number(a.value) || 0), 0);
           if (floorSfSum > 0) { setInterviewSf(String(floorSfSum)); setInterviewSfSource('answer'); return; }
         }
-      } catch (_) { /* fall through to scan/job derivation */ }
-      const pf = ll(`av_estimate_prefill_${job.id}`, null);
+      } catch (_) { /* fall through to session/scope/scan derivation */ }
+      // 2. Session measured SF — from this consultation, wins over the scan total.
+      const pf = prefillRef.current.val;
       const sessionSf = pf && Number(pf.sf) > 0 ? Number(pf.sf) : 0;
+      if (sessionSf > 0) { setInterviewSf(String(sessionSf)); setInterviewSfSource('session'); return; }
+      // 3. Scoped-room derivation — only rooms the rep tagged (not the whole scan).
       const { sf, source, roomCount } = await deriveProjectSf(sb, job.id, job);
       setInterviewSfRoomCount(roomCount || 0);
-      if (sessionSf > 0) { setInterviewSf(String(sessionSf)); setInterviewSfSource('session'); return; }
-      setInterviewSfSource(source);
-      if (sf > 0) setInterviewSf(String(sf));
+      if (sf > 0) { setInterviewSf(String(sf)); setInterviewSfSource(source); return; }
+      // 4. Whole-scan normalized total — last resort, clearly labeled as from the scan, not this session.
+      try {
+        const scan = await sbLoadScanMeasurements(job.id);
+        if (scan.ok && scan.data && Number(scan.data.area_sqft) > 0 && Number(scan.data.floor_sf) > 0) {
+          setInterviewSf(String(scan.data.floor_sf)); setInterviewSfSource('scan'); return;
+        }
+      } catch (_) { /* no scan SF available */ }
+      setInterviewSfSource(source || 'none');
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
@@ -1389,7 +1415,17 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
             <label className="flbl">Project Square Footage <span style={{ color: 'var(--red-text)', fontWeight: 400 }}>*</span></label>
             {interviewSfSource === 'session' && (
               <div style={{ fontSize: 12, color: 'var(--green-text)', marginBottom: 6 }}>
-                ✓ {interviewSf} SF measured on-site — confirm or override below
+                ✓ {interviewSf} SF measured on-site in this session — confirm or override below
+              </div>
+            )}
+            {interviewSfSource === 'answer' && (
+              <div style={{ fontSize: 12, color: 'var(--green-text)', marginBottom: 6 }}>
+                ✓ {interviewSf} SF from entered dimensions — confirm or override below
+              </div>
+            )}
+            {interviewSfSource === 'scan' && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                {interviewSf} SF from the full floor-plan scan (not this session) — confirm or override below
               </div>
             )}
             {interviewSfSource === 'scope' && (
