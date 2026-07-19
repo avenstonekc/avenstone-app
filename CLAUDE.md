@@ -651,7 +651,7 @@ also passes objects through — both render paths converge at `_processAllRooms`
 
 4. **White-label onboarding wizard** — trade-specific structured inputs (not freeform), generates ai_knowledge entries for any new tenant. Replaces the 7-question AiSetupWizard. Pricing inputs by trade, markup structure, draw schedule, CO policy, communication style.
 
-5. **Lien waiver generation** — pdf-lib preferred over jsPDF. Auto-populate from job, sub, and payment data.
+5. **Lien waiver generation** — pdf-lib preferred over jsPDF. Auto-populate from job, sub, and payment data. **ABSORBED into AGENT_DOCS (Kalin-locked 2026-07-18) — Slice 2.** The agent `create_document` verb + `_shared/docRender.ts` (pdf-lib letterhead) + `_shared/agentDocs.ts` doc engine is the substrate; waivers become a doc_type there. ⚠️ Waiver language is statutory + Avenstone works both sides of the MO/KS line — templates ship as data (state param) and need attorney review before first real use.
 
 6. **Test AI estimator with live data** — ai_knowledge seeded with KC pricing. Open a job, ask AI Companion for a rough estimate, verify real dollar figures come back.
 
