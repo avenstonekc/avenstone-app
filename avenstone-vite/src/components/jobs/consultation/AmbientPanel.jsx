@@ -41,6 +41,7 @@ export default function AmbientPanel({
   const mob = isMob();
   const [isRecording, setIsRecording] = useState(false);
   const [localTranscript, setLocalTranscript] = useState('');
+  const [livePartial, setLivePartial] = useState(''); // FIX 2 — interim hypothesis, painted live
   const [photoCount, setPhotoCount] = useState(0);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoMsg, setPhotoMsg] = useState('');
@@ -148,6 +149,7 @@ export default function AmbientPanel({
 
   const handlePartial = (text) => {
     livePartialRef.current = text || '';
+    setLivePartial(text || ''); // FIX 2 — surface the interim hypothesis so the transcript doesn't lag
     const t = (text || '').toLowerCase();
     const prefix = prefixRef.current;
     if (!t.includes(prefix)) return;
@@ -166,6 +168,7 @@ export default function AmbientPanel({
       onSegment: (seg) => {
         transcriptRef.current = (transcriptRef.current + ' ' + seg).trim();
         setLocalTranscript(transcriptRef.current);
+        setLivePartial(''); // FIX 2 — the interim just solidified into this segment; drop it
         onTranscriptUpdate?.(transcriptRef.current);
         flushSegment(seg);
       },
@@ -361,9 +364,19 @@ export default function AmbientPanel({
           fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: '#374151',
           lineHeight: 1.6, minHeight: 64, maxHeight: 140, overflowY: 'auto', whiteSpace: 'pre-wrap',
         }}>
-          {localTranscript
-            ? localTranscript.slice(-500)
-            : <span style={{ color: '#D1D5DB', fontStyle: 'italic' }}>Listening for conversation…</span>}
+          {(localTranscript || livePartial) ? (
+            <>
+              {localTranscript ? localTranscript.slice(-500) : ''}
+              {/* FIX 2 — interim hypothesis in muted italic; it solidifies into normal text on final */}
+              {livePartial && (
+                <span style={{ color: '#9CA3AF', fontStyle: 'italic' }}>
+                  {localTranscript ? ' ' : ''}{livePartial}
+                </span>
+              )}
+            </>
+          ) : (
+            <span style={{ color: '#D1D5DB', fontStyle: 'italic' }}>Listening for conversation…</span>
+          )}
         </div>
       </div>
 
