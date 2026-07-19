@@ -17,12 +17,17 @@ const CORS = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
-  // Read `surface` from a CLONE so the chosen core still gets the untouched request body.
+  // Surface selection: prefer the ?surface= query param (the cutover repoints the URL exports to
+  // `${FN}/ai-agent?surface=master|field`, so no caller body needs to change), else read it from a
+  // CLONE of the body (the chosen core still receives the untouched request either way).
   let surface: string | undefined;
-  try {
-    const body = await req.clone().json();
-    surface = typeof body?.surface === "string" ? body.surface : undefined;
-  } catch { /* malformed body → fall through to default-deny */ }
+  try { surface = new URL(req.url).searchParams.get("surface") ?? undefined; } catch { /* ignore */ }
+  if (surface !== "master" && surface !== "field") {
+    try {
+      const body = await req.clone().json();
+      if (typeof body?.surface === "string") surface = body.surface;
+    } catch { /* malformed body → fall through to default-deny */ }
+  }
 
   if (surface === "master") return handleMasterAgent(req);
   if (surface === "field") return handleFieldAgent(req);
