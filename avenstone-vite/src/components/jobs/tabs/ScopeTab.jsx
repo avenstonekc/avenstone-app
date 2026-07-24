@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   sbLoadJobRoomScopes, sbSaveJobRoomScope, sbDeleteJobRoomScope,
   sbLoadScopeSubsets, sbLoadActiveTradeStrings, sbLoadJobScanRooms,
+  sbLoadTemplateTradesByRoomType,
   AV_TENANT, AV_USER_ID, sb,
 } from '../../../lib/supabase';
 import ScopeDetailForm from './ScopeDetailForm';
@@ -34,19 +35,23 @@ export default function ScopeTab({ job, setSub }) {
   const [saveMsg, setSaveMsg]           = useState('');
   const [loading, setLoading]           = useState(true);
   const [collapsed, setCollapsed]       = useState(new Set());
+  const [relevantTrades, setRelevantTrades] = useState({});
+  const [showAllTrades, setShowAllTrades]   = useState(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [scanRooms, saved, trades, schemaRows, ...subsetResults] = await Promise.all([
+      const [scanRooms, saved, trades, schemaRows, templateTrades, ...subsetResults] = await Promise.all([
         sbLoadJobScanRooms(job.id),
         sbLoadJobRoomScopes(job.id),
         sbLoadActiveTradeStrings(),
         sb.from('scope_detail_schemas').select('room_type, scope_tag, schema, tenant_id').eq('active', true).then(r => r.data || []),
+        sbLoadTemplateTradesByRoomType(),
         ...ROOM_TYPES.map(rt => sbLoadScopeSubsets(rt.id).then(s => [rt.id, s])),
       ]);
       setScopeRows(saved);
       setTradeStrings(trades);
+      setRelevantTrades(templateTrades);
 
       // Build schema map — tenant override beats platform default
       const schemaMap = {};
@@ -336,50 +341,99 @@ export default function ScopeTab({ job, setSub }) {
                       )}
 
                       {/* Custom trades checklist */}
-                      {edit.scopeTag === 'custom' && (
-                        <div style={{ marginBottom: 10, marginTop: 10 }}>
-                          <div style={{
-                            fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 6,
-                            display: 'flex', justifyContent: 'space-between',
-                          }}>
-                            <span>Custom trades</span>
-                            <span style={{ color: GOLD, fontWeight: 700 }}>
-                              {(edit.customTrades || []).length} selected
-                            </span>
+                      {edit.scopeTag === 'custom' && (() => {
+                        const roomTypeRelevant = new Set(relevantTrades[rt.id] || []);
+                        const relevant = roomTypeRelevant.size > 0
+                          ? tradeStrings.filter(t => roomTypeRelevant.has(t))
+                          : tradeStrings;
+                        const others = roomTypeRelevant.size > 0
+                          ? tradeStrings.filter(t => !roomTypeRelevant.has(t))
+                          : [];
+                        const allExpanded = showAllTrades.has(room.roomId);
+                        const checkedTrades = new Set(edit.customTrades || []);
+
+                        const renderCheckbox = trade => (
+                          <label
+                            key={trade}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '4px 0', fontSize: 13, cursor: 'pointer',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checkedTrades.has(trade)}
+                              onChange={e => {
+                                const prev = edit.customTrades || [];
+                                const next = e.target.checked
+                                  ? [...prev, trade]
+                                  : prev.filter(t => t !== trade);
+                                setEdit(room.roomId, 'customTrades', next);
+                              }}
+                              style={{ width: 15, height: 15, accentColor: NAV }}
+                            />
+                            {trade}
+                          </label>
+                        );
+
+                        return (
+                          <div style={{ marginBottom: 10, marginTop: 10 }}>
+                            <div style={{
+                              fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 6,
+                              display: 'flex', justifyContent: 'space-between',
+                            }}>
+                              <span>Custom trades</span>
+                              <span style={{ color: GOLD, fontWeight: 700 }}>
+                                {checkedTrades.size} selected
+                              </span>
+                            </div>
+                            <div style={{
+                              maxHeight: 200, overflowY: 'auto', border: `1px solid ${BORDER}`,
+                              borderRadius: 8, padding: '6px 10px',
+                            }}>
+                              {relevant.map(renderCheckbox)}
+                              {others.length > 0 && (
+                                <>
+                                  {others.filter(t => checkedTrades.has(t)).map(renderCheckbox)}
+                                  {!allExpanded && others.filter(t => !checkedTrades.has(t)).length > 0 && (
+                                    <button
+                                      onClick={() => setShowAllTrades(prev => {
+                                        const next = new Set(prev);
+                                        next.add(room.roomId);
+                                        return next;
+                                      })}
+                                      style={{
+                                        fontSize: 12, color: GOLD, background: 'none',
+                                        border: 'none', cursor: 'pointer', padding: '6px 0',
+                                        display: 'block',
+                                      }}
+                                    >
+                                      Show all trades ({others.filter(t => !checkedTrades.has(t)).length})
+                                    </button>
+                                  )}
+                                  {allExpanded && others.filter(t => !checkedTrades.has(t)).map(renderCheckbox)}
+                                  {allExpanded && (
+                                    <button
+                                      onClick={() => setShowAllTrades(prev => {
+                                        const next = new Set(prev);
+                                        next.delete(room.roomId);
+                                        return next;
+                                      })}
+                                      style={{
+                                        fontSize: 12, color: GOLD, background: 'none',
+                                        border: 'none', cursor: 'pointer', padding: '6px 0',
+                                        display: 'block',
+                                      }}
+                                    >
+                                      Show less
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div style={{
-                            maxHeight: 200, overflowY: 'auto', border: `1px solid ${BORDER}`,
-                            borderRadius: 8, padding: '6px 10px',
-                          }}>
-                            {tradeStrings.map(trade => {
-                              const checked = (edit.customTrades || []).includes(trade);
-                              return (
-                                <label
-                                  key={trade}
-                                  style={{
-                                    display: 'flex', alignItems: 'center', gap: 8,
-                                    padding: '4px 0', fontSize: 13, cursor: 'pointer',
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={e => {
-                                      const prev = edit.customTrades || [];
-                                      const next = e.target.checked
-                                        ? [...prev, trade]
-                                        : prev.filter(t => t !== trade);
-                                      setEdit(room.roomId, 'customTrades', next);
-                                    }}
-                                    style={{ width: 15, height: 15, accentColor: NAV }}
-                                  />
-                                  {trade}
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Notes */}
                       <div style={{ marginTop: 10 }}>

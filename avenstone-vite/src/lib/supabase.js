@@ -1066,6 +1066,23 @@ export const sbLoadActiveTradeStrings = async () => {
   return strings;
 };
 
+// Room-relevant trade strings, derived from the takeoff templates seeded for each room_type.
+// Used to surface room-appropriate trades first in the custom scope picker. Returns
+// { [room_type]: string[] } of full-path trade strings.
+export const sbLoadTemplateTradesByRoomType = async () => {
+  const { data } = await sb.from('takeoff_templates')
+    .select('room_type, trade').eq('active', true)
+    .or(AV_TENANT ? `tenant_id.is.null,tenant_id.eq.${AV_TENANT}` : 'tenant_id.is.null');
+  const map = {};
+  for (const row of (data || [])) {
+    if (!map[row.room_type]) map[row.room_type] = new Set();
+    map[row.room_type].add(row.trade);
+  }
+  const out = {};
+  for (const rt of Object.keys(map)) out[rt] = [...map[rt]].sort();
+  return out;
+};
+
 export const sbGetTradeMeta = async (parentTrade, subTrade = null) => {
   let q = sb.from('trade_taxonomy').select('*').eq('parent_trade', parentTrade);
   q = subTrade ? q.eq('sub_trade', subTrade) : q.is('sub_trade', null);

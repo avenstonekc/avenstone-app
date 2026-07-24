@@ -118,65 +118,88 @@ function FieldInput({ field, value, values, onChange }) {
     );
   }
 
-  // Single text input accepting contractor-style dimension strings (5'6", 66", 5.5', 66)
-  // Value stored as total inches. Formats back to feet-and-inches on blur.
+  // Two numeric boxes (Feet + Inches) — mobile-friendly, no apostrophe typing required.
+  // Value stored as total inches (number). Parent binds value/onChange unchanged.
   if (field.type === 'feet_inches') {
-    const [rawText, setRawText] = useState(() => formatDimension(value ?? field.default ?? null));
-    const [error, setError]     = useState(null);
+    const totalToFt  = (total) => (total == null ? '' : String(Math.floor(total / 12)));
+    const totalToIn  = (total) => (total == null ? '' : String(total - Math.floor(total / 12) * 12));
 
-    // Keep display in sync when value changes externally (e.g. schema seed)
+    const seedTotal = value ?? null;  // do NOT fall back to field.default here — parent seeds it
+    const [ftVal, setFtVal] = useState(() => totalToFt(seedTotal));
+    const [inVal, setInVal] = useState(() => totalToIn(seedTotal));
+    const [error, setError] = useState(null);
+
+    // Resync when value changes externally (schema seed from parent useEffect)
     useEffect(() => {
-      const formatted = formatDimension(value ?? field.default ?? null);
-      setRawText(formatted);
+      setFtVal(totalToFt(value ?? null));
+      setInVal(totalToIn(value ?? null));
       setError(null);
     }, [value]);
 
-    const handleBlur = () => {
-      const parsed = parseDimension(rawText);
-      if (rawText === '' || rawText == null) {
+    const handleChange = (nextFt, nextIn) => {
+      const ftEmpty = nextFt === '' || nextFt == null;
+      const inEmpty = nextIn === '' || nextIn == null;
+      if (ftEmpty && inEmpty) {
         setError(null);
         onChange(null);
         return;
       }
-      if (isNaN(parsed)) {
-        setError('Format: 5\'6" or 66"');
-        return;
+      const ft    = ftEmpty ? 0 : parseFloat(nextFt);
+      const inch  = inEmpty ? 0 : parseFloat(nextIn);
+      if (isNaN(ft) || isNaN(inch)) return; // mid-keystroke, ignore
+      const total = ft * 12 + inch;
+      const min   = field.min ?? 0;
+      const max   = field.max ?? Infinity;
+      if (total < min || total > max) {
+        setError(`Must be between ${min}" and ${max}"`);
+      } else {
+        setError(null);
       }
-      const min = field.min ?? 0;
-      const max = field.max ?? Infinity;
-      if (parsed < min || parsed > max) {
-        const minFt = Math.floor(min / 12), minIn = min % 12;
-        const maxFt = Math.floor(max / 12), maxIn = max % 12;
-        const fmtMin = minIn ? `${minFt}'${minIn}"` : `${minFt}'`;
-        const fmtMax = maxIn ? `${maxFt}'${maxIn}"` : `${maxFt}'`;
-        setError(`Must be between ${fmtMin} and ${fmtMax}`);
-        return;
-      }
-      setError(null);
-      setRawText(formatDimension(parsed));
-      onChange(parsed);
+      onChange(total);
     };
 
-    const parsedPreview = parseDimension(rawText);
-    const showPreview   = rawText && !isNaN(parsedPreview) && !error;
+    const inputStyle = {
+      fontSize: 16,        // CRITICAL: iOS WKWebView auto-zooms below 16px
+      minHeight: 36,
+      paddingTop: 6,
+      paddingBottom: 6,
+      paddingLeft: 8,
+      paddingRight: 8,
+      width: 72,
+      textAlign: 'center',
+      ...(error ? { borderColor: '#EF4444' } : {}),
+    };
 
     return (
       <div style={{ marginBottom: 12 }}>
         {label}
-        <input
-          type="text"
-          value={rawText}
-          onChange={e => { setRawText(e.target.value); setError(null); }}
-          onBlur={handleBlur}
-          className="finp"
-          placeholder={`e.g. 5'6" or 66"`}
-          style={{ width: '100%', fontSize: 13, ...(error ? { borderColor: '#EF4444' } : {}) }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={ftVal}
+            placeholder="0"
+            onChange={e => { setFtVal(e.target.value); handleChange(e.target.value, inVal); }}
+            className="finp"
+            style={inputStyle}
+          />
+          <span style={{ fontSize: 13, color: '#555', flexShrink: 0 }}>ft</span>
+          <input
+            type="number"
+            min={0}
+            max={11.99}
+            step={0.5}
+            value={inVal}
+            placeholder="0"
+            onChange={e => { setInVal(e.target.value); handleChange(ftVal, e.target.value); }}
+            className="finp"
+            style={inputStyle}
+          />
+          <span style={{ fontSize: 13, color: '#555', flexShrink: 0 }}>in</span>
+        </div>
         {error && (
           <div style={{ fontSize: 11, color: '#EF4444', marginTop: 3 }}>{error}</div>
-        )}
-        {showPreview && (
-          <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>= {parsedPreview}"</div>
         )}
         {field.help && !error && (
           <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{field.help}</div>
