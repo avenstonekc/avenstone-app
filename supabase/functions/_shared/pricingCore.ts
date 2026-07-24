@@ -203,6 +203,38 @@ function getWastePct(wasteMap: any, trade: string): number {
   return hit ? wasteMap[hit] : 0;
 }
 
+// TAKEOFF_QA Sym 5 — structured conditional for a material formula entry (see src/lib/pricingCore.js).
+export function matchesWhen(when: any, details: any): boolean {
+  if (!when) return true;
+  const v = details?.[when.scope_detail];
+  if (Array.isArray(when.in))     return when.in.includes(v);
+  if (Array.isArray(when.not_in)) return !when.not_in.includes(v);
+  if ("equals" in when)           return v === when.equals;
+  return true;
+}
+
+// TAKEOFF_QA Sym 4 — fixture identity for template↔schema de-dup (see src/lib/pricingCore.js).
+const SCHEMA_FIELD_TO_FIXTURE: Record<string, string> = { vanity_width: "vanity_cabinet", vanity_top: "vanity_top", toilet_type: "toilet" };
+const MATERIAL_FIXTURE_PATTERNS: [RegExp, string][] = [
+  [/^vanity cabinet/i, "vanity_cabinet"],
+  [/^vanity top/i,     "vanity_top"],
+  [/^vanity sink/i,    "vanity_sink"],
+  [/^toilet/i,         "toilet"],
+];
+function schemaOwnedFixtureSet(schema: any): Set<string> {
+  const owned = new Set<string>();
+  for (const f of (schema?.fields ?? [])) {
+    if (SCHEMA_FIELD_TO_FIXTURE[f.key]) owned.add(SCHEMA_FIELD_TO_FIXTURE[f.key]);
+    if (f.key === "sink_count")         owned.add("vanity_sink");
+  }
+  return owned;
+}
+function fixtureIdForMaterial(name: any): string | null {
+  const s = String(name || "");
+  for (const [re, id] of MATERIAL_FIXTURE_PATTERNS) if (re.test(s)) return id;
+  return null;
+}
+
 export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets, schemas, wasteRows }: any): any {
   const tradeDefs = buildTradeDefs(templates);
   const { laborCostMap, laborExtrasCostMap, materialRateMap } = buildCostMaps(unitCosts);
@@ -240,10 +272,15 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
     const schemaKey   = room.scopeTag ? `${room.roomType}::${room.scopeTag}` : null;
     const schemaEntry = schemaKey ? schemaByKey[schemaKey] : null;
     const resolvedDets = resolveDetails(schemaEntry?.schema ?? null, room.scope_details ?? {}, room);
+    const ownedFixtures = schemaOwnedFixtureSet(schemaEntry?.schema); // Sym 4 — fixtures the schema owns
     if (!room.isSynthetic && room.scopeTag) scopeDetailsResolved.push({ roomId: room.roomId, scopeTag: room.scopeTag, resolved: resolvedDets });
 
     for (const def of tradeDefs) {
       if (allowedTrades !== null && !allowedTrades.has(def.trade)) continue;
+      // Sym 3 — optional/alternate trades fire only when EXPLICITLY selected, never under __all__.
+      const explicitlySelected = allowedTrades !== null && allowedTrades.has(def.trade);
+      if (def.optional && !explicitlySelected) continue;
+      const lineOptional = false; // in scope if it reaches here — never show "optional"
       const costRow   = laborCostMap[def.trade];
       const baseRate  = costRow?.base_rate != null ? Number(costRow.base_rate) : null;
       const unit      = costRow?.unit ?? "lump";
@@ -269,7 +306,7 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
       if (quantity === undefined) ({ quantity, quantityPreFilled, quantityNotes } = buildQuantity({ trade: def.trade, unit, areaSf: room.areaSf, wallAreaSf: room.wallAreaSf, perimeterLf: room.perimeterLf, wastePct: 0 }));
 
       const lineCost = (baseRate != null && quantity != null) ? Math.round(baseRate * quantity * multiplier * 100) / 100 : null;
-      lines.push({ roomId: room.roomId, trade: def.trade, category: "labor", templateNotes: def.summary, optional: def.optional, conditional: def.conditional, unit, unitCostId: costRow?.id ?? null, unitCostSource: costRow ? (costRow.tenant_id !== null ? "tenant_override" : "platform_default") : null, baseRate, baseRateMissing: baseRate == null, multiplier, wastePct, quantity, quantityPreFilled, quantityNotes, lineCost, lineCostStatus: resolveLineCostStatus(baseRate, quantity) });
+      lines.push({ roomId: room.roomId, trade: def.trade, category: "labor", templateNotes: def.summary, optional: lineOptional, conditional: def.conditional, unit, unitCostId: costRow?.id ?? null, unitCostSource: costRow ? (costRow.tenant_id !== null ? "tenant_override" : "platform_default") : null, baseRate, baseRateMissing: baseRate == null, multiplier, wastePct, quantity, quantityPreFilled, quantityNotes, lineCost, lineCostStatus: resolveLineCostStatus(baseRate, quantity) });
 
       if (def.laborExtras?.length) {
         for (const extra of def.laborExtras) {
@@ -287,6 +324,11 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
         const metrics = roomMetrics(room);
         const pendingMatLines: any[] = [];
         for (const formula of def.materialsFormula) {
+          // Sym 5 — skip a material whose `when` doesn't match the scope answer (tub vs shower trim).
+          if (formula.when && !matchesWhen(formula.when, resolvedDets)) continue;
+          // Sym 4 — skip a template fixture the schema already owns (prevents the duplicate line).
+          const fxId = fixtureIdForMaterial(formula.material_name);
+          if (fxId && ownedFixtures.has(fxId)) continue;
           const matKey = `${def.trade}::${formula.material_name}`, matRow = materialRateMap[matKey];
           const matRate = matRow?.base_rate != null ? Number(matRow.base_rate) : null;
           const matUnit = matRow?.unit ?? "each";
@@ -302,7 +344,7 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
             else                                            matQtyNotes = `${formula.qty_basis} × ${formula.qty_multiplier}${divisorLabel}${wasteLabel}`;
           } else { matQtyNotes = "no rate row found for material — rep must enter"; }
           const matLineCost = (matRate != null && matQty != null) ? Math.round(matRate * matQty * 100) / 100 : null;
-          pendingMatLines.push({ roomId: room.roomId, trade: def.trade, category: "materials", materialName: formula.material_name, templateNotes: def.summary, optional: def.optional, conditional: def.conditional, unit: matUnit, unitCostId: matRow?.id ?? null, unitCostSource: matRow ? (matRow.tenant_id !== null ? "tenant_override" : "platform_default") : null, baseRate: matRate, baseRateMissing: matRate == null, multiplier: 1, wastePct: matRow?.waste_pct != null ? Number(matRow.waste_pct) : 0, quantity: matQty, quantityPreFilled: matQty != null, quantityNotes: matQtyNotes, lineCost: matLineCost, lineCostStatus: resolveLineCostStatus(matRate, matQty) });
+          pendingMatLines.push({ roomId: room.roomId, trade: def.trade, category: "materials", materialName: formula.material_name, templateNotes: def.summary, optional: lineOptional, conditional: def.conditional, unit: matUnit, unitCostId: matRow?.id ?? null, unitCostSource: matRow ? (matRow.tenant_id !== null ? "tenant_override" : "platform_default") : null, baseRate: matRate, baseRateMissing: matRate == null, multiplier: 1, wastePct: matRow?.waste_pct != null ? Number(matRow.waste_pct) : 0, quantity: matQty, quantityPreFilled: matQty != null, quantityNotes: matQtyNotes, lineCost: matLineCost, lineCostStatus: resolveLineCostStatus(matRate, matQty) });
         }
         const matByName = new Map<string, any>();
         for (const ml of pendingMatLines) {

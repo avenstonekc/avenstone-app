@@ -9,9 +9,15 @@ export const COMPUTE_FNS = {
     const h = Number(values.shower_wall_height_in) || 96;
     if (!w || !l) return 0;
     const type = values.shower_type || 'shower_only';
+    // TAKEOFF_QA Sym 8 — a walk-in shower alcove has an OPEN front = 3 tiled walls
+    // (back wall = width + 2 side walls = length). The old shower_only branch tiled
+    // all 4 walls (2*(w+l)), overcounting ~30-45% and inflating tile-wall labor.
+    // tub_only stays 3-wall; tub_plus_shower keeps 4-wall (it genuinely has more surfaces).
     const wallSf = type === 'tub_only'
       ? ((2 * w + l) / 12) * (h / 12)         // 3-wall tub surround
-      : (2 * (w + l) / 12) * (h / 12);        // 4-wall shower stall
+      : type === 'tub_plus_shower'
+        ? (2 * (w + l) / 12) * (h / 12)       // tub + separate shower — more surfaces, 4-wall
+        : ((w + 2 * l) / 12) * (h / 12);      // shower_only alcove: 3 tiled walls, open front
     return Math.round(wallSf * 10) / 10;
   },
 

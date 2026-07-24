@@ -278,6 +278,48 @@ function getWastePct(wasteMap, trade) {
   return hit ? wasteMap[hit] : 0;
 }
 
+// ── TAKEOFF_QA Sym 5 — structured conditional for a material formula entry ───────
+// A formula entry may carry `when: { scope_detail, in?[], equals?, not_in?[] }`. When present
+// and it does NOT match the room's resolved scope_details, the material line is skipped.
+// This is how the tub/shower trim package follows the shower_type answer (tub spout only when a
+// tub is present, shower valve trim only when a shower is present) instead of always firing.
+export function matchesWhen(when, details) {
+  if (!when) return true;
+  const v = details?.[when.scope_detail];
+  if (Array.isArray(when.in))     return when.in.includes(v);
+  if (Array.isArray(when.not_in)) return !when.not_in.includes(v);
+  if ('equals' in when)           return v === when.equals;
+  return true;
+}
+
+// ── TAKEOFF_QA Sym 4 — fixture identity for template↔schema de-dup ───────────────
+// The bathroom schemas drive fixtures via fixture_select (vanity_width, vanity_top, toilet_type)
+// and sink_count, while the takeoff TEMPLATES also hardcode the same fixtures as fixed-qty
+// materials — producing a duplicate line for each (vanity cabinet ×2, vanity top ×2, toilet ×2,
+// sink ×2). When a room's schema OWNS a fixture, the template's generic version is suppressed so
+// the schema-selected line is the single source of truth. Scopes without the schema field (e.g.
+// tile_only has no toilet selector) keep the template fixture — this cannot regress them.
+const SCHEMA_FIELD_TO_FIXTURE = { vanity_width: 'vanity_cabinet', vanity_top: 'vanity_top', toilet_type: 'toilet' };
+const MATERIAL_FIXTURE_PATTERNS = [
+  [/^vanity cabinet/i, 'vanity_cabinet'],
+  [/^vanity top/i,     'vanity_top'],
+  [/^vanity sink/i,    'vanity_sink'],
+  [/^toilet/i,         'toilet'],
+];
+function schemaOwnedFixtureSet(schema) {
+  const owned = new Set();
+  for (const f of (schema?.fields ?? [])) {
+    if (SCHEMA_FIELD_TO_FIXTURE[f.key]) owned.add(SCHEMA_FIELD_TO_FIXTURE[f.key]);
+    if (f.key === 'sink_count')         owned.add('vanity_sink');
+  }
+  return owned;
+}
+function fixtureIdForMaterial(name) {
+  const s = String(name || '');
+  for (const [re, id] of MATERIAL_FIXTURE_PATTERNS) if (re.test(s)) return id;
+  return null;
+}
+
 // ── Main export ────────────────────────────────────────────────────────────────
 
 /**
@@ -341,6 +383,7 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
     const schemaKey   = room.scopeTag ? `${room.roomType}::${room.scopeTag}` : null;
     const schemaEntry = schemaKey ? schemaByKey[schemaKey] : null;
     const resolvedDets = resolveDetails(schemaEntry?.schema ?? null, room.scope_details ?? {}, room);
+    const ownedFixtures = schemaOwnedFixtureSet(schemaEntry?.schema); // Sym 4 — fixtures the schema owns
 
     // Collect resolved details for debug (non-synthetic rooms with a scope_tag)
     if (!room.isSynthetic && room.scopeTag) {
@@ -350,6 +393,14 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
     // Build one labor line + material lines per trade template
     for (const def of tradeDefs) {
       if (allowedTrades !== null && !allowedTrades.has(def.trade)) continue;
+      // TAKEOFF_QA Sym 3 — an optional/alternate trade (e.g. Flooring - LVP, "alternate to
+      // Tile - Floor") must NOT auto-fire under a full/all-trades scope. It fires ONLY when
+      // explicitly named by a subset or the custom trade list. This kills the LVP-alongside-tile
+      // double-floor and the "checked AND optional" contradiction the rep saw.
+      const explicitlySelected = allowedTrades !== null && allowedTrades.has(def.trade);
+      if (def.optional && !explicitlySelected) continue;
+      // A trade that reaches here is genuinely in scope — never surface it as "optional".
+      const lineOptional = false;
 
       const costRow   = laborCostMap[def.trade];
       const baseRate  = costRow?.base_rate != null ? Number(costRow.base_rate) : null;
@@ -407,7 +458,7 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
         trade:        def.trade,
         category:     'labor',
         templateNotes: def.summary,
-        optional:     def.optional,
+        optional:     lineOptional,
         conditional:  def.conditional,
         unit,
         unitCostId:   costRow?.id ?? null,
@@ -471,6 +522,13 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
         const pendingMatLines = [];
 
         for (const formula of def.materialsFormula) {
+          // Sym 5 — skip a material whose `when` condition doesn't match the scope answer
+          // (e.g. Tub spout only when a tub is present, Shower valve trim only when a shower is).
+          if (formula.when && !matchesWhen(formula.when, resolvedDets)) continue;
+          // Sym 4 — skip a template fixture the schema already owns (prevents the duplicate line).
+          const fxId = fixtureIdForMaterial(formula.material_name);
+          if (fxId && ownedFixtures.has(fxId)) continue;
+
           const matKey  = `${def.trade}::${formula.material_name}`;
           const matRow  = materialRateMap[matKey];
           const matRate = matRow?.base_rate != null ? Number(matRow.base_rate) : null;
@@ -507,7 +565,7 @@ export function computePricingLines({ rooms, templates, unitCosts, scopeSubsets,
             category:  'materials',
             materialName: formula.material_name,
             templateNotes: def.summary,
-            optional:  def.optional,
+            optional:  lineOptional,
             conditional: def.conditional,
             unit:       matUnit,
             unitCostId: matRow?.id ?? null,
