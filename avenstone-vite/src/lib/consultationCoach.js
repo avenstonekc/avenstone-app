@@ -95,8 +95,17 @@ export function groupNeedsByRoom(items) {
 
 // Spoken form for the "what am I missing?" query + the end-of-session gate. Reads the room name
 // with each item so a spoken prompt is never context-free.
-export function needsListSpeech(items, { max = 4 } = {}) {
-  if (!items || !items.length) return "You're all set — I don't see any open scope items.";
+//
+// CONSULTATION_COACH_FIXES FIX 1 — an empty list is NOT automatically "you're all set". `loaded`
+// says whether a checklist was actually assembled (rooms/modules with coverable fields). Empty +
+// loaded = genuinely all covered; empty + NOT loaded = nothing to track yet, so tell the rep to
+// talk — never falsely congratulate a session that just started.
+export function needsListSpeech(items, { max = 4, loaded = true } = {}) {
+  if (!items || !items.length) {
+    return loaded
+      ? "You're all set — that's every open item covered."
+      : "Nothing's loaded yet — tell me about the project and I'll track what still needs covering.";
+  }
   const top = items.slice(0, max);
   const parts = top.map((it) => {
     const room = it.room_label && it.room_label !== 'General' ? `For ${it.room_label}, ` : '';

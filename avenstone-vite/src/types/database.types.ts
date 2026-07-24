@@ -4412,6 +4412,62 @@ export type Database = {
           },
         ]
       }
+      punch_items: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          job_id: string
+          photo_id: string | null
+          room_label: string | null
+          session_id: string | null
+          sort: number
+          status: string
+          tenant_id: string
+          trade: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description: string
+          id?: string
+          job_id: string
+          photo_id?: string | null
+          room_label?: string | null
+          session_id?: string | null
+          sort?: number
+          status?: string
+          tenant_id: string
+          trade?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          job_id?: string
+          photo_id?: string | null
+          room_label?: string | null
+          session_id?: string | null
+          sort?: number
+          status?: string
+          tenant_id?: string
+          trade?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "punch_items_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "consultation_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       push_subscriptions: {
         Row: {
           apns_token: string | null
@@ -6434,6 +6490,7 @@ export type Database = {
           business_email: string | null
           business_phone: string | null
           created_at: string | null
+          hotword_short: string | null
           id: string
           logo_url: string | null
           name: string
@@ -6448,6 +6505,7 @@ export type Database = {
           business_email?: string | null
           business_phone?: string | null
           created_at?: string | null
+          hotword_short?: string | null
           id?: string
           logo_url?: string | null
           name: string
@@ -6462,6 +6520,7 @@ export type Database = {
           business_email?: string | null
           business_phone?: string | null
           created_at?: string | null
+          hotword_short?: string | null
           id?: string
           logo_url?: string | null
           name?: string
@@ -6790,6 +6849,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      waiver_templates: {
+        Row: {
+          body_template: string
+          conditional: boolean
+          created_at: string
+          final: boolean
+          id: string
+          notice: string | null
+          requires_payment_gate: boolean
+          state: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body_template: string
+          conditional: boolean
+          created_at?: string
+          final: boolean
+          id?: string
+          notice?: string | null
+          requires_payment_gate?: boolean
+          state: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body_template?: string
+          conditional?: boolean
+          created_at?: string
+          final?: boolean
+          id?: string
+          notice?: string | null
+          requires_payment_gate?: boolean
+          state?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {

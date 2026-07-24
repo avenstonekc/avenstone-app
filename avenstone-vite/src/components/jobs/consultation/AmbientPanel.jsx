@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import {
   ANON_KEY, PROCESS_TRANSCRIPT_URL,
-  sbUploadConsultationPhoto, sbLoadConsultationChecklist, sbGetHotwordPrefix,
+  sbUploadConsultationPhoto, sbLoadConsultationChecklist, sbGetHotwordWords,
 } from '../../../lib/supabase';
 import { isMob } from '../../../lib/utils';
 import { createCaptureController, isNativeCapture } from '../../../lib/consultationCapture';
@@ -55,10 +55,13 @@ export default function AmbientPanel({
   const [capturePaused, setCapturePaused] = useState(false); // gap banner after a screen lock
   const [showPocketHint, setShowPocketHint] = useState(true);
 
+  const [wakeDisplay, setWakeDisplay] = useState('Aven'); // FIX 2 — short wake word shown in the hint
+
   const controllerRef = useRef(null);
   const transcriptRef = useRef('');
   const fileInputRef = useRef(null);
-  const prefixRef = useRef('avenstone');
+  const wakeWordsRef = useRef(['avenstone', 'aven']); // FIX 2 — all accepted wake words (long + short)
+  const hasCoverageRef = useRef(false);                // FIX 1 — is any checklist actually loaded?
   const livePartialRef = useRef('');
   const lastCmdRef = useRef({ cmd: '', ts: 0 });
   const voiceOnRef = useRef(true);
@@ -87,6 +90,14 @@ export default function AmbientPanel({
   );
   useEffect(() => { needsRef.current = needs; }, [needs]);
 
+  // FIX 1 — coverage exists if any assembled room maps to a walk checklist, or a module has fired.
+  // Drives the honest empty state: no coverage → "nothing loaded yet", not "you're all set".
+  const hasCoverage = useMemo(() => {
+    const roomFields = (checklist.rooms || []).some((r) => (checklist.fieldsByType?.[r.project_type] || []).length > 0);
+    return roomFields || (firedModules || []).length > 0;
+  }, [checklist, firedModules]);
+  useEffect(() => { hasCoverageRef.current = hasCoverage; }, [hasCoverage]);
+
   const getHeaders = () => ({
     Authorization: `Bearer ${ANON_KEY}`,
     'Content-Type': 'application/json',
@@ -96,7 +107,11 @@ export default function AmbientPanel({
   useEffect(() => {
     let alive = true;
     sbLoadConsultationChecklist(jobId).then((c) => { if (alive) setChecklist(c); }).catch(() => {});
-    sbGetHotwordPrefix().then((p) => { prefixRef.current = p; }).catch(() => {});
+    sbGetHotwordWords().then(({ display, words }) => {
+      if (!alive) return;
+      wakeWordsRef.current = words;
+      setWakeDisplay(display);
+    }).catch(() => {});
     return () => { alive = false; };
   }, [jobId]);
 
@@ -143,7 +158,8 @@ export default function AmbientPanel({
     lastCmdRef.current = { cmd, ts: now };
     if (cmd === 'measure') finishTo(onStartMeasuring);
     else if (cmd === 'ambient') controllerRef.current?.resume?.();
-    else if (cmd === 'missing') speak(needsListSpeech(needsRef.current));
+    // FIX 1 — pass loaded so an empty list reads honestly ("nothing loaded yet") not "all set".
+    else if (cmd === 'missing') speak(needsListSpeech(needsRef.current, { loaded: hasCoverageRef.current }));
     else if (cmd === 'end') handleEnd();
   };
 
@@ -151,9 +167,17 @@ export default function AmbientPanel({
     livePartialRef.current = text || '';
     setLivePartial(text || ''); // FIX 2 — surface the interim hypothesis so the transcript doesn't lag
     const t = (text || '').toLowerCase();
-    const prefix = prefixRef.current;
-    if (!t.includes(prefix)) return;
-    const after = t.slice(t.lastIndexOf(prefix) + prefix.length);
+    // FIX 2 — match ANY accepted wake word (long "avenstone" + short "aven") at a WORD BOUNDARY, so
+    // "aven" never fires inside "avenstone". Take the text after the LAST wake-word occurrence.
+    let lastEnd = -1;
+    for (const w of (wakeWordsRef.current || [])) {
+      const esc = String(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`\\b${esc}\\b`, 'g');
+      let m;
+      while ((m = re.exec(t)) !== null) { const end = m.index + m[0].length; if (end > lastEnd) lastEnd = end; }
+    }
+    if (lastEnd === -1) return;
+    const after = t.slice(lastEnd);
     if (/\bwhat('?s| is| am i| are we)?\b.*\bmissing\b|\bmissing\b/.test(after)) fireCommand('missing');
     else if (/\bend (the )?session\b|\bwrap up\b|\bwe'?re done\b/.test(after)) fireCommand('end');
     else if (/\bmeasure\b/.test(after)) fireCommand('measure');
@@ -163,8 +187,8 @@ export default function AmbientPanel({
   // Mount: build the platform-adaptive capture controller and start it.
   useEffect(() => {
     const controller = createCaptureController({
-      // Item 2 — construction/trade vocab + tenant hot-word prefix bias the recognizer (native only).
-      contextualStrings: buildContextualStrings(prefixRef.current),
+      // Item 2 — construction/trade vocab + tenant hot-word(s) bias the recognizer (native only).
+      contextualStrings: buildContextualStrings(wakeWordsRef.current),
       onSegment: (seg) => {
         transcriptRef.current = (transcriptRef.current + ' ' + seg).trim();
         setLocalTranscript(transcriptRef.current);
@@ -351,7 +375,7 @@ export default function AmbientPanel({
 
       {/* Hot-word hint */}
       <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 12 }}>
-        Say “<strong style={{ color: '#C9A84C', textTransform: 'capitalize' }}>{prefixRef.current}</strong>, what am I missing?” · “{prefixRef.current}, measure” · “{prefixRef.current}, end session”
+        Say “<strong style={{ color: '#C9A84C', textTransform: 'capitalize' }}>{wakeDisplay}</strong>, what am I missing?” · “{wakeDisplay}, measure” · “{wakeDisplay}, end session”
       </div>
 
       {/* Live transcript */}
@@ -390,7 +414,7 @@ export default function AmbientPanel({
             <button
               className="btn btn-ghost"
               style={{ fontSize: 13, padding: '4px 10px', minHeight: 32 }}
-              onClick={() => speak(needsListSpeech(needs))}
+              onClick={() => speak(needsListSpeech(needs, { loaded: hasCoverage }))}
             >
               🔊 Read
             </button>
@@ -418,6 +442,16 @@ export default function AmbientPanel({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* FIX 1 — empty needs-list: say the SAME thing the voice says. Never a false "all set" on a
+          just-started session — distinguish "nothing loaded yet" from "everything covered". */}
+      {needs.length === 0 && (
+        <div style={{ background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 13, lineHeight: 1.5, color: hasCoverage ? '#15803d' : '#6B7280' }}>
+          {hasCoverage
+            ? '✓ You’re all set — every open item is covered.'
+            : 'Nothing loaded yet — tell me about the project (or scope the rooms) and I’ll track what still needs covering.'}
         </div>
       )}
 

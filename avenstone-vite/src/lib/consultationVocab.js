@@ -23,11 +23,15 @@ export const CONSTRUCTION_VOCAB = [
   'punch list', 'change order', 'ledger', 'flashing', 'soffit vent', 'ridge vent',
 ];
 
-// Full contextual-strings list for a session: construction vocab + the tenant hot-word prefix
-// (so "Avenstone", "Avenstone caption", "Avenstone measure" bias correctly for the spoken commands).
-export function buildContextualStrings(prefix) {
+// Full contextual-strings list for a session: construction vocab + the tenant hot-word(s)
+// (so "Avenstone"/"Aven" and their command combos bias correctly for the spoken commands).
+// Accepts a single prefix string or an array of accepted wake words (FIX 2 — long + short forms).
+export function buildContextualStrings(prefixes) {
   const list = CONSTRUCTION_VOCAB.slice();
-  const p = String(prefix || '').trim();
-  if (p) list.push(p, `${p} caption`, `${p} measure`, `${p} what am I missing`);
+  const words = Array.isArray(prefixes) ? prefixes : [prefixes];
+  for (const raw of words) {
+    const p = String(raw || '').trim();
+    if (p) list.push(p, `${p} caption`, `${p} measure`, `${p} what am I missing`);
+  }
   return list;
 }

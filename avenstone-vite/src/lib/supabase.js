@@ -2667,16 +2667,150 @@ export const sbUploadConsultationPhoto = async ({ jobId, sessionId, file, sort =
   }
 };
 
+// PUNCH_LIST reframe — data layer for the Punch List Walkthrough (repurposed sub walk).
+// Each punch item = a thing that needs FIXING: description + trade tag + room + optional photo.
+
+// Load all punch items for a job, ordered by trade then sort (stable grouping for the by-trade doc).
+export const sbLoadPunchItems = async (jobId) => {
+  const { data } = await sb.from('punch_items').select('*')
+    .eq('tenant_id', AV_TENANT).eq('job_id', jobId)
+    .order('trade', { ascending: true, nullsFirst: false }).order('sort', { ascending: true });
+  return data || [];
+};
+
+// Create one punch item. trade/roomLabel/photoId/sessionId optional (rep may tag trade later).
+export const sbSavePunchItem = async ({ jobId, sessionId = null, description, trade = null, roomLabel = null, photoId = null, sort = 0 }) => {
+  try {
+    if (!String(description || '').trim()) return { error: 'Description required' };
+    const { data, error } = await sb.from('punch_items').insert({
+      tenant_id: AV_TENANT,
+      job_id: jobId,
+      session_id: sessionId || null,
+      description: String(description).trim(),
+      trade: trade || null,
+      room_label: roomLabel || null,
+      photo_id: photoId || null,
+      sort,
+      created_by: AV_USER_ID || null,
+    }).select().single();
+    if (error) return { error: error.message };
+    return { data };
+  } catch (e) {
+    return { error: String(e?.message || e) };
+  }
+};
+
+// Patch a punch item (description / trade / room_label / status / sort). Whitelists columns.
+export const sbUpdatePunchItem = async (id, patch = {}) => {
+  try {
+    const allowed = ['description', 'trade', 'room_label', 'status', 'sort'];
+    const upd = {};
+    for (const k of allowed) if (k in patch) upd[k] = patch[k];
+    if (!Object.keys(upd).length) return { error: 'Nothing to update' };
+    upd.updated_at = new Date().toISOString();
+    const { data, error } = await sb.from('punch_items').update(upd)
+      .eq('id', id).eq('tenant_id', AV_TENANT).select().single();
+    if (error) return { error: error.message };
+    return { data };
+  } catch (e) {
+    return { error: String(e?.message || e) };
+  }
+};
+
+// Delete a punch item.
+export const sbDeletePunchItem = async (id) => {
+  try {
+    const { error } = await sb.from('punch_items').delete().eq('id', id).eq('tenant_id', AV_TENANT);
+    if (error) return { error: error.message };
+    return { data: true };
+  } catch (e) {
+    return { error: String(e?.message || e) };
+  }
+};
+
+// Pure util: group items by trade for the by-trade punch doc. Null/empty trade → 'Unassigned'.
+// Returns [{ trade, items }] with 'Unassigned' last.
+export const groupPunchByTrade = (items = []) => {
+  const map = new Map();
+  for (const it of items) {
+    const key = (it.trade && String(it.trade).trim()) || 'Unassigned';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(it);
+  }
+  const entries = [...map.entries()].map(([trade, its]) => ({ trade, items: its }));
+  entries.sort((a, b) => (a.trade === 'Unassigned' ? 1 : b.trade === 'Unassigned' ? -1 : a.trade.localeCompare(b.trade)));
+  return entries;
+};
+
 // CONSULTATION_MODE Slice 2 — assemble the live-coach checklist for a job. Project types
 // come from the job's scoped rooms (job_room_scopes.room_type). Returns base checklist
 // fields (with evidence_type + money_risk_rank) and the module defs (for fired-module
 // expansion). Deduped by key, tenant row beats platform-null.
+//
+// CONSULTATION_COACH_FIXES FIX 1 — map a free-form scan room name to a seeded WALK project_type
+// so the coach can preload from scan rooms before the rep tags scope. Unmapped names return the
+// lowercased first token — harmless: the checklist query only matches seeded types, so an unmapped
+// room simply contributes no walk fields (no phantom group).
+const _PT_HINTS = [
+  [/bath|powder|ensuite/i, 'bathroom'],
+  [/kitchen/i, 'kitchen'],
+  [/basement|cellar|lower\s*level/i, 'basement'],
+  [/\bdeck\b/i, 'deck'],
+  [/\bfence\b/i, 'fence'],
+  [/\broof\b/i, 'roof'],
+];
+const _inferProjectType = (name) => {
+  const n = String(name || '').trim();
+  if (!n) return '';
+  for (const [re, pt] of _PT_HINTS) if (re.test(n)) return pt;
+  return n.toLowerCase().split(/\s+/)[0] || '';
+};
+
 export const sbLoadConsultationChecklist = async (jobId) => {
-  const scopes = await sbLoadJobRoomScopes(jobId);
-  // CONSULTATION_POCKET_FALLBACK FIX 2 — keep each in-scope ROOM INSTANCE (not just its type) so
-  // the coach can label items by room ("Bedroom 1 — flooring") instead of collapsing rooms.
-  const inScope = (scopes || []).filter((s) => s.scope_tag !== 'not_in_scope' && String(s.room_type || '').trim());
-  const projectTypes = [...new Set(inScope.map((s) => String(s.room_type).toLowerCase()))];
+  // FIX 1 — PRELOAD from the job's full context so the coach starts with real open items even
+  // before the rep tags scope: scoped rooms (authoritative for label/type) MERGED with the latest
+  // scan's rooms (+ their scope_notes), each mapped to a walk project_type. Only rooms explicitly
+  // tagged not_in_scope are dropped; an untagged scanned room is a candidate to walk, so it seeds.
+  const [scopes, scanRes] = await Promise.all([
+    sbLoadJobRoomScopes(jobId),
+    sb.from('job_lidar_scans').select('id, rooms').eq('job_id', jobId)
+      .order('created_at', { ascending: false }).limit(1),
+  ]);
+  const titleCase = (s) => String(s || '').replace(/(^|\s|-)\S/g, (m) => m.toUpperCase());
+  const scopeByRoomId = new Map((scopes || []).map((s) => [s.room_id, s]));
+  const usedScopeIds = new Set();
+  const instances = [];
+  const scan = scanRes.data?.[0];
+  if (scan && Array.isArray(scan.rooms)) {
+    scan.rooms.forEach((r, idx) => {
+      const scope = scopeByRoomId.get(`${scan.id}_${idx}`);
+      if (scope) usedScopeIds.add(scope.id);
+      if (scope && scope.scope_tag === 'not_in_scope') return; // rep excluded this room
+      const pt = (scope && String(scope.room_type || '').trim())
+        ? String(scope.room_type).toLowerCase()
+        : _inferProjectType(r?.name);
+      if (!pt) return;
+      instances.push({
+        room_key: scope?.id || `${scan.id}_${idx}`,
+        room_label: (scope?.room_label && scope.room_label.trim()) || (r?.name && String(r.name).trim()) || titleCase(pt),
+        project_type: pt,
+        scope_note: (r?.scope_note && String(r.scope_note).trim()) || null,
+      });
+    });
+  }
+  // Scoped rooms with no matching current scan room (edge: scan replaced/removed) still seed.
+  for (const s of (scopes || [])) {
+    if (usedScopeIds.has(s.id) || s.scope_tag === 'not_in_scope') continue;
+    const pt = String(s.room_type || '').trim().toLowerCase();
+    if (!pt) continue;
+    instances.push({
+      room_key: s.id,
+      room_label: (s.room_label && s.room_label.trim()) || titleCase(pt),
+      project_type: pt,
+      scope_note: null,
+    });
+  }
+  const projectTypes = [...new Set(instances.map((r) => r.project_type))];
   if (!projectTypes.length) return { rooms: [], fieldsByType: {}, modules: [], projectTypes: [] };
   const [chk, mod] = await Promise.all([
     // CONSULTATION_FIELD_FIXES FIX 4 — the walk coach/needs-list/end-gate only ask WALK-stage fields
@@ -2712,13 +2846,8 @@ export const sbLoadConsultationChecklist = async (jobId) => {
     if (!ex || (ex.tenant_id == null && r.tenant_id != null)) m.set(r.field_key, r);
   }
   for (const pt of Object.keys(perType)) fieldsByType[pt] = [...perType[pt].values()];
-  // Room instances with a display label; disambiguate duplicate labels (two unnamed "Bedroom" → 1/2).
-  const titleCase = (s) => String(s || '').replace(/(^|\s|-)\S/g, (m) => m.toUpperCase());
-  const rooms = inScope.map((s) => ({
-    room_key: s.id,
-    room_label: (s.room_label && s.room_label.trim()) || titleCase(s.room_type),
-    project_type: String(s.room_type).toLowerCase(),
-  }));
+  // Room instances assembled above; disambiguate duplicate labels (two unnamed "Bedroom" → 1/2).
+  const rooms = instances;
   const dup = {};
   rooms.forEach((r) => { dup[r.room_label] = (dup[r.room_label] || 0) + 1; });
   const seenN = {};
@@ -2834,6 +2963,23 @@ export const sbGetHotwordPrefix = async () => {
     _hotwordPrefix = (first || 'Avenstone').toLowerCase();
   } catch { _hotwordPrefix = 'avenstone'; }
   return _hotwordPrefix;
+};
+
+// CONSULTATION_COACH_FIXES FIX 2 — the full set of accepted wake words: the long prefix (tenant
+// name's first word, "Avenstone") AND the tenant-config short form ("Aven"). Both are matched
+// word-boundary-safe by the caller so "aven" never fires inside "avenstone". `display` is the
+// short form when set (Kalin wants it front and center), else the long one. Cached per session.
+let _hotwordCfg = null;
+export const sbGetHotwordWords = async () => {
+  if (_hotwordCfg) return _hotwordCfg;
+  try {
+    const { data } = await sb.from('tenants').select('name, hotword_short').eq('id', AV_TENANT).maybeSingle();
+    const long = (String(data?.name || '').trim().split(/\s+/)[0] || 'Avenstone');
+    const short = String(data?.hotword_short || '').trim();
+    const words = [...new Set([long, short].filter(Boolean).map((w) => w.toLowerCase()))];
+    _hotwordCfg = { display: short || long, words: words.length ? words : ['avenstone'] };
+  } catch { _hotwordCfg = { display: 'Aven', words: ['avenstone', 'aven'] }; }
+  return _hotwordCfg;
 };
 
 // Load a session's photos with fresh signed URLs (private bucket → must sign).
