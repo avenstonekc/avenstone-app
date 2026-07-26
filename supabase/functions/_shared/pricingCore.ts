@@ -152,24 +152,57 @@ function buildTradeDefs(templates: any[]): any[] {
   }));
 }
 
+// T2#4 S2a: up to four rows can now compete for one key — {tenant, platform} × {room-specific,
+// all-rooms (room_type NULL)}. Rank each and merge:
+//   rank = (tenant_id != null ? 2 : 0) + (room_type != null ? 1 : 0)
+//   tenant+room (3) > tenant+all (2) > platform+room (1) > platform+all (0)
+// Tenant ALWAYS beats platform on the rate (locked principle #5). Preserves the partial-merge
+// semantic: the best-ranked PLATFORM row is the base (supplies coverage_sf / waste_pct / unit),
+// the best-ranked TENANT row supplies the rate (base_rate + tenant_id + id). Falls back to the
+// tenant row as base when no platform row exists. Order-independent — the unique index guarantees
+// no two rows share a rank within a (plat|tenant) tier for a key, so selection never ties.
+// LOCKSTEP with src/lib/pricingCore.js buildCostMaps — keep identical.
 function buildCostMaps(unitCosts: any[]): any {
-  const laborCostMap: any = {}, laborExtrasCostMap: any = {}, materialRateMap: any = {};
+  const laborBuckets: any = {}, laborExtrasBuckets: any = {}, materialBuckets: any = {};
+
+  const consider = (buckets: any, key: string, row: any) => {
+    const isTenant = row.tenant_id != null;
+    const rank = (isTenant ? 2 : 0) + (row.room_type != null ? 1 : 0);
+    let b = buckets[key];
+    if (!b) b = buckets[key] = { plat: null, platRank: -1, ten: null, tenRank: -1 };
+    if (isTenant) {
+      if (rank > b.tenRank) { b.ten = row; b.tenRank = rank; }
+    } else {
+      if (rank > b.platRank) { b.plat = row; b.platRank = rank; }
+    }
+  };
+
   for (const row of (unitCosts || [])) {
     if (row.category === "materials") {
-      const key = `${row.trade}::${row.material_name}`, prev = materialRateMap[key];
-      if (!prev) { materialRateMap[key] = row; }
-      else if (row.tenant_id !== null && prev.tenant_id === null) { materialRateMap[key] = { ...prev, base_rate: row.base_rate, tenant_id: row.tenant_id, id: row.id }; }
+      consider(materialBuckets, `${row.trade}::${row.material_name}`, row);
     } else if (row.material_name) {
-      const key = `${row.trade}::${row.material_name}`, prev = laborExtrasCostMap[key];
-      if (!prev) { laborExtrasCostMap[key] = row; }
-      else if (row.tenant_id !== null && prev.tenant_id === null) { laborExtrasCostMap[key] = { ...prev, base_rate: row.base_rate, tenant_id: row.tenant_id, id: row.id }; }
+      consider(laborExtrasBuckets, `${row.trade}::${row.material_name}`, row);
     } else {
-      const prev = laborCostMap[row.trade];
-      if (!prev) { laborCostMap[row.trade] = row; }
-      else if (row.tenant_id !== null && prev.tenant_id === null) { laborCostMap[row.trade] = { ...prev, base_rate: row.base_rate, tenant_id: row.tenant_id, id: row.id }; }
+      consider(laborBuckets, `${row.trade}`, row);
     }
   }
-  return { laborCostMap, laborExtrasCostMap, materialRateMap };
+
+  const resolve = (buckets: any): any => {
+    const out: any = {};
+    for (const key of Object.keys(buckets)) {
+      const { plat, ten } = buckets[key];
+      out[key] = (plat && ten)
+        ? { ...plat, base_rate: ten.base_rate, tenant_id: ten.tenant_id, id: ten.id }
+        : (ten || plat);
+    }
+    return out;
+  };
+
+  return {
+    laborCostMap:       resolve(laborBuckets),
+    laborExtrasCostMap: resolve(laborExtrasBuckets),
+    materialRateMap:    resolve(materialBuckets),
+  };
 }
 
 function buildSubsetMap(scopeSubsets: any[]): any {
