@@ -1251,8 +1251,12 @@ async function handlePricePlan(
       .eq("job_id", jobId).order("created_at", { ascending: false }).limit(1),
     sb.from("takeoff_templates").select("trade,scope_definition")
       .eq("room_type", projectType).eq("active", true).or(catalogFilter),
+    // T2#4 S2a: costs are room-specific OR all-rooms (room_type NULL). Two independent AND-ed
+    // groups: (room_type = pt OR room_type IS NULL) AND (tenant_id IS NULL OR tenant_id = me).
+    // The room_type widening only touches room_type — the tenant group still constrains tenant_id
+    // to null-or-mine, so this can never surface another tenant's rows. Templates stay room-scoped.
     sb.from("takeoff_unit_costs").select("*")
-      .eq("room_type", projectType).eq("active", true).or(catalogFilter),
+      .or(`room_type.eq.${projectType},room_type.is.null`).eq("active", true).or(catalogFilter),
     sb.from("template_scope_subsets").select("scope_tag,label,trades,tenant_id,room_type"),
     sb.from("scope_detail_schemas").select("room_type,scope_tag,tenant_id,schema").eq("active", true),
     sb.from("trade_taxonomy").select("parent_trade,sub_trade,default_waste_pct"),
