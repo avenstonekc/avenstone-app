@@ -120,5 +120,71 @@ console.log('\nB — platform row present, base_rate NULL ("REP MUST ENTER")');
   }
 }
 
+// ── C: 4-level tenant/room precedence (T2#4 S2a) ─────────────────────────────
+// Observed through computePricingLines: the emitted labor line's baseRate reveals which row
+// won, unitCostSource reveals tenant vs platform. Every rank asserted in BOTH input orders —
+// row order must never change the winner (order-independence is the load-bearing property).
+//   rank = (tenant?2:0) + (room?1:0): tenant+room(3) > tenant+all(2) > platform+room(1) > platform+all(0)
+console.log('\nC — 4-level precedence (labor base rate, keyed by trade)');
+{
+  const templates = [{ trade: GAP_TRADE, scope_definition: { summary: 'Tile shower walls' } }];
+  const labor = (id, tenant, room, rate) => ({
+    id, tenant_id: tenant ? TENANT : null, room_type: room ? PT : null,
+    trade: GAP_TRADE, category: 'labor', material_name: null, unit: 'sf',
+    base_rate: rate, coverage_sf: null, waste_pct: 0, multipliers: {}, active: true });
+  // mirrors the NEW loader: room-specific OR all-rooms (room_type NULL)
+  const priceRA = rows => computePricingLines({
+    rooms, templates, unitCosts: rows.filter(r => r.active && (r.room_type === PT || r.room_type == null)),
+    scopeSubsets: [], schemas: [], wasteRows: WASTE }).lines.find(l => l.trade === GAP_TRADE);
+
+  const bothOrders = (name, rows, expectRate, expectSource) => {
+    for (const order of [rows, [...rows].reverse()]) {
+      const tag = order.map(r => r.id).join(',');
+      const l = priceRA(order);
+      chk(`${name} [${tag}]: rate=${expectRate}`, l?.baseRate === expectRate, l?.baseRate);
+      chk(`${name} [${tag}]: source=${expectSource}`, l?.unitCostSource === expectSource, l?.unitCostSource);
+    }
+  };
+
+  const tr = labor('tr', true,  true,  11); // rank 3 tenant+room
+  const ta = labor('ta', true,  false, 22); // rank 2 tenant+all
+  const pr = labor('pr', false, true,  33); // rank 1 platform+room
+  const pa = labor('pa', false, false, 44); // rank 0 platform+all
+
+  bothOrders('tenant+room beats tenant+all',        [tr, ta],         11, 'tenant_override');
+  bothOrders('tenant+all beats platform+room',      [ta, pr],         22, 'tenant_override');
+  bothOrders('platform+room beats platform+all',    [pr, pa],         33, 'platform_default');
+  bothOrders('all four present → tenant+room wins',  [pa, pr, ta, tr], 11, 'tenant_override');
+  bothOrders('all-rooms tenant rate prices a room with no room-specific row', [ta], 22, 'tenant_override');
+}
+
+// ── D: material coverage merge — coverage_sf from platform, rate from tenant ──
+// The single highest-risk detail: a tenant rate override must NOT drag its own null coverage_sf
+// into the ÷coverage formula. wall_sf=200, platform coverage=32 → qty 6.25. If coverage were wrongly
+// taken from the tenant row (null → undivided) qty would be 200. Both input orders.
+console.log('\nD — material precedence keeps coverage_sf from the platform row');
+{
+  const MAT = 'Wall tile field';
+  const templates = [{ trade: GAP_TRADE, scope_definition: { summary: 'Tile', default_unit: 'sf',
+    materials_formula: [{ qty_basis: 'wall_sf', material_name: MAT, qty_multiplier: 1, qty_divisor: 'coverage_sf' }] } }];
+  const mat = (id, tenant, rate, coverage) => ({
+    id, tenant_id: tenant ? TENANT : null, room_type: PT,
+    trade: GAP_TRADE, category: 'materials', material_name: MAT, unit: 'sf',
+    base_rate: rate, coverage_sf: coverage, waste_pct: 0, multipliers: {}, active: true });
+  const platform = mat('mp', false, 14, 32);   // platform: coverage 32
+  const tenant   = mat('mt', true,  20, null); // rep rate override: coverage null
+  const priceRA = rows => computePricingLines({
+    rooms, templates, unitCosts: rows.filter(r => r.active && (r.room_type === PT || r.room_type == null)),
+    scopeSubsets: [], schemas: [], wasteRows: WASTE }).lines.find(l => l.category === 'materials' && l.materialName === MAT);
+
+  for (const order of [[platform, tenant], [tenant, platform]]) {
+    const tag = order.map(r => r.id).join(',');
+    const l = priceRA(order);
+    chk(`material [${tag}]: qty uses platform coverage → 6.25`, l?.quantity === 6.25, l?.quantity);
+    chk(`material [${tag}]: rate = tenant 20`,                  l?.baseRate === 20,    l?.baseRate);
+    chk(`material [${tag}]: source = tenant_override`,          l?.unitCostSource === 'tenant_override', l?.unitCostSource);
+  }
+}
+
 console.log(`\n${fail === 0 ? 'ALL GREEN' : 'FAILURES'} — ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
