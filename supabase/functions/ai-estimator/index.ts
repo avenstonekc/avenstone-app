@@ -65,6 +65,18 @@ interface PricedLine extends ScopeLine {
   source_badge: string;
   vetted: boolean;
   gap_key?: string;         // present on regional_avg lines; format: "trade::line_item::unit"
+  // T2#4 S1: structured unit-cost identity, present ONLY on price_plan gap lines. Its presence is
+  // the routing signal in EstimateTab.saveLearnedRates — a filled gap carrying this writes back as a
+  // takeoff_unit_costs tenant override (the table the engine reads), NOT rate_book_labor. room_type
+  // is byte-identical to the projectType the loader filtered on, so the override lands where the
+  // next price_plan run will find it. Formula-priced lines never get it.
+  unit_cost_key?: {
+    room_type:     string;
+    trade:         string;
+    category:      string;         // 'labor' | 'materials'
+    material_name: string | null;  // null for base labor
+    unit:          string;
+  };
   rate_provenance?: string; // P3: "takeoff:<unit_cost_id>:geo=<source>" — how the rate+qty was derived
 }
 
@@ -1162,7 +1174,7 @@ async function callAnthropic(
 // Pending-rate lines (no unit_cost row): 'regional_avg' + gap_key so
 // applyGapRates / GapBatchAsk work on them unchanged in P4.
 
-function draftLineToPricedLine(line: Record<string, unknown>, geoSource: string): PricedLine {
+function draftLineToPricedLine(line: Record<string, unknown>, geoSource: string, projectType: string): PricedLine {
   const lineItem = String(line.materialName ?? line.templateNotes ?? line.trade ?? "");
   const desc     = lineItem;
   const qty      = (line.quantity as number) ?? 1;
@@ -1200,6 +1212,17 @@ function draftLineToPricedLine(line: Record<string, unknown>, geoSource: string)
     source_badge: "⚠ Pending rate — add to Takeoff Costs",
     vetted: false,
     gap_key: `${trade}::${lineItem}::${unit}`,
+    // T2#4 S1: structured identity so a filled gap writes back as a takeoff_unit_costs tenant
+    // override (the engine's read target) instead of rate_book_labor (write ≠ read was the bug).
+    // room_type MUST be the same projectType the loader filtered .eq("room_type", …) on — byte-
+    // identical — or the override lands where the next run will never look and the gap returns.
+    unit_cost_key: {
+      room_type:     projectType,
+      trade,
+      category,
+      material_name: (line.materialName as string | null) ?? null,
+      unit,
+    },
     rate_provenance: `takeoff:pending:geo=${geoSource}`,
   };
 }
@@ -1288,7 +1311,7 @@ async function handlePricePlan(
   });
 
   const geoSource = geo.source ?? "none";
-  const pricedLines: PricedLine[] = (lines as Record<string, unknown>[]).map(l => draftLineToPricedLine(l, geoSource));
+  const pricedLines: PricedLine[] = (lines as Record<string, unknown>[]).map(l => draftLineToPricedLine(l, geoSource, projectType));
 
   // Summary totals (match formatEstimate structure)
   const inScope       = pricedLines.filter(l => !l.outside_scope);
