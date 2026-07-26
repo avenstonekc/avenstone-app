@@ -3995,7 +3995,7 @@ export const sbLoadScopeDetailSchema = async (roomType, scopeTag, tenantId) => {
  */
 export const sbSaveTenantUnitCostOverride = async ({
   tenantId,
-  roomType,
+  roomType,          // null = all room types (T2#4 S2a); a concrete type = room-specific
   trade,
   materialName,     // null for labor rows
   category,         // 'labor' | 'materials'
@@ -4005,14 +4005,16 @@ export const sbSaveTenantUnitCostOverride = async ({
 }) => {
   if (!baseRate || Number(baseRate) <= 0) return { error: 'baseRate must be positive' };
 
-  // Find existing tenant override for this exact (trade, room_type, category, material_name)
+  // Find existing tenant override for this exact (trade, room_type, category, material_name).
+  // T2#4 S2a: roomType may be null (all-rooms rate) — match with .is(null), mirroring material_name.
   let q = sb.from('takeoff_unit_costs')
     .select('id')
     .eq('tenant_id', tenantId)
-    .eq('room_type', roomType)
     .eq('trade', trade)
     .eq('category', category)
     .eq('active', true);
+
+  q = roomType == null ? q.is('room_type', null) : q.eq('room_type', roomType);
 
   if (materialName == null) {
     q = q.is('material_name', null);
@@ -4035,17 +4037,17 @@ export const sbSaveTenantUnitCostOverride = async ({
   let pq = sb.from('takeoff_unit_costs')
     .select('coverage_sf, waste_pct, unit')
     .is('tenant_id', null)
-    .eq('room_type', roomType)
     .eq('trade', trade)
     .eq('category', category)
     .eq('active', true);
+  pq = roomType == null ? pq.is('room_type', null) : pq.eq('room_type', roomType);
   if (materialName == null) pq = pq.is('material_name', null);
   else pq = pq.eq('material_name', materialName);
   const { data: platform } = await pq.maybeSingle();
 
   const row = {
     tenant_id:    tenantId,
-    room_type:    roomType,
+    room_type:    roomType ?? null,
     trade,
     category,
     material_name: materialName ?? null,
