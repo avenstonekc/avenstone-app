@@ -6296,11 +6296,12 @@ export type Database = {
           material_name: string | null
           multipliers: Json
           notes: string | null
-          room_type: string
+          room_type: string | null
           tenant_id: string | null
           trade: string
           unit: string
           updated_at: string
+          vetted: boolean
           waste_pct: number
         }
         Insert: {
@@ -6313,11 +6314,12 @@ export type Database = {
           material_name?: string | null
           multipliers?: Json
           notes?: string | null
-          room_type: string
+          room_type?: string | null
           tenant_id?: string | null
           trade: string
           unit: string
           updated_at?: string
+          vetted?: boolean
           waste_pct?: number
         }
         Update: {
@@ -6330,11 +6332,12 @@ export type Database = {
           material_name?: string | null
           multipliers?: Json
           notes?: string | null
-          room_type?: string
+          room_type?: string | null
           tenant_id?: string | null
           trade?: string
           unit?: string
           updated_at?: string
+          vetted?: boolean
           waste_pct?: number
         }
         Relationships: [
