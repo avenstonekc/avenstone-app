@@ -215,31 +215,65 @@ async function enterRateViaScreen(page, trade, value) {
       }
     }
 
-    // ── B: ergonomics — enter 5 rates, measure ──
+    // ── Labor/Materials filter row counts (fix 1) ──
+    const allCount = await page.locator('button[title="Type your all-rooms rate"]').count();
+    await page.getByRole('button', { name: 'Labor', exact: true }).click(); await wait(500);
+    const laborCount = await page.locator('button[title="Type your all-rooms rate"]').count();
+    await page.evaluate(() => window.scrollTo(0, 0)); await wait(200);
+    await page.screenshot({ path: path.join(DIR, 'rb_labor_filter.png'), fullPage: false });
+    await page.getByRole('button', { name: 'Materials', exact: true }).click(); await wait(500);
+    const matCount = await page.locator('button[title="Type your all-rooms rate"]').count();
+    await page.getByRole('button', { name: 'All', exact: true }).click(); await wait(500);
+    report.filterCounts = { all: allCount, labor: laborCount, materials: matCount };
+
+    // search probe
+    await page.fill('input[placeholder*="Search"]', 'plumbing'); await wait(500);
+    report.searchCount = { query: 'plumbing', rows: await page.locator('button[title="Type your all-rooms rate"]').count() };
+    await page.fill('input[placeholder*="Search"]', ''); await wait(400);
+
+    // ── B: ergonomics — enter 5 rates, measure (mouse path) ──
+    // refetch-per-save probe: count GET selects on takeoff_unit_costs during saves.
+    // Count ONLY full-catalog loads (select=*) — the per-save refetch we removed. The helper's
+    // own targeted single-row lookups (select=id / select=coverage_sf...) are NOT this and are
+    // unchanged from before.
+    let catalogFullLoads = 0, helperLookups = 0;
+    const onReq = req => {
+      if (req.method() !== 'GET' || !/takeoff_unit_costs/.test(req.url())) return;
+      const u = decodeURIComponent(req.url());
+      if (/select=\*/.test(u)) catalogFullLoads++; else helperLookups++;
+    };
+    page.on('request', onReq);
     const ergTrades = [['Cleanup', 80.00], ['Paint - Interior', 3.75], ['Tile - Floor', 8.50], ['Trim / carpentry - Base / case', 4.75], ['Drywall - Tape / mud / texture', 0.72]];
     for (const [trade, val] of ergTrades) {
       const m = await enterRateViaScreen(page, trade, val);
       report.ergonomics.push(m);
       console.log('  entered', trade, JSON.stringify(m));
     }
+    page.off('request', onReq);
+    // fullLoads should be 0 (in-place); the old code did 1 select=* load() per save.
+    report.refetchDuring5Saves = { fullCatalogLoads: catalogFullLoads, helperTargetedLookups: helperLookups };
 
-    // keyboard-only probe: open an editor, type, Tab then Enter — does it save without a mouse click?
+    // ── Keyboard chain (fix 3): open ONE row, then type→Enter→type→Enter across 3 rows, no mouse. ──
     try {
-      const rows3 = await dumpRows(page);
-      const idx = rows3.findIndex(r => r.trade === 'Countertops' && /^Base labor/.test(r.name));
-      if (idx >= 0) {
-        await page.locator('button[title="Type your all-rooms rate"]').nth(idx).click();
-        await wait(300);
-        await rfill(page, '.card input[type="number"]', '90');
-        await page.keyboard.press('Enter');
-        await wait(1200);
-        const stillEditing = await page.locator('button:has-text("Save")').first().isVisible({ timeout: 1000 }).catch(() => false);
-        report.keyboardEnterSaves = !stillEditing;
-        // if Enter didn't save, cancel
-        if (stillEditing) await page.locator('button:has-text("✕")').first().click().catch(() => {});
-        await wait(300);
+      await page.getByRole('button', { name: 'Labor', exact: true }).click(); await wait(500);
+      // open the first labor row via a single click, then chain with Enter only
+      await page.locator('button[title="Type your all-rooms rate"]').first().click();
+      await wait(400);
+      const chain = [];
+      for (let i = 0; i < 3; i++) {
+        const focusedBefore = await page.evaluate(() => document.activeElement && document.activeElement.id);
+        await page.keyboard.type(String(6 + i));      // type a digit (keyboard only)
+        await page.keyboard.press('Enter');            // save + advance
+        await wait(900);
+        const focusedAfter = await page.evaluate(() => document.activeElement && document.activeElement.id);
+        chain.push({ step: i + 1, fromInput: focusedBefore, toInput: focusedAfter, advanced: !!focusedAfter && focusedAfter.startsWith('rbrate-') && focusedAfter !== focusedBefore });
       }
-    } catch (e) { report.notes.push('keyboard probe failed: ' + e.message); }
+      await page.locator('button:has-text("✕")').first().click().catch(() => {});
+      report.keyboardChain = chain;
+      report.keyboardEnterSaves = chain.every(c => c.advanced);
+      report.keyboardMouseClicksPerRateAfterFirst = 0;
+      await page.getByRole('button', { name: 'All', exact: true }).click(); await wait(400);
+    } catch (e) { report.notes.push('keyboard chain probe failed: ' + e.message); }
 
     // vetted toggle probe — is it a separate click on the same row?
     {
