@@ -85,3 +85,58 @@ export function computeSanityFlags(lineItems, clientPriceFn, envelope) {
   });
   return out;
 }
+
+// ─── T2#5: entry-time sanity rails ────────────────────────────────────────────
+// Runs as the rep/owner types a rate — ALL SOFT. Returns the live arithmetic + warnings;
+// NEVER blocks. Trigger incident (2026-07-17): $250 typed into a per-SF cleanup slot became
+// $250/sf × 49 = $12,250 (55% of the estimate) because the field was per-unit and the rep
+// meant a lump sum. The contrast between the two Rail-1 readouts is the primary guard.
+//
+// input: { rate, quantity, isLumpSum, trade, unit, category, draftTotal }
+//   - quantity null/undefined → "rate-only" mode (Rate Book, no line total): Rail 1 shows the
+//     unit basis echo, Rail 2 is skipped (estimate-scoped), Rail 3 still runs.
+//   - draftTotal absent/0 → Rail 2 skipped.
+// envelope: a Map from buildRateEnvelope (or raw takeoff rows, built internally).
+// returns: { lineTotal, breakdown, warnings: [{ rail, text }] }
+export function checkGapEntry(input, envelope) {
+  const { rate, quantity, isLumpSum, trade, unit, category, draftTotal } = input || {};
+  const env = envelope instanceof Map ? envelope : buildRateEnvelope(envelope);
+  const r = Number(rate);
+  const valid = isFinite(r) && r > 0;
+  const hasQty = quantity != null && isFinite(Number(quantity));
+  const qty = Number(quantity) || 0;
+  const u = unit || 'unit';
+
+  // Rail 1 — the live arithmetic. Lump-sum vs per-unit readouts differ so the rep SEES the mode.
+  let lineTotal = null, breakdown = '';
+  if (valid) {
+    if (isLumpSum)      { lineTotal = r;                                   breakdown = `whole line = ${f$(r)}`; }
+    else if (hasQty)    { lineTotal = Math.round(r * qty * 100) / 100;     breakdown = `${f$(r)}/${u} × ${qty} ${u} = ${f$(lineTotal)}`; }
+    else                { lineTotal = null;                                breakdown = `${f$(r)} / ${u}`; } // rate-only (Rate Book)
+  }
+
+  const warnings = [];
+  if (!valid) return { lineTotal, breakdown, warnings };
+
+  // Rail 2 — draft-share outlier (estimate-scoped; needs a positive draftTotal and a line total).
+  if (lineTotal != null && draftTotal && draftTotal > 0) {
+    const share = lineTotal / draftTotal;
+    if (share >= SANITY.DRAFT_SHARE) {
+      warnings.push({ rail: 2, text: `This line is ${Math.round(share * 100)}% of the estimate (${f$(lineTotal)} of ${f$(draftTotal)})` });
+    }
+  }
+
+  // Rail 3 — unit-rate envelope. Per-unit only. NO envelope for this (category, trade, unit) →
+  // NO flag: a gap exists because there is no rate; never invent a band to check against (#3).
+  if (!isLumpSum) {
+    const e = env.get(`${norm(category)}|${norm(trade)}|${norm(unit)}`);
+    if (e && e.lo !== Infinity && e.hi !== -Infinity) {
+      if (r > SANITY.OUTLIER_HI * e.hi) {
+        warnings.push({ rail: 3, text: `${f$(r)}/${u} is over ${SANITY.OUTLIER_HI}× the typical high (${f$(e.hi)}) for ${trade}` });
+      } else if (r < SANITY.OUTLIER_LO * e.lo) {
+        warnings.push({ rail: 3, text: `${f$(r)}/${u} is under ${SANITY.OUTLIER_LO}× the typical low (${f$(e.lo)}) for ${trade}` });
+      }
+    }
+  }
+  return { lineTotal, breakdown, warnings };
+}
