@@ -4063,6 +4063,57 @@ export const sbSaveTenantUnitCostOverride = async ({
   return { error, id: data?.id };
 };
 
+// ─── Takeoff catalog (Rate Book surface — T2#4 S2b) ───────────────────────────
+// The Rate Book screen edits takeoff_unit_costs (the table the deterministic engine reads),
+// NOT rate_book_labor/material (legacy LLM branch). It collapses rows to one per
+// (trade, category, material_name) and resolves the live rate with the SAME precedence rank
+// as pricingCore.js buildCostMaps — keep the two in sync:
+//   rank = (tenant_id != null ? 2 : 0) + (room_type != null ? 1 : 0)
+//   tenant+room(3) > tenant+all(2) > platform+room(1) > platform+all(0)
+// (buildCostMaps carries the reciprocal pointer back to here.)
+
+// All active rows, platform + this tenant, every room type. The screen does its own
+// collapse/precedence in JS so it can never disagree with the engine about the live rate.
+export const sbLoadTakeoffCatalog = async (tenantId) => {
+  try {
+    const { data, error } = await sb.from('takeoff_unit_costs')
+      .select('*')
+      .eq('active', true)
+      .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`)
+      .order('trade').order('category')
+      .order('material_name', { nullsFirst: true })
+      .order('room_type', { nullsFirst: true });
+    if (error) return { ok: false, error: error.message, data: [] };
+    return { ok: true, error: null, data: data || [] };
+  } catch (e) { return { ok: false, error: e.message, data: [] }; }
+};
+
+// Set vetted on a TENANT row only. Platform defaults are curated/immutable — the .not() guard
+// plus RLS makes a platform id match zero rows, which we surface as a clean refusal.
+export const sbSetUnitCostVetted = async (id, vetted) => {
+  try {
+    const { data, error } = await sb.from('takeoff_unit_costs')
+      .update({ vetted: !!vetted, updated_at: new Date().toISOString() })
+      .eq('id', id).not('tenant_id', 'is', null)
+      .select('id, vetted');
+    if (error) return { ok: false, error: error.message };
+    if (!data?.length) return { ok: false, error: 'Refused — platform-default rows are immutable' };
+    return { ok: true, error: null, data: data[0] };
+  } catch (e) { return { ok: false, error: e.message }; }
+};
+
+// Delete a TENANT override row. Refuses platform-default rows (tenant_id IS NULL).
+export const sbDeleteTenantUnitCostOverride = async (id) => {
+  try {
+    const { data, error } = await sb.from('takeoff_unit_costs')
+      .delete().eq('id', id).not('tenant_id', 'is', null)
+      .select('id');
+    if (error) return { ok: false, error: error.message };
+    if (!data?.length) return { ok: false, error: 'Refused — platform-default rows are immutable' };
+    return { ok: true, error: null, id: data[0].id };
+  } catch (e) { return { ok: false, error: e.message }; }
+};
+
 // ─── Schedule Items ───────────────────────────────────────────────────────────
 
 export const sbLoadScheduleItems = async (jobId) => {

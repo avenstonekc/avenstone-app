@@ -162,6 +162,8 @@ function buildTradeDefs(templates: any[]): any[] {
 // tenant row as base when no platform row exists. Order-independent — the unique index guarantees
 // no two rows share a rank within a (plat|tenant) tier for a key, so selection never ties.
 // LOCKSTEP with src/lib/pricingCore.js buildCostMaps — keep identical.
+// T2#4 S2b: supabase.js sbLoadTakeoffCatalog carries a DELIBERATE second copy of this rank rule
+// (the Rate Book screen resolves the live rate the same way) — keep the two in sync.
 function buildCostMaps(unitCosts: any[]): any {
   const laborBuckets: any = {}, laborExtrasBuckets: any = {}, materialBuckets: any = {};
 
