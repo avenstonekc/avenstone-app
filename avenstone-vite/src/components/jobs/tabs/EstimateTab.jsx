@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment, lazy, Suspense } from 'react';
-import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSaveTenantUnitCostOverride, sbSeedJobPhases, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, sbScopeVision, sbLoadScanMeasurements, sbDeleteScopeAnswers, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, ANON_KEY, AI_ESTIMATOR_URL, sbLoadEstimate, sbSaveEstimate, sbSendEstimateEmail, sbUploadDoc, sbLoadEstimateLineItems, sbLoadOhShitMoments, sbToggleOhShitProposal, sbLoadJobRoomScopes, sbLoadCategoryConfig, sbSetContractFromEstimate, sbGetPricingPolicy, sbSetEstimateApproval, sbLoadBidModelConfig, sbInsertRateBookLabor, sbSaveTenantUnitCostOverride, sbLoadTakeoffCatalog, sbSeedJobPhases, sbEnsureDefaultRoom, sbUpsertScopeAnswers, sbLoadScopeAnswers, sbScopePrefill, sbScopeVision, sbLoadScanMeasurements, sbDeleteScopeAnswers, captureFailedIntent, sbLoadRateBookLabor, sbCommittedLineSummary, sbLoadFloorPlansForJob, sbFetchFloorPlanPdf, sbLoadJobPhotos, sbSaveJobLidarScan, sbClearScopeAnswers, sbNote, sbClearCommittedLineItems, sbClearJobRoomScopes, sbClearEstimateDraft, sbEstimateStackCounts, sbUpsertProposalDraft, sbMarkProposalSent, sbResetProposals, sbLoadProposals } from '../../../lib/supabase';
 import { isScanArtifact, artifactToScanParams, SCAN_ARTIFACT_VERSION } from '../../../lib/scanArtifact';
 import { markLifecyclePhases } from '../../../lib/lifecycle';
 import { computeEstimateDeviation } from '../../../lib/deviationGate';
@@ -145,10 +145,11 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
   const [propOhShitExpanded, setPropOhShitExpanded] = useState(false);
   const [propReady, setPropReady] = useState(false);
 
-  // Phase 1b — pre-send price sanity guard. Rate-book rows (for the outlier bound) + ack flag.
+  // Phase 1b — pre-send price sanity guard. T2#5: outlier envelope now drawn from
+  // takeoff_unit_costs (the authority table the engine reads), NOT rate_book_labor.
   const [rateBookRows, setRateBookRows] = useState([]);
   const [sanityAck, setSanityAck] = useState(false);
-  useEffect(() => { sbLoadRateBookLabor().then(r => { if (r.ok) setRateBookRows(r.data); }); }, []);
+  useEffect(() => { sbLoadTakeoffCatalog(AV_TENANT).then(r => { if (r.ok) setRateBookRows(r.data); }); }, []);
   // A change to the line items invalidates a prior acknowledgement.
   useEffect(() => { setSanityAck(false); }, [lineItems]);
 
