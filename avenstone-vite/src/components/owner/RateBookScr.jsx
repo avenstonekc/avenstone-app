@@ -2,12 +2,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { AV_TENANT, sbLoadTakeoffCatalog, sbSaveTenantUnitCostOverride, sbSetUnitCostVetted, sbDeleteTenantUnitCostOverride } from '../../lib/supabase';
 import { Ic, isMob } from '../../lib/utils';
 
-// ─── Rate Book (T2#4 S2b) ─────────────────────────────────────────────────────
+// ─── Rate Book (T2#4 S2b + POLISH) ────────────────────────────────────────────
 // Edits takeoff_unit_costs — the table the deterministic engine reads — NOT rate_book_*.
-// Presents ONE row per (trade, category, material_name), collapsed across room types
-// (Kalin's locked call: rates don't vary by room). Editing writes a tenant override with
-// room_type = null (all rooms). The live-rate resolution mirrors pricingCore.js buildCostMaps
-// rank so the screen can never disagree with the engine — see sbLoadTakeoffCatalog comment.
+// ONE row per (trade, category, material_name), collapsed across room types (rates are
+// room-agnostic). Editing writes a tenant override with room_type = null (all rooms).
+// Live-rate resolution mirrors pricingCore.js buildCostMaps rank — see sbLoadTakeoffCatalog.
+// POLISH: labor/materials filter + search (findability), Enter-to-save-and-advance +
+// in-place update (chaining ~50 entries), compact mobile provenance badge.
 
 const fmtItem = s => (s || '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 const fmtRoom = s => (s || '').replace(/_/g, ' ');
@@ -44,18 +45,20 @@ function collapse(rows) {
 }
 
 // What rate the engine would use, + its provenance, for the collapsed row.
+// labelShort is the compact form for narrow viewports (avoids the 3-line badge wrap).
 function provenance(g) {
   if (g.tenantAll) {
-    return { rate: Number(g.tenantAll.base_rate), unit: g.tenantAll.unit, label: 'Your rate — all rooms', tone: 'mine' };
+    return { rate: Number(g.tenantAll.base_rate), unit: g.tenantAll.unit, label: 'Your rate — all rooms', labelShort: 'Your rate', tone: 'mine' };
   }
   if (g.tenantRoom.length) {
     const rates = [...new Set(g.tenantRoom.map(r => Number(r.base_rate)))];
     const rooms = g.tenantRoom.map(r => fmtRoom(r.room_type)).join(', ');
-    return { rate: rates.length === 1 ? rates[0] : null, unit: g.tenantRoom[0].unit, label: `Your rate — ${rooms} only`, tone: 'partial' };
+    return { rate: rates.length === 1 ? rates[0] : null, unit: g.tenantRoom[0].unit, label: `Your rate — ${rooms} only`, labelShort: `Your — ${rooms}`, tone: 'partial' };
   }
-  if (!g.platRates.length) return { rate: null, unit: g.units[0] ?? null, label: 'No default — rep must enter', tone: 'none' };
-  if (g.platRates.length === 1) return { rate: g.platRates[0], unit: g.units[0] ?? null, label: 'Platform default', tone: 'default' };
-  return { rate: null, unit: null, label: `Platform default — $${g.platRates[0]}–$${g.platRates[g.platRates.length - 1]} across ${g.platform.length} room types`, tone: 'varies' };
+  if (!g.platRates.length) return { rate: null, unit: g.units[0] ?? null, label: 'No default — rep must enter', labelShort: 'No default', tone: 'none' };
+  if (g.platRates.length === 1) return { rate: g.platRates[0], unit: g.units[0] ?? null, label: 'Platform default', labelShort: 'Default', tone: 'default' };
+  const lo = g.platRates[0], hi = g.platRates[g.platRates.length - 1];
+  return { rate: null, unit: null, label: `Platform default — $${lo}–$${hi} across ${g.platform.length} room types`, labelShort: `Default $${lo}–$${hi}`, tone: 'varies' };
 }
 
 const TONE = {
@@ -67,7 +70,7 @@ const TONE = {
 };
 
 // ─── One collapsed row ────────────────────────────────────────────────────────
-function CatalogRow({ g, isMobile, edit, setEdit, busy, err, onSave, onVetted, onUseEverywhere, last }) {
+function CatalogRow({ g, isMobile, edit, setEdit, busy, err, onSave, onSaveAdvance, onVetted, onUseEverywhere, last }) {
   const prov = provenance(g);
   const inEdit = edit != null;
   const unitVaries = g.units.length > 1;
@@ -76,18 +79,20 @@ function CatalogRow({ g, isMobile, edit, setEdit, busy, err, onSave, onVetted, o
   return (
     <div style={{
       borderBottom: last ? 'none' : '1px solid var(--bg-alt)',
-      padding: isMobile ? '12px 16px' : '10px 18px',
+      padding: isMobile ? '10px 14px' : '10px 18px',
       background: g.hasTenant && g.unvetted > 0 ? 'var(--surface)' : 'var(--card-bg)',
       display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: isMobile ? 'wrap' : 'nowrap',
     }}>
       {/* Item + provenance */}
       <div style={{ flex: isMobile ? '1 1 100%' : '1 1 240px', minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{name}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-subtle)', background: 'var(--neutral-bg)', padding: '2px 7px', borderRadius: 'var(--r-full)' }}>{g.category}</span>
-          {g.units.length === 1 && <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>/ {g.units[0]}</span>}
-          {unitVaries && <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>unit varies: {g.units.join(', ')}</span>}
-          <span className="badge" style={{ background: TONE[prov.tone].bg, color: TONE[prov.tone].fg, fontSize: 9, padding: '2px 7px' }}>{prov.label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: isMobile ? 'nowrap' : 'wrap', overflow: 'hidden' }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-subtle)', background: 'var(--neutral-bg)', padding: '2px 7px', borderRadius: 'var(--r-full)', flex: '0 0 auto' }}>{g.category}</span>
+          {g.units.length === 1 && <span style={{ fontSize: 10, color: 'var(--text-subtle)', flex: '0 0 auto' }}>/ {g.units[0]}</span>}
+          {unitVaries && !isMobile && <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>unit varies: {g.units.join(', ')}</span>}
+          <span className="badge" title={prov.label} style={{ background: TONE[prov.tone].bg, color: TONE[prov.tone].fg, fontSize: 9, padding: '2px 7px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: isMobile ? 180 : 'none' }}>
+            {isMobile ? prov.labelShort : prov.label}
+          </span>
         </div>
         {/* Footgun: room-specific tenant override(s) exist */}
         {g.tenantRoom.length > 0 && (
@@ -109,8 +114,13 @@ function CatalogRow({ g, isMobile, edit, setEdit, busy, err, onSave, onVetted, o
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>$</span>
             <input
+              id={`rbrate-${g.key}`}
               type="number" step="0.01" autoFocus value={edit.rate}
               onChange={e => setEdit({ ...edit, rate: e.target.value })}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); onSaveAdvance(g); }
+                else if (e.key === 'Escape') { e.preventDefault(); setEdit(null); }
+              }}
               style={{ width: 80, padding: '5px 8px', border: '1.5px solid var(--gold-500)', borderRadius: 'var(--r-xs)', fontSize: 16, fontFamily: 'var(--font-body)', outline: 'none', color: 'var(--text-primary)' }}
             />
             {unitVaries ? (
@@ -169,6 +179,8 @@ export default function RateBookScr({ profile }) {
   const [edits, setEdits] = useState({});   // keyed by group key
   const [busy, setBusy] = useState(new Set());
   const [rowErr, setRowErr] = useState({});
+  const [catFilter, setCatFilter] = useState('all'); // all | labor | materials
+  const [search, setSearch] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -180,14 +192,34 @@ export default function RateBookScr({ profile }) {
   useEffect(() => { load(); }, []);
 
   const groups = useMemo(() => collapse(rows), [rows]);
-  const trades = useMemo(() => [...new Set(groups.map(g => g.trade))].sort(), [groups]);
+
+  // Labor/Materials filter + search — the findability levers (fix 1 + 2).
+  const visibleGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return groups.filter(g => {
+      if (catFilter !== 'all' && g.category !== catFilter) return false;
+      if (q) {
+        const name = (g.material_name || 'base labor').toLowerCase();
+        if (!g.trade.toLowerCase().includes(q) && !name.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [groups, catFilter, search]);
+
+  const trades = useMemo(() => [...new Set(visibleGroups.map(g => g.trade))].sort(), [visibleGroups]);
   const byTrade = useMemo(() => trades.reduce((a, t) => {
-    a[t] = groups.filter(g => g.trade === t).sort((x, y) =>
+    a[t] = visibleGroups.filter(g => g.trade === t).sort((x, y) =>
       (x.category).localeCompare(y.category) || (x.material_name || '').localeCompare(y.material_name || ''));
     return a;
-  }, {}), [groups, trades]);
+  }, {}), [visibleGroups, trades]);
 
-  // Review counter is over rep-entered (tenant) rows only — platform defaults are curated.
+  // Ordered flat list of visible group keys → drives Enter-to-advance (fix 3).
+  const flatKeys = useMemo(() => trades.flatMap(t => byTrade[t].map(g => g.key)), [trades, byTrade]);
+  const groupByKey = useMemo(() => Object.fromEntries(visibleGroups.map(g => [g.key, g])), [visibleGroups]);
+
+  // Review counter — global over rep-entered (tenant) rows only; platform defaults are curated.
+  // (The walk's 0/3 vs 0/7 was test rows being created mid-walk, not a bug — denominator is
+  // the live count of tenant rows.)
   const tenantRowCount = rows.filter(r => r.tenant_id != null).length;
   const tenantVetted   = rows.filter(r => r.tenant_id != null && r.vetted).length;
 
@@ -195,30 +227,64 @@ export default function RateBookScr({ profile }) {
 
   const toggleTrade = t => setOpenTrades(prev => { const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n; });
   const setBusyKey = (k, on) => setBusy(prev => { const n = new Set(prev); on ? n.add(k) : n.delete(k); return n; });
+  const setEditKey = (key, v) => setEdits(p => { const n = { ...p }; if (v == null) delete n[key]; else n[key] = v; return n; });
 
-  const saveRate = async (g) => {
+  // In-place local update (fix 4) — replace the group's all-rooms tenant row in state, no refetch.
+  const applyLocal = (g, rate, unit, id, vetted) => {
+    setRows(prev => {
+      const isMatch = r => r.tenant_id != null && r.room_type == null && r.trade === g.trade && r.category === g.category && (r.material_name ?? null) === (g.material_name ?? null);
+      return [...prev.filter(r => !isMatch(r)), {
+        id, tenant_id: AV_TENANT, room_type: null, trade: g.trade, category: g.category,
+        material_name: g.material_name ?? null, unit, base_rate: rate, coverage_sf: null,
+        waste_pct: 0, multipliers: {}, active: true, vetted,
+      }];
+    });
+  };
+
+  // Core save: writes an ALL-ROOMS tenant override, updates local state in place. Returns bool.
+  const doSave = async (g) => {
     const ed = edits[g.key];
     const rate = parseFloat(ed?.rate);
-    if (!rate || isNaN(rate) || rate <= 0) { setRowErr(p => ({ ...p, [g.key]: 'Enter a positive rate' })); return; }
+    if (!rate || isNaN(rate) || rate <= 0) { setRowErr(p => ({ ...p, [g.key]: 'Enter a positive rate' })); return false; }
+    const unit = ed.unit || g.units[0] || null;
+    const keepVetted = g.tenantAll?.vetted ?? false; // edit preserves existing vetted; new rows start false
     setBusyKey(g.key, true); setRowErr(p => ({ ...p, [g.key]: undefined }));
-    // Always an ALL-ROOMS tenant override (room_type null). Platform rows are never touched.
     const res = await sbSaveTenantUnitCostOverride({
       tenantId: AV_TENANT, roomType: null, trade: g.trade, materialName: g.material_name,
-      category: g.category, unit: ed.unit || g.units[0] || null, baseRate: rate, sourceUnitCostId: null,
+      category: g.category, unit, baseRate: rate, sourceUnitCostId: null,
     });
     setBusyKey(g.key, false);
-    if (res.error) { setRowErr(p => ({ ...p, [g.key]: res.error.message || String(res.error) })); return; }
-    setEdits(p => { const n = { ...p }; delete n[g.key]; return n; });
-    await load();
+    if (res.error) { setRowErr(p => ({ ...p, [g.key]: res.error.message || String(res.error) })); return false; }
+    setEditKey(g.key, null);
+    applyLocal(g, rate, unit, res.id, keepVetted);
+    return true;
+  };
+
+  const saveRate = (g) => doSave(g);
+
+  // Enter → save this row, open the next visible row's editor, focus it (fix 3).
+  const saveAndAdvance = async (g) => {
+    const ok = await doSave(g);
+    if (!ok) return;
+    const idx = flatKeys.indexOf(g.key);
+    const nextKey = idx >= 0 ? flatKeys[idx + 1] : null;
+    if (!nextKey) return;
+    const next = groupByKey[nextKey];
+    if (!next) return;
+    setOpenTrades(prev => prev.has(next.trade) ? prev : new Set(prev).add(next.trade));
+    const p = provenance(next);
+    setEditKey(nextKey, { rate: p.rate != null ? String(p.rate) : '', unit: p.unit || next.units[0] || '' });
+    requestAnimationFrame(() => { const el = document.getElementById(`rbrate-${nextKey}`); if (el) { el.focus(); el.select?.(); } });
   };
 
   const toggleVetted = async (g) => {
     if (!g.vetTarget) return;
     setBusyKey(g.key, true);
-    const res = await sbSetUnitCostVetted(g.vetTarget.id, g.unvetted !== 0 ? true : false);
+    const target = g.vetTarget, next = g.unvetted !== 0;
+    const res = await sbSetUnitCostVetted(target.id, next);
     setBusyKey(g.key, false);
     if (!res.ok) { setRowErr(p => ({ ...p, [g.key]: res.error })); return; }
-    await load();
+    setRows(prev => prev.map(r => r.id === target.id ? { ...r, vetted: next } : r)); // in-place
   };
 
   const useEverywhere = async (g) => {
@@ -229,19 +295,24 @@ export default function RateBookScr({ profile }) {
       : `Remove the ${rooms} room-specific rate(s)? These will fall back to the platform default until you set an all-rooms rate.`;
     if (!window.confirm(msg)) return;
     setBusyKey(g.key, true);
+    const removed = [];
     for (const r of g.tenantRoom) {
       const res = await sbDeleteTenantUnitCostOverride(r.id);
-      if (!res.ok) { setRowErr(p => ({ ...p, [g.key]: res.error })); setBusyKey(g.key, false); return; }
+      if (!res.ok) { setRowErr(p => ({ ...p, [g.key]: res.error })); setBusyKey(g.key, false); setRows(prev => prev.filter(x => !removed.includes(x.id))); return; }
+      removed.push(r.id);
     }
     setBusyKey(g.key, false);
-    await load();
+    setRows(prev => prev.filter(r => !removed.includes(r.id))); // in-place
   };
 
+  const mob = isMob();
+  const FILTERS = [['all', 'All'], ['labor', 'Labor'], ['materials', 'Materials']];
+
   return (
-    <div style={{ padding: isMob() ? 14 : 24, maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+    <div style={{ padding: mob ? 14 : 24, maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: isMob() ? 22 : 28, color: 'var(--text-primary)', margin: 0 }}>Rate Book</h1>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: mob ? 22 : 28, color: 'var(--text-primary)', margin: 0 }}>Rate Book</h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 0' }}>Your prices for the estimator. Type a rate once — it applies to every room. Green = yours, grey = an inherited default.</p>
         </div>
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '10px 16px', minWidth: 170 }}>
@@ -262,10 +333,35 @@ export default function RateBookScr({ profile }) {
         </div>
       </div>
 
+      {/* Filter + search bar (fix 1 + 2) */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 2, background: 'var(--bg-alt)', borderRadius: 'var(--r-full)', padding: 3 }}>
+          {FILTERS.map(([id, lb]) => (
+            <button key={id} onClick={() => setCatFilter(id)} style={{
+              border: 'none', cursor: 'pointer', borderRadius: 'var(--r-full)', padding: '6px 16px', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)',
+              background: catFilter === id ? 'var(--card-bg)' : 'transparent',
+              color: catFilter === id ? 'var(--navy-900)' : 'var(--text-muted)',
+              boxShadow: catFilter === id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none', minHeight: 36,
+            }}>{lb}</button>
+          ))}
+        </div>
+        <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 360 }}>
+          <input
+            type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search trade or item…"
+            style={{ width: '100%', padding: '8px 30px 8px 12px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 16, fontFamily: 'var(--font-body)', outline: 'none', color: 'var(--text-primary)', background: 'var(--card-bg)', boxSizing: 'border-box' }}
+          />
+          {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 14 }}>✕</button>}
+        </div>
+        <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>{visibleGroups.length} row{visibleGroups.length !== 1 ? 's' : ''}</span>
+      </div>
+
       {err && <div style={{ padding: '12px 16px', background: 'var(--red-bg)', color: 'var(--red-text)', borderRadius: 'var(--r-sm)', marginBottom: 16, fontSize: 13 }}>{err}</div>}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-subtle)', fontSize: 14 }}>Loading rate book…</div>
+      ) : trades.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-subtle)', fontSize: 14 }}>No rows match this filter.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {trades.map(trade => {
@@ -289,10 +385,10 @@ export default function RateBookScr({ profile }) {
                   <div>
                     {tgroups.map((g, i) => (
                       <CatalogRow
-                        key={g.key} g={g} isMobile={isMob()} last={i === tgroups.length - 1}
-                        edit={edits[g.key] ?? null} setEdit={v => setEdits(p => { const n = { ...p }; if (v == null) delete n[g.key]; else n[g.key] = v; return n; })}
+                        key={g.key} g={g} isMobile={mob} last={i === tgroups.length - 1}
+                        edit={edits[g.key] ?? null} setEdit={v => setEditKey(g.key, v)}
                         busy={busy.has(g.key)} err={rowErr[g.key]}
-                        onSave={saveRate} onVetted={toggleVetted} onUseEverywhere={useEverywhere}
+                        onSave={saveRate} onSaveAdvance={saveAndAdvance} onVetted={toggleVetted} onUseEverywhere={useEverywhere}
                       />
                     ))}
                   </div>
