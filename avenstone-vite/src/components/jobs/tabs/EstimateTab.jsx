@@ -7,7 +7,7 @@ import { sbCommitEstimate } from '../../../lib/commitEstimate';
 import { markupRateForCategory } from '../../../lib/markupConfig';
 import { Ic, f$, ll, ls } from '../../../lib/utils';
 import { buildProposalPDF } from '../../../lib/pdf';
-import { computeSanityFlags } from '../../../lib/priceSanity';
+import { computeSanityFlags, buildRateEnvelope } from '../../../lib/priceSanity';
 import LineItemModal from './financials/LineItemModal';
 import ScopeTab from './ScopeTab';
 import ScopeRiskReview from '../estimate/ScopeRiskReview';
@@ -1222,8 +1222,10 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
     const rate = markupRateForCategory(li.category, { laborPct: Number(job.labor_markup_pct || 0), materialPct: Number(job.material_markup_pct || 0), categoryConfig });
     return cost * (1 + rate / 100);
   };
+  // T2#5: one envelope (from takeoff_unit_costs) shared by the pre-send guard and the entry rails.
+  const rateEnvelope = useMemo(() => buildRateEnvelope(rateBookRows), [rateBookRows]);
   const sanityFlags = useMemo(
-    () => computeSanityFlags(lineItems, clientPriceOf, rateBookRows),
+    () => computeSanityFlags(lineItems, clientPriceOf, rateEnvelope),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [lineItems, rateBookRows, categoryConfig, job.labor_markup_pct, job.material_markup_pct],
   );
@@ -1714,8 +1716,12 @@ export default function EstimateTab({ job, photos, docs, setDocs, profile, upd }
               )}
               {(() => {
                 const gaps = pricedScope.filter(l => l.source_label === 'regional_avg' && l.gap_key);
+                // Priced base (non-gap, in-scope) — Rail 2 adds each gap's live total on top of this.
+                const draftSubtotal = pricedScope
+                  .filter(l => !l.outside_scope && l.source_label !== 'regional_avg')
+                  .reduce((s, l) => s + (Number(l.amount) || 0), 0);
                 return gaps.length > 0
-                  ? <GapBatchAsk gaps={gaps} gapRates={gapRates} setGapRates={setGapRates} gapModes={gapModes} setGapModes={setGapModes} onApply={applyGapRates} />
+                  ? <GapBatchAsk gaps={gaps} gapRates={gapRates} setGapRates={setGapRates} gapModes={gapModes} setGapModes={setGapModes} onApply={applyGapRates} envelope={rateEnvelope} draftSubtotal={draftSubtotal} />
                   : null;
               })()}
               {learnCandidates.length > 0 && (() => {

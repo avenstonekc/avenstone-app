@@ -1,4 +1,5 @@
-import { f$, isMob } from '../../../lib/utils';
+import { f$, isMob, Ic } from '../../../lib/utils';
+import { checkGapEntry } from '../../../lib/priceSanity';
 
 const NAV    = 'var(--navy-900)';
 const BORDER = 'var(--border)';
@@ -23,7 +24,7 @@ const prettySource = (s) => (s || '').replace(/^pricing[_-]/, '').replace(/_/g, 
  *   setGapRates — setter
  *   onApply     — apply entered rates to pricedScope (deterministic, no AI)
  */
-export default function GapBatchAsk({ gaps, gapRates, setGapRates, gapModes = {}, setGapModes = () => {}, onApply }) {
+export default function GapBatchAsk({ gaps, gapRates, setGapRates, gapModes = {}, setGapModes = () => {}, onApply, envelope = new Map(), draftSubtotal = 0 }) {
   const mob = isMob();
   const withAnchor = gaps.filter(g => g.regional_rate != null).length;
   const unset = gaps.filter(g => {
@@ -55,9 +56,26 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, gapModes = {}
         const isLS     = (gapModes[g.gap_key] || 'unit') === 'ls';   // Phase 5 — lump-sum mode
         const hasAnchor = g.regional_rate != null && !isLS;          // KC anchors are per-unit only
         const accepted = hasAnchor && !isNaN(rateNum) && Math.abs(rateNum - Number(g.regional_rate)) < 0.005;
-        const liveAmt = (!isNaN(rateNum) && rateNum > 0)
-          ? `= ${f$(Math.round((isLS ? rateNum : rateNum * g.quantity) * 100) / 100)}`  // LS: the entered value IS the total
-          : '';
+        const rawTotal = (!isNaN(rateNum) && rateNum > 0) ? (isLS ? rateNum : Math.round(rateNum * g.quantity * 100) / 100) : 0;
+        const liveAmt = rawTotal > 0 ? `= ${f$(rawTotal)}` : '';  // LS: the entered value IS the total
+        // T2#5 sanity rails — live line total (Rail 1), draft-share (Rail 2), envelope (Rail 3). All SOFT.
+        // draftTotal = the priced base + this line's live total, so Rail 2's % matches the whole estimate.
+        const chk = checkGapEntry({
+          rate, quantity: g.quantity, isLumpSum: isLS, trade: g.trade, unit: g.unit,
+          category: g.category, draftTotal: draftSubtotal + rawTotal,
+        }, envelope);
+        const mathRow = chk.breakdown ? (
+          <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: chk.warnings.length ? 'var(--amber-text-deep)' : NAV, fontVariantNumeric: 'tabular-nums' }}>
+              {isLS ? '∑ ' : '✎ '}{chk.breakdown}
+            </div>
+            {chk.warnings.map((w, wi) => (
+              <div key={wi} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: 'var(--amber-text-strong)', background: 'var(--amber-bg-soft)', border: '1px solid var(--amber-border-soft)', borderRadius: 6, padding: '4px 8px' }}>
+                <span style={{ width: 12, height: 12, display: 'inline-flex', flexShrink: 0, marginTop: 1 }}>{Ic.warn}</span>{w.text}
+              </div>
+            ))}
+          </div>
+        ) : null;
         // Per-gap $/unit ↔ LS toggle.
         const modeToggle = (
           <div style={{ display: 'inline-flex', border: `1px solid ${BORDER}`, borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
@@ -139,6 +157,7 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, gapModes = {}
                 </span>
               </div>
               {anchorRow}
+              {mathRow}
             </div>
           );
         }
@@ -173,6 +192,7 @@ export default function GapBatchAsk({ gaps, gapRates, setGapRates, gapModes = {}
               </span>
             </div>
             {anchorRow}
+            {mathRow}
           </div>
         );
       })}
