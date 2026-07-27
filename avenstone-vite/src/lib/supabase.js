@@ -4054,7 +4054,9 @@ export const sbSaveTenantUnitCostOverride = async ({
     unit:          unit ?? platform?.unit ?? null,
     base_rate:     Number(baseRate),
     coverage_sf:   platform?.coverage_sf ?? null,
-    waste_pct:     platform?.waste_pct ?? null,
+    // waste_pct is NOT NULL — default to 0 when there's no platform row to inherit from
+    // (always the case for an all-rooms write, since no all-rooms platform rows exist). T2#4 S2b.
+    waste_pct:     platform?.waste_pct ?? 0,
     multipliers:   {},
     active:        true,
     notes:         sourceUnitCostId ? `override of platform row ${sourceUnitCostId}` : null,
