@@ -283,13 +283,14 @@ test('F1: Demo labor quantity = floorSf (no waste, areaSf_noWaste)', () => {
 });
 
 test('F1: Tile-Wall labor quantity uses computed shower_wall_sf (scope_detail labor_formula)', () => {
-  // shower_only: 2*(60+36)/12 * 96/12 = 2*8ft * 8ft = 128 sf → Math.round(12.8 * 10)/10 via computeFns
-  // shower_wall_sf_from_dims: 2*(60+36)/12 * 96/12 = 128.0
+  // TAKEOFF_QA Sym 8 (2026-07-24): shower_only is a 3-wall alcove (open front), not 4 walls.
+  // shower_wall_sf_from_dims shower_only: (w + 2*l)/12 * h/12 = (60 + 2*36)/12 * 96/12
+  //   = 132/12 * 8 = 11 * 8 = 88.0  (was 128.0 under the old 4-wall 2*(w+l) formula).
   const { lines } = run();
   const tileWall = lines.find(l => l.trade === 'Tile - Wall / shower' && l.category === 'labor' && !l.materialName);
   assert.ok(tileWall, 'Tile-Wall labor line not found');
-  assert.equal(tileWall.quantity, 128);
-  assert.equal(tileWall.quantityNotes, 'scope: shower_wall_sf = 128.0');
+  assert.equal(tileWall.quantity, 88);
+  assert.equal(tileWall.quantityNotes, 'scope: shower_wall_sf = 88.0');
 });
 
 test('F1: Tile-Floor labor quantity = floor_tile_sf (floorSf minus shower_floor_sf)', () => {
@@ -363,9 +364,12 @@ test('F2: niche=true → Niche install labor extra emitted with qty=1', () => {
 
 test('F3: trade with no labor cost row → lineCostStatus pending_rate', () => {
   // Add a template for a trade with no unit cost entry
+  // TAKEOFF_QA Sym 3 (2026-07-24): optional trades no longer auto-fire unless a subset/custom
+  // list names them, so an optional:true trade never appears and the test can't exercise the
+  // missing-rate path it claims to. optional:false makes the trade fire so pending_rate is reached.
   const templates = [...TEMPLATES, {
     trade: 'Heated Flooring',
-    scope_definition: { summary: 'Radiant floor heat', optional: true, default_unit: 'sf' },
+    scope_definition: { summary: 'Radiant floor heat', optional: false, default_unit: 'sf' },
   }];
   const { lines } = run(undefined, templates, undefined);
   const heated = lines.find(l => l.trade === 'Heated Flooring' && l.category === 'labor');
