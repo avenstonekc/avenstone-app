@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AV_TENANT, sbLoadTakeoffCatalog, sbSaveTenantUnitCostOverride, sbSetUnitCostVetted, sbDeleteTenantUnitCostOverride } from '../../lib/supabase';
 import { Ic, isMob } from '../../lib/utils';
+import { checkGapEntry, buildRateEnvelope } from '../../lib/priceSanity';
 
 // ─── Rate Book (T2#4 S2b + POLISH) ────────────────────────────────────────────
 // Edits takeoff_unit_costs — the table the deterministic engine reads — NOT rate_book_*.
@@ -70,11 +71,14 @@ const TONE = {
 };
 
 // ─── One collapsed row ────────────────────────────────────────────────────────
-function CatalogRow({ g, isMobile, edit, setEdit, busy, err, onSave, onSaveAdvance, onVetted, onUseEverywhere, last }) {
+function CatalogRow({ g, isMobile, edit, setEdit, busy, err, envelope, onSave, onSaveAdvance, onVetted, onUseEverywhere, last }) {
   const prov = provenance(g);
   const inEdit = edit != null;
   const unitVaries = g.units.length > 1;
   const name = g.material_name ? fmtItem(g.material_name) : 'Base labor';
+  // T2#5: entry rails on the authority surface — rate-only mode (no quantity) so Rail 1 is the
+  // unit-basis echo and Rail 3 flags an envelope outlier. Rail 2 (draft-share) is estimate-scoped, N/A here.
+  const chk = inEdit ? checkGapEntry({ rate: edit.rate, quantity: null, isLumpSum: false, trade: g.trade, unit: edit.unit || g.units[0], category: g.category }, envelope) : null;
 
   return (
     <div style={{
@@ -165,6 +169,16 @@ function CatalogRow({ g, isMobile, edit, setEdit, busy, err, onSave, onSaveAdvan
         )}
       </div>
 
+      {inEdit && chk?.breakdown && (
+        <div style={{ flex: '1 1 100%', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: chk.warnings.length ? 'var(--amber-text-deep)' : 'var(--text-muted)' }}>Entering {chk.breakdown}</div>
+          {chk.warnings.map((w, wi) => (
+            <div key={wi} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: 'var(--amber-text-strong)', background: 'var(--amber-bg)', border: '1px solid var(--amber-border)', borderRadius: 6, padding: '4px 8px' }}>
+              <span style={{ width: 12, height: 12, display: 'inline-flex', flexShrink: 0, marginTop: 1 }}>{Ic.warn}</span>{w.text}
+            </div>
+          ))}
+        </div>
+      )}
       {err && <div style={{ flex: '1 1 100%', fontSize: 11, color: 'var(--red-text)', marginTop: 4 }}>{err}</div>}
     </div>
   );
@@ -192,6 +206,7 @@ export default function RateBookScr({ profile }) {
   useEffect(() => { load(); }, []);
 
   const groups = useMemo(() => collapse(rows), [rows]);
+  const envelope = useMemo(() => buildRateEnvelope(rows), [rows]); // T2#5 Rail 3 reference band
 
   // Labor/Materials filter + search — the findability levers (fix 1 + 2).
   const visibleGroups = useMemo(() => {
@@ -387,7 +402,7 @@ export default function RateBookScr({ profile }) {
                       <CatalogRow
                         key={g.key} g={g} isMobile={mob} last={i === tgroups.length - 1}
                         edit={edits[g.key] ?? null} setEdit={v => setEditKey(g.key, v)}
-                        busy={busy.has(g.key)} err={rowErr[g.key]}
+                        busy={busy.has(g.key)} err={rowErr[g.key]} envelope={envelope}
                         onSave={saveRate} onSaveAdvance={saveAndAdvance} onVetted={toggleVetted} onUseEverywhere={useEverywhere}
                       />
                     ))}
