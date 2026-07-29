@@ -1991,8 +1991,62 @@ export const sbStampQbSynced = async (ids) => {
 };
 
 // ─── Team / User management ───────────────────────────────────────────────────
-export const STAFF_ROLES = ['owner','project_manager','sales_rep'];
-export const ROLE_LABELS = { owner: 'Owner', sales_rep: 'Sales Rep', project_manager: 'Project Manager', sub: 'Contractor', client: 'Client' };
+export const STAFF_ROLES = ['owner','project_manager','sales_rep','crew'];
+export const ROLE_LABELS = { owner: 'Owner', sales_rep: 'Sales Rep', project_manager: 'Project Manager', sub: 'Contractor', client: 'Client', crew: 'Crew' };
+
+// ─── Time clock (TIME_CLOCK_ARC S1) ────────────────────────────────────────────
+// Hours only this slice. Coords are passed in by the caller (one-shot stampGPS at punch);
+// a null coord never blocks a punch. The one-open-entry invariant is enforced by the partial
+// unique index time_entries_one_open_per_user — the helpers guard first, the index backstops.
+export const sbMyOpenEntry = async () => {
+  const { data, error } = await sb.from('time_entries').select('*').eq('user_id', AV_USER_ID).is('clock_out', null).maybeSingle();
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || null };
+};
+
+export const sbMyEntriesToday = async () => {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const { data, error } = await sb.from('time_entries').select('*').eq('user_id', AV_USER_ID)
+    .gte('clock_in', start.toISOString()).order('clock_in', { ascending: true });
+  if (error) return { ok: false, error: error.message, data: [] };
+  return { ok: true, error: null, data: data || [] };
+};
+
+export const sbClockIn = async (jobId, { lat = null, lng = null } = {}) => {
+  // Already clocked in? Return the open entry so the UI offers Switch instead of a duplicate punch.
+  const open = await sbMyOpenEntry();
+  if (open.ok && open.data) return { ok: false, error: 'already_clocked_in', open: open.data };
+  const { data, error } = await sb.from('time_entries').insert({
+    tenant_id: AV_TENANT, user_id: AV_USER_ID, job_id: jobId,
+    clock_in: new Date().toISOString(), in_lat: lat, in_lng: lng, source: 'punch',
+  }).select('*').single();
+  if (error) {
+    // Partial-unique-index backstop — a race that slipped past the guard surfaces here.
+    if (/one_open_per_user|duplicate key|unique/i.test(error.message)) {
+      const o = await sbMyOpenEntry();
+      return { ok: false, error: 'already_clocked_in', open: o.data || null };
+    }
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, error: null, data };
+};
+
+export const sbSwitchJob = async (jobId, { lat = null, lng = null } = {}) => {
+  // Atomic: closes the open entry + opens a new 'switch' entry in ONE DB transaction (RPC).
+  const { data, error } = await sb.rpc('time_clock_switch', { p_job_id: jobId, p_lat: lat, p_lng: lng });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, error: null, data: Array.isArray(data) ? data[0] : data };
+};
+
+export const sbClockOut = async ({ lat = null, lng = null } = {}) => {
+  const open = await sbMyOpenEntry();
+  if (!open.ok || !open.data) return { ok: false, error: 'not_clocked_in' };
+  const { data, error } = await sb.from('time_entries').update({
+    clock_out: new Date().toISOString(), out_lat: lat, out_lng: lng, updated_at: new Date().toISOString(),
+  }).eq('id', open.data.id).is('clock_out', null).select('*').single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, error: null, data };
+};
 export const sbLoadTeam = async () => {
   const { data } = await sb.from('profiles').select('*').eq('tenant_id', AV_TENANT).in('role', STAFF_ROLES).order('full_name');
   return data || [];
