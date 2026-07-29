@@ -1547,6 +1547,10 @@ export type Database = {
           tenant_id: string
           updated_at: string
           user_id: string
+          w4_path: string | null
+          w4_submitted_at: string | null
+          w9_path: string | null
+          w9_submitted_at: string | null
         }
         Insert: {
           address?: string | null
@@ -1557,6 +1561,10 @@ export type Database = {
           tenant_id: string
           updated_at?: string
           user_id: string
+          w4_path?: string | null
+          w4_submitted_at?: string | null
+          w9_path?: string | null
+          w9_submitted_at?: string | null
         }
         Update: {
           address?: string | null
@@ -1567,6 +1575,10 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           user_id?: string
+          w4_path?: string | null
+          w4_submitted_at?: string | null
+          w9_path?: string | null
+          w9_submitted_at?: string | null
         }
         Relationships: [
           {
@@ -4100,6 +4112,69 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paperwork_requests: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          doc_type: string
+          id: string
+          sent_at: string
+          sent_by: string | null
+          sign_ip: string | null
+          sign_user_agent: string | null
+          status: string
+          storage_path: string | null
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          doc_type: string
+          id?: string
+          sent_at?: string
+          sent_by?: string | null
+          sign_ip?: string | null
+          sign_user_agent?: string | null
+          status?: string
+          storage_path?: string | null
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          doc_type?: string
+          id?: string
+          sent_at?: string
+          sent_by?: string | null
+          sign_ip?: string | null
+          sign_user_agent?: string | null
+          status?: string
+          storage_path?: string | null
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paperwork_requests_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paperwork_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
