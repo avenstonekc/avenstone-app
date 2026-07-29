@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { sbLoadTeam, sbInviteStaff, sbSetUserActive, sbSetUserRole, sbSaveCommission, STAFF_ROLES, ROLE_LABELS } from '../../lib/supabase';
 import { Ic } from '../../lib/utils';
+import EmployeeModal from './EmployeeModal';
 
 const SEL_STYLE = { appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 };
 
@@ -13,6 +14,7 @@ export default function UserMgmt() {
   const [err, setErr] = useState('');
   const [editRole, setEditRole] = useState(null);
   const [commEdit, setCommEdit] = useState(null);
+  const [empModal, setEmpModal] = useState(null); // { mode:'add' } | { mode:'detail', user }
 
   useEffect(() => { sbLoadTeam().then(d => { setTeam(d); setLoading(false); }); }, []);
 
@@ -55,9 +57,14 @@ export default function UserMgmt() {
           <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: '#0A1F44' }}>Team</div>
           <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 2 }}>Manage staff access and roles</div>
         </div>
-        <button className="btn btn-navy" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setShowAdd(true)}>
-          <span style={{ width: 14, height: 14 }}>{Ic.plus}</span>Invite Member
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setEmpModal({ mode: 'add' })}>
+            <span style={{ width: 14, height: 14 }}>{Ic.plus}</span>Add Employee
+          </button>
+          <button className="btn btn-navy" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setShowAdd(true)}>
+            <span style={{ width: 14, height: 14 }}>{Ic.plus}</span>Invite Member
+          </button>
+        </div>
       </div>
       {loading && <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Loading...</div>}
       {team.map(u => (
@@ -112,8 +119,22 @@ export default function UserMgmt() {
               )}
             </div>
           )}
+          {u.role === 'crew' && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #F3F0EB', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: '#9CA3AF' }}>Hourly employee</span>
+              <button onClick={() => setEmpModal({ mode: 'detail', user: u })} style={{ background: 'none', border: 'none', fontSize: 11, color: '#C9A84C', cursor: 'pointer', fontWeight: 600, padding: 0 }}>Pay & details →</button>
+            </div>
+          )}
         </div>
       ))}
+      {empModal && (
+        <EmployeeModal
+          mode={empModal.mode}
+          user={empModal.user}
+          onClose={() => setEmpModal(null)}
+          onSaved={async () => { setTeam(await sbLoadTeam()); setEmpModal(null); }}
+        />
+      )}
       {showAdd && (
         <div className="overlay" onClick={() => setShowAdd(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
