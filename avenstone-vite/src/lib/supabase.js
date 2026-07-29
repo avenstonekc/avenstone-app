@@ -2059,6 +2059,78 @@ export const sbClockOut = async ({ lat = null, lng = null } = {}) => {
   if (error) return { ok: false, error: error.message };
   return { ok: true, error: null, data };
 };
+
+// ─── Employees / pay (TIME_CLOCK_ARC S2) ───────────────────────────────────────
+// Pay data lives OFF profiles (owner+self RLS). employee_pay_rates is append-only — never UPDATE.
+export const sbLoadEmployeeDetails = async (userId) => {
+  const { data, error } = await sb.from('employee_details').select('*').eq('user_id', userId).maybeSingle();
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || null };
+};
+export const sbLoadPayRates = async (userId) => {
+  const { data, error } = await sb.from('employee_pay_rates').select('*').eq('user_id', userId).order('effective_date', { ascending: false });
+  if (error) return { ok: false, error: error.message, data: [] };
+  return { ok: true, error: null, data: data || [] };
+};
+export const sbSaveEmployeeDetails = async (userId, { classification, phone = null, address = null, startDate = null }) => {
+  const { data, error } = await sb.from('employee_details').upsert({
+    user_id: userId, tenant_id: AV_TENANT, classification, phone, address, start_date: startDate || null, updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id' }).select('*').single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, error: null, data };
+};
+// A raise is a NEW effective-dated row (append-only). UNIQUE(user_id, effective_date) → a
+// same-day correction collides; caller can delete the bad row then re-add.
+export const sbAddPayRate = async (userId, rate, effectiveDate) => {
+  const { data, error } = await sb.from('employee_pay_rates').insert({
+    tenant_id: AV_TENANT, user_id: userId, rate: Number(rate), effective_date: effectiveDate, created_by: AV_USER_ID,
+  }).select('*').single();
+  if (error) return { ok: false, error: /duplicate key|unique/i.test(error.message) ? 'A rate already exists for that effective date — delete it first to change it.' : error.message };
+  return { ok: true, error: null, data };
+};
+export const sbDeletePayRate = async (id) => {
+  const { error } = await sb.from('employee_pay_rates').delete().eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, error: null };
+};
+// Owner Team list: crew members + their details + most-recent rate row.
+export const sbLoadEmployees = async () => {
+  const { data: crew, error } = await sb.from('profiles').select('id,full_name,email,is_active').eq('tenant_id', AV_TENANT).eq('role', 'crew').order('full_name');
+  if (error) return { ok: false, error: error.message, data: [] };
+  const ids = (crew || []).map(c => c.id);
+  if (!ids.length) return { ok: true, error: null, data: [] };
+  const [{ data: dets }, { data: rates }] = await Promise.all([
+    sb.from('employee_details').select('*').in('user_id', ids),
+    sb.from('employee_pay_rates').select('*').in('user_id', ids).order('effective_date', { ascending: false }),
+  ]);
+  const detMap = Object.fromEntries((dets || []).map(d => [d.user_id, d]));
+  const latest = {};
+  for (const r of (rates || [])) if (!latest[r.user_id]) latest[r.user_id] = r; // first = greatest effective_date
+  return { ok: true, error: null, data: (crew || []).map(c => ({ ...c, details: detMap[c.id] || null, latestRate: latest[c.id] || null })) };
+};
+// Crew "My Pay": own details + rates + this-year time entries (earnings math filters precisely).
+export const sbLoadMyPay = async () => {
+  const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
+  const [det, rates, ent] = await Promise.all([
+    sbLoadEmployeeDetails(AV_USER_ID),
+    sbLoadPayRates(AV_USER_ID),
+    sb.from('time_entries').select('id,job_id,clock_in,clock_out').eq('user_id', AV_USER_ID).gte('clock_in', yearStart).order('clock_in', { ascending: false }),
+  ]);
+  return { ok: true, details: det.data, rates: rates.data || [], entries: ent.data || [] };
+};
+// Owner lookup for the already-invited dedupe path.
+export const sbFindProfileByEmail = async (email) => {
+  const { data, error } = await sb.from('profiles').select('id,full_name,role,email').eq('tenant_id', AV_TENANT).eq('email', email).maybeSingle();
+  if (error) return { ok: false, error: error.message, data: null };
+  return { ok: true, error: null, data: data || null };
+};
+// Resend a setup email to an already-registered address (recovery link → SetPasswordScr → CrewHomeScr).
+export const sbResendSetupEmail = async (email) => {
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: 'https://avenstone-app.vercel.app' });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, error: null };
+};
+
 export const sbLoadTeam = async () => {
   const { data } = await sb.from('profiles').select('*').eq('tenant_id', AV_TENANT).in('role', STAFF_ROLES).order('full_name');
   return data || [];
