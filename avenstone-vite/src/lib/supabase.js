@@ -7714,7 +7714,11 @@ export async function sbLoadUnreimbursedExpenses(jobId) {
     .select('id, job_id, date_incurred, type, amount, markup_pct, billing_treatment, description, draw_number, status, created_at')
     .eq('job_id', jobId)
     .eq('direction', 'out')
-    .eq('reimbursement_status', 'unreimbursed')
+    // Reimbursable predicate (canonical): treat legacy NULL as unreimbursed so pre-column rows
+    // aren't stranded, and exclude void so voided money can never be billed into a draw.
+    .or('reimbursement_status.is.null,reimbursement_status.eq.unreimbursed')
+    .is('draw_id', null) // unreimbursed never has a draw link; belt for the NULL-coalesce above
+    .neq('status', 'void')
     .neq('billing_treatment', 'client_paid') // client-direct purchases aren't reimbursable expenses
     .order('date_incurred', { ascending: true });
 
@@ -7746,7 +7750,9 @@ export async function sbLoadUncollectedClientPaidMarkup(jobId) {
     .eq('job_id', jobId)
     .eq('direction', 'out')
     .eq('billing_treatment', 'client_paid')
-    .eq('reimbursement_status', 'unreimbursed')
+    // Same canonical predicate as sbLoadUnreimbursedExpenses: NULL counts as unreimbursed.
+    .or('reimbursement_status.is.null,reimbursement_status.eq.unreimbursed')
+    .is('draw_id', null)
     .neq('status', 'void')
     .order('date_incurred', { ascending: true });
   if (error) return { ok: false, error: error.message, data: [] };
@@ -7781,7 +7787,7 @@ export async function sbGetBucketBalance(jobId) {
 
   const { data, error } = await sb
     .from('job_transactions')
-    .select('direction, amount, invoice_id, status, reimbursement_status')
+    .select('direction, amount, invoice_id, status, reimbursement_status, draw_id')
     .eq('job_id', jobId);
 
   if (error) return { ok: false, error: error.message, data: null };
@@ -7792,7 +7798,14 @@ export async function sbGetBucketBalance(jobId) {
     const amt = Number(r.amount) || 0;
     if (r.direction === 'in' && r.invoice_id === null && r.status === 'paid') {
       bucket += amt;
-    } else if (r.direction === 'out' && r.reimbursement_status === 'unreimbursed') {
+    } else if (
+      // Same canonical reimbursable predicate as sbLoadUnreimbursedExpenses: NULL counts as
+      // unreimbursed, void never counts, and a drawn row (has draw_id) is already collected.
+      r.direction === 'out' &&
+      r.status !== 'void' &&
+      r.draw_id == null &&
+      (r.reimbursement_status === 'unreimbursed' || r.reimbursement_status == null)
+    ) {
       unreimbursed += amt;
     }
   }
