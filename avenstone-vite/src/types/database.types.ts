@@ -6535,6 +6535,85 @@ export type Database = {
         }
         Relationships: []
       }
+      time_entries: {
+        Row: {
+          clock_in: string
+          clock_out: string | null
+          created_at: string
+          edited_at: string | null
+          edited_by: string | null
+          id: string
+          in_lat: number | null
+          in_lng: number | null
+          job_id: string
+          notes: string | null
+          out_lat: number | null
+          out_lng: number | null
+          source: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          clock_in?: string
+          clock_out?: string | null
+          created_at?: string
+          edited_at?: string | null
+          edited_by?: string | null
+          id?: string
+          in_lat?: number | null
+          in_lng?: number | null
+          job_id: string
+          notes?: string | null
+          out_lat?: number | null
+          out_lng?: number | null
+          source?: string
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          clock_in?: string
+          clock_out?: string | null
+          created_at?: string
+          edited_at?: string | null
+          edited_by?: string | null
+          id?: string
+          in_lat?: number | null
+          in_lng?: number | null
+          job_id?: string
+          notes?: string | null
+          out_lat?: number | null
+          out_lng?: number | null
+          source?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_entries_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_entries_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       todos: {
         Row: {
           assigned_to_user_id: string | null
@@ -7095,6 +7174,33 @@ export type Database = {
       reverse_draw_paid_cascade: {
         Args: { p_invoice_id: string }
         Returns: number
+      }
+      time_clock_switch: {
+        Args: { p_job_id: string; p_lat?: number; p_lng?: number }
+        Returns: {
+          clock_in: string
+          clock_out: string | null
+          created_at: string
+          edited_at: string | null
+          edited_by: string | null
+          id: string
+          in_lat: number | null
+          in_lng: number | null
+          job_id: string
+          notes: string | null
+          out_lat: number | null
+          out_lng: number | null
+          source: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "time_entries"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       unvoid_sub_invoice: {
         Args: { p_invoice_id: string }
