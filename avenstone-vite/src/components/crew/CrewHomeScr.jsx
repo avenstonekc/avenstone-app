@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbMyOpenEntry, sbMyEntriesToday, sbCrewJobs, sbClockIn, sbSwitchJob, sbClockOut } from '../../lib/supabase';
+import { sbMyOpenEntry, sbMyEntriesToday, sbCrewJobs, sbClockIn, sbSwitchJob, sbClockOut, sbLoadMyPay } from '../../lib/supabase';
 import { stampGPS } from '../../lib/gps';
+import { computeEarnings, effectiveRate, chicagoDate } from '../../lib/earnings';
+
+const money = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const hrs = (n) => `${Number(n || 0).toFixed(1)} h`;
+const weekLabel = (ws) => { const [y, m, d] = ws.split('-').map(Number); return `Week of ${m}/${d}`; };
 
 // ─── CrewHomeScr (TIME_CLOCK_ARC S1) ──────────────────────────────────────────
 // The crew member's ENTIRE app: clock in → (switch job)* → clock out, from a phone in a
@@ -32,14 +37,17 @@ export default function CrewHomeScr({ profile, signOut }) {
   const [gpsBusy, setGpsBusy] = useState(false);
   const [err, setErr] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
+  const [view, setView] = useState('clock');     // 'clock' | 'pay'
+  const [pay, setPay] = useState(null);          // { details, rates, entries }
   const tickRef = useRef(null);
 
   const jobLabel = (id) => jobs.find(j => j.id === id)?.address || today.find(t => t.job_id === id && t.jobLabel)?.jobLabel || id;
 
   const refresh = async () => {
-    const [o, t] = await Promise.all([sbMyOpenEntry(), sbMyEntriesToday()]);
+    const [o, t, p] = await Promise.all([sbMyOpenEntry(), sbMyEntriesToday(), sbLoadMyPay()]);
     setOpen(o.ok ? o.data : null);
     setToday(t.ok ? t.data : []);
+    if (p.ok) setPay({ details: p.details, rates: p.rates, entries: p.entries });
     setLoading(false);
   };
   useEffect(() => { refresh(); }, []);
@@ -89,6 +97,19 @@ export default function CrewHomeScr({ profile, signOut }) {
         <button onClick={signOut} style={{ background: 'none', border: `1px solid ${BORDER}`, borderRadius: 20, padding: '6px 14px', fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer', minHeight: 36 }}>Sign out</button>
       </div>
 
+      {/* Clock / My Pay tabs */}
+      <div style={{ display: 'flex', gap: 2, background: 'var(--bg-alt)', borderRadius: 'var(--r-full)', padding: 3, marginBottom: 18 }}>
+        {[['clock', 'Clock'], ['pay', 'My Pay']].map(([id, lb]) => (
+          <button key={id} onClick={() => setView(id)} style={{
+            flex: 1, border: 'none', cursor: 'pointer', borderRadius: 'var(--r-full)', padding: '9px 0', fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-body)',
+            background: view === id ? 'var(--card-bg)' : 'transparent', color: view === id ? NAV : 'var(--text-muted)',
+            boxShadow: view === id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          }}>{lb}</button>
+        ))}
+      </div>
+
+      {view === 'pay' ? <MyPay pay={pay} nowTick={nowTick} /> : <>
+
       {err && <div style={{ padding: '12px 14px', background: 'var(--red-bg)', color: 'var(--red-text)', borderRadius: 10, marginBottom: 16, fontSize: 13 }}>{err}</div>}
 
       {/* Main state card */}
@@ -137,6 +158,7 @@ export default function CrewHomeScr({ profile, signOut }) {
           </div>
         ))}
       </div>
+      </>}
 
       {/* Job picker overlay */}
       {picker && (
@@ -159,6 +181,63 @@ export default function CrewHomeScr({ profile, signOut }) {
         </div>
       )}
     </Shell>
+  );
+}
+
+// ─── My Pay — YTD / week / rate, STRAIGHT-TIME labeled ────────────────────────
+function MyPay({ pay, nowTick }) {
+  if (!pay) return <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-subtle)' }}>Loading pay…</div>;
+  const nowIso = new Date(nowTick).toISOString();
+  const e = computeEarnings(pay.entries, pay.rates, nowIso);
+  const curRate = effectiveRate(pay.rates, chicagoDate(nowIso));
+  const cls = pay.details?.classification;
+
+  const Stat = ({ label, value, sub, accent }) => (
+    <div className="card" style={{ padding: 16, flex: 1, minWidth: 0 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: accent || 'var(--navy-900)', marginTop: 4 }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+        <Stat label="YTD gross" value={money(e.ytdGross)} sub={hrs(e.ytdHours) + ' this year'} accent="var(--green-text)" />
+        <Stat label="This week" value={money(e.weekGross)} sub={hrs(e.weekHours)} />
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+        <Stat label="Your rate" value={curRate != null ? money(curRate) + '/hr' : '—'} />
+        <Stat label="Classification" value={cls === 'w2' ? 'W-2' : cls === '1099' ? '1099' : '—'} />
+      </div>
+
+      {/* Honesty seam — the number is straight-time, before taxes, no OT premium. */}
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, lineHeight: 1.5 }}>
+        <strong style={{ color: 'var(--text-secondary)' }}>Straight time, before taxes</strong> — overtime premium not included. This is gross pay, not take-home.
+      </div>
+
+      {e.noRateCount > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--amber-text-strong)', background: 'var(--amber-bg)', border: '1px solid var(--amber-border)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+          No rate on file for {e.noRateCount} {e.noRateCount === 1 ? 'entry' : 'entries'} — those hours count but aren't priced. Ask your manager.
+        </div>
+      )}
+      {e.openHours > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>{hrs(e.openHours)} in progress (not yet counted in gross).</div>
+      )}
+
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: 8 }}>Weekly history</div>
+      {e.weeks.length === 0 ? (
+        <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>No closed hours yet this year.</div>
+      ) : e.weeks.map(w => (
+        <div key={w.weekStart} className="card" style={{ padding: '12px 14px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{weekLabel(w.weekStart)}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{hrs(w.hours)}{w.hasNoRate ? ' · some unpriced' : ''}</div>
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy-900)' }}>{money(w.gross)}</div>
+        </div>
+      ))}
+    </div>
   );
 }
 
