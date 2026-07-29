@@ -59,11 +59,18 @@ function drawComb(field, pages, font, str, { size = 9 } = {}) {
 const W9_CLASS = { individual: 'c1_1[0]', c_corp: 'c1_1[1]', s_corp: 'c1_1[2]', partnership: 'c1_1[3]', trust: 'c1_1[4]', llc: 'c1_1[5]', other: 'c1_1[6]' };
 const W4_STATUS = { single: 'c1_1[0]', mfj: 'c1_1[1]', hoh: 'c1_1[2]' };
 
-// signature-line coordinates (US-Letter points, origin bottom-left) — calibrated by raster.
-const SIG = {
-  w4: { sig: { x: 132, y: 96, w: 200, h: 26 }, date: { x: 468, y: 100 } },
-  w9: { sig: { x: 120, y: 236, w: 210, h: 26 }, date: { x: 430, y: 240 } },
+// Signature/date draw rects (US-Letter points, origin bottom-left). Calibrated to each form's
+// "Sign Here" block from the template text anchors — the label sits BELOW its line, so values
+// draw just above the label. W-4: "Employee's signature"/"Date" labels at y≈82, "penalties"
+// cert text at y≈116 (band 82–116). W-9: "Signature of U.S. person"/"Date" labels at y≈196–204,
+// "…interest and dividends" cert text at y≈219 (tight band 204–219). SIG_YBAND asserts each rect
+// lands inside its block (unit-checked). box y is the signature image's BOTTOM.
+export const SIG = {
+  w4: { sig: { x: 120, y: 88, w: 210, h: 22 }, date: { x: 466, y: 92 } },
+  w9: { sig: { x: 96,  y: 205, w: 224, h: 12 }, date: { x: 388, y: 205 } },
 };
+// [minY, maxY] of each form's Sign Here block — draw rects must fall within.
+export const SIG_YBAND = { w4: [78, 118], w9: [194, 220] };
 
 async function embedSignature(doc, page, pngDataUrl, box) {
   if (!pngDataUrl) return;
