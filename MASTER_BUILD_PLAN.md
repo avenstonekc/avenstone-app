@@ -28,8 +28,12 @@ Owner blockers are tracked here so they are as visible as Code's build map. **Ma
 | l | **Master bath site measurement (12101 Pawnee Ln)** — ~160 SF floor is an assumption; scanner lost the room to mirror walls | Blocks final PAWNEE_ESTIMATE quantities (floor tile, skim/paint SF) | 2026-07-17 |
 | m | **Basement VCT asbestos test result (12101 Pawnee Ln)** — test VCT/mastic before demo; positive = abatement change order | Blocks basement flooring demo start; base price excludes abatement | 2026-07-17 |
 | n | **Confirm `fixed_bid` financial model for 12101 Pawnee Ln** — estimate built at bid_model_config default 30% / $1,200 PM | Blocks job creation + proposal send | 2026-07-17 |
+| o | **Written GPS-capture notice to employees** — TIME_CLOCK_ARC S1 captures a punch-point coordinate; before S2 turns on distance flagging, give crew written notice their location is captured at clock in/out. | Blocks TIME_CLOCK_ARC S2 (distance flag) going live | 2026-07-26 |
+| p | **Rotate `test-rep@avenstonekc.com` owner-seat password** — set to a known value during automated walks (Rate Book / time-clock verification), still live. | Standing security hygiene | 2026-07-26 |
 
 ### NEXT CODE DISPATCH — locked sequence (Kalin 2026-07-16/17)
+
+**Carryover (small, non-blocking — fold into a future dispatch):** (1) gap-panel live screenshot on a throwaway job still owed from #5 (verified via 20/20 tests + live Rate Book instance; the GapBatchAsk panel needs the full ScopeConfigurator flow to capture). (2) Rate Book stale-override warning-chip grammar — "BATHROOM USE A ROOM-SPECIFIC RATE" reads awkwardly; reword (e.g. "bathroom uses a room-specific rate").
 
 **TIER 1 — Hygiene (COMPLETE):**
 1. ~~Agent selections-gate source-awareness (audit D3)~~ **DONE** — `8303070` + `582ff3d`.
@@ -91,6 +95,21 @@ Job record is the spine. Information captured once, rendered per actor at their 
 ## 3. Part 1 — Per-Arc Build-State Inventory
 
 Last verified: 2026-07-16 (full-code audit, commits verified against git log and information_schema).
+
+---
+
+#### TIME_CLOCK_ARC — S1 SHIPPED (Kalin-locked 2026-07-26). ~10-12 prompts total. Parallel to the Tier 2 estimating spine — does NOT reorder it.
+
+Hourly crew clock in/out from their phone; every punch picks a job and captures a GPS point; multi-job days use switch-job punches.
+
+| Slice | Status | Evidence / scope |
+|-------|--------|------------------|
+| S1 — crew role + `time_entries` + punch loop | **SHIPPED 2026-07-26** | Migration `20260728120000` (crew role, `time_entries`, partial unique index `one_open_per_user`, RLS, atomic `time_clock_switch` RPC) + `20260728120100` (crew job read); punch helpers in `supabase.js`; `CrewHomeScr.jsx` + App.jsx early-return routing; crew invitable via `STAFF_ROLES`. Hours only. |
+| S2 — distance-from-job flag + timesheet review/correction | **OPEN** | Coords are stored unjudged in S1. Needs job geocoding (jobs carry `address` text only today — no lat/lng column yet) + a flag threshold + a PM review/correction surface. |
+| S3 — clock-out splitter | **OPEN** | Split a long/overnight or misassigned segment. |
+| S4 — labor DOLLARS | **OPEN** | Pay rates + `job_transactions` writer; correction cascade when an entry is edited after it has been costed. |
+
+**Locked decisions (2026-07-26):** switch-punch is the primary multi-job mechanism (splitter is the backup); GPS is a punch-point capture + later distance flag (not live tracking); dollars land LAST with a correction cascade; **crew only — subs are explicitly out of this arc** (subs use the engagement model). S1 known gap: no offline punch queue — a dead-zone punch fails visibly and the worker retries.
 
 ---
 
