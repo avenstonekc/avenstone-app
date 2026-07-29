@@ -431,34 +431,41 @@ async function addDocumentPages(
   const BATCH = 4;
   for (let i = 0; i < documents.length; i += BATCH) {
     const batch = documents.slice(i, i + BATCH);
+    // Route by real extension (storage_path preserves it) + mime — NEVER mime alone. Receipt
+    // job_files frequently store mime_type='image/jpeg' on an actual PDF; the old mime-only router
+    // sent those through the image branch, embedJpg failed on PDF bytes, and the page was silently
+    // dropped (this was THE multi-file draw bug). PDF candidates are fetched RAW (no imgproxy
+    // transform, which would corrupt them + is needed intact for copyPages); real images are
+    // fetched downsized. Magic bytes are the final arbiter, so a file misnamed either way still works.
     const fetched = await Promise.all(
       batch.map(f => {
-        const m = (f.mime_type || "").toLowerCase();
-        const isImg = m.includes("jpeg") || m.includes("jpg") ||
-                      m.includes("png")  || m.includes("heic") || m.includes("heif");
-        return fetchBytes(sb, f.storage_bucket, f.storage_path, isImg);
+        const ext = (f.storage_path?.split(".").pop() || "").toLowerCase();
+        const isPdf = ext === "pdf" || f.mime_type === "application/pdf";
+        return fetchBytes(sb, f.storage_bucket, f.storage_path, !isPdf)
+          .then(bytes => ({ bytes, ext, isPdf }));
       })
     );
 
     for (let bi = 0; bi < batch.length; bi++) {
-      const file  = batch[bi];
-      const bytes = fetched[bi];
+      const file = batch[bi];
+      const { bytes, ext, isPdf } = fetched[bi];
       if (!bytes || bytes.length === 0) continue;
 
-      const mime = (file.mime_type || "").toLowerCase();
+      const looksPdf = bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46; // %PDF
 
       try {
-        if (file.mime_type === "application/pdf") {
-          const extDoc  = await PDFDocument.load(bytes, { ignoreEncryption: true });
-          const copied  = await doc.copyPages(extDoc, extDoc.getPageIndices());
+        if (isPdf && looksPdf) {
+          const extDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+          const copied = await doc.copyPages(extDoc, extDoc.getPageIndices());
           for (const pg of copied) doc.addPage(pg);
 
-        } else if (mime.includes("jpeg") || mime.includes("jpg") || mime.includes("png") ||
-                   mime.includes("heic") || mime.includes("heif")) {
-          // JPEG-first; embedImage skips alpha PNGs (would OOM). Handles HEIC→JPEG from transform.
-          const img = await embedImage(doc, bytes, mime.includes("png"));
+        } else {
+          // Image — either a real image (downsized JPEG from the transform) or a file misnamed .pdf
+          // that is actually an image (fetched raw above). embedImage tries JPEG then safe PNG.
+          const preferPng = ext === "png" || (file.mime_type || "").toLowerCase().includes("png");
+          const img = await embedImage(doc, bytes, preferPng);
           if (!img) {
-            console.warn(`[build-draw-package] could not embed image ${file.id} (${mime})`);
+            console.warn(`[build-draw-package] could not embed ${file.id} (${file.mime_type}/${ext})`);
           } else {
             const page = doc.addPage([612, 792]);
             page.drawRectangle({ x: 0, y: headerY, width: 612, height: HEADER_H, color: navy });
@@ -487,9 +494,8 @@ async function addDocumentPages(
             });
           }
         }
-        // Other formats (WebP etc): skip silently
       } catch (e) {
-        console.warn(`[build-draw-package] skipping file ${file.id} (${mime}):`, (e as Error).message);
+        console.warn(`[build-draw-package] skipping file ${file.id} (${file.mime_type}/${ext}):`, (e as Error).message);
       }
 
       // Drop the reference so this document's bytes can be reclaimed before the next batch.
