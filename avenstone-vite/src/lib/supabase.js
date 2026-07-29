@@ -31,6 +31,8 @@ export const SUPABASE_URL = 'https://cbfftukmhqvvjlrlnltk.supabase.co';
 export const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNiZmZ0dWttaHF2dmpscmxubHRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MTQ2ODgsImV4cCI6MjA5MTE5MDY4OH0.isj52drLT3pj7BF94Wa9w_y_f8U1M3W5AcgWsRaTwBQ';
 const FN = 'https://cbfftukmhqvvjlrlnltk.supabase.co/functions/v1';
 export const INVITE_URL        = `${FN}/send-invite`;
+export const PAPERWORK_URL     = `${FN}/send-paperwork-request`;
+export const PAPERWORK_EVIDENCE_URL = `${FN}/record-paperwork-evidence`;
 export const CREATE_CLIENT_LOGIN_URL  = `${FN}/create-client-login`;
 export const PAYMENT_LINK_URL  = `${FN}/create-payment-link`;
 export const AI_ESTIMATOR_URL  = `${FN}/ai-estimator`;
@@ -2129,6 +2131,49 @@ export const sbResendSetupEmail = async (email) => {
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: 'https://avenstone-app.vercel.app' });
   if (error) return { ok: false, error: error.message };
   return { ok: true, error: null };
+};
+
+// ─── Paperwork (W-4/W-9) — TIME_CLOCK_ARC S2b ──────────────────────────────────
+// One request row per (user, doc_type); a re-send resets it to 'sent'. The completed doc's
+// path also lands on employee_details/profiles, so resetting the request never loses the file.
+export const sbSendPaperwork = async (userId, docType) => {
+  const { data: existing } = await sb.from('paperwork_requests')
+    .select('id').eq('user_id', userId).eq('doc_type', docType).order('sent_at', { ascending: false }).limit(1).maybeSingle();
+  let reqId;
+  if (existing) {
+    const { data, error } = await sb.from('paperwork_requests')
+      .update({ sent_at: new Date().toISOString(), status: 'sent', completed_at: null, storage_path: null, sign_ip: null, sign_user_agent: null, updated_at: new Date().toISOString() })
+      .eq('id', existing.id).select('id').single();
+    if (error) return { ok: false, error: error.message };
+    reqId = data.id;
+  } else {
+    const { data, error } = await sb.from('paperwork_requests')
+      .insert({ tenant_id: AV_TENANT, user_id: userId, doc_type: docType, status: 'sent', sent_by: AV_USER_ID }).select('id').single();
+    if (error) return { ok: false, error: error.message };
+    reqId = data.id;
+  }
+  const res = await fetch(PAPERWORK_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ user_id: userId, doc_type: docType, tenant_id: AV_TENANT }) });
+  const j = await res.json().catch(() => ({}));
+  return { ok: true, error: null, request_id: reqId, emailed: !j.error, emailError: j.error || null };
+};
+
+export const sbLoadPaperwork = async (userId) => { // owner or self: all requests for a user
+  const { data, error } = await sb.from('paperwork_requests').select('*').eq('user_id', userId).order('sent_at', { ascending: false });
+  if (error) return { ok: false, error: error.message, data: [] };
+  return { ok: true, error: null, data: data || [] };
+};
+
+export const sbMyPaperwork = async () => { // recipient: my own requests
+  const { data, error } = await sb.from('paperwork_requests').select('*').eq('user_id', AV_USER_ID).order('sent_at', { ascending: false });
+  if (error) return { ok: false, error: error.message, data: [] };
+  return { ok: true, error: null, data: data || [] };
+};
+
+// Short-expiry (<=10 min) signed URL for a paperwork PDF in the private employee-docs bucket.
+export const sbPaperworkUrl = async (path) => {
+  const { data, error } = await sb.storage.from('employee-docs').createSignedUrl(path, 600);
+  if (error) return { ok: false, error: error.message, url: null };
+  return { ok: true, error: null, url: data.signedUrl };
 };
 
 export const sbLoadTeam = async () => {

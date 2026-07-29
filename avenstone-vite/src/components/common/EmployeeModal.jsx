@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { sbInviteStaff, sbFindProfileByEmail, sbSaveEmployeeDetails, sbAddPayRate, sbLoadEmployeeDetails, sbLoadPayRates, sbDeletePayRate, sbResendSetupEmail } from '../../lib/supabase';
+import { sbInviteStaff, sbFindProfileByEmail, sbSaveEmployeeDetails, sbAddPayRate, sbLoadEmployeeDetails, sbLoadPayRates, sbDeletePayRate, sbResendSetupEmail, sbSendPaperwork, sbLoadPaperwork, sbPaperworkUrl } from '../../lib/supabase';
 import { effectiveRate, chicagoDate } from '../../lib/earnings';
+
+const DOC_LABEL = { w4: 'W-4', w9: 'W-9' };
 
 // TIME_CLOCK_ARC S2 — owner add/edit employee. Pay-rate history is APPEND-ONLY (the UI never
 // edits an old row): a raise is a new effective-dated row; a fat-finger is delete + re-add.
@@ -35,6 +37,8 @@ export default function EmployeeModal({ mode, user, onClose, onSaved }) {
   const [f, setF] = useState({ name: '', email: '', phone: '', address: '', startDate: todayStr(), classification: 'w2', rate: '', effDate: todayStr() });
   const [details, setDetails] = useState(null);
   const [rates, setRates] = useState([]);
+  const [paperwork, setPaperwork] = useState([]);
+  const [pwBusy, setPwBusy] = useState('');
   const [changeRate, setChangeRate] = useState(null); // { rate, effDate } when adding a new rate
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -43,10 +47,11 @@ export default function EmployeeModal({ mode, user, onClose, onSaved }) {
 
   useEffect(() => {
     if (isAdd || !user) return;
-    Promise.all([sbLoadEmployeeDetails(user.id), sbLoadPayRates(user.id)]).then(([d, r]) => {
+    Promise.all([sbLoadEmployeeDetails(user.id), sbLoadPayRates(user.id), sbLoadPaperwork(user.id)]).then(([d, r, pw]) => {
       setDetails(d.data);
       setF(p => ({ ...p, classification: d.data?.classification || 'w2', phone: d.data?.phone || '', address: d.data?.address || '', startDate: d.data?.start_date || '' }));
       setRates(r.data || []);
+      setPaperwork(pw.data || []);
     });
   }, [isAdd, user]);
 
@@ -101,6 +106,19 @@ export default function EmployeeModal({ mode, user, onClose, onSaved }) {
     const r = await sbResendSetupEmail((isAdd ? f.email : user.email).trim());
     setResendMsg(r.ok ? 'Setup email sent.' : 'Resend failed: ' + r.error);
   };
+  const sendPaperwork = async (docType) => {
+    setPwBusy(docType); setErr('');
+    const r = await sbSendPaperwork(user.id, docType);
+    setPwBusy('');
+    if (!r.ok) { setErr(r.error); return; }
+    const pw = await sbLoadPaperwork(user.id); setPaperwork(pw.data || []);
+    if (r.emailError) setErr('Request saved but email failed: ' + r.emailError);
+  };
+  const viewPaperwork = async (path) => {
+    const r = await sbPaperworkUrl(path);
+    if (r.ok) window.open(r.url, '_blank'); else setErr(r.error);
+  };
+  const reqFor = (dt) => paperwork.find(p => p.doc_type === dt);
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(10,31,68,0.45)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -181,6 +199,37 @@ export default function EmployeeModal({ mode, user, onClose, onSaved }) {
             ) : (
               <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={() => setChangeRate({ rate: '', effDate: todayStr() })}>+ Change rate (new effective row)</button>
             )}
+
+            {/* Tax paperwork — W-4 (W2) / W-9 (1099), defaulted by classification, overridable */}
+            {(() => {
+              const primary = f.classification === 'w2' ? 'w4' : 'w9';
+              const other = primary === 'w4' ? 'w9' : 'w4';
+              const Row = ({ dt }) => {
+                const req = reqFor(dt);
+                const done = req?.status === 'completed';
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{DOC_LABEL[dt]}</span>
+                    <span className="badge" style={{ fontSize: 10, background: done ? 'var(--green-bg)' : req ? 'var(--amber-bg)' : 'var(--neutral-bg)', color: done ? 'var(--green-text)' : req ? 'var(--amber-text-strong)' : 'var(--text-subtle)' }}>
+                      {done ? `✓ Completed ${new Date(req.completed_at).toLocaleDateString()}` : req ? `Sent ${new Date(req.sent_at).toLocaleDateString()}` : 'Not sent'}
+                    </span>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      {done && req.storage_path && <button className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 10px' }} onClick={() => viewPaperwork(req.storage_path)}>View</button>}
+                      <button className="btn btn-navy" style={{ fontSize: 11, padding: '5px 12px' }} disabled={pwBusy === dt} onClick={() => sendPaperwork(dt)}>{pwBusy === dt ? '…' : req ? 'Re-send' : `Send ${DOC_LABEL[dt]}`}</button>
+                    </div>
+                  </div>
+                );
+              };
+              return (
+                <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: 8 }}>Tax paperwork</div>
+                  <Row dt={primary} />
+                  {reqFor(other) ? <Row dt={other} /> : (
+                    <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} disabled={pwBusy === other} onClick={() => sendPaperwork(other)}>{pwBusy === other ? '…' : `Send ${DOC_LABEL[other]} instead`}</button>
+                  )}
+                </div>
+              );
+            })()}
 
             <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
               <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12 }} onClick={resend}>Resend setup email</button>
