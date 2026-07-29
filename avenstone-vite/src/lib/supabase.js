@@ -2169,6 +2169,24 @@ export const sbMyPaperwork = async () => { // recipient: my own requests
   return { ok: true, error: null, data: data || [] };
 };
 
+// Recipient: upload the filled+signed PDF to their OWN folder in the private bucket (storage
+// policy enforces folder = auth.uid()). The TIN is inside these bytes only.
+export const sbUploadPaperworkPdf = async (docType, bytes) => {
+  const path = `${AV_USER_ID}/${docType}_${Date.now()}.pdf`;
+  const { error } = await sb.storage.from('employee-docs').upload(path, bytes, { contentType: 'application/pdf', upsert: true });
+  if (error) return { ok: false, error: error.message, path: null };
+  return { ok: true, error: null, path };
+};
+
+// Complete a request server-side: the evidence fn stamps status/path/completed_at + IP/UA and
+// the doc pointer (employee_details for crew, profiles.w9_url for sub) — self can't write those.
+export const sbCompletePaperwork = async (requestId, storagePath) => {
+  const res = await fetch(PAPERWORK_EVIDENCE_URL, { method: 'POST', headers: authHeader(), body: JSON.stringify({ request_id: requestId, storage_path: storagePath }) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) return { ok: false, error: j.error || `HTTP ${res.status}` };
+  return { ok: true, error: null };
+};
+
 // Short-expiry (<=10 min) signed URL for a paperwork PDF in the private employee-docs bucket.
 export const sbPaperworkUrl = async (path) => {
   const { data, error } = await sb.storage.from('employee-docs').createSignedUrl(path, 600);

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { sbMyOpenEntry, sbMyEntriesToday, sbCrewJobs, sbClockIn, sbSwitchJob, sbClockOut, sbLoadMyPay } from '../../lib/supabase';
+import { sbMyOpenEntry, sbMyEntriesToday, sbCrewJobs, sbClockIn, sbSwitchJob, sbClockOut, sbLoadMyPay, sbMyPaperwork } from '../../lib/supabase';
 import { stampGPS } from '../../lib/gps';
 import { computeEarnings, effectiveRate, chicagoDate } from '../../lib/earnings';
+import PaperworkCard from '../common/PaperworkCard';
 
 const money = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const hrs = (n) => `${Number(n || 0).toFixed(1)} h`;
@@ -39,15 +40,17 @@ export default function CrewHomeScr({ profile, signOut }) {
   const [nowTick, setNowTick] = useState(Date.now());
   const [view, setView] = useState('clock');     // 'clock' | 'pay'
   const [pay, setPay] = useState(null);          // { details, rates, entries }
+  const [paperwork, setPaperwork] = useState([]); // open paperwork requests
   const tickRef = useRef(null);
 
   const jobLabel = (id) => jobs.find(j => j.id === id)?.address || today.find(t => t.job_id === id && t.jobLabel)?.jobLabel || id;
 
   const refresh = async () => {
-    const [o, t, p] = await Promise.all([sbMyOpenEntry(), sbMyEntriesToday(), sbLoadMyPay()]);
+    const [o, t, p, pw] = await Promise.all([sbMyOpenEntry(), sbMyEntriesToday(), sbLoadMyPay(), sbMyPaperwork()]);
     setOpen(o.ok ? o.data : null);
     setToday(t.ok ? t.data : []);
     if (p.ok) setPay({ details: p.details, rates: p.rates, entries: p.entries });
+    setPaperwork((pw.data || []).filter(r => r.status === 'sent'));
     setLoading(false);
   };
   useEffect(() => { refresh(); }, []);
@@ -109,6 +112,8 @@ export default function CrewHomeScr({ profile, signOut }) {
       </div>
 
       {view === 'pay' ? <MyPay pay={pay} nowTick={nowTick} /> : <>
+
+      {paperwork.map(r => <PaperworkCard key={r.id} request={r} profile={profile} onDone={refresh} />)}
 
       {err && <div style={{ padding: '12px 14px', background: 'var(--red-bg)', color: 'var(--red-text)', borderRadius: 10, marginBottom: 16, fontSize: 13 }}>{err}</div>}
 

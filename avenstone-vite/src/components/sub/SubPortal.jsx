@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { sb, sbLoadSubJobs, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, sbLoadActiveTradeStrings, sbLoadEngagementsForSub } from '../../lib/supabase';
+import { sb, sbLoadSubJobs, sbLoadSubPricing, sbSaveSubPricing, sbDeleteSubPricing, sbLoadSubRating, sbLoadActiveTradeStrings, sbLoadEngagementsForSub, sbMyPaperwork } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT } from '../../lib/utils';
 import { t } from '../../lib/i18n';
+import PaperworkCard from '../common/PaperworkCard';
 import SubJobView from './SubJobView';
 import SubOnboardingWizard from './SubOnboardingWizard';
 import CompanyDocsSection from './CompanyDocsSection';
@@ -30,6 +31,9 @@ export default function SubPortal({ profile, signOut }) {
   const [pricingLoaded, setPricingLoaded] = useState(false);
   const [rating, setRating] = useState(null);
   const [lang, setLang] = useState(() => localStorage.getItem('av_sub_lang') || 'en');
+  const [paperwork, setPaperwork] = useState([]);
+  const loadPaperwork = () => sbMyPaperwork().then(r => setPaperwork((r.data || []).filter(x => x.status === 'sent')));
+  useEffect(() => { if (profile?.id) loadPaperwork(); }, [profile?.id]);
 
   const toggleLang = () => {
     const next = lang === 'en' ? 'es' : 'en';
@@ -152,6 +156,7 @@ export default function SubPortal({ profile, signOut }) {
       </div>
 
       <div style={{ padding: 16 }}>
+        {paperwork.map(r => <PaperworkCard key={r.id} request={r} profile={profile} onDone={loadPaperwork} />)}
 
         {/* ── My Engagements ── */}
         {(() => {
