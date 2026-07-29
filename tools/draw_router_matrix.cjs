@@ -44,14 +44,18 @@ async function run(name, keys) {
   const r = await build(keys);
   if (r.err) { console.log(`\n### ${name}\n  files: ${keys.join(', ')}\n  ERROR: ${r.err}`); return; }
   const s = r.stats || {};
-  const foundAtt   = (s.photos_found || 0) + (s.documents_found || 0);
-  const embedAtt   = (s.photos_embedded || 0) + (s.documents_embedded || 0);
-  const dropped    = foundAtt - embedAtt;
-  const flag = dropped > 0 ? `  <<< DROPPED ${dropped}` : '';
+  const found     = (s.photos_found || 0) + (s.documents_found || 0);
+  const embed     = (s.photos_embedded || 0) + (s.documents_embedded || 0);
+  const placeheld = (s.documents_placeholdered || 0);
+  const silent    = found - embed - placeheld; // truly dropped (no page at all)
+  const flag = silent > 0 ? `  <<< SILENT DROP ${silent}` : placeheld > 0 ? `  (placeholder ${placeheld})` : '';
   console.log(`\n### ${name}${flag}`);
   keys.forEach(k => console.log(`  - ${F[k].label}`));
   console.log(`  embed_stats: refs=${s.refs_received} resolved=${s.files_resolved} ` +
-              `photos=${s.photos_found}/${s.photos_embedded} docs=${s.documents_found}/${s.documents_embedded}  pages=${r.pages}`);
+              `photos=${s.photos_found}/${s.photos_embedded} docs=${s.documents_found}/${s.documents_embedded} ` +
+              `placeholder=${placeheld}  pages=${r.pages}`);
+  if (s.unrenderable && s.unrenderable.length)
+    console.log(`  unrenderable: ${s.unrenderable.map(u => `${u.name}[${u.mime_type}]`).join(', ')}`);
 }
 
 (async () => {

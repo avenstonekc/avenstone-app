@@ -301,12 +301,14 @@ async function fetchImageJpeg(
   path: string,
 ): Promise<Uint8Array | null> {
   try {
-    // `format: 'jpeg'` forces transcode (flattens alpha); cast around the SDK's narrower type.
+    // Route through imgproxy (any transform triggers the render pipeline), then force JPEG output.
+    // Supabase negotiates output format from the Accept header (the `format` option only opts out
+    // of auto-webp), so Accept: image/jpeg is what actually flattens alpha PNG / transcodes HEIC.
     // deno-lint-ignore no-explicit-any
-    const opts = { transform: { width: 1600, quality: 85, resize: "contain", format: "jpeg" } } as any;
+    const opts = { transform: { width: 1600, quality: 85, resize: "contain" } } as any;
     const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 120, opts);
     if (error || !data?.signedUrl) return null;
-    const res = await fetch(data.signedUrl);
+    const res = await fetch(data.signedUrl, { headers: { Accept: "image/jpeg" } });
     if (!res.ok) return null;
     const bytes = new Uint8Array(await res.arrayBuffer());
     return bytes.length ? bytes : null;
