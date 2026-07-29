@@ -700,6 +700,7 @@ _Corrected for 2026-07-16 audit. Shipped rows marked. Duplicate rows removed (B5
 | **TENANT_ONBOARDING Phases 4-5** | Enhancement layers; load-bearing pieces (B1.1 + B1.6-7) running | Block 1 with real tenants |
 | **SELECTIONS Phase 7 (vigilance rules + Aven read tool)** | Operational layer on functioning flow | B5 versioned picks confirmed |
 | **MATERIAL_SELECTION arc** | Different feature; requires Kalin Q4 decision | Open question #4 |
+| **`job-documents` bucket SELECT is `authenticated`-wide** (not tenant- or role-scoped) — any authenticated user (client/crew/sub included) can read any object in the bucket via a signed URL. Violates locked principle #1 (tenant isolation). Slice 2b closed the public-URL hole (public→private) and routed NEW TINs to owner+self `employee-docs`; this residual is the shared bucket's broad read policy. **MUST be fixed (tenant/role-scoped SELECT) before any second tenant onboards.** Do NOT touch mid-arc (shared bucket, many readers — needs its own careful pass). | Second-tenant onboarding |
 | **ANALYTICS_ARC** | Not blocking path | Block 5 complete |
 | **AGENT_INTELLIGENCE per-page sub-agents** | Current architecture handles all pages | Block 6 with data |
 | **Floor Plan Phase 3 (Opus tiebreaker)** | Intentionally deferred | Not building |
