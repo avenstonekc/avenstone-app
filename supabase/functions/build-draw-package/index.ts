@@ -442,12 +442,12 @@ async function addDocumentPages(
   doc: PDFDocument,
   documents: FileDetail[],
   sb: ReturnType<typeof createClient>,
-): Promise<{ embedded: number; placeholdered: number; unrenderable: { id: string; name: string; mime_type: string }[] }> {
+): Promise<{ embedded: number; placeholdered: number; unrenderable: { id: string; name: string; mime_type: string; reason: string }[] }> {
   const margin = 50;
   const W      = 512;
   let embedded = 0;      // source documents that produced at least one real page
   let placeholdered = 0; // documents that couldn't be embedded → labeled placeholder page
-  const unrenderable: { id: string; name: string; mime_type: string }[] = [];
+  const unrenderable: { id: string; name: string; mime_type: string; reason: string }[] = [];
 
   // Fonts + colours embedded ONCE (was re-embedding per image page in the old loop).
   const hFont    = await doc.embedFont(StandardFonts.Helvetica);
@@ -494,7 +494,7 @@ async function addDocumentPages(
     page.drawText(line2, { x: cw(line2, 10), y: cy - 6,  size: 10, font: hFont, color: rgb(0.5, 0.5, 0.5) });
     page.drawText(line3, { x: cw(line3, 9),  y: cy - 26, size: 9,  font: hFont, color: rgb(0.55, 0.55, 0.55) });
     placeholdered++;
-    unrenderable.push({ id: file.id, name: file.name || "", mime_type: `${file.mime_type || ""}${reason ? " · " + reason : ""}` });
+    unrenderable.push({ id: file.id, name: file.name || "", mime_type: file.mime_type || "", reason });
     console.warn(`[build-draw-package] unrenderable → placeholder: ${file.id} (${file.mime_type}) ${reason}`);
   };
 
@@ -505,6 +505,16 @@ async function addDocumentPages(
     !!b && b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46; // %PDF
   const hex4 = (b: Uint8Array | null) =>
     b && b.length >= 4 ? [b[0], b[1], b[2], b[3]].map(x => x.toString(16).padStart(2, "0")).join("") : "none";
+  // Human-readable type from magic bytes — for the placeholder reason / logs.
+  const magicName = (b: Uint8Array | null): string => {
+    if (!b || b.length < 4) return "empty";
+    if (b[0] === 0x89 && b[1] === 0x50) return "alpha/unsupported PNG";       // ‰PNG (non-alpha embeds fine)
+    if (b[0] === 0xff && b[1] === 0xd8) return "JPEG";
+    if (b[0] === 0x25 && b[1] === 0x50) return "PDF";
+    if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return "HEIC/HEIF"; // ftyp
+    if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46) return "WEBP";
+    return `0x${hex4(b)}`;
+  };
 
   for (const file of documents) {
     const ext = (file.storage_path?.split(".").pop() || "").toLowerCase();
@@ -527,7 +537,6 @@ async function addDocumentPages(
         // Image path. Try the bytes we have as-is (real JPEG/PNG embed straight through).
         const preferPng = ext === "png" || (file.mime_type || "").toLowerCase().includes("png");
         let img = primary && primary.length ? await embedImage(doc, primary, preferPng) : null;
-        why = primary && primary.length ? `embed-fail primary=${hex4(primary)}` : "primary-null";
 
         // Fallbacks only on failure (keeps the common path a single downsized fetch):
         if (!img) {
@@ -545,7 +554,10 @@ async function addDocumentPages(
             const norm = await fetchImageJpeg(sb, file.storage_bucket, file.storage_path);
             if (norm) img = await embedImage(doc, norm, false);
             if (!img && raw && raw !== primary) img = await embedImage(doc, raw, preferPng);
-            if (!img) why += ` raw=${hex4(raw)} transcode=${norm ? hex4(norm) : "null"}`;
+            if (!img) {
+              const sig = raw && raw.length ? raw : primary;
+              why = sig && sig.length ? `unsupported image (${magicName(sig)})` : "source file unavailable";
+            }
           }
         }
 
@@ -659,7 +671,7 @@ Deno.serve(async (req) => {
       refs_received: Array.isArray(file_refs) ? file_refs.length : 0,
       files_resolved: 0, photos_found: 0, photos_embedded: 0,
       documents_found: 0, documents_embedded: 0, documents_placeholdered: 0,
-      unrenderable: [] as { id: string; name: string; mime_type: string }[],
+      unrenderable: [] as { id: string; name: string; mime_type: string; reason: string }[],
     };
     if (Array.isArray(file_refs) && file_refs.length > 0) {
       const refMeta = new Map(file_refs.map(r => [`${r.source}:${r.id}`, r]));
