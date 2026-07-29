@@ -216,7 +216,16 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
   const handleSave = async () => {
     setSaving(true); setSaveError(null);
     try {
-      const result = await sbBuildDrawPackage(draw.id, job.id, null, buildFileRefs());
+      const fileRefs = buildFileRefs();
+      // DRAW_MULTIFILE diagnostic: print exactly what the client collected from the checkboxes
+      // before it goes to build-draw-package. If selected.size and fileRefs.length disagree, the
+      // drop is client-side (selection); if they match but fewer pages land, it's server-side.
+      console.log(
+        `[DRAW_MULTIFILE] save draw#${draw.draw_number}: selected=${selected.size} → file_refs=${fileRefs.length}`,
+        { selectedKeys: [...selected], fileRefs },
+      );
+      const result = await sbBuildDrawPackage(draw.id, job.id, null, fileRefs);
+      console.log('[DRAW_MULTIFILE] build-draw-package result:', result);
       const pdfPath = `${job.id}/${draw.id}/cover.pdf`;
       const saveRes = await sbSaveDrawPackageToFiles(job.id, result.draw_package_id, pdfPath, draw.draw_number);
       if (!saveRes.ok) throw new Error(saveRes.error);

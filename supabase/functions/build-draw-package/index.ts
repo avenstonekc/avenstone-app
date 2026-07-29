@@ -323,9 +323,10 @@ async function addPhotoPages(
   doc: PDFDocument,
   photos: FileDetail[],
   sb: ReturnType<typeof createClient>,
-): Promise<void> {
+): Promise<number> {
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold    = await doc.embedFont(StandardFonts.HelveticaBold);
+  let embedded = 0; // photos successfully drawn
 
   const navy  = rgb(0.102, 0.145, 0.251);
   const gray  = rgb(0.6,   0.6,   0.6);
@@ -387,6 +388,7 @@ async function addPhotoPages(
               y: imgBotY + (IMG_H - scaled.height) / 2,
               width: scaled.width, height: scaled.height,
             });
+            embedded++;
           } else {
             page.drawRectangle({ x: cellX, y: imgBotY, width: CELL_W, height: IMG_H, color: rgb(0.95, 0.95, 0.95) });
             page.drawText("(unavailable)", { x: cellX + CELL_W / 2 - 28, y: imgBotY + IMG_H / 2, size: 8, font: regular, color: gray });
@@ -401,6 +403,7 @@ async function addPhotoPages(
       }
     }
   }
+  return embedded;
 }
 
 // ── Document pages ─────────────────────────────────────────────────────────────
@@ -409,9 +412,10 @@ async function addDocumentPages(
   doc: PDFDocument,
   documents: FileDetail[],
   sb: ReturnType<typeof createClient>,
-): Promise<void> {
+): Promise<number> {
   const margin = 50;
   const W      = 512;
+  let embedded = 0; // source documents that produced at least one page
 
   // Fonts + colours embedded ONCE (was re-embedding per image page in the old loop).
   const hFont    = await doc.embedFont(StandardFonts.Helvetica);
@@ -458,6 +462,7 @@ async function addDocumentPages(
           const extDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
           const copied = await doc.copyPages(extDoc, extDoc.getPageIndices());
           for (const pg of copied) doc.addPage(pg);
+          embedded++;
 
         } else {
           // Image — either a real image (downsized JPEG from the transform) or a file misnamed .pdf
@@ -492,6 +497,7 @@ async function addDocumentPages(
               y: margin + (imgAreaH - scaled.height) / 2,
               width: scaled.width, height: scaled.height,
             });
+            embedded++;
           }
         }
       } catch (e) {
@@ -502,6 +508,7 @@ async function addDocumentPages(
       fetched[bi] = null;
     }
   }
+  return embedded;
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────────
@@ -586,6 +593,13 @@ Deno.serve(async (req) => {
     );
 
     step = "load-file-details";
+    // Diagnostic counts (DRAW_MULTIFILE): refs received vs files resolved vs pages embedded.
+    // A gap between any two localizes the "N checked, 1 lands" drop to a specific stage.
+    const embedStats = {
+      refs_received: Array.isArray(file_refs) ? file_refs.length : 0,
+      files_resolved: 0, photos_found: 0, photos_embedded: 0,
+      documents_found: 0, documents_embedded: 0,
+    };
     if (Array.isArray(file_refs) && file_refs.length > 0) {
       const refMeta = new Map(file_refs.map(r => [`${r.source}:${r.id}`, r]));
       const fileDetails = (await loadFileDetails(sb, file_refs)).map(d => {
@@ -594,11 +608,15 @@ Deno.serve(async (req) => {
       });
       const photos    = fileDetails.filter(f => f.category === "Photos");
       const documents = fileDetails.filter(f => f.category !== "Photos");
+      embedStats.files_resolved  = fileDetails.length;
+      embedStats.photos_found    = photos.length;
+      embedStats.documents_found = documents.length;
 
       step = "photo-pages";
-      if (photos.length > 0) await addPhotoPages(doc, photos, sb);
+      if (photos.length > 0) embedStats.photos_embedded = await addPhotoPages(doc, photos, sb);
       step = "document-pages";
-      if (documents.length > 0) await addDocumentPages(doc, documents, sb);
+      if (documents.length > 0) embedStats.documents_embedded = await addDocumentPages(doc, documents, sb);
+      console.log(`[build-draw-package] embed_stats:`, JSON.stringify(embedStats));
     }
 
     step = "pdf-save";
@@ -627,7 +645,7 @@ Deno.serve(async (req) => {
       updated_at:         now,
     }).eq("id", pkgId);
 
-    return json({ ok: true, signed_url: signedData.signedUrl, draw_package_id: pkgId });
+    return json({ ok: true, signed_url: signedData.signedUrl, draw_package_id: pkgId, embed_stats: embedStats });
 
   } catch (err: unknown) {
     const msg = (err as Error)?.message ?? "Unexpected error";
