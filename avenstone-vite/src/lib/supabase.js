@@ -1560,7 +1560,9 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     for (const r of data) {
       const amt = Number(r.amount) || 0;
       if (model === 'cost_plus' && r.direction === 'in' && r.invoice_id === null && r.status === 'paid') bucket += amt;
-      else if (r.direction === 'out' && r.reimbursement_status === 'unreimbursed' && !isClientPaid(r)) unreimbursed += amt;
+      // NULL counts as unreimbursed (canonical predicate). Void is already excluded by the
+      // base query's .neq('status','void') at the top of this fn.
+      else if (r.direction === 'out' && (r.reimbursement_status === 'unreimbursed' || r.reimbursement_status == null) && !isClientPaid(r)) unreimbursed += amt;
     }
 
     // Markup earned — sum of markup_amount on line items belonging to paid draws
@@ -1628,7 +1630,8 @@ export const sbLoadJobFinancialSummary = async (jobId, { contractValue = 0, coTo
     // pending_out (which also counts already-drawn in_draw rows) and from
     // float_unreimbursed (which also counts paid-status undrawn costs).
     summary.next_draw            = round2(
-      data.filter(t => t.direction === 'out' && t.status === 'pending' && t.reimbursement_status === 'unreimbursed' && !isClientPaid(t))
+      // NULL counts as unreimbursed (canonical predicate); void already excluded by base query.
+      data.filter(t => t.direction === 'out' && t.status === 'pending' && (t.reimbursement_status === 'unreimbursed' || t.reimbursement_status == null) && !isClientPaid(t))
           .reduce((s, t) => s + Number(t.amount || 0), 0)
     );
     summary.markup_earned        = markup_earned;

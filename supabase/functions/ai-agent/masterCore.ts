@@ -2258,7 +2258,12 @@ async function executeTool(
             .select("id, type, amount, markup_pct, description")
             .eq("job_id", input.job_id)
             .eq("direction", "out")
-            .eq("reimbursement_status", "unreimbursed")
+            // Canonical reimbursable predicate: NULL counts as unreimbursed, void never
+            // reimbursable, already-drawn rows excluded. Must match sbLoadUnreimbursedExpenses
+            // or the agent bills voided/legacy money into a draw.
+            .neq("status", "void")
+            .is("draw_id", null)
+            .or("reimbursement_status.is.null,reimbursement_status.eq.unreimbursed")
             .order("date_incurred", { ascending: true });
           if (!cdExpenses || (cdExpenses as any[]).length === 0) {
             return { error: "No unreimbursed expenses found for this job." };
@@ -2924,7 +2929,11 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
               .select("id, type, amount, markup_pct, description")
               .eq("job_id", cdJobId)
               .eq("direction", "out")
-              .eq("reimbursement_status", "unreimbursed")
+              // Canonical reimbursable predicate (see sbLoadUnreimbursedExpenses): NULL as
+              // unreimbursed, exclude void, exclude already-drawn.
+              .neq("status", "void")
+              .is("draw_id", null)
+              .or("reimbursement_status.is.null,reimbursement_status.eq.unreimbursed")
               .order("date_incurred", { ascending: true });
             if (!cdExp || (cdExp as any[]).length === 0) {
               return {
