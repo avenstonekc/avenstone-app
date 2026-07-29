@@ -290,6 +290,29 @@ async function fetchBytes(
   } catch { return null; }
 }
 
+// Robustness fallback: ask Supabase's imgproxy to transcode + flatten to a baseline JPEG.
+// This rescues formats pdf-lib can't embed directly — alpha PNGs (the OOM-guard skips
+// embedPng, so they'd otherwise drop), HEIC from iPhones, and webp/gif — by turning them
+// into a JPEG that embedJpg always accepts. Only called when a direct embed fails, so it
+// never runs on the common (already-JPEG) path.
+async function fetchImageJpeg(
+  sb: ReturnType<typeof createClient>,
+  bucket: string,
+  path: string,
+): Promise<Uint8Array | null> {
+  try {
+    // `format: 'jpeg'` forces transcode (flattens alpha); cast around the SDK's narrower type.
+    // deno-lint-ignore no-explicit-any
+    const opts = { transform: { width: 1600, quality: 85, resize: "contain", format: "jpeg" } } as any;
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 120, opts);
+    if (error || !data?.signedUrl) return null;
+    const res = await fetch(data.signedUrl);
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return bytes.length ? bytes : null;
+  } catch { return null; }
+}
+
 // PNG colour-type 4/6 carry an alpha channel. pdf-lib@1.17.1 embedPng() builds an
 // SMask from that alpha via a pure-JS decode that OOMs the edge worker — and the
 // OOM kills the isolate, so the surrounding try/catch CANNOT catch it. Detect alpha
@@ -380,7 +403,12 @@ async function addPhotoPages(
         const bytes = chunkBytes[j];
         if (bytes && bytes.length > 0) {
           const isMime = (chunk[j].mime_type || "").toLowerCase();
-          const img = await embedImage(doc, bytes, isMime.includes("png"));
+          let img = await embedImage(doc, bytes, isMime.includes("png"));
+          // Same rescue as the documents branch: alpha PNG / HEIC / webp → transcode to flat JPEG.
+          if (!img) {
+            const norm = await fetchImageJpeg(sb, chunk[j].storage_bucket, chunk[j].storage_path);
+            if (norm) img = await embedImage(doc, norm, false);
+          }
           if (img) {
             const scaled = img.scaleToFit(CELL_W, IMG_H);
             page.drawImage(img, {
@@ -412,10 +440,12 @@ async function addDocumentPages(
   doc: PDFDocument,
   documents: FileDetail[],
   sb: ReturnType<typeof createClient>,
-): Promise<number> {
+): Promise<{ embedded: number; placeholdered: number; unrenderable: { id: string; name: string; mime_type: string }[] }> {
   const margin = 50;
   const W      = 512;
-  let embedded = 0; // source documents that produced at least one page
+  let embedded = 0;      // source documents that produced at least one real page
+  let placeholdered = 0; // documents that couldn't be embedded → labeled placeholder page
+  const unrenderable: { id: string; name: string; mime_type: string }[] = [];
 
   // Fonts + colours embedded ONCE (was re-embedding per image page in the old loop).
   const hFont    = await doc.embedFont(StandardFonts.Helvetica);
@@ -426,89 +456,112 @@ async function addDocumentPages(
   const HEADER_H = 36;
   const headerY  = 792 - HEADER_H;
 
-  // Fetch AND embed in small batches so peak memory stays bounded — only ~BATCH
-  // documents' bytes are resident at a time. This matters for PDF receipts: they
-  // are NOT downsized (no imgproxy transform), so a draw with several multi-MB
-  // scanned PDFs would otherwise hold them all in memory at once (the old code
-  // prefetched every document before embedding any). Images are already downsized
-  // to ~1200px JPEG by the transform in fetchBytes, so each image batch is light.
-  const BATCH = 4;
-  for (let i = 0; i < documents.length; i += BATCH) {
-    const batch = documents.slice(i, i + BATCH);
-    // Route by real extension (storage_path preserves it) + mime — NEVER mime alone. Receipt
-    // job_files frequently store mime_type='image/jpeg' on an actual PDF; the old mime-only router
-    // sent those through the image branch, embedJpg failed on PDF bytes, and the page was silently
-    // dropped (this was THE multi-file draw bug). PDF candidates are fetched RAW (no imgproxy
-    // transform, which would corrupt them + is needed intact for copyPages); real images are
-    // fetched downsized. Magic bytes are the final arbiter, so a file misnamed either way still works.
-    const fetched = await Promise.all(
-      batch.map(f => {
-        const ext = (f.storage_path?.split(".").pop() || "").toLowerCase();
-        const isPdf = ext === "pdf" || f.mime_type === "application/pdf";
-        return fetchBytes(sb, f.storage_bucket, f.storage_path, !isPdf)
-          .then(bytes => ({ bytes, ext, isPdf }));
-      })
-    );
+  // Navy header band with the file's name + (date · amount) — shared by real pages and placeholders
+  // so a placeholder still reads like a real receipt entry in the package.
+  const drawDocHeader = (page: ReturnType<PDFDocument["addPage"]>, file: FileDetail) => {
+    page.drawRectangle({ x: 0, y: headerY, width: 612, height: HEADER_H, color: navy });
+    const label = safe(file.name || "Document").slice(0, 55);
+    page.drawText(label, { x: margin, y: headerY + 13, size: 10, font: hBold, color: white });
+    const metaParts: string[] = [];
+    if (file.date) {
+      const d = new Date(file.date + "T00:00:00");
+      metaParts.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
+    }
+    if (file.amount != null) metaParts.push(fmtCurrency(file.amount));
+    if (metaParts.length > 0) {
+      const metaStr = metaParts.join("  ·  ");
+      const metaW   = hFont.widthOfTextAtSize(metaStr, 9);
+      page.drawText(metaStr, { x: margin + W - metaW, y: headerY + 14, size: 9, font: hFont, color: gold });
+    }
+  };
 
-    for (let bi = 0; bi < batch.length; bi++) {
-      const file = batch[bi];
-      const { bytes, ext, isPdf } = fetched[bi];
-      if (!bytes || bytes.length === 0) continue;
+  // NEVER silent: any file we couldn't embed still gets a visible, labeled page saying so —
+  // a client-facing package must never drop an attachment without a trace. The original file
+  // stays in the job record; this just reports it in the package.
+  const drawPlaceholder = (file: FileDetail) => {
+    const page = doc.addPage([612, 792]);
+    drawDocHeader(page, file);
+    const boxH = headerY - margin - 8;
+    page.drawRectangle({ x: margin, y: margin, width: W, height: boxH, color: rgb(0.96, 0.96, 0.96), borderColor: rgb(0.82, 0.82, 0.82), borderWidth: 1 });
+    const cy = margin + boxH / 2;
+    const line1 = "Preview unavailable for this file";
+    const line2 = `Type: ${safe(file.mime_type || "unknown")}`;
+    const line3 = "The original is attached in the job's file record.";
+    const cw = (t: string, s: number, f = hFont) => 306 - f.widthOfTextAtSize(t, s) / 2;
+    page.drawText(line1, { x: cw(line1, 13, hBold), y: cy + 14, size: 13, font: hBold, color: rgb(0.42, 0.42, 0.42) });
+    page.drawText(line2, { x: cw(line2, 10), y: cy - 6,  size: 10, font: hFont, color: rgb(0.5, 0.5, 0.5) });
+    page.drawText(line3, { x: cw(line3, 9),  y: cy - 26, size: 9,  font: hFont, color: rgb(0.55, 0.55, 0.55) });
+    placeholdered++;
+    unrenderable.push({ id: file.id, name: file.name || "", mime_type: file.mime_type || "" });
+    console.warn(`[build-draw-package] unrenderable → placeholder: ${file.id} (${file.mime_type})`);
+  };
 
-      const looksPdf = bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46; // %PDF
+  // Sequential, one file resident at a time (memory-safe: scanned PDFs / phone photos can be
+  // multi-MB). Every file resolves to exactly one of three outcomes — embedded PDF pages,
+  // an embedded image page, or a labeled placeholder — so nothing can silently disappear.
+  const isPdfBytes = (b: Uint8Array | null) =>
+    !!b && b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46; // %PDF
 
-      try {
-        if (isPdf && looksPdf) {
-          const extDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-          const copied = await doc.copyPages(extDoc, extDoc.getPageIndices());
-          for (const pg of copied) doc.addPage(pg);
-          embedded++;
+  for (const file of documents) {
+    const ext = (file.storage_path?.split(".").pop() || "").toLowerCase();
+    const isPdfCandidate = ext === "pdf" || file.mime_type === "application/pdf";
+    let done = false;
 
-        } else {
-          // Image — either a real image (downsized JPEG from the transform) or a file misnamed .pdf
-          // that is actually an image (fetched raw above). embedImage tries JPEG then safe PNG.
-          const preferPng = ext === "png" || (file.mime_type || "").toLowerCase().includes("png");
-          const img = await embedImage(doc, bytes, preferPng);
-          if (!img) {
-            console.warn(`[build-draw-package] could not embed ${file.id} (${file.mime_type}/${ext})`);
+    try {
+      // Primary fetch: PDF candidates raw (imgproxy would corrupt them and copyPages needs them
+      // intact); everything else downsized (memory-bounded, and imgproxy transcodes HEIC→JPEG).
+      const primary = await fetchBytes(sb, file.storage_bucket, file.storage_path, !isPdfCandidate);
+
+      // MAGIC BYTES are the final arbiter over mime/ext (a %PDF is a PDF whatever the label says).
+      if (isPdfBytes(primary)) {
+        const extDoc = await PDFDocument.load(primary!, { ignoreEncryption: true });
+        const copied = await doc.copyPages(extDoc, extDoc.getPageIndices());
+        for (const pg of copied) doc.addPage(pg);
+        embedded++; done = true;
+      } else {
+        // Image path. Try the bytes we have as-is (real JPEG/PNG embed straight through).
+        const preferPng = ext === "png" || (file.mime_type || "").toLowerCase().includes("png");
+        let img = primary && primary.length ? await embedImage(doc, primary, preferPng) : null;
+
+        // Fallbacks only on failure (keeps the common path a single downsized fetch):
+        if (!img) {
+          // (a) A PDF mislabeled with an image mime AND non-.pdf ext skips the raw fetch above;
+          //     re-fetch raw and re-check magic bytes.
+          const raw = isPdfCandidate ? primary : await fetchBytes(sb, file.storage_bucket, file.storage_path, false);
+          if (isPdfBytes(raw)) {
+            const extDoc = await PDFDocument.load(raw!, { ignoreEncryption: true });
+            const copied = await doc.copyPages(extDoc, extDoc.getPageIndices());
+            for (const pg of copied) doc.addPage(pg);
+            embedded++; done = true;
           } else {
-            const page = doc.addPage([612, 792]);
-            page.drawRectangle({ x: 0, y: headerY, width: 612, height: HEADER_H, color: navy });
-
-            const label = safe(file.name || "Receipt").slice(0, 55);
-            page.drawText(label, { x: margin, y: headerY + 13, size: 10, font: hBold, color: white });
-
-            const metaParts: string[] = [];
-            if (file.date) {
-              const d = new Date(file.date + "T00:00:00");
-              metaParts.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
-            }
-            if (file.amount != null) metaParts.push(fmtCurrency(file.amount));
-            if (metaParts.length > 0) {
-              const metaStr = metaParts.join("  ·  ");
-              const metaW   = hFont.widthOfTextAtSize(metaStr, 9);
-              page.drawText(metaStr, { x: margin + W - metaW, y: headerY + 14, size: 9, font: hFont, color: gold });
-            }
-
-            const imgAreaH = headerY - margin;
-            const scaled   = img.scaleToFit(W, imgAreaH);
-            page.drawImage(img, {
-              x: margin + (W - scaled.width) / 2,
-              y: margin + (imgAreaH - scaled.height) / 2,
-              width: scaled.width, height: scaled.height,
-            });
-            embedded++;
+            // (b) Unembeddable image (alpha PNG, HEIC, webp, or corrupt transform) → transcode to
+            //     a flat JPEG via imgproxy and retry. This is what rescues the alpha-PNG receipts.
+            const norm = await fetchImageJpeg(sb, file.storage_bucket, file.storage_path);
+            if (norm) img = await embedImage(doc, norm, false);
+            if (!img && raw && raw !== primary) img = await embedImage(doc, raw, preferPng);
           }
         }
-      } catch (e) {
-        console.warn(`[build-draw-package] skipping file ${file.id} (${file.mime_type}/${ext}):`, (e as Error).message);
-      }
 
-      // Drop the reference so this document's bytes can be reclaimed before the next batch.
-      fetched[bi] = null;
+        if (!done && img) {
+          const page = doc.addPage([612, 792]);
+          drawDocHeader(page, file);
+          const imgAreaH = headerY - margin;
+          const scaled   = img.scaleToFit(W, imgAreaH);
+          page.drawImage(img, {
+            x: margin + (W - scaled.width) / 2,
+            y: margin + (imgAreaH - scaled.height) / 2,
+            width: scaled.width, height: scaled.height,
+          });
+          embedded++; done = true;
+        }
+      }
+    } catch (e) {
+      console.warn(`[build-draw-package] embed error ${file.id} (${file.mime_type}/${ext}):`, (e as Error).message);
     }
+
+    if (!done) drawPlaceholder(file); // guaranteed page — never a silent drop
   }
-  return embedded;
+  return { embedded, placeholdered, unrenderable };
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────────
@@ -598,7 +651,8 @@ Deno.serve(async (req) => {
     const embedStats = {
       refs_received: Array.isArray(file_refs) ? file_refs.length : 0,
       files_resolved: 0, photos_found: 0, photos_embedded: 0,
-      documents_found: 0, documents_embedded: 0,
+      documents_found: 0, documents_embedded: 0, documents_placeholdered: 0,
+      unrenderable: [] as { id: string; name: string; mime_type: string }[],
     };
     if (Array.isArray(file_refs) && file_refs.length > 0) {
       const refMeta = new Map(file_refs.map(r => [`${r.source}:${r.id}`, r]));
@@ -615,7 +669,12 @@ Deno.serve(async (req) => {
       step = "photo-pages";
       if (photos.length > 0) embedStats.photos_embedded = await addPhotoPages(doc, photos, sb);
       step = "document-pages";
-      if (documents.length > 0) embedStats.documents_embedded = await addDocumentPages(doc, documents, sb);
+      if (documents.length > 0) {
+        const dr = await addDocumentPages(doc, documents, sb);
+        embedStats.documents_embedded      = dr.embedded;
+        embedStats.documents_placeholdered = dr.placeholdered;
+        embedStats.unrenderable            = dr.unrenderable;
+      }
       console.log(`[build-draw-package] embed_stats:`, JSON.stringify(embedStats));
     }
 
