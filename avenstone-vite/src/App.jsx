@@ -39,6 +39,7 @@ import CompanyFilesScr from './components/company-files/CompanyFilesScr';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import PlaybookChecklist from './components/jobs/PlaybookChecklist';
 import OwnerHomeScr from './components/owner/OwnerHomeScr';
+import CrewHomeScr from './components/crew/CrewHomeScr';
 import ProjectsListScr from './components/jobs/ProjectsListScr';
 import BrandPreview from './components/brand/BrandPreview';
 import RateBookScr from './components/owner/RateBookScr';
@@ -319,6 +320,7 @@ export default function App() {
 
   if (profile?.role === 'sub') return <SubPortal profile={profile} signOut={signOut} />;
   if (profile?.role === 'client') return <ClientPortal profile={profile} signOut={signOut} />;
+  if (profile?.role === 'crew') return <CrewHomeScr profile={profile} signOut={signOut} />;
 
   const isOwnerOrRep = ['owner', 'sales_rep'].includes(profile?.role);
   const isStaff = ['owner', 'sales_rep', 'project_manager'].includes(profile?.role);

@@ -39,17 +39,21 @@ Deno.serve(async (req) => {
       }, { onConflict: "id" });
     }
 
-    try {
-      const { data: invSeqs } = await sb.from("sequences").select("id, steps").eq("tenant_id", tenant_id).eq("trigger", "sub_invited").eq("status", "active");
-      for (const seq of (invSeqs || [])) {
-        const { data: ex } = await sb.from("sequence_enrollments").select("id").eq("sequence_id", seq.id).eq("sub_id", data.user.id).in("status", ["active", "complete"]).maybeSingle();
-        if (ex) continue;
-        const steps: any[] = seq.steps || [];
-        const nextSendAt = new Date(Date.now() + (steps[0]?.day ?? 0) * 86400000).toISOString();
-        await sb.from("sequence_enrollments").insert({ tenant_id, sequence_id: seq.id, sub_id: data.user.id, status: "active", current_step: 0, next_send_at: nextSendAt, enrolled_at: new Date().toISOString() });
+    // Only subs get auto-enrolled into 'sub_invited' onboarding sequences.
+    // Crew/staff invites must not land in the contractor onboarding funnel (TIME_CLOCK_ARC S1).
+    if ((role || "sub") === "sub") {
+      try {
+        const { data: invSeqs } = await sb.from("sequences").select("id, steps").eq("tenant_id", tenant_id).eq("trigger", "sub_invited").eq("status", "active");
+        for (const seq of (invSeqs || [])) {
+          const { data: ex } = await sb.from("sequence_enrollments").select("id").eq("sequence_id", seq.id).eq("sub_id", data.user.id).in("status", ["active", "complete"]).maybeSingle();
+          if (ex) continue;
+          const steps: any[] = seq.steps || [];
+          const nextSendAt = new Date(Date.now() + (steps[0]?.day ?? 0) * 86400000).toISOString();
+          await sb.from("sequence_enrollments").insert({ tenant_id, sequence_id: seq.id, sub_id: data.user.id, status: "active", current_step: 0, next_send_at: nextSendAt, enrolled_at: new Date().toISOString() });
+        }
+      } catch (enrollErr) {
+        console.error("[send-invite] auto-enroll error:", enrollErr);
       }
-    } catch (enrollErr) {
-      console.error("[send-invite] auto-enroll error:", enrollErr);
     }
 
     return new Response(JSON.stringify({ user_id: data.user.id }), {

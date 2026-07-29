@@ -2038,6 +2038,18 @@ export const sbSwitchJob = async (jobId, { lat = null, lng = null } = {}) => {
   return { ok: true, error: null, data: Array.isArray(data) ? data[0] : data };
 };
 
+// Active jobs for the punch picker — name/address, most recent first. Crew reads via
+// can_access_job (crew = tenant read). Active = not complete / on_hold (matches App.jsx).
+export const sbCrewJobs = async () => {
+  const { data, error } = await sb.from('jobs')
+    .select('id,address,client_name,status,created_at')
+    .eq('tenant_id', AV_TENANT)
+    .not('status', 'in', '(complete,on_hold)')
+    .order('created_at', { ascending: false });
+  if (error) return { ok: false, error: error.message, data: [] };
+  return { ok: true, error: null, data: data || [] };
+};
+
 export const sbClockOut = async ({ lat = null, lng = null } = {}) => {
   const open = await sbMyOpenEntry();
   if (!open.ok || !open.data) return { ok: false, error: 'not_clocked_in' };
