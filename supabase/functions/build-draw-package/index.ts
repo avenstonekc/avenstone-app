@@ -480,7 +480,7 @@ async function addDocumentPages(
   // NEVER silent: any file we couldn't embed still gets a visible, labeled page saying so —
   // a client-facing package must never drop an attachment without a trace. The original file
   // stays in the job record; this just reports it in the package.
-  const drawPlaceholder = (file: FileDetail) => {
+  const drawPlaceholder = (file: FileDetail, reason = "") => {
     const page = doc.addPage([612, 792]);
     drawDocHeader(page, file);
     const boxH = headerY - margin - 8;
@@ -494,8 +494,8 @@ async function addDocumentPages(
     page.drawText(line2, { x: cw(line2, 10), y: cy - 6,  size: 10, font: hFont, color: rgb(0.5, 0.5, 0.5) });
     page.drawText(line3, { x: cw(line3, 9),  y: cy - 26, size: 9,  font: hFont, color: rgb(0.55, 0.55, 0.55) });
     placeholdered++;
-    unrenderable.push({ id: file.id, name: file.name || "", mime_type: file.mime_type || "" });
-    console.warn(`[build-draw-package] unrenderable → placeholder: ${file.id} (${file.mime_type})`);
+    unrenderable.push({ id: file.id, name: file.name || "", mime_type: `${file.mime_type || ""}${reason ? " · " + reason : ""}` });
+    console.warn(`[build-draw-package] unrenderable → placeholder: ${file.id} (${file.mime_type}) ${reason}`);
   };
 
   // Sequential, one file resident at a time (memory-safe: scanned PDFs / phone photos can be
@@ -503,11 +503,14 @@ async function addDocumentPages(
   // an embedded image page, or a labeled placeholder — so nothing can silently disappear.
   const isPdfBytes = (b: Uint8Array | null) =>
     !!b && b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46; // %PDF
+  const hex4 = (b: Uint8Array | null) =>
+    b && b.length >= 4 ? [b[0], b[1], b[2], b[3]].map(x => x.toString(16).padStart(2, "0")).join("") : "none";
 
   for (const file of documents) {
     const ext = (file.storage_path?.split(".").pop() || "").toLowerCase();
     const isPdfCandidate = ext === "pdf" || file.mime_type === "application/pdf";
     let done = false;
+    let why = "";
 
     try {
       // Primary fetch: PDF candidates raw (imgproxy would corrupt them and copyPages needs them
@@ -524,6 +527,7 @@ async function addDocumentPages(
         // Image path. Try the bytes we have as-is (real JPEG/PNG embed straight through).
         const preferPng = ext === "png" || (file.mime_type || "").toLowerCase().includes("png");
         let img = primary && primary.length ? await embedImage(doc, primary, preferPng) : null;
+        why = primary && primary.length ? `embed-fail primary=${hex4(primary)}` : "primary-null";
 
         // Fallbacks only on failure (keeps the common path a single downsized fetch):
         if (!img) {
@@ -541,6 +545,7 @@ async function addDocumentPages(
             const norm = await fetchImageJpeg(sb, file.storage_bucket, file.storage_path);
             if (norm) img = await embedImage(doc, norm, false);
             if (!img && raw && raw !== primary) img = await embedImage(doc, raw, preferPng);
+            if (!img) why += ` raw=${hex4(raw)} transcode=${norm ? hex4(norm) : "null"}`;
           }
         }
 
@@ -561,7 +566,7 @@ async function addDocumentPages(
       console.warn(`[build-draw-package] embed error ${file.id} (${file.mime_type}/${ext}):`, (e as Error).message);
     }
 
-    if (!done) drawPlaceholder(file); // guaranteed page — never a silent drop
+    if (!done) drawPlaceholder(file, why); // guaranteed page — never a silent drop
   }
   return { embedded, placeholdered, unrenderable };
 }
