@@ -1,7 +1,27 @@
-import { useState, useEffect } from 'react';
-import { sb, AV_TENANT, sbBuildDrawPackage, sbSendDrawPackage, sbSaveDrawPackageToFiles, sbGetDrawPackageSignedUrl } from '../../lib/supabase';
+import { useState, useEffect, useRef } from 'react';
+import { sb, AV_TENANT, sbBuildDrawPackage, sbSendDrawPackage, sbSaveDrawPackageToFiles, sbGetDrawPackageSignedUrl, sbUploadDrawAttachment } from '../../lib/supabase';
 
 const COMPLIANCE_CATS = ['Insurance', 'License', 'Compliance'];
+const MAX_ATTACHMENTS = 20;
+
+// Downscale an image to keep the build-draw-package edge worker under its memory ceiling, and to
+// convert alpha PNGs → JPEG (pdf-lib embedPng on an RGBA PNG OOMs the worker). Non-images pass through.
+async function downscaleImage(file, maxDim = 2000, quality = 0.82) {
+  if (!file?.type?.startsWith('image/')) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+    if (scale === 1 && file.type === 'image/jpeg') return file;
+    const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
+    if (!blob) return file;
+    const name = (file.name || 'photo').replace(/\.(png|webp|heic|heif|jpe?g)$/i, '') + '.jpg';
+    return new File([blob], name, { type: 'image/jpeg' });
+  } catch { return file; }
+}
 
 function PhotoThumb({ file, selected, onToggle }) {
   const [url, setUrl] = useState(null);
@@ -60,6 +80,10 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
 
   // Search
   const [search, setSearch]           = useState('');
+
+  // Manual attachment upload
+  const [uploading, setUploading]     = useState(false);
+  const fileInputRef                  = useRef(null);
 
   // Copy link
   const [copied, setCopied]           = useState(false);
@@ -154,6 +178,22 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
       if (allOn) keys.forEach(k => next.delete(k)); else keys.forEach(k => next.add(k));
       return next;
     });
+  };
+
+  // Manual attachment: upload a file (e.g. a sub's invoice) → job_files → pre-selected for this draw.
+  const handleAddAttachment = async (e) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = '';
+    if (!file) return;
+    if (sentInfo) { setSaveError('Package already sent — start a new draw to add files.'); return; }
+    if (selected.size >= MAX_ATTACHMENTS) { setSaveError(`Attachment limit reached (${MAX_ATTACHMENTS}).`); return; }
+    setUploading(true); setSaveError(null);
+    const prepared = await downscaleImage(file);
+    const res = await sbUploadDrawAttachment(job.id, prepared, 'Documents');
+    setUploading(false);
+    if (!res.ok) { setSaveError(res.error || 'Upload failed'); return; }
+    setJobFiles(prev => [res.data, ...prev]);
+    setSelected(prev => { const next = new Set(prev); next.add(`job_file:${res.data.id}`); return next; });
   };
 
   const buildFileRefs = () => {
@@ -341,7 +381,17 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
             <>
               {/* Job Files */}
               <div style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Job Files</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Job Files</div>
+                  <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={handleAddAttachment} style={{ display: 'none' }} />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading || !!sentInfo || selected.size >= MAX_ATTACHMENTS}
+                    title={sentInfo ? 'Package already sent' : selected.size >= MAX_ATTACHMENTS ? `Limit ${MAX_ATTACHMENTS}` : 'Upload an invoice or photo and attach it'}
+                    style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--gold-500)', background: '#C9A84C15', color: 'var(--amber-text-strong)', cursor: (uploading || sentInfo || selected.size >= MAX_ATTACHMENTS) ? 'not-allowed' : 'pointer', opacity: (uploading || sentInfo || selected.size >= MAX_ATTACHMENTS) ? 0.5 : 1 }}
+                  >{uploading ? 'Uploading…' : '+ Add attachment'}</button>
+                </div>
                 {jobFiles.length === 0 ? (
                   <div style={{ fontSize: 12, color: 'var(--text-subtle)', fontStyle: 'italic' }}>No files on this job.</div>
                 ) : (
@@ -419,7 +469,7 @@ export default function DrawPackagePickerModal({ job, draw, existingPkg, onClose
 
         {/* Footer */}
         {(() => {
-          const MAX = 20;
+          const MAX = MAX_ATTACHMENTS;
           const overCap = selected.size > MAX;
           const atCap   = selected.size === MAX;
           return (

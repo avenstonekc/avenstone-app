@@ -763,6 +763,40 @@ export const sbLoadDocs = async jid => {
  * Note: ClientSignContractModal directly updates job_documents.client_visible — that path
  * is now a silent no-op. Fix scheduled for slice 9.
  */
+// Manual attachment for the draw-package composer — upload an arbitrary file into job_files so it
+// can be attached to a draw PDF (e.g. a sub's invoice that has no transaction-linked receipt).
+// Lands in the private job-documents bucket, active, unlinked (related_entity_* null). The caller
+// downscales images before this (keeps the build-draw-package worker under its memory ceiling).
+// Returns the row in the exact shape DrawPackagePickerModal's jobFiles list expects.
+export const sbUploadDrawAttachment = async (jobId, file, category = 'Documents') => {
+  if (!jobId || !file) return { ok: false, error: 'job and file required', data: null };
+  try {
+    const ext = (file.name?.split('.').pop() || 'bin').toLowerCase();
+    const path = `${jobId}/draw-attach/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: ue } = await sb.storage.from('job-documents')
+      .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+    if (ue) return { ok: false, error: ue.message || 'Upload failed', data: null };
+    const { data: row, error: ie } = await sb.from('job_files').insert({
+      tenant_id: AV_TENANT,
+      job_id: jobId,
+      uploaded_by_id: AV_USER_ID || null,
+      name: file.name || 'attachment',
+      storage_path: path,
+      storage_bucket: 'job-documents',
+      mime_type: file.type || null,
+      size_bytes: file.size || null,
+      category,
+      subcategory: null,
+      lifecycle_status: 'active',
+      client_visible: false,
+    }).select('id, category, subcategory, mime_type, name, storage_path, storage_bucket, related_entity_type, related_entity_id').single();
+    if (ie) return { ok: false, error: ie.message || 'Save failed', data: null };
+    return { ok: true, error: null, data: row };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Upload failed', data: null };
+  }
+};
+
 export const sbUploadDoc = async (jid, file, fileType) => {
   try {
     const ext = file.name.split('.').pop() || 'bin';
