@@ -25,7 +25,10 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
       if (cancelled) return;
       if (!r.ok) { setLoadErr('Could not load the contract. Please try again.'); setLoading(false); return; }
       if (!r.snapshot || !Array.isArray(r.snapshot.rows) || r.snapshot.rows.length === 0) {
-        setLoadErr('No priced contract on file — accept an estimate before signing.'); setLoading(false); return;
+        // Cost-plus ("flow") jobs have no fixed price/snapshot — the client signs the
+        // cost-plus terms directly. Only fixed-price contracts require a priced snapshot.
+        if (!job.cost_plus) { setLoadErr('No priced contract on file — accept an estimate before signing.'); setLoading(false); return; }
+        setSnapshot(null); setContractTotal(null); setLoading(false); return;
       }
       setSnapshot(r.snapshot);
       setContractTotal(r.contractTotal ?? r.snapshot.grand_total ?? null);
@@ -35,7 +38,7 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
   }, [job.id, job.tenant_id]);
 
   const submit = async png => {
-    if (!snapshot) return;
+    if (!snapshot && !job.cost_plus) return;
     setSaving(true);
     const pdfDoc = buildContractPDF({ job, snapshot, signaturePng: png });
     const blob = pdfDoc.output('blob');
@@ -59,8 +62,9 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
     // onto contract_signatures — a deep clone, never a live reference to the
     // mutable estimate rows. sbSaveSignature already post-write verifies via
     // .select().single(); surface a hard failure instead of silently "signing".
-    const frozenTotal = contractTotal != null ? contractTotal : (snapshot.grand_total ?? null);
-    const frozenScope = JSON.parse(JSON.stringify(snapshot));
+    // Cost-plus jobs have no fixed total/snapshot — freeze nulls (both columns are nullable).
+    const frozenTotal = contractTotal != null ? contractTotal : (snapshot?.grand_total ?? null);
+    const frozenScope = snapshot ? JSON.parse(JSON.stringify(snapshot)) : null;
     const res = await sbSaveSignature({
       job_id: job.id, tenant_id: job.tenant_id, type: 'contract',
       signed_by_name: job.client_name || '', signed_by_email: job.client_email || '',
@@ -110,7 +114,11 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
     if (onSigned) onSigned();
   };
 
-  const clauseText = snapshot ? DEFAULT_CONTRACT_TEXT({ ...job, contract_value: contractTotal }, f$) : '';
+  const isCostPlus = !!job.cost_plus;
+  const _lp = Number(job.labor_markup_pct ?? job.default_markup_pct ?? 0);
+  const _mp = Number(job.material_markup_pct ?? job.default_markup_pct ?? 0);
+  const feePct = _lp === _mp ? `${_lp}%` : `${_lp}% labor / ${_mp}% materials`;
+  const clauseText = (snapshot || isCostPlus) ? DEFAULT_CONTRACT_TEXT({ ...job, contract_value: contractTotal }, f$) : '';
   const rows = snapshot?.rows || [];
 
   return (
@@ -130,10 +138,17 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
 
         {!loading && !loadErr && step === 'review' && <>
           <div className="modal-title">Review Contract</div>
-          <div style={{ background: 'var(--navy-900, #0A1F44)', color: '#fff', borderRadius: 8, padding: '12px 14px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: 12, letterSpacing: 0.5, opacity: 0.85 }}>CONTRACT TOTAL</span>
-            <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--gold, #C9A84C)' }}>{f$(contractTotal)}</span>
-          </div>
+          {isCostPlus ? (
+            <div style={{ background: 'var(--navy-900, #0A1F44)', color: '#fff', borderRadius: 8, padding: '12px 14px', marginBottom: 12, flexShrink: 0 }}>
+              <div style={{ fontSize: 12, letterSpacing: 0.5, fontWeight: 700, color: 'var(--gold, #C9A84C)', marginBottom: 4 }}>COST-PLUS AGREEMENT</div>
+              <div style={{ fontSize: 12, opacity: 0.9, lineHeight: 1.5 }}>You pay the actual cost of labor &amp; materials plus {feePct}. There is no fixed total — the final amount is the accumulated cost plus the fee.</div>
+            </div>
+          ) : (
+            <div style={{ background: 'var(--navy-900, #0A1F44)', color: '#fff', borderRadius: 8, padding: '12px 14px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: 12, letterSpacing: 0.5, opacity: 0.85 }}>CONTRACT TOTAL</span>
+              <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--gold, #C9A84C)' }}>{f$(contractTotal)}</span>
+            </div>
+          )}
           <div style={{ overflowY: 'auto', flex: 1, marginBottom: 12 }}>
             <div style={{ marginBottom: 14 }}>
               {rows.map((r, i) => (
@@ -153,7 +168,9 @@ export default function ClientSignContractModal({ job, onClose, onSigned }) {
 
         {!loading && !loadErr && step === 'sign' && <>
           <div className="modal-title">Sign Contract</div>
-          <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-muted)' }}>By signing below, you agree to the contract terms and the total of <strong>{f$(contractTotal)}</strong> for <strong>{job.address}</strong>.</div>
+          <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-muted)' }}>{isCostPlus
+            ? <>By signing below, you agree to the cost-plus terms — actual cost of labor &amp; materials plus {feePct} — for <strong>{job.address}</strong>.</>
+            : <>By signing below, you agree to the contract terms and the total of <strong>{f$(contractTotal)}</strong> for <strong>{job.address}</strong>.</>}</div>
           <SignaturePad onSave={submit} onCancel={() => setStep('review')} label="Draw your signature" />
           {saving && <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-subtle)', marginTop: 12 }}>Saving signed contract...</div>}
         </>}
