@@ -310,7 +310,10 @@ async function _insertPhotoToJobFiles(path, file, jid, entityType, entityId) {
       subcategory,
       ai_confidence: aiConfidence < 1.0 ? aiConfidence : null,
       ai_subcategory_suggested: aiSuggested,
-      client_visible: false,
+      // Daily-log photos are meant for the client update, so they default to visible
+      // (staff can toggle individual ones off in review before sending, and the client
+      // only ever sees them once the log is approved). All other photo types stay private.
+      client_visible: entityType === 'daily_log',
       related_entity_type: linkedType,
       related_entity_id: linkedId,
     }).select('id').single();
