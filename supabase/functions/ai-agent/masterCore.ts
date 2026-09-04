@@ -3066,6 +3066,62 @@ When the user asks you to inspect, audit, test, or report on app data or behavio
   return { response: "Max iterations reached — some actions may be incomplete.", actions };
 }
 
+// ─── Turn logging (observability) ────────────────────────────────────────────
+// Fire-and-forget audit of every Aven turn: input -> tools -> cards -> result.
+// Pure DB write, no AI. Swallows all failures — logging must never break a turn.
+
+function sanitizeAgentMessage(message: unknown): string | null {
+  if (typeof message === "string") return message.slice(0, 4000);
+  if (Array.isArray(message)) {
+    const parts = (message as any[]).map((b) =>
+      b?.type === "text" ? String(b.text || "") : b?.type === "image" ? "[image]" : ""
+    ).filter(Boolean);
+    return (parts.join(" ").slice(0, 4000)) || "[non-text content]";
+  }
+  return null;
+}
+
+function compactActions(actions: Array<{ tool: string; result?: unknown }> = []) {
+  return actions.map((a) => ({
+    tool: a.tool,
+    ok: !((a.result as any)?.error),
+    error: (a.result as any)?.error ?? null,
+    ...((a.result as any)?.requires_override ? { requires_override: true } : {}),
+  }));
+}
+
+async function logAgentTurn(
+  sb: ReturnType<typeof createClient>,
+  f: {
+    tenantId: string; userId: string; userRole: string; turnType: string;
+    message: unknown; contextJobId?: string; contextScreen?: string;
+    response?: string; actions?: any[]; pendingAction?: any; pendingCard?: any;
+    error?: string | null; startedAt?: number;
+  },
+): Promise<void> {
+  try {
+    await sb.from("agent_turns").insert({
+      tenant_id: f.tenantId,
+      user_id: f.userId || null,
+      user_role: f.userRole || null,
+      turn_type: f.turnType,
+      message: sanitizeAgentMessage(f.message),
+      context_job_id: f.contextJobId || null,
+      context_screen: f.contextScreen || null,
+      assistant_text: f.response ? String(f.response).slice(0, 4000) : null,
+      actions: compactActions(f.actions || []),
+      pending_action: f.pendingAction
+        ? { tool: (f.pendingAction as any).tool, description: (f.pendingAction as any).description }
+        : null,
+      pending_card: f.pendingCard
+        ? { prompt: (f.pendingCard as any).prompt, questions: (((f.pendingCard as any).questions as any[]) || []).map((q) => q.label) }
+        : null,
+      error: f.error ?? null,
+      duration_ms: f.startedAt ? Date.now() - f.startedAt : null,
+    });
+  } catch (_) { /* logging must never break a turn */ }
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export async function handleMasterAgent(req: Request): Promise<Response> {
@@ -3081,6 +3137,7 @@ export async function handleMasterAgent(req: Request): Promise<Response> {
     }
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const startedAt = Date.now();
 
     // Resolve context job once — used by both runAgentLoop call sites below.
     // Silently dropped if the job doesn't exist or belongs to a different tenant.
@@ -3118,6 +3175,12 @@ export async function handleMasterAgent(req: Request): Promise<Response> {
       const response = (result as any)?.error
         ? `${pending_action.description || pending_action.tool}: failed — ${(result as any).error}`
         : buildDoneMessage(pending_action.tool, confirmedInput);
+      await logAgentTurn(sb, {
+        tenantId: tenant_id, userId: user_id, userRole: role || "owner", turnType: "confirmed",
+        message: pending_action.description || pending_action.tool, contextJobId: ctxJobId,
+        contextScreen: context_screen ? String(context_screen) : "", response, actions: [action],
+        error: (result as any)?.error ?? null, startedAt,
+      });
       return new Response(
         JSON.stringify({ response, actions: [action] }),
         { headers: { ...CORS, "Content-Type": "application/json" } },
@@ -3193,6 +3256,11 @@ export async function handleMasterAgent(req: Request): Promise<Response> {
       const { response, actions, pending_action: pa, pending_card: pc } = await runAgentLoop(
         sb, tenant_id, user_id, role || "owner", full_name || "User", history, 3, ctxJobId, ctxJobLabel, ctxScreenStr,
       );
+      await logAgentTurn(sb, {
+        tenantId: tenant_id, userId: user_id, userRole: role || "owner", turnType: "card_response",
+        message: `[card_response] ${JSON.stringify(cr.answers || {})}`, contextJobId: ctxJobId,
+        contextScreen: ctxScreenStr, response, actions, pendingAction: pa, pendingCard: pc, startedAt,
+      });
       return new Response(
         JSON.stringify({ response, actions, pending_action: pa, pending_card: pc }),
         { headers: { ...CORS, "Content-Type": "application/json" } },
@@ -3221,6 +3289,12 @@ export async function handleMasterAgent(req: Request): Promise<Response> {
     const { response, actions, pending_action: pa, pending_card: pc } = await runAgentLoop(
       sb, tenant_id, user_id, role || "owner", full_name || "User", messages, 3, ctxJobId, ctxJobLabel, ctxScreenFinal,
     );
+
+    await logAgentTurn(sb, {
+      tenantId: tenant_id, userId: user_id, userRole: role || "owner", turnType: "message",
+      message, contextJobId: ctxJobId, contextScreen: ctxScreenFinal,
+      response, actions, pendingAction: pa, pendingCard: pc, startedAt,
+    });
 
     return new Response(
       JSON.stringify({ response, actions, pending_action: pa, pending_card: pc }),
