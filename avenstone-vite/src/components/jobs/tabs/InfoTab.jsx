@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbCreateClientLogin, sbLoadDocs } from '../../../lib/supabase';
+import { sb, AV_USER_ID, sbNotify, sbSendContractEmail, sbCreateClientLogin, sbSendClientLoginInvite, sbLoadDocs } from '../../../lib/supabase';
 import { Ic, f$, fD } from '../../../lib/utils';
 import { buildGenericPDF } from '../../../lib/pdf';
 import ContractModal from '../../modals/ContractModal';
@@ -8,18 +8,34 @@ import PhaseAdvanceCard from '../PhaseAdvanceCard';
 import JobTodosBlock from '../JobTodosBlock';
 
 function ClientLoginButton({ job }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false);      // manual-password fallback panel
   const [pwd, setPwd] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
+  const [saving, setSaving] = useState(false);  // manual save in flight
+  const [sending, setSending] = useState(false); // invite email in flight
+  const [done, setDone] = useState('');          // '' | 'sent' | 'manual'
   const [err, setErr] = useState('');
 
+  const hasEmail = !!(job.client_email && job.client_email.trim());
+
+  // Primary path: one click emails the client a link to set their own password + sign in.
+  const sendInvite = async () => {
+    if (!hasEmail) { setErr('Add a client email on this job first.'); return; }
+    setSending(true); setErr('');
+    try {
+      const res = await sbSendClientLoginInvite(job.client_email, job.client_name, job.id);
+      if (res.ok) { setDone('sent'); setOpen(false); }
+      else setErr(res.error || 'Failed to send login email');
+    } catch (_) { setErr('Failed to send login email'); }
+    setSending(false);
+  };
+
+  // Fallback path: staff sets a password manually (kept for edge cases).
   const save = async () => {
     if (!pwd || pwd.length < 6) { setErr('Password must be at least 6 characters'); return; }
     setSaving(true); setErr('');
     try {
       const res = await sbCreateClientLogin(job.client_email, pwd, job.client_name, job.id);
-      if (res.ok) { setDone(true); setOpen(false); setPwd(''); }
+      if (res.ok) { setDone('manual'); setOpen(false); setPwd(''); }
       else setErr(res.error || 'Failed to create login');
     } catch (_) { setErr('Failed to create login'); }
     setSaving(false);
@@ -31,17 +47,34 @@ function ClientLoginButton({ job }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--navy-900)' }}>Client Portal Access</div>
           <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>
-            {done
-              ? <span>Login active — <strong style={{ color: 'var(--navy-900)' }}>{job.client_email}</strong> can sign in now</span>
-              : `Set a password so ${job.client_name || job.client_email} can log into their portal`}
+            {done === 'sent'
+              ? <span>Invite emailed to <strong style={{ color: 'var(--navy-900)' }}>{job.client_email}</strong> — they set their own password</span>
+              : done === 'manual'
+                ? <span>Login active — <strong style={{ color: 'var(--navy-900)' }}>{job.client_email}</strong> can sign in now</span>
+                : hasEmail
+                  ? `Emails ${job.client_name || job.client_email} a link to set their password and sign in`
+                  : 'Add a client email on this job to send a portal invite'}
           </div>
         </div>
-        <button className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px', flexShrink: 0, whiteSpace: 'nowrap' }} onClick={() => { setOpen(o => !o); setErr(''); setPwd(''); }}>
-          {open ? 'Cancel' : done ? 'Reset password' : 'Set login'}
+        <button className="btn btn-navy" style={{ fontSize: 11, padding: '6px 14px', flexShrink: 0, whiteSpace: 'nowrap' }} onClick={sendInvite} disabled={sending || !hasEmail}>
+          {sending ? 'Sending…' : done === 'sent' ? 'Resend login' : 'Send login'}
+        </button>
+      </div>
+
+      {done === 'sent' && (
+        <div style={{ fontSize: 11, color: 'var(--green-dot)', marginTop: 6, lineHeight: 1.5 }}>
+          ✓ Login email sent. {job.client_name || 'The client'} clicks the link to set a password — nothing for you to relay.
+        </div>
+      )}
+
+      {/* Fallback: set a password manually (rarely needed) */}
+      <div style={{ marginTop: 8 }}>
+        <button onClick={() => { setOpen(o => !o); setErr(''); setPwd(''); }} style={{ background: 'none', border: 'none', padding: 0, fontSize: 11, color: 'var(--text-subtle)', textDecoration: 'underline', cursor: 'pointer' }}>
+          {open ? 'Cancel' : 'Set a password manually instead'}
         </button>
       </div>
       {open && (
-        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             type="password"
             value={pwd}
@@ -52,12 +85,12 @@ function ClientLoginButton({ job }) {
             onKeyDown={e => e.key === 'Enter' && save()}
             autoFocus
           />
-          <button className="btn btn-navy" style={{ fontSize: 11, padding: '7px 16px', flexShrink: 0 }} onClick={save} disabled={saving || !pwd}>
+          <button className="btn btn-ghost" style={{ fontSize: 11, padding: '7px 16px', flexShrink: 0 }} onClick={save} disabled={saving || !pwd}>
             {saving ? 'Saving...' : 'Save'}
           </button>
         </div>
       )}
-      {done && !open && (
+      {done === 'manual' && !open && (
         <div style={{ fontSize: 11, color: 'var(--green-dot)', marginTop: 6, lineHeight: 1.5 }}>
           ✓ Login active. Give {job.client_name || 'the client'} their credentials:<br />
           <strong>Email:</strong> {job.client_email} · <strong>Password:</strong> the one you just set

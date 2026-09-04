@@ -1182,6 +1182,19 @@ export const sbCreateClientLogin = async (email, password, clientName, jobId) =>
   return res.json();
 };
 
+// One-click portal invite: provisions the client login and emails THEM a link to set
+// their own password and sign in. No password handling by staff. Reuses the same
+// send_recovery path the Master Agent uses (create-client-login generates a random
+// server-side password + recovery link + Resend email; never returns a password).
+export const sbSendClientLoginInvite = async (email, clientName, jobId) => {
+  const res = await fetch(CREATE_CLIENT_LOGIN_URL, {
+    method: 'POST',
+    headers: authHeader(),
+    body: JSON.stringify({ email, client_name: clientName, job_id: jobId, tenant_id: AV_TENANT, send_recovery: true }),
+  });
+  return res.json();
+};
+
 
 // ─── Sub pricing ──────────────────────────────────────────────────────────────
 export const sbLoadSubPricing = async (subId) => {
