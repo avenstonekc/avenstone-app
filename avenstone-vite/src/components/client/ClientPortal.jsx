@@ -496,6 +496,7 @@ export default function ClientPortal({ profile, signOut }) {
   const [costItems, setCostItems] = useState([]);
   const [costInvoices, setCostInvoices] = useState([]);
   const [costRows, setCostRows] = useState([]);  // per-cost ledger rows (cost-plus only)
+  const [newUpdate, setNewUpdate] = useState(false);  // unread-update dot on the Updates tab
   const [budgetItems, setBudgetItems] = useState([]);
   const [drawBreakdown, setDrawBreakdown] = useState(null);
   const [drawBreakdownLoading, setDrawBreakdownLoading] = useState(false);
@@ -539,6 +540,28 @@ export default function ClientPortal({ profile, signOut }) {
       setLoaded(p => ({ ...p, updates: true, photos: true }));
     });
   }, [job?.id, tab]);
+
+  // Unread-update dot: on job open, flag if the latest approved update is newer than
+  // what this client last saw (per-device, via localStorage). Cleared when they open Updates.
+  useEffect(() => {
+    if (!job?.id) return;
+    let cancelled = false;
+    sb.from('daily_logs').select('approved_at').eq('job_id', job.id).eq('status', 'approved')
+      .order('approved_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data?.approved_at) return;
+        const seen = localStorage.getItem(`av_cl_seen_upd_${job.id}`);
+        if (!seen || new Date(data.approved_at) > new Date(seen)) setNewUpdate(true);
+      });
+    return () => { cancelled = true; };
+  }, [job?.id]);
+
+  useEffect(() => {
+    if (tab === 'updates' && job?.id && newUpdate) {
+      localStorage.setItem(`av_cl_seen_upd_${job.id}`, new Date().toISOString());
+      setNewUpdate(false);
+    }
+  }, [tab, job?.id, newUpdate]);
 
   useEffect(() => {
     if (!job || tab !== 'docs' || loaded.docs) return;
@@ -719,7 +742,7 @@ export default function ClientPortal({ profile, signOut }) {
         {job.contract_signed && <div style={{ background: 'var(--green-bg-soft)', borderBottom: '1px solid #BBF7D0', padding: '8px 16px', fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ Contract signed{job.contract_signed_at ? ` ${fD(job.contract_signed_at.slice(0, 10))}` : ''}</div>}
 
         <div className="tabbar" style={{ overflowX: 'auto', flexWrap: 'nowrap' }}>
-          {getClientTabs(job).map(t => <button key={t.id} className={`tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)} style={{ whiteSpace: 'nowrap' }}><span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Ic[t.ic] || Ic.info}</span>{t.lb}</button>)}
+          {getClientTabs(job).map(t => <button key={t.id} className={`tab${tab === t.id ? ' on' : ''}`} onClick={() => setTab(t.id)} style={{ whiteSpace: 'nowrap', position: 'relative' }}><span style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Ic[t.ic] || Ic.info}</span>{t.lb}{t.id === 'updates' && newUpdate && <span style={{ marginLeft: 6, width: 8, height: 8, borderRadius: '50%', background: GOLD, display: 'inline-block', verticalAlign: 'middle' }} />}</button>)}
         </div>
 
         <div style={{ padding: 16, maxWidth: 720, margin: '0 auto' }}>

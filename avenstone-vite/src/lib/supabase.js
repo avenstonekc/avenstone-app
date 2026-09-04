@@ -106,6 +106,9 @@ export const sbLoad = async repName => {
           .eq('job_id', j.id)
           .eq('storage_bucket', 'job-photos')
           .eq('lifecycle_status', 'active')
+          // Daily-log photos live with the log + client updates — keep them OUT of the
+          // staff Photos gallery so they don't double up alongside directly-added photos.
+          .or('related_entity_type.is.null,related_entity_type.neq.daily_log')
           .order('created_at', { ascending: true }),
         sb.from('job_notes').select('*').eq('job_id', j.id).order('created_at', { ascending: false }),
         sb.from('change_orders').select('*').eq('job_id', j.id).order('created_at', { ascending: false }),
