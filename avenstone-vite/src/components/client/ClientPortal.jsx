@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 // Note: legacy `payments` compat view is deprecated. ClientPortal reads invoices + job_transactions directly.
 // Compat view still alive in DB until verified no consumers remain. — Phase 6a, 2026-05-06
-import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates, sbLoadClientMilestones, sbLoadClientDrawBreakdown, sbLoadClientActualSpend, sbLoadScopeOptionData, sbLoadScopeAnswers, sbUpsertClientSelection, sbEnsureSelectionsOpen } from '../../lib/supabase';
+import { sb, AV_USER_ID, AV_TENANT, sbLoadPhases, sbLoadMessages, sbPostMessage, sbNotify, sbNotifyEmail, sbLoadCostItems, sbLoadCostInvoices, sbLoadEstimateLineItems, sbLoadInvoicesForJob, sbLoadJobTotalPaid, deriveInvoiceStatus, sbRegenerateInvoicePaymentUrl, sbLoadClientUpdates, sbLoadClientMilestones, sbLoadClientDrawBreakdown, sbLoadClientActualSpend, sbGetReceiptUrl, sbLoadScopeOptionData, sbLoadScopeAnswers, sbUpsertClientSelection, sbEnsureSelectionsOpen } from '../../lib/supabase';
 import { Ic, sc, sl, f$, fD, fDT, phSc, phSl, isMob } from '../../lib/utils';
 import PhotoLightbox from '../shared/PhotoLightbox';
 import ClientSignContractModal from '../modals/ClientSignContractModal';
@@ -250,6 +250,71 @@ function DrawCard({ draw, lineItems, invoice }) {
   );
 }
 
+// Friendly labels for ledger transaction types shown to the client.
+const COST_LABELS = {
+  material_purchase: 'Materials', sub_payout: 'Subcontractor', vendor_payment: 'Vendor',
+  equipment_rental: 'Equipment', permit: 'Permit', fuel: 'Fuel', labor: 'Labor',
+  commission: 'Commission', other_expense: 'Other',
+};
+
+// Lazy "view proof" link — fetches a short-lived signed URL only when clicked
+// (storage policy jr_client_select gates it to the client's own cost-plus job).
+function CostReceiptLink({ row }) {
+  const [state, setState] = useState('idle'); // idle | loading | error
+  const open = async () => {
+    if (!row.receipt_url) return;
+    setState('loading');
+    try {
+      const res = await sbGetReceiptUrl(row.receipt_url);
+      if (res.ok && res.data?.signedUrl) { window.open(res.data.signedUrl, '_blank', 'noopener'); setState('idle'); }
+      else setState('error');
+    } catch { setState('error'); }
+  };
+  if (!row.receipt_url) return <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>No receipt</span>;
+  return (
+    <button onClick={open} disabled={state === 'loading'} style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: 'var(--blue-link)', textDecoration: 'underline', cursor: 'pointer' }}>
+      {state === 'loading' ? 'Opening…' : state === 'error' ? 'Try again' : '📎 View proof'}
+    </button>
+  );
+}
+
+// Itemized cost-of-the-work list for cost-plus clients, each with a link to the receipt/proof.
+function CostList({ rows }) {
+  if (!rows || rows.length === 0) return null;
+  const total = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+  return (
+    <div style={{ marginTop: 8, marginBottom: 20 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Project Costs</div>
+      <div style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}` }}>
+        {rows.map((r, i) => (
+          <div key={r.id || i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '11px 14px', borderBottom: i < rows.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: NAV, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.payee}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>
+                {(COST_LABELS[r.category] || r.category || 'Cost')}{r.date ? ` · ${fD(r.date)}` : ''}
+              </div>
+              {r.description && r.description !== r.payee && (
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{r.description}</div>
+              )}
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: NAV, fontFamily: "'DM Serif Display',serif" }}>{f$(r.amount)}</div>
+              <div style={{ marginTop: 3 }}><CostReceiptLink row={r} /></div>
+            </div>
+          </div>
+        ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 14px', borderTop: `2px solid ${BORDER}`, background: CREAM }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: NAV, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total Cost of Work</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: NAV, fontFamily: "'DM Serif Display',serif" }}>{f$(total)}</span>
+        </div>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 8, lineHeight: 1.5 }}>
+        Actual documented cost of labor and materials. Your agreed markup is applied to these costs per your contract.
+      </div>
+    </div>
+  );
+}
+
 const BASE_CLIENT_TABS = [
   { id: 'overview',  lb: 'Overview',  ic: 'info' },
   { id: 'updates',   lb: 'Updates',   ic: 'bell' },
@@ -430,6 +495,7 @@ export default function ClientPortal({ profile, signOut }) {
   const [savingNote, setSavingNote] = useState(false);
   const [costItems, setCostItems] = useState([]);
   const [costInvoices, setCostInvoices] = useState([]);
+  const [costRows, setCostRows] = useState([]);  // per-cost ledger rows (cost-plus only)
   const [budgetItems, setBudgetItems] = useState([]);
   const [drawBreakdown, setDrawBreakdown] = useState(null);
   const [drawBreakdownLoading, setDrawBreakdownLoading] = useState(false);
@@ -534,16 +600,19 @@ export default function ClientPortal({ profile, signOut }) {
         // land in the client's browser runtime (markup rates, raw vendor rows,
         // cost breakdowns). Only aggregate totals the client is permitted to see.
         const {
-          transactions,        // raw expense rows with vendor names
-          labor_markup_pct,    // owner-only rate
-          material_markup_pct, // owner-only rate
-          markup_amount,       // owner-only aggregate
-          cost_subtotal,       // owner-only
-          material_subtotal,   // owner-only
-          labor_subtotal,      // owner-only
+          transactions,        // per-cost rows (date, payee, amount, receipt) — SHOWN on cost-plus
+          labor_markup_pct,    // owner-only rate — stays stripped
+          material_markup_pct, // owner-only rate — stays stripped
+          markup_amount,       // owner-only aggregate — stays stripped
+          cost_subtotal,       // owner-only — stays stripped
+          material_subtotal,   // owner-only — stays stripped
+          labor_subtotal,      // owner-only — stays stripped
           ...clientSafeFields
         } = result.data;
         setActualSpend(clientSafeFields);
+        // Cost-plus clients are entitled to the itemized cost of the Work + proof.
+        // Only aggregate markup rates/subtotals stay hidden (destructured out above).
+        setCostRows(Array.isArray(transactions) ? transactions : []);
       } else {
         setActualSpend(null);
       }
@@ -1103,6 +1172,9 @@ export default function ClientPortal({ profile, signOut }) {
                 </div>
               );
             })()}
+
+            {/* ── Itemized cost of the Work + receipt proof (cost-plus transparency) ── */}
+            {!actualSpendLoading && <CostList rows={costRows} />}
 
             {/* ── Draw breakdown ── */}
             {drawBreakdownLoading && (

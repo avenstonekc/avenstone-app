@@ -8009,7 +8009,7 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     // Paid outbound — the ledger rows
     sbClient
       .from('job_transactions')
-      .select('id, date_incurred, payer_or_payee_name, type, description, amount, billing_treatment')
+      .select('id, date_incurred, payer_or_payee_name, type, description, amount, billing_treatment, receipt_url')
       .eq('job_id', jobId)
       .eq('tenant_id', tenantId)
       .eq('direction', 'out')
@@ -8097,10 +8097,15 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     // no_markup rows count as reimbursable cost but contribute zero markup
     markupAmount += t.billing_treatment === 'no_markup' ? 0 : amt * rate / 100;
     transactions.push({
+      id: t.id,
       date: t.date_incurred,
       payee: t.payer_or_payee_name || t.description || '—',
+      description: t.description || null,
       category: t.type,
       amount: amt,
+      // Path into the private job-receipts bucket; the client fetches a short-lived
+      // signed URL on demand (storage policy jr_client_select gates it to their own job).
+      receipt_url: t.receipt_url || null,
     });
   }
 
