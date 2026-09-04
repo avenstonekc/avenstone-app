@@ -2370,24 +2370,48 @@ export const buildFloorPlanPDF = async (rawScan, job) => {
 };
 
 // ─── Default contract text ────────────────────────────────────────────────────
-export const DEFAULT_CONTRACT_TEXT = (job, f$) => `CONSTRUCTION SERVICES AGREEMENT
+// One contract template, two compensation models driven by the job itself:
+//   cost_plus (a "flow job") → cost of the Work + a markup fee, NO fixed price.
+//   otherwise               → fixed Contract Price.
+// A rough estimate, when one exists, rides along as a NON-BINDING estimate (the
+// itemized snapshot is still appended by buildContractPDF) — it never becomes the price
+// on a cost-plus job.
+export const DEFAULT_CONTRACT_TEXT = (job, f$) => {
+  const costPlus = !!job.cost_plus;
+  const lp = Number(job.labor_markup_pct ?? job.default_markup_pct ?? 0);
+  const mp = Number(job.material_markup_pct ?? job.default_markup_pct ?? 0);
+  const feePhrase = lp === mp
+    ? `a Contractor's fee of ${lp}% applied to that cost`
+    : `a Contractor's fee of ${lp}% on labor and ${mp}% on materials`;
 
-This Construction Services Agreement ("Agreement") is entered into as of the date signed below between Avenstone Group LLC ("Contractor") and ${job.client_name || '[Client Name]'} ("Client") for the property located at ${job.address || '[Property Address]'}.
+  const compensation = costPlus
+    ? `2. COMPENSATION — COST OF THE WORK PLUS FEE
+This is a cost-plus ("time and materials") Agreement. Client shall pay Contractor the actual, documented cost of the Work — including all labor and materials — plus ${feePhrase}. "Cost of the Work" means Contractor's actual expenditures for labor, materials, equipment, subcontractors, and related items reasonably incurred in performing the Work. There is no fixed contract price; the total is the accumulated Cost of the Work plus the fee, as reflected in Contractor's invoices. Any estimate provided is a good-faith projection only and is not a fixed price or a cap.
 
-1. SCOPE OF WORK
-Contractor agrees to furnish all labor, materials, equipment, and services necessary to complete the renovation work as described in the project scope ("the Work"). The specific scope, specifications, and any drawings are incorporated herein by reference.
-
-2. CONTRACT PRICE
+3. INVOICING AND PAYMENT
+A) Contractor shall invoice periodically for the Cost of the Work incurred during the billing period plus the applicable fee.
+B) Reasonable backup documentation (receipts, supplier invoices, and labor records) is available to Client upon request.
+C) All invoices are due within 5 business days of receipt.`
+    : `2. CONTRACT PRICE
 The total contract price for the Work is ${f$ ? f$(job.contract_value || 0) : '$0.00'} ("Contract Price"), subject to modifications via approved Change Orders.
 
 3. PAYMENT SCHEDULE
 A) Deposit: 25% due upon signing this Agreement.
 B) Progress Payments: Invoiced at milestones mutually agreed upon.
 C) Final Payment: Remaining balance due upon substantial completion.
-All payments are due within 5 business days of invoice.
+All payments are due within 5 business days of invoice.`;
+
+  return `CONSTRUCTION SERVICES AGREEMENT
+
+This Construction Services Agreement ("Agreement") is entered into as of the date signed below between Avenstone Group LLC ("Contractor") and ${job.client_name || '[Client Name]'} ("Client") for the property located at ${job.address || '[Property Address]'}.
+
+1. SCOPE OF WORK
+Contractor agrees to furnish all labor, materials, equipment, and services necessary to complete the renovation work as described in the project scope ("the Work"). The specific scope, specifications, and any drawings are incorporated herein by reference.
+
+${compensation}
 
 4. COMMENCEMENT AND COMPLETION
-Work shall commence within 5 business days of receipt of the deposit. Estimated completion: ${job.target_completion || '[To be determined]'}. Delays caused by weather, materials availability, or Client-requested changes shall extend the schedule accordingly.
+Work shall commence within 5 business days of ${costPlus ? "the parties' execution of this Agreement" : 'receipt of the deposit'}. Estimated completion: ${job.target_completion || '[To be determined]'}. Delays caused by weather, materials availability, or Client-requested changes shall extend the schedule accordingly.
 
 5. CHANGE ORDERS
 Any changes to the scope of work must be documented in a written Change Order signed by both parties before work proceeds. Change Orders may adjust the Contract Price and/or schedule.
@@ -2405,3 +2429,4 @@ Any disputes arising under this Agreement shall first be submitted to mediation 
 This Agreement, together with any attached exhibits and Change Orders, constitutes the entire agreement between the parties and supersedes all prior negotiations and representations.
 
 By signing below, Client acknowledges reading and agreeing to all terms of this Agreement.`;
+};

@@ -41,8 +41,11 @@ export default function ContractModal({ job, onClose, onSent, proposalDoc }) {
         blob = await r.blob();
       } catch (e) { setErr(e.message || 'Failed to load proposal PDF'); setSending(false); return; }
     } else {
-      // Fail loud: no proposal AND no priced snapshot → nothing legitimate to send.
-      if (!snapshot || !Array.isArray(snapshot.rows) || snapshot.rows.length === 0) {
+      // Fixed-price contracts fail loud with no proposal AND no priced snapshot.
+      // Cost-plus ("flow") jobs have no fixed total — the clause text IS the contract,
+      // so we send it with whatever snapshot exists (a rough estimate rides along
+      // non-binding, or none at all).
+      if (!job.cost_plus && (!snapshot || !Array.isArray(snapshot.rows) || snapshot.rows.length === 0)) {
         setErr('No priced contract on file — accept an estimate before sending.');
         setSending(false); return;
       }
@@ -58,7 +61,8 @@ export default function ContractModal({ job, onClose, onSent, proposalDoc }) {
     if (onSent) onSent(clientEmail, clientName);
   };
 
-  const blockedNoSnapshot = snapLoaded && !proposalDoc && (!snapshot || !(snapshot.rows || []).length);
+  // Cost-plus ("flow") jobs are never blocked on a missing priced snapshot — there is no total.
+  const blockedNoSnapshot = snapLoaded && !proposalDoc && !job.cost_plus && (!snapshot || !(snapshot.rows || []).length);
 
   return (
     <div className="overlay" onClick={onClose}>
