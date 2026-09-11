@@ -11,6 +11,7 @@ import { normalizeFloorPlan } from './floorPlan/normalize.js';
 import { computeSuppressedFieldKeys } from './scopeSuppress.js';
 import { markupRateForCategory, normalizeCategoryKey, DEFAULT_CATEGORY_CONFIG } from './markupConfig.js';
 import { canonicalizeTrade } from './tradeUtils.js';
+import { effectiveRate, chicagoDate } from './earnings.js';
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 export const sb = createClient(
@@ -2057,14 +2058,14 @@ export const ROLE_LABELS = { owner: 'Owner', sales_rep: 'Sales Rep', project_man
 // a null coord never blocks a punch. The one-open-entry invariant is enforced by the partial
 // unique index time_entries_one_open_per_user — the helpers guard first, the index backstops.
 export const sbMyOpenEntry = async () => {
-  const { data, error } = await sb.from('time_entries').select('*').eq('user_id', AV_USER_ID).is('clock_out', null).maybeSingle();
+  const { data, error } = await sb.from('time_entries').select('*, job:jobs(address,client_name)').eq('user_id', AV_USER_ID).is('clock_out', null).maybeSingle();
   if (error) return { ok: false, error: error.message, data: null };
   return { ok: true, error: null, data: data || null };
 };
 
 export const sbMyEntriesToday = async () => {
   const start = new Date(); start.setHours(0, 0, 0, 0);
-  const { data, error } = await sb.from('time_entries').select('*').eq('user_id', AV_USER_ID)
+  const { data, error } = await sb.from('time_entries').select('*, job:jobs(address,client_name)').eq('user_id', AV_USER_ID)
     .gte('clock_in', start.toISOString()).order('clock_in', { ascending: true });
   if (error) return { ok: false, error: error.message, data: [] };
   return { ok: true, error: null, data: data || [] };
@@ -2176,6 +2177,75 @@ export const sbLoadMyPay = async () => {
   ]);
   return { ok: true, details: det.data, rates: rates.data || [], entries: ent.data || [] };
 };
+// ─── Pay run: labor dollars → job financials (TIME_CLOCK_ARC S5) ───────────────
+// Loads a crew member's CLOSED, UNPAID punches, prices each with its date-effective rate,
+// and groups by job. Entries with no rate on file are surfaced separately (never $0-priced,
+// never paid). Returns { ok, byJob:[{job_id,address,hours,amount,entryIds}], noRateCount,
+// unratedHours, totalHours, totalAmount }.
+export const sbLoadUnpaidLabor = async (userId) => {
+  if (!userId) return { ok: false, error: 'userId required', byJob: [], totalAmount: 0 };
+  const [{ data: rates }, { data: entries, error }] = await Promise.all([
+    sb.from('employee_pay_rates').select('rate,effective_date').eq('user_id', userId),
+    sb.from('time_entries').select('id,job_id,clock_in,clock_out, job:jobs(address,client_name)')
+      .eq('user_id', userId).not('clock_out', 'is', null).is('paid_at', null)
+      .order('clock_in', { ascending: true }),
+  ]);
+  if (error) return { ok: false, error: error.message, byJob: [], totalAmount: 0 };
+  const jobs = new Map();
+  let totalHours = 0, totalAmount = 0, noRateCount = 0, unratedHours = 0;
+  for (const e of (entries || [])) {
+    const hours = Math.max(0, (Date.parse(e.clock_out) - Date.parse(e.clock_in)) / 3600000);
+    const rate = effectiveRate(rates || [], chicagoDate(e.clock_in));
+    totalHours += hours;
+    if (rate == null) { noRateCount++; unratedHours += hours; continue; } // unpriced — excluded from pay
+    const amt = hours * rate;
+    totalAmount += amt;
+    const key = e.job_id;
+    const g = jobs.get(key) || { job_id: key, address: e.job?.address || 'Job', hours: 0, amount: 0, entryIds: [] };
+    g.hours += hours; g.amount += amt; g.entryIds.push(e.id);
+    jobs.set(key, g);
+  }
+  const round2 = n => Math.round(n * 100) / 100;
+  return {
+    ok: true, error: null,
+    byJob: [...jobs.values()].map(g => ({ ...g, hours: round2(g.hours), amount: round2(g.amount) })),
+    noRateCount, unratedHours: round2(unratedHours),
+    totalHours: round2(totalHours), totalAmount: round2(totalAmount),
+  };
+};
+
+// Marks the given unpaid punches paid: for each job, drops ONE paid 'labor' expense
+// (direction=out, reimbursable — cost-plus markup flows via sbLoadClientActualSpend) and
+// stamps the punches with paid_at + pay_transaction_id. Re-filters paid_at IS NULL so a
+// double-click can't double-bill. Returns { ok, jobsLogged, totalAmount }.
+export const sbPayLabor = async ({ userId, employeeName }) => {
+  if (!userId) return { ok: false, error: 'userId required' };
+  const load = await sbLoadUnpaidLabor(userId);
+  if (!load.ok) return { ok: false, error: load.error };
+  if (!load.byJob.length) return { ok: false, error: 'No unpaid, priced hours to pay.' };
+  const today = new Date().toISOString().slice(0, 10);
+  const name = employeeName || 'Crew';
+  let jobsLogged = 0, totalAmount = 0;
+  for (const g of load.byJob) {
+    // Guard: only entries still unpaid (paid_at null) get swept into this payout.
+    const { data: live } = await sb.from('time_entries').select('id')
+      .in('id', g.entryIds).is('paid_at', null);
+    const liveIds = (live || []).map(r => r.id);
+    if (!liveIds.length) continue;
+    const tx = await sbCreateTransaction({
+      job_id: g.job_id, direction: 'out', type: 'labor', status: 'paid',
+      billing_treatment: 'standard', reimbursement_status: 'unreimbursed',
+      amount: g.amount, date_incurred: today, payer_or_payee_name: name,
+      description: `Labor: ${name} — ${g.hours}h`,
+    });
+    if (!tx.ok) return { ok: false, error: `Job ${g.address}: ${tx.error}`, jobsLogged, totalAmount };
+    await sb.from('time_entries').update({ paid_at: new Date().toISOString(), pay_transaction_id: tx.data.id })
+      .in('id', liveIds);
+    jobsLogged++; totalAmount += g.amount;
+  }
+  return { ok: true, error: null, jobsLogged, totalAmount: Math.round(totalAmount * 100) / 100 };
+};
+
 // Owner lookup for the already-invited dedupe path.
 export const sbFindProfileByEmail = async (email) => {
   const { data, error } = await sb.from('profiles').select('id,full_name,role,email').eq('tenant_id', AV_TENANT).eq('email', email).maybeSingle();
@@ -7798,28 +7868,39 @@ export async function sbLoadUncollectedClientPaidMarkup(jobId) {
 }
 
 /**
- * Computes bucket + float math for a cost-plus job in one round trip.
- * bucket = sum of paid inbound rows with invoice_id IS NULL
- * unreimbursed = sum of direction='out', reimbursement_status='unreimbursed'
- * float = unreimbursed - bucket (positive = we're ahead of client; negative = bucket surplus)
- * Returns { ok, error, data: { bucket, unreimbursed, float } }.
+ * Computes bucket + float math for a cost-plus job.
+ * bucket = UNAPPLIED client deposits = (paid inbound rows with invoice_id IS NULL AND draw_id IS NULL)
+ *          − (deposit credit already consumed by prior non-cancelled draws, where consumed =
+ *             SUM(line total_with_markup) − target_amount for that draw).
+ *   Draw payments (draw_id set) pay a draw — they are NOT unapplied credit. Before this fix every
+ *   draw payment was counted as bucket credit forever, so Draw #2 offered to "apply" the money the
+ *   client had already paid for Draw #1 (double credit, under-billing by the full Draw #1 amount).
+ * unreimbursed = sum of direction='out', reimbursement_status='unreimbursed', no draw_id
+ * float = unreimbursed - bucket (positive = we're ahead of client; negative = deposit surplus)
+ * Returns { ok, error, data: { bucket, deposits, applied_to_draws, draw_payments, unreimbursed, float } }.
  */
 export async function sbGetBucketBalance(jobId) {
   if (!jobId) return { ok: false, error: 'jobId required', data: null };
 
-  const { data, error } = await sb
-    .from('job_transactions')
-    .select('direction, amount, invoice_id, status, reimbursement_status, draw_id')
-    .eq('job_id', jobId);
+  const [txRes, drawRes] = await Promise.all([
+    sb.from('job_transactions')
+      .select('direction, amount, invoice_id, status, reimbursement_status, draw_id')
+      .eq('job_id', jobId),
+    sb.from('draw_schedules')
+      .select('id, target_amount, status, draw_line_items(total_with_markup)')
+      .eq('job_id', jobId),
+  ]);
+  if (txRes.error)   return { ok: false, error: txRes.error.message, data: null };
+  if (drawRes.error) return { ok: false, error: drawRes.error.message, data: null };
 
-  if (error) return { ok: false, error: error.message, data: null };
-
-  let bucket = 0;
+  let deposits = 0;
+  let drawPayments = 0;
   let unreimbursed = 0;
-  for (const r of data || []) {
+  for (const r of txRes.data || []) {
     const amt = Number(r.amount) || 0;
     if (r.direction === 'in' && r.invoice_id === null && r.status === 'paid') {
-      bucket += amt;
+      if (r.draw_id == null) deposits += amt;   // true prepayment / retainer
+      else drawPayments += amt;                 // payment against a specific draw — not credit
     } else if (
       // Same canonical reimbursable predicate as sbLoadUnreimbursedExpenses: NULL counts as
       // unreimbursed, void never counts, and a drawn row (has draw_id) is already collected.
@@ -7832,13 +7913,27 @@ export async function sbGetBucketBalance(jobId) {
     }
   }
 
+  // Deposit credit already netted into earlier draws (compose_draw stores only the NET target_amount).
+  let appliedToDraws = 0;
+  for (const d of drawRes.data || []) {
+    if (d.status === 'cancelled' || d.status === 'voided') continue;
+    const lineTotal = (d.draw_line_items || []).reduce((s, li) => s + (Number(li.total_with_markup) || 0), 0);
+    const applied = lineTotal - (Number(d.target_amount) || 0);
+    if (applied > 0.005) appliedToDraws += applied;
+  }
+
+  const bucket = Math.max(0, deposits - appliedToDraws);
+
   return {
     ok: true,
     error: null,
     data: {
-      bucket: Number(bucket.toFixed(2)),
-      unreimbursed: Number(unreimbursed.toFixed(2)),
-      float: Number((unreimbursed - bucket).toFixed(2)),
+      bucket:           Number(bucket.toFixed(2)),
+      deposits:         Number(deposits.toFixed(2)),
+      applied_to_draws: Number(appliedToDraws.toFixed(2)),
+      draw_payments:    Number(drawPayments.toFixed(2)),
+      unreimbursed:     Number(unreimbursed.toFixed(2)),
+      float:            Number((unreimbursed - bucket).toFixed(2)),
     },
   };
 }

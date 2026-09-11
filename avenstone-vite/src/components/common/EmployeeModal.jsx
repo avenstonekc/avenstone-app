@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { sbInviteStaff, sbFindProfileByEmail, sbSaveEmployeeDetails, sbAddPayRate, sbLoadEmployeeDetails, sbLoadPayRates, sbDeletePayRate, sbResendSetupEmail, sbSendPaperwork, sbLoadPaperwork, sbPaperworkUrl } from '../../lib/supabase';
+import { sbInviteStaff, sbFindProfileByEmail, sbSaveEmployeeDetails, sbAddPayRate, sbLoadEmployeeDetails, sbLoadPayRates, sbDeletePayRate, sbResendSetupEmail, sbSendPaperwork, sbLoadPaperwork, sbPaperworkUrl, sbLoadUnpaidLabor, sbPayLabor } from '../../lib/supabase';
 import { effectiveRate, chicagoDate } from '../../lib/earnings';
 
 const DOC_LABEL = { w4: 'W-4', w9: 'W-9' };
@@ -40,6 +40,9 @@ export default function EmployeeModal({ mode, user, onClose, onSaved }) {
   const [paperwork, setPaperwork] = useState([]);
   const [pwBusy, setPwBusy] = useState('');
   const [changeRate, setChangeRate] = useState(null); // { rate, effDate } when adding a new rate
+  const [labor, setLabor] = useState(null);           // unpaid-labor breakdown (detail mode)
+  const [payBusy, setPayBusy] = useState(false);
+  const [payMsg, setPayMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [existed, setExisted] = useState(false);
@@ -47,13 +50,27 @@ export default function EmployeeModal({ mode, user, onClose, onSaved }) {
 
   useEffect(() => {
     if (isAdd || !user) return;
-    Promise.all([sbLoadEmployeeDetails(user.id), sbLoadPayRates(user.id), sbLoadPaperwork(user.id)]).then(([d, r, pw]) => {
+    Promise.all([sbLoadEmployeeDetails(user.id), sbLoadPayRates(user.id), sbLoadPaperwork(user.id), sbLoadUnpaidLabor(user.id)]).then(([d, r, pw, lab]) => {
       setDetails(d.data);
       setF(p => ({ ...p, classification: d.data?.classification || 'w2', phone: d.data?.phone || '', address: d.data?.address || '', startDate: d.data?.start_date || '' }));
       setRates(r.data || []);
       setPaperwork(pw.data || []);
+      setLabor(lab.ok ? lab : null);
     });
   }, [isAdd, user]);
+
+  const payLabor = async () => {
+    if (!labor?.byJob?.length) return;
+    if (!window.confirm(`Pay ${user?.full_name || 'this employee'} ${money(labor.totalAmount)} for ${labor.totalHours}h? This logs a paid labor cost to each job (cost-plus jobs bill the client with markup).`)) return;
+    setPayBusy(true); setPayMsg(''); setErr('');
+    const r = await sbPayLabor({ userId: user.id, employeeName: user?.full_name });
+    setPayBusy(false);
+    if (!r.ok) { setErr(r.error); return; }
+    setPayMsg(`Paid ${money(r.totalAmount)} across ${r.jobsLogged} job${r.jobsLogged === 1 ? '' : 's'}.`);
+    const lab = await sbLoadUnpaidLabor(user.id);
+    setLabor(lab.ok ? lab : null);
+    onSaved?.();
+  };
 
   const curRate = effectiveRate(rates, todayStr());
 
@@ -199,6 +216,43 @@ export default function EmployeeModal({ mode, user, onClose, onSaved }) {
             ) : (
               <button className="btn btn-ghost" style={{ width: '100%', marginTop: 4 }} onClick={() => setChangeRate({ rate: '', effDate: todayStr() })}>+ Change rate (new effective row)</button>
             )}
+
+            {/* Unpaid hours → pay. Marks punches paid + logs a labor cost to each job (cost-plus bills client w/ markup). */}
+            <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: 8 }}>Unpaid hours</div>
+              {!labor || (!labor.byJob.length && !labor.noRateCount) ? (
+                <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>No unpaid hours.</div>
+              ) : (
+                <>
+                  {labor.byJob.map(g => (
+                    <div key={g.job_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 6 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.address}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{g.hours}h</div>
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy-900)' }}>{money(g.amount)}</div>
+                    </div>
+                  ))}
+                  {labor.noRateCount > 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--amber-text-strong)', background: 'var(--amber-bg)', border: '1px solid var(--amber-border)', borderRadius: 8, padding: '8px 12px', marginBottom: 8 }}>
+                      {labor.unratedHours}h on {labor.noRateCount} {labor.noRateCount === 1 ? 'punch has' : 'punches have'} no rate on file — not included. Set a rate effective that date to pay them.
+                    </div>
+                  )}
+                  {labor.byJob.length > 0 && (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 2px 10px', fontSize: 14 }}>
+                        <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>Total · {labor.totalHours}h</span>
+                        <span style={{ fontWeight: 800, color: 'var(--navy-900)' }}>{money(labor.totalAmount)}</span>
+                      </div>
+                      <button className="btn btn-navy" style={{ width: '100%' }} onClick={payLabor} disabled={payBusy}>
+                        {payBusy ? 'Paying…' : `Mark paid & log to jobs (${money(labor.totalAmount)})`}
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+              {payMsg && <div style={{ fontSize: 12, color: 'var(--green-text)', textAlign: 'center', marginTop: 8 }}>{payMsg}</div>}
+            </div>
 
             {/* Tax paperwork — W-4 (W2) / W-9 (1099), defaulted by classification, overridable */}
             {(() => {

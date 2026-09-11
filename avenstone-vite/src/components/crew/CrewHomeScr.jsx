@@ -43,7 +43,9 @@ export default function CrewHomeScr({ profile, signOut }) {
   const [paperwork, setPaperwork] = useState([]); // open paperwork requests
   const tickRef = useRef(null);
 
-  const jobLabel = (id) => jobs.find(j => j.id === id)?.address || today.find(t => t.job_id === id && t.jobLabel)?.jobLabel || id;
+  // Prefer the address joined onto the entry; fall back to the picker list. Never show the raw UUID.
+  const jobLabel = (id) => jobs.find(j => j.id === id)?.address || today.find(t => t.job_id === id)?.job?.address || 'Job';
+  const entryLabel = (t) => t?.job?.address || jobLabel(t?.job_id);
 
   const refresh = async () => {
     const [o, t, p, pw] = await Promise.all([sbMyOpenEntry(), sbMyEntriesToday(), sbLoadMyPay(), sbMyPaperwork()]);
@@ -121,7 +123,7 @@ export default function CrewHomeScr({ profile, signOut }) {
       {open ? (
         <div className="card" style={{ padding: 22, marginBottom: 18, textAlign: 'center', border: `2px solid ${GOLD}` }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1, color: 'var(--green-text)', textTransform: 'uppercase', marginBottom: 8 }}>● On the clock</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{jobLabel(open.job_id)}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{entryLabel(open)}</div>
           <div style={{ fontSize: 32, fontWeight: 800, color: NAV, margin: '6px 0' }}>
             Since {fmtClock(open.clock_in)}
           </div>
@@ -153,7 +155,7 @@ export default function CrewHomeScr({ profile, signOut }) {
           <div key={t.id} className="card" style={{ padding: '12px 14px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {jobLabel(t.job_id)}{t.source === 'switch' && <span style={{ fontSize: 10, color: 'var(--text-subtle)', marginLeft: 6 }}>↷ switch</span>}
+                {entryLabel(t)}{t.source === 'switch' && <span style={{ fontSize: 10, color: 'var(--text-subtle)', marginLeft: 6 }}>↷ switch</span>}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                 {fmtClock(t.clock_in)} – {t.clock_out ? fmtClock(t.clock_out) : 'now'}
