@@ -8109,25 +8109,19 @@ export async function sbLoadClientDrawBreakdown(jobId) {
 export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
   if (!jobId) return { ok: false, error: 'jobId required', data: null };
 
-  const [paidOutboundResult, pendingOutboundResult, inboundResult, jobResult, pendingReviewResult, estResult] = await Promise.all([
-    // Paid outbound — the ledger rows
+  const [outboundResult, inboundResult, jobResult, pendingReviewResult, estResult] = await Promise.all([
+    // All NON-VOID outbound costs — incurred, whether we've paid the vendor yet or not.
+    // Option A (2026-09-11): cost-plus receivable reflects costs INCURRED + markup, so newly
+    // logged (pending) receipts show and bill immediately, not just contractor-paid ones.
+    // `status` is carried so the UI can badge rows we haven't paid out yet.
     sbClient
       .from('job_transactions')
-      .select('id, date_incurred, payer_or_payee_name, type, description, amount, billing_treatment, receipt_url')
+      .select('id, date_incurred, payer_or_payee_name, type, description, amount, billing_treatment, receipt_url, status')
       .eq('job_id', jobId)
       .eq('tenant_id', tenantId)
       .eq('direction', 'out')
-      .eq('status', 'paid')
+      .neq('status', 'void')
       .order('date_incurred', { ascending: true }),
-    // Pending outbound sub_payout/change_order — the accrual rows
-    sbClient
-      .from('job_transactions')
-      .select('amount, type, billing_treatment')
-      .eq('job_id', jobId)
-      .eq('tenant_id', tenantId)
-      .eq('direction', 'out')
-      .eq('status', 'pending')
-      .in('type', ['sub_payout', 'change_order']),
     // Inbound paid with no invoice — client draw receipts (= paid_to_date)
     sbClient
       .from('job_transactions')
@@ -8159,10 +8153,10 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
       .maybeSingle(),
   ]);
 
-  if (paidOutboundResult.error) return { ok: false, error: paidOutboundResult.error.message, data: null };
+  if (outboundResult.error) return { ok: false, error: outboundResult.error.message, data: null };
   if (jobResult.error) return { ok: false, error: jobResult.error.message, data: null };
 
-  const txns = paidOutboundResult.data || [];
+  const txns = outboundResult.data || [];
   const j = jobResult.data;
 
   const materialMarkupPct = Number(j.material_markup_pct ?? j.default_markup_pct ?? 0);
@@ -8186,10 +8180,15 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
   let clientPaidTotal = 0;
   let clientPaidMarkup = 0;
 
+  // outstandingPending = the portion of incurred cost we haven't paid the vendor for yet
+  // (status !== 'paid'). Display-only ("$X not yet paid out") — already inside costSubtotal,
+  // so it is NOT re-added to the total.
+  let outstandingPending = 0;
   const transactions = [];
   for (const t of txns) {
     const amt  = Number(t.amount ?? 0);
     const rate = markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig });
+    const isPending = t.status !== 'paid';
     if (t.billing_treatment === 'client_paid') {
       clientPaidTotal  += amt;
       clientPaidMarkup += amt * rate / 100;
@@ -8200,6 +8199,7 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     else materialSubtotal += amt; // material_rate and flat both go to material display bucket
     // no_markup rows count as reimbursable cost but contribute zero markup
     markupAmount += t.billing_treatment === 'no_markup' ? 0 : amt * rate / 100;
+    if (isPending) outstandingPending += amt;
     transactions.push({
       id: t.id,
       date: t.date_incurred,
@@ -8207,6 +8207,7 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
       description: t.description || null,
       category: t.type,
       amount: amt,
+      pending: isPending, // client UI can badge costs we haven't paid the vendor for yet
       // Path into the private job-receipts bucket; the client fetches a short-lived
       // signed URL on demand (storage policy jr_client_select gates it to their own job).
       receipt_url: t.receipt_url || null,
@@ -8215,22 +8216,6 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
 
   const costSubtotal = materialSubtotal + laborSubtotal;
   const markedUpTotal = costSubtotal + markupAmount;
-
-  // Outstanding = approved-not-yet-paid accrual rows (drawn down by the sub-invoice RPCs)
-  // Split by bucket so firmProjectedTotal uses per-category rates. client_paid excluded
-  // from reimbursable cost; no_markup contributes zero markup.
-  let pendingMarkupAmount = 0;
-  const outstandingPending = (pendingOutboundResult.data || []).reduce((sum, t) => {
-    const amt  = Number(t.amount ?? 0);
-    const rate = markupRateForCategory(t.type, { laborPct: laborMarkupPct, materialPct: materialMarkupPct, categoryConfig });
-    if (t.billing_treatment === 'client_paid') {
-      clientPaidTotal  += amt;
-      clientPaidMarkup += amt * rate / 100;
-      return sum; // not reimbursable cost
-    }
-    pendingMarkupAmount += t.billing_treatment === 'no_markup' ? 0 : amt * rate / 100;
-    return sum + amt;
-  }, 0);
 
   // paid_to_date = what the client has actually remitted (draw receipts)
   const paidToDate = (inboundResult.data || [])
@@ -8241,10 +8226,9 @@ export async function sbLoadClientActualSpend(sbClient, jobId, tenantId) {
     .reduce((sum, si) => sum + Number(si.amount ?? 0), 0);
 
   const pmFee = Number(j.pm_fee || 0);
-  // firm_projected_total = paid cost + outstanding cost + per-category markup on both
+  // firm_projected_total = all incurred cost (paid + pending) + per-category markup
   //                        + markup on client-direct purchases + pm_fee
-  const totalCostBase = costSubtotal + outstandingPending;
-  const firmProjectedTotal = totalCostBase + markupAmount + pendingMarkupAmount + clientPaidMarkup + pmFee;
+  const firmProjectedTotal = costSubtotal + markupAmount + clientPaidMarkup + pmFee;
   const remainingBalance = firmProjectedTotal - paidToDate;
 
   return {
