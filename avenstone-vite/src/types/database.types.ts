@@ -6770,6 +6770,7 @@ export type Database = {
           tenant_id: string
           updated_at: string
           user_id: string
+          work_description: string | null
         }
         Insert: {
           clock_in?: string
@@ -6790,6 +6791,7 @@ export type Database = {
           tenant_id: string
           updated_at?: string
           user_id: string
+          work_description?: string | null
         }
         Update: {
           clock_in?: string
@@ -6810,6 +6812,7 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           user_id?: string
+          work_description?: string | null
         }
         Relationships: [
           {
@@ -7438,6 +7441,7 @@ export type Database = {
           tenant_id: string
           updated_at: string
           user_id: string
+          work_description: string | null
         }
         SetofOptions: {
           from: "*"

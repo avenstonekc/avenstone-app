@@ -225,12 +225,19 @@ export default function EmployeeModal({ mode, user, onClose, onSaved }) {
               ) : (
                 <>
                   {labor.byJob.map(g => (
-                    <div key={g.job_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 6 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.address}</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{g.hours}h</div>
+                    <div key={g.job_id} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.address}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{g.hours}h</div>
+                        </div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy-900)' }}>{money(g.amount)}</div>
                       </div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy-900)' }}>{money(g.amount)}</div>
+                      {g.notes?.length > 0 && (
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border)', lineHeight: 1.4 }}>
+                          {g.notes.map((n, i) => <div key={i}>• {n}</div>)}
+                        </div>
+                      )}
                     </div>
                   ))}
                   {labor.noRateCount > 0 && (

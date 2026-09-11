@@ -2109,11 +2109,12 @@ export const sbCrewJobs = async () => {
   return { ok: true, error: null, data: data || [] };
 };
 
-export const sbClockOut = async ({ lat = null, lng = null } = {}) => {
+export const sbClockOut = async ({ lat = null, lng = null, description = null } = {}) => {
   const open = await sbMyOpenEntry();
   if (!open.ok || !open.data) return { ok: false, error: 'not_clocked_in' };
   const { data, error } = await sb.from('time_entries').update({
-    clock_out: new Date().toISOString(), out_lat: lat, out_lng: lng, updated_at: new Date().toISOString(),
+    clock_out: new Date().toISOString(), out_lat: lat, out_lng: lng,
+    work_description: description || null, updated_at: new Date().toISOString(),
   }).eq('id', open.data.id).is('clock_out', null).select('*').single();
   if (error) return { ok: false, error: error.message };
   return { ok: true, error: null, data };
@@ -2186,7 +2187,7 @@ export const sbLoadUnpaidLabor = async (userId) => {
   if (!userId) return { ok: false, error: 'userId required', byJob: [], totalAmount: 0 };
   const [{ data: rates }, { data: entries, error }] = await Promise.all([
     sb.from('employee_pay_rates').select('rate,effective_date').eq('user_id', userId),
-    sb.from('time_entries').select('id,job_id,clock_in,clock_out, job:jobs(address,client_name)')
+    sb.from('time_entries').select('id,job_id,clock_in,clock_out,work_description, job:jobs(address,client_name)')
       .eq('user_id', userId).not('clock_out', 'is', null).is('paid_at', null)
       .order('clock_in', { ascending: true }),
   ]);
@@ -2201,8 +2202,10 @@ export const sbLoadUnpaidLabor = async (userId) => {
     const amt = hours * rate;
     totalAmount += amt;
     const key = e.job_id;
-    const g = jobs.get(key) || { job_id: key, address: e.job?.address || 'Job', hours: 0, amount: 0, entryIds: [] };
+    const g = jobs.get(key) || { job_id: key, address: e.job?.address || 'Job', hours: 0, amount: 0, entryIds: [], notes: [] };
     g.hours += hours; g.amount += amt; g.entryIds.push(e.id);
+    const note = (e.work_description || '').trim();
+    if (note && !g.notes.includes(note)) g.notes.push(note);
     jobs.set(key, g);
   }
   const round2 = n => Math.round(n * 100) / 100;

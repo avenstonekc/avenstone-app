@@ -34,6 +34,8 @@ export default function CrewHomeScr({ profile, signOut }) {
   const [jobs, setJobs] = useState([]);          // active jobs for the picker
   const [loading, setLoading] = useState(true);
   const [picker, setPicker] = useState(null);    // null | 'in' | 'switch'
+  const [clockOutSheet, setClockOutSheet] = useState(false); // clock-out work-description prompt
+  const [workDesc, setWorkDesc] = useState('');
   const [busy, setBusy] = useState(false);
   const [gpsBusy, setGpsBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -85,7 +87,12 @@ export default function CrewHomeScr({ profile, signOut }) {
 
   const doClockIn = async (job) => { setPicker(null); await withGps((c) => sbClockIn(job.id, c)); };
   const doSwitch  = async (job) => { setPicker(null); await withGps((c) => sbSwitchJob(job.id, c)); };
-  const doClockOut = async () => { await withGps(() => sbClockOut()); };
+  const doClockOut = async () => {
+    const desc = workDesc.trim();
+    setClockOutSheet(false);
+    await withGps((c) => sbClockOut({ ...c, description: desc }));
+    setWorkDesc('');
+  };
 
   const firstName = (profile?.full_name || 'there').split(' ')[0];
 
@@ -132,7 +139,7 @@ export default function CrewHomeScr({ profile, signOut }) {
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <button onClick={() => openPicker('switch')} disabled={busy} className="btn btn-navy" style={{ flex: 1, minHeight: 54, fontSize: 16, borderRadius: 12 }}>Switch Job</button>
-            <button onClick={doClockOut} disabled={busy} style={{ flex: 1, minHeight: 54, fontSize: 16, borderRadius: 12, border: 'none', cursor: 'pointer', fontWeight: 700, fontFamily: 'var(--font-body)', background: 'var(--red-bg)', color: 'var(--red-text)' }}>
+            <button onClick={() => { setWorkDesc(''); setClockOutSheet(true); }} disabled={busy} style={{ flex: 1, minHeight: 54, fontSize: 16, borderRadius: 12, border: 'none', cursor: 'pointer', fontWeight: 700, fontFamily: 'var(--font-body)', background: 'var(--red-bg)', color: 'var(--red-text)' }}>
               {busy ? (gpsBusy ? 'Locating…' : 'Saving…') : 'Clock Out'}
             </button>
           </div>
@@ -152,18 +159,25 @@ export default function CrewHomeScr({ profile, signOut }) {
         {today.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--text-subtle)', padding: '12px 0' }}>No punches yet today.</div>
         ) : today.map(t => (
-          <div key={t.id} className="card" style={{ padding: '12px 14px', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {entryLabel(t)}{t.source === 'switch' && <span style={{ fontSize: 10, color: 'var(--text-subtle)', marginLeft: 6 }}>↷ switch</span>}
+          <div key={t.id} className="card" style={{ padding: '12px 14px', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {entryLabel(t)}{t.source === 'switch' && <span style={{ fontSize: 10, color: 'var(--text-subtle)', marginLeft: 6 }}>↷ switch</span>}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {fmtClock(t.clock_in)} – {t.clock_out ? fmtClock(t.clock_out) : 'now'}
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                {fmtClock(t.clock_in)} – {t.clock_out ? fmtClock(t.clock_out) : 'now'}
+              <div style={{ fontSize: 14, fontWeight: 700, color: t.clock_out ? NAV : 'var(--green-text)', whiteSpace: 'nowrap' }}>
+                {t.clock_out ? fmtDur(t.clock_in, t.clock_out) : 'in progress'}
               </div>
             </div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: t.clock_out ? NAV : 'var(--green-text)', whiteSpace: 'nowrap' }}>
-              {t.clock_out ? fmtDur(t.clock_in, t.clock_out) : 'in progress'}
-            </div>
+            {t.work_description && (
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)', lineHeight: 1.4 }}>
+                {t.work_description}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -186,6 +200,29 @@ export default function CrewHomeScr({ profile, signOut }) {
                 {j.client_name && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{j.client_name}</div>}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Clock-out prompt — a work description is required to finish the punch */}
+      {clockOutSheet && (
+        <div onClick={() => !busy && setClockOutSheet(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(10,31,68,0.45)', zIndex: 2000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg)', width: '100%', maxWidth: 480, borderRadius: '18px 18px 0 0', padding: 18, paddingBottom: 'calc(18px + env(safe-area-inset-bottom))', animation: 'slideUp 0.25s ease' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Wrap up the day</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12, marginTop: 2 }}>What did you work on today? (required)</div>
+            <textarea
+              value={workDesc}
+              onChange={e => setWorkDesc(e.target.value)}
+              autoFocus
+              placeholder="e.g. Framed the basement bathroom, hung drywall in the hallway…"
+              style={{ width: '100%', minHeight: 110, fontSize: 16, padding: '12px 14px', border: `1px solid ${BORDER}`, borderRadius: 12, boxSizing: 'border-box', fontFamily: 'var(--font-body)', resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+              <button onClick={() => setClockOutSheet(false)} disabled={busy} style={{ flex: 1, minHeight: 50, borderRadius: 12, border: `1px solid ${BORDER}`, background: 'var(--card-bg)', color: 'var(--text-muted)', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-body)' }}>Cancel</button>
+              <button onClick={doClockOut} disabled={busy || !workDesc.trim()} style={{ flex: 2, minHeight: 50, borderRadius: 12, border: 'none', background: workDesc.trim() ? 'var(--red-bg)' : 'var(--bg-alt)', color: workDesc.trim() ? 'var(--red-text)' : 'var(--text-subtle)', fontSize: 15, fontWeight: 700, cursor: workDesc.trim() ? 'pointer' : 'not-allowed', fontFamily: 'var(--font-body)' }}>
+                {busy ? (gpsBusy ? 'Locating…' : 'Saving…') : 'Clock Out'}
+              </button>
+            </div>
           </div>
         </div>
       )}
