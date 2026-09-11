@@ -15,11 +15,11 @@ const weekLabel = (ws) => { const [y, m, d] = ws.split('-').map(Number); return 
 const NAV = 'var(--navy-900)', GOLD = 'var(--gold-500)', BORDER = 'var(--border)';
 
 const fmtClock = (iso) => iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
-const two = (n) => String(n).padStart(2, '0');
-const fmtElapsed = (ms) => {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  return `${h}:${two(m)}:${two(sec)}`;
+// Minute-resolution elapsed ("3h 12m") — calm counter, not a ticking stopwatch.
+const fmtElapsedMin = (ms) => {
+  const min = Math.max(0, Math.floor(ms / 60000));
+  const h = Math.floor(min / 60), m = min % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 const fmtDur = (inIso, outIso) => {
   const ms = (new Date(outIso).getTime() - new Date(inIso).getTime());
@@ -57,7 +57,7 @@ export default function CrewHomeScr({ profile, signOut }) {
 
   // live elapsed tick while clocked in
   useEffect(() => {
-    if (open) { tickRef.current = setInterval(() => setNowTick(Date.now()), 1000); }
+    if (open) { tickRef.current = setInterval(() => setNowTick(Date.now()), 30000); }
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
   }, [open]);
 
@@ -122,10 +122,12 @@ export default function CrewHomeScr({ profile, signOut }) {
         <div className="card" style={{ padding: 22, marginBottom: 18, textAlign: 'center', border: `2px solid ${GOLD}` }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1, color: 'var(--green-text)', textTransform: 'uppercase', marginBottom: 8 }}>● On the clock</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{jobLabel(open.job_id)}</div>
-          <div style={{ fontSize: 40, fontWeight: 800, color: NAV, fontVariantNumeric: 'tabular-nums', letterSpacing: 1, margin: '6px 0' }}>
-            {fmtElapsed(nowTick - new Date(open.clock_in).getTime())}
+          <div style={{ fontSize: 32, fontWeight: 800, color: NAV, margin: '6px 0' }}>
+            Since {fmtClock(open.clock_in)}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginBottom: 20 }}>since {fmtClock(open.clock_in)}{open.in_lat == null ? ' · no GPS' : ''}</div>
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>
+            {fmtElapsedMin(nowTick - new Date(open.clock_in).getTime())} on site{open.in_lat == null ? ' · no GPS' : ''}
+          </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <button onClick={() => openPicker('switch')} disabled={busy} className="btn btn-navy" style={{ flex: 1, minHeight: 54, fontSize: 16, borderRadius: 12 }}>Switch Job</button>
             <button onClick={doClockOut} disabled={busy} style={{ flex: 1, minHeight: 54, fontSize: 16, borderRadius: 12, border: 'none', cursor: 'pointer', fontWeight: 700, fontFamily: 'var(--font-body)', background: 'var(--red-bg)', color: 'var(--red-text)' }}>
@@ -216,10 +218,13 @@ function MyPay({ pay, nowTick }) {
         <Stat label="Classification" value={cls === 'w2' ? 'W-2' : cls === '1099' ? '1099' : '—'} />
       </div>
 
-      {/* Honesty seam — the number is straight-time, before taxes, no OT premium. */}
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, lineHeight: 1.5 }}>
-        <strong style={{ color: 'var(--text-secondary)' }}>Straight time, before taxes</strong> — overtime premium not included. This is gross pay, not take-home.
-      </div>
+      {/* W-2 only: straight-time/OT note is a real legal flag before 40 hr/wk. 1099 contractors
+          see their actual pay with no disclaimer (they handle their own taxes, no OT premium). */}
+      {cls === 'w2' && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, lineHeight: 1.5 }}>
+          <strong style={{ color: 'var(--text-secondary)' }}>Straight time, before taxes</strong> — overtime premium not included.
+        </div>
+      )}
 
       {e.noRateCount > 0 && (
         <div style={{ fontSize: 12, color: 'var(--amber-text-strong)', background: 'var(--amber-bg)', border: '1px solid var(--amber-border)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
